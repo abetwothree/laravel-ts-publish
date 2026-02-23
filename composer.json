@@ -11,7 +11,6 @@
     "authors": [
         {
             "name": "Abraham Arango",
-            "email": "abraham.arangoc@gmail.com",
             "role": "Developer"
         }
     ],
@@ -41,16 +40,35 @@
     "autoload-dev": {
         "psr-4": {
             "AbeTwoThree\\LaravelTsPublisher\\Tests\\": "tests/",
-            "Workbench\\App\\": "workbench/app/"
+            "Workbench\\App\\": "workbench/app/",
+            "Workbench\\Database\\Factories\\": "workbench/database/factories/",
+            "Workbench\\Database\\Seeders\\": "workbench/database/seeders/"
         }
     },
     "scripts": {
-        "post-autoload-dump": "@composer run prepare",
+        "post-autoload-dump": [
+            "@clear",
+            "@prepare",
+            "@composer run prepare"
+        ],
         "prepare": "@php vendor/bin/testbench package:discover --ansi",
         "analyse": "vendor/bin/phpstan analyse",
         "test": "vendor/bin/pest",
-        "test-coverage": "vendor/bin/pest --coverage",
-        "format": "vendor/bin/pint"
+        "test-cov": "export XDEBUG_MODE=coverage && vendor/bin/pest --coverage --coverage-clover coverage.xml",
+        "test-cov-html": "export XDEBUG_MODE=coverage && vendor/bin/pest --coverage-html coverage",
+        "test-cov-xml": "export XDEBUG_MODE=coverage && vendor/bin/pest --coverage-xml coverage",
+        "format": "vendor/bin/pint",
+        "lint": [
+            "@php vendor/bin/pint --ansi",
+            "@php vendor/bin/phpstan analyse --verbose --ansi"
+        ],
+        "clear": "@php vendor/bin/testbench package:purge-skeleton --ansi",
+        "build": "@php vendor/bin/testbench workbench:build --ansi",
+        "serve": [
+            "Composer\\Config::disableProcessTimeout",
+            "@build",
+            "@php vendor/bin/testbench serve --ansi"
+        ]
     },
     "config": {
         "sort-packages": true,
