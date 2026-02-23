@@ -1,17 +1,17 @@
 {
-    "name": ":vendor_slug/:package_slug",
-    "description": ":package_description",
+    "name": "abetwothree/laravel-ts-publisher",
+    "description": "Create TypeScript declaration types from your PHP models, enums, and other cast classes",
     "keywords": [
-        ":vendor_name",
+        "abetwothree",
         "laravel",
-        ":package_slug"
+        "laravel-ts-publisher"
     ],
-    "homepage": "https://github.com/:vendor_slug/:package_slug",
+    "homepage": "https://github.com/abetwothree/laravel-ts-publisher",
     "license": "MIT",
     "authors": [
         {
-            "name": ":author_name",
-            "email": "author@domain.com",
+            "name": "Abraham Arango",
+            "email": "abraham.arangoc@gmail.com",
             "role": "Developer"
         }
     ],
@@ -30,18 +30,17 @@
         "pestphp/pest-plugin-laravel": "^4.0",
         "phpstan/extension-installer": "^1.4",
         "phpstan/phpstan-deprecation-rules": "^2.0",
-        "phpstan/phpstan-phpunit": "^2.0",
-        "spatie/laravel-ray": "^1.35"
+        "phpstan/phpstan-phpunit": "^2.0"
     },
     "autoload": {
         "psr-4": {
-            "VendorName\\Skeleton\\": "src/",
-            "VendorName\\Skeleton\\Database\\Factories\\": "database/factories/"
+            "AbeTwoThree\\LaravelTsPublisher\\": "src/",
+            "AbeTwoThree\\LaravelTsPublisher\\Database\\Factories\\": "database/factories/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "VendorName\\Skeleton\\Tests\\": "tests/",
+            "AbeTwoThree\\LaravelTsPublisher\\Tests\\": "tests/",
             "Workbench\\App\\": "workbench/app/"
         }
     },
@@ -63,10 +62,10 @@
     "extra": {
         "laravel": {
             "providers": [
-                "VendorName\\Skeleton\\SkeletonServiceProvider"
+                "AbeTwoThree\\LaravelTsPublisher\\LaravelTsPublisherServiceProvider"
             ],
             "aliases": {
-                "Skeleton": "VendorName\\Skeleton\\Facades\\Skeleton"
+                "LaravelTsPublisher": "AbeTwoThree\\LaravelTsPublisher\\Facades\\LaravelTsPublisher"
             }
         }
     },

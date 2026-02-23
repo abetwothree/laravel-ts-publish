@@ -1,12 +1,12 @@
 <?php
 
-namespace VendorName\Skeleton;
+namespace AbeTwoThree\LaravelTsPublisher;
 
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
-use VendorName\Skeleton\Commands\SkeletonCommand;
+use AbeTwoThree\LaravelTsPublisher\Commands\LaravelTsPublisherCommand;
 
-class SkeletonServiceProvider extends PackageServiceProvider
+class LaravelTsPublisherServiceProvider extends PackageServiceProvider
 {
     public function configurePackage(Package $package): void
     {
@@ -16,10 +16,10 @@ class SkeletonServiceProvider extends PackageServiceProvider
          * More info: https://github.com/spatie/laravel-package-tools
          */
         $package
-            ->name('skeleton')
+            ->name('laravel-ts-publisher')
             ->hasConfigFile()
             ->hasViews()
-            ->hasMigration('create_migration_table_name_table')
-            ->hasCommand(SkeletonCommand::class);
+            ->hasMigration('create_laravel_ts_publisher_table')
+            ->hasCommand(LaravelTsPublisherCommand::class);
     }
 }
