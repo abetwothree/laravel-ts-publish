@@ -1,5 +1,5 @@
 <?php
 
-use AbeTwoThree\LaravelTsPublisher\Tests\TestCase;
+use AbeTwoThree\LaravelTsPublish\Tests\TestCase;
 
 uses(TestCase::class)->in(__DIR__);

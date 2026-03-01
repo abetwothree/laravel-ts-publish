@@ -1,12 +1,12 @@
 <?php
 
-namespace AbeTwoThree\LaravelTsPublisher;
+namespace AbeTwoThree\LaravelTsPublish;
 
+use AbeTwoThree\LaravelTsPublish\Commands\TsPublishCommand;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
-use AbeTwoThree\LaravelTsPublisher\Commands\LaravelTsPublisherCommand;
 
-class LaravelTsPublisherServiceProvider extends PackageServiceProvider
+class LaravelTsPublishServiceProvider extends PackageServiceProvider
 {
     public function configurePackage(Package $package): void
     {
@@ -16,10 +16,9 @@ class LaravelTsPublisherServiceProvider extends PackageServiceProvider
          * More info: https://github.com/spatie/laravel-package-tools
          */
         $package
-            ->name('laravel-ts-publisher')
+            ->name('laravel-ts-publish')
             ->hasConfigFile()
-            ->hasViews()
-            ->hasMigration('create_laravel_ts_publisher_table')
-            ->hasCommand(LaravelTsPublisherCommand::class);
+            ->hasCommand(TsPublishCommand::class)
+            ->hasViews('laravel-ts-publish');
     }
 }

@@ -1,0 +1,34 @@
+<?php
+
+namespace AbeTwoThree\LaravelTsPublish\Writers;
+
+use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Collection;
+
+/**
+ * Generate a barrel list of export files for a .d.ts or .ts file that re-exports all generated types and enums.
+ */
+class BarrelWriter
+{
+    public function __construct(
+        protected Filesystem $filesystem,
+    ) {}
+
+    public function write(Collection $transformers, string $filename, string $outputDirectory): string
+    {
+        $content = $transformers
+            ->map(fn ($transformer) => $transformer->filename())
+            ->unique()
+            ->sort()
+            ->map(fn ($file) => "export * from './{$file}';")
+            ->implode("\n");
+
+        if (config()->boolean('ts-publish.output-to-files')) {
+            $outputPath = config()->string('ts-publish.output-directory')."/$outputDirectory";
+            $this->filesystem->ensureDirectoryExists($outputPath);
+            $this->filesystem->put("$outputPath/$filename.ts", $content);
+        }
+
+        return $content;
+    }
+}

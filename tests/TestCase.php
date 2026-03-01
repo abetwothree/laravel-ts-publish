@@ -1,14 +1,21 @@
 <?php
 
-namespace AbeTwoThree\LaravelTsPublisher\Tests;
+namespace AbeTwoThree\LaravelTsPublish\Tests;
 
-use AbeTwoThree\LaravelTsPublisher\LaravelTsPublisherServiceProvider;
+use AbeTwoThree\LaravelTsPublish\LaravelTsPublishServiceProvider;
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Notifications\DatabaseNotification;
+use Orchestra\Testbench\Attributes\WithEnv;
 use Orchestra\Testbench\Concerns\WithWorkbench;
 use Orchestra\Testbench\TestCase as Orchestra;
 
+use function Orchestra\Testbench\workbench_path;
+
+#[WithEnv('DB_CONNECTION', 'testing')]
 class TestCase extends Orchestra
 {
+    use RefreshDatabase;
     use WithWorkbench;
 
     protected function setUp(): void
@@ -16,14 +23,14 @@ class TestCase extends Orchestra
         parent::setUp();
 
         Factory::guessFactoryNamesUsing(
-            fn (string $modelName) => 'AbeTwoThree\\LaravelTsPublisher\\Database\\Factories\\'.class_basename($modelName).'Factory'
+            fn (string $modelName) => 'AbeTwoThree\\LaravelTsPublish\\Database\\Factories\\'.class_basename($modelName).'Factory'
         );
     }
 
     protected function getPackageProviders($app)
     {
         return [
-            LaravelTsPublisherServiceProvider::class,
+            LaravelTsPublishServiceProvider::class,
         ];
     }
 
@@ -31,11 +38,15 @@ class TestCase extends Orchestra
     {
         config()->set('database.default', 'testing');
         config()->set('app.key', 'base64:yTtQNlEOB1IqYydLG9Z5pKRSxhZffdOxT1iuZIJi+eM=');
+        config()->set('ts-publish.additional_model_directories', [
+            DatabaseNotification::class,
+        ]);
+    }
 
-        /*
-         foreach (\Illuminate\Support\Facades\File::allFiles(__DIR__ . '/../database/migrations') as $migration) {
-            (include $migration->getRealPath())->up();
-         }
-         */
+    protected function defineDatabaseMigrations()
+    {
+        $this->loadMigrationsFrom(
+            workbench_path('database/migrations')
+        );
     }
 }

@@ -1,12 +1,12 @@
 {
-    "name": "abetwothree/laravel-ts-publisher",
+    "name": "abetwothree/laravel-ts-publish",
     "description": "Create TypeScript declaration types from your PHP models, enums, and other cast classes",
     "keywords": [
         "abetwothree",
         "laravel",
-        "laravel-ts-publisher"
+        "laravel-ts-publish"
     ],
-    "homepage": "https://github.com/abetwothree/laravel-ts-publisher",
+    "homepage": "https://github.com/abetwothree/laravel-ts-publish",
     "license": "MIT",
     "authors": [
         {
@@ -16,13 +16,14 @@
     ],
     "require": {
         "php": "^8.4",
-        "spatie/laravel-package-tools": "^1.16",
-        "illuminate/contracts": "^11.0||^12.0"
+        "composer/class-map-generator": "^1.7",
+        "illuminate/contracts": "^11.0||^12.0",
+        "spatie/laravel-package-tools": "^1.16"
     },
     "require-dev": {
+        "larastan/larastan": "^3.0",
         "laravel/pint": "^1.14",
         "nunomaduro/collision": "^8.8",
-        "larastan/larastan": "^3.0",
         "orchestra/testbench": "^10.0.0||^9.0.0",
         "pestphp/pest": "^4.0",
         "pestphp/pest-plugin-arch": "^4.0",
@@ -33,13 +34,13 @@
     },
     "autoload": {
         "psr-4": {
-            "AbeTwoThree\\LaravelTsPublisher\\": "src/",
-            "AbeTwoThree\\LaravelTsPublisher\\Database\\Factories\\": "database/factories/"
+            "AbeTwoThree\\LaravelTsPublish\\": "src/",
+            "AbeTwoThree\\LaravelTsPublish\\Database\\Factories\\": "database/factories/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "AbeTwoThree\\LaravelTsPublisher\\Tests\\": "tests/",
+            "AbeTwoThree\\LaravelTsPublish\\Tests\\": "tests/",
             "Workbench\\App\\": "workbench/app/",
             "Workbench\\Database\\Factories\\": "workbench/database/factories/",
             "Workbench\\Database\\Seeders\\": "workbench/database/seeders/"
@@ -80,10 +81,10 @@
     "extra": {
         "laravel": {
             "providers": [
-                "AbeTwoThree\\LaravelTsPublisher\\LaravelTsPublisherServiceProvider"
+                "AbeTwoThree\\LaravelTsPublish\\LaravelTsPublishServiceProvider"
             ],
             "aliases": {
-                "LaravelTsPublisher": "AbeTwoThree\\LaravelTsPublisher\\Facades\\LaravelTsPublisher"
+                "LaravelTsPublish": "AbeTwoThree\\LaravelTsPublish\\Facades\\LaravelTsPublish"
             }
         }
     },

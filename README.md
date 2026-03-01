@@ -1,15 +1,15 @@
 # Create TypeScript declaration types from your PHP models, enums, and other cast classes
 
-[![Latest Version on Packagist](https://img.shields.io/packagist/v/abetwothree/laravel-ts-publisher.svg?style=flat-square)](https://packagist.org/packages/abetwothree/laravel-ts-publisher)
-[![GitHub Tests Action Status](https://img.shields.io/github/actions/workflow/status/abetwothree/laravel-ts-publisher/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/abetwothree/laravel-ts-publisher/actions?query=workflow%3Arun-tests+branch%3Amain)
-[![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/abetwothree/laravel-ts-publisher/fix-php-code-style-issues.yml?branch=main&label=code%20style&style=flat-square)](https://github.com/abetwothree/laravel-ts-publisher/actions?query=workflow%3A"Fix+PHP+code+style+issues"+branch%3Amain)
-[![Total Downloads](https://img.shields.io/packagist/dt/abetwothree/laravel-ts-publisher.svg?style=flat-square)](https://packagist.org/packages/abetwothree/laravel-ts-publisher)
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/abetwothree/laravel-ts-publish.svg?style=flat-square)](https://packagist.org/packages/abetwothree/laravel-ts-publish)
+[![GitHub Tests Action Status](https://img.shields.io/github/actions/workflow/status/abetwothree/laravel-ts-publish/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/abetwothree/laravel-ts-publish/actions?query=workflow%3Arun-tests+branch%3Amain)
+[![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/abetwothree/laravel-ts-publish/fix-php-code-style-issues.yml?branch=main&label=code%20style&style=flat-square)](https://github.com/abetwothree/laravel-ts-publish/actions?query=workflow%3A"Fix+PHP+code+style+issues"+branch%3Amain)
+[![Total Downloads](https://img.shields.io/packagist/dt/abetwothree/laravel-ts-publish.svg?style=flat-square)](https://packagist.org/packages/abetwothree/laravel-ts-publish)
 
 This is where your description should go. Limit it to a paragraph or two. Consider adding a small example.
 
 ## Support us
 
-[<img src="https://github-ads.s3.eu-central-1.amazonaws.com/laravel-ts-publisher.jpg?t=1" width="419px" />](https://spatie.be/github-ad-click/laravel-ts-publisher)
+[<img src="https://github-ads.s3.eu-central-1.amazonaws.com/laravel-ts-publish.jpg?t=1" width="419px" />](https://spatie.be/github-ad-click/laravel-ts-publish)
 
 We invest a lot of resources into creating [best in class open source packages](https://spatie.be/open-source). You can support us by [buying one of our paid products](https://spatie.be/open-source/support-us).
 
@@ -20,20 +20,20 @@ We highly appreciate you sending us a postcard from your hometown, mentioning wh
 You can install the package via composer:
 
 ```bash
-composer require abetwothree/laravel-ts-publisher
+composer require abetwothree/laravel-ts-publish
 ```
 
 You can publish and run the migrations with:
 
 ```bash
-php artisan vendor:publish --tag="laravel-ts-publisher-migrations"
+php artisan vendor:publish --tag="laravel-ts-publish-migrations"
 php artisan migrate
 ```
 
 You can publish the config file with:
 
 ```bash
-php artisan vendor:publish --tag="laravel-ts-publisher-config"
+php artisan vendor:publish --tag="laravel-ts-publish-config"
 ```
 
 This is the contents of the published config file:
@@ -46,13 +46,13 @@ return [
 Optionally, you can publish the views using
 
 ```bash
-php artisan vendor:publish --tag="laravel-ts-publisher-views"
+php artisan vendor:publish --tag="laravel-ts-publish-views"
 ```
 
 ## Usage
 
 ```php
-$laravelTsPublisher = new AbeTwoThree\LaravelTsPublisher();
+$laravelTsPublisher = new AbeTwoThree\LaravelTsPublish();
 echo $laravelTsPublisher->echoPhrase('Hello, AbeTwoThree!');
 ```
 

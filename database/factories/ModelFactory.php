@@ -1,6 +1,6 @@
 <?php
 
-namespace AbeTwoThree\LaravelTsPublisher\Database\Factories;
+namespace AbeTwoThree\LaravelTsPublish\Database\Factories;
 
 use Illuminate\Database\Eloquent\Factories\Factory;
 
