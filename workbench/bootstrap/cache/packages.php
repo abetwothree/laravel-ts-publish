@@ -1,67 +1,67 @@
 <?php return array (
-  'laravel/pail' =>
+  'laravel/pail' => 
   array (
-    'providers' =>
+    'providers' => 
     array (
       0 => 'Laravel\\Pail\\PailServiceProvider',
     ),
   ),
-  'laravel/tinker' =>
+  'laravel/tinker' => 
   array (
-    'providers' =>
+    'providers' => 
     array (
       0 => 'Laravel\\Tinker\\TinkerServiceProvider',
     ),
   ),
-  'nesbot/carbon' =>
+  'nesbot/carbon' => 
   array (
-    'providers' =>
+    'providers' => 
     array (
       0 => 'Carbon\\Laravel\\ServiceProvider',
     ),
   ),
-  'nunomaduro/collision' =>
+  'nunomaduro/collision' => 
   array (
-    'providers' =>
+    'providers' => 
     array (
       0 => 'NunoMaduro\\Collision\\Adapters\\Laravel\\CollisionServiceProvider',
     ),
   ),
-  'nunomaduro/termwind' =>
+  'nunomaduro/termwind' => 
   array (
-    'providers' =>
+    'providers' => 
     array (
       0 => 'Termwind\\Laravel\\TermwindServiceProvider',
     ),
   ),
-  'orchestra/canvas' =>
+  'orchestra/canvas' => 
   array (
-    'providers' =>
+    'providers' => 
     array (
       0 => 'Orchestra\\Canvas\\LaravelServiceProvider',
     ),
   ),
-  'orchestra/canvas-core' =>
+  'orchestra/canvas-core' => 
   array (
-    'providers' =>
+    'providers' => 
     array (
       0 => 'Orchestra\\Canvas\\Core\\LaravelServiceProvider',
     ),
   ),
-  'pestphp/pest-plugin-laravel' =>
+  'pestphp/pest-plugin-laravel' => 
   array (
-    'providers' =>
+    'providers' => 
     array (
       0 => 'Pest\\Laravel\\PestServiceProvider',
     ),
   ),
-  'abetwothree/laravel-ts-publish' =>
+  'abetwothree/laravel-ts-publish' => 
   array (
-    'providers' =>
+    'providers' => 
     array (
       0 => 'AbeTwoThree\\LaravelTsPublish\\LaravelTsPublishServiceProvider',
     ),
-    'aliases' =>
+    'aliases' => 
     array (
       'LaravelTsPublish' => 'AbeTwoThree\\LaravelTsPublish\\Facades\\LaravelTsPublish',
     ),

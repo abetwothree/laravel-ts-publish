@@ -21,10 +21,13 @@ class EnumWriter extends CoreWriter
 
         $data = $transformer->data();
 
-        $caseKinds = array_map(fn($case) => "'".$case['name']."'", $data['cases']);
+        $caseKinds = [];
+        if ($data['backed']) {
+            $caseKinds = array_map(fn ($case) => "'".$case['name']."'", $data['cases']);
+        }
 
         $caseTypes = array_map(function ($case) {
-            if(is_string($case['value'])) {
+            if (is_string($case['value'])) {
                 return "'{$case['value']}'";
             }
 

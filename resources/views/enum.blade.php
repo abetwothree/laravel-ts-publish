@@ -31,5 +31,7 @@ export const {{ $enumName }} = {
 } as const;
 
 export type {{ $enumName }}Type = {!! implode(' | ', $caseTypes) !!};
+@if($backed)
 
 export type {{ $enumName }}Kind = {!! implode(' | ', $caseKinds) !!};
+@endif

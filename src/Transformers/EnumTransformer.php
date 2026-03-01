@@ -165,7 +165,7 @@ class EnumTransformer extends CoreTransformer
     }
 
     /**
-     * @return array{cases: array, enumName: string, methods: array, staticMethods: array}
+     * @return array{cases: array, enumName: string, methods: array, staticMethods: array, backed: bool}
      */
     #[Override]
     public function data(): array
@@ -175,6 +175,7 @@ class EnumTransformer extends CoreTransformer
             'cases' => $this->cases,
             'methods' => $this->methods,
             'staticMethods' => $this->staticMethods,
+            'backed' => $this->reflectionEnum->isBacked(),
         ];
     }
 
