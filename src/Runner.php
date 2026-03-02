@@ -2,8 +2,6 @@
 
 namespace AbeTwoThree\LaravelTsPublish;
 
-use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
-use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
@@ -13,14 +11,18 @@ class Runner
     protected BarrelWriter $barrelWriter;
 
     /** @var array<int, ModelGenerator> */
-    protected array $modelGenerators = [];
+    public protected(set) array $modelGenerators = [];
 
     /** @var array<int, EnumGenerator> */
-    protected array $enumGenerators = [];
+    public protected(set) array $enumGenerators = [];
+
+    public protected(set) string $enumBarrelContent;
+
+    public protected(set) string $modelBarrelContent;
 
     public function run(): void
     {
-        $this->barrelWriter = resolve(BarrelWriter::class);
+        $this->barrelWriter = resolve(config()->string('ts-publish.barrel_writer_class'));
 
         $this->generateEnums();
         $this->generateModels();
@@ -28,19 +30,33 @@ class Runner
 
     protected function generateEnums(): void
     {
-        foreach (resolve(EnumsCollector::class)->collect() as $enumClass) {
-            $this->enumGenerators[] = new EnumGenerator($enumClass);
+        foreach (resolve(config()->string('ts-publish.enum_collector_class'))->collect() as $enumClass) {
+            $this->enumGenerators[] = resolve(
+                config()->string('ts-publish.enum_generator_class'),
+                ['findable' => $enumClass],
+            );
         }
 
-        $this->barrelWriter->write(collect($this->enumGenerators), 'index', 'enums');
+        $this->enumBarrelContent = $this->barrelWriter->write(
+            collect($this->enumGenerators),
+            'index',
+            'enums'
+        );
     }
 
     protected function generateModels(): void
     {
-        foreach (resolve(ModelsCollector::class)->collect() as $modelClass) {
-            $this->modelGenerators[] = new ModelGenerator($modelClass);
+        foreach (resolve(config()->string('ts-publish.model_collector_class'))->collect() as $modelClass) {
+            $this->modelGenerators[] = resolve(
+                config()->string('ts-publish.model_generator_class'),
+                ['findable' => $modelClass],
+            );
         }
 
-        $this->barrelWriter->write(collect($this->modelGenerators), 'index', 'models');
+        $this->modelBarrelContent = $this->barrelWriter->write(
+            collect($this->modelGenerators),
+            'index',
+            'models'
+        );
     }
 }

@@ -17,31 +17,31 @@ use ReflectionClass;
  */
 class ModelTransformer extends CoreTransformer
 {
-    protected Model $modelInstance;
+    public protected(set) Model $modelInstance;
 
-    protected ReflectionClass $reflectionModel;
+    public protected(set) ReflectionClass $reflectionModel;
 
-    protected array $dbColumns = [];
+    public protected(set) array $dbColumns = [];
 
-    protected array $modelInspect;
-
-    /** @var list<string> */
-    protected array $columns = [];
+    public protected(set) array $modelInspect = [];
 
     /** @var list<string> */
-    protected array $mutators = [];
+    public protected(set) array $columns = [];
 
     /** @var list<string> */
-    protected array $relations = [];
+    public protected(set) array $mutators = [];
 
     /** @var list<string> */
-    protected array $modelImports = []; // ['User', 'Comment'] → import from './index.d.ts'
+    public protected(set) array $relations = [];
 
     /** @var list<string> */
-    protected array $enumImports = []; // ['StatusType'] → import from '../enums'
+    public protected(set) array $modelImports = [];
+
+    /** @var list<string> */
+    public protected(set) array $enumImports = [];
 
     /** @var array<string, string> */
-    protected array $tsTypeOverrides = []; // column name → raw TS type string from #[TsType]
+    public protected(set) array $tsTypeOverrides = [];
 
     #[Override]
     public function transform(): self

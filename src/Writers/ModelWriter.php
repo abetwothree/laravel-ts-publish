@@ -20,14 +20,14 @@ class ModelWriter extends CoreWriter
         $filename = $transformer->filename();
 
         $content = view(
-            'laravel-ts-publish::model',
+            config()->string('ts-publish.model_template'),
             [
                 ...$transformer->data(),
                 'filename' => $filename,
             ]
         )->render();
 
-        if (config()->boolean('ts-publish.output-to-files')) {
+        if (config()->boolean('ts-publish.output_to_files')) {
             $this->writeModelFile($filename, $content);
         }
 
@@ -36,7 +36,7 @@ class ModelWriter extends CoreWriter
 
     protected function writeModelFile(string $filename, string $content): void
     {
-        $outputPath = config()->string('ts-publish.output-directory').'/models';
+        $outputPath = config()->string('ts-publish.output_directory').'/models';
         $this->filesystem->ensureDirectoryExists($outputPath);
         $this->filesystem->put("$outputPath/$filename.ts", $content);
     }

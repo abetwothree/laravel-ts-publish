@@ -7,6 +7,8 @@ namespace AbeTwoThree\LaravelTsPublish\Generators;
  */
 abstract class CoreGenerator
 {
+    public protected(set) string $content;
+
     /**
      * @param  class-string<TGeneratable>  $findable
      */

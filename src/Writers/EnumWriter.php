@@ -35,7 +35,7 @@ class EnumWriter extends CoreWriter
         }, $data['cases']);
 
         $content = view(
-            'laravel-ts-publish::enum',
+            config()->string('ts-publish.enum_template'),
             [
                 ...$data,
                 'filename' => $filename,
@@ -44,7 +44,7 @@ class EnumWriter extends CoreWriter
             ]
         )->render();
 
-        if (config()->boolean('ts-publish.output-to-files')) {
+        if (config()->boolean('ts-publish.output_to_files')) {
             $this->writeEnumFile($filename, $content);
         }
 
@@ -53,7 +53,7 @@ class EnumWriter extends CoreWriter
 
     protected function writeEnumFile(string $filename, string $content): void
     {
-        $outputPath = config()->string('ts-publish.output-directory').'/enums';
+        $outputPath = config()->string('ts-publish.output_directory').'/enums';
         $this->filesystem->ensureDirectoryExists($outputPath);
         $this->filesystem->put("$outputPath/$filename.ts", $content);
     }

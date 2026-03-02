@@ -17,19 +17,19 @@ use UnitEnum;
  */
 class EnumTransformer extends CoreTransformer
 {
-    protected ReflectionEnum $reflectionEnum;
+    public protected(set) ReflectionEnum $reflectionEnum;
 
     /** @var array<string, array{value: string|int, description: string}> */
-    protected array $cases = [];
+    public protected(set) array $cases = [];
 
     /** @var array<string, array{name?: string, value?: string|int, description?: string}> */
-    protected array $tsTypeOverrides = []; // column name → raw TS type string from #[TsCase]
+    public protected(set) array $tsTypeOverrides = []; // column name → raw TS type string from #[TsCase]
 
     /** @var array<string, array{name?: string, description?: string, returns: array<string, mixed>}> */
-    protected array $methods = []; // method name → ['name' => string, 'description' => string]
+    public protected(set) array $methods = []; // method name → ['name' => string, 'description' => string]
 
     /** @var array<string, array{name?: string, description?: string, return: mixed}> */
-    protected array $staticMethods = [];
+    public protected(set) array $staticMethods = [];
 
     #[Override]
     public function transform(): self

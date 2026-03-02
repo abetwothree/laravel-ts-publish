@@ -91,6 +91,6 @@ class TypeScriptMap
 
     protected function validateDate(): string
     {
-        return config()->boolean('ts-publish.timestamps-as-date', false) ? 'Date' : 'string';
+        return config()->boolean('ts-publish.timestamps_as_date', false) ? 'Date' : 'string';
     }
 }

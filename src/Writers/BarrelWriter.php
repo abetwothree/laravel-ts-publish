@@ -23,8 +23,8 @@ class BarrelWriter
             ->map(fn ($file) => "export * from './{$file}';")
             ->implode("\n");
 
-        if (config()->boolean('ts-publish.output-to-files')) {
-            $outputPath = config()->string('ts-publish.output-directory')."/$outputDirectory";
+        if (config()->boolean('ts-publish.output_to_files')) {
+            $outputPath = config()->string('ts-publish.output_directory')."/$outputDirectory";
             $this->filesystem->ensureDirectoryExists($outputPath);
             $this->filesystem->put("$outputPath/$filename.ts", $content);
         }

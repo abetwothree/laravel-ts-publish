@@ -25,6 +25,7 @@
     21 => 'Illuminate\\Validation\\ValidationServiceProvider',
     22 => 'Illuminate\\View\\ViewServiceProvider',
     23 => 'AbeTwoThree\\LaravelTsPublish\\LaravelTsPublishServiceProvider',
+    24 => 'AbeTwoThree\\LaravelTsPublish\\LaravelTsPublishServiceProvider',
   ),
   'eager' => 
   array (
@@ -39,6 +40,7 @@
     8 => 'Illuminate\\Session\\SessionServiceProvider',
     9 => 'Illuminate\\View\\ViewServiceProvider',
     10 => 'AbeTwoThree\\LaravelTsPublish\\LaravelTsPublishServiceProvider',
+    11 => 'AbeTwoThree\\LaravelTsPublish\\LaravelTsPublishServiceProvider',
   ),
   'deferred' => 
   array (
