@@ -36,9 +36,9 @@ export interface PostRelations
 {
     author: User;
     category: Category;
-    comments: Comment;
-    tags: Tag;
-    images: Image;
+    comments: Comment[];
+    tags: Tag[];
+    images: Image[];
 }
 
 export interface PostRelationCounts

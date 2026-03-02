@@ -23,8 +23,8 @@ export interface CategoryMutators
 export interface CategoryRelations
 {
     parent: Category;
-    children: Category;
-    posts: Post;
+    children: Category[];
+    posts: Post[];
 }
 
 export interface CategoryRelationCounts

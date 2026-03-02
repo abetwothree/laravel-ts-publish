@@ -23,7 +23,7 @@ export interface TeamMutators
 export interface TeamRelations
 {
     owner: User;
-    members: User;
+    members: User[];
 }
 
 export interface TeamRelationCounts

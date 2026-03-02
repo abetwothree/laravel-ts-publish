@@ -31,14 +31,14 @@ export interface UserMutators
 export interface UserRelations
 {
     profile: Profile;
-    posts: Post;
-    comments: Comment;
-    orders: Order;
-    addresses: Address;
-    teams: Team;
-    ownedTeams: Team;
-    images: Image;
-    notifications: DatabaseNotification;
+    posts: Post[];
+    comments: Comment[];
+    orders: Order[];
+    addresses: Address[];
+    teams: Team[];
+    ownedTeams: Team[];
+    images: Image[];
+    notifications: DatabaseNotification[];
 }
 
 export interface UserRelationCounts

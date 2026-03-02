@@ -12,8 +12,8 @@ export interface Tag
 
 export interface TagRelations
 {
-    posts: Post;
-    products: Product;
+    posts: Post[];
+    products: Product[];
 }
 
 export interface TagRelationCounts

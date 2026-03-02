@@ -32,9 +32,9 @@ export interface ProductMutators
 
 export interface ProductRelations
 {
-    orderItems: OrderItem;
-    tags: Tag;
-    images: Image;
+    orderItems: OrderItem[];
+    tags: Tag[];
+    images: Image[];
 }
 
 export interface ProductRelationCounts

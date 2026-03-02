@@ -38,7 +38,7 @@ export interface OrderMutators
 export interface OrderRelations
 {
     user: User;
-    items: OrderItem;
+    items: OrderItem[];
 }
 
 export interface OrderRelationCounts
