@@ -1,4 +1,5 @@
-import { DatabaseNotification } from './';
+import { RoleType, MembershipLevelType } from '../enums';
+import { Profile, Post, Comment, Order, Address, Team, Image, DatabaseNotification } from './';
 
 export interface User
 {
@@ -7,23 +8,61 @@ export interface User
     email: string;
     email_verified_at: string | null;
     password: string;
-    options: string | null;
+    options: Record<string, unknown> | null;
     remember_token: string | null;
     created_at: string | null;
     updated_at: string | null;
+    role: RoleType | null;
+    membership_level: MembershipLevelType | null;
+    phone: string | null;
+    avatar: string | null;
+    bio: string | null;
+    settings: { theme: "light" | "dark"; notifications: boolean; locale: string } | null;
+    last_login_at: string | null;
+    last_login_ip: string | null;
+}
+
+export interface UserMutators
+{
+    initials: string;
+    is_premium: boolean;
 }
 
 export interface UserRelations
 {
+    profile: Profile;
+    posts: Post;
+    comments: Comment;
+    orders: Order;
+    addresses: Address;
+    teams: Team;
+    ownedTeams: Team;
+    images: Image;
     notifications: DatabaseNotification;
 }
 
 export interface UserRelationCounts
 {
+    profile_count: number;
+    posts_count: number;
+    comments_count: number;
+    orders_count: number;
+    addresses_count: number;
+    teams_count: number;
+    ownedTeams_count: number;
+    images_count: number;
     notifications_count: number;
 }
 
 export interface UserRelationExists
 {
+    profile_exists: boolean;
+    posts_exists: boolean;
+    comments_exists: boolean;
+    orders_exists: boolean;
+    addresses_exists: boolean;
+    teams_exists: boolean;
+    ownedTeams_exists: boolean;
+    images_exists: boolean;
     notifications_exists: boolean;
 }

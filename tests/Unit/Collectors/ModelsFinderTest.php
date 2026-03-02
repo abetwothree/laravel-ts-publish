@@ -10,5 +10,5 @@ test('models collector works correctly', function () {
 
     expect($models)
         ->toBeInstanceOf(Collection::class)
-        ->toHaveCount(4);
+        ->toHaveCount(13);
 });
