@@ -1,5 +1,6 @@
 includes:
     - phpstan-baseline.neon
+    - ./vendor/archtechx/enums/extension.neon
 
 parameters:
     level: 10
