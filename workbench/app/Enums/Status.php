@@ -5,8 +5,8 @@ namespace Workbench\App\Enums;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnumMethod;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnumStaticMethod;
 use ArchTech\Enums\Names;
-use ArchTech\Enums\Values;
 use ArchTech\Enums\Options;
+use ArchTech\Enums\Values;
 use Illuminate\Support\Str;
 
 enum Status: int
@@ -14,11 +14,11 @@ enum Status: int
     use Names {
         names as parentNames;
     }
-    use Values {
-        values as parentValues;
-    }
     use Options {
         options as parentOptions;
+    }
+    use Values {
+        values as parentValues;
     }
 
     case Draft = 0;
@@ -49,8 +49,8 @@ enum Status: int
             'label' => Str::title($case->name),
             'value' => $case->value,
         ])
-        ->values()
-        ->toArray();
+            ->values()
+            ->toArray();
     }
 
     #[TsEnumStaticMethod]

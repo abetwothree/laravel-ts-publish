@@ -42,4 +42,18 @@ enum Currency: string
             'decimals' => $currency === self::Jpy ? 0 : 2,
         ], self::cases());
     }
+
+    /** Should NOT be published — no TsEnumMethod attribute */
+    public function formatAmount(float $amount): string
+    {
+        $symbol = self::symbols()[$this->value] ?? '$';
+
+        return $symbol.number_format($amount, $this === self::Jpy ? 0 : 2);
+    }
+
+    /** Should NOT be published — no TsEnumStaticMethod attribute */
+    public static function supportedCodes(): array
+    {
+        return array_map(fn (self $c) => $c->value, self::cases());
+    }
 }

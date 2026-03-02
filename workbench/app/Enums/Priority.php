@@ -46,4 +46,16 @@ enum Priority: int
             self::Critical => 'exclamation-triangle',
         };
     }
+
+    /** Should NOT be published — no TsEnumMethod attribute */
+    public function numericWeight(): int
+    {
+        return ($this->value + 1) * 10;
+    }
+
+    /** Should NOT be published — no TsEnumStaticMethod attribute */
+    public static function highestValue(): int
+    {
+        return self::Critical->value;
+    }
 }

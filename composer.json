@@ -6,6 +6,7 @@
         "laravel",
         "laravel-ts-publish"
     ],
+    "type": "library",
     "homepage": "https://github.com/abetwothree/laravel-ts-publish",
     "license": "MIT",
     "authors": [
@@ -44,7 +45,10 @@
             "AbeTwoThree\\LaravelTsPublish\\Tests\\": "tests/",
             "Workbench\\App\\": "workbench/app/",
             "Workbench\\Database\\Factories\\": "workbench/database/factories/",
-            "Workbench\\Database\\Seeders\\": "workbench/database/seeders/"
+            "Workbench\\Database\\Seeders\\": "workbench/database/seeders/",
+            "Workbench\\Accounting\\": "workbench/modules/Accounting/",
+            "Workbench\\Blog\\": "workbench/modules/Blog/",
+            "Workbench\\Shipping\\": "workbench/modules/Shipping/"
         }
     },
     "scripts": {

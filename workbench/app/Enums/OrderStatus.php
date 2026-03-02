@@ -87,4 +87,22 @@ enum OrderStatus: int
             self::OnHold->value,
         ];
     }
+
+    /** Should NOT be published — no TsEnumMethod attribute */
+    public function transitionTo(self $next): bool
+    {
+        return match ($this) {
+            self::Pending => in_array($next, [self::Processing, self::Cancelled, self::OnHold]),
+            self::Processing => in_array($next, [self::Shipped, self::Cancelled, self::OnHold]),
+            self::Shipped => in_array($next, [self::Delivered]),
+            self::OnHold => in_array($next, [self::Processing, self::Cancelled]),
+            default => false,
+        };
+    }
+
+    /** Should NOT be published — no TsEnumStaticMethod attribute */
+    public static function defaultStatus(): self
+    {
+        return self::Pending;
+    }
 }

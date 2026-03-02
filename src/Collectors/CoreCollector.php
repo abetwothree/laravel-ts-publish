@@ -17,9 +17,9 @@ abstract class CoreCollector
 
     /**
      * @return array{
-     *  included: list<string>,
-     *  excluded: list<string>,
-     *  additional_directories: list<string>,
+     *  included: list<class-string|string>,
+     *  excluded: list<class-string|string>,
+     *  additional_directories: list<class-string|string>,
      * }
      */
     abstract protected function finderSettings(): array;
@@ -37,16 +37,54 @@ abstract class CoreCollector
             ->filter(fn ($dir) => is_string($dir) && class_exists($dir))
             ->values();
 
+        $included = $settings['included'] ?? [];
+        $excluded = $settings['excluded'] ?? [];
+
+        $includedDirs = collect($included)
+            ->filter(fn ($entry) => is_string($entry) && is_dir($entry))
+            ->values();
+
         $defaultDir = $this->defaultDirectory();
 
         return $additionalDirs
+            ->merge($includedDirs)
             ->when(is_dir($defaultDir), fn ($dirs) => $dirs->add($defaultDir))
+            ->unique()
             ->flatMap(ClassMapGenerator::createMap(...))
             ->flip()
             ->merge($additionalClasses)
             ->filter(fn ($file) => class_exists($file) && $this->classFilter(new ReflectionClass($file)))
-            ->when($settings['included'] ?? null, fn ($collection, $included) => $collection->filter(fn ($class) => in_array($class, $included)))
-            ->when($settings['excluded'] ?? null, fn ($collection, $excluded) => $collection->filter(fn ($class) => ! in_array($class, $excluded)))
+            ->when($included, function ($collection) use ($included) {
+                $resolved = $this->resolveClassesAndDirectories($included);
+
+                return $collection->filter(fn ($class) => in_array($class, $resolved));
+            })
+            ->when($excluded, function ($collection) use ($excluded) {
+                $resolved = $this->resolveClassesAndDirectories($excluded);
+
+                return $collection->filter(fn ($class) => ! in_array($class, $resolved));
+            })
             ->values();
+    }
+
+    /**
+     * Resolve a mixed list of fully-qualified class names and directory paths
+     * into a flat list of class names.
+     *
+     * @param  list<string>  $entries
+     * @return list<string>
+     */
+    private function resolveClassesAndDirectories(array $entries): array
+    {
+        return collect($entries)
+            ->flatMap(function (string $entry) {
+                if (is_dir($entry)) {
+                    return array_keys(ClassMapGenerator::createMap($entry));
+                }
+
+                return [$entry];
+            })
+            ->values()
+            ->all();
     }
 }
