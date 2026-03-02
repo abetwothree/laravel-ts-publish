@@ -4,9 +4,14 @@ namespace Workbench\App\Enums;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnumMethod;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnumStaticMethod;
+use ArchTech\Enums\Values;
 
 enum Status: int
 {
+    use Values {
+        values as parentValues;
+    }
+
     case Draft = 0;
     case Published = 1;
 
@@ -23,5 +28,11 @@ enum Status: int
     public static function keyValuePair(): array
     {
         return collect(self::cases())->mapWithKeys(fn ($case) => [$case->name => $case->value])->toArray();
+    }
+
+    #[TsEnumStaticMethod]
+    public static function values(): array
+    {
+        return self::parentValues();
     }
 }

@@ -4,7 +4,8 @@ export const Status = {
     /**
      * Get the key-value pair options for the status
      */
-    keyValuePair: JSON.parse('{\u0022Draft\u0022:0,\u0022Published\u0022:1}'),
+    keyValuePair: {Draft: 0, Published: 1},
+    values: [0, 1],
     /**
      * Get the icon name for the status
      */

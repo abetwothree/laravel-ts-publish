@@ -6,7 +6,7 @@ export const {{ $enumName }} = {
      * {{ $case['description'] }}
      */
 @endif
-    {!! LaravelTsPublish::validJsObjectKey($case['name']) !!}: @js($case['value']),
+    {!! LaravelTsPublish::validJsObjectKey($case['name']) !!}: {!! LaravelTsPublish::toJsLiteral($case['value']) !!},
 @endforeach
 @foreach ($staticMethods as $methodName => $method)
 @if($method['description'])
@@ -14,7 +14,7 @@ export const {{ $enumName }} = {
      * {{ $method['description'] }}
      */
 @endif
-    {!! LaravelTsPublish::validJsObjectKey($method['name']) !!}: @js($method['return']),
+    {!! LaravelTsPublish::validJsObjectKey($method['name']) !!}: {!! LaravelTsPublish::toJsLiteral($method['return']) !!},
 @endforeach
 @foreach ($methods as $methodName => $method)
 @if($method['description'])
@@ -24,7 +24,7 @@ export const {{ $enumName }} = {
 @endif
     {!! LaravelTsPublish::validJsObjectKey($method['name']) !!}: {
 @foreach ($method['returns'] as $caseName => $returnValue)
-        {!! LaravelTsPublish::validJsObjectKey($caseName) !!}: @js($returnValue),
+        {!! LaravelTsPublish::validJsObjectKey($caseName) !!}: {!! LaravelTsPublish::toJsLiteral($returnValue) !!},
 @endforeach
     },
 @endforeach

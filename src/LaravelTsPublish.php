@@ -3,6 +3,7 @@
 namespace AbeTwoThree\LaravelTsPublish;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
+use BackedEnum;
 use Closure;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use ReflectionClass;
@@ -11,6 +12,7 @@ use ReflectionIntersectionType;
 use ReflectionNamedType;
 use ReflectionType;
 use ReflectionUnionType;
+use UnitEnum;
 
 /**
  * @phpstan-type TypeScriptTypeInfo = array{
@@ -208,6 +210,66 @@ class LaravelTsPublish
 
         // json_encode produces a properly escaped double-quoted string valid in JS/TS
         return json_encode($key);
+    }
+
+    /**
+     * Convert a PHP value to a raw JavaScript/TypeScript literal.
+     *
+     * Unlike @js() / Js::from(), this outputs readable object/array literals directly
+     * instead of wrapping them in JSON.parse(...). Suitable for generating .ts files
+     * where XSS-safe encoding is not needed.
+     *
+     * Examples:
+     *   ['Draft' => 0, 'Published' => 1]  →  {Draft: 0, Published: 1}
+     *   [0, 1]                             →  [0, 1]
+     *   'pencil'                           →  'pencil'
+     *   true                               →  true
+     */
+    public function toJsLiteral(mixed $value): string
+    {
+        if ($value === null) {
+            return 'null';
+        }
+
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return (string) $value;
+        }
+
+        if (is_string($value)) {
+            return "'".str_replace(['\\', "'", "\n", "\r", "\t"], ['\\\\', "\\'", '\\n', '\\r', '\\t'], $value)."'";
+        }
+
+        // BackedEnum → its scalar value; UnitEnum → its name as a string
+        if ($value instanceof BackedEnum) {
+            return $this->toJsLiteral($value->value);
+        }
+
+        if ($value instanceof UnitEnum) {
+            return $this->toJsLiteral($value->name);
+        }
+
+        if (is_object($value)) {
+            $value = (array) $value;
+        }
+
+        if (is_array($value)) {
+            if (array_is_list($value)) {
+                return '['.implode(', ', array_map(fn ($v) => $this->toJsLiteral($v), $value)).']';
+            }
+
+            $pairs = [];
+            foreach ($value as $key => $val) {
+                $pairs[] = $this->validJsObjectKey((string) $key).': '.$this->toJsLiteral($val);
+            }
+
+            return '{'.implode(', ', $pairs).'}';
+        }
+
+        return 'null';
     }
 
     /** @return TypeScriptTypeInfo */
