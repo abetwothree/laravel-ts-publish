@@ -33,6 +33,15 @@ enum Status: int
         };
     }
 
+    #[TsEnumMethod]
+    public function color(): string
+    {
+        return match ($this) {
+            self::Draft => 'gray',
+            self::Published => 'green',
+        };
+    }
+
     #[TsEnumStaticMethod(description: 'Get the key-value pair options for the status')]
     public static function valueLabelPair(): array
     {
