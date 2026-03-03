@@ -31,6 +31,8 @@ return [
     |
     | Specifies the classes responsible for finding the enums & models
     | You can extend the default collectors or create your own.
+    |
+    | Collectors find the given class types and pas the results to generators.
     */
     'model_collector_class' => ModelsCollector::class,
 
@@ -43,6 +45,9 @@ return [
     |
     | Specifies the classes responsible for generating the TypeScript output.
     | You can extend the default generators or create your own.
+    |
+    | Generators receive a collected class, pass it to its transformer,
+    | and then pass the transformer to the writer to create the final output.
     */
     'model_generator_class' => ModelGenerator::class,
 
@@ -55,6 +60,8 @@ return [
     |
     | Specifies the classes responsible for transforming PHP classes into TypeScript definitions.
     | You can extend the default transformers or create your own.
+    |
+    | Transformers receive a class and transform it into a TypeScript definition.
     */
     'model_transformer_class' => ModelTransformer::class,
 
@@ -67,6 +74,8 @@ return [
     |
     | Specifies the classes responsible for writing the TypeScript definitions to files.
     | You can extend the default writers or create your own.
+    |
+    | Writers receive a transformer and optionally write the output to a file and return it as a string.
     |
     | The barrel writer creates an index.ts file that exports all generated types from each file category
     */
@@ -83,6 +92,10 @@ return [
     |
     | Specifies the Blade template files responsible for generating the TypeScript definitions.
     | You can extend the default templates or create your own.
+    |
+    | Writers pass the transformed data to the templates to generate the actual TypeScript content.
+    |
+    | The easiest way to customize the output is to publish the templates and modify them as needed.
     */
     'model_template' => 'laravel-ts-publish::model',
 

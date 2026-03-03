@@ -58,7 +58,7 @@
             "@composer run prepare"
         ],
         "prepare": "@php vendor/bin/testbench package:discover --ansi",
-        "analyse": "vendor/bin/phpstan analyse",
+        "analyse": "vendor/bin/phpstan analyse --verbose --ansi",
         "test": "vendor/bin/pest",
         "test-cov": "export XDEBUG_MODE=coverage && vendor/bin/pest --coverage --coverage-clover coverage.xml",
         "test-cov-html": "export XDEBUG_MODE=coverage && vendor/bin/pest --coverage-html coverage",

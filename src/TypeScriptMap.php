@@ -1,13 +1,16 @@
 <?php
 
+declare(strict_types=1);
+
 namespace AbeTwoThree\LaravelTsPublish;
 
 class TypeScriptMap
 {
+    /** @var array<string, string|(callable(): string)>|null */
     protected static ?array $map = null;
 
     /**
-     * @return array<string, string,callable>
+     * @return array<string, string|(callable(): string)>
      */
     public function gather(): array
     {
@@ -83,10 +86,13 @@ class TypeScriptMap
             'null' => 'null',
         ];
 
-        return self::$map = array_change_key_case(array_merge(
+        /** @var array<string, string|(callable(): string)> $merged */
+        $merged = array_change_key_case(array_merge(
             $map,
             config()->array('ts-publish.custom_ts_mappings', []),
         ), CASE_LOWER);
+
+        return self::$map = $merged;
     }
 
     protected function validateDate(): string

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace AbeTwoThree\LaravelTsPublish\Collectors;
 
 use BackedEnum;
@@ -16,6 +18,7 @@ class EnumsCollector extends CoreCollector
         return app_path('Enums');
     }
 
+    /** @param ReflectionClass<object> $reflection */
     protected function classFilter(ReflectionClass $reflection): bool
     {
         return $reflection->isEnum();
@@ -24,9 +27,9 @@ class EnumsCollector extends CoreCollector
     protected function finderSettings(): array
     {
         return [
-            'included' => config()->array('ts-publish.included_enums'),
-            'excluded' => config()->array('ts-publish.excluded_enums'),
-            'additional_directories' => config()->array('ts-publish.additional_enum_directories'),
+            'included' => array_values(array_filter(config()->array('ts-publish.included_enums'), 'is_string')),
+            'excluded' => array_values(array_filter(config()->array('ts-publish.excluded_enums'), 'is_string')),
+            'additional_directories' => array_values(array_filter(config()->array('ts-publish.additional_enum_directories'), 'is_string')),
         ];
     }
 }

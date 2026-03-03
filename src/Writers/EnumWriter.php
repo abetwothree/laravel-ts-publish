@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
@@ -7,6 +9,8 @@ use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
 use Override;
 
 /**
+ * @phpstan-import-type EnumData from EnumTransformer
+ *
  * @extends CoreWriter<EnumTransformer>
  */
 class EnumWriter extends CoreWriter
@@ -19,14 +23,15 @@ class EnumWriter extends CoreWriter
     {
         $filename = $transformer->filename();
 
+        /** @var EnumData $data */
         $data = $transformer->data();
 
         $caseKinds = [];
         if ($data['backed']) {
-            $caseKinds = array_map(fn ($case) => "'".$case['name']."'", $data['cases']);
+            $caseKinds = array_map(fn (array $case) => "'".$case['name']."'", $data['cases']);
         }
 
-        $caseTypes = array_map(function ($case) {
+        $caseTypes = array_map(function (array $case) {
             if (is_string($case['value'])) {
                 return "'{$case['value']}'";
             }
@@ -34,8 +39,11 @@ class EnumWriter extends CoreWriter
             return $case['value'];
         }, $data['cases']);
 
+        /** @var view-string $template */
+        $template = config()->string('ts-publish.enum_template');
+
         $content = view(
-            config()->string('ts-publish.enum_template'),
+            $template,
             [
                 ...$data,
                 'filename' => $filename,

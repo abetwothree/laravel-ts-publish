@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace AbeTwoThree\LaravelTsPublish\Collectors;
 
 use Composer\ClassMapGenerator\ClassMapGenerator;
@@ -13,13 +15,14 @@ abstract class CoreCollector
 {
     abstract protected function defaultDirectory(): string;
 
+    /** @param ReflectionClass<object> $reflection */
     abstract protected function classFilter(ReflectionClass $reflection): bool;
 
     /**
      * @return array{
-     *  included: list<class-string|string>,
-     *  excluded: list<class-string|string>,
-     *  additional_directories: list<class-string|string>,
+     *  included: list<string>,
+     *  excluded: list<string>,
+     *  additional_directories: list<string>,
      * }
      */
     abstract protected function finderSettings(): array;
@@ -29,40 +32,41 @@ abstract class CoreCollector
     {
         $settings = $this->finderSettings();
 
-        $additionalDirs = collect($settings['additional_directories'] ?? [])
-            ->filter(fn ($dir) => is_string($dir) && is_dir($dir))
+        $additionalDirs = collect($settings['additional_directories'])
+            ->filter(fn (string $dir) => is_dir($dir))
             ->values();
 
-        $additionalClasses = collect($settings['additional_directories'] ?? [])
-            ->filter(fn ($dir) => is_string($dir) && class_exists($dir))
+        $additionalClasses = collect($settings['additional_directories'])
+            ->filter(fn (string $dir) => class_exists($dir))
             ->values();
 
-        $included = $settings['included'] ?? [];
-        $excluded = $settings['excluded'] ?? [];
+        $included = $settings['included'];
+        $excluded = $settings['excluded'];
 
         $includedDirs = collect($included)
-            ->filter(fn ($entry) => is_string($entry) && is_dir($entry))
+            ->filter(fn (string $entry) => is_dir($entry))
             ->values();
 
         $defaultDir = $this->defaultDirectory();
 
+        /** @var Collection<int, class-string<TFindable>> */
         return $additionalDirs
             ->merge($includedDirs)
-            ->when(is_dir($defaultDir), fn ($dirs) => $dirs->add($defaultDir))
+            ->when(is_dir($defaultDir), fn (Collection $dirs) => $dirs->add($defaultDir))
             ->unique()
             ->flatMap(ClassMapGenerator::createMap(...))
             ->flip()
-            ->merge($additionalClasses)
-            ->filter(fn ($file) => class_exists($file) && $this->classFilter(new ReflectionClass($file)))
-            ->when($included, function ($collection) use ($included) {
+            ->merge($additionalClasses) // @phpstan-ignore argument.type
+            ->filter(fn (string $file) => class_exists($file) && $this->classFilter(new ReflectionClass($file)))
+            ->when($included, function (Collection $collection) use ($included) {
                 $resolved = $this->resolveClassesAndDirectories($included);
 
-                return $collection->filter(fn ($class) => in_array($class, $resolved));
+                return $collection->filter(fn (string $class) => in_array($class, $resolved));
             })
-            ->when($excluded, function ($collection) use ($excluded) {
+            ->when($excluded, function (Collection $collection) use ($excluded) {
                 $resolved = $this->resolveClassesAndDirectories($excluded);
 
-                return $collection->filter(fn ($class) => ! in_array($class, $resolved));
+                return $collection->filter(fn (string $class) => ! in_array($class, $resolved));
             })
             ->values();
     }
@@ -72,7 +76,7 @@ abstract class CoreCollector
      * into a flat list of class names.
      *
      * @param  list<string>  $entries
-     * @return list<string>
+     * @return array<int, string>
      */
     private function resolveClassesAndDirectories(array $entries): array
     {

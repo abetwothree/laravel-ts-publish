@@ -1,7 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace AbeTwoThree\LaravelTsPublish\Writers;
 
+use AbeTwoThree\LaravelTsPublish\Generators\CoreGenerator;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Collection;
 
@@ -14,13 +17,16 @@ class BarrelWriter
         protected Filesystem $filesystem,
     ) {}
 
+    /**
+     * @param  Collection<int, CoreGenerator<mixed>>  $transformers
+     */
     public function write(Collection $transformers, string $filename, string $outputDirectory): string
     {
         $content = $transformers
-            ->map(fn ($transformer) => $transformer->filename())
+            ->map(fn (CoreGenerator $transformer) => $transformer->filename())
             ->unique()
             ->sort()
-            ->map(fn ($file) => "export * from './{$file}';")
+            ->map(fn (string $file) => "export * from './{$file}';")
             ->implode("\n");
 
         if (config()->boolean('ts-publish.output_to_files')) {

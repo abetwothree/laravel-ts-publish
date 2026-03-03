@@ -1,17 +1,54 @@
 <?php
 
+declare(strict_types=1);
+
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\ModelInspector;
+use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Override;
 use ReflectionClass;
 
 /**
- * @phpstan-import-type TypeScriptTypeInfo from LaravelTsPublish
+ * @phpstan-import-type TypeScriptTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
+ *
+ * @phpstan-type AttributeInfo = array{name: string, type: string, cast: string|null, nullable: bool}
+ * @phpstan-type RelationInfo = array{name: string, type: string, related: class-string<Model>}
+ * @phpstan-type ModelInspectData = array{
+ *     "class": class-string<Model>,
+ *     "database": string,
+ *     "table": string,
+ *     "policy": class-string|null,
+ *     "attributes": Collection<int, AttributeInfo>,
+ *     "relations": Collection<int, RelationInfo>,
+ *     "events": Collection<int, array{event: string, class: class-string}>,
+ *     "observers": Collection<int, array{event: string, observer: class-string}>,
+ *     "collection": class-string<Collection<int, Model>>,
+ *     "builder": class-string<Builder<Model>>,
+ *     "resource": class-string<JsonResource>|null
+ * }
+ * @phpstan-type DbColumns = list<string>
+ * @phpstan-type ColumnsList = array<string, string>
+ * @phpstan-type MutatorsList = array<string, string>
+ * @phpstan-type RelationsList = array<string, string>
+ * @phpstan-type ModelImportList = list<string>
+ * @phpstan-type EnumImportList = list<string>
+ * @phpstan-type TsTypeOverrides = array<string, string>
+ * @phpstan-type ModelData = array{
+ *    modelName: string,
+ *    columns: ColumnsList,
+ *    enumImports: EnumImportList,
+ *    modelImports: ModelImportList,
+ *    mutators: MutatorsList,
+ *    relations: RelationsList,
+ * }
  *
  * @extends CoreTransformer<Model>
  */
@@ -19,28 +56,31 @@ class ModelTransformer extends CoreTransformer
 {
     public protected(set) Model $modelInstance;
 
+    /** @var ReflectionClass<Model> */
     public protected(set) ReflectionClass $reflectionModel;
 
+    /** @var DbColumns */
     public protected(set) array $dbColumns = [];
 
-    public protected(set) array $modelInspect = [];
+    /** @var ModelInspectData */
+    public protected(set) array $modelInspect;
 
-    /** @var list<string> */
+    /** @var ColumnsList */
     public protected(set) array $columns = [];
 
-    /** @var list<string> */
+    /** @var MutatorsList */
     public protected(set) array $mutators = [];
 
-    /** @var list<string> */
+    /** @var RelationsList */
     public protected(set) array $relations = [];
 
-    /** @var list<string> */
+    /** @var ModelImportList */
     public protected(set) array $modelImports = [];
 
-    /** @var list<string> */
+    /** @var EnumImportList */
     public protected(set) array $enumImports = [];
 
-    /** @var array<string, string> */
+    /** @var TsTypeOverrides */
     public protected(set) array $tsTypeOverrides = [];
 
     #[Override]
@@ -58,14 +98,7 @@ class ModelTransformer extends CoreTransformer
     /**
      * Get the transformed data
      *
-     * @return array{
-     *    modelName: string,
-     *    columns: string[],
-     *    enumImports: array,
-     *    modelImports: array,
-     *    mutators: string[],
-     *    relations: string[],
-     * }
+     * @return ModelData
      */
     #[Override]
     public function data(): array
@@ -73,7 +106,7 @@ class ModelTransformer extends CoreTransformer
         $modelName = $this->reflectionModel->getShortName();
         $modelImports = array_values(array_filter(
             array_unique($this->modelImports),
-            fn ($import) => $import !== $modelName,
+            fn (string $import) => $import !== $modelName,
         ));
 
         return [
@@ -94,7 +127,9 @@ class ModelTransformer extends CoreTransformer
 
     protected function initInstance(): self
     {
-        $this->modelInstance = resolve($this->findable);
+        /** @var Model $modelInstance */
+        $modelInstance = resolve($this->findable);
+        $this->modelInstance = $modelInstance;
         $this->dbColumns = $this->modelInstance->getConnection()->getSchemaBuilder()->getColumnListing($this->modelInstance->getTable());
         $this->modelInspect = resolve(ModelInspector::class)->inspect($this->findable);
         $this->reflectionModel = new ReflectionClass($this->findable);
@@ -111,18 +146,14 @@ class ModelTransformer extends CoreTransformer
         // Class-level (Laravel 13+ style, or when there is no $casts property/method)
         foreach ($this->reflectionModel->getAttributes(TsCasts::class) as $attr) {
             $instance = $attr->newInstance();
-            if (is_array($instance->types)) {
-                $classOverrides = array_merge($classOverrides, $instance->types);
-            }
+            $classOverrides = array_merge($classOverrides, $instance->types);
         }
 
         // $casts property (older style)
         if ($this->reflectionModel->hasProperty('casts')) {
             foreach ($this->reflectionModel->getProperty('casts')->getAttributes(TsCasts::class) as $attr) {
                 $instance = $attr->newInstance();
-                if (is_array($instance->types)) {
-                    $propertyOverrides = array_merge($propertyOverrides, $instance->types);
-                }
+                $propertyOverrides = array_merge($propertyOverrides, $instance->types);
             }
         }
 
@@ -130,9 +161,7 @@ class ModelTransformer extends CoreTransformer
         if ($this->reflectionModel->hasMethod('casts')) {
             foreach ($this->reflectionModel->getMethod('casts')->getAttributes(TsCasts::class) as $attr) {
                 $instance = $attr->newInstance();
-                if (is_array($instance->types)) {
-                    $methodOverrides = array_merge($methodOverrides, $instance->types);
-                }
+                $methodOverrides = array_merge($methodOverrides, $instance->types);
             }
         }
 
@@ -144,28 +173,31 @@ class ModelTransformer extends CoreTransformer
 
     protected function transformColumns(): self
     {
-        $attributes = $this->modelInspect['attributes']->filter(fn ($attr) => in_array($attr['name'], $this->dbColumns));
+        /** @var Collection<int, AttributeInfo> $allAttributes */
+        $allAttributes = $this->modelInspect['attributes'];
+
+        $attributes = $allAttributes->filter(fn (array $attr) => in_array($attr['name'], $this->dbColumns));
 
         foreach ($attributes as $attribute) {
+            $name = $attribute['name'];
+
             // #[TsCasts] override takes priority over automatic type resolution
-            if (isset($this->tsTypeOverrides[$attribute['name']])) {
-                $this->columns[$attribute['name']] = $this->tsTypeOverrides[$attribute['name']];
+            if (isset($this->tsTypeOverrides[$name])) {
+                $this->columns[$name] = $this->tsTypeOverrides[$name];
 
                 continue;
             }
 
             $typings = LaravelTsPublish::phpToTypeScriptType($attribute['cast'] ?? $attribute['type']);
 
-            $type = is_callable($typings['type'])
-                ? call_user_func($typings['type'])
-                : $typings['type'];
+            $type = $typings['type'];
 
             if ($attribute['nullable'] && ! str_contains($type, 'null')) {
                 $type .= ' | null';
             }
 
-            $this->columns[$attribute['name']] = $type;
-            $this->enumImports = [...$this->enumImports,  ...($typings['enumTypes'] ?? [])];
+            $this->columns[$name] = $type;
+            $this->enumImports = [...$this->enumImports, ...$typings['enumTypes']];
             $this->modelImports = [...$this->modelImports, ...$typings['classes']];
         }
 
@@ -174,19 +206,24 @@ class ModelTransformer extends CoreTransformer
 
     protected function transformMutators(): self
     {
-        $mutators = $this->modelInspect['attributes']->filter(fn ($attr) => ! in_array($attr['name'], $this->dbColumns));
+        /** @var Collection<int, AttributeInfo> $allAttributes */
+        $allAttributes = $this->modelInspect['attributes'];
+
+        $mutators = $allAttributes->filter(fn (array $attr) => ! in_array($attr['name'], $this->dbColumns));
 
         foreach ($mutators as $mutator) {
+            $name = $mutator['name'];
+
             // #[TsCasts] override takes priority
-            if (isset($this->tsTypeOverrides[$mutator['name']])) {
-                $this->mutators[$mutator['name']] = $this->tsTypeOverrides[$mutator['name']];
+            if (isset($this->tsTypeOverrides[$name])) {
+                $this->mutators[$name] = $this->tsTypeOverrides[$name];
 
                 continue;
             }
 
-            $resolved = $this->resolveMutatorType($mutator['name']);
-            $this->mutators[$mutator['name']] = $resolved['type'];
-            $this->enumImports = [...$this->enumImports,  ...($resolved['enumTypes'] ?? [])];
+            $resolved = $this->resolveMutatorType($name);
+            $this->mutators[$name] = $resolved['type'];
+            $this->enumImports = [...$this->enumImports, ...$resolved['enumTypes']];
             $this->modelImports = [...$this->modelImports, ...$resolved['classes']];
         }
 
@@ -204,14 +241,23 @@ class ModelTransformer extends CoreTransformer
             'MorphedByMany',
         ];
 
-        $relations = $this->modelInspect['relations']
+        /** @var Collection<int, RelationInfo> $allRelations */
+        $allRelations = $this->modelInspect['relations'];
+
+        /** @var list<string> $includedModels */
+        $includedModels = array_values(array_filter(config()->array('ts-publish.included_models', []), 'is_string'));
+
+        /** @var list<string> $excludedModels */
+        $excludedModels = array_values(array_filter(config()->array('ts-publish.excluded_models', []), 'is_string'));
+
+        $relations = $allRelations
             ->when(
-                config()->array('ts-publish.included_models', []),
-                fn ($relations, $includedModels) => $relations->filter(fn (array $relation) => in_array($relation['related'], $includedModels))
+                $includedModels,
+                fn (Collection $relations, array $included) => $relations->filter(fn (array $relation) => in_array($relation['related'], $included))
             )
             ->when(
-                config()->array('ts-publish.excluded_models', []),
-                fn ($relations, $excludedModels) => $relations->filter(fn (array $relation) => ! in_array($relation['related'], $excludedModels))
+                $excludedModels,
+                fn (Collection $relations, array $excluded) => $relations->filter(fn (array $relation) => ! in_array($relation['related'], $excluded))
             );
 
         foreach ($relations as $relation) {
@@ -240,10 +286,15 @@ class ModelTransformer extends CoreTransformer
         if ($this->reflectionModel->hasMethod($newStyle)) {
             $method = $this->reflectionModel->getMethod($newStyle);
             $method->setAccessible(true);
+
+            /** @var Attribute<mixed, mixed> $attrInstance */
             $attrInstance = $method->invoke($this->modelInstance);
 
             if ($attrInstance->get !== null) {
-                return LaravelTsPublish::closureReturnedTypes($attrInstance->get) ?: $result;
+                /** @var \Closure $getter */
+                $getter = $attrInstance->get;
+
+                return LaravelTsPublish::closureReturnedTypes($getter);
             }
 
             // write-only mutator (set only, no get) — not readable on the model shape
@@ -252,7 +303,7 @@ class ModelTransformer extends CoreTransformer
 
         // Old-style: public function getTitleDisplayAttribute($value): string
         if ($this->reflectionModel->hasMethod($oldStyle)) {
-            return LaravelTsPublish::methodReturnedTypes($this->reflectionModel, $oldStyle) ?: $result;
+            return LaravelTsPublish::methodReturnedTypes($this->reflectionModel, $oldStyle);
         }
 
         return $result;

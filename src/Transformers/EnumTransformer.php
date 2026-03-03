@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCase;
@@ -13,22 +15,35 @@ use Throwable;
 use UnitEnum;
 
 /**
+ * @phpstan-type CasesList = list<array{name: string, value: string|int, description: string}>
+ * @phpstan-type TsTypeOverrides = array<string, array{name?: string, value?: string|int, description?: string}>
+ * @phpstan-type MethodsList = array<string, array{name: string, description: string, returns: array<string, mixed>}>
+ * @phpstan-type StaticMethodsList = array<string, array{name: string, description: string, return: mixed}>
+ * @phpstan-type EnumData = array{
+ *     enumName: string,
+ *     cases: CasesList,
+ *     methods: MethodsList,
+ *     staticMethods: StaticMethodsList,
+ *     backed: bool,
+ * }
+ *
  * @extends CoreTransformer<UnitEnum|BackedEnum>
  */
 class EnumTransformer extends CoreTransformer
 {
+    /** @var ReflectionEnum<UnitEnum> */
     public protected(set) ReflectionEnum $reflectionEnum;
 
-    /** @var array<string, array{value: string|int, description: string}> */
+    /** @var CasesList */
     public protected(set) array $cases = [];
 
-    /** @var array<string, array{name?: string, value?: string|int, description?: string}> */
-    public protected(set) array $tsTypeOverrides = []; // column name → raw TS type string from #[TsCase]
+    /** @var TsTypeOverrides */
+    public protected(set) array $tsTypeOverrides = [];
 
-    /** @var array<string, array{name?: string, description?: string, returns: array<string, mixed>}> */
-    public protected(set) array $methods = []; // method name → ['name' => string, 'description' => string]
+    /** @var MethodsList */
+    public protected(set) array $methods = [];
 
-    /** @var array<string, array{name?: string, description?: string, return: mixed}> */
+    /** @var StaticMethodsList */
     public protected(set) array $staticMethods = [];
 
     #[Override]
@@ -56,6 +71,10 @@ class EnumTransformer extends CoreTransformer
             $caseName = $case->getName();
             $constant = $this->reflectionEnum->getReflectionConstant($caseName);
 
+            if ($constant === false) {
+                continue;
+            }
+
             if ($constant->isPublic() && $constant->isEnumCase()) {
                 $tsCaseAttribute = $constant->getAttributes(TsCase::class)[0] ?? null;
 
@@ -63,11 +82,21 @@ class EnumTransformer extends CoreTransformer
                     /** @var TsCase $tsCaseInstance */
                     $tsCaseInstance = $tsCaseAttribute->newInstance();
 
-                    $this->tsTypeOverrides[$caseName] = [
-                        'name' => $tsCaseInstance->name ?: null,
-                        'value' => $tsCaseInstance->value ?: null,
-                        'description' => $tsCaseInstance->description ?: null,
-                    ];
+                    $override = [];
+
+                    if ($tsCaseInstance->name !== '') {
+                        $override['name'] = $tsCaseInstance->name;
+                    }
+
+                    if ($tsCaseInstance->value !== '') {
+                        $override['value'] = $tsCaseInstance->value;
+                    }
+
+                    if ($tsCaseInstance->description !== '') {
+                        $override['description'] = $tsCaseInstance->description;
+                    }
+
+                    $this->tsTypeOverrides[$caseName] = $override;
                 }
             }
         }
@@ -83,9 +112,11 @@ class EnumTransformer extends CoreTransformer
 
             $override = $this->tsTypeOverrides[$caseName] ?? [];
 
+            $value = $caseValue instanceof BackedEnum ? $caseValue->value : $caseName;
+
             $this->cases[] = [
                 'name' => $override['name'] ?? $caseName,
-                'value' => $override['value'] ?? ($this->reflectionEnum->isBacked() ? $caseValue->value : $caseName),
+                'value' => $override['value'] ?? $value,
                 'description' => $override['description'] ?? '',
             ];
         }
@@ -108,9 +139,7 @@ class EnumTransformer extends CoreTransformer
                 $returns = [];
                 foreach ($this->reflectionEnum->getCases() as $case) {
                     try {
-                        $caseInstance = $this->reflectionEnum->isBacked()
-                            ? $this->findable::from($case->getValue()->value)
-                            : $case->getValue();
+                        $caseInstance = $case->getValue();
                         $returns[$case->getName()] = $method->invoke($caseInstance);
                     } catch (Throwable) {
                         $returns[$case->getName()] = null;
@@ -119,7 +148,7 @@ class EnumTransformer extends CoreTransformer
 
                 $this->methods[$methodName] = [
                     'name' => $tsEnumMethodInstance->name ?: $methodName,
-                    'description' => $tsEnumMethodInstance->description ?: null,
+                    'description' => $tsEnumMethodInstance->description ?? '',
                     'returns' => $returns,
                 ];
             }
@@ -144,9 +173,7 @@ class EnumTransformer extends CoreTransformer
                 try {
                     $case = $this->reflectionEnum->getCases()[0] ?? null;
                     if ($case) {
-                        $caseInstance = $this->reflectionEnum->isBacked()
-                            ? $this->findable::from($case->getValue()->value)
-                            : $case->getValue();
+                        $caseInstance = $case->getValue();
                         $return = $method->invoke($caseInstance);
                     }
                 } catch (Throwable $e) {
@@ -155,7 +182,7 @@ class EnumTransformer extends CoreTransformer
 
                 $this->staticMethods[$methodName] = [
                     'name' => $tsEnumMethodInstance->name ?: $methodName,
-                    'description' => $tsEnumMethodInstance->description ?: null,
+                    'description' => $tsEnumMethodInstance->description ?? '',
                     'return' => $return,
                 ];
             }
@@ -165,7 +192,7 @@ class EnumTransformer extends CoreTransformer
     }
 
     /**
-     * @return array{cases: array, enumName: string, methods: array, staticMethods: array, backed: bool}
+     * @return EnumData
      */
     #[Override]
     public function data(): array

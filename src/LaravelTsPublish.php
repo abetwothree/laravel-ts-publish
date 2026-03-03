@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace AbeTwoThree\LaravelTsPublish;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
@@ -30,11 +32,11 @@ use UnitEnum;
 class LaravelTsPublish
 {
     /**
-     * @return array<string, string|callable>
+     * @return array<string, string|(callable(): string)>
      */
     public function typesMap(): array
     {
-        return new TypeScriptMap()->gather();
+        return (new TypeScriptMap)->gather();
     }
 
     /**
@@ -61,7 +63,7 @@ class LaravelTsPublish
         $mapping = $typesMap[$lower] ?? null;
 
         if ($mapping !== null) {
-            $result['type'] = $mapping;
+            $result['type'] = is_string($mapping) ? $mapping : $mapping();
 
             return $result;
         }
@@ -80,7 +82,7 @@ class LaravelTsPublish
         //    - type uses the TypeScript type alias (StatusType) so it can be used as an interface member type
         //    - enums tracks the const name (Status) for informational/display purposes
         //    - enumTypes tracks the type alias name (StatusType) to include in import statements
-        if (class_exists($phpType) && new ReflectionClass($phpType)->isEnum()) {
+        if (class_exists($phpType) && (new ReflectionClass($phpType))->isEnum()) {
             $name = class_basename($phpType);
             $result['type'] = $name.'Type';
             $result['enums'] = [$name];
@@ -91,9 +93,9 @@ class LaravelTsPublish
 
         // 4. Custom CastsAttributes class — infer from get() return type, otherwise unknown
         if (class_exists($phpType) && is_a($phpType, CastsAttributes::class, true)) {
-            $castReturnType = $this->methodReturnedTypes($phpType, 'get');
+            $castReturnType = $this->methodReturnedTypes(new ReflectionClass($phpType), 'get');
 
-            if (count($castReturnType) > 0) {
+            if ($castReturnType['type'] !== 'unknown') {
                 return $castReturnType;
             }
 
@@ -121,7 +123,7 @@ class LaravelTsPublish
         // 7. Partial map match (e.g. "tinyint(1)" contains "tinyint")
         foreach ($typesMap as $key => $value) {
             if (str_contains($lower, $key)) {
-                $result['type'] = $value;
+                $result['type'] = is_string($value) ? $value : $value();
 
                 return $result;
             }
@@ -133,14 +135,13 @@ class LaravelTsPublish
     }
 
     /** @return TypeScriptTypeInfo */
-    public function methodReturnedTypes(ReflectionClass|string $class, string $method): array
+    public function methodReturnedTypes(ReflectionClass $class, string $method): array // @phpstan-ignore missingType.generics
     {
-        $reflection = $class instanceof ReflectionClass ? $class : new ReflectionClass($class);
-        if (! $reflection->hasMethod($method)) {
-            return [];
+        if (! $class->hasMethod($method)) {
+            return $this->emptyTypeScriptInfo();
         }
 
-        return $this->resolveReflectionType($reflection->getMethod($method)->getReturnType());
+        return $this->resolveReflectionType($class->getMethod($method)->getReturnType());
     }
 
     /** @return TypeScriptTypeInfo */
@@ -190,9 +191,9 @@ class LaravelTsPublish
             }
 
             $result['type'] = implode(' | ', array_unique($types));
-            $result['enums'] = array_unique($enums);
-            $result['enumTypes'] = array_unique($enumTypes);
-            $result['classes'] = array_unique($classes);
+            $result['enums'] = array_values(array_unique($enums));
+            $result['enumTypes'] = array_values(array_unique($enumTypes));
+            $result['classes'] = array_values(array_unique($classes));
 
             return $result;
         }
@@ -209,7 +210,7 @@ class LaravelTsPublish
         }
 
         // json_encode produces a properly escaped double-quoted string valid in JS/TS
-        return json_encode($key);
+        return (string) json_encode($key);
     }
 
     /**

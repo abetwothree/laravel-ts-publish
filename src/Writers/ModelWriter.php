@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
@@ -7,6 +9,8 @@ use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use Override;
 
 /**
+ * @phpstan-import-type ModelData from ModelTransformer
+ *
  * @extends CoreWriter<ModelTransformer>
  */
 class ModelWriter extends CoreWriter
@@ -19,10 +23,16 @@ class ModelWriter extends CoreWriter
     {
         $filename = $transformer->filename();
 
+        /** @var view-string $template */
+        $template = config()->string('ts-publish.model_template');
+
+        /** @var ModelData $data */
+        $data = $transformer->data();
+
         $content = view(
-            config()->string('ts-publish.model_template'),
+            $template,
             [
-                ...$transformer->data(),
+                ...$data,
                 'filename' => $filename,
             ]
         )->render();

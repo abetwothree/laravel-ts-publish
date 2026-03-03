@@ -1,7 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 namespace AbeTwoThree\LaravelTsPublish\Commands;
 
+use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Runner;
 use Illuminate\Console\Command;
 
@@ -114,7 +118,7 @@ class TsPublishCommand extends Command
         // The full path is the file name plus the output directory from the config
         //
 
-        $outputDirectory = config('ts-publish.output_directory');
+        $outputDirectory = config()->string('ts-publish.output_directory');
 
         $this->line('');
         $this->info("Published files to this directory: {$outputDirectory}");
@@ -125,9 +129,9 @@ class TsPublishCommand extends Command
             $this->table(
                 ['Enum File Name', 'File Path'],
                 collect($runner->enumGenerators)
-                    ->map(fn ($generator) => [
+                    ->map(fn (EnumGenerator $generator) => [
                         $generator->filename().'.ts',
-                        $outputDirectory.$generator->filename().'.ts',
+                        $outputDirectory.'/'.$generator->filename().'.ts',
                     ])->toArray()
             );
         }
@@ -138,9 +142,9 @@ class TsPublishCommand extends Command
             $this->table(
                 ['Model File Name', 'File Path'],
                 collect($runner->modelGenerators)
-                    ->map(fn ($generator) => [
+                    ->map(fn (ModelGenerator $generator) => [
                         $generator->filename().'.ts',
-                        $outputDirectory.$generator->filename().'.ts',
+                        $outputDirectory.'/'.$generator->filename().'.ts',
                     ])->toArray()
             );
         }
