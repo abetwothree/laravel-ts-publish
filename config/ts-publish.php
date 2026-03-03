@@ -11,8 +11,6 @@ use AbeTwoThree\LaravelTsPublish\Writers\EnumWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\ModelWriter;
 
 return [
-    'enabled' => env('TS_PUBLISHER_ENABLED', true),
-
     /*
     |--------------------------------------------------------------------------
     | Run After Migrate
