@@ -26,19 +26,6 @@ class EnumWriter extends CoreWriter
         /** @var EnumData $data */
         $data = $transformer->data();
 
-        $caseKinds = [];
-        if ($data['backed']) {
-            $caseKinds = array_map(fn (array $case) => "'".$case['name']."'", $data['cases']);
-        }
-
-        $caseTypes = array_map(function (array $case) {
-            if (is_string($case['value'])) {
-                return "'{$case['value']}'";
-            }
-
-            return $case['value'];
-        }, $data['cases']);
-
         /** @var view-string $template */
         $template = config()->string('ts-publish.enum_template');
 
@@ -47,8 +34,6 @@ class EnumWriter extends CoreWriter
             [
                 ...$data,
                 'filename' => $filename,
-                'caseTypes' => $caseTypes,
-                'caseKinds' => $caseKinds,
             ]
         )->render();
 

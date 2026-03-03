@@ -19,11 +19,15 @@ use UnitEnum;
  * @phpstan-type TsTypeOverrides = array<string, array{name?: string, value?: string|int, description?: string}>
  * @phpstan-type MethodsList = array<string, array{name: string, description: string, returns: array<string, mixed>}>
  * @phpstan-type StaticMethodsList = array<string, array{name: string, description: string, return: mixed}>
+ * @phpstan-type CaseKindsList = list<string>
+ * @phpstan-type CaseTypesList = list<string|int>
  * @phpstan-type EnumData = array{
  *     enumName: string,
  *     cases: CasesList,
  *     methods: MethodsList,
  *     staticMethods: StaticMethodsList,
+ *     caseKinds: CaseKindsList,
+ *     caseTypes: CaseTypesList,
  *     backed: bool,
  * }
  *
@@ -46,6 +50,12 @@ class EnumTransformer extends CoreTransformer
     /** @var StaticMethodsList */
     public protected(set) array $staticMethods = [];
 
+    /** @var CaseKindsList */
+    public protected(set) array $caseKinds = [];
+
+    /** @var CaseTypesList */
+    public protected(set) array $caseTypes = [];
+
     #[Override]
     public function transform(): self
     {
@@ -53,9 +63,33 @@ class EnumTransformer extends CoreTransformer
             ->parseTsTypeOverrides()
             ->transformCases()
             ->transformMethods()
-            ->transformStaticMethods();
+            ->transformStaticMethods()
+            ->transformCaseKindsAndTypes();
 
         return $this;
+    }
+
+    /**
+     * @return EnumData
+     */
+    #[Override]
+    public function data(): array
+    {
+        return [
+            'enumName' => $this->reflectionEnum->getShortName(),
+            'cases' => $this->cases,
+            'methods' => $this->methods,
+            'staticMethods' => $this->staticMethods,
+            'caseKinds' => $this->caseKinds,
+            'caseTypes' => $this->caseTypes,
+            'backed' => $this->reflectionEnum->isBacked(),
+        ];
+    }
+
+    #[Override]
+    public function filename(): string
+    {
+        return Str::kebab($this->reflectionEnum->getShortName());
     }
 
     protected function initInstance(): self
@@ -191,24 +225,20 @@ class EnumTransformer extends CoreTransformer
         return $this;
     }
 
-    /**
-     * @return EnumData
-     */
-    #[Override]
-    public function data(): array
+    protected function transformCaseKindsAndTypes(): self
     {
-        return [
-            'enumName' => $this->reflectionEnum->getShortName(),
-            'cases' => $this->cases,
-            'methods' => $this->methods,
-            'staticMethods' => $this->staticMethods,
-            'backed' => $this->reflectionEnum->isBacked(),
-        ];
-    }
+        if ($this->reflectionEnum->isBacked()) {
+            $this->caseKinds = array_map(fn (array $case) => "'".$case['name']."'", $this->cases);
+        }
 
-    #[Override]
-    public function filename(): string
-    {
-        return Str::kebab($this->reflectionEnum->getShortName());
+        $this->caseTypes = array_map(function (array $case) {
+            if (is_string($case['value'])) {
+                return "'{$case['value']}'";
+            }
+
+            return $case['value'];
+        }, $this->cases);
+
+        return $this;
     }
 }
