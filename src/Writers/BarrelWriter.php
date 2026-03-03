@@ -18,7 +18,9 @@ class BarrelWriter
     ) {}
 
     /**
-     * @param  Collection<int, CoreGenerator<mixed>>  $transformers
+     * @template T of CoreGenerator
+     *
+     * @param  Collection<int, T>  $transformers
      */
     public function write(Collection $transformers, string $filename, string $outputDirectory): string
     {

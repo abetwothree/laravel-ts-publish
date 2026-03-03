@@ -128,7 +128,7 @@ class TsPublishCommand extends Command
             $this->comment("\nEnums:");
             $this->table(
                 ['Enum File Name', 'File Path'],
-                collect($runner->enumGenerators)
+                $runner->enumGenerators
                     ->map(fn (EnumGenerator $generator) => [
                         $generator->filename().'.ts',
                         $outputDirectory.'/'.$generator->filename().'.ts',
@@ -141,7 +141,7 @@ class TsPublishCommand extends Command
             $this->comment("\nModels:");
             $this->table(
                 ['Model File Name', 'File Path'],
-                collect($runner->modelGenerators)
+                $runner->modelGenerators
                     ->map(fn (ModelGenerator $generator) => [
                         $generator->filename().'.ts',
                         $outputDirectory.'/'.$generator->filename().'.ts',
