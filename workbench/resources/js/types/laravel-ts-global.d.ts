@@ -86,9 +86,9 @@ declare global {
             profit_margin: number | null;
             in_stock: boolean;
             // Relations
-            orderItems: OrderItem[];
-            orderItems_count: number;
-            orderItems_exists: boolean;
+            order_items: OrderItem[];
+            order_items_count: number;
+            order_items_exists: boolean;
             tags: Tag[];
             tags_count: number;
             tags_exists: boolean;
@@ -280,9 +280,9 @@ declare global {
             teams: Team[];
             teams_count: number;
             teams_exists: boolean;
-            ownedTeams: Team[];
-            ownedTeams_count: number;
-            ownedTeams_exists: boolean;
+            owned_teams: Team[];
+            owned_teams_count: number;
+            owned_teams_exists: boolean;
             images: Image[];
             images_count: number;
             images_exists: boolean;

@@ -274,7 +274,8 @@ class ModelTransformer extends CoreTransformer
                 ? $relatedBasename.'[]'
                 : $relatedBasename;
 
-            $this->relations[$relation['name']] = $relationType;
+            $relationName = LaravelTsPublish::keyCase($relation['name']);
+            $this->relations[$relationName] = $relationType;
             $this->modelImports[] = $relatedBasename;
         }
 

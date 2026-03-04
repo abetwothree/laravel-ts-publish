@@ -32,21 +32,21 @@ export interface ProductMutators
 
 export interface ProductRelations
 {
-    orderItems: OrderItem[];
+    order_items: OrderItem[];
     tags: Tag[];
     images: Image[];
 }
 
 export interface ProductRelationCounts
 {
-    orderItems_count: number;
+    order_items_count: number;
     tags_count: number;
     images_count: number;
 }
 
 export interface ProductRelationExists
 {
-    orderItems_exists: boolean;
+    order_items_exists: boolean;
     tags_exists: boolean;
     images_exists: boolean;
 }

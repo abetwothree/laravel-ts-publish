@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 use BackedEnum;
 use Closure;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
+use Illuminate\Support\Str;
 use ReflectionClass;
 use ReflectionFunction;
 use ReflectionIntersectionType;
@@ -37,6 +38,18 @@ class LaravelTsPublish
     public function typesMap(): array
     {
         return (new TypeScriptMap)->gather();
+    }
+
+    public function keyCase(string $key): string
+    {
+        $case = config()->string('ts-publish.relationship_case');
+
+        return match ($case) {
+            'camel' => Str::camel($key),
+            'snake' => Str::snake($key),
+            'pascal' => Str::studly($key),
+            default => $key,
+        };
     }
 
     /**

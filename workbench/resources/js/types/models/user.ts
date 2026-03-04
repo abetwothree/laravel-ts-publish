@@ -36,7 +36,7 @@ export interface UserRelations
     orders: Order[];
     addresses: Address[];
     teams: Team[];
-    ownedTeams: Team[];
+    owned_teams: Team[];
     images: Image[];
     notifications: DatabaseNotification[];
 }
@@ -49,7 +49,7 @@ export interface UserRelationCounts
     orders_count: number;
     addresses_count: number;
     teams_count: number;
-    ownedTeams_count: number;
+    owned_teams_count: number;
     images_count: number;
     notifications_count: number;
 }
@@ -62,7 +62,7 @@ export interface UserRelationExists
     orders_exists: boolean;
     addresses_exists: boolean;
     teams_exists: boolean;
-    ownedTeams_exists: boolean;
+    owned_teams_exists: boolean;
     images_exists: boolean;
     notifications_exists: boolean;
 }

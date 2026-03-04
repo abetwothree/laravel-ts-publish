@@ -135,10 +135,25 @@ return [
     |--------------------------------------------------------------------------
     |
     | Specifies whether to output the TypeScript definitions to files.
+    |
+    | This will write "enums" & "models" folders with a file for each class.
+    | It will create a "barrel" index.ts file to export all types.
     */
     'output_to_files' => true,
 
     'output_directory' => resource_path('/js/types/'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Relationship Case Style
+    |--------------------------------------------------------------------------
+    |
+    | Specifies the case style to use for relationship names in the generated TypeScript definitions.
+    |
+    | Can be 'snake', 'camel', or 'pascal'.
+    */
+
+    'relationship_case' => 'snake',
 
     /*
     |--------------------------------------------------------------------------

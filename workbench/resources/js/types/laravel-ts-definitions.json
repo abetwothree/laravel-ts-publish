@@ -250,7 +250,7 @@
                 "type": "boolean"
             },
             {
-                "name": "orderItems",
+                "name": "order_items",
                 "type": "OrderItem[]"
             },
             {
@@ -262,7 +262,7 @@
                 "type": "Image[]"
             },
             {
-                "name": "orderItems_count",
+                "name": "order_items_count",
                 "type": "number"
             },
             {
@@ -274,7 +274,7 @@
                 "type": "number"
             },
             {
-                "name": "orderItems_exists",
+                "name": "order_items_exists",
                 "type": "boolean"
             },
             {
@@ -874,7 +874,7 @@
                 "type": "Team[]"
             },
             {
-                "name": "ownedTeams",
+                "name": "owned_teams",
                 "type": "Team[]"
             },
             {
@@ -910,7 +910,7 @@
                 "type": "number"
             },
             {
-                "name": "ownedTeams_count",
+                "name": "owned_teams_count",
                 "type": "number"
             },
             {
@@ -946,7 +946,7 @@
                 "type": "boolean"
             },
             {
-                "name": "ownedTeams_exists",
+                "name": "owned_teams_exists",
                 "type": "boolean"
             },
             {
