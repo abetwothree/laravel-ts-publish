@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use Illuminate\Support\Collection;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
+use AbeTwoThree\LaravelTsPublish\Writers\JsonWriter;
 
 class Runner
 {
@@ -30,6 +31,8 @@ class Runner
 
     public protected(set) string $globalsContent = '';
 
+    public protected(set) string $jsonContent = '';
+
     public function run(): void
     {
         /** @var BarrelWriter $barrelWriter */
@@ -40,10 +43,9 @@ class Runner
         $this->generateModels();
 
         $this->generateGlobals();
+        $this->generateJson();
 
         // TODO: create JS filelist of classes for npm process to watch changes on, and run publish command on change
-        // TODO: create JSON file
-        // TODO: description on model columns, relations, and mutators
     }
 
     protected function generateEnums(): void
@@ -107,5 +109,13 @@ class Runner
         $this->globalsWriter = $globalsWriter;
 
         $this->globalsContent = $globalsWriter->write($this);
+    }
+
+    protected function generateJson(): void
+    {
+        /** @var JsonWriter $jsonWriter */
+        $jsonWriter = resolve(config()->string('ts-publish.json_writer_class'));
+
+        $this->jsonContent = $jsonWriter->write($this);
     }
 }

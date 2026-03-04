@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\EnumWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\ModelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
+use AbeTwoThree\LaravelTsPublish\Writers\JsonWriter;
 
 return [
     /*
@@ -88,6 +89,8 @@ return [
 
     'globals_writer_class' => GlobalsWriter::class,
 
+    'json_writer_class' => JsonWriter::class,
+
     /*
     |--------------------------------------------------------------------------
     | File Template Blade Files
@@ -159,7 +162,7 @@ return [
     | Specifies whether to output the generated TypeScript definitions in a JSON file.
     | This can be in addition to or instead of outputting to .d.ts files, depending on the "output_to_files" option.
     */
-    'json' => env('TS_PUBLISH_JSON', false),
+    'output_json_file' => env('TS_PUBLISH_JSON', false),
 
     'json_filename' => env('TS_PUBLISH_JSON_FILENAME', 'laravel-ts-definitions.json'),
 

@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\EnumWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\ModelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
+use AbeTwoThree\LaravelTsPublish\Writers\JsonWriter;
 
 return [
     /*
@@ -88,6 +89,8 @@ return [
 
     'globals_writer_class' => GlobalsWriter::class,
 
+    'json_writer_class' => JsonWriter::class,
+
     /*
     |--------------------------------------------------------------------------
     | File Template Blade Files
@@ -141,7 +144,7 @@ return [
     |
     | Specifies whether to create a "global.d.ts" file with a global namespace containing all generated types.
     */
-    'output_globals_file' => env('TS_PUBLISH_GLOBAL', true),
+    'output_globals_file' => env('TS_PUBLISH_GLOBAL', false),
 
     'global_directory' => env('TS_PUBLISH_GLOBAL_DIRECTORY', resource_path('/js/types/')),
 
@@ -159,7 +162,7 @@ return [
     | Specifies whether to output the generated TypeScript definitions in a JSON file.
     | This can be in addition to or instead of outputting to .d.ts files, depending on the "output_to_files" option.
     */
-    'json' => env('TS_PUBLISH_JSON', false),
+    'output_json_file' => env('TS_PUBLISH_JSON', false),
 
     'json_filename' => env('TS_PUBLISH_JSON_FILENAME', 'laravel-ts-definitions.json'),
 
@@ -238,9 +241,9 @@ return [
     |
     | Specifies whether to include metadata about the enums which is used by the @tolki/enum package.
     |
-    | If you don't plan on using the @tolki/enum package or don't need the additional metadata, set to this to false.
+    | If you don't plan on using the @tolki/enum package or don't need the additional metadata, set this to false.
     |
-    | When is on, each enum will include the following additional properties:
+    | When this is enabled, each enum will include the following additional properties:
     | - _cases: An array of the enum case names, used to know which keys are cases.
     | - _methods: An array of the enum method names, used to know which keys are methods.
     | - _static: An array of the enum static method names, used to know which keys are static methods.

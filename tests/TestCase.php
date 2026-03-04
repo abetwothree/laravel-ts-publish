@@ -36,9 +36,15 @@ class TestCase extends Orchestra
 
     public function getEnvironmentSetUp($app)
     {
+        // copy config file from package to workbench config to keep it in sync
+        $packageConfigPath = __DIR__.'/../config/ts-publish.php';
+        $workbenchConfigPath = workbench_path('config/ts-publish.php');
+        copy($packageConfigPath, $workbenchConfigPath);
+
         config()->set('database.default', 'testing');
         config()->set('app.key', 'base64:yTtQNlEOB1IqYydLG9Z5pKRSxhZffdOxT1iuZIJi+eM=');
         config()->set('ts-publish.output_globals_file', true);
+        config()->set('ts-publish.output_json_file', true);
         config()->set('ts-publish.additional_model_directories', [
             DatabaseNotification::class,
         ]);
