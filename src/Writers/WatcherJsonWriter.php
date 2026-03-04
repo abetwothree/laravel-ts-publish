@@ -19,7 +19,7 @@ class WatcherJsonWriter
             return '';
         }
 
-        $content = json_encode([
+        $content = (string) json_encode([
             ...$runner->enumGenerators->map(fn (EnumGenerator $g) => $g->transformer->filePath),
             ...$runner->modelGenerators->map(fn (ModelGenerator $g) => $g->transformer->filePath),
         ], JSON_PRETTY_PRINT);

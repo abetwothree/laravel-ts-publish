@@ -5,8 +5,16 @@ namespace AbeTwoThree\LaravelTsPublish\Writers;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Runner;
+use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
 use Illuminate\Filesystem\Filesystem;
 
+/**
+ * @phpstan-import-type CasesList from EnumTransformer
+ * @phpstan-import-type CaseKindsList from EnumTransformer
+ * @phpstan-import-type CaseTypesList from EnumTransformer
+ * @phpstan-import-type MethodsList from EnumTransformer
+ * @phpstan-import-type StaticMethodsList from EnumTransformer
+ */
 class JsonWriter
 {
     public function __construct(
@@ -39,9 +47,10 @@ class JsonWriter
             'enums' => $this->createJsonForEnums($runner),
         ];
 
-        return json_encode($data, JSON_PRETTY_PRINT);
+        return (string) json_encode($data, JSON_PRETTY_PRINT);
     }
 
+    /** @return array<string, list<array{name: string, type: string}>> */
     protected function createJsonForModels(Runner $runner): array
     {
         $transformers = $runner->modelGenerators->map(fn (ModelGenerator $g) => $g->transformer);
@@ -87,8 +96,18 @@ class JsonWriter
         return $data;
     }
 
+    /**
+     * @return array<string, array{
+     *  cases: CasesList,
+     *  caseKinds: CaseKindsList,
+     *  caseTypes: CaseTypesList,
+     *  methods: MethodsList,
+     *  staticMethods: StaticMethodsList
+     * }>
+     */
     protected function createJsonForEnums(Runner $runner): array
     {
+        /** @var list<EnumTransformer> $transformers */
         $transformers = $runner->enumGenerators->map(fn (EnumGenerator $g) => $g->transformer)->toArray();
 
         $data = [];
