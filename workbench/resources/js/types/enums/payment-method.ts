@@ -1,4 +1,7 @@
 export const PaymentMethod = {
+    _cases: ['CreditCard', 'DebitCard', 'PayPal', 'BankTransfer', 'CashOnDelivery', 'Crypto', 'ApplePay', 'GooglePay'],
+    _methods: [],
+    _static: [],
     CreditCard: 'credit_card',
     DebitCard: 'debit_card',
     PayPal: 'paypal',

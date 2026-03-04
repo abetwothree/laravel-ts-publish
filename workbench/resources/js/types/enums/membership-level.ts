@@ -1,4 +1,7 @@
 export const MembershipLevel = {
+    _cases: ['Free', 'Basic', 'Premium', 'Enterprise'],
+    _methods: [],
+    _static: [],
     Free: 'Free',
     Basic: 'Basic',
     Premium: 'Premium',

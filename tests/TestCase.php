@@ -38,6 +38,7 @@ class TestCase extends Orchestra
     {
         config()->set('database.default', 'testing');
         config()->set('app.key', 'base64:yTtQNlEOB1IqYydLG9Z5pKRSxhZffdOxT1iuZIJi+eM=');
+        config()->set('ts-publish.output_globals_file', true);
         config()->set('ts-publish.additional_model_directories', [
             DatabaseNotification::class,
         ]);

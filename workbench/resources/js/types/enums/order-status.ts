@@ -1,4 +1,7 @@
 export const OrderStatus = {
+    _cases: ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled', 'Refunded', 'OnHold'],
+    _methods: ['label', 'color', 'isCancellable'],
+    _static: ['completedStatuses', 'activeStatuses'],
     /** Order has been placed but not yet processed */
     Pending: 0,
     /** Order is being prepared */

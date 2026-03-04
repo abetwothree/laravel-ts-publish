@@ -34,6 +34,7 @@ class EnumWriter extends CoreWriter
             [
                 ...$data,
                 'filename' => $filename,
+                'metadataEnabled' => config()->boolean('ts-publish.enum_metadata_enabled'),
             ]
         )->render();
 

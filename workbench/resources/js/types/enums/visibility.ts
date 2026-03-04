@@ -1,4 +1,7 @@
 export const Visibility = {
+    _cases: ['Public', 'Private', 'Protected', 'Internal', 'Draft'],
+    _methods: ['isPublic', 'description'],
+    _static: [],
     Public: 'Public',
     Private: 'Private',
     Protected: 'Protected',

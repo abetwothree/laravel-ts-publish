@@ -1,4 +1,7 @@
 export const Priority = {
+    _cases: ['Low', 'Medium', 'High', 'Critical'],
+    _methods: ['label', 'badgeColor', 'icon'],
+    _static: [],
     Low: 0,
     Medium: 1,
     High: 2,

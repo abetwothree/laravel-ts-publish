@@ -1,4 +1,7 @@
 export const Status = {
+    _cases: ['Draft', 'Published'],
+    _methods: ['icon', 'color'],
+    _static: ['valueLabelPair', 'names', 'values', 'options'],
     Draft: 0,
     Published: 1,
     /** Get the icon name for the status */

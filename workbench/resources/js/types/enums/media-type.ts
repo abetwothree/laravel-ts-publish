@@ -1,4 +1,7 @@
 export const MediaType = {
+    _cases: ['Image', 'Video', 'Audio', 'Document', 'Archive'],
+    _methods: ['extensions', 'maxSizeMb', 'icon'],
+    _static: ['mimePrefixes'],
     Image: 'image',
     Video: 'video',
     Audio: 'audio',

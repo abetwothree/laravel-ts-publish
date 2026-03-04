@@ -1,5 +1,10 @@
 @use('AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish')
 export const {{ $enumName }} = {
+@if($metadataEnabled)
+    _cases: [{!! implode(', ', $backed ? $caseKinds : $caseTypes) !!}],
+    _methods: [{!! implode(', ', array_map(fn($method) => LaravelTsPublish::toJsLiteral($method['name']), $methods)) !!}],
+    _static: [{!! implode(', ', array_map(fn($method) => LaravelTsPublish::toJsLiteral($method['name']), $staticMethods)) !!}],
+@endif
 @foreach ($cases as $case)
 @if($case['description'])
     /** {{ $case['description'] }} */

@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\EnumWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\ModelWriter;
+use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
 
 return [
     /*
@@ -20,7 +21,7 @@ return [
     |
     | Ignore if not outputting to files
     */
-    'run_after_migrate' => env('TS_PUBLISHER_RUN_AFTER_MIGRATE', false),
+    'run_after_migrate' => env('TS_PUBLISH_RUN_AFTER_MIGRATE', true),
 
     /*
     |--------------------------------------------------------------------------
@@ -76,12 +77,16 @@ return [
     | Writers receive a transformer and optionally write the output to a file and return it as a string.
     |
     | The barrel writer creates an index.ts file that exports all generated types from each file category
+    |
+    | The globals writer creates a global.d.ts file that contains a global namespace with all generated types from all categories
     */
     'model_writer_class' => ModelWriter::class,
 
     'enum_writer_class' => EnumWriter::class,
 
     'barrel_writer_class' => BarrelWriter::class,
+
+    'globals_writer_class' => GlobalsWriter::class,
 
     /*
     |--------------------------------------------------------------------------
@@ -98,6 +103,8 @@ return [
     'model_template' => 'laravel-ts-publish::model',
 
     'enum_template' => 'laravel-ts-publish::enum',
+
+    'globals_template' => 'laravel-ts-publish::globals',
 
     /*
     |--------------------------------------------------------------------------
@@ -123,28 +130,26 @@ return [
     |
     | Specifies whether to output the TypeScript definitions to files.
     */
-    'output_to_files' => env('TS_PUBLISHER_OUTPUT_TO_FILES', true),
+    'output_to_files' => env('TS_PUBLISH_OUTPUT_TO_FILES', true),
 
-    'output_directory' => env('TS_PUBLISHER_OUTPUT_DIRECTORY', resource_path('/js/types/')),
+    'output_directory' => env('TS_PUBLISH_OUTPUT_DIRECTORY', resource_path('/js/types/')),
 
     /*
     |--------------------------------------------------------------------------
-    | Generate TypeScript Global Namespace
+    | Generate TypeScript Global Namespace Types
     |--------------------------------------------------------------------------
     |
     | Specifies whether to create a "global.d.ts" file with a global namespace containing all generated types.
     */
-    'global' => env('TS_PUBLISHER_GLOBAL', true),
+    'output_globals_file' => env('TS_PUBLISH_GLOBAL', false),
 
-    'global_directory' => env('TS_PUBLISHER_GLOBAL_DIRECTORY', config('ts-publish.output_directory')),
+    'global_directory' => env('TS_PUBLISH_GLOBAL_DIRECTORY', resource_path('/js/types/')),
 
-    'global_filename' => env('TS_PUBLISHER_GLOBAL_FILENAME', 'laravel-ts-global.d.ts'),
+    'global_filename' => env('TS_PUBLISH_GLOBAL_FILENAME', 'laravel-ts-global.d.ts'),
 
-    'models_namespace' => env('TS_PUBLISHER_MODELS_NAMESPACE', 'models'),
+    'models_namespace' => env('TS_PUBLISH_MODELS_NAMESPACE', 'models'),
 
-    'enums_namespace' => env('TS_PUBLISHER_ENUMS_NAMESPACE', 'enums'),
-
-    'resources_namespace' => env('TS_PUBLISHER_RESOURCES_NAMESPACE', 'resources'),
+    'enums_namespace' => env('TS_PUBLISH_ENUMS_NAMESPACE', 'enums'),
 
     /*
     |--------------------------------------------------------------------------
@@ -154,11 +159,11 @@ return [
     | Specifies whether to output the generated TypeScript definitions in a JSON file.
     | This can be in addition to or instead of outputting to .d.ts files, depending on the "output_to_files" option.
     */
-    'json' => env('TS_PUBLISHER_JSON', false),
+    'json' => env('TS_PUBLISH_JSON', false),
 
-    'json_filename' => env('TS_PUBLISHER_JSON_FILENAME', 'laravel-ts-definitions.json'),
+    'json_filename' => env('TS_PUBLISH_JSON_FILENAME', 'laravel-ts-definitions.json'),
 
-    'json_output_directory' => env('TS_PUBLISHER_JSON_OUTPUT_DIRECTORY', config('ts-publish.output_directory')),
+    'json_output_directory' => env('TS_PUBLISH_JSON_OUTPUT_DIRECTORY', resource_path('/js/types/')),
 
     /*
     |--------------------------------------------------------------------------
@@ -172,7 +177,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Model Finder Settings
+    | Model Collector Finder Settings
     |--------------------------------------------------------------------------
     |
     | Below you can specify which models to include, exclude, or add additional directories to search for models in.
@@ -200,7 +205,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Enum Finder Settings
+    | Enum Collector Finder Settings
     |--------------------------------------------------------------------------
     |
     | Below you can specify which enums to include, exclude, or add additional directories to search for enums in.
@@ -225,4 +230,21 @@ return [
     'additional_enum_directories' => [
         // Add additional directories to search for enums in addition to the default app/Enums directory
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Enum Metadata
+    |--------------------------------------------------------------------------
+    |
+    | Specifies whether to include metadata about the enums which is used by the @tolki/enum package.
+    |
+    | If you don't plan on using the @tolki/enum package or don't need the additional metadata, set this to false.
+    |
+    | When this is enabled, each enum will include the following additional properties:
+    | - _cases: An array of the enum case names, used to know which keys are cases.
+    | - _methods: An array of the enum method names, used to know which keys are methods.
+    | - _static: An array of the enum static method names, used to know which keys are static methods.
+    */
+
+    'enum_metadata_enabled' => true,
 ];

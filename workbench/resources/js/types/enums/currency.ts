@@ -1,4 +1,7 @@
 export const Currency = {
+    _cases: ['Usd', 'Eur', 'Gbp', 'Jpy', 'Cad'],
+    _methods: [],
+    _static: ['symbols', 'default', 'details'],
     Usd: 'USD',
     Eur: 'EUR',
     Gbp: 'GBP',

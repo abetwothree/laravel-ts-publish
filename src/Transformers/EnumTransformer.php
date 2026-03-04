@@ -35,6 +35,10 @@ use UnitEnum;
  */
 class EnumTransformer extends CoreTransformer
 {
+    public protected(set) string $enumName;
+
+    public protected(set) bool $backed;
+
     /** @var ReflectionEnum<UnitEnum> */
     public protected(set) ReflectionEnum $reflectionEnum;
 
@@ -76,25 +80,27 @@ class EnumTransformer extends CoreTransformer
     public function data(): array
     {
         return [
-            'enumName' => $this->reflectionEnum->getShortName(),
+            'enumName' => $this->enumName,
             'cases' => $this->cases,
             'methods' => $this->methods,
             'staticMethods' => $this->staticMethods,
             'caseKinds' => $this->caseKinds,
             'caseTypes' => $this->caseTypes,
-            'backed' => $this->reflectionEnum->isBacked(),
+            'backed' => $this->backed,
         ];
     }
 
     #[Override]
     public function filename(): string
     {
-        return Str::kebab($this->reflectionEnum->getShortName());
+        return Str::kebab($this->enumName);
     }
 
     protected function initInstance(): self
     {
         $this->reflectionEnum = new ReflectionEnum($this->findable);
+        $this->backed = $this->reflectionEnum->isBacked();
+        $this->enumName = $this->reflectionEnum->getShortName();
 
         return $this;
     }

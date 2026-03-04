@@ -1,4 +1,7 @@
 export const Color = {
+    _cases: ['Red', 'Green', 'Blue', 'Yellow', 'Slate', 'Purple'],
+    _methods: ['hex', 'rgb'],
+    _static: [],
     /** Primary red color */
     Red: 'red',
     /** Primary green color */

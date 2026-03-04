@@ -54,6 +54,8 @@ use ReflectionClass;
  */
 class ModelTransformer extends CoreTransformer
 {
+    public protected(set) string $modelName;
+
     public protected(set) Model $modelInstance;
 
     /** @var ReflectionClass<Model> */
@@ -103,14 +105,13 @@ class ModelTransformer extends CoreTransformer
     #[Override]
     public function data(): array
     {
-        $modelName = $this->reflectionModel->getShortName();
         $modelImports = array_values(array_filter(
             array_unique($this->modelImports),
-            fn (string $import) => $import !== $modelName,
+            fn (string $import) => $import !== $this->modelName,
         ));
 
         return [
-            'modelName' => $modelName,
+            'modelName' => $this->modelName,
             'columns' => $this->columns,
             'mutators' => $this->mutators,
             'relations' => $this->relations,
@@ -122,7 +123,7 @@ class ModelTransformer extends CoreTransformer
     #[Override]
     public function filename(): string
     {
-        return Str::kebab($this->reflectionModel->getShortName());
+        return Str::kebab($this->modelName);
     }
 
     protected function initInstance(): self
@@ -133,6 +134,7 @@ class ModelTransformer extends CoreTransformer
         $this->dbColumns = $this->modelInstance->getConnection()->getSchemaBuilder()->getColumnListing($this->modelInstance->getTable());
         $this->modelInspect = resolve(ModelInspector::class)->inspect($this->findable);
         $this->reflectionModel = new ReflectionClass($this->findable);
+        $this->modelName = $this->reflectionModel->getShortName();
 
         return $this;
     }

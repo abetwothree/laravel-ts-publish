@@ -10,10 +10,13 @@ use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use Illuminate\Support\Collection;
+use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
 
 class Runner
 {
     protected BarrelWriter $barrelWriter;
+
+    protected GlobalsWriter $globalsWriter;
 
     /** @var Collection<int, EnumGenerator> */
     public protected(set) Collection $enumGenerators;
@@ -21,9 +24,11 @@ class Runner
     /** @var Collection<int, ModelGenerator> */
     public protected(set) Collection $modelGenerators;
 
-    public protected(set) string $enumBarrelContent;
+    public protected(set) string $enumBarrelContent = '';
 
-    public protected(set) string $modelBarrelContent;
+    public protected(set) string $modelBarrelContent = '';
+
+    public protected(set) string $globalsContent = '';
 
     public function run(): void
     {
@@ -37,6 +42,8 @@ class Runner
         $this->generateGlobals();
 
         // TODO: create JS filelist of classes for npm process to watch changes on, and run publish command on change
+        // TODO: create JSON file
+        // TODO: description on model columns, relations, and mutators
     }
 
     protected function generateEnums(): void
@@ -95,6 +102,10 @@ class Runner
 
     protected function generateGlobals(): void
     {
-        //
+        /** @var GlobalsWriter $globalsWriter */
+        $globalsWriter = resolve(config()->string('ts-publish.globals_writer_class'));
+        $this->globalsWriter = $globalsWriter;
+
+        $this->globalsContent = $globalsWriter->write($this);
     }
 }
