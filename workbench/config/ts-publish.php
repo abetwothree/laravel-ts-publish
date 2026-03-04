@@ -8,9 +8,10 @@ use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\EnumWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\ModelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\JsonWriter;
+use AbeTwoThree\LaravelTsPublish\Writers\ModelWriter;
+use AbeTwoThree\LaravelTsPublish\Writers\WatcherJsonWriter;
 
 return [
     /*
@@ -91,6 +92,8 @@ return [
 
     'json_writer_class' => JsonWriter::class,
 
+    'watcher_json_writer_class' => WatcherJsonWriter::class,
+
     /*
     |--------------------------------------------------------------------------
     | File Template Blade Files
@@ -133,9 +136,9 @@ return [
     |
     | Specifies whether to output the TypeScript definitions to files.
     */
-    'output_to_files' => env('TS_PUBLISH_OUTPUT_TO_FILES', true),
+    'output_to_files' => true,
 
-    'output_directory' => env('TS_PUBLISH_OUTPUT_DIRECTORY', resource_path('/js/types/')),
+    'output_directory' => resource_path('/js/types/'),
 
     /*
     |--------------------------------------------------------------------------
@@ -144,15 +147,15 @@ return [
     |
     | Specifies whether to create a "global.d.ts" file with a global namespace containing all generated types.
     */
-    'output_globals_file' => env('TS_PUBLISH_GLOBAL', false),
+    'output_globals_file' => false,
 
-    'global_directory' => env('TS_PUBLISH_GLOBAL_DIRECTORY', resource_path('/js/types/')),
+    'global_directory' => resource_path('/js/types/'),
 
-    'global_filename' => env('TS_PUBLISH_GLOBAL_FILENAME', 'laravel-ts-global.d.ts'),
+    'global_filename' => 'laravel-ts-global.d.ts',
 
-    'models_namespace' => env('TS_PUBLISH_MODELS_NAMESPACE', 'models'),
+    'models_namespace' => 'models',
 
-    'enums_namespace' => env('TS_PUBLISH_ENUMS_NAMESPACE', 'enums'),
+    'enums_namespace' => 'enums',
 
     /*
     |--------------------------------------------------------------------------
@@ -162,11 +165,25 @@ return [
     | Specifies whether to output the generated TypeScript definitions in a JSON file.
     | This can be in addition to or instead of outputting to .d.ts files, depending on the "output_to_files" option.
     */
-    'output_json_file' => env('TS_PUBLISH_JSON', false),
+    'output_json_file' => false,
 
-    'json_filename' => env('TS_PUBLISH_JSON_FILENAME', 'laravel-ts-definitions.json'),
+    'json_filename' => 'laravel-ts-definitions.json',
 
-    'json_output_directory' => env('TS_PUBLISH_JSON_OUTPUT_DIRECTORY', resource_path('/js/types/')),
+    'json_output_directory' => resource_path('/js/types/'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Output files collected list in a JSON file
+    |--------------------------------------------------------------------------
+    |
+    | Specifies whether to create a JSON file containing the list of collected models and enums file paths.
+    | This is useful for npm processes to watch for changes in the collected files and trigger the publish command on change.
+    */
+    'output_collected_files_json' => false,
+
+    'collected_files_json_filename' => 'laravel-ts-collected-files.json',
+
+    'collected_files_json_output_directory' => resource_path('/js/types/'),
 
     /*
     |--------------------------------------------------------------------------

@@ -23,6 +23,7 @@ use UnitEnum;
  * @phpstan-type CaseTypesList = list<string|int>
  * @phpstan-type EnumData = array{
  *     enumName: string,
+ *     filePath: string,
  *     cases: CasesList,
  *     methods: MethodsList,
  *     staticMethods: StaticMethodsList,
@@ -36,6 +37,8 @@ use UnitEnum;
 class EnumTransformer extends CoreTransformer
 {
     public protected(set) string $enumName;
+
+    public protected(set) string $filePath;
 
     public protected(set) bool $backed;
 
@@ -81,6 +84,7 @@ class EnumTransformer extends CoreTransformer
     {
         return [
             'enumName' => $this->enumName,
+            'filePath' => $this->filePath,
             'cases' => $this->cases,
             'methods' => $this->methods,
             'staticMethods' => $this->staticMethods,
@@ -101,6 +105,7 @@ class EnumTransformer extends CoreTransformer
         $this->reflectionEnum = new ReflectionEnum($this->findable);
         $this->backed = $this->reflectionEnum->isBacked();
         $this->enumName = $this->reflectionEnum->getShortName();
+        $this->filePath = $this->resolveRelativePath((string) $this->reflectionEnum->getFileName());
 
         return $this;
     }

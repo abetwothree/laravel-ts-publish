@@ -15,7 +15,7 @@ abstract class CoreGenerator
      * @param  class-string<TGeneratable>  $findable
      */
     public function __construct(
-        protected string $findable,
+        public protected(set) string $findable,
     ) {
         $this->generate();
     }

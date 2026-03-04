@@ -15,7 +15,7 @@ class JsonWriter
 
     public function write(Runner $runner): string
     {
-        if(!config()->boolean('ts-publish.output_json_file')){
+        if (! config()->boolean('ts-publish.output_json_file')) {
             return '';
         }
 

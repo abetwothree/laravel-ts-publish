@@ -43,6 +43,7 @@ use ReflectionClass;
  * @phpstan-type TsTypeOverrides = array<string, string>
  * @phpstan-type ModelData = array{
  *    modelName: string,
+ *    filePath: string,
  *    columns: ColumnsList,
  *    enumImports: EnumImportList,
  *    modelImports: ModelImportList,
@@ -55,6 +56,8 @@ use ReflectionClass;
 class ModelTransformer extends CoreTransformer
 {
     public protected(set) string $modelName;
+
+    public protected(set) string $filePath;
 
     public protected(set) Model $modelInstance;
 
@@ -112,6 +115,7 @@ class ModelTransformer extends CoreTransformer
 
         return [
             'modelName' => $this->modelName,
+            'filePath' => $this->filePath,
             'columns' => $this->columns,
             'mutators' => $this->mutators,
             'relations' => $this->relations,
@@ -135,6 +139,7 @@ class ModelTransformer extends CoreTransformer
         $this->modelInspect = resolve(ModelInspector::class)->inspect($this->findable);
         $this->reflectionModel = new ReflectionClass($this->findable);
         $this->modelName = $this->reflectionModel->getShortName();
+        $this->filePath = $this->resolveRelativePath((string) $this->reflectionModel->getFileName());
 
         return $this;
     }

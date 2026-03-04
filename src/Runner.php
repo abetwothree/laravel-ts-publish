@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use Illuminate\Support\Collection;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\JsonWriter;
+use AbeTwoThree\LaravelTsPublish\Writers\WatcherJsonWriter;
 
 class Runner
 {
@@ -33,6 +34,8 @@ class Runner
 
     public protected(set) string $jsonContent = '';
 
+    public protected(set) string $watcherJsonContent = '';
+
     public function run(): void
     {
         /** @var BarrelWriter $barrelWriter */
@@ -44,8 +47,7 @@ class Runner
 
         $this->generateGlobals();
         $this->generateJson();
-
-        // TODO: create JS filelist of classes for npm process to watch changes on, and run publish command on change
+        $this->generateWatcherJson();
     }
 
     protected function generateEnums(): void
@@ -117,5 +119,13 @@ class Runner
         $jsonWriter = resolve(config()->string('ts-publish.json_writer_class'));
 
         $this->jsonContent = $jsonWriter->write($this);
+    }
+
+    protected function generateWatcherJson(): void
+    {
+        /** @var WatcherJsonWriter $jsonWriter */
+        $jsonWriter = resolve(config()->string('ts-publish.watcher_json_writer_class'));
+
+        $this->watcherJsonContent = $jsonWriter->write($this);
     }
 }

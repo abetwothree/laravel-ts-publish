@@ -1229,6 +1229,84 @@
                 "name": "notifiable_exists",
                 "type": "boolean"
             }
+        ],
+        "Invoice": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "user_id",
+                "type": "number"
+            },
+            {
+                "name": "number",
+                "type": "string"
+            },
+            {
+                "name": "status",
+                "type": "InvoiceStatusType"
+            },
+            {
+                "name": "subtotal",
+                "type": "number"
+            },
+            {
+                "name": "tax",
+                "type": "number"
+            },
+            {
+                "name": "total",
+                "type": "number"
+            },
+            {
+                "name": "due_at",
+                "type": "string | null"
+            },
+            {
+                "name": "issued_at",
+                "type": "string | null"
+            },
+            {
+                "name": "paid_at",
+                "type": "string | null"
+            },
+            {
+                "name": "notes",
+                "type": "string | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "user",
+                "type": "User"
+            },
+            {
+                "name": "payments",
+                "type": "Payment[]"
+            },
+            {
+                "name": "user_count",
+                "type": "number"
+            },
+            {
+                "name": "payments_count",
+                "type": "number"
+            },
+            {
+                "name": "user_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "payments_exists",
+                "type": "boolean"
+            }
         ]
     },
     "enums": {
@@ -2002,6 +2080,96 @@
                     ]
                 }
             }
+        },
+        "InvoiceStatus": {
+            "cases": [
+                {
+                    "name": "Draft",
+                    "value": "draft",
+                    "description": ""
+                },
+                {
+                    "name": "Sent",
+                    "value": "sent",
+                    "description": ""
+                },
+                {
+                    "name": "Paid",
+                    "value": "paid",
+                    "description": ""
+                },
+                {
+                    "name": "Overdue",
+                    "value": "overdue",
+                    "description": ""
+                },
+                {
+                    "name": "Cancelled",
+                    "value": "cancelled",
+                    "description": ""
+                },
+                {
+                    "name": "Void",
+                    "value": "void",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'Draft'",
+                "'Sent'",
+                "'Paid'",
+                "'Overdue'",
+                "'Cancelled'",
+                "'Void'"
+            ],
+            "caseTypes": [
+                "'draft'",
+                "'sent'",
+                "'paid'",
+                "'overdue'",
+                "'cancelled'",
+                "'void'"
+            ],
+            "methods": [],
+            "staticMethods": []
+        },
+        "PaymentStatus": {
+            "cases": [
+                {
+                    "name": "Pending",
+                    "value": "pending",
+                    "description": ""
+                },
+                {
+                    "name": "Completed",
+                    "value": "completed",
+                    "description": ""
+                },
+                {
+                    "name": "Failed",
+                    "value": "failed",
+                    "description": ""
+                },
+                {
+                    "name": "Refunded",
+                    "value": "refunded",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'Pending'",
+                "'Completed'",
+                "'Failed'",
+                "'Refunded'"
+            ],
+            "caseTypes": [
+                "'pending'",
+                "'completed'",
+                "'failed'",
+                "'refunded'"
+            ],
+            "methods": [],
+            "staticMethods": []
         }
     }
 }

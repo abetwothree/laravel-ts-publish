@@ -3,6 +3,7 @@ export * from './category';
 export * from './comment';
 export * from './database-notification';
 export * from './image';
+export * from './invoice';
 export * from './order';
 export * from './order-item';
 export * from './post';

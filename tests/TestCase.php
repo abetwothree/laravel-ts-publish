@@ -9,6 +9,9 @@ use Illuminate\Notifications\DatabaseNotification;
 use Orchestra\Testbench\Attributes\WithEnv;
 use Orchestra\Testbench\Concerns\WithWorkbench;
 use Orchestra\Testbench\TestCase as Orchestra;
+use Workbench\Accounting\Enums\InvoiceStatus;
+use Workbench\Accounting\Enums\PaymentStatus;
+use Workbench\Accounting\Models\Invoice;
 
 use function Orchestra\Testbench\workbench_path;
 
@@ -45,8 +48,14 @@ class TestCase extends Orchestra
         config()->set('app.key', 'base64:yTtQNlEOB1IqYydLG9Z5pKRSxhZffdOxT1iuZIJi+eM=');
         config()->set('ts-publish.output_globals_file', true);
         config()->set('ts-publish.output_json_file', true);
+        config()->set('ts-publish.output_collected_files_json', true);
         config()->set('ts-publish.additional_model_directories', [
             DatabaseNotification::class,
+            Invoice::class,
+        ]);
+        config()->set('ts-publish.additional_enum_directories', [
+            InvoiceStatus::class,
+            PaymentStatus::class,
         ]);
     }
 
