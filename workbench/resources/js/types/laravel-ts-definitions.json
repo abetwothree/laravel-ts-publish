@@ -219,7 +219,7 @@
             },
             {
                 "name": "metadata",
-                "type": "Record<string, unknown>"
+                "type": "ProductMetadata | ProductJsonMetaData | null"
             },
             {
                 "name": "created_at",

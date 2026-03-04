@@ -34,7 +34,10 @@ class Product extends Model
 
     #[TsCasts([
         'dimensions' => '{ length: number; width: number; height: number; unit: "cm" | "in" }',
-        'metadata' => 'Record<string, unknown>',
+        'metadata' => [
+            'type' => 'ProductMetadata | ProductJsonMetaData | null',
+            'import' => '@js/types/product',
+        ],
     ])]
     protected function casts(): array
     {

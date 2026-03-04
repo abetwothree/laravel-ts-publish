@@ -286,6 +286,42 @@ class LaravelTsPublish
         return 'null';
     }
 
+    /** @var list<string> */
+    public const array TS_PRIMITIVES = [
+        'string', 'number', 'boolean', 'bigint', 'symbol',
+        'null', 'undefined', 'object', 'unknown', 'any', 'never', 'void',
+    ];
+
+    /**
+     * Extract importable type identifiers from a TypeScript type string,
+     * filtering out primitives, inline types, and union syntax.
+     *
+     * @return list<string>
+     */
+    public function extractImportableTypes(string $typeString): array
+    {
+        $parts = explode('|', $typeString);
+        $importable = [];
+
+        foreach ($parts as $part) {
+            $part = trim($part);
+
+            if ($part === '' || in_array($part, self::TS_PRIMITIVES, true)) {
+                continue;
+            }
+
+            // Skip inline object types, tuple types, and generic types
+            if (str_starts_with($part, '{') || str_starts_with($part, '[') || str_contains($part, '<')) {
+                continue;
+            }
+
+            // Strip array shorthand (e.g. MyType[]) to get the base type name
+            $importable[] = str_ends_with($part, '[]') ? substr($part, 0, -2) : $part;
+        }
+
+        return array_values(array_unique($importable));
+    }
+
     /** @return TypeScriptTypeInfo */
     public function emptyTypeScriptInfo(): array
     {

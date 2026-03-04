@@ -41,12 +41,14 @@ use ReflectionClass;
  * @phpstan-type ModelImportList = list<string>
  * @phpstan-type EnumImportList = list<string>
  * @phpstan-type TsTypeOverrides = array<string, string>
+ * @phpstan-type CustomImportMap = array<string, list<string>>
  * @phpstan-type ModelData = array{
  *    modelName: string,
  *    filePath: string,
  *    columns: ColumnsList,
  *    enumImports: EnumImportList,
  *    modelImports: ModelImportList,
+ *    customImports: CustomImportMap,
  *    mutators: MutatorsList,
  *    relations: RelationsList,
  * }
@@ -88,6 +90,9 @@ class ModelTransformer extends CoreTransformer
     /** @var TsTypeOverrides */
     public protected(set) array $tsTypeOverrides = [];
 
+    /** @var CustomImportMap */
+    public protected(set) array $customImports = [];
+
     #[Override]
     public function transform(): self
     {
@@ -113,6 +118,12 @@ class ModelTransformer extends CoreTransformer
             fn (string $import) => $import !== $this->modelName,
         ));
 
+        // Deduplicate custom import types per path
+        $customImports = array_map(
+            fn (array $types) => array_values(array_unique($types)),
+            $this->customImports,
+        );
+
         return [
             'modelName' => $this->modelName,
             'filePath' => $this->filePath,
@@ -121,6 +132,7 @@ class ModelTransformer extends CoreTransformer
             'relations' => $this->relations,
             'modelImports' => $modelImports,
             'enumImports' => array_values(array_unique($this->enumImports)),
+            'customImports' => $customImports,
         ];
     }
 
@@ -173,7 +185,20 @@ class ModelTransformer extends CoreTransformer
         }
 
         // Method wins over property wins over class, matching Laravel's own cast resolution
-        $this->tsTypeOverrides = array_merge($classOverrides, $propertyOverrides, $methodOverrides);
+        $merged = array_merge($classOverrides, $propertyOverrides, $methodOverrides);
+
+        foreach ($merged as $column => $value) {
+            if (is_array($value)) {
+                /** @var array{type: string, import: string} $value */
+                $this->tsTypeOverrides[$column] = $value['type'];
+
+                foreach (LaravelTsPublish::extractImportableTypes($value['type']) as $importName) {
+                    $this->customImports[$value['import']][] = $importName;
+                }
+            } else {
+                $this->tsTypeOverrides[$column] = $value;
+            }
+        }
 
         return $this;
     }

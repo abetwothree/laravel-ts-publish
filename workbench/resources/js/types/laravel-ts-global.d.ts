@@ -76,7 +76,7 @@ declare global {
             is_active: boolean;
             is_featured: boolean;
             published_at: string | null;
-            metadata: Record<string, unknown>;
+            metadata: ProductMetadata | ProductJsonMetaData | null;
             created_at: string | null;
             updated_at: string | null;
             deleted_at: string | null;

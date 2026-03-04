@@ -5,6 +5,9 @@ import { {{ implode(', ', $enumImports) }} } from '../enums';
 @if(count($modelImports) > 0)
 import { {{ implode(', ', $modelImports) }} } from './';
 @endif
+@foreach ($customImports as $path => $types)
+import { {{ implode(', ', $types) }} } from '{{ $path }}';
+@endforeach
 
 @if (count($columns) > 0)
 export interface {{ $modelName }}
