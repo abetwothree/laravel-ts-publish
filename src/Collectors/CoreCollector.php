@@ -68,6 +68,7 @@ abstract class CoreCollector
 
                 return $collection->filter(fn (string $class) => ! in_array($class, $resolved));
             })
+            ->unique()
             ->values();
     }
 
