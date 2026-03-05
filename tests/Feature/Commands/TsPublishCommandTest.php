@@ -5,7 +5,7 @@ test('ts:publish command runs successfully', function () {
 
     $this->artisan('ts:publish', ['--preview' => 'true'])
         ->assertSuccessful()
-        ->expectsPromptsIntro('ts:publish')
+        ->expectsOutputToContain('ts:publish')
         ->expectsOutputToContain('All done');
 });
 
@@ -14,7 +14,7 @@ test('ts:publish preview shows enum content', function () {
 
     $this->artisan('ts:publish', ['--preview' => 'true'])
         ->assertSuccessful()
-        ->expectsPromptsInfo('Previewing generated TypeScript declarations')
+        ->expectsOutputToContain('Previewing generated TypeScript declarations')
         ->expectsOutputToContain('Enums:')
         ->expectsOutputToContain('export const Status');
 });
@@ -44,7 +44,7 @@ test('ts:publish writes files to disk', function () {
 
     $this->artisan('ts:publish', ['--preview' => 'false'])
         ->assertSuccessful()
-        ->expectsPromptsInfo("Published to: {$outputDir}");
+        ->expectsOutputToContain("Published to: {$outputDir}");
 
     expect(is_dir("$outputDir/enums"))->toBeTrue()
         ->and(is_dir("$outputDir/models"))->toBeTrue()
