@@ -69,11 +69,4 @@ class TestCase extends Orchestra
             Status::class,
         ]);
     }
-
-    protected function defineDatabaseMigrations()
-    {
-        $this->loadMigrationsFrom(
-            workbench_path('database/migrations')
-        );
-    }
 }
