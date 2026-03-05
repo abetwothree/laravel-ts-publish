@@ -161,6 +161,39 @@ export const UserStatus = {
 } as const;
 ```
 
+#### Enum Types
+
+As shown above, the enum generated in TypeScript is a JavaScript object with the `as const` assertion to prevent modification.
+
+However, there are times when you need to validate that a value is a valid enum value or a valid enum case key. For this purpose, this package also generates TypeScript types for the enum values and case keys if the enum is a PHP backed enum.
+
+Example:
+
+```TypeScript
+export const Status = {
+    Active: 'active',
+    Inactive: 'inactive',
+} as const;
+
+export type StatusType = 'active' | 'inactive';
+
+export type StatusKind = 'Active' | 'Inactive'; // Only published if the enum is a backed enum
+```
+
+With those types, you can now validate that a value is a valid enum value or case key:
+
+```TypeScript
+import { StatusType, StatusKind } from '@js/types/enums';
+
+function setStatus(status: StatusType) {
+    // status will only accept 'active' or 'inactive'
+}
+
+function setStatusByKey(status: StatusKind) {
+    // status will only accept 'Active' or 'Inactive'
+}
+```
+
 #### Enum Metadata
 
 By default, this package will publish three metadata properties on the enum in TypeScript for the cases, methods, and static methods that are published. These properties are `_cases`, `_methods`, and `_static`.
@@ -193,13 +226,13 @@ Example using the `@tolki/enum` package to simplify the enum structure and make 
 import { toEnum } from '@tolki/enum';
 import { Status } from '@js/types/enums'; // Using example status from the previous example
 
-const User = {
+const user = {
     id: 1,
     name: 'John Doe',
     status: 'active',
 }
 
-const userStatus = toEnum(Status, User.status);
+const userStatus = toEnum(Status, user.status);
 
 // userStatus will now have the following structure:
 {
