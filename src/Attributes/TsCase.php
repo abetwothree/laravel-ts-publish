@@ -18,4 +18,3 @@ class TsCase
         public string $description = '',
     ) {}
 }
-
