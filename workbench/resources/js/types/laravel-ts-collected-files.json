@@ -11,6 +11,7 @@
     "app\/Enums\/Currency.php",
     "modules\/Accounting\/Enums\/InvoiceStatus.php",
     "modules\/Accounting\/Enums\/PaymentStatus.php",
+    "modules\/Shipping\/Enums\/Status.php",
     "app\/Models\/Team.php",
     "app\/Models\/Category.php",
     "app\/Models\/Product.php",
@@ -24,5 +25,6 @@
     "app\/Models\/Profile.php",
     "app\/Models\/Image.php",
     "vendor\/laravel\/framework\/src\/Illuminate\/Notifications\/DatabaseNotification.php",
-    "modules\/Accounting\/Models\/Invoice.php"
+    "modules\/Accounting\/Models\/Invoice.php",
+    "modules\/Shipping\/Models\/Shipment.php"
 ]

@@ -1,6 +1,6 @@
 export const Visibility = {
     _cases: ['Public', 'Private', 'Protected', 'Internal', 'Draft'],
-    _methods: ['isPublic', 'description'],
+    _methods: ['is_public', 'description'],
     _static: [],
     Public: 'Public',
     Private: 'Private',
@@ -8,7 +8,7 @@ export const Visibility = {
     Internal: 'Internal',
     Draft: 'Draft',
     /** Whether the item is publicly accessible */
-    isPublic: {
+    is_public: {
         Public: true,
         Private: false,
         Protected: false,

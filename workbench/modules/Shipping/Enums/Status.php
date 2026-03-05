@@ -2,7 +2,10 @@
 
 namespace Workbench\Shipping\Enums;
 
-enum ShipmentStatus: string
+use AbeTwoThree\LaravelTsPublish\Attributes\TsEnum;
+
+#[TsEnum('ShipmentStatus')]
+enum Status: string
 {
     case Pending = 'pending';
     case LabelCreated = 'label_created';

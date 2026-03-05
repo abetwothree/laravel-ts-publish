@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[TsCasts([
     'latitude' => 'number | null',
     'longitude' => 'number | null',
+    'full_address' => 'string | null',
 ])]
 class Address extends Model
 {

@@ -3,15 +3,19 @@
 namespace AbeTwoThree\LaravelTsPublish\Tests;
 
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublishServiceProvider;
+use AbeTwoThree\LaravelTsPublish\TypeScriptMap;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Notifications\DatabaseNotification;
 use Orchestra\Testbench\Attributes\WithEnv;
 use Orchestra\Testbench\Concerns\WithWorkbench;
 use Orchestra\Testbench\TestCase as Orchestra;
+use ReflectionClass;
 use Workbench\Accounting\Enums\InvoiceStatus;
 use Workbench\Accounting\Enums\PaymentStatus;
 use Workbench\Accounting\Models\Invoice;
+use Workbench\Shipping\Enums\Status;
+use Workbench\Shipping\Models\Shipment;
 
 use function Orchestra\Testbench\workbench_path;
 
@@ -24,6 +28,11 @@ class TestCase extends Orchestra
     protected function setUp(): void
     {
         parent::setUp();
+
+        // Reset the TypeScriptMap static cache so custom_ts_mappings from
+        // one test don't leak into subsequent tests across files.
+        $prop = (new ReflectionClass(TypeScriptMap::class))->getProperty('map');
+        $prop->setValue(null, null);
 
         Factory::guessFactoryNamesUsing(
             fn (string $modelName) => 'AbeTwoThree\\LaravelTsPublish\\Database\\Factories\\'.class_basename($modelName).'Factory'
@@ -52,10 +61,12 @@ class TestCase extends Orchestra
         config()->set('ts-publish.additional_model_directories', [
             DatabaseNotification::class,
             Invoice::class,
+            Shipment::class,
         ]);
         config()->set('ts-publish.additional_enum_directories', [
             InvoiceStatus::class,
             PaymentStatus::class,
+            Status::class,
         ]);
     }
 

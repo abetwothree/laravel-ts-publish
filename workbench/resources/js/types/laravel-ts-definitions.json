@@ -629,7 +629,7 @@
             },
             {
                 "name": "full_address",
-                "type": "string"
+                "type": "string | null"
             },
             {
                 "name": "has_coordinates",
@@ -1086,6 +1086,14 @@
                 "type": "string"
             },
             {
+                "name": "normalized_phone",
+                "type": "unknown"
+            },
+            {
+                "name": "formatted_bio",
+                "type": "string"
+            },
+            {
                 "name": "user",
                 "type": "User"
             },
@@ -1307,6 +1315,76 @@
                 "name": "payments_exists",
                 "type": "boolean"
             }
+        ],
+        "Shipment": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "order_id",
+                "type": "number"
+            },
+            {
+                "name": "tracking_number",
+                "type": "string | null"
+            },
+            {
+                "name": "carrier",
+                "type": "CarrierType"
+            },
+            {
+                "name": "status",
+                "type": "ShipmentStatusType"
+            },
+            {
+                "name": "weight_grams",
+                "type": "number | null"
+            },
+            {
+                "name": "estimated_delivery_at",
+                "type": "string | null"
+            },
+            {
+                "name": "shipped_at",
+                "type": "string | null"
+            },
+            {
+                "name": "delivered_at",
+                "type": "string | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "order",
+                "type": "Order"
+            },
+            {
+                "name": "tracking_events",
+                "type": "TrackingEvent[]"
+            },
+            {
+                "name": "order_count",
+                "type": "number"
+            },
+            {
+                "name": "tracking_events_count",
+                "type": "number"
+            },
+            {
+                "name": "order_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "tracking_events_exists",
+                "type": "boolean"
+            }
         ]
     },
     "enums": {
@@ -1456,7 +1534,7 @@
                     }
                 },
                 "badgeColor": {
-                    "name": "badgeColor",
+                    "name": "badge_color",
                     "description": "Tailwind badge color class",
                     "returns": {
                         "Low": "bg-gray-100 text-gray-800",
@@ -1474,9 +1552,25 @@
                         "High": "arrow-up",
                         "Critical": "exclamation-triangle"
                     }
+                },
+                "isAboveThreshold": {
+                    "name": "is_above_threshold",
+                    "description": "Compare with threshold",
+                    "returns": {
+                        "Low": null,
+                        "Medium": null,
+                        "High": null,
+                        "Critical": null
+                    }
                 }
             },
-            "staticMethods": []
+            "staticMethods": {
+                "filterByMinimum": {
+                    "name": "filter_by_minimum",
+                    "description": "Filter by minimum",
+                    "return": null
+                }
+            }
         },
         "Visibility": {
             "cases": [
@@ -1516,7 +1610,7 @@
             ],
             "methods": {
                 "isPublic": {
-                    "name": "isPublic",
+                    "name": "is_public",
                     "description": "Whether the item is publicly accessible",
                     "returns": {
                         "Public": true,
@@ -1625,7 +1719,7 @@
                     }
                 },
                 "maxSizeMb": {
-                    "name": "maxSizeMb",
+                    "name": "max_size_mb",
                     "description": "Maximum file size in MB",
                     "returns": {
                         "Image": 10,
@@ -1649,7 +1743,7 @@
             },
             "staticMethods": {
                 "mimePrefixes": {
-                    "name": "mimePrefixes",
+                    "name": "mime_prefixes",
                     "description": "Get the MIME type prefixes",
                     "return": {
                         "image": "image\/",
@@ -1745,7 +1839,7 @@
                     }
                 },
                 "isCancellable": {
-                    "name": "isCancellable",
+                    "name": "is_cancellable",
                     "description": "Whether the order can still be cancelled",
                     "returns": {
                         "Pending": true,
@@ -1760,7 +1854,7 @@
             },
             "staticMethods": {
                 "completedStatuses": {
-                    "name": "completedStatuses",
+                    "name": "completed_statuses",
                     "description": "Get statuses that represent a completed order",
                     "return": [
                         3,
@@ -1769,7 +1863,7 @@
                     ]
                 },
                 "activeStatuses": {
-                    "name": "activeStatuses",
+                    "name": "active_statuses",
                     "description": "Get statuses that represent an active order",
                     "return": [
                         0,
@@ -1848,7 +1942,7 @@
             },
             "staticMethods": {
                 "valueLabelPair": {
-                    "name": "valueLabelPair",
+                    "name": "value_label_pair",
                     "description": "Get the key-value pair options for the status",
                     "return": [
                         {
@@ -2167,6 +2261,65 @@
                 "'completed'",
                 "'failed'",
                 "'refunded'"
+            ],
+            "methods": [],
+            "staticMethods": []
+        },
+        "ShipmentStatus": {
+            "cases": [
+                {
+                    "name": "Pending",
+                    "value": "pending",
+                    "description": ""
+                },
+                {
+                    "name": "LabelCreated",
+                    "value": "label_created",
+                    "description": ""
+                },
+                {
+                    "name": "PickedUp",
+                    "value": "picked_up",
+                    "description": ""
+                },
+                {
+                    "name": "InTransit",
+                    "value": "in_transit",
+                    "description": ""
+                },
+                {
+                    "name": "OutForDelivery",
+                    "value": "out_for_delivery",
+                    "description": ""
+                },
+                {
+                    "name": "Delivered",
+                    "value": "delivered",
+                    "description": ""
+                },
+                {
+                    "name": "Returned",
+                    "value": "returned",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'Pending'",
+                "'LabelCreated'",
+                "'PickedUp'",
+                "'InTransit'",
+                "'OutForDelivery'",
+                "'Delivered'",
+                "'Returned'"
+            ],
+            "caseTypes": [
+                "'pending'",
+                "'label_created'",
+                "'picked_up'",
+                "'in_transit'",
+                "'out_for_delivery'",
+                "'delivered'",
+                "'returned'"
             ],
             "methods": [],
             "staticMethods": []

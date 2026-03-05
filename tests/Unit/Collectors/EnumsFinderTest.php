@@ -49,11 +49,12 @@ test('enums collector excludes classes from a directory', function () {
 
     $enums = resolve(EnumsCollector::class)->collect();
 
-    // InvoiceStatus and PaymentStatus remain because they are in additional_enum_directories
+    // InvoiceStatus, PaymentStatus, and Shipping\Status remain because they are in additional_enum_directories
     expect($enums)
-        ->toHaveCount(2)
+        ->toHaveCount(3)
         ->toContain('Workbench\Accounting\Enums\InvoiceStatus')
-        ->toContain('Workbench\Accounting\Enums\PaymentStatus');
+        ->toContain('Workbench\Accounting\Enums\PaymentStatus')
+        ->toContain('Workbench\Shipping\Enums\Status');
 });
 
 test('enums collector excludes a mix of class names and directories', function () {

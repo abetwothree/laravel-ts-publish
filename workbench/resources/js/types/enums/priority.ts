@@ -1,7 +1,7 @@
 export const Priority = {
     _cases: ['Low', 'Medium', 'High', 'Critical'],
-    _methods: ['label', 'badgeColor', 'icon'],
-    _static: [],
+    _methods: ['label', 'badge_color', 'icon', 'is_above_threshold'],
+    _static: ['filter_by_minimum'],
     Low: 0,
     Medium: 1,
     High: 2,
@@ -14,7 +14,7 @@ export const Priority = {
         Critical: 'Critical Priority',
     },
     /** Tailwind badge color class */
-    badgeColor: {
+    badge_color: {
         Low: 'bg-gray-100 text-gray-800',
         Medium: 'bg-blue-100 text-blue-800',
         High: 'bg-orange-100 text-orange-800',
@@ -27,6 +27,15 @@ export const Priority = {
         High: 'arrow-up',
         Critical: 'exclamation-triangle',
     },
+    /** Compare with threshold */
+    is_above_threshold: {
+        Low: null,
+        Medium: null,
+        High: null,
+        Critical: null,
+    },
+    /** Filter by minimum */
+    filter_by_minimum: null,
 } as const;
 
 export type PriorityType = 0 | 1 | 2 | 3;

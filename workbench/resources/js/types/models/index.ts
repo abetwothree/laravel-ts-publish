@@ -9,6 +9,7 @@ export * from './order-item';
 export * from './post';
 export * from './product';
 export * from './profile';
+export * from './shipment';
 export * from './tag';
 export * from './team';
 export * from './user';

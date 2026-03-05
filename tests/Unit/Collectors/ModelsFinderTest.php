@@ -12,7 +12,7 @@ test('models collector works correctly', function () {
 
     expect($models)
         ->toBeInstanceOf(Collection::class)
-        ->toHaveCount(14);
+        ->toHaveCount(15);
 });
 
 test('models collector includes only classes from a directory', function () {
@@ -50,11 +50,12 @@ test('models collector excludes classes from a directory', function () {
 
     $models = resolve(ModelsCollector::class)->collect();
 
-    // DatabaseNotification and Invoice should remain (added via additional_model_directories)
+    // DatabaseNotification, Invoice, and Shipment should remain (added via additional_model_directories)
     expect($models)
-        ->toHaveCount(2)
+        ->toHaveCount(3)
         ->toContain('Illuminate\Notifications\DatabaseNotification')
-        ->toContain('Workbench\Accounting\Models\Invoice');
+        ->toContain('Workbench\Accounting\Models\Invoice')
+        ->toContain('Workbench\Shipping\Models\Shipment');
 });
 
 test('models collector excludes a mix of class names and directories', function () {

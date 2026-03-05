@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish;
 
+use AbeTwoThree\LaravelTsPublish\Attributes\TsEnum;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 use BackedEnum;
 use Closure;
@@ -96,7 +97,12 @@ class LaravelTsPublish
         //    - enums tracks the const name (Status) for informational/display purposes
         //    - enumTypes tracks the type alias name (StatusType) to include in import statements
         if (class_exists($phpType) && (new ReflectionClass($phpType))->isEnum()) {
-            $name = class_basename($phpType);
+            $ref = new ReflectionClass($phpType);
+            $tsEnumAttrs = $ref->getAttributes(TsEnum::class);
+            $name = $tsEnumAttrs
+                ? $tsEnumAttrs[0]->newInstance()->name
+                : class_basename($phpType);
+
             $result['type'] = $name.'Type';
             $result['enums'] = [$name];
             $result['enumTypes'] = [$name.'Type'];

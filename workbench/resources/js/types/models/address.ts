@@ -20,7 +20,7 @@ export interface Address
 
 export interface AddressMutators
 {
-    full_address: string;
+    full_address: string | null;
     has_coordinates: boolean;
 }
 

@@ -3,6 +3,7 @@
 namespace Workbench\App\Enums;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnumMethod;
+use AbeTwoThree\LaravelTsPublish\Attributes\TsEnumStaticMethod;
 
 /**
  * Int-backed enum with instance methods that return different types per case.
@@ -45,6 +46,20 @@ enum Priority: int
             self::High => 'arrow-up',
             self::Critical => 'exclamation-triangle',
         };
+    }
+
+    /** Method that requires a parameter — invoke will throw, exercising the catch block */
+    #[TsEnumMethod(description: 'Compare with threshold')]
+    public function isAboveThreshold(int $threshold): bool
+    {
+        return $this->value > $threshold;
+    }
+
+    /** Static method that requires a parameter — invoke will throw, exercising the catch block */
+    #[TsEnumStaticMethod(description: 'Filter by minimum')]
+    public static function filterByMinimum(int $minimum): array
+    {
+        return array_filter(self::cases(), fn (self $case) => $case->value >= $minimum);
     }
 
     /** Should NOT be published — no TsEnumMethod attribute */

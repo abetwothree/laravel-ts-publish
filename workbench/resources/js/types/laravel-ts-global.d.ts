@@ -193,7 +193,7 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
             // Mutators
-            full_address: string;
+            full_address: string | null;
             has_coordinates: boolean;
             // Relations
             user: User;
@@ -329,6 +329,8 @@ declare global {
             // Mutators
             age: number | null;
             display_summary: string;
+            normalized_phone: unknown;
+            formatted_bio: string;
             // Relations
             user: User;
             user_count: number;
@@ -397,6 +399,27 @@ declare global {
             payments: Payment[];
             payments_count: number;
             payments_exists: boolean;
+        }
+        export interface Shipment {
+            // Columns
+            id: number;
+            order_id: number;
+            tracking_number: string | null;
+            carrier: CarrierType;
+            status: ShipmentStatusType;
+            weight_grams: number | null;
+            estimated_delivery_at: string | null;
+            shipped_at: string | null;
+            delivered_at: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            order: Order;
+            order_count: number;
+            order_exists: boolean;
+            tracking_events: TrackingEvent[];
+            tracking_events_count: number;
+            tracking_events_exists: boolean;
         }
     }
     // Enums
@@ -539,5 +562,18 @@ declare global {
         }
         export type PaymentStatusType = 'pending' | 'completed' | 'failed' | 'refunded';
         export type PaymentStatusKind = 'Pending' | 'Completed' | 'Failed' | 'Refunded';
+
+        export interface ShipmentStatus
+        {
+            Pending: 'pending',
+            LabelCreated: 'label_created',
+            PickedUp: 'picked_up',
+            InTransit: 'in_transit',
+            OutForDelivery: 'out_for_delivery',
+            Delivered: 'delivered',
+            Returned: 'returned',
+        }
+        export type ShipmentStatusType = 'pending' | 'label_created' | 'picked_up' | 'in_transit' | 'out_for_delivery' | 'delivered' | 'returned';
+        export type ShipmentStatusKind = 'Pending' | 'LabelCreated' | 'PickedUp' | 'InTransit' | 'OutForDelivery' | 'Delivered' | 'Returned';
     }
 }

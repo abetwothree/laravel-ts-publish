@@ -8,5 +8,6 @@ export * from './payment-method';
 export * from './payment-status';
 export * from './priority';
 export * from './role';
+export * from './shipment-status';
 export * from './status';
 export * from './visibility';

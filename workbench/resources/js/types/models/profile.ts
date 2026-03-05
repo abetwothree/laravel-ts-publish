@@ -21,6 +21,8 @@ export interface ProfileMutators
 {
     age: number | null;
     display_summary: string;
+    normalized_phone: unknown;
+    formatted_bio: string;
 }
 
 export interface ProfileRelations

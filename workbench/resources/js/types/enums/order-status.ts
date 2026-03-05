@@ -1,7 +1,7 @@
 export const OrderStatus = {
     _cases: ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled', 'Refunded', 'OnHold'],
-    _methods: ['label', 'color', 'isCancellable'],
-    _static: ['completedStatuses', 'activeStatuses'],
+    _methods: ['label', 'color', 'is_cancellable'],
+    _static: ['completed_statuses', 'active_statuses'],
     /** Order has been placed but not yet processed */
     Pending: 0,
     /** Order is being prepared */
@@ -37,7 +37,7 @@ export const OrderStatus = {
         OnHold: 'orange',
     },
     /** Whether the order can still be cancelled */
-    isCancellable: {
+    is_cancellable: {
         Pending: true,
         Processing: true,
         Shipped: false,
@@ -47,9 +47,9 @@ export const OrderStatus = {
         OnHold: true,
     },
     /** Get statuses that represent a completed order */
-    completedStatuses: [3, 4, 5],
+    completed_statuses: [3, 4, 5],
     /** Get statuses that represent an active order */
-    activeStatuses: [0, 1, 2, 6],
+    active_statuses: [0, 1, 2, 6],
 } as const;
 
 export type OrderStatusType = 0 | 1 | 2 | 3 | 4 | 5 | 6;

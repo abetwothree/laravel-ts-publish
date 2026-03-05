@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Workbench\App\Models\Order;
 use Workbench\Shipping\Enums\Carrier;
-use Workbench\Shipping\Enums\ShipmentStatus;
+use Workbench\Shipping\Enums\Status;
 
 class Shipment extends Model
 {
@@ -26,7 +26,7 @@ class Shipment extends Model
     {
         return [
             'carrier' => Carrier::class,
-            'status' => ShipmentStatus::class,
+            'status' => Status::class,
             'weight_grams' => 'integer',
             'estimated_delivery_at' => 'date',
             'shipped_at' => 'datetime',

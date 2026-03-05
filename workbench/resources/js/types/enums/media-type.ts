@@ -1,7 +1,7 @@
 export const MediaType = {
     _cases: ['Image', 'Video', 'Audio', 'Document', 'Archive'],
-    _methods: ['extensions', 'maxSizeMb', 'icon'],
-    _static: ['mimePrefixes'],
+    _methods: ['extensions', 'max_size_mb', 'icon'],
+    _static: ['mime_prefixes'],
     Image: 'image',
     Video: 'video',
     Audio: 'audio',
@@ -16,7 +16,7 @@ export const MediaType = {
         Archive: ['zip', 'tar', 'gz', 'rar', '7z'],
     },
     /** Maximum file size in MB */
-    maxSizeMb: {
+    max_size_mb: {
         Image: 10,
         Video: 500,
         Audio: 50,
@@ -32,7 +32,7 @@ export const MediaType = {
         Archive: 'archive-box',
     },
     /** Get the MIME type prefixes */
-    mimePrefixes: {image: 'image/', video: 'video/', audio: 'audio/', document: 'application/', archive: 'application/'},
+    mime_prefixes: {image: 'image/', video: 'video/', audio: 'audio/', document: 'application/', archive: 'application/'},
 } as const;
 
 export type MediaTypeType = 'image' | 'video' | 'audio' | 'document' | 'archive';
