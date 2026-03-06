@@ -253,7 +253,7 @@ The purpose for these metadata properties is to be able link your model on the f
 Example using the `@tolki/enum` package to simplify the enum structure and make specific for the current model values on the frontend:
 
 ```TypeScript
-import { toEnum } from '@tolki/enum';
+import { from } from '@tolki/enum';
 import { Status } from '@js/types/enums'; // Using example status from the previous example
 import { User } from '@js/types/models'; // Assuming you have a User model published as well
 
@@ -263,7 +263,7 @@ const user: User = {
     status: 'active',
 }
 
-const userStatus = toEnum(Status, user.status);
+const userStatus = from(Status, user.status);
 
 // userStatus will now have the following structure:
 {
@@ -458,9 +458,9 @@ Like with enums, this package provides a few PHP attributes that you can use to 
 | `TsCasts`            | Attribute to specify what the TypeScript type should be for a model column. Works similarly to Laravel's built in `casts` property or method on models but for TypeScript types. |
 | `TsType`             | Attribute to place on any custom cast class to specify what the TypeScript type should be when that cast is used on a model property. |
 
-##### Examples using `TsCasts` attribute
+##### Examples using `#[TsCasts]` attribute
 
-###### Using `TsCasts` attribute on `casts()` method
+###### Using `#[TsCasts]` attribute on `casts()` method
 
 ```php
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
@@ -494,7 +494,7 @@ export interface User {
 }
 ```
 
-###### Using `TsCasts` attribute on `$casts` property & model class name
+###### Using `#[TsCasts]` attribute on `$casts` property & model class name
 
 Similarly, you can use the `TsCasts` attribute on the `$casts` property or on the model class itself with the same syntax as above to specify TypeScript types for model properties.
 
@@ -538,7 +538,7 @@ class User extends Model
 
 It is recommended to place the `TsCasts` attribute either on the `casts()` method or the `$casts` property instead of the model class itself to keep the TypeScript type definitions close to where you are defining the casts for the model properties in PHP.
 
-###### Custom types using `TsCasts` attribute
+###### Custom types using `#[TsCasts]` attribute
 
 The `TsCasts` attribute can also receive an array as the value for a property to specify a custom type and where that type should be imported from.
 
@@ -584,7 +584,7 @@ export interface User {
 }
 ```
 
-##### Examples using `TsType` attribute
+##### Examples using `#[TsType]` attribute
 
 When you have a custom cast class that you use on one or more model properties, you can use the `TsType` attribute on that custom cast class to specify what TypeScript type should be used for any model property that uses that custom cast.
 
@@ -626,7 +626,7 @@ export interface Product {
 }
 ```
 
-##### Using `TsType` attribute with custom type and import
+##### Using `#[TsType]` attribute with custom type and import
 
 Similarly to the `TsCasts` attribute, you can also specify the type and import for a custom cast class using the `TsType` attribute:
 
