@@ -458,7 +458,7 @@ Like with enums, this package provides a few PHP attributes that you can use to 
 | `TsCasts`            | Attribute to specify what the TypeScript type should be for a model column. Works similarly to Laravel's built in `casts` property or method on models but for TypeScript types. |
 | `TsType`             | Attribute to place on any custom cast class to specify what the TypeScript type should be when that cast is used on a model property. |
 
-##### Examples using `TsCasts` attribute to specify TypeScript types for model properties
+##### Examples using `TsCasts` attribute
 
 ###### Using `TsCasts` attribute on `casts()` method
 
@@ -584,7 +584,7 @@ export interface User {
 }
 ```
 
-##### Examples using `TsType` attribute on custom cast classes
+##### Examples using `TsType` attribute
 
 When you have a custom cast class that you use on one or more model properties, you can use the `TsType` attribute on that custom cast class to specify what TypeScript type should be used for any model property that uses that custom cast.
 
@@ -625,6 +625,8 @@ export interface Product {
     dimensions: {width: number, height: number, depth: number};
 }
 ```
+
+##### Using `TsType` attribute with custom type and import
 
 Similarly to the `TsCasts` attribute, you can also specify the type and import for a custom cast class using the `TsType` attribute:
 
