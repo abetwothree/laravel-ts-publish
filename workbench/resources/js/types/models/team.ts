@@ -22,18 +22,15 @@ export interface TeamMutators
 
 export interface TeamRelations
 {
+    // Relations
     owner: User;
     members: User[];
-}
-
-export interface TeamRelationCounts
-{
+    // Counts
     owner_count: number;
     members_count: number;
-}
-
-export interface TeamRelationExists
-{
+    // Exists
     owner_exists: boolean;
     members_exists: boolean;
 }
+
+export interface TeamAll extends Team, TeamMutators, TeamRelations {}

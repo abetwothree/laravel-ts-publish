@@ -106,7 +106,7 @@ return [
     |
     | The easiest way to customize the output is to publish the templates and modify them as needed.
     */
-    'model_template' => 'laravel-ts-publish::model',
+    'model_template' => 'laravel-ts-publish::model-split',
 
     'enum_template' => 'laravel-ts-publish::enum',
 

@@ -18,18 +18,15 @@ export interface Shipment
 
 export interface ShipmentRelations
 {
+    // Relations
     order: Order;
     tracking_events: TrackingEvent[];
-}
-
-export interface ShipmentRelationCounts
-{
+    // Counts
     order_count: number;
     tracking_events_count: number;
-}
-
-export interface ShipmentRelationExists
-{
+    // Exists
     order_exists: boolean;
     tracking_events_exists: boolean;
 }
+
+export interface ShipmentAll extends Shipment, ShipmentRelations {}

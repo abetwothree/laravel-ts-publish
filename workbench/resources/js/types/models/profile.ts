@@ -27,15 +27,12 @@ export interface ProfileMutators
 
 export interface ProfileRelations
 {
+    // Relations
     user: User;
-}
-
-export interface ProfileRelationCounts
-{
+    // Counts
     user_count: number;
-}
-
-export interface ProfileRelationExists
-{
+    // Exists
     user_exists: boolean;
 }
+
+export interface ProfileAll extends Profile, ProfileMutators, ProfileRelations {}

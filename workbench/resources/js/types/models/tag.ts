@@ -12,18 +12,15 @@ export interface Tag
 
 export interface TagRelations
 {
+    // Relations
     posts: Post[];
     products: Product[];
-}
-
-export interface TagRelationCounts
-{
+    // Counts
     posts_count: number;
     products_count: number;
-}
-
-export interface TagRelationExists
-{
+    // Exists
     posts_exists: boolean;
     products_exists: boolean;
 }
+
+export interface TagAll extends Tag, TagRelations {}

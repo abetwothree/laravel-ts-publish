@@ -26,15 +26,12 @@ export interface AddressMutators
 
 export interface AddressRelations
 {
+    // Relations
     user: User;
-}
-
-export interface AddressRelationCounts
-{
+    // Counts
     user_count: number;
-}
-
-export interface AddressRelationExists
-{
+    // Exists
     user_exists: boolean;
 }
+
+export interface AddressAll extends Address, AddressMutators, AddressRelations {}

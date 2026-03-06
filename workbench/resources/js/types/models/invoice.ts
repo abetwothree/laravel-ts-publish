@@ -20,18 +20,15 @@ export interface Invoice
 
 export interface InvoiceRelations
 {
+    // Relations
     user: User;
     payments: Payment[];
-}
-
-export interface InvoiceRelationCounts
-{
+    // Counts
     user_count: number;
     payments_count: number;
-}
-
-export interface InvoiceRelationExists
-{
+    // Exists
     user_exists: boolean;
     payments_exists: boolean;
 }
+
+export interface InvoiceAll extends Invoice, InvoiceRelations {}

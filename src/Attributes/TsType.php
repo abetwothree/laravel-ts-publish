@@ -7,10 +7,23 @@ namespace AbeTwoThree\LaravelTsPublish\Attributes;
 use Attribute;
 
 /**
- * Attribute to specify the custom TypeScript type for any class, such as an Eloquent custom cast class, an enum, or a plain class, or any other class that needs to be represented as a specific TypeScript type in the generated definitions.
+ * Attribute to specify the custom TypeScript type for custom cast classes.
+ *
+ * Can receive a string directly:
+ *
+ * ```php
+ * #[TsType('CustomType')]
+ * ```
+ *
+ * Or an array with 'type' and optional 'import' keys for more complex types:
+ *
+ * ```php
+ * #[TsType(['type' => 'MyType', 'import' => '@js/types'])]
+ * ```
  */
 #[Attribute(Attribute::TARGET_CLASS)]
 class TsType
 {
-    public function __construct(public string $type) {}
+    /** @param string|array{type: string, import?: string} $type */
+    public function __construct(public string|array $type) {}
 }

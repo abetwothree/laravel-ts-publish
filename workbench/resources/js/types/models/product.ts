@@ -33,21 +33,18 @@ export interface ProductMutators
 
 export interface ProductRelations
 {
+    // Relations
     order_items: OrderItem[];
     tags: Tag[];
     images: Image[];
-}
-
-export interface ProductRelationCounts
-{
+    // Counts
     order_items_count: number;
     tags_count: number;
     images_count: number;
-}
-
-export interface ProductRelationExists
-{
+    // Exists
     order_items_exists: boolean;
     tags_exists: boolean;
     images_exists: boolean;
 }
+
+export interface ProductAll extends Product, ProductMutators, ProductRelations {}

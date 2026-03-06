@@ -218,7 +218,7 @@ return [
     | Below you can specify which models to include, exclude, or add additional directories to search for models in.
     | By default, the package will look for models in the app/Models directory and include all models found there.
     |
-    | Settings can specific model class names or directories to search for models in. For example:
+    | Settings can be specific model class names or directories to search for models in. For example:
     | 'included_models' => [
     |     'App\Models\User', // Include only the User model
     |     'App\Models\Post', // Include only the Post model
@@ -246,7 +246,7 @@ return [
     | Below you can specify which enums to include, exclude, or add additional directories to search for enums in.
     | By default, the package will look for enums in the app/Enums directory and include all enums found there.
     |
-    | Settings can specific enum class names or directories to search for enums in. For example:
+    | Settings can be specific enum class names or directories to search for enums in. For example:
     | 'included_enums' => [
     |     'App\Enums\UserType', // Include only the UserType enum
     |     'App\Enums\PostStatus', // Include only the PostStatus enum

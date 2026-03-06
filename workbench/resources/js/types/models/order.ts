@@ -37,18 +37,15 @@ export interface OrderMutators
 
 export interface OrderRelations
 {
+    // Relations
     user: User;
     items: OrderItem[];
-}
-
-export interface OrderRelationCounts
-{
+    // Counts
     user_count: number;
     items_count: number;
-}
-
-export interface OrderRelationExists
-{
+    // Exists
     user_exists: boolean;
     items_exists: boolean;
 }
+
+export interface OrderAll extends Order, OrderMutators, OrderRelations {}

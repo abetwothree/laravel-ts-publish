@@ -20,18 +20,15 @@ export interface CommentMutators
 
 export interface CommentRelations
 {
+    // Relations
     post: Post;
     user: User;
-}
-
-export interface CommentRelationCounts
-{
+    // Counts
     post_count: number;
     user_count: number;
-}
-
-export interface CommentRelationExists
-{
+    // Exists
     post_exists: boolean;
     user_exists: boolean;
 }
+
+export interface CommentAll extends Comment, CommentMutators, CommentRelations {}

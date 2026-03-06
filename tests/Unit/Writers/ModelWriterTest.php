@@ -58,9 +58,7 @@ test('writes model relations interfaces', function () {
     $content = $writer->write($transformer);
 
     expect($content)
-        ->toContain('export interface UserRelations')
-        ->toContain('export interface UserRelationCounts')
-        ->toContain('export interface UserRelationExists');
+        ->toContain('export interface UserRelations');
 });
 
 test('writes model mutators interface', function () {

@@ -34,27 +34,24 @@ export interface PostMutators
 
 export interface PostRelations
 {
+    // Relations
     author: User;
     category: Category;
     comments: Comment[];
     tags: Tag[];
     images: Image[];
-}
-
-export interface PostRelationCounts
-{
+    // Counts
     author_count: number;
     category_count: number;
     comments_count: number;
     tags_count: number;
     images_count: number;
-}
-
-export interface PostRelationExists
-{
+    // Exists
     author_exists: boolean;
     category_exists: boolean;
     comments_exists: boolean;
     tags_exists: boolean;
     images_exists: boolean;
 }
+
+export interface PostAll extends Post, PostMutators, PostRelations {}

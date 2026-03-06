@@ -30,26 +30,32 @@ export interface {{ $modelName }}Mutators
 
 export interface {{ $modelName }}Relations
 {
+    // Relations
 @foreach ($relations as $name => $relation)
     {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $relation !!};
 @endforeach
-}
-@endif
-@if (count($relations) > 0)
-
-export interface {{ $modelName }}RelationCounts
-{
+    // Counts
 @foreach ($relations as $name => $relation)
     {!! LaravelTsPublish::validJsObjectKey($name.'_count') !!}: number;
 @endforeach
-}
-@endif
-@if (count($relations) > 0)
-
-export interface {{ $modelName }}RelationExists
-{
+    // Exists
 @foreach ($relations as $name => $relation)
     {!! LaravelTsPublish::validJsObjectKey($name.'_exists') !!}: boolean;
 @endforeach
 }
+@endif
+@if (count($relations) > 0)
+@endif
+@if(count($mutators) > 0 || count($relations) > 0)
+
+@php
+$extends = [$modelName];
+if(count($mutators) > 0) {
+    $extends[] = $modelName.'Mutators';
+}
+if(count($relations) > 0) {
+    $extends[] = $modelName.'Relations';
+}
+@endphp
+export interface {{ $modelName }}All extends {{ implode(', ', $extends) }} {}
 @endif

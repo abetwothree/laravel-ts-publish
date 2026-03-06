@@ -22,21 +22,18 @@ export interface CategoryMutators
 
 export interface CategoryRelations
 {
+    // Relations
     parent: Category;
     children: Category[];
     posts: Post[];
-}
-
-export interface CategoryRelationCounts
-{
+    // Counts
     parent_count: number;
     children_count: number;
     posts_count: number;
-}
-
-export interface CategoryRelationExists
-{
+    // Exists
     parent_exists: boolean;
     children_exists: boolean;
     posts_exists: boolean;
 }
+
+export interface CategoryAll extends Category, CategoryMutators, CategoryRelations {}

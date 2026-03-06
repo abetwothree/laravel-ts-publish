@@ -22,18 +22,15 @@ export interface OrderItemMutators
 
 export interface OrderItemRelations
 {
+    // Relations
     order: Order;
     product: Product;
-}
-
-export interface OrderItemRelationCounts
-{
+    // Counts
     order_count: number;
     product_count: number;
-}
-
-export interface OrderItemRelationExists
-{
+    // Exists
     order_exists: boolean;
     product_exists: boolean;
 }
+
+export interface OrderItemAll extends OrderItem, OrderItemMutators, OrderItemRelations {}

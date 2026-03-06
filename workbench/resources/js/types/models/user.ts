@@ -30,6 +30,7 @@ export interface UserMutators
 
 export interface UserRelations
 {
+    // Relations
     profile: Profile;
     posts: Post[];
     comments: Comment[];
@@ -39,10 +40,7 @@ export interface UserRelations
     owned_teams: Team[];
     images: Image[];
     notifications: DatabaseNotification[];
-}
-
-export interface UserRelationCounts
-{
+    // Counts
     profile_count: number;
     posts_count: number;
     comments_count: number;
@@ -52,10 +50,7 @@ export interface UserRelationCounts
     owned_teams_count: number;
     images_count: number;
     notifications_count: number;
-}
-
-export interface UserRelationExists
-{
+    // Exists
     profile_exists: boolean;
     posts_exists: boolean;
     comments_exists: boolean;
@@ -66,3 +61,5 @@ export interface UserRelationExists
     images_exists: boolean;
     notifications_exists: boolean;
 }
+
+export interface UserAll extends User, UserMutators, UserRelations {}

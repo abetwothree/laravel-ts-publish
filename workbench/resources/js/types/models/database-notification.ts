@@ -12,15 +12,12 @@ export interface DatabaseNotification
 
 export interface DatabaseNotificationRelations
 {
+    // Relations
     notifiable: DatabaseNotification;
-}
-
-export interface DatabaseNotificationRelationCounts
-{
+    // Counts
     notifiable_count: number;
-}
-
-export interface DatabaseNotificationRelationExists
-{
+    // Exists
     notifiable_exists: boolean;
 }
+
+export interface DatabaseNotificationAll extends DatabaseNotification, DatabaseNotificationRelations {}

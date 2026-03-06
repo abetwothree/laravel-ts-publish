@@ -26,15 +26,12 @@ export interface ImageMutators
 
 export interface ImageRelations
 {
+    // Relations
     imageable: Image;
-}
-
-export interface ImageRelationCounts
-{
+    // Counts
     imageable_count: number;
-}
-
-export interface ImageRelationExists
-{
+    // Exists
     imageable_exists: boolean;
 }
+
+export interface ImageAll extends Image, ImageMutators, ImageRelations {}
