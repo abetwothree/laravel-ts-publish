@@ -153,7 +153,7 @@ describe('phpToTypeScriptType', function () {
     test('phpToTypeScriptType resolves Eloquent collections to arrays', function () {
         $result = $this->service->phpToTypeScriptType(\Illuminate\Database\Eloquent\Collection::class);
 
-        expect($result['type'])->toBe('Array<unknown>')
+        expect($result['type'])->toBe('Record<string, unknown>')
             ->and($result['classes'])->toBeEmpty();
     });
 
