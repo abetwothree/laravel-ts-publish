@@ -17,12 +17,12 @@
     ],
     "require": {
         "php": "^8.4",
-        "archtechx/enums": "^1.1",
         "composer/class-map-generator": "^1.7",
         "illuminate/contracts": "^11.0||^12.0",
         "spatie/laravel-package-tools": "^1.16"
     },
     "require-dev": {
+        "archtechx/enums": "^1.1",
         "larastan/larastan": "^3.0",
         "laravel/pint": "^1.14",
         "nunomaduro/collision": "^8.8",
