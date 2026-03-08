@@ -297,6 +297,12 @@ userStatus.options // [
 
 The `defineEnum` function currently also binds a `tryFrom` & `cases` functions to the enum.
 
+### Enum Metadata Vite Plugin
+
+The `@tolki/enum` package also provides a Vite plugin that can call the artisan publish command for you and watch for changes to your enums & models to automatically update the generated TypeScript declaration types on the frontend.
+
+For documentation on how to set up the Vite plugin, [see this link](https://tolki.abe.dev/enums/enum-vite-plugin.html).
+
 ### Disabling Enum Metadata or Tolki Enum Package
 
 If you don't plan to use the `@tolki/enum` package or don't need the metadata properties for your use case, you can disable the generation of these metadata properties in the config file with by setting `enum_metadata_enabled` to `false`.
