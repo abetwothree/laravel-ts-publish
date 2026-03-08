@@ -113,15 +113,23 @@ class ModelTransformer extends CoreTransformer
     #[Override]
     public function data(): array
     {
+        // need to sort model imports and custom imports
+        $modelImports = $this->modelImports;
+        asort($modelImports);
+        $enumImports = $this->enumImports;
+        asort($enumImports);
+        $customImports = $this->customImports;
+        ksort($customImports);
+
         $modelImports = array_values(array_filter(
-            array_unique($this->modelImports),
+            array_unique($modelImports),
             fn (string $import) => $import !== $this->modelName,
         ));
 
         // Deduplicate custom import types per path
         $customImports = array_map(
             fn (array $types) => array_values(array_unique($types)),
-            $this->customImports,
+            $customImports,
         );
 
         return [
@@ -131,7 +139,7 @@ class ModelTransformer extends CoreTransformer
             'mutators' => $this->mutators,
             'relations' => $this->relations,
             'modelImports' => $modelImports,
-            'enumImports' => array_values(array_unique($this->enumImports)),
+            'enumImports' => array_values($enumImports),
             'customImports' => $customImports,
         ];
     }

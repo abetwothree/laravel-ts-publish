@@ -1,4 +1,4 @@
-import { OrderItem, Tag, Image } from './';
+import { Image, OrderItem, Tag } from './';
 import { ProductMetadata, ProductJsonMetaData } from '@js/types/product';
 
 export interface Product

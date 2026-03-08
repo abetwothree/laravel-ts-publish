@@ -1,5 +1,5 @@
-import { RoleType, MembershipLevelType } from '../enums';
-import { Profile, Post, Comment, Order, Address, Team, Image, DatabaseNotification } from './';
+import { MembershipLevelType, RoleType } from '../enums';
+import { Address, Comment, DatabaseNotification, Image, Order, Post, Profile, Team } from './';
 
 export interface User
 {

@@ -1,5 +1,5 @@
 import { InvoiceStatusType } from '../enums';
-import { User, Payment } from './';
+import { Payment, User } from './';
 
 export interface Invoice
 {

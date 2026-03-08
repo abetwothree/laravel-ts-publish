@@ -194,7 +194,7 @@ return [
     | Specifies whether to create a JSON file containing the list of collected models and enums file paths.
     | This is useful for npm processes to watch for changes in the collected files and trigger the publish command on change.
     */
-    'output_collected_files_json' => false,
+    'output_collected_files_json' => true,
 
     'collected_files_json_filename' => 'laravel-ts-collected-files.json',
 
