@@ -2,9 +2,9 @@
 
 namespace Workbench\App\Casts;
 
+use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Database\Eloquent\Model;
-use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 
 #[TsType(['type' => 'MenuSettingsType', 'import' => '@js/types/settings'])]
 class MenuSettings implements CastsAttributes
@@ -15,7 +15,7 @@ class MenuSettings implements CastsAttributes
         mixed $value,
         array $attributes,
     ): ?array {
-        if($value === null) {
+        if ($value === null) {
             return null;
         }
 
@@ -28,7 +28,7 @@ class MenuSettings implements CastsAttributes
         mixed $value,
         array $attributes,
     ): ?string {
-        if($value === null) {
+        if ($value === null) {
             return null;
         }
 
