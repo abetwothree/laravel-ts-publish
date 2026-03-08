@@ -328,18 +328,19 @@ class ModelTransformer extends CoreTransformer
             $method = $this->reflectionModel->getMethod($newStyle);
             $method->setAccessible(true);
 
-            /** @var Attribute<mixed, mixed> $attrInstance */
             $attrInstance = $method->invoke($this->modelInstance);
 
-            if ($attrInstance->get !== null) {
-                /** @var \Closure $getter */
-                $getter = $attrInstance->get;
+            if ($attrInstance instanceof Attribute) {
+                if ($attrInstance->get !== null) {
+                    /** @var \Closure $getter */
+                    $getter = $attrInstance->get;
 
-                return LaravelTsPublish::closureReturnedTypes($getter);
+                    return LaravelTsPublish::closureReturnedTypes($getter);
+                }
+
+                // write-only mutator (set only, no get) — not readable on the model shape
+                return $result;
             }
-
-            // write-only mutator (set only, no get) — not readable on the model shape
-            return $result;
         }
 
         // Old-style: public function getTitleDisplayAttribute($value): string

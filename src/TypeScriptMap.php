@@ -30,6 +30,8 @@ class TypeScriptMap
             \Illuminate\Database\Eloquent\Casts\AsEncryptedCollection::class => 'Array<unknown>',
             \Illuminate\Database\Eloquent\Casts\AsEnumArrayObject::class => 'Array<unknown>',
             \Illuminate\Database\Eloquent\Casts\AsEnumCollection::class => 'Array<unknown>',
+            \Illuminate\Database\Eloquent\Collection::class => 'Array<unknown>',
+            \Illuminate\Support\Collection::class => 'Array<unknown> | Record<string, unknown>',
 
             // Array types
             'array' => 'Array<unknown>',

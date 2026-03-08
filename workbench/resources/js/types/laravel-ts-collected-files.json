@@ -14,6 +14,7 @@
     "modules\/Shipping\/Enums\/Status.php",
     "app\/Models\/Team.php",
     "app\/Models\/Category.php",
+    "app\/Models\/TrackingEvent.php",
     "app\/Models\/Product.php",
     "app\/Models\/Order.php",
     "app\/Models\/Post.php",

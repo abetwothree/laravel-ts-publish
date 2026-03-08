@@ -9,6 +9,7 @@ use Workbench\App\Models\Post;
 use Workbench\App\Models\Product;
 use Workbench\App\Models\Profile;
 use Workbench\App\Models\Tag;
+use Workbench\App\Models\TrackingEvent;
 use Workbench\App\Models\User;
 
 describe('ModelTransformer with User model', function () {
@@ -282,6 +283,16 @@ describe('ModelTransformer with Profile model that has property-level TsCasts, w
         // getFormattedBioAttribute → formatted_bio
         expect($data['mutators'])->toHaveKey('formatted_bio')
             ->and($data['mutators']['formatted_bio'])->toBe('string');
+    });
+});
+
+describe('ModelTransformer with TrackingEvent model that has a helper method colliding with an old-style accessor', function () {
+    test('falls back to old-style accessor when the camelCase method is not an Attribute accessor', function () {
+        $data = (new ModelTransformer(TrackingEvent::class))->data();
+
+        expect($data['mutators'])
+            ->toHaveKey('changes')
+            ->and($data['mutators']['changes'])->toBe('{ attributes: Record<string, unknown>; old: Record<string, unknown> }');
     });
 });
 

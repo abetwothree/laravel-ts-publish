@@ -12,4 +12,5 @@ export * from './profile';
 export * from './shipment';
 export * from './tag';
 export * from './team';
+export * from './tracking-event';
 export * from './user';

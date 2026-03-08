@@ -20,11 +20,15 @@ test('gather returns an array with expected type mappings', function () {
         ->toHaveKey('array')
         ->toHaveKey('json')
         ->toHaveKey('date')
+        ->toHaveKey(strtolower(Illuminate\Support\Collection::class))
+        ->toHaveKey(strtolower(Illuminate\Database\Eloquent\Collection::class))
         ->toHaveKey('null')
         ->and($map['string'])->toBe('string')
         ->and($map['integer'])->toBe('number')
         ->and($map['boolean'])->toBe('boolean')
         ->and($map['array'])->toBe('Array<unknown>')
+        ->and($map[strtolower(Illuminate\Support\Collection::class)])->toBe('Array<unknown> | Record<string, unknown>')
+        ->and($map[strtolower(Illuminate\Database\Eloquent\Collection::class)])->toBe('Array<unknown>')
         ->and($map['null'])->toBe('null');
 });
 

@@ -160,6 +160,44 @@
                 "type": "boolean"
             }
         ],
+        "TrackingEvent": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "shipment_id",
+                "type": "number"
+            },
+            {
+                "name": "status",
+                "type": "string"
+            },
+            {
+                "name": "location",
+                "type": "string | null"
+            },
+            {
+                "name": "description",
+                "type": "string | null"
+            },
+            {
+                "name": "occurred_at",
+                "type": "string"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "changes",
+                "type": "{ attributes: Record<string, unknown>; old: Record<string, unknown> }"
+            }
+        ],
         "Product": [
             {
                 "name": "id",

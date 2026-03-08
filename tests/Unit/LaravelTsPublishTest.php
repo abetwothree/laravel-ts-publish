@@ -143,6 +143,20 @@ describe('phpToTypeScriptType', function () {
             ->and($result['classes'])->toBe(['User']);
     });
 
+    test('phpToTypeScriptType resolves Illuminate support collections to array or object shapes', function () {
+        $result = $this->service->phpToTypeScriptType(\Illuminate\Support\Collection::class);
+
+        expect($result['type'])->toBe('Array<unknown> | Record<string, unknown>')
+            ->and($result['classes'])->toBeEmpty();
+    });
+
+    test('phpToTypeScriptType resolves Eloquent collections to arrays', function () {
+        $result = $this->service->phpToTypeScriptType(\Illuminate\Database\Eloquent\Collection::class);
+
+        expect($result['type'])->toBe('Array<unknown>')
+            ->and($result['classes'])->toBeEmpty();
+    });
+
     test('phpToTypeScriptType resolves encrypted compound casts', function () {
         expect($this->service->phpToTypeScriptType('encrypted:array')['type'])->toBe('Array<unknown>');
     });
