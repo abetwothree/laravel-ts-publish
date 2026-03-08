@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Workbench\App\Casts\MenuSettings;
 
 #[TsCasts([
     'social_links' => '{ twitter?: string; github?: string; linkedin?: string; website?: string }',
@@ -34,6 +35,7 @@ class Profile extends Model
         'date_of_birth' => 'date',
         'social_links' => 'array',
         'settings' => 'array',
+        'menu_settings' => MenuSettings::class,
     ];
 
     public function user(): BelongsTo

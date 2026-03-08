@@ -1,7 +1,6 @@
-export const OrderStatus = {
-    _cases: ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled', 'Refunded', 'OnHold'],
-    _methods: ['label', 'color', 'is_cancellable'],
-    _static: ['completed_statuses', 'active_statuses'],
+import { defineEnum } from '@tolki/enum';
+
+export const OrderStatus = defineEnum({
     /** Order has been placed but not yet processed */
     Pending: 0,
     /** Order is being prepared */
@@ -50,7 +49,10 @@ export const OrderStatus = {
     completed_statuses: [3, 4, 5],
     /** Get statuses that represent an active order */
     active_statuses: [0, 1, 2, 6],
-} as const;
+    _cases: ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled', 'Refunded', 'OnHold'],
+    _methods: ['label', 'color', 'is_cancellable'],
+    _static: ['completed_statuses', 'active_statuses'],
+} as const);
 
 export type OrderStatusType = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 

@@ -35,6 +35,7 @@ class EnumWriter extends CoreWriter
                 ...$data,
                 'filename' => $filename,
                 'metadataEnabled' => config()->boolean('ts-publish.enum_metadata_enabled'),
+                'usesTolkiPackage' => config()->boolean('ts-publish.enums_use_tolki_package'),
             ]
         )->render();
 

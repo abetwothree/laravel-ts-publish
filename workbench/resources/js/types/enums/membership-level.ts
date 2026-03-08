@@ -1,11 +1,13 @@
-export const MembershipLevel = {
-    _cases: ['Free', 'Basic', 'Premium', 'Enterprise'],
-    _methods: [],
-    _static: [],
+import { defineEnum } from '@tolki/enum';
+
+export const MembershipLevel = defineEnum({
     Free: 'Free',
     Basic: 'Basic',
     Premium: 'Premium',
     Enterprise: 'Enterprise',
-} as const;
+    _cases: ['Free', 'Basic', 'Premium', 'Enterprise'],
+    _methods: [],
+    _static: [],
+} as const);
 
 export type MembershipLevelType = 'Free' | 'Basic' | 'Premium' | 'Enterprise';

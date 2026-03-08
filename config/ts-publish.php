@@ -268,18 +268,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Enum Metadata
+    | Enum Metadata & Tolki Enum Package Integration
     |--------------------------------------------------------------------------
     |
     | Specifies whether to include metadata about the enums which is used by the @tolki/enum package.
     |
-    | If you don't plan on using the @tolki/enum package or don't need the additional metadata, set this to false.
+    | If you don't plan on using the @tolki/enum package or don't need the additional metadata, set 'enum_metadata_enabled' to false.
     |
     | When this is enabled, each enum will include the following additional properties:
     | - _cases: An array of the enum case names, used to know which keys are cases.
     | - _methods: An array of the enum method names, used to know which keys are methods.
     | - _static: An array of the enum static method names, used to know which keys are static methods.
+    |
+    | When 'enums_use_tolki_package' is enabled, it will bind helper methods to the generated enum.
+    | The helper methods come from the @tolki/enum package to implement similar methods that PHP provides on enums.
     */
 
     'enum_metadata_enabled' => true,
+
+    'enums_use_tolki_package' => true,
 ];

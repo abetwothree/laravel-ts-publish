@@ -13,3 +13,15 @@ test('TsType accepts complex type strings', function () {
 
     expect($attr->type)->toBe('Record<string, unknown> | null');
 });
+
+test('TsType accepts an array with type and import', function () {
+    $attr = new TsType(['type' => 'ProductDimensions', 'import' => '@js/types/product']);
+
+    expect($attr->type)->toBe(['type' => 'ProductDimensions', 'import' => '@js/types/product']);
+});
+
+test('TsType accepts an array with only type', function () {
+    $attr = new TsType(['type' => 'InlineCustomType']);
+
+    expect($attr->type)->toBe(['type' => 'InlineCustomType']);
+});

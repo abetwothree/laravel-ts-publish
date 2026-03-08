@@ -1062,6 +1062,10 @@
                 "type": "{ notifications_enabled: boolean; theme: \"light\" | \"dark\"; language: string }"
             },
             {
+                "name": "menu_settings",
+                "type": "MenuSettingsType | null"
+            },
+            {
                 "name": "timezone",
                 "type": "string"
             },

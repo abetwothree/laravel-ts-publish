@@ -19,6 +19,7 @@ return new class extends Migration
             $table->string('phone_number')->nullable();
             $table->jsonb('social_links')->nullable();
             $table->jsonb('settings')->nullable();
+            $table->jsonb('menu_settings')->nullable();
             $table->string('timezone', 64)->default('UTC');
             $table->string('locale', 10)->default('en');
             $table->timestamps();

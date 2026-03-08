@@ -9,7 +9,9 @@ use Attribute;
 /**
  * Attribute to specify that an enum method should be included when generating TypeScript types
  *
- * If included, each case of the enum will be used to call the method, and the return values will be included in the generated TypeScript types as an object with keys corresponding to the case names and values corresponding to the method return values.
+ * If included, each case of the enum will be used to call the method.
+ * The returned values will be included in the generated TypeScript types as an object
+ * with keys corresponding to the case names and values corresponding to the method return values.
  */
 #[Attribute(Attribute::TARGET_METHOD)]
 class TsEnumMethod

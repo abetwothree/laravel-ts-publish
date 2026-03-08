@@ -1,7 +1,6 @@
-export const Status = {
-    _cases: ['Draft', 'Published'],
-    _methods: ['icon', 'color'],
-    _static: ['value_label_pair', 'names', 'values', 'options'],
+import { defineEnum } from '@tolki/enum';
+
+export const Status = defineEnum({
     Draft: 0,
     Published: 1,
     /** Get the icon name for the status */
@@ -18,7 +17,10 @@ export const Status = {
     names: ['Draft', 'Published'],
     values: [0, 1],
     options: {Draft: 0, Published: 1},
-} as const;
+    _cases: ['Draft', 'Published'],
+    _methods: ['icon', 'color'],
+    _static: ['value_label_pair', 'names', 'values', 'options'],
+} as const);
 
 export type StatusType = 0 | 1;
 

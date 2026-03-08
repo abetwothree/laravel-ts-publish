@@ -231,6 +231,10 @@ class ModelTransformer extends CoreTransformer
             $this->columns[$name] = $type;
             $this->enumImports = [...$this->enumImports, ...$typings['enumTypes']];
             $this->modelImports = [...$this->modelImports, ...$typings['classes']];
+
+            foreach ($typings['customImports'] as $path => $importTypes) {
+                $this->customImports[$path] = [...($this->customImports[$path] ?? []), ...$importTypes];
+            }
         }
 
         return $this;
@@ -257,6 +261,10 @@ class ModelTransformer extends CoreTransformer
             $this->mutators[$name] = $resolved['type'];
             $this->enumImports = [...$this->enumImports, ...$resolved['enumTypes']];
             $this->modelImports = [...$this->modelImports, ...$resolved['classes']];
+
+            foreach ($resolved['customImports'] as $path => $importTypes) {
+                $this->customImports[$path] = [...($this->customImports[$path] ?? []), ...$importTypes];
+            }
         }
 
         return $this;

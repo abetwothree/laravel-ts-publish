@@ -1,7 +1,6 @@
-export const MediaType = {
-    _cases: ['Image', 'Video', 'Audio', 'Document', 'Archive'],
-    _methods: ['extensions', 'max_size_mb', 'icon'],
-    _static: ['mime_prefixes'],
+import { defineEnum } from '@tolki/enum';
+
+export const MediaType = defineEnum({
     Image: 'image',
     Video: 'video',
     Audio: 'audio',
@@ -33,7 +32,10 @@ export const MediaType = {
     },
     /** Get the MIME type prefixes */
     mime_prefixes: {image: 'image/', video: 'video/', audio: 'audio/', document: 'application/', archive: 'application/'},
-} as const;
+    _cases: ['Image', 'Video', 'Audio', 'Document', 'Archive'],
+    _methods: ['extensions', 'max_size_mb', 'icon'],
+    _static: ['mime_prefixes'],
+} as const);
 
 export type MediaTypeType = 'image' | 'video' | 'audio' | 'document' | 'archive';
 

@@ -74,7 +74,22 @@ describe('phpToTypeScriptType', function () {
     test('phpToTypeScriptType resolves class with TsType attribute', function () {
         $result = $this->service->phpToTypeScriptType(TsTypeAnnotatedCast::class);
 
-        expect($result['type'])->toBe('CustomTsType');
+        expect($result['type'])->toBe('CustomTsType')
+            ->and($result['customImports'])->toBeEmpty();
+    });
+
+    test('phpToTypeScriptType resolves class with TsType array attribute including import', function () {
+        $result = $this->service->phpToTypeScriptType(TsTypeAnnotatedCastWithImport::class);
+
+        expect($result['type'])->toBe('ProductDimensions')
+            ->and($result['customImports'])->toBe(['@js/types/product' => ['ProductDimensions']]);
+    });
+
+    test('phpToTypeScriptType resolves class with TsType array attribute without import', function () {
+        $result = $this->service->phpToTypeScriptType(TsTypeAnnotatedCastWithoutImport::class);
+
+        expect($result['type'])->toBe('InlineCustomType')
+            ->and($result['customImports'])->toBeEmpty();
     });
 
     test('phpToTypeScriptType resolves enum class to Type alias', function () {
@@ -349,6 +364,7 @@ describe('emptyTypeScriptInfo', function () {
             'enums' => [],
             'enumTypes' => [],
             'classes' => [],
+            'customImports' => [],
         ]);
     });
 });
@@ -358,6 +374,18 @@ describe('emptyTypeScriptInfo', function () {
  */
 #[TsType('CustomTsType')]
 class TsTypeAnnotatedCast {}
+
+/**
+ * A class annotated with #[TsType] using an array with type and import for testing step 2 resolution.
+ */
+#[TsType(['type' => 'ProductDimensions', 'import' => '@js/types/product'])]
+class TsTypeAnnotatedCastWithImport {}
+
+/**
+ * A class annotated with #[TsType] using an array with only type (no import) for testing step 2 resolution.
+ */
+#[TsType(['type' => 'InlineCustomType'])]
+class TsTypeAnnotatedCastWithoutImport {}
 
 /**
  * A CastsAttributes class whose get() returns string, for testing step 4.

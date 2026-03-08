@@ -1,7 +1,6 @@
-export const Priority = {
-    _cases: ['Low', 'Medium', 'High', 'Critical'],
-    _methods: ['label', 'badge_color', 'icon', 'is_above_threshold'],
-    _static: ['filter_by_minimum'],
+import { defineEnum } from '@tolki/enum';
+
+export const Priority = defineEnum({
     Low: 0,
     Medium: 1,
     High: 2,
@@ -36,7 +35,10 @@ export const Priority = {
     },
     /** Filter by minimum */
     filter_by_minimum: null,
-} as const;
+    _cases: ['Low', 'Medium', 'High', 'Critical'],
+    _methods: ['label', 'badge_color', 'icon', 'is_above_threshold'],
+    _static: ['filter_by_minimum'],
+} as const);
 
 export type PriorityType = 0 | 1 | 2 | 3;
 

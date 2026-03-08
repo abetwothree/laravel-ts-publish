@@ -1,7 +1,6 @@
-export const ShipmentStatus = {
-    _cases: ['Pending', 'LabelCreated', 'PickedUp', 'InTransit', 'OutForDelivery', 'Delivered', 'Returned'],
-    _methods: [],
-    _static: [],
+import { defineEnum } from '@tolki/enum';
+
+export const ShipmentStatus = defineEnum({
     Pending: 'pending',
     LabelCreated: 'label_created',
     PickedUp: 'picked_up',
@@ -9,7 +8,10 @@ export const ShipmentStatus = {
     OutForDelivery: 'out_for_delivery',
     Delivered: 'delivered',
     Returned: 'returned',
-} as const;
+    _cases: ['Pending', 'LabelCreated', 'PickedUp', 'InTransit', 'OutForDelivery', 'Delivered', 'Returned'],
+    _methods: [],
+    _static: [],
+} as const);
 
 export type ShipmentStatusType = 'pending' | 'label_created' | 'picked_up' | 'in_transit' | 'out_for_delivery' | 'delivered' | 'returned';
 

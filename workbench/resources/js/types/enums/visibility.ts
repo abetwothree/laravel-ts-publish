@@ -1,7 +1,6 @@
-export const Visibility = {
-    _cases: ['Public', 'Private', 'Protected', 'Internal', 'Draft'],
-    _methods: ['is_public', 'description'],
-    _static: [],
+import { defineEnum } from '@tolki/enum';
+
+export const Visibility = defineEnum({
     Public: 'Public',
     Private: 'Private',
     Protected: 'Protected',
@@ -23,6 +22,9 @@ export const Visibility = {
         Internal: 'Visible to organization members',
         Draft: 'Not visible to anyone except the author',
     },
-} as const;
+    _cases: ['Public', 'Private', 'Protected', 'Internal', 'Draft'],
+    _methods: ['is_public', 'description'],
+    _static: [],
+} as const);
 
 export type VisibilityType = 'Public' | 'Private' | 'Protected' | 'Internal' | 'Draft';

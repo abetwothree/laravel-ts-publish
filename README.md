@@ -45,7 +45,7 @@ Additionally, by default, the package will look for models in the `app/Models` d
 
 You can fully customize which models and enums are included, excluded, or add additional directories to search for models and enums in. See the [configuration file](https://github.com/abetwothree/laravel-ts-publish/blob/main/config/ts-publish.php) for more details on how to do this.
 
-### Enums
+## Enums
 
 This package, like these others before it, ([spatie/typescript-transformer](https://github.com/spatie/typescript-transformer) or [modeltyper](https://github.com/fumeapp/modeltyper)) can convert enums from PHP to TypeScript for each enum case.
 
@@ -53,7 +53,7 @@ However, PHP enums do not solely consist of enum cases, but can also have method
 
 By default, this package will only publish the enum cases and their values to TypeScript, but you can use the provided attributes to specify that you want to call certain methods or static methods and publish their return values in TypeScript as well. See below.
 
-#### Enum Attributes
+### Enum Attributes
 
 To use the more advanced transforming features provided by this package for enums you'll need to use the PHP Attributes described below.
 
@@ -68,7 +68,7 @@ List of enum attributes & descriptions:
 | `TsEnum`             | Attribute to rename the enum when converting to TypeScript. Useful to avoid naming conflicts if you have more than one enum in different namespaces with the same name. |
 | `TsCase`.            | Attribute to rename, change the frontend value, or provide a description for an enum case. Useful for when the enum case name or value in PHP is not ideal for the frontend. |
 
-#### Enum Method Example #[TsEnumMethod]
+### Enum Method #[TsEnumMethod]
 
 Using the `TsEnumMethod` attribute to specify that the `label()` method should be called for each enum case value and the return value should be used as the value for the enum case in TypeScript:
 
@@ -104,7 +104,7 @@ export const Status = {
 } as const;
 ```
 
-#### Enum Static Method Example #[TsEnumStaticMethod]
+### Enum Static Method #[TsEnumStaticMethod]
 
 Using the `TsEnumStaticMethod` attribute to specify that the `options()` static method should be called and the return value should be published in TypeScript:
 
@@ -140,7 +140,7 @@ export const Status = {
 } as const;
 ```
 
-#### Enum Example #[TsEnum]
+### Enum Class Name #[TsEnum]
 
 Renaming an enum using the `TsEnum` attribute:
 
@@ -164,7 +164,7 @@ export const UserStatus = {
 } as const;
 ```
 
-#### Enum Case Example #[TsCase]
+### Enum Case Typings #[TsCase]
 
 Renaming an enum case, changing the frontend value, and adding a description using the `TsCase` attribute:
 
@@ -191,7 +191,7 @@ export const Status = {
 } as const;
 ```
 
-#### Enum Types
+### Enum Value & Key Types
 
 As shown above, the enum generated in TypeScript is a JavaScript object with the `as const` assertion to prevent modification.
 
@@ -224,14 +224,20 @@ function setStatusByKey(status: StatusKind) {
 }
 ```
 
-#### Enum Metadata & Tolki Enum Package
+### Enum Metadata & Tolki Enum Package
 
 By default, this package will publish three metadata properties on the enum in TypeScript for the cases, methods, and static methods that are published. These properties are `_cases`, `_methods`, and `_static`.
 
-Example:
+The purpose for these metadata properties is to be able create an "instance" of the enum from a case value like you'd get on the PHP side. To accomplish this, you need to use the [@tolki/enum](https://tolki.abe.dev/enums/) npm package.
+
+By default, this packages configures the usage of the `@tolki/enum` package when enums are published. 
+
+This is what a published enum looks like when using the `@tolki/enum` package on the frontend:
 
 ```TypeScript
-export const Status = {
+import { defineEnum } from '@tolki/enum';
+
+export const Status = defineEnum({
     _cases: ['Active', 'Inactive'],
     _methods: ['label'],
     _static: ['options'],
@@ -245,15 +251,16 @@ export const Status = {
         { value: 'active', label: 'Active' },
         { value: 'inactive', label: 'Inactive' },
     ],
-} as const;
+} as const);
 ```
 
-The purpose for these metadata properties is to be able link your model on the frontend with the published TypeScript enum. To accomplish this, you would use the [@tolki/enum](https://github.com/abetwothree/tolki/tree/master/packages/enum) npm package.
+The `defineEnum` function from the `@tolki/enum` package is a factory function that will bind PHP like methods to the enum object.
 
-Example using the `@tolki/enum` package to simplify the enum structure and make specific for the current model values on the frontend:
+See more details about [defineEnum here](https://tolki.abe.dev/enums/enum-utilities-list.html#defineenum).
+
+With the `@tolki/enum` package, you can now create an "instance" of the enum from a case value like you'd get on the PHP side using the `from` function:
 
 ```TypeScript
-import { from } from '@tolki/enum';
 import { Status } from '@js/types/enums'; // Using example status from the previous example
 import { User } from '@js/types/models'; // Assuming you have a User model published as well
 
@@ -263,7 +270,7 @@ const user: User = {
     status: 'active',
 }
 
-const userStatus = from(Status, user.status);
+const userStatus = Status.from(user.status);
 
 // userStatus will now have the following structure:
 {
@@ -288,17 +295,23 @@ userStatus.options // [
                    // ]
 ```
 
+The `defineEnum` function currently also binds a `tryFrom` & `cases` functions to the enum.
+
+### Disabling Enum Metadata or Tolki Enum Package
+
 If you don't plan to use the `@tolki/enum` package or don't need the metadata properties for your use case, you can disable the generation of these metadata properties in the config file with by setting `enum_metadata_enabled` to `false`.
 
-### Models
+If you would to like to use the metadata but don't want the `@tolki/enum` package, you can disable the usage of that package in the config file with by setting `enums_use_tolki_package` to `false`. This will still generate the metadata properties on the enum, but it will not wrap the enum in the `defineEnum` function from the `@tolki/enum` package.
 
-This package can also convert your Laravel Eloquent models to TypeScript declaration types. This package will run parse through your models' properties, mutators, and relations to create a TypeScript declaration type that matches the structure of your model.
+## Models
 
-#### Model Templates & Publishing
+This package can also convert your Laravel Eloquent models to TypeScript declaration types. This package will go through your models' properties, mutators, and relations to create TypeScript interfaces that match the structure of your model.
 
-By default, this package purposely breaks the model into three separate interfaces for the properties, mutators, and relations to give you more flexibility on which properties you need to use in a concrete situation on your frontend projects. It also generates a fourth interface that extends all three interfaces for when you do want to use all the properties, mutators, and relations together. See below.
+### Model Templates & Publishing
 
-If that's still not ideal for your situation, you can change the template used to generate the model types. This package comes with two templates for generating model types. 
+By default, this package purposely breaks the model into three separate interfaces for the properties, mutators, and relations to give you more flexibility on which properties you need to use in a concrete situation on your frontend projects. It also generates a fourth interface that extends all three interfaces for when you do want to use all the properties, mutators, and relations together, see below.
+
+If that's still not ideal for your situation, you can change the template used to generate the model types. This package comes with two templates for generating model types.
 
 - `laravel-ts-publish::model-split`: The default template that splits the model into three separate interfaces for the properties, mutators, and relations.
 - `laravel-ts-publish::model-full`: A template that combines all properties, mutators, and relations into a single interface.
@@ -307,7 +320,7 @@ Just change the `model_template` in the config file to use the template that bes
 
 You are also free to publish the views to modify them or create your own custom template if you want to change the structure of the generated types even more. Just make sure to update the `model_template` in the config file to point to your new custom template.
 
-##### Example using the default `model-split` template with a model that has properties, mutators, and relations
+#### Example using the default `model-split` template with a model that has properties, mutators, and relations
 
 ```php
 use App\Enums\Status;
@@ -397,7 +410,7 @@ form.posts // TS error because posts is not part of the UserForm interface
 </script>
 ```
 
-##### Example using the `model-full` template with a model that has all properties in one interface
+#### Example using the `model-full` template with a model that has all properties in one interface
 
 ```TypeScript
 import { StatusType } from '../enums';
@@ -449,7 +462,7 @@ form.posts // TS error because posts is not part of the UserForm interface
 </script>
 ```
 
-#### Model Attributes
+### Model Attributes
 
 Like with enums, this package provides a few PHP attributes that you can use to further customize the generated TypeScript declaration types for your models. All attributes can be found at [this link](https://github.com/abetwothree/laravel-ts-publish/tree/main/src/Attributes) and are under the `AbeTwoThree\LaravelTsPublish\Attributes` namespace.
 
@@ -458,9 +471,9 @@ Like with enums, this package provides a few PHP attributes that you can use to 
 | `TsCasts`            | Attribute to specify what the TypeScript type should be for a model column. Works similarly to Laravel's built in `casts` property or method on models but for TypeScript types. |
 | `TsType`             | Attribute to place on any custom cast class to specify what the TypeScript type should be when that cast is used on a model property. |
 
-##### Examples using `#[TsCasts]` attribute
+#### Examples using `#[TsCasts]` attribute
 
-###### Using `#[TsCasts]` attribute on `casts()` method
+##### Using `#[TsCasts]` attribute on `casts()` method
 
 ```php
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
@@ -494,7 +507,7 @@ export interface User {
 }
 ```
 
-###### Using `#[TsCasts]` attribute on `$casts` property & model class name
+##### Using `#[TsCasts]` attribute on `$casts` property & model class name
 
 Similarly, you can use the `TsCasts` attribute on the `$casts` property or on the model class itself with the same syntax as above to specify TypeScript types for model properties.
 
@@ -538,7 +551,7 @@ class User extends Model
 
 It is recommended to place the `TsCasts` attribute either on the `casts()` method or the `$casts` property instead of the model class itself to keep the TypeScript type definitions close to where you are defining the casts for the model properties in PHP.
 
-###### Custom types using `#[TsCasts]` attribute
+##### Custom types using `#[TsCasts]` attribute
 
 The `TsCasts` attribute can also receive an array as the value for a property to specify a custom type and where that type should be imported from.
 
@@ -584,7 +597,7 @@ export interface User {
 }
 ```
 
-##### Examples using `#[TsType]` attribute
+#### Examples using `#[TsType]` attribute
 
 When you have a custom cast class that you use on one or more model properties, you can use the `TsType` attribute on that custom cast class to specify what TypeScript type should be used for any model property that uses that custom cast.
 
@@ -626,7 +639,7 @@ export interface Product {
 }
 ```
 
-##### Using `#[TsType]` attribute with custom type and import
+#### Using `#[TsType]` attribute with custom type and import
 
 Similarly to the `TsCasts` attribute, you can also specify the type and import for a custom cast class using the `TsType` attribute:
 

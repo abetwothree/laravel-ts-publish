@@ -23,13 +23,15 @@ use UnitEnum;
  *    type: string,
  *    enums: list<string>,
  *    enumTypes: list<string>,
- *    classes: list<string>
+ *    classes: list<string>,
+ *    customImports: array<string, list<string>>
  * }
  *
- * - type:      The TypeScript type string to use in the interface (e.g. 'StatusType', 'string | null')
- * - enums:     The PHP enum const names (e.g. ['Status']) — informational, useful for display
- * - enumTypes: The TypeScript type alias names to import (e.g. ['StatusType']) — used in import statements
- * - classes:   Other class short names to import from the models barrel (e.g. ['User'])
+ * - type:          The TypeScript type string to use in the interface (e.g. 'StatusType', 'string | null')
+ * - enums:         The PHP enum const names (e.g. ['Status']) — informational, useful for display
+ * - enumTypes:     The TypeScript type alias names to import (e.g. ['StatusType']) — used in import statements
+ * - classes:       Other class short names to import from the models barrel (e.g. ['User'])
+ * - customImports: Custom import paths mapped to their type names (e.g. ['@js/types/product' => ['ProductDimensions']])
  */
 class LaravelTsPublish
 {
@@ -86,7 +88,20 @@ class LaravelTsPublish
         if (class_exists($phpType)) {
             $attrs = (new ReflectionClass($phpType))->getAttributes(TsType::class);
             if ($attrs) {
-                $result['type'] = $attrs[0]->newInstance()->type;
+                $tsType = $attrs[0]->newInstance()->type;
+
+                if (is_array($tsType)) {
+                    /** @var array{type: string, import?: string} $tsType */
+                    $result['type'] = $tsType['type'];
+
+                    if (isset($tsType['import'])) {
+                        foreach ($this->extractImportableTypes($tsType['type']) as $importName) {
+                            $result['customImports'][$tsType['import']][] = $importName;
+                        }
+                    }
+                } else {
+                    $result['type'] = $tsType;
+                }
 
                 return $result;
             }
@@ -196,6 +211,8 @@ class LaravelTsPublish
             $enums = [];
             $enumTypes = [];
             $classes = [];
+            /** @var array<string, list<string>> $customImports */
+            $customImports = [];
 
             foreach ($returnType->getTypes() as $type) {
                 if ($type instanceof ReflectionNamedType) {
@@ -204,6 +221,10 @@ class LaravelTsPublish
                     $enums = [...$enums,      ...$resolved['enums']];
                     $enumTypes = [...$enumTypes,  ...$resolved['enumTypes']];
                     $classes = [...$classes,    ...$resolved['classes']];
+
+                    foreach ($resolved['customImports'] as $path => $importTypes) {
+                        $customImports[$path] = [...($customImports[$path] ?? []), ...$importTypes];
+                    }
                 } else {
                     $types[] = 'unknown'; // ReflectionIntersectionType inside a DNF union
                 }
@@ -213,6 +234,7 @@ class LaravelTsPublish
             $result['enums'] = array_values(array_unique($enums));
             $result['enumTypes'] = array_values(array_unique($enumTypes));
             $result['classes'] = array_values(array_unique($classes));
+            $result['customImports'] = $customImports;
 
             return $result;
         }
@@ -331,6 +353,6 @@ class LaravelTsPublish
     /** @return TypeScriptTypeInfo */
     public function emptyTypeScriptInfo(): array
     {
-        return ['type' => 'unknown', 'enums' => [], 'enumTypes' => [], 'classes' => []];
+        return ['type' => 'unknown', 'enums' => [], 'enumTypes' => [], 'classes' => [], 'customImports' => []];
     }
 }

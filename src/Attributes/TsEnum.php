@@ -8,6 +8,7 @@ use Attribute;
 
 /**
  * This attribute can applied to an enum class to specify the TypeScrip enum name.
+ *
  * This is in case you have multiple enums in different namespaces with the same name
  * that cause collisions in the generated TypeScript definitions.
  */

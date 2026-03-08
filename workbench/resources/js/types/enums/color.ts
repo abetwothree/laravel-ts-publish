@@ -1,7 +1,6 @@
-export const Color = {
-    _cases: ['Red', 'Green', 'Blue', 'Yellow', 'Slate', 'Purple'],
-    _methods: ['hex', 'rgb'],
-    _static: [],
+import { defineEnum } from '@tolki/enum';
+
+export const Color = defineEnum({
     /** Primary red color */
     Red: 'red',
     /** Primary green color */
@@ -30,7 +29,10 @@ export const Color = {
         Gray: [100, 116, 139],
         Purple: [168, 85, 247],
     },
-} as const;
+    _cases: ['Red', 'Green', 'Blue', 'Yellow', 'Slate', 'Purple'],
+    _methods: ['hex', 'rgb'],
+    _static: [],
+} as const);
 
 export type ColorType = 'red' | 'green' | 'blue' | 'yellow' | 'slate' | 'purple';
 

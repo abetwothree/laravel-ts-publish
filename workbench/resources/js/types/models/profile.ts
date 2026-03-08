@@ -1,4 +1,5 @@
 import { User } from './';
+import { MenuSettingsType } from '@js/types/settings';
 
 export interface Profile
 {
@@ -11,6 +12,7 @@ export interface Profile
     phone_number: string | null;
     social_links: { twitter?: string; github?: string; linkedin?: string; website?: string };
     settings: { notifications_enabled: boolean; theme: "light" | "dark"; language: string };
+    menu_settings: MenuSettingsType | null;
     timezone: string;
     locale: string;
     created_at: string | null;
