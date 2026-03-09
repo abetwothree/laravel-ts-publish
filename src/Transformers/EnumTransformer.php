@@ -42,6 +42,8 @@ class EnumTransformer extends CoreTransformer
 
     public protected(set) string $filePath;
 
+    public protected(set) string $namespacePath;
+
     public protected(set) bool $backed;
 
     /** @var ReflectionEnum<UnitEnum> */
@@ -113,6 +115,7 @@ class EnumTransformer extends CoreTransformer
             : $this->reflectionEnum->getShortName();
 
         $this->filePath = $this->resolveRelativePath((string) $this->reflectionEnum->getFileName());
+        $this->namespacePath = LaravelTsPublish::namespaceToPath($this->findable);
 
         return $this;
     }

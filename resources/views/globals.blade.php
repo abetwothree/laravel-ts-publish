@@ -10,6 +10,62 @@ export {}
 
 /* prettier-ignore */
 declare global {
+@if ($isModular)
+@foreach ($groupedModels as $namespace => $transformers)
+@if ($transformers->count() > 0)
+    export namespace {{ $namespace }} {
+@foreach ($transformers as $transformer)
+        export interface {{ $transformer->modelName }} {
+@if (count($transformer->columns) > 0)
+            // Columns
+@foreach($transformer->columns as $name => $column)
+            {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $column !!};
+@endforeach
+@endif
+@if (count($transformer->mutators) > 0)
+            // Mutators
+@foreach($transformer->mutators as $name => $mutator)
+            {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $mutator !!};
+@endforeach
+@endif
+@if (count($transformer->relations) > 0)
+            // Relations
+@foreach($transformer->relations as $name => $relation)
+            {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $relation !!};
+            {!! LaravelTsPublish::validJsObjectKey($name.'_count') !!}: number;
+            {!! LaravelTsPublish::validJsObjectKey($name.'_exists') !!}: boolean;
+@endforeach
+@endif
+        }
+@endforeach
+    }
+@endif
+@endforeach
+@foreach ($groupedEnums as $namespace => $transformers)
+@if ($transformers->count() > 0)
+    export namespace {{ $namespace }} {
+@foreach ($transformers as $transformer)
+        export interface {{ $transformer->enumName }}
+        {
+@foreach($transformer->cases as $case)
+@if($case['description'])
+            /** {{ $case['description'] }} */
+@endif
+            {!! LaravelTsPublish::validJsObjectKey($case['name']) !!}: {!! LaravelTsPublish::toJsLiteral($case['value']) !!},
+@endforeach
+        }
+        export type {{ $transformer->enumName }}Type = {!! implode(' | ', $transformer->caseTypes) !!};
+@if($transformer->backed)
+        export type {{ $transformer->enumName }}Kind = {!! implode(' | ', $transformer->caseKinds) !!};
+@endif
+@if(!$loop->last)
+
+@endif
+@endforeach
+    }
+@endif
+@endforeach
+@else
 @if ($models->count() > 0)
     // Models
     export namespace {{ $modelsNamespace }} {
@@ -61,5 +117,6 @@ declare global {
 @endif
 @endforeach
     }
+@endif
 @endif
 }

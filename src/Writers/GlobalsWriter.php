@@ -24,15 +24,29 @@ class GlobalsWriter
         /** @var view-string $template */
         $template = config()->string('ts-publish.globals_template');
 
-        $content = view(
-            $template,
-            [
-                'enums' => $runner->enumGenerators->map(fn (EnumGenerator $g) => $g->transformer),
-                'models' => $runner->modelGenerators->map(fn (ModelGenerator $g) => $g->transformer),
-                'modelsNamespace' => config()->string('ts-publish.models_namespace'),
-                'enumsNamespace' => config()->string('ts-publish.enums_namespace'),
-            ]
-        )->render();
+        $isModular = config()->boolean('ts-publish.modular_publishing');
+
+        $viewData = [
+            'enums' => $runner->enumGenerators->map(fn (EnumGenerator $g) => $g->transformer),
+            'models' => $runner->modelGenerators->map(fn (ModelGenerator $g) => $g->transformer),
+            'modelsNamespace' => config()->string('ts-publish.models_namespace'),
+            'enumsNamespace' => config()->string('ts-publish.enums_namespace'),
+            'isModular' => $isModular,
+        ];
+
+        if ($isModular) {
+            $viewData['groupedModels'] = $runner->modelGenerators
+                ->groupBy(fn (ModelGenerator $g) => str_replace('/', '.', $g->transformer->namespacePath))
+                ->map(fn ($group) => $group->map(fn (ModelGenerator $g) => $g->transformer))
+                ->sortKeys();
+
+            $viewData['groupedEnums'] = $runner->enumGenerators
+                ->groupBy(fn (EnumGenerator $g) => str_replace('/', '.', $g->transformer->namespacePath))
+                ->map(fn ($group) => $group->map(fn (EnumGenerator $g) => $g->transformer))
+                ->sortKeys();
+        }
+
+        $content = view($template, $viewData)->render();
 
         if (config()->boolean('ts-publish.output_to_files')) {
             $outputPath = config()->string('ts-publish.global_directory');

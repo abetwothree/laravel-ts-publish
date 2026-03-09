@@ -7,6 +7,7 @@ use Workbench\App\Enums\PaymentMethod;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
+use Workbench\Blog\Enums\ArticleStatus;
 use Workbench\Shipping\Enums\Status as ShippingStatus;
 
 describe('EnumTransformer with backed int enum', function () {
@@ -238,5 +239,23 @@ describe('EnumTransformer with TsEnum attribute', function () {
 
         expect($data['enumName'])->toBe('Status')
             ->and($transformer->filename())->toBe('status');
+    });
+});
+
+describe('EnumTransformer namespacePath', function () {
+    test('computes namespacePath with strip prefix', function () {
+        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+        $transformer = new EnumTransformer(Status::class);
+
+        expect($transformer->namespacePath)->toBe('app/enums');
+    });
+
+    test('computes namespacePath for module enum with strip prefix', function () {
+        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+        $transformer = new EnumTransformer(ArticleStatus::class);
+
+        expect($transformer->namespacePath)->toBe('blog/enums');
     });
 });

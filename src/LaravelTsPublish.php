@@ -24,7 +24,9 @@ use UnitEnum;
  *    enums: list<string>,
  *    enumTypes: list<string>,
  *    classes: list<string>,
- *    customImports: array<string, list<string>>
+ *    customImports: array<string, list<string>>,
+ *    enumFqcns: list<string>,
+ *    classFqcns: list<string>,
  * }
  *
  * - type:          The TypeScript type string to use in the interface (e.g. 'StatusType', 'string | null')
@@ -32,6 +34,8 @@ use UnitEnum;
  * - enumTypes:     The TypeScript type alias names to import (e.g. ['StatusType']) — used in import statements
  * - classes:       Other class short names to import from the models barrel (e.g. ['User'])
  * - customImports: Custom import paths mapped to their type names (e.g. ['@js/types/product' => ['ProductDimensions']])
+ * - enumFqcns:     The fully-qualified class names of resolved PHP enums (e.g. ['App\Enums\Status'])
+ * - classFqcns:    The fully-qualified class names of resolved non-enum classes (e.g. ['App\Models\User'])
  */
 class LaravelTsPublish
 {
@@ -121,6 +125,7 @@ class LaravelTsPublish
             $result['type'] = $name.'Type';
             $result['enums'] = [$name];
             $result['enumTypes'] = [$name.'Type'];
+            $result['enumFqcns'] = [$phpType];
 
             return $result;
         }
@@ -143,6 +148,7 @@ class LaravelTsPublish
             $name = class_basename($phpType);
             $result['type'] = $name;
             $result['classes'] = [$name];
+            $result['classFqcns'] = [$phpType];
 
             return $result;
         }
@@ -213,6 +219,8 @@ class LaravelTsPublish
             $classes = [];
             /** @var array<string, list<string>> $customImports */
             $customImports = [];
+            $enumFqcns = [];
+            $classFqcns = [];
 
             foreach ($returnType->getTypes() as $type) {
                 if ($type instanceof ReflectionNamedType) {
@@ -221,6 +229,8 @@ class LaravelTsPublish
                     $enums = [...$enums,      ...$resolved['enums']];
                     $enumTypes = [...$enumTypes,  ...$resolved['enumTypes']];
                     $classes = [...$classes,    ...$resolved['classes']];
+                    $enumFqcns = [...$enumFqcns,  ...$resolved['enumFqcns']];
+                    $classFqcns = [...$classFqcns, ...$resolved['classFqcns']];
 
                     foreach ($resolved['customImports'] as $path => $importTypes) {
                         $customImports[$path] = [...($customImports[$path] ?? []), ...$importTypes];
@@ -235,6 +245,8 @@ class LaravelTsPublish
             $result['enumTypes'] = array_values(array_unique($enumTypes));
             $result['classes'] = array_values(array_unique($classes));
             $result['customImports'] = $customImports;
+            $result['enumFqcns'] = array_values(array_unique($enumFqcns));
+            $result['classFqcns'] = array_values(array_unique($classFqcns));
 
             return $result;
         }
@@ -353,6 +365,62 @@ class LaravelTsPublish
     /** @return TypeScriptTypeInfo */
     public function emptyTypeScriptInfo(): array
     {
-        return ['type' => 'unknown', 'enums' => [], 'enumTypes' => [], 'classes' => [], 'customImports' => []];
+        return ['type' => 'unknown', 'enums' => [], 'enumTypes' => [], 'classes' => [], 'customImports' => [], 'enumFqcns' => [], 'classFqcns' => []];
+    }
+
+    /**
+     * Convert a FQCN to a modular output directory path.
+     *
+     * Strips the class name, applies the configurable namespace prefix strip,
+     * kebab-cases each segment, and joins with '/'.
+     *
+     * Example: 'Blog\Enums\ArticleStatus' → 'blog/enums'
+     */
+    public function namespaceToPath(string $fqcn): string
+    {
+        $namespace = Str::beforeLast($fqcn, '\\');
+
+        $prefix = config()->string('ts-publish.namespace_strip_prefix', '');
+
+        if ($prefix !== '' && str_starts_with($namespace, $prefix)) {
+            $namespace = substr($namespace, strlen($prefix));
+        }
+
+        return collect(explode('\\', $namespace))
+            ->filter()
+            ->map(fn (string $segment) => Str::kebab($segment))
+            ->implode('/');
+    }
+
+    /**
+     * Compute the TypeScript relative import path from one namespace path to another.
+     *
+     * Example: 'blog/models' → 'blog/enums' = '../enums'
+     * Example: 'app/models' → 'blog/enums' = '../../blog/enums'
+     * Example: 'blog/models' → 'blog/models' = '.'
+     */
+    public function relativeImportPath(string $fromNamespacePath, string $toNamespacePath): string
+    {
+        if ($fromNamespacePath === $toNamespacePath) {
+            return '.';
+        }
+
+        $fromParts = explode('/', $fromNamespacePath);
+        $toParts = explode('/', $toNamespacePath);
+
+        // Find common prefix length
+        $commonLength = 0;
+        $maxCommon = min(count($fromParts), count($toParts));
+
+        while ($commonLength < $maxCommon && $fromParts[$commonLength] === $toParts[$commonLength]) {
+            $commonLength++;
+        }
+
+        $upCount = count($fromParts) - $commonLength;
+        $downSegments = array_slice($toParts, $commonLength);
+
+        $relative = str_repeat('../', $upCount).implode('/', $downSegments);
+
+        return rtrim($relative, '/');
     }
 }

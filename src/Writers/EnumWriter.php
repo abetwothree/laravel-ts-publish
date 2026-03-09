@@ -40,15 +40,19 @@ class EnumWriter extends CoreWriter
         )->render();
 
         if (config()->boolean('ts-publish.output_to_files')) {
-            $this->writeEnumFile($filename, $content);
+            $this->writeEnumFile($filename, $content, $transformer->namespacePath);
         }
 
         return $content;
     }
 
-    protected function writeEnumFile(string $filename, string $content): void
+    protected function writeEnumFile(string $filename, string $content, string $namespacePath): void
     {
-        $outputPath = config()->string('ts-publish.output_directory').'/enums';
+        $outputBase = config()->string('ts-publish.output_directory');
+        $outputPath = config()->boolean('ts-publish.modular_publishing')
+            ? $outputBase.'/'.$namespacePath
+            : $outputBase.'/enums';
+
         $this->filesystem->ensureDirectoryExists($outputPath);
         $this->filesystem->put("$outputPath/$filename.ts", $content);
     }

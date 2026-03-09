@@ -97,7 +97,8 @@ describe('phpToTypeScriptType', function () {
 
         expect($result['type'])->toBe('StatusType')
             ->and($result['enums'])->toBe(['Status'])
-            ->and($result['enumTypes'])->toBe(['StatusType']);
+            ->and($result['enumTypes'])->toBe(['StatusType'])
+            ->and($result['enumFqcns'])->toBe([Status::class]);
     });
 
     test('phpToTypeScriptType resolves unit enum class', function () {
@@ -105,7 +106,8 @@ describe('phpToTypeScriptType', function () {
 
         expect($result['type'])->toBe('RoleType')
             ->and($result['enums'])->toBe(['Role'])
-            ->and($result['enumTypes'])->toBe(['RoleType']);
+            ->and($result['enumTypes'])->toBe(['RoleType'])
+            ->and($result['enumFqcns'])->toBe([Role::class]);
     });
 
     test('phpToTypeScriptType resolves enum with TsEnum attribute to custom name', function () {
@@ -140,7 +142,8 @@ describe('phpToTypeScriptType', function () {
         $result = $this->service->phpToTypeScriptType(\Workbench\App\Models\User::class);
 
         expect($result['type'])->toBe('User')
-            ->and($result['classes'])->toBe(['User']);
+            ->and($result['classes'])->toBe(['User'])
+            ->and($result['classFqcns'])->toBe([\Workbench\App\Models\User::class]);
     });
 
     test('phpToTypeScriptType resolves Illuminate support collections to array or object shapes', function () {
@@ -379,7 +382,72 @@ describe('emptyTypeScriptInfo', function () {
             'enumTypes' => [],
             'classes' => [],
             'customImports' => [],
+            'enumFqcns' => [],
+            'classFqcns' => [],
         ]);
+    });
+});
+
+describe('namespaceToPath', function () {
+    test('converts simple FQCN to kebab path', function () {
+        expect($this->service->namespaceToPath('App\Models\User'))->toBe('app/models');
+    });
+
+    test('converts module FQCN to kebab path', function () {
+        expect($this->service->namespaceToPath('Blog\Enums\ArticleStatus'))->toBe('blog/enums');
+    });
+
+    test('handles multi-word segments with kebab case', function () {
+        expect($this->service->namespaceToPath('App\UserSettings\AccountPreference'))->toBe('app/user-settings');
+    });
+
+    test('strips configured namespace prefix', function () {
+        config()->set('ts-publish.namespace_strip_prefix', 'Modules\\');
+
+        expect($this->service->namespaceToPath('Modules\Blog\Enums\ArticleStatus'))->toBe('blog/enums');
+    });
+
+    test('strips Workbench prefix for testing', function () {
+        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+        expect($this->service->namespaceToPath('Workbench\App\Models\User'))->toBe('app/models')
+            ->and($this->service->namespaceToPath('Workbench\Blog\Enums\ArticleStatus'))->toBe('blog/enums');
+    });
+
+    test('does not strip prefix when prefix does not match', function () {
+        config()->set('ts-publish.namespace_strip_prefix', 'Modules\\');
+
+        expect($this->service->namespaceToPath('App\Models\User'))->toBe('app/models');
+    });
+
+    test('handles deeply nested namespaces', function () {
+        expect($this->service->namespaceToPath('App\Domain\Billing\Models\Invoice'))->toBe('app/domain/billing/models');
+    });
+});
+
+describe('relativeImportPath', function () {
+    test('same directory returns dot', function () {
+        expect($this->service->relativeImportPath('blog/models', 'blog/models'))->toBe('.');
+    });
+
+    test('sibling directory computes one level up', function () {
+        expect($this->service->relativeImportPath('blog/models', 'blog/enums'))->toBe('../enums');
+    });
+
+    test('cross-module computes multiple levels up', function () {
+        expect($this->service->relativeImportPath('app/models', 'blog/enums'))->toBe('../../blog/enums');
+    });
+
+    test('child to parent directory', function () {
+        expect($this->service->relativeImportPath('app/domain/billing/models', 'app/domain/billing/enums'))->toBe('../enums');
+    });
+
+    test('deeply nested cross-module', function () {
+        expect($this->service->relativeImportPath('app/domain/billing/models', 'shipping/enums'))->toBe('../../../../shipping/enums');
+    });
+
+    test('going up to common root', function () {
+        expect($this->service->relativeImportPath('app/models', 'app/enums'))->toBe('../enums');
     });
 });
 

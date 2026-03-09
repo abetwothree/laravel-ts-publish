@@ -61,10 +61,19 @@ class TsPublishCommand extends Command
 
         if (! empty($runner->enumBarrelContent)) {
             $this->newLine();
-            $this->comment('Enum Barrel File:');
-            $this->newLine();
-            $this->comment('  index.ts');
-            $this->line($runner->enumBarrelContent);
+            if (count($runner->enumModularBarrels) > 0) {
+                $this->comment('Enum Barrel Files:');
+                foreach ($runner->enumModularBarrels as $namespacePath => $content) {
+                    $this->newLine();
+                    $this->comment("  {$namespacePath}/index.ts");
+                    $this->line($content);
+                }
+            } else {
+                $this->comment('Enum Barrel File:');
+                $this->newLine();
+                $this->comment('  index.ts');
+                $this->line($runner->enumBarrelContent);
+            }
         }
 
         if (count($runner->modelGenerators) > 0) {
@@ -79,10 +88,19 @@ class TsPublishCommand extends Command
 
         if (! empty($runner->modelBarrelContent)) {
             $this->newLine();
-            $this->comment('Model Barrel File:');
-            $this->newLine();
-            $this->comment('  index.ts');
-            $this->line($runner->modelBarrelContent);
+            if (count($runner->modelModularBarrels) > 0) {
+                $this->comment('Model Barrel Files:');
+                foreach ($runner->modelModularBarrels as $namespacePath => $content) {
+                    $this->newLine();
+                    $this->comment("  {$namespacePath}/index.ts");
+                    $this->line($content);
+                }
+            } else {
+                $this->comment('Model Barrel File:');
+                $this->newLine();
+                $this->comment('  index.ts');
+                $this->line($runner->modelBarrelContent);
+            }
         }
     }
 
@@ -125,8 +143,12 @@ class TsPublishCommand extends Command
         }
 
         $extras = array_filter([
-            $runner->enumBarrelContent ? 'enums/index.ts' : null,
-            $runner->modelBarrelContent ? 'models/index.ts' : null,
+            ...($runner->enumModularBarrels
+                ? array_map(fn (string $path) => "{$path}/index.ts", array_keys($runner->enumModularBarrels))
+                : ($runner->enumBarrelContent ? ['enums/index.ts'] : [])),
+            ...($runner->modelModularBarrels
+                ? array_map(fn (string $path) => "{$path}/index.ts", array_keys($runner->modelModularBarrels))
+                : ($runner->modelBarrelContent ? ['models/index.ts'] : [])),
             $runner->globalsContent ? config()->string('ts-publish.global_filename') : null,
             $runner->jsonContent ? config()->string('ts-publish.json_filename') : null,
         ]);

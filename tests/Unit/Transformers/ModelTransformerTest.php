@@ -49,8 +49,9 @@ describe('ModelTransformer with User model', function () {
     test('transforms User model enum imports', function () {
         $data = (new ModelTransformer(User::class))->data();
 
-        expect($data['enumImports'])->toContain('RoleType')
-            ->and($data['enumImports'])->toContain('MembershipLevelType');
+        expect($data['resolvedImports'])->toHaveKey('../enums');
+        expect($data['resolvedImports']['../enums'])->toContain('RoleType')
+            ->and($data['resolvedImports']['../enums'])->toContain('MembershipLevelType');
     });
 
     test('transforms User model relations', function () {
@@ -87,10 +88,11 @@ describe('ModelTransformer with User model', function () {
         $data = (new ModelTransformer(User::class))->data();
 
         // Model imports should include related model types but not self
-        expect($data['modelImports'])->toContain('Profile')
-            ->and($data['modelImports'])->toContain('Post')
-            ->and($data['modelImports'])->toContain('Image')
-            ->and($data['modelImports'])->not->toContain('User');
+        expect($data['resolvedImports'])->toHaveKey('./');
+        expect($data['resolvedImports']['./'])->toContain('Profile')
+            ->and($data['resolvedImports']['./'])->toContain('Post')
+            ->and($data['resolvedImports']['./'])->toContain('Image')
+            ->and($data['resolvedImports']['./'])->not->toContain('User');
     });
 });
 
@@ -137,10 +139,10 @@ describe('ModelTransformer with Product model that has TsCasts with custom impor
     test('Product model has custom imports from TsCasts', function () {
         $data = (new ModelTransformer(Product::class))->data();
 
-        expect($data['customImports'])->toHaveKey('@js/types/product');
+        expect($data['resolvedImports'])->toHaveKey('@js/types/product');
 
         // Should extract just the importable type names, not primitives or null
-        $importedTypes = $data['customImports']['@js/types/product'];
+        $importedTypes = $data['resolvedImports']['@js/types/product'];
         expect($importedTypes)->toContain('ProductMetadata')
             ->and($importedTypes)->toContain('ProductJsonMetaData')
             ->and($importedTypes)->not->toContain('null');
@@ -169,7 +171,8 @@ describe('ModelTransformer with Post model that has method-level TsCasts', funct
     test('transforms Post model enum imports', function () {
         $data = (new ModelTransformer(Post::class))->data();
 
-        expect($data['enumImports'])
+        expect($data['resolvedImports'])->toHaveKey('../enums');
+        expect($data['resolvedImports']['../enums'])
             ->toContain('StatusType')
             ->toContain('VisibilityType')
             ->toContain('PriorityType');
@@ -189,7 +192,8 @@ describe('ModelTransformer with Category model that has self-referencing relatio
             ->and($data['relations']['posts'])->toBe('Post[]');
 
         // Self-reference should NOT appear in model imports
-        expect($data['modelImports'])->not->toContain('Category');
+        $modelImports = $data['resolvedImports']['./'] ?? [];
+        expect($modelImports)->not->toContain('Category');
     });
 });
 
@@ -214,7 +218,7 @@ describe('ModelTransformer with Invoice model from modules directory', function 
             ->and($data['columns'])->toHaveKey('total')
             ->and($data['columns']['status'])->toBe('InvoiceStatusType');
 
-        expect($data['enumImports'])->toContain('InvoiceStatusType');
+        expect($data['resolvedImports']['../enums'])->toContain('InvoiceStatusType');
 
         expect($data['relations'])
             ->toHaveKey('user')
@@ -239,7 +243,7 @@ describe('ModelTransformer with Order model that has complex TsCasts and multipl
             ->and($data['columns']['payment_method'])->toBe('PaymentMethodType | null')
             ->and($data['columns']['currency'])->toBe('CurrencyType');
 
-        expect($data['enumImports'])
+        expect($data['resolvedImports']['../enums'])
             ->toContain('OrderStatusType')
             ->toContain('PaymentMethodType')
             ->toContain('CurrencyType');
@@ -329,5 +333,74 @@ describe('ModelTransformer resolveRelativePath method', function () {
         $result = $method->invoke($transformer, $absolutePath);
 
         expect($result)->toBe('/completely/different/path/Model.php');
+    });
+});
+
+describe('ModelTransformer namespacePath', function () {
+    test('computes namespacePath with strip prefix', function () {
+        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+        $transformer = new ModelTransformer(User::class);
+
+        expect($transformer->namespacePath)->toBe('app/models');
+    });
+
+    test('computes namespacePath for module model with strip prefix', function () {
+        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+        $transformer = new ModelTransformer(Invoice::class);
+
+        expect($transformer->namespacePath)->toBe('accounting/models');
+    });
+});
+
+describe('ModelTransformer modular resolvedImports', function () {
+    test('computes modular resolvedImports with relative paths for Invoice model', function () {
+        config()->set('ts-publish.modular_publishing', true);
+        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+        $data = (new ModelTransformer(Invoice::class))->data();
+
+        // Invoice is in accounting/models
+        // InvoiceStatus enum is in accounting/enums → ../enums
+        // User model is in app/models → ../../app/models
+        // Payment model is in accounting/models → . (same dir)
+        expect($data['resolvedImports'])->toHaveKey('../enums');
+        expect($data['resolvedImports']['../enums'])->toContain('InvoiceStatusType');
+
+        expect($data['resolvedImports'])->toHaveKey('../../app/models');
+        expect($data['resolvedImports']['../../app/models'])->toContain('User');
+
+        expect($data['resolvedImports'])->toHaveKey('.');
+        expect($data['resolvedImports']['.'])->toContain('Payment');
+    });
+
+    test('computes modular resolvedImports for User model with enum and model imports', function () {
+        config()->set('ts-publish.modular_publishing', true);
+        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+        $data = (new ModelTransformer(User::class))->data();
+
+        // User is in app/models
+        // Role, MembershipLevel enums are in app/enums → ../enums
+        expect($data['resolvedImports'])->toHaveKey('../enums');
+        expect($data['resolvedImports']['../enums'])->toContain('RoleType')
+            ->and($data['resolvedImports']['../enums'])->toContain('MembershipLevelType');
+
+        // Related models in the same namespace (Profile, Post, etc.) → . (same dir)
+        expect($data['resolvedImports'])->toHaveKey('.');
+        expect($data['resolvedImports']['.'])->toContain('Profile')
+            ->and($data['resolvedImports']['.'])->toContain('Post')
+            ->and($data['resolvedImports']['.'])->not->toContain('User');
+    });
+
+    test('non-modular resolvedImports uses flat paths', function () {
+        config()->set('ts-publish.modular_publishing', false);
+
+        $data = (new ModelTransformer(User::class))->data();
+
+        // Non-modular uses hardcoded '../enums' and './' paths
+        expect($data['resolvedImports'])->toHaveKey('../enums');
+        expect($data['resolvedImports'])->toHaveKey('./');
     });
 });

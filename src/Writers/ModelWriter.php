@@ -38,15 +38,19 @@ class ModelWriter extends CoreWriter
         )->render();
 
         if (config()->boolean('ts-publish.output_to_files')) {
-            $this->writeModelFile($filename, $content);
+            $this->writeModelFile($filename, $content, $transformer->namespacePath);
         }
 
         return $content;
     }
 
-    protected function writeModelFile(string $filename, string $content): void
+    protected function writeModelFile(string $filename, string $content, string $namespacePath): void
     {
-        $outputPath = config()->string('ts-publish.output_directory').'/models';
+        $outputBase = config()->string('ts-publish.output_directory');
+        $outputPath = config()->boolean('ts-publish.modular_publishing')
+            ? $outputBase.'/'.$namespacePath
+            : $outputBase.'/models';
+
         $this->filesystem->ensureDirectoryExists($outputPath);
         $this->filesystem->put("$outputPath/$filename.ts", $content);
     }

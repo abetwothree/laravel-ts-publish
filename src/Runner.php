@@ -30,6 +30,12 @@ class Runner
 
     public protected(set) string $modelBarrelContent = '';
 
+    /** @var array<string, string> Barrel contents keyed by namespace path (modular mode only) */
+    public protected(set) array $enumModularBarrels = [];
+
+    /** @var array<string, string> Barrel contents keyed by namespace path (modular mode only) */
+    public protected(set) array $modelModularBarrels = [];
+
     public protected(set) string $globalsContent = '';
 
     public protected(set) string $jsonContent = '';
@@ -70,11 +76,16 @@ class Runner
 
         $this->enumGenerators = $enumGenerators;
 
-        $this->enumBarrelContent = $this->barrelWriter->write(
-            $this->enumGenerators,
-            'index',
-            'enums'
-        );
+        if (config()->boolean('ts-publish.modular_publishing')) {
+            $this->enumModularBarrels = $this->barrelWriter->writeModular($this->enumGenerators);
+            $this->enumBarrelContent = implode("\n\n", $this->enumModularBarrels);
+        } else {
+            $this->enumBarrelContent = $this->barrelWriter->write(
+                $this->enumGenerators,
+                'index',
+                'enums'
+            );
+        }
     }
 
     protected function generateModels(): void
@@ -97,11 +108,16 @@ class Runner
 
         $this->modelGenerators = $modelGenerators;
 
-        $this->modelBarrelContent = $this->barrelWriter->write(
-            $this->modelGenerators,
-            'index',
-            'models'
-        );
+        if (config()->boolean('ts-publish.modular_publishing')) {
+            $this->modelModularBarrels = $this->barrelWriter->writeModular($this->modelGenerators);
+            $this->modelBarrelContent = implode("\n\n", $this->modelModularBarrels);
+        } else {
+            $this->modelBarrelContent = $this->barrelWriter->write(
+                $this->modelGenerators,
+                'index',
+                'models'
+            );
+        }
     }
 
     protected function generateGlobals(): void

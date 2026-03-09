@@ -145,6 +145,38 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Modular Publishing
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, TypeScript files are organized into namespace-derived
+    | directory trees instead of flat "enums/" and "models/" folders.
+    |
+    | For example, `Blog\Enums\ArticleStatus` writes to `blog/enums/article-status.ts`
+    | instead of `enums/article-status.ts`.
+    |
+    | Each namespace folder receives its own barrel index.ts file.
+    |
+    | Import paths between generated files are computed as relative paths
+    | based on the namespace directory structure.
+    */
+    'modular_publishing' => false,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Namespace Strip Prefix
+    |--------------------------------------------------------------------------
+    |
+    | When modular publishing is enabled, this prefix is stripped from the
+    | fully-qualified class namespace before converting to a directory path.
+    |
+    | For example, setting this to 'Modules\\' turns
+    | `Modules\Blog\Models\Article` into `blog/models/article.ts`
+    | instead of `modules/blog/models/article.ts`.
+    */
+    'namespace_strip_prefix' => '',
+
+    /*
+    |--------------------------------------------------------------------------
     | Relationship Case Style
     |--------------------------------------------------------------------------
     |

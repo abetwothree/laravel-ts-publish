@@ -1,11 +1,5 @@
 @use('AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish')
-@if(count($enumImports) > 0)
-import { {{ implode(', ', $enumImports) }} } from '../enums';
-@endif
-@if(count($modelImports) > 0)
-import { {{ implode(', ', $modelImports) }} } from './';
-@endif
-@foreach ($customImports as $path => $types)
+@foreach ($resolvedImports as $path => $types)
 import { {{ implode(', ', $types) }} } from '{{ $path }}';
 @endforeach
 
