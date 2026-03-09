@@ -10,13 +10,13 @@ export const {{ $enumName }} = {
 @endif
 @foreach ($cases as $case)
 @if($case['description'])
-    /** {{ $case['description'] }} */
+    /** {{ LaravelTsPublish::sanitizeJsDoc($case['description']) }} */
 @endif
     {!! LaravelTsPublish::validJsObjectKey($case['name']) !!}: {!! LaravelTsPublish::toJsLiteral($case['value']) !!},
 @endforeach
 @foreach ($methods as $methodName => $method)
 @if($method['description'])
-    /** {{ $method['description'] }} */
+    /** {{ LaravelTsPublish::sanitizeJsDoc($method['description']) }} */
 @endif
     {!! LaravelTsPublish::validJsObjectKey($method['name']) !!}: {
 @foreach ($method['returns'] as $caseName => $returnValue)
@@ -26,7 +26,7 @@ export const {{ $enumName }} = {
 @endforeach
 @foreach ($staticMethods as $methodName => $method)
 @if($method['description'])
-    /** {{ $method['description'] }} */
+    /** {{ LaravelTsPublish::sanitizeJsDoc($method['description']) }} */
 @endif
     {!! LaravelTsPublish::validJsObjectKey($method['name']) !!}: {!! LaravelTsPublish::toJsLiteral($method['return']) !!},
 @endforeach

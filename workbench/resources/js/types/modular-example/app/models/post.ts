@@ -1,5 +1,5 @@
-import { User, Category, Comment, Tag, Image } from '.';
 import { StatusType, VisibilityType, PriorityType } from '../enums';
+import { User, Category, Comment, Tag, Image } from '.';
 
 export interface Post
 {

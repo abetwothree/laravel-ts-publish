@@ -421,4 +421,72 @@ class LaravelTsPublish
 
         return rtrim($relative, '/');
     }
+
+    /**
+     * Sort import paths following eslint-plugin-simple-import-sort conventions:
+     *
+     * 1. Package imports (npm packages: start with letter/digit/_ or @letter)
+     * 2. Absolute/other imports (everything else not starting with .)
+     * 3. Relative imports (starting with .), deeper paths first
+     *
+     * Within each group, paths are sorted alphabetically (case-insensitive).
+     *
+     * @param  array<string, list<string>>  $imports
+     * @return array<string, list<string>>
+     */
+    public function sortImportPaths(array $imports): array
+    {
+        uksort($imports, function (string $a, string $b): int {
+            $groupA = $this->importSortGroup($a);
+            $groupB = $this->importSortGroup($b);
+
+            if ($groupA !== $groupB) {
+                return $groupA <=> $groupB;
+            }
+
+            // Within relative imports, deeper paths come first
+            if ($groupA === 2) {
+                $depthA = substr_count($a, '../');
+                $depthB = substr_count($b, '../');
+
+                if ($depthA !== $depthB) {
+                    return $depthB <=> $depthA;
+                }
+            }
+
+            return strnatcasecmp($a, $b);
+        });
+
+        return $imports;
+    }
+
+    /**
+     * Determine the sort group for an import path.
+     *
+     * 0 = Package (starts with letter/digit/_ or @letter)
+     * 1 = Absolute/other (everything else not starting with .)
+     * 2 = Relative (starts with .)
+     */
+    protected function importSortGroup(string $path): int
+    {
+        if (str_starts_with($path, '.')) {
+            return 2;
+        }
+
+        if (preg_match('/^@?\w/', $path)) {
+            return 0;
+        }
+
+        return 1;
+    }
+
+    /**
+     * Sanitize a string for safe inclusion in a JSDoc comment.
+     *
+     * Prevents premature comment termination by escaping the closing sequence.
+     */
+    public function sanitizeJsDoc(string $text): string
+    {
+        return str_replace('*/', '*\/', $text);
+    }
 }

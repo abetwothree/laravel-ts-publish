@@ -86,6 +86,7 @@ class TypeScriptMap
             'timestamptz' => 'string',
 
             'null' => 'null',
+            'mixed' => 'unknown',
         ];
 
         /** @var array<string, string|(callable(): string)> $merged */

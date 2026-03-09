@@ -1,6 +1,6 @@
-import { TrackingEvent } from '.';
 import { Order } from '../../app/models';
 import { CarrierType, ShipmentStatusType } from '../enums';
+import { TrackingEvent } from '.';
 
 export interface Shipment
 {

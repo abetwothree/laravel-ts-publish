@@ -443,6 +443,97 @@ describe('relativeImportPath', function () {
     });
 });
 
+describe('sortImportPaths', function () {
+    test('packages come before relative imports', function () {
+        $imports = [
+            '../enums' => ['Status'],
+            'luxon' => ['DateTime'],
+        ];
+
+        $sorted = $this->service->sortImportPaths($imports);
+
+        expect(array_keys($sorted))->toBe(['luxon', '../enums']);
+    });
+
+    test('deeper relative imports come before shallower ones', function () {
+        $imports = [
+            './types' => ['UserType'],
+            '../../shared/enums' => ['Status'],
+            '../enums' => ['Role'],
+        ];
+
+        $sorted = $this->service->sortImportPaths($imports);
+
+        expect(array_keys($sorted))->toBe(['../../shared/enums', '../enums', './types']);
+    });
+
+    test('alphabetical within the same group', function () {
+        $imports = [
+            'zod' => ['z'],
+            'axios' => ['AxiosInstance'],
+            'luxon' => ['DateTime'],
+        ];
+
+        $sorted = $this->service->sortImportPaths($imports);
+
+        expect(array_keys($sorted))->toBe(['axios', 'luxon', 'zod']);
+    });
+
+    test('full sort order: packages then relative by depth then alpha', function () {
+        $imports = [
+            './types' => ['PostType'],
+            '@tanstack/query' => ['useQuery'],
+            '../enums' => ['Status'],
+            'luxon' => ['DateTime'],
+            '../../shared/enums' => ['Role'],
+        ];
+
+        $sorted = $this->service->sortImportPaths($imports);
+
+        expect(array_keys($sorted))->toBe([
+            '@tanstack/query',
+            'luxon',
+            '../../shared/enums',
+            '../enums',
+            './types',
+        ]);
+    });
+
+    test('preserves values when sorting', function () {
+        $imports = [
+            '../enums' => ['Status', 'Role'],
+            'luxon' => ['DateTime'],
+        ];
+
+        $sorted = $this->service->sortImportPaths($imports);
+
+        expect($sorted['luxon'])->toBe(['DateTime'])
+            ->and($sorted['../enums'])->toBe(['Status', 'Role']);
+    });
+
+    test('empty array returns empty array', function () {
+        expect($this->service->sortImportPaths([]))->toBe([]);
+    });
+});
+
+describe('sanitizeJsDoc', function () {
+    test('escapes closing comment sequence', function () {
+        expect($this->service->sanitizeJsDoc('some */ text'))->toBe('some *\/ text');
+    });
+
+    test('leaves normal text unchanged', function () {
+        expect($this->service->sanitizeJsDoc('A normal description'))->toBe('A normal description');
+    });
+
+    test('handles multiple occurrences', function () {
+        expect($this->service->sanitizeJsDoc('a */ b */ c'))->toBe('a *\/ b *\/ c');
+    });
+
+    test('handles empty string', function () {
+        expect($this->service->sanitizeJsDoc(''))->toBe('');
+    });
+});
+
 /**
  * A class annotated with #[TsType] for testing step 2 resolution.
  */

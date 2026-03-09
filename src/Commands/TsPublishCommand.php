@@ -144,17 +144,21 @@ class TsPublishCommand extends Command
 
         $extras = array_filter([
             ...($runner->enumModularBarrels
-                ? array_map(fn (string $path) => "{$path}/index.ts", array_keys($runner->enumModularBarrels))
-                : ($runner->enumBarrelContent ? ['enums/index.ts'] : [])),
+                ? array_map(fn (string $path) => ['Barrel', "{$path}/index.ts"], array_keys($runner->enumModularBarrels))
+                : ($runner->enumBarrelContent ? [['Barrel', 'enums/index.ts']] : [])),
             ...($runner->modelModularBarrels
-                ? array_map(fn (string $path) => "{$path}/index.ts", array_keys($runner->modelModularBarrels))
-                : ($runner->modelBarrelContent ? ['models/index.ts'] : [])),
-            $runner->globalsContent ? config()->string('ts-publish.global_filename') : null,
-            $runner->jsonContent ? config()->string('ts-publish.json_filename') : null,
+                ? array_map(fn (string $path) => ['Barrel', "{$path}/index.ts"], array_keys($runner->modelModularBarrels))
+                : ($runner->modelBarrelContent ? [['Barrel', 'models/index.ts']] : [])),
+            $runner->globalsContent ? ['Globals', config()->string('ts-publish.global_filename')] : null,
+            $runner->jsonContent ? ['JSON', config()->string('ts-publish.json_filename')] : null,
         ]);
 
         if (count($extras) > 0) {
-            info('Also generated: '.implode(', ', $extras));
+            /** @var array<int, array<int, string>> $extras */
+            table(
+                headers: ['Type', 'File'],
+                rows: $extras,
+            );
         }
     }
 }

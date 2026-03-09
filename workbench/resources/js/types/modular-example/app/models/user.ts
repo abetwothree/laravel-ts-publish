@@ -1,6 +1,6 @@
-import { Profile, Post, Comment, Order, Address, Team, Image } from '.';
 import { DatabaseNotification } from '../../illuminate/notifications';
 import { RoleType, MembershipLevelType } from '../enums';
+import { Profile, Post, Comment, Order, Address, Team, Image } from '.';
 
 export interface User
 {

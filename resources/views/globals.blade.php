@@ -49,7 +49,7 @@ declare global {
         {
 @foreach($transformer->cases as $case)
 @if($case['description'])
-            /** {{ $case['description'] }} */
+            /** {{ LaravelTsPublish::sanitizeJsDoc($case['description']) }} */
 @endif
             {!! LaravelTsPublish::validJsObjectKey($case['name']) !!}: {!! LaravelTsPublish::toJsLiteral($case['value']) !!},
 @endforeach
@@ -103,7 +103,7 @@ declare global {
         {
 @foreach($transformer->cases as $case)
 @if($case['description'])
-            /** {{ $case['description'] }} */
+            /** {{ LaravelTsPublish::sanitizeJsDoc($case['description']) }} */
 @endif
             {!! LaravelTsPublish::validJsObjectKey($case['name']) !!}: {!! LaravelTsPublish::toJsLiteral($case['value']) !!},
 @endforeach

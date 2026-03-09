@@ -406,8 +406,6 @@ class ModelTransformer extends CoreTransformer
             $resolvedImports[$path] = array_values(array_unique($types));
         }
 
-        ksort($resolvedImports);
-
-        return $resolvedImports;
+        return LaravelTsPublish::sortImportPaths($resolvedImports);
     }
 }

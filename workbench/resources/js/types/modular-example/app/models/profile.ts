@@ -1,5 +1,5 @@
-import { User } from '.';
 import { MenuSettingsType } from '@js/types/settings';
+import { User } from '.';
 
 export interface Profile
 {

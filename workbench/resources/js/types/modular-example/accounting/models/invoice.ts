@@ -1,6 +1,6 @@
-import { Payment } from '.';
 import { User } from '../../app/models';
 import { InvoiceStatusType } from '../enums';
+import { Payment } from '.';
 
 export interface Invoice
 {
