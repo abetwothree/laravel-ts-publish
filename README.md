@@ -849,9 +849,20 @@ export interface Product {
 }
 ```
 
-### Relationship Case Style
+### Case Style
 
-By default, relationship names in the generated TypeScript interfaces use `snake_case`. You can change this to `camelCase` or `PascalCase` using the `relationship_case` config option:
+This package provides two independent config options to control the casing of generated property and method names:
+
+| Config Key           | Applies To                                    | Default    |
+|----------------------|-----------------------------------------------|------------|
+| `relationship_case`  | Model relationship names, `_count`, `_exists` | `'snake'`  |
+| `enum_method_case`   | Enum method and static method names           | `'camel'`  |
+
+Both accept `'snake'`, `'camel'`, or `'pascal'`.
+
+#### Relationship Case Style
+
+Controls relationship names in the generated model TypeScript interfaces:
 
 ```php
 // config/ts-publish.php
@@ -867,6 +878,25 @@ By default, relationship names in the generated TypeScript interfaces use `snake
 
 > [!NOTE]
 > For each relationship defined on a model, this package automatically generates `_count` and `_exists` properties alongside the relation itself. These correspond to [Laravel's `withCount` and `withExists`](https://laravel.com/docs/eloquent-relationships#counting-related-models) features and are included in every generated model interface.
+
+#### Enum Method Case Style
+
+Controls the casing of enum method and static method names in the generated TypeScript output:
+
+```php
+// config/ts-publish.php
+
+'enum_method_case' => 'camel', // default
+```
+
+| Config Value | Method `getLabel()` | Static Method `AllLabels()` |
+|--------------|---------------------|-----------------------------|
+| `'snake'`    | `get_label`         | `all_labels`                |
+| `'camel'`    | `getLabel`          | `allLabels`                 |
+| `'pascal'`   | `GetLabel`          | `AllLabels`                 |
+
+> [!TIP]
+> This setting applies to all enum methods — both instance methods (via `#[TsEnumMethod]` or `auto_include_enum_methods`) and static methods (via `#[TsEnumStaticMethod]` or `auto_include_enum_static_methods`). You can still override individual method names using the `name` parameter on the attribute.
 
 ### Timestamps as Date Objects
 
@@ -1113,6 +1143,7 @@ Below is a quick reference of all available configuration options:
 | `modular_publishing`                  | `bool`     | `false`                              | Organize output into namespace-derived directory trees           |
 | `namespace_strip_prefix`              | `string`   | `''`                                 | Strip this prefix from namespaces in modular mode                |
 | `relationship_case`                   | `string`   | `'snake'`                            | Case style for relationships: `snake`, `camel`, or `pascal`      |
+| `enum_method_case`                    | `string`   | `'camel'`                            | Case style for enum methods: `snake`, `camel`, or `pascal`       |
 | `timestamps_as_date`                  | `bool`     | `false`                              | Map date/datetime/timestamp to `Date` instead of `string`        |
 | `custom_ts_mappings`                  | `array`    | `[]`                                 | Override or extend PHP-to-TypeScript type mappings               |
 | `auto_include_enum_methods`           | `bool`     | `false`                              | Include all public non-static enum methods without attributes    |
