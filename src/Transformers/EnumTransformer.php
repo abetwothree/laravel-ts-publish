@@ -185,7 +185,7 @@ class EnumTransformer extends CoreTransformer
     protected function transformMethods(): self
     {
         $autoInclude = config('ts-publish.auto_include_enum_methods');
-        $case = config()->string('ts-publish.enum_method_case');
+        $caseFormatting = config()->string('ts-publish.enum_method_case');
 
         foreach ($this->reflectionEnum->getMethods() as $method) {
             $methodName = $method->getName();
@@ -217,7 +217,7 @@ class EnumTransformer extends CoreTransformer
             }
 
             $this->methods[$methodName] = [
-                'name' => LaravelTsPublish::keyCase($tsEnumMethodInstance?->name ?: $methodName, $case),
+                'name' => LaravelTsPublish::keyCase($tsEnumMethodInstance?->name ?: $methodName, $caseFormatting),
                 'description' => $tsEnumMethodInstance !== null ? $tsEnumMethodInstance->description : '',
                 'returns' => $returns,
             ];
@@ -229,7 +229,7 @@ class EnumTransformer extends CoreTransformer
     protected function transformStaticMethods(): self
     {
         $autoInclude = config('ts-publish.auto_include_enum_static_methods');
-        $case = config()->string('ts-publish.enum_method_case');
+        $caseFormatting = config()->string('ts-publish.enum_method_case');
 
         foreach ($this->reflectionEnum->getMethods() as $method) {
             $methodName = $method->getName();
@@ -263,7 +263,7 @@ class EnumTransformer extends CoreTransformer
             }
 
             $this->staticMethods[$methodName] = [
-                'name' => LaravelTsPublish::keyCase($tsEnumMethodInstance?->name ?: $methodName, $case),
+                'name' => LaravelTsPublish::keyCase($tsEnumMethodInstance?->name ?: $methodName, $caseFormatting),
                 'description' => $tsEnumMethodInstance !== null ? $tsEnumMethodInstance->description : '',
                 'return' => $return,
             ];

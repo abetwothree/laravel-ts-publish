@@ -14,6 +14,8 @@ Every application is different, and this package provides the tools to tailor Ty
 
 ## Installation
 
+**Requires PHP 8.4+ and Laravel 12 or 11**
+
 You can install the package via composer:
 
 ```bash
