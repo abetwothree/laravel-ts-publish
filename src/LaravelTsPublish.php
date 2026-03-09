@@ -446,8 +446,8 @@ class LaravelTsPublish
 
             // Within relative imports, deeper paths come first
             if ($groupA === 2) {
-                $depthA = substr_count($a, '../');
-                $depthB = substr_count($b, '../');
+                $depthA = count(array_filter(explode('/', $a), fn (string $s): bool => $s === '..'));
+                $depthB = count(array_filter(explode('/', $b), fn (string $s): bool => $s === '..'));
 
                 if ($depthA !== $depthB) {
                     return $depthB <=> $depthA;

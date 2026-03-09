@@ -467,6 +467,28 @@ describe('sortImportPaths', function () {
         expect(array_keys($sorted))->toBe(['../../shared/enums', '../enums', './types']);
     });
 
+    test('bare parent path (..) sorts by depth with other single-level relative paths', function () {
+        $imports = [
+            '.' => ['MerchandiseCategory'],
+            '..' => ['Permission'],
+            '../favorites' => ['Favorite'],
+            '../images' => ['Image'],
+            '../../enums' => ['StatusType'],
+            '../../../owen-it/auditing/models' => ['Audit'],
+        ];
+
+        $sorted = $this->service->sortImportPaths($imports);
+
+        expect(array_keys($sorted))->toBe([
+            '../../../owen-it/auditing/models',
+            '../../enums',
+            '..',
+            '../favorites',
+            '../images',
+            '.',
+        ]);
+    });
+
     test('alphabetical within the same group', function () {
         $imports = [
             'zod' => ['z'],
@@ -481,8 +503,10 @@ describe('sortImportPaths', function () {
 
     test('full sort order: packages then relative by depth then alpha', function () {
         $imports = [
+            '.' => ['MerchandiseCategory'],
             './types' => ['PostType'],
             '@tanstack/query' => ['useQuery'],
+            '..' => ['Permission'],
             '../enums' => ['Status'],
             'luxon' => ['DateTime'],
             '../../shared/enums' => ['Role'],
@@ -494,7 +518,9 @@ describe('sortImportPaths', function () {
             '@tanstack/query',
             'luxon',
             '../../shared/enums',
+            '..',
             '../enums',
+            '.',
             './types',
         ]);
     });
