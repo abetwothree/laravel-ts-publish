@@ -29,27 +29,19 @@ describe('typesMap', function () {
 
 describe('keyCase', function () {
     test('keyCase returns camelCase', function () {
-        config()->set('ts-publish.relationship_case', 'camel');
-
-        expect($this->service->keyCase('some_relation'))->toBe('someRelation');
+        expect($this->service->keyCase('some_relation', 'camel'))->toBe('someRelation');
     });
 
     test('keyCase returns snake_case', function () {
-        config()->set('ts-publish.relationship_case', 'snake');
-
-        expect($this->service->keyCase('someRelation'))->toBe('some_relation');
+        expect($this->service->keyCase('someRelation', 'snake'))->toBe('some_relation');
     });
 
     test('keyCase returns PascalCase', function () {
-        config()->set('ts-publish.relationship_case', 'pascal');
-
-        expect($this->service->keyCase('some_relation'))->toBe('SomeRelation');
+        expect($this->service->keyCase('some_relation', 'pascal'))->toBe('SomeRelation');
     });
 
     test('keyCase returns the original key by default', function () {
-        config()->set('ts-publish.relationship_case', 'none');
-
-        expect($this->service->keyCase('some_relation'))->toBe('some_relation');
+        expect($this->service->keyCase('some_relation', 'none'))->toBe('some_relation');
     });
 });
 

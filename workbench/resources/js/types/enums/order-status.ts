@@ -36,7 +36,7 @@ export const OrderStatus = defineEnum({
         OnHold: 'orange',
     },
     /** Whether the order can still be cancelled */
-    is_cancellable: {
+    isCancellable: {
         Pending: true,
         Processing: true,
         Shipped: false,
@@ -46,12 +46,12 @@ export const OrderStatus = defineEnum({
         OnHold: true,
     },
     /** Get statuses that represent a completed order */
-    completed_statuses: [3, 4, 5],
+    completedStatuses: [3, 4, 5],
     /** Get statuses that represent an active order */
-    active_statuses: [0, 1, 2, 6],
+    activeStatuses: [0, 1, 2, 6],
     _cases: ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled', 'Refunded', 'OnHold'],
-    _methods: ['label', 'color', 'is_cancellable'],
-    _static: ['completed_statuses', 'active_statuses'],
+    _methods: ['label', 'color', 'isCancellable'],
+    _static: ['completedStatuses', 'activeStatuses'],
 } as const);
 
 export type OrderStatusType = 0 | 1 | 2 | 3 | 4 | 5 | 6;

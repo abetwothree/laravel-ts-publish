@@ -1576,7 +1576,7 @@
                     }
                 },
                 "badgeColor": {
-                    "name": "badge_color",
+                    "name": "badgeColor",
                     "description": "Tailwind badge color class",
                     "returns": {
                         "Low": "bg-gray-100 text-gray-800",
@@ -1596,7 +1596,7 @@
                     }
                 },
                 "isAboveThreshold": {
-                    "name": "is_above_threshold",
+                    "name": "isAboveThreshold",
                     "description": "Compare with threshold",
                     "returns": {
                         "Low": null,
@@ -1608,7 +1608,7 @@
             },
             "staticMethods": {
                 "filterByMinimum": {
-                    "name": "filter_by_minimum",
+                    "name": "filterByMinimum",
                     "description": "Filter by minimum",
                     "return": null
                 }
@@ -1652,7 +1652,7 @@
             ],
             "methods": {
                 "isPublic": {
-                    "name": "is_public",
+                    "name": "isPublic",
                     "description": "Whether the item is publicly accessible",
                     "returns": {
                         "Public": true,
@@ -1761,7 +1761,7 @@
                     }
                 },
                 "maxSizeMb": {
-                    "name": "max_size_mb",
+                    "name": "maxSizeMb",
                     "description": "Maximum file size in MB",
                     "returns": {
                         "Image": 10,
@@ -1785,7 +1785,7 @@
             },
             "staticMethods": {
                 "mimePrefixes": {
-                    "name": "mime_prefixes",
+                    "name": "mimePrefixes",
                     "description": "Get the MIME type prefixes",
                     "return": {
                         "image": "image\/",
@@ -1881,7 +1881,7 @@
                     }
                 },
                 "isCancellable": {
-                    "name": "is_cancellable",
+                    "name": "isCancellable",
                     "description": "Whether the order can still be cancelled",
                     "returns": {
                         "Pending": true,
@@ -1896,7 +1896,7 @@
             },
             "staticMethods": {
                 "completedStatuses": {
-                    "name": "completed_statuses",
+                    "name": "completedStatuses",
                     "description": "Get statuses that represent a completed order",
                     "return": [
                         3,
@@ -1905,7 +1905,7 @@
                     ]
                 },
                 "activeStatuses": {
-                    "name": "active_statuses",
+                    "name": "activeStatuses",
                     "description": "Get statuses that represent an active order",
                     "return": [
                         0,
@@ -1984,7 +1984,7 @@
             },
             "staticMethods": {
                 "valueLabelPair": {
-                    "name": "value_label_pair",
+                    "name": "valueLabelPair",
                     "description": "Get the key-value pair options for the status",
                     "return": [
                         {

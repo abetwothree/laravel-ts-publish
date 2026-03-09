@@ -7,7 +7,7 @@ export const Visibility = defineEnum({
     Internal: 'Internal',
     Draft: 'Draft',
     /** Whether the item is publicly accessible */
-    is_public: {
+    isPublic: {
         Public: true,
         Private: false,
         Protected: false,
@@ -23,7 +23,7 @@ export const Visibility = defineEnum({
         Draft: 'Not visible to anyone except the author',
     },
     _cases: ['Public', 'Private', 'Protected', 'Internal', 'Draft'],
-    _methods: ['is_public', 'description'],
+    _methods: ['isPublic', 'description'],
     _static: [],
 } as const);
 

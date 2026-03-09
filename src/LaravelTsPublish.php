@@ -47,10 +47,8 @@ class LaravelTsPublish
         return (new TypeScriptMap)->gather();
     }
 
-    public function keyCase(string $key): string
+    public function keyCase(string $key, string $case): string
     {
-        $case = config()->string('ts-publish.relationship_case');
-
         return match ($case) {
             'camel' => Str::camel($key),
             'snake' => Str::snake($key),

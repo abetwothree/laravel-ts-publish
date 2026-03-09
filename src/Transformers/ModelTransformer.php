@@ -290,6 +290,8 @@ class ModelTransformer extends CoreTransformer
         /** @var list<string> $excludedModels */
         $excludedModels = array_values(array_filter(config()->array('ts-publish.excluded_models', []), 'is_string'));
 
+        $case = config()->string('ts-publish.relationship_case');
+
         $relations = $allRelations
             ->when(
                 $includedModels,
@@ -307,7 +309,7 @@ class ModelTransformer extends CoreTransformer
                 ? $relatedBasename.'[]'
                 : $relatedBasename;
 
-            $relationName = LaravelTsPublish::keyCase($relation['name']);
+            $relationName = LaravelTsPublish::keyCase($relation['name'], $case);
             $this->relations[$relationName] = $relationType;
             $this->modelFqcnMap[$relation['related']] = $relatedBasename;
         }

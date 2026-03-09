@@ -13,7 +13,7 @@ export const Priority = defineEnum({
         Critical: 'Critical Priority',
     },
     /** Tailwind badge color class */
-    badge_color: {
+    badgeColor: {
         Low: 'bg-gray-100 text-gray-800',
         Medium: 'bg-blue-100 text-blue-800',
         High: 'bg-orange-100 text-orange-800',
@@ -27,17 +27,17 @@ export const Priority = defineEnum({
         Critical: 'exclamation-triangle',
     },
     /** Compare with threshold */
-    is_above_threshold: {
+    isAboveThreshold: {
         Low: null,
         Medium: null,
         High: null,
         Critical: null,
     },
     /** Filter by minimum */
-    filter_by_minimum: null,
+    filterByMinimum: null,
     _cases: ['Low', 'Medium', 'High', 'Critical'],
-    _methods: ['label', 'badge_color', 'icon', 'is_above_threshold'],
-    _static: ['filter_by_minimum'],
+    _methods: ['label', 'badgeColor', 'icon', 'isAboveThreshold'],
+    _static: ['filterByMinimum'],
 } as const);
 
 export type PriorityType = 0 | 1 | 2 | 3;

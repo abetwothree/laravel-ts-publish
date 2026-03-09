@@ -15,7 +15,7 @@ export const MediaType = defineEnum({
         Archive: ['zip', 'tar', 'gz', 'rar', '7z'],
     },
     /** Maximum file size in MB */
-    max_size_mb: {
+    maxSizeMb: {
         Image: 10,
         Video: 500,
         Audio: 50,
@@ -31,10 +31,10 @@ export const MediaType = defineEnum({
         Archive: 'archive-box',
     },
     /** Get the MIME type prefixes */
-    mime_prefixes: {image: 'image/', video: 'video/', audio: 'audio/', document: 'application/', archive: 'application/'},
+    mimePrefixes: {image: 'image/', video: 'video/', audio: 'audio/', document: 'application/', archive: 'application/'},
     _cases: ['Image', 'Video', 'Audio', 'Document', 'Archive'],
-    _methods: ['extensions', 'max_size_mb', 'icon'],
-    _static: ['mime_prefixes'],
+    _methods: ['extensions', 'maxSizeMb', 'icon'],
+    _static: ['mimePrefixes'],
 } as const);
 
 export type MediaTypeType = 'image' | 'video' | 'audio' | 'document' | 'archive';

@@ -268,7 +268,7 @@ describe('EnumTransformer auto_include_enum_methods', function () {
         $data = $transformer->data();
 
         expect($data['methods'])->toHaveKey('isDigitalWallet')
-            ->and($data['methods']['isDigitalWallet']['name'])->toBe('is_digital_wallet')
+            ->and($data['methods']['isDigitalWallet']['name'])->toBe('isDigitalWallet')
             ->and($data['methods']['isDigitalWallet']['description'])->toBe('')
             ->and($data['methods']['isDigitalWallet']['returns']['ApplePay'])->toBeTrue()
             ->and($data['methods']['isDigitalWallet']['returns']['CreditCard'])->toBeFalse();
@@ -319,7 +319,7 @@ describe('EnumTransformer auto_include_enum_static_methods', function () {
         $data = $transformer->data();
 
         expect($data['staticMethods'])->toHaveKey('onlineOnly')
-            ->and($data['staticMethods']['onlineOnly']['name'])->toBe('online_only')
+            ->and($data['staticMethods']['onlineOnly']['name'])->toBe('onlineOnly')
             ->and($data['staticMethods']['onlineOnly']['description'])->toBe('');
     });
 

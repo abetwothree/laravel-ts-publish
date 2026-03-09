@@ -200,15 +200,17 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Relationship Case Style
+    | Publishing Case Style
     |--------------------------------------------------------------------------
     |
-    | Specifies the case style to use for relationship names in the generated TypeScript definitions.
+    | Specifies the case style to use for relationship names & enum methods in the generated TypeScript definitions.
     |
     | Can be 'snake', 'camel', or 'pascal'.
     */
 
     'relationship_case' => 'snake',
+
+    'enum_method_case' => 'camel',
 
     /*
     |--------------------------------------------------------------------------
