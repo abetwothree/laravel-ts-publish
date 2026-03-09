@@ -42,11 +42,64 @@ You can publish your TypeScript declaration types using the `ts:publish` Artisan
 php artisan ts:publish
 ```
 
-By default, the generated TypeScript declaration types will be saved to the `resources/ts` directory and follow default configuration settings.
+By default, the generated TypeScript declaration types will be saved to the `resources/js/types/` directory and follow default configuration settings.
 
 Additionally, by default, the package will look for models in the `app/Models` directory and enums in the `app/Enums` directory. You can customize these settings in the published configuration file.
 
-You can fully customize which models and enums are included, excluded, or add additional directories to search for models and enums in. See the [configuration file](https://github.com/abetwothree/laravel-ts-publish/blob/main/config/ts-publish.php) for more details on how to do this.
+#### Preview Mode
+
+You can preview the generated TypeScript output in the console without writing any files by using the `--preview` flag:
+
+```bash
+php artisan ts:publish --preview
+```
+
+This is useful for debugging or reviewing what will be generated before committing to file output.
+
+#### Automatic Publishing After Migrations
+
+By default, this package will automatically re-publish your TypeScript declaration types after running migrations. This ensures your TypeScript types stay in sync with your database schema changes.
+
+You can disable this behavior in the config file or via environment variable:
+
+```php
+// config/ts-publish.php
+
+'run_after_migrate' => false,
+```
+
+```env
+TS_PUBLISH_RUN_AFTER_MIGRATE=false
+```
+
+#### Filtering Models & Enums
+
+You can fully customize which models and enums are included, excluded, or add additional directories to search in. By default, all models in `app/Models` and all enums in `app/Enums` are included.
+
+```php
+// config/ts-publish.php
+
+// Only publish these specific models (leave empty to include all)
+'included_models' => [
+    App\Models\User::class,
+    App\Models\Post::class,
+],
+
+// Exclude specific models from publishing
+'excluded_models' => [
+    App\Models\Pivot::class,
+],
+
+// Search additional directories for models
+'additional_model_directories' => [
+    'modules/Blog/Models',
+],
+```
+
+The same options are available for enums with `included_enums`, `excluded_enums`, and `additional_enum_directories`.
+
+> [!TIP]
+> Include and exclude settings accept both fully-qualified class names and directory paths. When a directory is provided, all matching classes within it will be discovered automatically.
 
 ## Enums
 
@@ -69,12 +122,12 @@ All attributes can be found at [this link](https://github.com/abetwothree/larave
 
 List of enum attributes & descriptions:
 
-| Attribute            | Description                                                                                                         |
-|----------------------|---------------------------------------------------------------------------------------------------------------------|
-| `TsEnumMethod`       | Attribute to specify that you want the values of this method on the frontend. This package will call this method with each enum case and create a key/value pair JavaScript object with each returned value per case. |
-| `TsEnumStaticMethod` | Attribute to specify that you want the values of this static method on the frontend. This package will call this static method once and add the return value to the enum keyed by the function name. |
-| `TsEnum`             | Attribute to rename the enum when converting to TypeScript. Useful to avoid naming conflicts if you have more than one enum in different namespaces with the same name. |
-| `TsCase`.            | Attribute to rename, change the frontend value, or provide a description for an enum case. Useful for when the enum case name or value in PHP is not ideal for the frontend. |
+| Attribute              | Target         | Description                                                                                                         |
+|------------------------|----------------|---------------------------------------------------------------------------------------------------------------------|
+| `#[TsEnumMethod]`      | Method         | Include a method's return values in the TypeScript output. Called per enum case, creates a key/value pair object.    |
+| `#[TsEnumStaticMethod]`| Static Method  | Include a static method's return value in the TypeScript output. Called once, added as a property on the enum.       |
+| `#[TsEnum]`            | Enum Class     | Rename the enum when converting to TypeScript. Useful to avoid naming conflicts across namespaces.                   |
+| `#[TsCase]`            | Enum Case      | Rename, change the frontend value, or add a description to an enum case.                                             |
 
 ### Enum Method #[TsEnumMethod]
 
@@ -110,6 +163,24 @@ export const Status = {
         Inactive: 'Inactive User',
     }
 } as const;
+```
+
+The `#[TsEnumMethod]` attribute accepts optional `name` and `description` parameters:
+
+| Parameter     | Type     | Default           | Description                                       |
+|---------------|----------|-------------------|---------------------------------------------------|
+| `name`        | `string` | Method name       | Customize the key name used in the TypeScript output |
+| `description` | `string` | `''`              | Added as a JSDoc comment above the method output   |
+
+```php
+#[TsEnumMethod(name: 'statusLabel', description: 'Human-readable label for this status')]
+public function label(): string
+{
+    return match($this) {
+        self::Active => 'Active User',
+        self::Inactive => 'Inactive User',
+    };
+}
 ```
 
 ### Enum Static Method #[TsEnumStaticMethod]
@@ -148,6 +219,19 @@ export const Status = {
 } as const;
 ```
 
+The `#[TsEnumStaticMethod]` attribute also accepts the same optional `name` and `description` parameters as `#[TsEnumMethod]`:
+
+```php
+#[TsEnumStaticMethod(name: 'allOptions', description: 'Array of all status options')]
+public static function options(): array
+{
+    return array_map(fn(self $status) => [
+        'value' => $status->value,
+        'label' => $status->name,
+    ], self::cases());
+}
+```
+
 ### Enum Class Name #[TsEnum]
 
 Renaming an enum using the `TsEnum` attribute:
@@ -176,9 +260,16 @@ export const UserStatus = {
 
 Renaming an enum case, changing the frontend value, and adding a description using the `TsCase` attribute:
 
+| Parameter     | Type          | Default      | Description                                           |
+|---------------|---------------|--------------|-------------------------------------------------------|
+| `name`        | `string`      | Case name    | Override the case key name in the TypeScript output    |
+| `value`       | `string\|int` | Case value   | Override the case value in the TypeScript output       |
+| `description` | `string`      | `''`         | Added as a JSDoc comment above the case                |
+
 ```php
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCase;
-enum Status: string
+
+enum Status: int
 {
     #[TsCase(name: 'active_status', value: true, description: 'The user is active')]
     case Active = 1;
@@ -204,6 +295,16 @@ export const Status = {
 As shown above, the enum generated in TypeScript is a JavaScript object with the `as const` assertion to prevent modification.
 
 However, there are times when you need to validate that a value is a valid enum value or a valid enum case key. For this purpose, this package also generates TypeScript types for the enum values and case keys if the enum is a [PHP backed enum](https://www.php.net/manual/en/language.enumerations.backed.php).
+
+For every enum, a `Type` alias is generated from the case values. For backed enums, a `Kind` alias is also generated from the case names:
+
+| Generated Type   | Source             | Example                          |
+|------------------|--------------------|----------------------------------|
+| `StatusType`     | Case values        | `'active' \| 'inactive'`        |
+| `StatusKind`     | Case names         | `'Active' \| 'Inactive'`        |
+
+> [!NOTE]
+> The `Kind` type alias is only generated for backed enums, since unit enums already use case names as their values.
 
 Example:
 
@@ -313,9 +414,22 @@ For documentation on how to set up the Vite plugin, [see this link](https://tolk
 
 ### Disabling Enum Metadata or Tolki Enum Package
 
-If you don't plan to use the `@tolki/enum` package or don't need the metadata properties for your use case, you can disable the generation of these metadata properties in the config file with by setting `enum_metadata_enabled` to `false`.
+If you don't plan to use the `@tolki/enum` package or don't need the metadata properties for your use case, you can disable the generation of these metadata properties in the config file by setting `enum_metadata_enabled` to `false`:
 
-If you would to like to use the metadata but don't want the `@tolki/enum` package, you can disable the usage of that package in the config file with by setting `enums_use_tolki_package` to `false`. This will still generate the metadata properties on the enum, but it will not wrap the enum in the `defineEnum` function from the `@tolki/enum` package.
+```php
+// config/ts-publish.php
+
+'enum_metadata_enabled' => false,
+```
+
+If you would like to use the metadata but don't want the `@tolki/enum` package, you can disable the usage of that package in the config file by setting `enums_use_tolki_package` to `false`. This will still generate the metadata properties on the enum, but will not wrap the enum in the `defineEnum` function from the `@tolki/enum` package:
+
+```php
+// config/ts-publish.php
+
+'enum_metadata_enabled' => true,
+'enums_use_tolki_package' => false,
+```
 
 ### Auto-Including All Enum Methods
 
@@ -370,12 +484,20 @@ This package can also convert your Laravel Eloquent models to TypeScript declara
 
 By default, this package purposely breaks the model into three separate interfaces for the properties, mutators, and relations to give you more flexibility on which properties you need to use in a concrete situation on your frontend projects. It also generates a fourth interface that extends all three interfaces for when you do want to use all the properties, mutators, and relations together, see below.
 
-If that's still not ideal for your situation, you can change the template used to generate the model types. This package comes with two templates for generating model types.
+If that's still not ideal for your situation, you can change the template used to generate the model types. This package comes with two templates for generating model types:
 
-- `laravel-ts-publish::model-split`: The default template that splits the model into three separate interfaces for the properties, mutators, and relations.
-- `laravel-ts-publish::model-full`: A template that combines all properties, mutators, and relations into a single interface.
+| Template                              | Description                                                                         |
+|---------------------------------------|-------------------------------------------------------------------------------------|
+| `laravel-ts-publish::model-split`     | **(Default)** Splits into separate interfaces for properties, mutators, and relations |
+| `laravel-ts-publish::model-full`      | Combines all properties, mutators, and relations into a single interface              |
 
-Just change the `model_template` in the config file to use the template that best fits your needs.
+Just change the `model_template` in the config file to use the template that best fits your needs:
+
+```php
+// config/ts-publish.php
+
+'model_template' => 'laravel-ts-publish::model-full',
+```
 
 You are also free to publish the views to modify them or create your own custom template if you want to change the structure of the generated types even more. Just make sure to update the `model_template` in the config file to point to your new custom template.
 
@@ -525,10 +647,10 @@ form.posts // TS error because posts is not part of the UserForm interface
 
 Like with enums, this package provides a few PHP attributes that you can use to further customize the generated TypeScript declaration types for your models. All attributes can be found at [this link](https://github.com/abetwothree/laravel-ts-publish/tree/main/src/Attributes) and are under the `AbeTwoThree\LaravelTsPublish\Attributes` namespace.
 
-| Attribute            | Description                                                                                                         |
-|----------------------|---------------------------------------------------------------------------------------------------------------------|
-| `TsCasts`            | Attribute to specify what the TypeScript type should be for a model column. Works similarly to Laravel's built in `casts` property or method on models but for TypeScript types. |
-| `TsType`             | Attribute to place on any custom cast class to specify what the TypeScript type should be when that cast is used on a model property. |
+| Attribute    | Target                           | Description                                                                                                         |
+|--------------|----------------------------------|---------------------------------------------------------------------------------------------------------------------|
+| `#[TsCasts]` | `casts()` method, `$casts` property, or model class | Specify TypeScript types for model columns. Works similarly to Laravel's `casts` but for TypeScript.                 |
+| `#[TsType]`  | Custom cast class                | Specify the TypeScript type for any model property that uses this custom cast class.                                 |
 
 #### Examples using `#[TsCasts]` attribute
 
@@ -608,7 +730,8 @@ class User extends Model
 }
 ```
 
-It is recommended to place the `TsCasts` attribute either on the `casts()` method or the `$casts` property instead of the model class itself to keep the TypeScript type definitions close to where you are defining the casts for the model properties in PHP.
+> [!TIP]
+> It is recommended to place the `TsCasts` attribute either on the `casts()` method or the `$casts` property instead of the model class itself to keep the TypeScript type definitions close to where you are defining the casts for the model properties in PHP. However, the `TsCasts` attribute can also be used to define the types of mutators and relations, at which point it may make more sense to place the attribute on the model class itself instead of the `casts()` method or `$casts` property since those only define types for the model properties.
 
 ##### Custom types using `#[TsCasts]` attribute
 
@@ -725,6 +848,81 @@ export interface Product {
     dimensions: ProductDimensions;
 }
 ```
+
+### Relationship Case Style
+
+By default, relationship names in the generated TypeScript interfaces use `snake_case`. You can change this to `camelCase` or `PascalCase` using the `relationship_case` config option:
+
+```php
+// config/ts-publish.php
+
+'relationship_case' => 'snake', // default
+```
+
+| Config Value | Relationship `hasMany(Post::class)` | Count                | Exists                |
+|--------------|--------------------------------------|----------------------|-----------------------|
+| `'snake'`    | `posts: Post[]`                      | `posts_count`        | `posts_exists`        |
+| `'camel'`    | `posts: Post[]`                      | `postsCount`         | `postsExists`         |
+| `'pascal'`   | `Posts: Post[]`                      | `PostsCount`         | `PostsExists`         |
+
+> [!NOTE]
+> For each relationship defined on a model, this package automatically generates `_count` and `_exists` properties alongside the relation itself. These correspond to [Laravel's `withCount` and `withExists`](https://laravel.com/docs/eloquent-relationships#counting-related-models) features and are included in every generated model interface.
+
+### Timestamps as Date Objects
+
+By default, timestamp columns (`date`, `datetime`, `timestamp`, and their immutable variants) are mapped to `string` in TypeScript. If your frontend works with `Date` objects instead, you can enable date mapping:
+
+```php
+// config/ts-publish.php
+
+'timestamps_as_date' => true,
+```
+
+| Config Value | Generated TypeScript Type |
+|--------------|---------------------------|
+| `false`      | `created_at: string`      |
+| `true`       | `created_at: Date`        |
+
+### Custom TypeScript Type Mappings
+
+This package ships with a comprehensive set of PHP-to-TypeScript type mappings (e.g., `integer` → `number`, `boolean` → `boolean`, `json` → `object`). You can override existing mappings or add new ones using the `custom_ts_mappings` config option:
+
+```php
+// config/ts-publish.php
+
+'custom_ts_mappings' => [
+    'binary' => 'Blob',
+    'json' => 'Record<string, unknown>',   // Override the default 'object' mapping
+    'money' => 'number',                    // Add a custom type
+],
+```
+
+> [!TIP]
+> Custom mappings are merged with the built-in map and take precedence. Type keys are case-insensitive. For per-model type overrides, use the `#[TsCasts]` attribute instead.
+
+### Output Options
+
+This package provides several output formats that can be enabled independently:
+
+| Config Key                    | Default | Description                                                                 |
+|-------------------------------|---------|-----------------------------------------------------------------------------|
+| `output_to_files`             | `true`  | Write individual `.ts` files with barrel `index.ts` exports                 |
+| `output_globals_file`         | `false` | Generate a `global.d.ts` file with a global TypeScript namespace            |
+| `output_json_file`            | `false` | Output all generated definitions as a JSON file                             |
+| `output_collected_files_json` | `true`  | Output a JSON list of collected PHP file paths (useful for file watchers)   |
+
+When `output_globals_file` is enabled, a global declaration file is created that makes all your types available without explicit imports:
+
+```php
+// config/ts-publish.php
+
+'output_globals_file' => true,
+'global_filename' => 'laravel-ts-global.d.ts',
+'models_namespace' => 'models',
+'enums_namespace' => 'enums',
+```
+
+The JSON output from `output_collected_files_json` is designed to work with build tools and file watchers (like the [@tolki/enum Vite plugin](#enum-metadata-vite-plugin)) that need to know which PHP source files were collected so they can trigger a re-publish when those files change.
 
 ## Modular Publishing
 
@@ -873,11 +1071,76 @@ import { Invoice } from '@js/types/accounting/models';
 import { InvoiceStatusType } from '@js/types/accounting/enums';
 ```
 
-## Testing
+## Extending & Customizing the Pipeline
 
-```bash
-composer test
+This package uses a **Collector → Generator → Transformer → Writer → Template** pipeline. Each stage is fully configurable via the config file, allowing you to extend or replace any component without modifying the package itself:
+
+| Pipeline Stage | Config Key                | Default Class        | Responsibility                          |
+|----------------|---------------------------|----------------------|-----------------------------------------|
+| Collector      | `model_collector_class`   | `ModelsCollector`    | Discovers PHP model/enum classes        |
+| Collector      | `enum_collector_class`    | `EnumsCollector`     | Discovers PHP enum classes              |
+| Generator      | `model_generator_class`   | `ModelGenerator`     | Orchestrates transforming and writing   |
+| Generator      | `enum_generator_class`    | `EnumGenerator`      | Orchestrates transforming and writing   |
+| Transformer    | `model_transformer_class` | `ModelTransformer`   | Converts PHP class into TypeScript data |
+| Transformer    | `enum_transformer_class`  | `EnumTransformer`    | Converts PHP enum into TypeScript data  |
+| Writer         | `model_writer_class`      | `ModelWriter`        | Writes TypeScript model files           |
+| Writer         | `enum_writer_class`       | `EnumWriter`         | Writes TypeScript enum files            |
+| Writer         | `barrel_writer_class`     | `BarrelWriter`       | Writes barrel `index.ts` files          |
+| Writer         | `globals_writer_class`    | `GlobalsWriter`      | Writes global declaration file          |
+| Template       | `model_template`          | `model-split`        | Blade template for model output         |
+| Template       | `enum_template`           | `enum`               | Blade template for enum output          |
+
+To swap a component, create a class that extends the default and override the config key:
+
+```php
+// config/ts-publish.php
+
+'model_transformer_class' => App\TypeScript\CustomModelTransformer::class,
 ```
+
+> [!TIP]
+> You can also publish and customize the Blade templates directly with `php artisan vendor:publish --tag="laravel-ts-publish-views"` if you only need to change the output format without modifying the pipeline logic.
+
+## Configuration Reference
+
+Below is a quick reference of all available configuration options:
+
+| Config Key                            | Type       | Default                              | Description                                                      |
+|---------------------------------------|------------|--------------------------------------|------------------------------------------------------------------|
+| `run_after_migrate`                   | `bool`     | `true`                               | Re-publish types after running migrations                        |
+| `output_to_files`                     | `bool`     | `true`                               | Write generated TypeScript to `.ts` files                        |
+| `output_directory`                    | `string`   | `resources/js/types/`                | Directory where TypeScript files are written                     |
+| `modular_publishing`                  | `bool`     | `false`                              | Organize output into namespace-derived directory trees           |
+| `namespace_strip_prefix`              | `string`   | `''`                                 | Strip this prefix from namespaces in modular mode                |
+| `relationship_case`                   | `string`   | `'snake'`                            | Case style for relationships: `snake`, `camel`, or `pascal`      |
+| `timestamps_as_date`                  | `bool`     | `false`                              | Map date/datetime/timestamp to `Date` instead of `string`        |
+| `custom_ts_mappings`                  | `array`    | `[]`                                 | Override or extend PHP-to-TypeScript type mappings               |
+| `auto_include_enum_methods`           | `bool`     | `false`                              | Include all public non-static enum methods without attributes    |
+| `auto_include_enum_static_methods`    | `bool`     | `false`                              | Include all public static enum methods without attributes        |
+| `enum_metadata_enabled`               | `bool`     | `true`                               | Include `_cases`, `_methods`, `_static` metadata on enums        |
+| `enums_use_tolki_package`             | `bool`     | `true`                               | Wrap enums in `defineEnum()` from `@tolki/enum`                  |
+| `output_globals_file`                 | `bool`     | `false`                              | Generate a `global.d.ts` namespace file                          |
+| `global_directory`                    | `string`   | `resources/js/types/`                | Directory for the global declaration file                        |
+| `global_filename`                     | `string`   | `laravel-ts-global.d.ts`             | Filename for the global declaration file                         |
+| `models_namespace`                    | `string`   | `'models'`                           | Namespace label used in the global declaration file              |
+| `enums_namespace`                     | `string`   | `'enums'`                            | Namespace label used in the global declaration file              |
+| `output_json_file`                    | `bool`     | `false`                              | Output all definitions as a JSON file                            |
+| `json_filename`                       | `string`   | `laravel-ts-definitions.json`        | Filename for the JSON output                                     |
+| `json_output_directory`               | `string`   | `resources/js/types/`                | Directory for the JSON output                                    |
+| `output_collected_files_json`         | `bool`     | `true`                               | Output collected PHP file paths as JSON (for file watchers)      |
+| `collected_files_json_filename`       | `string`   | `laravel-ts-collected-files.json`    | Filename for the collected files JSON                            |
+| `collected_files_json_output_directory` | `string` | `resources/js/types/`                | Directory for the collected files JSON                           |
+| `model_template`                      | `string`   | `laravel-ts-publish::model-split`    | Blade template for model TypeScript output                       |
+| `enum_template`                       | `string`   | `laravel-ts-publish::enum`           | Blade template for enum TypeScript output                        |
+| `globals_template`                    | `string`   | `laravel-ts-publish::globals`        | Blade template for global declaration output                     |
+| `included_models`                     | `array`    | `[]`                                 | Only publish these models (empty = all)                          |
+| `excluded_models`                     | `array`    | `[]`                                 | Exclude these models from publishing                             |
+| `additional_model_directories`        | `array`    | `[]`                                 | Extra directories to search for models                           |
+| `included_enums`                      | `array`    | `[]`                                 | Only publish these enums (empty = all)                           |
+| `excluded_enums`                      | `array`    | `[]`                                 | Exclude these enums from publishing                              |
+| `additional_enum_directories`         | `array`    | `[]`                                 | Extra directories to search for enums                            |
+
+See the [full configuration file](https://github.com/abetwothree/laravel-ts-publish/blob/main/config/ts-publish.php) for detailed comments on each option.
 
 ## Changelog
 
