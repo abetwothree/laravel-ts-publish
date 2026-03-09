@@ -676,6 +676,153 @@ export interface Product {
 }
 ```
 
+## Modular Publishing
+
+By default, this package outputs all generated TypeScript files into flat `enums/` and `models/` directories:
+
+```
+resources/js/types/
+├── enums/
+│   ├── article-status.ts
+│   ├── invoice-status.ts
+│   ├── role.ts
+│   └── index.ts
+├── models/
+│   ├── user.ts
+│   ├── invoice.ts
+│   ├── shipment.ts
+│   └── index.ts
+└── global.d.ts
+```
+
+For applications that use a modular architecture (e.g., [InterNACHI/modular](https://github.com/InterNACHI/modular) or a custom module structure), you can enable **modular publishing** to organize TypeScript output into namespace-derived directory trees that mirror your PHP namespace structure.
+
+### Enabling Modular Publishing
+
+Set `modular_publishing` to `true` in your config file:
+
+```php
+// config/ts-publish.php
+
+'modular_publishing' => true,
+```
+
+With modular publishing enabled, the output structure changes to reflect your PHP namespaces:
+
+```
+resources/js/types/
+├── app/
+│   ├── enums/
+│   │   ├── role.ts
+│   │   ├── membership-level.ts
+│   │   └── index.ts
+│   └── models/
+│       ├── user.ts
+│       ├── order.ts
+│       └── index.ts
+├── accounting/
+│   ├── enums/
+│   │   ├── invoice-status.ts
+│   │   └── index.ts
+│   └── models/
+│       ├── invoice.ts
+│       └── index.ts
+├── shipping/
+│   ├── enums/
+│   │   ├── shipment-status.ts
+│   │   └── index.ts
+│   └── models/
+│       ├── shipment.ts
+│       └── index.ts
+└── global.d.ts
+```
+
+Each namespace directory gets its own barrel `index.ts` file that exports all types within that directory.
+
+### How It Works
+
+Modular publishing converts each class's PHP namespace into a kebab-cased directory path. For example:
+
+| PHP Class                           | Output File                                   |
+|-------------------------------------|-----------------------------------------------|
+| `App\Models\User`                   | `app/models/user.ts`                          |
+| `App\Enums\Role`                    | `app/enums/role.ts`                           |
+| `Accounting\Models\Invoice`         | `accounting/models/invoice.ts`                |
+| `Shipping\Enums\ShipmentStatus`     | `shipping/enums/shipment-status.ts`           |
+| `App\Domain\Billing\Models\Invoice` | `app/domain/billing/models/invoice.ts`        |
+
+Import paths between generated files are automatically computed as relative paths based on the namespace directory structure:
+
+```TypeScript
+// accounting/models/invoice.ts
+
+import { Payment } from '.';                   // Same namespace (accounting/models)
+import { User } from '../../app/models';       // Cross-module import
+import { InvoiceStatusType } from '../enums';  // Sibling namespace (accounting/enums)
+
+export interface Invoice {
+    id: number;
+    user_id: number;
+    number: string;
+    status: InvoiceStatusType;
+    subtotal: number;
+    tax: number;
+    total: number;
+    // ...
+}
+
+export interface InvoiceRelations {
+    user: User;
+    payments: Payment[];
+    // ...
+}
+
+export interface InvoiceAll extends Invoice, InvoiceRelations {}
+```
+
+### Stripping a Namespace Prefix
+
+If your modules live under a common namespace prefix (e.g., `Modules\`), you can strip it from the output path using the `namespace_strip_prefix` config option:
+
+```php
+// config/ts-publish.php
+
+'namespace_strip_prefix' => 'Modules\\',
+```
+
+| PHP Class                              | Without Strip Prefix                | With `'Modules\\'` Strip Prefix      |
+|----------------------------------------|-------------------------------------|---------------------------------------|
+| `Modules\Blog\Models\Article`          | `modules/blog/models/article.ts`    | `blog/models/article.ts`             |
+| `Modules\Shipping\Enums\Carrier`       | `modules/shipping/enums/carrier.ts` | `shipping/enums/carrier.ts`          |
+
+This keeps the output directory structure clean by removing the redundant prefix.
+
+### Barrel Files
+
+In modular mode, each namespace directory receives its own barrel `index.ts` file. For example, `accounting/models/index.ts`:
+
+```TypeScript
+export * from './invoice';
+```
+
+And `app/models/index.ts`:
+
+```TypeScript
+export * from './address';
+export * from './order';
+export * from './product';
+export * from './user';
+// ... all models in this namespace
+```
+
+This allows you to import types from any namespace barrel:
+
+```TypeScript
+import { User, Order } from '@js/types/app/models';
+import { Invoice } from '@js/types/accounting/models';
+import { InvoiceStatusType } from '@js/types/accounting/enums';
+```
+
 ## Testing
 
 ```bash
