@@ -23,7 +23,7 @@ composer require abetwothree/laravel-ts-publish
 You can publish the config file with:
 
 ```bash
-php artisan vendor:publish --tag="laravel-ts-publish-config"
+php artisan vendor:publish --tag="ts-publish-config"
 ```
 
 Optionally, you can publish the views using
