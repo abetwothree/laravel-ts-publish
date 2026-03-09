@@ -129,64 +129,6 @@ class ModelTransformer extends CoreTransformer
         return Str::kebab($this->modelName);
     }
 
-    /**
-     * Build the resolved imports map from accumulated FQCNs and custom imports.
-     *
-     * @return ResolvedImportMap
-     */
-    protected function buildResolvedImports(): array
-    {
-        $resolvedImports = [];
-        $isModular = config()->boolean('ts-publish.modular_publishing');
-
-        if ($isModular) {
-            foreach ($this->enumFqcnMap as $fqcn => $typeName) {
-                $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
-                $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
-                $resolvedImports[$importPath][] = $typeName;
-            }
-
-            foreach ($this->modelFqcnMap as $fqcn => $typeName) {
-                if ($fqcn === $this->findable) {
-                    continue;
-                }
-                $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
-                $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
-                $resolvedImports[$importPath][] = $typeName;
-            }
-        } else {
-            $enumTypes = array_values(array_unique($this->enumFqcnMap));
-            if ($enumTypes) {
-                sort($enumTypes);
-                $resolvedImports['../enums'] = $enumTypes;
-            }
-
-            $modelNames = array_values(array_filter(
-                array_unique($this->modelFqcnMap),
-                fn (string $name) => $name !== $this->modelName,
-            ));
-            if ($modelNames) {
-                sort($modelNames);
-                $resolvedImports['./'] = $modelNames;
-            }
-        }
-
-        // Merge custom imports
-        foreach ($this->customImports as $path => $types) {
-            $existing = $resolvedImports[$path] ?? [];
-            $resolvedImports[$path] = array_values(array_unique([...$existing, ...$types]));
-        }
-
-        // Deduplicate per path
-        foreach ($resolvedImports as $path => $types) {
-            $resolvedImports[$path] = array_values(array_unique($types));
-        }
-
-        ksort($resolvedImports);
-
-        return $resolvedImports;
-    }
-
     protected function initInstance(): self
     {
         /** @var Model $modelInstance */
@@ -407,5 +349,63 @@ class ModelTransformer extends CoreTransformer
         }
 
         return $result;
+    }
+
+    /**
+     * Build the resolved imports map from accumulated FQCNs and custom imports.
+     *
+     * @return ResolvedImportMap
+     */
+    protected function buildResolvedImports(): array
+    {
+        $resolvedImports = [];
+        $isModular = config()->boolean('ts-publish.modular_publishing');
+
+        if ($isModular) {
+            foreach ($this->enumFqcnMap as $fqcn => $typeName) {
+                $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
+                $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
+                $resolvedImports[$importPath][] = $typeName;
+            }
+
+            foreach ($this->modelFqcnMap as $fqcn => $typeName) {
+                if ($fqcn === $this->findable) {
+                    continue;
+                }
+                $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
+                $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
+                $resolvedImports[$importPath][] = $typeName;
+            }
+        } else {
+            $enumTypes = array_values(array_unique($this->enumFqcnMap));
+            if ($enumTypes) {
+                sort($enumTypes);
+                $resolvedImports['../enums'] = $enumTypes;
+            }
+
+            $modelNames = array_values(array_filter(
+                array_unique($this->modelFqcnMap),
+                fn (string $name) => $name !== $this->modelName,
+            ));
+            if ($modelNames) {
+                sort($modelNames);
+                $resolvedImports['./'] = $modelNames;
+            }
+        }
+
+        // Merge custom imports
+        foreach ($this->customImports as $path => $types) {
+            $existing = $resolvedImports[$path] ?? [];
+            $resolvedImports[$path] = array_values(array_unique([...$existing, ...$types]));
+        }
+
+        // Deduplicate per path
+        foreach ($resolvedImports as $path => $types) {
+            $resolvedImports[$path] = array_values(array_unique($types));
+        }
+
+        ksort($resolvedImports);
+
+        return $resolvedImports;
     }
 }

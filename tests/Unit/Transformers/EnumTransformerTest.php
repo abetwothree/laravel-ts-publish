@@ -259,3 +259,112 @@ describe('EnumTransformer namespacePath', function () {
         expect($transformer->namespacePath)->toBe('blog/enums');
     });
 });
+
+describe('EnumTransformer auto_include_enum_methods', function () {
+    test('includes all public non-static methods when enabled', function () {
+        config()->set('ts-publish.auto_include_enum_methods', true);
+
+        $transformer = new EnumTransformer(PaymentMethod::class);
+        $data = $transformer->data();
+
+        expect($data['methods'])->toHaveKey('isDigitalWallet')
+            ->and($data['methods']['isDigitalWallet']['name'])->toBe('is_digital_wallet')
+            ->and($data['methods']['isDigitalWallet']['description'])->toBe('')
+            ->and($data['methods']['isDigitalWallet']['returns']['ApplePay'])->toBeTrue()
+            ->and($data['methods']['isDigitalWallet']['returns']['CreditCard'])->toBeFalse();
+    });
+
+    test('does not include static methods', function () {
+        config()->set('ts-publish.auto_include_enum_methods', true);
+
+        $transformer = new EnumTransformer(PaymentMethod::class);
+        $data = $transformer->data();
+
+        expect($data['methods'])->not->toHaveKey('onlineOnly');
+    });
+
+    test('respects attribute name and description when present', function () {
+        config()->set('ts-publish.auto_include_enum_methods', true);
+
+        $transformer = new EnumTransformer(Priority::class);
+        $data = $transformer->data();
+
+        // Methods with attribute keep their attribute settings
+        expect($data['methods']['label']['description'])->toBe('Human-readable label')
+            ->and($data['methods']['icon']['description'])->toBe('Icon name for the priority level');
+
+        // Method without attribute is also included
+        expect($data['methods'])->toHaveKey('numericWeight')
+            ->and($data['methods']['numericWeight']['description'])->toBe('')
+            ->and($data['methods']['numericWeight']['returns']['Low'])->toBe(10)
+            ->and($data['methods']['numericWeight']['returns']['Critical'])->toBe(40);
+    });
+
+    test('does not include methods without attribute when disabled', function () {
+        config()->set('ts-publish.auto_include_enum_methods', false);
+
+        $transformer = new EnumTransformer(Priority::class);
+        $data = $transformer->data();
+
+        expect($data['methods'])->not->toHaveKey('numericWeight')
+            ->and($data['methods'])->toHaveKey('label');
+    });
+});
+
+describe('EnumTransformer auto_include_enum_static_methods', function () {
+    test('includes all public static methods when enabled', function () {
+        config()->set('ts-publish.auto_include_enum_static_methods', true);
+
+        $transformer = new EnumTransformer(PaymentMethod::class);
+        $data = $transformer->data();
+
+        expect($data['staticMethods'])->toHaveKey('onlineOnly')
+            ->and($data['staticMethods']['onlineOnly']['name'])->toBe('online_only')
+            ->and($data['staticMethods']['onlineOnly']['description'])->toBe('');
+    });
+
+    test('does not include non-static methods', function () {
+        config()->set('ts-publish.auto_include_enum_static_methods', true);
+
+        $transformer = new EnumTransformer(PaymentMethod::class);
+        $data = $transformer->data();
+
+        expect($data['staticMethods'])->not->toHaveKey('isDigitalWallet');
+    });
+
+    test('excludes built-in enum static methods', function () {
+        config()->set('ts-publish.auto_include_enum_static_methods', true);
+
+        $transformer = new EnumTransformer(PaymentMethod::class);
+        $data = $transformer->data();
+
+        expect($data['staticMethods'])->not->toHaveKey('cases')
+            ->and($data['staticMethods'])->not->toHaveKey('from')
+            ->and($data['staticMethods'])->not->toHaveKey('tryFrom');
+    });
+
+    test('respects attribute name and description when present', function () {
+        config()->set('ts-publish.auto_include_enum_static_methods', true);
+
+        $transformer = new EnumTransformer(Priority::class);
+        $data = $transformer->data();
+
+        // Method with attribute keeps its attribute settings
+        expect($data['staticMethods']['filterByMinimum']['description'])->toBe('Filter by minimum');
+
+        // Method without attribute is also included
+        expect($data['staticMethods'])->toHaveKey('highestValue')
+            ->and($data['staticMethods']['highestValue']['description'])->toBe('')
+            ->and($data['staticMethods']['highestValue']['return'])->toBe(3);
+    });
+
+    test('does not include static methods without attribute when disabled', function () {
+        config()->set('ts-publish.auto_include_enum_static_methods', false);
+
+        $transformer = new EnumTransformer(Priority::class);
+        $data = $transformer->data();
+
+        expect($data['staticMethods'])->not->toHaveKey('highestValue')
+            ->and($data['staticMethods'])->toHaveKey('filterByMinimum');
+    });
+});

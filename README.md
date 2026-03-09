@@ -56,6 +56,11 @@ However, PHP enums do not solely consist of enum cases, but can also have method
 
 By default, this package will only publish the enum cases and their values to TypeScript, but you can use the provided attributes to specify that you want to call certain methods or static methods and publish their return values in TypeScript as well. See below.
 
+Alternatively, you can enable the `auto_include_enum_methods` and `auto_include_enum_static_methods` config options to automatically include all public methods without needing to add attributes. See [Auto-Including All Enum Methods](#auto-including-all-enum-methods) for details.
+
+> [!NOTE]
+> Whether you use the attributes or the global config options, only **public** methods are ever included. Private and protected methods are always excluded.
+
 ### Enum Attributes
 
 To use the more advanced transforming features provided by this package for enums you'll need to use the PHP Attributes described below.
@@ -311,6 +316,51 @@ For documentation on how to set up the Vite plugin, [see this link](https://tolk
 If you don't plan to use the `@tolki/enum` package or don't need the metadata properties for your use case, you can disable the generation of these metadata properties in the config file with by setting `enum_metadata_enabled` to `false`.
 
 If you would to like to use the metadata but don't want the `@tolki/enum` package, you can disable the usage of that package in the config file with by setting `enums_use_tolki_package` to `false`. This will still generate the metadata properties on the enum, but it will not wrap the enum in the `defineEnum` function from the `@tolki/enum` package.
+
+### Auto-Including All Enum Methods
+
+By default, only **public** methods decorated with the `#[TsEnumMethod]` or `#[TsEnumStaticMethod]` attributes are included in the TypeScript output. If you'd prefer to include all public methods without needing to add the attribute to every method, you can enable automatic inclusion in your config file:
+
+```php
+// config/ts-publish.php
+
+'auto_include_enum_methods' => true,        // Include all public non-static methods
+'auto_include_enum_static_methods' => true,  // Include all public static methods
+```
+
+When enabled, every public method declared on the enum will be included in the TypeScript output — you no longer need to add `#[TsEnumMethod]` or `#[TsEnumStaticMethod]` to each method. Built-in enum methods like `cases()`, `from()`, and `tryFrom()` are always excluded automatically.
+
+You can still use `#[TsEnumMethod]` and `#[TsEnumStaticMethod]` to customize the `name` or `description` of individual methods when auto-inclusion is enabled:
+
+```php
+enum Status: string
+{
+    case Active = 'active';
+    case Inactive = 'inactive';
+
+    // Included automatically with defaults (name: 'label', description: '')
+    public function label(): string
+    {
+        return match($this) {
+            self::Active => 'Active User',
+            self::Inactive => 'Inactive User',
+        };
+    }
+
+    // Included automatically, but with a custom description from the attribute
+    #[TsEnumMethod(description: 'Get the icon name for the status')]
+    public function icon(): string
+    {
+        return match($this) {
+            self::Active => 'check',
+            self::Inactive => 'x',
+        };
+    }
+}
+```
+
+> [!CAUTION]
+> These settings are disabled by default for security reasons — enabling them will expose the return values of all public methods on your enums. Make sure you're comfortable with that before enabling them.
 
 ## Models
 

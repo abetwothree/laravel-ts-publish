@@ -131,6 +131,29 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Enum Public Methods Global Inclusion
+    |--------------------------------------------------------------------------
+    |
+    | By default this package requires that you use the PHP method attributes
+    | (#[TsEnumMethod] & #[TsEnumStaticMethod]) to include them in the output.
+    |
+    | This is done for security reasons to avoid making private content public.
+    |
+    | However, you can make all enum methods be included by default without
+    | needing to add the attributes by setting the options below to true.
+    |
+    | Even when you set these options as true, you can still use the
+    | attributes to set custom settings your enum on methods.
+    |
+    | If you set to true, I hope you know what you're doing.
+    */
+
+    'auto_include_enum_methods' => false,
+
+    'auto_include_enum_static_methods' => false,
+
+    /*
+    |--------------------------------------------------------------------------
     | Output TypeScript Definitions to Files
     |--------------------------------------------------------------------------
     |

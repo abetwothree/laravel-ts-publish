@@ -67,6 +67,9 @@ class EnumTransformer extends CoreTransformer
     /** @var CaseTypesList */
     public protected(set) array $caseTypes = [];
 
+    /** @var list<string> */
+    private const array BUILT_IN_ENUM_METHODS = ['cases', 'from', 'tryFrom'];
+
     #[Override]
     public function transform(): self
     {
@@ -181,32 +184,42 @@ class EnumTransformer extends CoreTransformer
 
     protected function transformMethods(): self
     {
+        $autoInclude = config('ts-publish.auto_include_enum_methods');
+
         foreach ($this->reflectionEnum->getMethods() as $method) {
             $methodName = $method->getName();
 
             $tsEnumMethodAttribute = $method->getAttributes(TsEnumMethod::class)[0] ?? null;
 
-            if ($tsEnumMethodAttribute) {
-                /** @var TsEnumMethod $tsEnumMethodInstance */
-                $tsEnumMethodInstance = $tsEnumMethodAttribute->newInstance();
-
-                // get the returns, we need to call the method with each case instance and collect the return values to know which TS types to import
-                $returns = [];
-                foreach ($this->reflectionEnum->getCases() as $case) {
-                    try {
-                        $caseInstance = $case->getValue();
-                        $returns[$case->getName()] = $method->invoke($caseInstance);
-                    } catch (Throwable) {
-                        $returns[$case->getName()] = null;
-                    }
+            if (! $tsEnumMethodAttribute) {
+                if (! $autoInclude
+                    || $method->isStatic()
+                    || ! $method->isPublic()
+                    || str_starts_with($methodName, '__')
+                ) {
+                    continue;
                 }
-
-                $this->methods[$methodName] = [
-                    'name' => LaravelTsPublish::keyCase($tsEnumMethodInstance->name ?: $methodName),
-                    'description' => $tsEnumMethodInstance->description ?? '',
-                    'returns' => $returns,
-                ];
             }
+
+            /** @var TsEnumMethod|null $tsEnumMethodInstance */
+            $tsEnumMethodInstance = $tsEnumMethodAttribute?->newInstance();
+
+            // get the returns, we need to call the method with each case instance and collect the return values to know which TS types to import
+            $returns = [];
+            foreach ($this->reflectionEnum->getCases() as $case) {
+                try {
+                    $caseInstance = $case->getValue();
+                    $returns[$case->getName()] = $method->invoke($caseInstance);
+                } catch (Throwable) {
+                    $returns[$case->getName()] = null;
+                }
+            }
+
+            $this->methods[$methodName] = [
+                'name' => LaravelTsPublish::keyCase($tsEnumMethodInstance?->name ?: $methodName),
+                'description' => $tsEnumMethodInstance !== null ? $tsEnumMethodInstance->description : '',
+                'returns' => $returns,
+            ];
         }
 
         return $this;
@@ -214,33 +227,44 @@ class EnumTransformer extends CoreTransformer
 
     protected function transformStaticMethods(): self
     {
+        $autoInclude = config('ts-publish.auto_include_enum_static_methods');
+
         foreach ($this->reflectionEnum->getMethods() as $method) {
             $methodName = $method->getName();
 
             $tsEnumMethodAttribute = $method->getAttributes(TsEnumStaticMethod::class)[0] ?? null;
 
-            if ($tsEnumMethodAttribute) {
-                /** @var TsEnumStaticMethod $tsEnumMethodInstance */
-                $tsEnumMethodInstance = $tsEnumMethodAttribute->newInstance();
-
-                // For methods, we just call it once and get the return value. It should be a primitive or an array of primitives that can be transformed to JavaScript for functional use.
-                $return = null;
-                try {
-                    $case = $this->reflectionEnum->getCases()[0] ?? null;
-                    if ($case) {
-                        $caseInstance = $case->getValue();
-                        $return = $method->invoke($caseInstance);
-                    }
-                } catch (Throwable $e) {
-                    // If the method requires parameters or something else goes wrong, we just ignore the return value and hope for the best
+            if (! $tsEnumMethodAttribute) {
+                if (! $autoInclude
+                    || ! $method->isStatic()
+                    || ! $method->isPublic()
+                    || str_starts_with($methodName, '__')
+                    || in_array($methodName, self::BUILT_IN_ENUM_METHODS, true)
+                ) {
+                    continue;
                 }
-
-                $this->staticMethods[$methodName] = [
-                    'name' => LaravelTsPublish::keyCase($tsEnumMethodInstance->name ?: $methodName),
-                    'description' => $tsEnumMethodInstance->description ?? '',
-                    'return' => $return,
-                ];
             }
+
+            /** @var TsEnumStaticMethod|null $tsEnumMethodInstance */
+            $tsEnumMethodInstance = $tsEnumMethodAttribute?->newInstance();
+
+            // For methods, we just call it once and get the return value. It should be a primitive or an array of primitives that can be transformed to JavaScript for functional use.
+            $return = null;
+            try {
+                $case = $this->reflectionEnum->getCases()[0] ?? null;
+                if ($case) {
+                    $caseInstance = $case->getValue();
+                    $return = $method->invoke($caseInstance);
+                }
+            } catch (Throwable $e) {
+                // If the method requires parameters or something else goes wrong, we just ignore the return value and hope for the best
+            }
+
+            $this->staticMethods[$methodName] = [
+                'name' => LaravelTsPublish::keyCase($tsEnumMethodInstance?->name ?: $methodName),
+                'description' => $tsEnumMethodInstance !== null ? $tsEnumMethodInstance->description : '',
+                'return' => $return,
+            ];
         }
 
         return $this;
