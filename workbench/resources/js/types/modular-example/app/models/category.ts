@@ -1,4 +1,4 @@
-import { Post } from '.';
+import type { Post } from '.';
 
 export interface Category
 {

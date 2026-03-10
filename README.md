@@ -943,6 +943,30 @@ This package ships with a comprehensive set of PHP-to-TypeScript type mappings (
 > [!TIP]
 > Custom mappings are merged with the built-in map and take precedence. Type keys are case-insensitive. For per-model type overrides, use the `#[TsCasts]` attribute instead.
 
+### Type-Only Imports
+
+By default, model files use `import type { ... }` instead of `import { ... }` for all imported types. This is the correct syntax for stricter TypeScript configurations that enable `verbatimModuleSyntax` or `isolatedModules`:
+
+```TypeScript
+import type { StatusType } from '../enums';
+import type { Profile, Post } from './';
+
+export interface User {
+    id: number;
+    status: StatusType;
+}
+```
+
+If your project doesn't require type-only imports, you can disable this with:
+
+```php
+// config/ts-publish.php
+
+'use_type_imports' => false,
+```
+
+This only affects model file imports (enum types, model interfaces, and custom `#[TsCasts]` imports). The enum `import { defineEnum }` value import from `@tolki/enum` is unaffected.
+
 ### Output Options
 
 This package provides several output formats that can be enabled independently:
@@ -1153,6 +1177,7 @@ Below is a quick reference of all available configuration options:
 | `run_after_migrate`                   | `bool`     | `true`                               | Re-publish types after running migrations                        |
 | `output_to_files`                     | `bool`     | `true`                               | Write generated TypeScript to `.ts` files                        |
 | `output_directory`                    | `string`   | `resources/js/types/`                | Directory where TypeScript files are written                     |
+| `use_type_imports`                    | `bool`     | `true`                               | Use `import type` instead of `import` in model files             |
 | `modular_publishing`                  | `bool`     | `false`                              | Organize output into namespace-derived directory trees           |
 | `namespace_strip_prefix`              | `string`   | `''`                                 | Strip this prefix from namespaces in modular mode                |
 | `relationship_case`                   | `string`   | `'snake'`                            | Case style for relationships: `snake`, `camel`, or `pascal`      |

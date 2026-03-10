@@ -1,4 +1,4 @@
-import { Post, Product } from '.';
+import type { Post, Product } from '.';
 
 export interface Tag
 {

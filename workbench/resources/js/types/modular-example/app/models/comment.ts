@@ -1,4 +1,4 @@
-import { Post, User } from '.';
+import type { Post, User } from '.';
 
 export interface Comment
 {

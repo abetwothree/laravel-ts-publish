@@ -34,6 +34,7 @@ class ModelWriter extends CoreWriter
             [
                 ...$data,
                 'filename' => $filename,
+                'useTypeImports' => config()->boolean('ts-publish.use_type_imports'),
             ]
         )->render();
 

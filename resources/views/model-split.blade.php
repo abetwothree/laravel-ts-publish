@@ -1,6 +1,6 @@
 @use('AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish')
 @foreach ($resolvedImports as $path => $types)
-import { {{ implode(', ', $types) }} } from '{{ $path }}';
+{{ $useTypeImports ? 'import type' : 'import' }} { {{ implode(', ', $types) }} } from '{{ $path }}';
 @endforeach
 
 @if (count($columns) > 0)

@@ -71,3 +71,31 @@ test('writes model mutators interface', function () {
 
     expect($content)->toContain('export interface UserMutators');
 });
+
+test('uses import type syntax when use_type_imports is enabled', function () {
+    $writer = new ModelWriter(new Filesystem);
+    $transformer = new ModelTransformer(User::class);
+
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.use_type_imports', true);
+
+    $content = $writer->write($transformer);
+
+    expect($content)
+        ->toContain('import type {')
+        ->not->toMatch('/^import \{/m');
+});
+
+test('uses regular import syntax when use_type_imports is disabled', function () {
+    $writer = new ModelWriter(new Filesystem);
+    $transformer = new ModelTransformer(User::class);
+
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.use_type_imports', false);
+
+    $content = $writer->write($transformer);
+
+    expect($content)
+        ->toContain('import {')
+        ->not->toContain('import type {');
+});

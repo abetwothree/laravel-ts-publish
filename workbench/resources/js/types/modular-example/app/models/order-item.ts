@@ -1,4 +1,4 @@
-import { Order, Product } from '.';
+import type { Order, Product } from '.';
 
 export interface OrderItem
 {

@@ -1,5 +1,5 @@
-import { ProductMetadata, ProductJsonMetaData } from '@js/types/product';
-import { Image, OrderItem, Tag } from './';
+import type { ProductMetadata, ProductJsonMetaData } from '@js/types/product';
+import type { Image, OrderItem, Tag } from './';
 
 export interface Product
 {

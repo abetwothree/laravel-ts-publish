@@ -1,5 +1,5 @@
-import { CarrierType, ShipmentStatusType } from '../enums';
-import { Order, TrackingEvent } from './';
+import type { CarrierType, ShipmentStatusType } from '../enums';
+import type { Order, TrackingEvent } from './';
 
 export interface Shipment
 {

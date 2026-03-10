@@ -1,5 +1,5 @@
-import { CurrencyType, OrderStatusType, PaymentMethodType } from '../enums';
-import { OrderItem, User } from './';
+import type { CurrencyType, OrderStatusType, PaymentMethodType } from '../enums';
+import type { OrderItem, User } from './';
 
 export interface Order
 {

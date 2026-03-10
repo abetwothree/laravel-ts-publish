@@ -1,5 +1,5 @@
-import { InvoiceStatusType } from '../enums';
-import { Payment, User } from './';
+import type { InvoiceStatusType } from '../enums';
+import type { Payment, User } from './';
 
 export interface Invoice
 {

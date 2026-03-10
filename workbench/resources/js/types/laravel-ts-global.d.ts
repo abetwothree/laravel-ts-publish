@@ -9,32 +9,8 @@ export {}
 
 /* prettier-ignore */
 declare global {
-    export namespace accounting.models {
-        export interface Invoice {
-            // Columns
-            id: number;
-            user_id: number;
-            number: string;
-            status: InvoiceStatusType;
-            subtotal: number;
-            tax: number;
-            total: number;
-            due_at: string | null;
-            issued_at: string | null;
-            paid_at: string | null;
-            notes: string | null;
-            created_at: string | null;
-            updated_at: string | null;
-            // Relations
-            user: User;
-            user_count: number;
-            user_exists: boolean;
-            payments: Payment[];
-            payments_count: number;
-            payments_exists: boolean;
-        }
-    }
-    export namespace app.models {
+    // Models
+    export namespace models {
         export interface Team {
             // Columns
             id: number;
@@ -400,8 +376,6 @@ declare global {
             imageable_count: number;
             imageable_exists: boolean;
         }
-    }
-    export namespace illuminate.notifications {
         export interface DatabaseNotification {
             // Columns
             id: string;
@@ -417,8 +391,29 @@ declare global {
             notifiable_count: number;
             notifiable_exists: boolean;
         }
-    }
-    export namespace shipping.models {
+        export interface Invoice {
+            // Columns
+            id: number;
+            user_id: number;
+            number: string;
+            status: InvoiceStatusType;
+            subtotal: number;
+            tax: number;
+            total: number;
+            due_at: string | null;
+            issued_at: string | null;
+            paid_at: string | null;
+            notes: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            user: User;
+            user_count: number;
+            user_exists: boolean;
+            payments: Payment[];
+            payments_count: number;
+            payments_exists: boolean;
+        }
         export interface Shipment {
             // Columns
             id: number;
@@ -441,30 +436,8 @@ declare global {
             tracking_events_exists: boolean;
         }
     }
-    export namespace accounting.enums {
-        export interface InvoiceStatus
-        {
-            Draft: 'draft',
-            Sent: 'sent',
-            Paid: 'paid',
-            Overdue: 'overdue',
-            Cancelled: 'cancelled',
-            Void: 'void',
-        }
-        export type InvoiceStatusType = 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled' | 'void';
-        export type InvoiceStatusKind = 'Draft' | 'Sent' | 'Paid' | 'Overdue' | 'Cancelled' | 'Void';
-
-        export interface PaymentStatus
-        {
-            Pending: 'pending',
-            Completed: 'completed',
-            Failed: 'failed',
-            Refunded: 'refunded',
-        }
-        export type PaymentStatusType = 'pending' | 'completed' | 'failed' | 'refunded';
-        export type PaymentStatusKind = 'Pending' | 'Completed' | 'Failed' | 'Refunded';
-    }
-    export namespace app.enums {
+    // Enums
+    export namespace enums {
         export interface PaymentMethod
         {
             CreditCard: 'credit_card',
@@ -581,8 +554,29 @@ declare global {
         }
         export type CurrencyType = 'USD' | 'EUR' | 'GBP' | 'JPY' | 'CAD';
         export type CurrencyKind = 'Usd' | 'Eur' | 'Gbp' | 'Jpy' | 'Cad';
-    }
-    export namespace shipping.enums {
+
+        export interface InvoiceStatus
+        {
+            Draft: 'draft',
+            Sent: 'sent',
+            Paid: 'paid',
+            Overdue: 'overdue',
+            Cancelled: 'cancelled',
+            Void: 'void',
+        }
+        export type InvoiceStatusType = 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled' | 'void';
+        export type InvoiceStatusKind = 'Draft' | 'Sent' | 'Paid' | 'Overdue' | 'Cancelled' | 'Void';
+
+        export interface PaymentStatus
+        {
+            Pending: 'pending',
+            Completed: 'completed',
+            Failed: 'failed',
+            Refunded: 'refunded',
+        }
+        export type PaymentStatusType = 'pending' | 'completed' | 'failed' | 'refunded';
+        export type PaymentStatusKind = 'Pending' | 'Completed' | 'Failed' | 'Refunded';
+
         export interface ShipmentStatus
         {
             Pending: 'pending',
