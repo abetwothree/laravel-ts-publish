@@ -8,6 +8,8 @@ use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\Shipping\Enums\Status as ShippingStatus;
 
+use function Orchestra\Testbench\workbench_path;
+
 beforeEach(function () {
     $this->service = new LaravelTsPublish;
 });
@@ -141,7 +143,7 @@ describe('phpToTypeScriptType', function () {
     test('phpToTypeScriptType resolves Illuminate support collections to array or object shapes', function () {
         $result = $this->service->phpToTypeScriptType(\Illuminate\Support\Collection::class);
 
-        expect($result['type'])->toBe('Array<unknown> | Record<string, unknown>')
+        expect($result['type'])->toBe('unknown[] | Record<string, unknown>')
             ->and($result['classes'])->toBeEmpty();
     });
 
@@ -153,7 +155,7 @@ describe('phpToTypeScriptType', function () {
     });
 
     test('phpToTypeScriptType resolves encrypted compound casts', function () {
-        expect($this->service->phpToTypeScriptType('encrypted:array')['type'])->toBe('Array<unknown>');
+        expect($this->service->phpToTypeScriptType('encrypted:array')['type'])->toBe('unknown[]');
     });
 
     test('phpToTypeScriptType resolves partial map matches', function () {
@@ -557,6 +559,35 @@ describe('sanitizeJsDoc', function () {
 
     test('handles empty string', function () {
         expect($this->service->sanitizeJsDoc(''))->toBe('');
+    });
+});
+
+describe('resolveClassFromFile', function () {
+    test('resolves FQCN from an enum file', function () {
+        $filePath = workbench_path('app/Enums/Status.php');
+        $result = $this->service->resolveClassFromFile($filePath);
+
+        expect($result)->toBe('Workbench\App\Enums\Status');
+    });
+
+    test('resolves FQCN from a model file', function () {
+        $filePath = workbench_path('app/Models/User.php');
+        $result = $this->service->resolveClassFromFile($filePath);
+
+        expect($result)->toBe('Workbench\App\Models\User');
+    });
+
+    test('returns null for a file without a class', function () {
+        $filePath = workbench_path('routes/web.php');
+        $result = $this->service->resolveClassFromFile($filePath);
+
+        expect($result)->toBeNull();
+    });
+
+    test('returns null for a non-existent file', function () {
+        $result = $this->service->resolveClassFromFile('/non/existent/file.php');
+
+        expect($result)->toBeNull();
     });
 });
 

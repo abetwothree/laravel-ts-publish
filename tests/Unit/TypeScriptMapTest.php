@@ -26,8 +26,8 @@ test('gather returns an array with expected type mappings', function () {
         ->and($map['string'])->toBe('string')
         ->and($map['integer'])->toBe('number')
         ->and($map['boolean'])->toBe('boolean')
-        ->and($map['array'])->toBe('Array<unknown>')
-        ->and($map[strtolower(Illuminate\Support\Collection::class)])->toBe('Array<unknown> | Record<string, unknown>')
+        ->and($map['array'])->toBe('unknown[]')
+        ->and($map[strtolower(Illuminate\Support\Collection::class)])->toBe('unknown[] | Record<string, unknown>')
         ->and($map[strtolower(Illuminate\Database\Eloquent\Collection::class)])->toBe('Record<string, unknown>')
         ->and($map['null'])->toBe('null');
 });

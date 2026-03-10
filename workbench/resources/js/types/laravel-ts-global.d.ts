@@ -43,7 +43,7 @@ declare global {
             description: string | null;
             owner_id: number;
             is_active: boolean;
-            settings: Array<unknown> | null;
+            settings: unknown[] | null;
             created_at: string | null;
             updated_at: string | null;
             deleted_at: string | null;
@@ -181,7 +181,7 @@ declare global {
             metadata: Record<string, {title: string, content: string}>;
             rating: number | null;
             category: string;
-            options: Array<unknown> | null;
+            options: unknown[] | null;
             deleted_at: string | null;
             created_at: string | null;
             updated_at: string | null;
@@ -388,7 +388,7 @@ declare global {
             width: number | null;
             height: number | null;
             sort_order: number;
-            metadata: Array<unknown> | null;
+            metadata: unknown[] | null;
             created_at: string | null;
             updated_at: string | null;
             // Mutators
@@ -408,7 +408,7 @@ declare global {
             type: string;
             notifiable_type: string;
             notifiable_id: number;
-            data: Array<unknown>;
+            data: unknown[];
             read_at: string | null;
             created_at: string | null;
             updated_at: string | null;

@@ -12,7 +12,7 @@ export interface Image
     width: number | null;
     height: number | null;
     sort_order: number;
-    metadata: Array<unknown> | null;
+    metadata: unknown[] | null;
     created_at: string | null;
     updated_at: string | null;
 }

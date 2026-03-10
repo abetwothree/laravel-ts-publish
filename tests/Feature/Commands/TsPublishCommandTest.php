@@ -108,3 +108,51 @@ test('ts:publish writes modular files to namespace-based directories', function 
         ->toContain("from '../enums'")
         ->toContain("from '../../app/models'");
 });
+
+test('ts:publish --source with enum FQCN runs successfully', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--source' => 'Workbench\App\Enums\Status'])
+        ->assertSuccessful()
+        ->expectsOutputToContain('ts:publish --source')
+        ->expectsOutputToContain('export const Status');
+});
+
+test('ts:publish --source with model FQCN runs successfully', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--source' => 'Workbench\App\Models\User'])
+        ->assertSuccessful()
+        ->expectsOutputToContain('export interface User');
+});
+
+test('ts:publish --source with file path runs successfully', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $filePath = workbench_path('app/Enums/Status.php');
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--source' => $filePath])
+        ->assertSuccessful()
+        ->expectsOutputToContain('export const Status');
+});
+
+test('ts:publish --source with invalid class returns failure', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $this->artisan('ts:publish', ['--source' => 'App\NonExistent\FakeClass'])
+        ->assertFailed();
+});
+
+test('ts:publish --source writes file to disk', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-source-test-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+
+    $this->artisan('ts:publish', ['--preview' => 'false', '--source' => 'Workbench\App\Enums\Status'])
+        ->assertSuccessful();
+
+    expect(file_exists("$outputDir/enums/status.ts"))->toBeTrue();
+
+    // Cleanup
+    (new Filesystem)->deleteDirectory($outputDir);
+});

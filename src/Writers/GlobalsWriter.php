@@ -6,7 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
-use AbeTwoThree\LaravelTsPublish\Runner;
+use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use Illuminate\Filesystem\Filesystem;
 
 class GlobalsWriter

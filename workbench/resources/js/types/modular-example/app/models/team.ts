@@ -8,7 +8,7 @@ export interface Team
     description: string | null;
     owner_id: number;
     is_active: boolean;
-    settings: Array<unknown> | null;
+    settings: unknown[] | null;
     created_at: string | null;
     updated_at: string | null;
     deleted_at: string | null;

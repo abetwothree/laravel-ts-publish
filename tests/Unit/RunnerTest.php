@@ -2,7 +2,7 @@
 
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
-use AbeTwoThree\LaravelTsPublish\Runner;
+use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use Workbench\Blog\Enums\ArticleStatus;
 use Workbench\Blog\Enums\ContentType;
 use Workbench\Blog\Models\Article;

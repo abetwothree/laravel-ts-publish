@@ -24,17 +24,17 @@ class TypeScriptMap
             \Illuminate\Database\Eloquent\Casts\AsUri::class => 'string',
             \Illuminate\Database\Eloquent\Casts\AsBinary::class => 'string',
             \Illuminate\Database\Eloquent\Casts\AsFluent::class => 'object',
-            \Illuminate\Database\Eloquent\Casts\AsArrayObject::class => 'Array<unknown>',
-            \Illuminate\Database\Eloquent\Casts\AsCollection::class => 'Array<unknown>',
-            \Illuminate\Database\Eloquent\Casts\AsEncryptedArrayObject::class => 'Array<unknown>',
-            \Illuminate\Database\Eloquent\Casts\AsEncryptedCollection::class => 'Array<unknown>',
-            \Illuminate\Database\Eloquent\Casts\AsEnumArrayObject::class => 'Array<unknown>',
-            \Illuminate\Database\Eloquent\Casts\AsEnumCollection::class => 'Array<unknown>',
+            \Illuminate\Database\Eloquent\Casts\AsArrayObject::class => 'unknown[]',
+            \Illuminate\Database\Eloquent\Casts\AsCollection::class => 'unknown[]',
+            \Illuminate\Database\Eloquent\Casts\AsEncryptedArrayObject::class => 'unknown[]',
+            \Illuminate\Database\Eloquent\Casts\AsEncryptedCollection::class => 'unknown[]',
+            \Illuminate\Database\Eloquent\Casts\AsEnumArrayObject::class => 'unknown[]',
+            \Illuminate\Database\Eloquent\Casts\AsEnumCollection::class => 'unknown[]',
             \Illuminate\Database\Eloquent\Collection::class => 'Record<string, unknown>',
-            \Illuminate\Support\Collection::class => 'Array<unknown> | Record<string, unknown>',
+            \Illuminate\Support\Collection::class => 'unknown[] | Record<string, unknown>',
 
             // Array types
-            'array' => 'Array<unknown>',
+            'array' => 'unknown[]',
 
             // Number types
             'bigint' => 'number',
@@ -58,7 +58,7 @@ class TypeScriptMap
             'json' => 'object',
             'jsonb' => 'object',
             'object' => 'object',
-            'collection' => 'Array<unknown>',
+            'collection' => 'unknown[]',
 
             // String types
             'char' => 'string',

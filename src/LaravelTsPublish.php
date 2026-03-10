@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsEnum;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 use BackedEnum;
 use Closure;
+use Composer\ClassMapGenerator\PhpFileParser;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Support\Str;
 use ReflectionClass;
@@ -488,5 +489,25 @@ class LaravelTsPublish
     public function sanitizeJsDoc(string $text): string
     {
         return str_replace('*/', '*\/', $text);
+    }
+
+    /**
+     * Resolve the fully-qualified class name from a PHP file path.
+     *
+     * Returns null if the file does not exist or does not contain a class/enum declaration.
+     */
+    public function resolveClassFromFile(string $filePath): ?string
+    {
+        $absolutePath = str_starts_with($filePath, DIRECTORY_SEPARATOR)
+            ? $filePath
+            : base_path($filePath);
+
+        if (! is_file($absolutePath)) {
+            return null;
+        }
+
+        $classes = PhpFileParser::findClasses($absolutePath);
+
+        return $classes[0] ?? null;
     }
 }

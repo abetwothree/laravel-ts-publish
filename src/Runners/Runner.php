@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace AbeTwoThree\LaravelTsPublish;
+namespace AbeTwoThree\LaravelTsPublish\Runners;
 
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
@@ -14,34 +14,8 @@ use AbeTwoThree\LaravelTsPublish\Writers\JsonWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\WatcherJsonWriter;
 use Illuminate\Support\Collection;
 
-class Runner
+class Runner extends BaseRunner
 {
-    protected BarrelWriter $barrelWriter;
-
-    protected GlobalsWriter $globalsWriter;
-
-    /** @var Collection<int, EnumGenerator> */
-    public protected(set) Collection $enumGenerators;
-
-    /** @var Collection<int, ModelGenerator> */
-    public protected(set) Collection $modelGenerators;
-
-    public protected(set) string $enumBarrelContent = '';
-
-    public protected(set) string $modelBarrelContent = '';
-
-    /** @var array<string, string> Barrel contents keyed by namespace path (modular mode only) */
-    public protected(set) array $enumModularBarrels = [];
-
-    /** @var array<string, string> Barrel contents keyed by namespace path (modular mode only) */
-    public protected(set) array $modelModularBarrels = [];
-
-    public protected(set) string $globalsContent = '';
-
-    public protected(set) string $jsonContent = '';
-
-    public protected(set) string $watcherJsonContent = '';
-
     public function run(): void
     {
         /** @var BarrelWriter $barrelWriter */

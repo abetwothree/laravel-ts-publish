@@ -1,6 +1,6 @@
 <?php
 
-use AbeTwoThree\LaravelTsPublish\Runner;
+use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Writers\WatcherJsonWriter;
 use Illuminate\Filesystem\Filesystem;
 
@@ -45,9 +45,8 @@ test('watcher json contains file paths', function () {
 
     $decoded = json_decode($content, true);
 
-    // Should contain paths ending with .php
-    $hasPhpPaths = collect($decoded)->every(fn ($path) => str_ends_with($path, '.php'));
-    expect($hasPhpPaths)->toBeTrue();
+    // Values should be file paths ending with .php
+    expect(collect($decoded)->every(fn ($path) => str_ends_with($path, '.php')))->toBeTrue();
 });
 
 test('writes watcher json file to disk when output_to_files is enabled', function () {

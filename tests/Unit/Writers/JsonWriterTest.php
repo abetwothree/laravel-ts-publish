@@ -1,6 +1,6 @@
 <?php
 
-use AbeTwoThree\LaravelTsPublish\Runner;
+use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Writers\JsonWriter;
 use Illuminate\Filesystem\Filesystem;
 

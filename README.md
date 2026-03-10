@@ -58,6 +58,17 @@ php artisan ts:publish --preview
 
 This is useful for debugging or reviewing what will be generated before committing to file output.
 
+#### Single-File Republishing
+
+You can republish a single enum or model instead of the entire set by using the `--source` option with a fully-qualified class name or file path:
+
+```bash
+php artisan ts:publish --source="App\Enums\Status"
+php artisan ts:publish --source="app/Enums/Status.php"
+```
+
+This is significantly faster than a full publish on large projects and is used automatically by the [Vite plugin](#enum-metadata-vite-plugin) to republish only the file that changed during development.
+
 #### Automatic Publishing After Migrations
 
 By default, this package will automatically re-publish your TypeScript declaration types after running migrations. This ensures your TypeScript types stay in sync with your database schema changes.

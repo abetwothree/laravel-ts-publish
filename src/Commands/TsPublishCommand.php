@@ -6,9 +6,12 @@ namespace AbeTwoThree\LaravelTsPublish\Commands;
 
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
-use AbeTwoThree\LaravelTsPublish\Runner;
+use AbeTwoThree\LaravelTsPublish\Runners\Runner;
+use AbeTwoThree\LaravelTsPublish\Runners\RunnerForSource;
 use Illuminate\Console\Command;
+use InvalidArgumentException;
 
+use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\intro;
 use function Laravel\Prompts\outro;
@@ -17,11 +20,20 @@ use function Laravel\Prompts\table;
 class TsPublishCommand extends Command
 {
     protected $signature = 'ts:publish
-        {--preview=false : Output generated TypeScript declarations to the console instead of writing to files}';
+        {--preview=false : Output generated TypeScript declarations to the console instead of writing to files}
+        {--source= : FQCN or file path of a specific enum or model to republish}';
 
     protected $description = 'Publish All TypeScript files from enums & models';
 
     public function handle(): int
+    {
+        /** @var string|null $source */
+        $source = $this->option('source');
+
+        return $source ? $this->runSource($source) : $this->runAll();
+    }
+
+    protected function runAll(): int
     {
         $preview = filter_var($this->option('preview'), FILTER_VALIDATE_BOOLEAN);
         config()->set('ts-publish.output_to_files', ! $preview);
@@ -45,7 +57,37 @@ class TsPublishCommand extends Command
         return self::SUCCESS;
     }
 
-    protected function createPreview(Runner $runner): void
+    protected function runSource(string $source): int
+    {
+        $preview = filter_var($this->option('preview'), FILTER_VALIDATE_BOOLEAN);
+        config()->set('ts-publish.output_to_files', ! $preview);
+
+        intro('ts:publish --source');
+
+        try {
+            $runner = new RunnerForSource($source);
+            $runner->run();
+        } catch (InvalidArgumentException $e) {
+            error($e->getMessage());
+
+            return self::FAILURE;
+        }
+
+        if ($preview) {
+            $this->createPreview($runner);
+        } else {
+            $this->createPublishedFilesList($runner);
+        }
+
+        $enumCount = count($runner->enumGenerators);
+        $modelCount = count($runner->modelGenerators);
+
+        outro("{$enumCount} enums, {$modelCount} models — All done");
+
+        return self::SUCCESS;
+    }
+
+    protected function createPreview(Runner|RunnerForSource $runner): void
     {
         info('Previewing generated TypeScript declarations');
 
@@ -104,7 +146,7 @@ class TsPublishCommand extends Command
         }
     }
 
-    protected function createPublishedFilesList(Runner $runner): void
+    protected function createPublishedFilesList(Runner|RunnerForSource $runner): void
     {
         $outputDirectory = config()->string('ts-publish.output_directory');
 

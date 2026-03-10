@@ -380,6 +380,7 @@ class ModelTransformer extends CoreTransformer
             }
         } else {
             $enumTypes = array_values(array_unique($this->enumFqcnMap));
+
             if ($enumTypes) {
                 sort($enumTypes);
                 $resolvedImports['../enums'] = $enumTypes;
@@ -389,6 +390,7 @@ class ModelTransformer extends CoreTransformer
                 array_unique($this->modelFqcnMap),
                 fn (string $name) => $name !== $this->modelName,
             ));
+
             if ($modelNames) {
                 sort($modelNames);
                 $resolvedImports['./'] = $modelNames;
