@@ -436,14 +436,18 @@ describe('ModelTransformer import alias resolution for duplicate names', functio
     test('aliases enum imports when two enums from different namespaces share the same TypeScript type name', function () {
         config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
 
-        // Deal casts status to Workbench\App\Enums\Status (→ StatusType)
-        // and Crm\User also uses Workbench\Crm\Enums\Status (→ StatusType)
-        // But Deal only directly references App\Enums\Status, so no enum conflict in Deal itself.
-        // Instead, we test this via the Crm\Models\User which uses Crm\Enums\Status
-        $data = (new ModelTransformer(\Workbench\Crm\Models\User::class))->data();
+        // Deal casts status to App\Enums\Status (→ StatusType)
+        // and crm_status to Crm\Enums\Status (→ StatusType) — a genuine collision
+        $data = (new ModelTransformer(Deal::class))->data();
 
-        // Should have status column using the CRM enum
-        expect($data['columns'])->toHaveKey('status');
+        // Both columns should use namespace-prefixed aliases
+        expect($data['columns']['status'])->toBe('AppStatusType');
+        expect($data['columns']['crm_status'])->toBe('CrmStatusType');
+
+        // Imports should use "as" aliasing syntax for the enum types
+        $allImports = array_merge(...array_values($data['resolvedImports']));
+        expect($allImports)->toContain('StatusType as AppStatusType')
+            ->and($allImports)->toContain('StatusType as CrmStatusType');
     });
 
     test('aliases model imports in flat (non-modular) mode', function () {

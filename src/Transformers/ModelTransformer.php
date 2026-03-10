@@ -94,6 +94,12 @@ class ModelTransformer extends CoreTransformer
     /** @var array<string, string> FQCN => aliased TypeScript name (only for conflicting imports) */
     protected array $importAliases = [];
 
+    /** @var array<string, list<string>> column_name => list of FQCNs (enum or model) referenced by that column */
+    protected array $columnFqcns = [];
+
+    /** @var array<string, list<string>> mutator_name => list of FQCNs (enum or model) referenced by that mutator */
+    protected array $mutatorFqcns = [];
+
     /** @var array<string, list<string>> */
     protected array $customImports = [];
 
@@ -239,10 +245,12 @@ class ModelTransformer extends CoreTransformer
 
             foreach ($typings['enumFqcns'] as $i => $fqcn) {
                 $this->enumFqcnMap[$fqcn] = $typings['enumTypes'][$i];
+                $this->columnFqcns[$name][] = $fqcn;
             }
 
             foreach ($typings['classFqcns'] as $i => $fqcn) {
                 $this->modelFqcnMap[$fqcn] = $typings['classes'][$i];
+                $this->columnFqcns[$name][] = $fqcn;
             }
 
             foreach ($typings['customImports'] as $path => $importTypes) {
@@ -275,10 +283,12 @@ class ModelTransformer extends CoreTransformer
 
             foreach ($resolved['enumFqcns'] as $i => $fqcn) {
                 $this->enumFqcnMap[$fqcn] = $resolved['enumTypes'][$i];
+                $this->mutatorFqcns[$name][] = $fqcn;
             }
 
             foreach ($resolved['classFqcns'] as $i => $fqcn) {
                 $this->modelFqcnMap[$fqcn] = $resolved['classes'][$i];
+                $this->mutatorFqcns[$name][] = $fqcn;
             }
 
             foreach ($resolved['customImports'] as $path => $importTypes) {
@@ -507,7 +517,7 @@ class ModelTransformer extends CoreTransformer
             $this->relations[$relationKey] = $alias.($isArray ? '[]' : '');
         }
 
-        // Rewrite column and mutator types using regex (safe for enums and single-FQCN models)
+        // Rewrite column and mutator types using precise FQCN→column tracking
         foreach ($this->importAliases as $fqcn => $alias) {
             $originalName = $this->enumFqcnMap[$fqcn] ?? $this->modelFqcnMap[$fqcn] ?? null;
 
@@ -518,10 +528,16 @@ class ModelTransformer extends CoreTransformer
             $pattern = '/(?<![A-Za-z0-9_$])'.preg_quote($originalName, '/').'(?![A-Za-z0-9_$])/';
 
             foreach ($this->columns as $key => $type) {
+                if (! in_array($fqcn, $this->columnFqcns[$key] ?? [])) {
+                    continue;
+                }
                 $this->columns[$key] = preg_replace($pattern, $alias, $type) ?? $type;
             }
 
             foreach ($this->mutators as $key => $type) {
+                if (! in_array($fqcn, $this->mutatorFqcns[$key] ?? [])) {
+                    continue;
+                }
                 $this->mutators[$key] = preg_replace($pattern, $alias, $type) ?? $type;
             }
         }

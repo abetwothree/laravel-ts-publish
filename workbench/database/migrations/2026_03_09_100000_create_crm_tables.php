@@ -23,6 +23,7 @@ return new class extends Migration
             $table->foreignId('admin_id')->constrained('users')->cascadeOnDelete();
             $table->string('title');
             $table->string('status')->default('0');
+            $table->string('crm_status')->default('lead');
             $table->decimal('value', 10, 2)->default(0);
             $table->timestamps();
         });

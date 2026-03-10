@@ -5,6 +5,7 @@ namespace Workbench\Crm\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Workbench\App\Enums\Status;
+use Workbench\Crm\Enums\Status as CrmStatus;
 
 class Deal extends Model
 {
@@ -15,6 +16,7 @@ class Deal extends Model
         'admin_id',
         'title',
         'status',
+        'crm_status',
         'value',
     ];
 
@@ -22,6 +24,7 @@ class Deal extends Model
     {
         return [
             'status' => Status::class,
+            'crm_status' => CrmStatus::class,
             'value' => 'decimal:2',
         ];
     }
