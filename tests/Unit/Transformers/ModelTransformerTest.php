@@ -11,6 +11,7 @@ use Workbench\App\Models\Profile;
 use Workbench\App\Models\Tag;
 use Workbench\App\Models\TrackingEvent;
 use Workbench\App\Models\User;
+use Workbench\Crm\Models\Deal;
 
 describe('ModelTransformer with User model', function () {
     test('transforms User model name and filePath', function () {
@@ -410,5 +411,118 @@ describe('ModelTransformer modular resolvedImports', function () {
         // Non-modular uses hardcoded '../enums' and './' paths
         expect($data['resolvedImports'])->toHaveKey('../enums');
         expect($data['resolvedImports'])->toHaveKey('./');
+    });
+});
+
+describe('ModelTransformer import alias resolution for duplicate names', function () {
+    test('aliases model imports when two relations reference different models with the same class name', function () {
+        // Deal relates to Crm\User (via customer) and App\User (via admin)
+        $data = (new ModelTransformer(Deal::class))->data();
+
+        // Both relations should be present with aliased type names
+        expect($data['relations'])->toHaveKey('customer')
+            ->and($data['relations'])->toHaveKey('admin');
+
+        // Types should use relationship-based aliases since each FQCN has exactly one relation
+        expect($data['relations']['customer'])->toBe('CustomerUser');
+        expect($data['relations']['admin'])->toBe('AdminUser');
+
+        // Imports should use "OriginalName as Alias" syntax
+        $allImports = array_merge(...array_values($data['resolvedImports']));
+        expect($allImports)->toContain('User as CustomerUser')
+            ->and($allImports)->toContain('User as AdminUser');
+    });
+
+    test('aliases enum imports when two enums from different namespaces share the same TypeScript type name', function () {
+        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+        // Deal casts status to App\Enums\Status (→ StatusType)
+        // and crm_status to Crm\Enums\Status (→ StatusType) — a genuine collision
+        $data = (new ModelTransformer(Deal::class))->data();
+
+        // Both columns should use namespace-prefixed aliases
+        expect($data['columns']['status'])->toBe('AppStatusType');
+        expect($data['columns']['crm_status'])->toBe('CrmStatusType');
+
+        // Imports should use "as" aliasing syntax for the enum types
+        $allImports = array_merge(...array_values($data['resolvedImports']));
+        expect($allImports)->toContain('StatusType as AppStatusType')
+            ->and($allImports)->toContain('StatusType as CrmStatusType');
+    });
+
+    test('aliases model imports in flat (non-modular) mode', function () {
+        config()->set('ts-publish.modular_publishing', false);
+
+        $data = (new ModelTransformer(Deal::class))->data();
+
+        // Flat mode should still alias conflicting names
+        expect($data['relations']['customer'])->toBe('CustomerUser');
+        expect($data['relations']['admin'])->toBe('AdminUser');
+
+        expect($data['resolvedImports'])->toHaveKey('./');
+        expect($data['resolvedImports']['./'])->toContain('User as AdminUser')
+            ->and($data['resolvedImports']['./'])->toContain('User as CustomerUser');
+    });
+
+    test('aliases model imports in modular mode with correct relative paths', function () {
+        config()->set('ts-publish.modular_publishing', true);
+        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+        $data = (new ModelTransformer(Deal::class))->data();
+
+        // Deal is in crm/models
+        // Crm\User is in crm/models → . (same dir)
+        // App\User is in app/models → ../../app/models
+        expect($data['relations']['customer'])->toBe('CustomerUser');
+        expect($data['relations']['admin'])->toBe('AdminUser');
+
+        expect($data['resolvedImports'])->toHaveKey('.');
+        expect($data['resolvedImports']['.'])->toContain('User as CustomerUser');
+
+        expect($data['resolvedImports'])->toHaveKey('../../app/models');
+        expect($data['resolvedImports']['../../app/models'])->toContain('User as AdminUser');
+    });
+
+    test('does not alias imports when there are no naming conflicts', function () {
+        // Invoice has unique model names (User, Payment) — no conflicts
+        $data = (new ModelTransformer(Invoice::class))->data();
+
+        expect($data['relations']['user'])->toBe('User');
+        expect($data['relations']['payments'])->toBe('Payment[]');
+
+        // No "as" aliasing in imports
+        $allImports = array_merge(...array_values($data['resolvedImports']));
+
+        foreach ($allImports as $importEntry) {
+            expect($importEntry)->not->toContain(' as ');
+        }
+    });
+
+    test('does not alias imports when model name does not conflict with self', function () {
+        // User model imports Profile, Post, etc. — none named "User"
+        $data = (new ModelTransformer(User::class))->data();
+
+        $allImports = array_merge(...array_values($data['resolvedImports']));
+
+        foreach ($allImports as $importEntry) {
+            expect($importEntry)->not->toContain(' as ');
+        }
+    });
+
+    test('computeNamespacePrefix returns meaningful namespace segment', function () {
+        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+        $transformer = new ModelTransformer(Deal::class);
+
+        $method = new ReflectionMethod($transformer, 'computeNamespacePrefix');
+
+        // Crm\Models\User → strip 'Workbench\', skip 'Models' → 'Crm'
+        expect($method->invoke($transformer, 'Workbench\\Crm\\Models\\User'))->toBe('Crm');
+
+        // App\Models\User → strip 'Workbench\', skip 'Models' & 'App' → 'App' (fallback to first)
+        expect($method->invoke($transformer, 'Workbench\\App\\Models\\User'))->toBe('App');
+
+        // Accounting\Enums\InvoiceStatus → strip 'Workbench\', skip 'Enums' → 'Accounting'
+        expect($method->invoke($transformer, 'Workbench\\Accounting\\Enums\\InvoiceStatus'))->toBe('Accounting');
     });
 });

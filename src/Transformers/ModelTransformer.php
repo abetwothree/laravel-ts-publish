@@ -79,14 +79,26 @@ class ModelTransformer extends CoreTransformer
     /** @var RelationsList */
     public protected(set) array $relations = [];
 
+    /** @var TsTypeOverrides */
+    public protected(set) array $tsTypeOverrides = [];
+
     /** @var array<string, string> FQCN => TypeScript type alias name */
     protected array $enumFqcnMap = [];
 
     /** @var array<string, string> FQCN => TypeScript short name */
     protected array $modelFqcnMap = [];
 
-    /** @var TsTypeOverrides */
-    public protected(set) array $tsTypeOverrides = [];
+    /** @var array<string, list<string>> FQCN => list of relation method names that reference it */
+    protected array $modelFqcnRelations = [];
+
+    /** @var array<string, string> FQCN => aliased TypeScript name (only for conflicting imports) */
+    protected array $importAliases = [];
+
+    /** @var array<string, list<string>> column_name => list of FQCNs (enum or model) referenced by that column */
+    protected array $columnFqcns = [];
+
+    /** @var array<string, list<string>> mutator_name => list of FQCNs (enum or model) referenced by that mutator */
+    protected array $mutatorFqcns = [];
 
     /** @var array<string, list<string>> */
     protected array $customImports = [];
@@ -98,7 +110,8 @@ class ModelTransformer extends CoreTransformer
             ->parseTsTypeOverrides()
             ->transformColumns()
             ->transformMutators()
-            ->transformRelations();
+            ->transformRelations()
+            ->resolveImportConflicts();
 
         return $this;
     }
@@ -232,10 +245,12 @@ class ModelTransformer extends CoreTransformer
 
             foreach ($typings['enumFqcns'] as $i => $fqcn) {
                 $this->enumFqcnMap[$fqcn] = $typings['enumTypes'][$i];
+                $this->columnFqcns[$name][] = $fqcn;
             }
 
             foreach ($typings['classFqcns'] as $i => $fqcn) {
                 $this->modelFqcnMap[$fqcn] = $typings['classes'][$i];
+                $this->columnFqcns[$name][] = $fqcn;
             }
 
             foreach ($typings['customImports'] as $path => $importTypes) {
@@ -268,10 +283,12 @@ class ModelTransformer extends CoreTransformer
 
             foreach ($resolved['enumFqcns'] as $i => $fqcn) {
                 $this->enumFqcnMap[$fqcn] = $resolved['enumTypes'][$i];
+                $this->mutatorFqcns[$name][] = $fqcn;
             }
 
             foreach ($resolved['classFqcns'] as $i => $fqcn) {
                 $this->modelFqcnMap[$fqcn] = $resolved['classes'][$i];
+                $this->mutatorFqcns[$name][] = $fqcn;
             }
 
             foreach ($resolved['customImports'] as $path => $importTypes) {
@@ -324,6 +341,7 @@ class ModelTransformer extends CoreTransformer
             $relationName = LaravelTsPublish::keyCase($relation['name'], $case);
             $this->relations[$relationName] = $relationType;
             $this->modelFqcnMap[$relation['related']] = $relatedBasename;
+            $this->modelFqcnRelations[$relation['related']][] = $relation['name'];
         }
 
         return $this;
@@ -366,6 +384,166 @@ class ModelTransformer extends CoreTransformer
     }
 
     /**
+     * Detect conflicting import names and generate aliases.
+     *
+     * Uses a hybrid strategy: relationship-name-based aliases when a FQCN is
+     * referenced by exactly one relation, namespace-segment-based otherwise.
+     * Enum FQCNs always use namespace-segment-based aliases.
+     */
+    protected function resolveImportConflicts(): self
+    {
+        // Build reverse map: typeName => [{fqcn, kind}]
+        /** @var array<string, list<array{fqcn: string, kind: 'enum'|'model'}>> $reverseMap */
+        $reverseMap = [];
+
+        foreach ($this->enumFqcnMap as $fqcn => $typeName) {
+            $reverseMap[$typeName][] = ['fqcn' => $fqcn, 'kind' => 'enum'];
+        }
+
+        foreach ($this->modelFqcnMap as $fqcn => $typeName) {
+            if ($fqcn === $this->findable) {
+                continue;
+            }
+            $reverseMap[$typeName][] = ['fqcn' => $fqcn, 'kind' => 'model'];
+        }
+
+        foreach ($reverseMap as $typeName => $entries) {
+            $needsAlias = count($entries) > 1 || $typeName === $this->modelName;
+
+            if (! $needsAlias) {
+                continue;
+            }
+
+            foreach ($entries as $entry) {
+                $fqcn = $entry['fqcn'];
+                $originalName = $entry['kind'] === 'enum'
+                    ? $this->enumFqcnMap[$fqcn]
+                    : $this->modelFqcnMap[$fqcn];
+
+                if ($entry['kind'] === 'model') {
+                    $relations = $this->modelFqcnRelations[$fqcn] ?? [];
+
+                    if (count($relations) === 1) {
+                        $alias = Str::studly($relations[0]).$originalName;
+                    } else {
+                        $alias = $this->computeNamespacePrefix($fqcn).$originalName;
+                    }
+                } else {
+                    $alias = $this->computeNamespacePrefix($fqcn).$originalName;
+                }
+
+                $this->importAliases[$fqcn] = $alias;
+            }
+        }
+
+        if ($this->importAliases !== []) {
+            $this->rewriteTypeReferences();
+        }
+
+        return $this;
+    }
+
+    /**
+     * Compute a distinguishing namespace prefix for alias generation.
+     *
+     * Strips the configured namespace prefix, removes the class name, walks
+     * backwards skipping common segments like Models/Enums, and returns the
+     * StudlyCase of the first meaningful segment.
+     */
+    protected function computeNamespacePrefix(string $fqcn): string
+    {
+        $namespace = Str::beforeLast($fqcn, '\\');
+
+        $prefix = config()->string('ts-publish.namespace_strip_prefix', '');
+
+        if ($prefix !== '' && str_starts_with($namespace, $prefix)) {
+            $namespace = substr($namespace, strlen($prefix));
+        }
+
+        $segments = array_filter(explode('\\', $namespace));
+        $skip = ['Models', 'Enums', 'App'];
+
+        // Walk backwards to find the first meaningful segment
+        foreach (array_reverse($segments) as $segment) {
+            if (! in_array($segment, $skip, true)) {
+                return Str::studly($segment);
+            }
+        }
+
+        // Fallback: use the first available segment
+        $first = reset($segments);
+
+        return $first !== false ? Str::studly($first) : '';
+    }
+
+    /**
+     * Rewrite type references in columns, mutators, and relations to use aliases.
+     *
+     * Relations are rewritten using FQCN-to-relation tracking for precision.
+     * Columns and mutators use regex replacement with word boundaries.
+     */
+    protected function rewriteTypeReferences(): void
+    {
+        // Build a relation-name → alias lookup from FQCN relationships
+        // This allows precise replacement even when multiple FQCNs share the same base name
+        /** @var array<string, string> $relationNameToAlias */
+        $relationNameToAlias = [];
+
+        foreach ($this->importAliases as $fqcn => $alias) {
+            $originalName = $this->modelFqcnMap[$fqcn] ?? null;
+
+            if ($originalName === null || $originalName === $alias) {
+                continue;
+            }
+
+            foreach ($this->modelFqcnRelations[$fqcn] ?? [] as $relationMethod) {
+                $relationKey = LaravelTsPublish::keyCase(
+                    $relationMethod,
+                    config()->string('ts-publish.relationship_case'),
+                );
+
+                $relationNameToAlias[$relationKey] = $alias;
+            }
+        }
+
+        // Rewrite relation types using precise relation-name mapping
+        foreach ($relationNameToAlias as $relationKey => $alias) {
+            if (! isset($this->relations[$relationKey])) {
+                continue;
+            }
+
+            $currentType = $this->relations[$relationKey];
+            $isArray = str_ends_with($currentType, '[]');
+            $this->relations[$relationKey] = $alias.($isArray ? '[]' : '');
+        }
+
+        // Rewrite column and mutator types using precise FQCN→column tracking
+        foreach ($this->importAliases as $fqcn => $alias) {
+            $originalName = $this->enumFqcnMap[$fqcn] ?? $this->modelFqcnMap[$fqcn] ?? null;
+
+            if ($originalName === null || $originalName === $alias) {
+                continue;
+            }
+
+            $pattern = '/(?<![A-Za-z0-9_$])'.preg_quote($originalName, '/').'(?![A-Za-z0-9_$])/';
+
+            foreach ($this->columns as $key => $type) {
+                if (! in_array($fqcn, $this->columnFqcns[$key] ?? [])) {
+                    continue;
+                }
+                $this->columns[$key] = preg_replace($pattern, $alias, $type) ?? $type;
+            }
+
+            foreach ($this->mutators as $key => $type) {
+                if (! in_array($fqcn, $this->mutatorFqcns[$key] ?? [])) {
+                    continue;
+                }
+                $this->mutators[$key] = preg_replace($pattern, $alias, $type) ?? $type;
+            }
+        }
+    }
+
+    /**
      * Build the resolved imports map from accumulated FQCNs and custom imports.
      *
      * @return ResolvedImportMap
@@ -379,7 +557,7 @@ class ModelTransformer extends CoreTransformer
             foreach ($this->enumFqcnMap as $fqcn => $typeName) {
                 $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
                 $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
-                $resolvedImports[$importPath][] = $typeName;
+                $resolvedImports[$importPath][] = $this->formatImportName($fqcn, $typeName);
             }
 
             foreach ($this->modelFqcnMap as $fqcn => $typeName) {
@@ -388,24 +566,32 @@ class ModelTransformer extends CoreTransformer
                 }
                 $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
                 $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
-                $resolvedImports[$importPath][] = $typeName;
+                $resolvedImports[$importPath][] = $this->formatImportName($fqcn, $typeName);
             }
         } else {
-            $enumTypes = array_values(array_unique($this->enumFqcnMap));
+            $enumImports = [];
+            foreach ($this->enumFqcnMap as $fqcn => $typeName) {
+                $enumImports[] = $this->formatImportName($fqcn, $typeName);
+            }
+            $enumImports = array_values(array_unique($enumImports));
 
-            if ($enumTypes) {
-                sort($enumTypes);
-                $resolvedImports['../enums'] = $enumTypes;
+            if ($enumImports) {
+                sort($enumImports);
+                $resolvedImports['../enums'] = $enumImports;
             }
 
-            $modelNames = array_values(array_filter(
-                array_unique($this->modelFqcnMap),
-                fn (string $name) => $name !== $this->modelName,
-            ));
+            $modelImports = [];
+            foreach ($this->modelFqcnMap as $fqcn => $typeName) {
+                if ($fqcn === $this->findable) {
+                    continue;
+                }
+                $modelImports[] = $this->formatImportName($fqcn, $typeName);
+            }
+            $modelImports = array_values(array_unique($modelImports));
 
-            if ($modelNames) {
-                sort($modelNames);
-                $resolvedImports['./'] = $modelNames;
+            if ($modelImports) {
+                sort($modelImports);
+                $resolvedImports['./'] = $modelImports;
             }
         }
 
@@ -421,5 +607,19 @@ class ModelTransformer extends CoreTransformer
         }
 
         return LaravelTsPublish::sortImportPaths($resolvedImports);
+    }
+
+    /**
+     * Format an import name, applying "OriginalName as Alias" syntax when aliased.
+     */
+    protected function formatImportName(string $fqcn, string $typeName): string
+    {
+        $alias = $this->importAliases[$fqcn] ?? null;
+
+        if ($alias !== null && $alias !== $typeName) {
+            return $typeName.' as '.$alias;
+        }
+
+        return $typeName;
     }
 }
