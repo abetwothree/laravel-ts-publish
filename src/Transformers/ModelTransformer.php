@@ -208,7 +208,19 @@ class ModelTransformer extends CoreTransformer
                 continue;
             }
 
-            $typings = LaravelTsPublish::phpToTypeScriptType($attribute['cast'] ?? $attribute['type']);
+            $cast = $attribute['cast'];
+
+            // When a DB column has an Attribute accessor or old-style mutator,
+            // resolve the type from the accessor's get closure / method return type
+            // and fall back to the DB column type if no getter exists.
+            if ($cast === 'attribute' || $cast === 'accessor') {
+                $accessorType = $this->resolveMutatorType($name);
+                $typings = $accessorType['type'] !== 'unknown'
+                    ? $accessorType
+                    : LaravelTsPublish::phpToTypeScriptType($attribute['type']);
+            } else {
+                $typings = LaravelTsPublish::phpToTypeScriptType($cast ?? $attribute['type']);
+            }
 
             $type = $typings['type'];
 
@@ -318,7 +330,7 @@ class ModelTransformer extends CoreTransformer
     }
 
     /** @return TypeScriptTypeInfo */
-    private function resolveMutatorType(string $name): array
+    protected function resolveMutatorType(string $name): array
     {
         $result = LaravelTsPublish::emptyTypeScriptInfo();
         $newStyle = Str::camel($name);

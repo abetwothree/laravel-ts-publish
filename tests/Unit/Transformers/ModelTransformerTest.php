@@ -38,6 +38,14 @@ describe('ModelTransformer with User model', function () {
         expect($data['columns']['membership_level'])->toBe('MembershipLevelType | null');
     });
 
+    test('resolves DB column type from Attribute accessor get closure', function () {
+        $data = (new ModelTransformer(User::class))->data();
+
+        // The `name` column has an Attribute accessor with get: fn($value): string
+        // It should resolve to 'string' from the closure return type, not 'Attribute'
+        expect($data['columns']['name'])->toBe('string');
+    });
+
     test('transforms User model with TsCasts overrides on casts method', function () {
         $data = (new ModelTransformer(User::class))->data();
 

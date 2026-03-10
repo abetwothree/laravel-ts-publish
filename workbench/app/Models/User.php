@@ -105,6 +105,14 @@ class User extends Authenticatable
         return $this->morphMany(Image::class, 'imageable');
     }
 
+    /** User name formatted with first letter capitalized */
+    protected function name(): Attribute
+    {
+        return Attribute::make(
+            get: fn ($value): string => ucfirst((string) $value),
+        );
+    }
+
     /** User initials (e.g. "JD" for "John Doe") */
     protected function initials(): Attribute
     {
