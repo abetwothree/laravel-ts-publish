@@ -30,9 +30,13 @@ export const {{ $enumName }} = {
 @endif
     {!! LaravelTsPublish::validJsObjectKey($method['name']) !!}: {!! LaravelTsPublish::toJsLiteral($method['return']) !!},
 @endforeach
-@if($metadataEnabled)
+@if($metadataEnabled && count($cases) > 0)
     _cases: [{!! implode(', ', $backed ? $caseKinds : $caseTypes) !!}],
+@endif
+@if($metadataEnabled && count($methods) > 0)
     _methods: [{!! implode(', ', array_map(fn($method) => LaravelTsPublish::toJsLiteral($method['name']), $methods)) !!}],
+@endif
+@if($metadataEnabled && count($staticMethods) > 0)
     _static: [{!! implode(', ', array_map(fn($method) => LaravelTsPublish::toJsLiteral($method['name']), $staticMethods)) !!}],
 @endif
 @if($metadataEnabled && $usesTolkiPackage)

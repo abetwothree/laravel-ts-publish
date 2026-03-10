@@ -3,6 +3,7 @@
 use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\EnumWriter;
 use Illuminate\Filesystem\Filesystem;
+use Workbench\App\Enums\PaymentMethod;
 use Workbench\App\Enums\Status;
 
 test('writes enum content from transformer', function () {
@@ -88,4 +89,34 @@ test('writes backed enum Kind type', function () {
     $content = $writer->write($transformer);
 
     expect($content)->toContain('export type StatusKind');
+});
+
+test('omits _methods and _static when enum has no methods or static methods', function () {
+    $writer = new EnumWriter(new Filesystem);
+    $transformer = new EnumTransformer(PaymentMethod::class);
+
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.enum_metadata_enabled', true);
+
+    $content = $writer->write($transformer);
+
+    expect($content)
+        ->toContain('_cases:')
+        ->not->toContain('_methods:')
+        ->not->toContain('_static:');
+});
+
+test('includes _methods when enum has instance methods', function () {
+    $writer = new EnumWriter(new Filesystem);
+    $transformer = new EnumTransformer(Status::class);
+
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.enum_metadata_enabled', true);
+
+    $content = $writer->write($transformer);
+
+    expect($content)
+        ->toContain('_cases:')
+        ->toContain('_methods:')
+        ->toContain('_static:');
 });

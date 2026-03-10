@@ -10,8 +10,6 @@ export const PaymentMethod = defineEnum({
     ApplePay: 'apple_pay',
     GooglePay: 'google_pay',
     _cases: ['CreditCard', 'DebitCard', 'PayPal', 'BankTransfer', 'CashOnDelivery', 'Crypto', 'ApplePay', 'GooglePay'],
-    _methods: [],
-    _static: [],
 } as const);
 
 export type PaymentMethodType = 'credit_card' | 'debit_card' | 'paypal' | 'bank_transfer' | 'cash_on_delivery' | 'crypto' | 'apple_pay' | 'google_pay';

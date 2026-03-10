@@ -6,8 +6,6 @@ export const PaymentStatus = defineEnum({
     Failed: 'failed',
     Refunded: 'refunded',
     _cases: ['Pending', 'Completed', 'Failed', 'Refunded'],
-    _methods: [],
-    _static: [],
 } as const);
 
 export type PaymentStatusType = 'pending' | 'completed' | 'failed' | 'refunded';

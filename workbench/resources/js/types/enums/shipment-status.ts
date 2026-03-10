@@ -9,8 +9,6 @@ export const ShipmentStatus = defineEnum({
     Delivered: 'delivered',
     Returned: 'returned',
     _cases: ['Pending', 'LabelCreated', 'PickedUp', 'InTransit', 'OutForDelivery', 'Delivered', 'Returned'],
-    _methods: [],
-    _static: [],
 } as const);
 
 export type ShipmentStatusType = 'pending' | 'label_created' | 'picked_up' | 'in_transit' | 'out_for_delivery' | 'delivered' | 'returned';

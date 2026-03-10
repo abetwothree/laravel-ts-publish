@@ -168,20 +168,6 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Use Type-Only Imports
-    |--------------------------------------------------------------------------
-    |
-    | When enabled, model type imports use `import type { ... }` instead of
-    | `import { ... }`. This is required by stricter TypeScript setups that
-    | enable `verbatimModuleSyntax` or `isolatedModules`.
-    |
-    | Only affects model file imports (enum types, model interfaces, custom
-    | TsCasts imports). The enum `defineEnum` value import is unaffected.
-    */
-    'use_type_imports' => true,
-
-    /*
-    |--------------------------------------------------------------------------
     | Modular Publishing
     |--------------------------------------------------------------------------
     |
@@ -225,6 +211,21 @@ return [
     'relationship_case' => 'snake',
 
     'enum_method_case' => 'camel',
+
+    /*
+    |--------------------------------------------------------------------------
+    | Use Type-Only Imports
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, model type imports use `import type { ... }` instead of
+    | `import { ... }`. This is required by stricter TypeScript setups that
+    | enable `verbatimModuleSyntax` or `isolatedModules`.
+    |
+    | Only affects model file imports (enum types, model interfaces, custom
+    | TsCasts imports). The enum `defineEnum` value import is unaffected.
+    */
+
+    'use_type_imports' => true,
 
     /*
     |--------------------------------------------------------------------------

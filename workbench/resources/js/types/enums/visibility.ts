@@ -24,7 +24,6 @@ export const Visibility = defineEnum({
     },
     _cases: ['Public', 'Private', 'Protected', 'Internal', 'Draft'],
     _methods: ['isPublic', 'description'],
-    _static: [],
 } as const);
 
 export type VisibilityType = 'Public' | 'Private' | 'Protected' | 'Internal' | 'Draft';

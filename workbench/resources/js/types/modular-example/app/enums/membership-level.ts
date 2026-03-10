@@ -6,8 +6,6 @@ export const MembershipLevel = defineEnum({
     Premium: 'Premium',
     Enterprise: 'Enterprise',
     _cases: ['Free', 'Basic', 'Premium', 'Enterprise'],
-    _methods: [],
-    _static: [],
 } as const);
 
 export type MembershipLevelType = 'Free' | 'Basic' | 'Premium' | 'Enterprise';
