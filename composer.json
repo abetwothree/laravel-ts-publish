@@ -48,6 +48,7 @@
             "Workbench\\Database\\Seeders\\": "workbench/database/seeders/",
             "Workbench\\Accounting\\": "workbench/modules/Accounting/",
             "Workbench\\Blog\\": "workbench/modules/Blog/",
+            "Workbench\\Crm\\": "workbench/modules/Crm/",
             "Workbench\\Shipping\\": "workbench/modules/Shipping/"
         }
     },
