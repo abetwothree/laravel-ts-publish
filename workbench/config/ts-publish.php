@@ -298,16 +298,19 @@ return [
     | ],
     */
 
-    'included_models' => [
-        // Only these models are used
-    ],
-
-    'excluded_models' => [
-        // These models are ignored
-    ],
-
+    /* Most flexible, anything added here will be included */
     'additional_model_directories' => [
-        // Add additional directories to search for models in addition to the default app/Models directory
+        //
+    ],
+
+    /* Most restrictive, only these models will be included */
+    'included_models' => [
+        //
+    ],
+
+    /* Excluded models will always be ignored */
+    'excluded_models' => [
+        //
     ],
 
     /*
@@ -326,16 +329,19 @@ return [
     | ],
     */
 
-    'included_enums' => [
-        // Only these enums are used
-    ],
-
-    'excluded_enums' => [
-        // These enums are ignored
-    ],
-
+    /* Most flexible, anything added here will be included */
     'additional_enum_directories' => [
-        // Add additional directories to search for enums in addition to the default app/Enums directory
+        //
+    ],
+
+    /* Most restrictive, only these enums will be included */
+    'included_enums' => [
+        //
+    ],
+
+    /* Excluded enums will always be ignored */
+    'excluded_enums' => [
+        //
     ],
 
     /*

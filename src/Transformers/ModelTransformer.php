@@ -124,15 +124,13 @@ class ModelTransformer extends CoreTransformer
     #[Override]
     public function data(): array
     {
-        $resolvedImports = $this->buildResolvedImports();
-
         return [
             'modelName' => $this->modelName,
             'filePath' => $this->filePath,
             'columns' => $this->columns,
             'mutators' => $this->mutators,
             'relations' => $this->relations,
-            'resolvedImports' => $resolvedImports,
+            'resolvedImports' => $this->buildResolvedImports(),
         ];
     }
 
