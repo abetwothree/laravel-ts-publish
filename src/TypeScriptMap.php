@@ -81,6 +81,10 @@ class TypeScriptMap
             'immutable_datetime' => fn () => $this->validateDate(),
             'immutable_custom_datetime' => fn () => $this->validateDate(),
             'timestamp' => fn () => $this->validateDate(),
+            \Carbon\Carbon::class => fn () => $this->validateDate(),
+            \Carbon\CarbonImmutable::class => fn () => $this->validateDate(),
+            \Illuminate\Support\Carbon::class => fn () => $this->validateDate(),
+
             'time' => 'string',
             'timetz' => 'string',
             'timestamptz' => 'string',
