@@ -241,3 +241,65 @@ test('ts:publish respects publish_models false in config', function () {
         ->expectsOutputToContain('Enums:')
         ->doesntExpectOutputToContain('Models:');
 });
+
+test('ts:publish verbose mode shows detailed tables', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-verbose-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+
+    $this->artisan('ts:publish', ['--preview' => 'false', '-v' => true])
+        ->assertSuccessful()
+        ->expectsOutputToContain("Published to: {$outputDir}")
+        ->expectsOutputToContain('Cases')
+        ->expectsOutputToContain('Columns');
+
+    // Cleanup
+    (new Filesystem)->deleteDirectory($outputDir);
+});
+
+test('ts:publish normal verbosity shows compact summary', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-normal-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+
+    $this->artisan('ts:publish', ['--preview' => 'false'])
+        ->assertSuccessful()
+        ->expectsOutputToContain("Published to: {$outputDir}")
+        ->doesntExpectOutputToContain('Cases')
+        ->doesntExpectOutputToContain('Columns');
+
+    // Cleanup
+    (new Filesystem)->deleteDirectory($outputDir);
+});
+
+test('ts:publish quiet mode produces no output', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-quiet-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+
+    $this->artisan('ts:publish', ['--preview' => 'false', '--quiet' => true])
+        ->assertSuccessful()
+        ->doesntExpectOutput();
+
+    // Files should still be written
+    expect(is_dir("$outputDir/enums"))->toBeTrue()
+        ->and(is_dir("$outputDir/models"))->toBeTrue();
+
+    // Cleanup
+    (new Filesystem)->deleteDirectory($outputDir);
+});
+
+test('ts:publish quiet mode with --source produces no output', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-quiet-source-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+
+    $this->artisan('ts:publish', ['--preview' => 'false', '--source' => 'Workbench\App\Enums\Status', '--quiet' => true])
+        ->assertSuccessful()
+        ->doesntExpectOutput();
+
+    expect(file_exists("$outputDir/enums/status.ts"))->toBeTrue();
+
+    // Cleanup
+    (new Filesystem)->deleteDirectory($outputDir);
+});

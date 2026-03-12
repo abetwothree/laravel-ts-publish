@@ -148,6 +148,29 @@ When a command flag requests a type that is disabled in config (e.g. `--only-enu
 
 If both types end up disabled (both config values are `false` and no override flag is given), the command prints a warning and exits with a success status.
 
+#### Verbosity Levels
+
+The `ts:publish` command supports three verbosity levels using the standard Artisan verbosity flags:
+
+| Flag | Output |
+|------|--------|
+| `--quiet` / `-q` | No output at all — only the exit code indicates success or failure. Ideal for automated tooling like the [Vite plugin](#enum-metadata-vite-plugin). |
+| *(default)* | A compact summary showing the output directory, file counts, and any extra files generated (barrels, globals, JSON). |
+| `--verbose` / `-v` | Detailed tables listing every generated file with per-file metadata (cases, methods, columns, mutators, relations). |
+
+```bash
+# Compact summary (default)
+php artisan ts:publish
+
+# Detailed tables
+php artisan ts:publish -v
+
+# Silent — for scripts, CI, or the Vite plugin
+php artisan ts:publish --quiet
+```
+
+In quiet mode, files are still generated normally — only console output is suppressed. The [Vite plugin](#enum-metadata-vite-plugin) passes `--quiet` by default since it only needs the exit code.
+
 ## Casing Configurations
 
 This package provides two independent config options to control the casing of generated property and method names:
