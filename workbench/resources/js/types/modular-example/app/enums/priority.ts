@@ -29,13 +29,13 @@ export const Priority = defineEnum({
     },
     /** Compare with threshold */
     isAboveThreshold: {
-        Low: null,
-        Medium: null,
-        High: null,
-        Critical: null,
+        Low: false,
+        Medium: false,
+        High: true,
+        Critical: true,
     },
     /** Filter by minimum */
-    filterByMinimum: null,
+    filterByMinimum: {"1": 1, "2": 2, "3": 3},
     _cases: ['Low', 'Medium', 'High', 'Critical'],
     _methods: ['label', 'badgeColor', 'icon', 'isAboveThreshold'],
     _static: ['filterByMinimum'],

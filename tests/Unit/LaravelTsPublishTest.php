@@ -610,6 +610,78 @@ DOC;
     });
 });
 
+describe('callCommandUsing and callCommandWith', function () {
+    afterEach(function () {
+        // Reset static state to prevent leaking across tests
+        $prop = (new ReflectionClass(LaravelTsPublish::class))->getProperty('callCommandWith');
+        $prop->setValue(null, null);
+    });
+
+    test('callCommandWith does nothing when no closure is registered', function () {
+        // Should not throw — just a no-op
+        $this->service->callCommandWith();
+
+        expect(true)->toBeTrue();
+    });
+
+    test('callCommandUsing registers a closure that callCommandWith executes', function () {
+        $called = false;
+
+        LaravelTsPublish::callCommandUsing(function () use (&$called) {
+            $called = true;
+        });
+
+        expect($called)->toBeFalse();
+
+        $this->service->callCommandWith();
+
+        expect($called)->toBeTrue();
+    });
+
+    test('callCommandWith can modify config values', function () {
+        LaravelTsPublish::callCommandUsing(function () {
+            config()->set('ts-publish.additional_model_directories', ['modules/Blog/Models']);
+        });
+
+        expect(config('ts-publish.additional_model_directories'))->not->toBe(['modules/Blog/Models']);
+
+        $this->service->callCommandWith();
+
+        expect(config('ts-publish.additional_model_directories'))->toBe(['modules/Blog/Models']);
+    });
+
+    test('later callCommandUsing replaces the previous closure', function () {
+        $firstCalled = false;
+        $secondCalled = false;
+
+        LaravelTsPublish::callCommandUsing(function () use (&$firstCalled) {
+            $firstCalled = true;
+        });
+
+        LaravelTsPublish::callCommandUsing(function () use (&$secondCalled) {
+            $secondCalled = true;
+        });
+
+        $this->service->callCommandWith();
+
+        expect($firstCalled)->toBeFalse()
+            ->and($secondCalled)->toBeTrue();
+    });
+
+    test('callCommandWith only runs the closure once per invocation', function () {
+        $count = 0;
+
+        LaravelTsPublish::callCommandUsing(function () use (&$count) {
+            $count++;
+        });
+
+        $this->service->callCommandWith();
+        $this->service->callCommandWith();
+
+        expect($count)->toBe(2);
+    });
+});
+
 describe('resolveClassFromFile', function () {
     test('resolves FQCN from an enum file', function () {
         $filePath = workbench_path('app/Enums/Status.php');

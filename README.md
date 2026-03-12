@@ -227,12 +227,13 @@ export const Status = {
 } as const;
 ```
 
-The `#[TsEnumMethod]` attribute accepts optional `name` and `description` parameters:
+The `#[TsEnumMethod]` attribute accepts optional `name`, `description`, and `params` parameters:
 
-| Parameter     | Type     | Default           | Description                                       |
-|---------------|----------|-------------------|---------------------------------------------------|
-| `name`        | `string` | Method name       | Customize the key name used in the TypeScript output |
-| `description` | `string` | `''`              | Added as a JSDoc comment above the method output   |
+| Parameter     | Type     | Default           | Description                                                              |
+|---------------|----------|-------------------|--------------------------------------------------------------------------|
+| `name`        | `string` | Method name       | Customize the key name used in the TypeScript output                     |
+| `description` | `string` | `''`              | Added as a JSDoc comment above the method output                         |
+| `params`      | `array`  | `[]`              | Named arguments to pass when invoking the method (see example below)     |
 
 ```php
 #[TsEnumMethod(name: 'statusLabel', description: 'Human-readable label for this status')]
@@ -244,6 +245,48 @@ public function label(): string
     };
 }
 ```
+
+#### Methods with Required Parameters
+
+Methods that require parameters are **skipped by default** — they will not appear in the generated TypeScript output. This prevents producing misleading `null` values for methods that can't be called without arguments.
+
+To include a method that requires parameters, use the `params` property on the attribute to provide named arguments:
+
+```php
+enum Priority: int
+{
+    case Low = 0;
+    case Medium = 1;
+    case High = 2;
+
+    #[TsEnumMethod(description: 'Compare with threshold', params: ['threshold' => 1])]
+    public function isAboveThreshold(int $threshold): bool
+    {
+        return $this->value > $threshold;
+    }
+}
+```
+
+Generated TypeScript:
+
+```TypeScript
+export const Priority = {
+    Low: 0,
+    Medium: 1,
+    High: 2,
+    /** Compare with threshold */
+    isAboveThreshold: {
+        Low: false,
+        Medium: false,
+        High: true,
+    },
+} as const;
+```
+
+The `params` values must be constant expressions (scalars, arrays of scalars) since they are defined inside a PHP attribute. The values are spread as named arguments when the method is invoked for each enum case.
+
+> [!NOTE]
+> Methods with only optional parameters (parameters with default values) are still included without needing to set `params`, since they can be called without arguments.
 
 ### Enum Static Method #[TsEnumStaticMethod]
 
@@ -281,7 +324,13 @@ export const Status = {
 } as const;
 ```
 
-The `#[TsEnumStaticMethod]` attribute also accepts the same optional `name` and `description` parameters as `#[TsEnumMethod]`:
+The `#[TsEnumStaticMethod]` attribute accepts the same optional `name`, `description`, and `params` parameters as `#[TsEnumMethod]`:
+
+| Parameter     | Type     | Default           | Description                                                              |
+|---------------|----------|-------------------|--------------------------------------------------------------------------|
+| `name`        | `string` | Method name       | Customize the key name used in the TypeScript output                     |
+| `description` | `string` | `''`              | Added as a JSDoc comment above the method output                         |
+| `params`      | `array`  | `[]`              | Named arguments to pass when invoking the method                         |
 
 ```php
 #[TsEnumStaticMethod(name: 'allOptions', description: 'Array of all status options')]
@@ -294,13 +343,23 @@ public static function options(): array
 }
 ```
 
+Like `#[TsEnumMethod]`, static methods with required parameters are **skipped by default** unless `params` is provided:
+
+```php
+#[TsEnumStaticMethod(description: 'Filter by minimum priority', params: ['minimum' => 1])]
+public static function filterByMinimum(int $minimum): array
+{
+    return array_filter(self::cases(), fn (self $case) => $case->value >= $minimum);
+}
+```
+
 ### Enum Class Name #[TsEnum]
 
 Renaming an enum or adding a description using the `TsEnum` attribute:
 
-| Parameter     | Type     | Default           | Description                                              |
-|---------------|----------|-------------------|----------------------------------------------------------|
-| `name`        | `string` | Enum class name   | Override the TypeScript const name                       |
+| Parameter     | Type     | Default           | Description                                                                          |
+|---------------|----------|-------------------|--------------------------------------------------------------------------------------|
+| `name`        | `string` | Enum class name   | Override the TypeScript const name                                                   |
 | `description` | `string` | `''`              | Added as a JSDoc comment above the enum. Takes priority over any PHPDoc description. |
 
 ```php
@@ -512,7 +571,10 @@ By default, only **public** methods decorated with the `#[TsEnumMethod]` or `#[T
 
 When enabled, every public method declared on the enum will be included in the TypeScript output — you no longer need to add `#[TsEnumMethod]` or `#[TsEnumStaticMethod]` to each method. Built-in enum methods like `cases()`, `from()`, and `tryFrom()` are always excluded automatically.
 
-You can still use `#[TsEnumMethod]` and `#[TsEnumStaticMethod]` to customize the `name` or `description` of individual methods when auto-inclusion is enabled:
+> [!NOTE]
+> Methods with required parameters are automatically skipped in auto-include mode since there is no attribute to provide `params` on. To include a method that requires parameters, add the `#[TsEnumMethod]` or `#[TsEnumStaticMethod]` attribute with the `params` property set.
+
+You can still use `#[TsEnumMethod]` and `#[TsEnumStaticMethod]` to customize the `name`, `description`, or `params` of individual methods when auto-inclusion is enabled:
 
 ```php
 enum Status: string
@@ -1307,6 +1369,61 @@ To swap a component, create a class that extends the default and override the co
 
 > [!TIP]
 > You can also publish and customize the Blade templates directly with `php artisan vendor:publish --tag="laravel-ts-publish-views"` if you only need to change the output format without modifying the pipeline logic.
+
+## Pre-Command Hook
+
+If you need to run custom logic right before the `ts:publish` command executes — such as dynamically configuring directories, adjusting included/excluded models, or performing any setup that requires processing — you can register a pre-command hook using `callCommandUsing`.
+
+This is useful because the closure is only executed when the `ts:publish` command actually runs, not at service provider boot time. This keeps your boot process fast and avoids unnecessary overhead on every request.
+
+### Basic Usage
+
+In your `AppServiceProvider` (or any service provider), register a closure in the `boot` method:
+
+```php
+use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
+
+public function boot(): void
+{
+    LaravelTsPublish::callCommandUsing(function () {
+        // This only runs when `php artisan ts:publish` is executed
+        config()->set('ts-publish.additional_model_directories', [
+            'modules/Blog/Models',
+            'modules/Shop/Models',
+        ]);
+    });
+}
+```
+
+### Dynamic Directory Discovery
+
+A common use case is using Symfony Finder to automatically discover module directories:
+
+```php
+use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
+use Symfony\Component\Finder\Finder;
+
+public function boot(): void
+{
+    LaravelTsPublish::callCommandUsing(function () {
+        $modelDirs = collect(Finder::create()->directories()->in(base_path('modules'))->name('Models')->depth(1))
+            ->map(fn ($dir) => $dir->getRelativePathname())
+            ->values()
+            ->all();
+
+        $enumDirs = collect(Finder::create()->directories()->in(base_path('modules'))->name('Enums')->depth(1))
+            ->map(fn ($dir) => $dir->getRelativePathname())
+            ->values()
+            ->all();
+
+        config()->set('ts-publish.additional_model_directories', $modelDirs);
+        config()->set('ts-publish.additional_enum_directories', $enumDirs);
+    });
+}
+```
+
+> [!NOTE]
+> Only one closure can be registered at a time. Calling `callCommandUsing` again will replace the previous closure.
 
 ## Configuration Reference
 

@@ -190,29 +190,52 @@ describe('EnumTransformer filePath generation', function () {
     });
 });
 
-describe('EnumTransformer with Priority enum that has methods throwing exceptions when invoked', function () {
-    test('transforms Priority enum method that throws gracefully', function () {
+describe('EnumTransformer skips methods with required params and no params attribute', function () {
+    test('skips instance method with required params and no params set', function () {
         $transformer = new EnumTransformer(Priority::class);
         $data = $transformer->data();
 
-        // isAboveThreshold requires a parameter — invoke without one triggers the catch block
-        expect($data['methods'])->toHaveKey('isAboveThreshold')
-            ->and($data['methods']['isAboveThreshold']['description'])->toBe('Compare with threshold');
-
-        // All case returns should be null (caught exception)
-        foreach ($data['methods']['isAboveThreshold']['returns'] as $caseName => $value) {
-            expect($value)->toBeNull("Expected null for $caseName due to invocation error");
-        }
+        // isAboveCeiling requires a parameter and has no params set — should be skipped entirely
+        expect($data['methods'])->not->toHaveKey('isAboveCeiling');
     });
 
-    test('transforms Priority enum static method that throws gracefully', function () {
+    test('skips static method with required params and no params set', function () {
         $transformer = new EnumTransformer(Priority::class);
         $data = $transformer->data();
 
-        // filterByMinimum requires a parameter — invoke without one triggers the catch block
+        // filterByMaximum requires a parameter and has no params set — should be skipped entirely
+        expect($data['staticMethods'])->not->toHaveKey('filterByMaximum');
+    });
+});
+
+describe('EnumTransformer includes methods with required params when params attribute is set', function () {
+    test('includes instance method with params and invokes with provided values', function () {
+        $transformer = new EnumTransformer(Priority::class);
+        $data = $transformer->data();
+
+        // isAboveThreshold has params: ['threshold' => 1] — should be included with correct per-case results
+        expect($data['methods'])->toHaveKey('isAboveThreshold')
+            ->and($data['methods']['isAboveThreshold']['description'])->toBe('Compare with threshold')
+            ->and($data['methods']['isAboveThreshold']['returns'])->toBe([
+                'Low' => false,
+                'Medium' => false,
+                'High' => true,
+                'Critical' => true,
+            ]);
+    });
+
+    test('includes static method with params and invokes with provided values', function () {
+        $transformer = new EnumTransformer(Priority::class);
+        $data = $transformer->data();
+
+        // filterByMinimum has params: ['minimum' => 1] — should be included
         expect($data['staticMethods'])->toHaveKey('filterByMinimum')
-            ->and($data['staticMethods']['filterByMinimum']['description'])->toBe('Filter by minimum')
-            ->and($data['staticMethods']['filterByMinimum']['return'])->toBeNull();
+            ->and($data['staticMethods']['filterByMinimum']['description'])->toBe('Filter by minimum');
+
+        // The return should be an array of Priority cases where value >= 1
+        $return = $data['staticMethods']['filterByMinimum']['return'];
+        expect($return)->toBeArray()
+            ->and($return)->toHaveCount(3);
     });
 });
 
@@ -310,6 +333,19 @@ describe('EnumTransformer auto_include_enum_methods', function () {
         expect($data['methods'])->not->toHaveKey('numericWeight')
             ->and($data['methods'])->toHaveKey('label');
     });
+
+    test('skips auto-included methods with required parameters', function () {
+        config()->set('ts-publish.auto_include_enum_methods', true);
+
+        $transformer = new EnumTransformer(Priority::class);
+        $data = $transformer->data();
+
+        // isAboveCeiling has required params and no params attribute — skipped even in auto-include
+        expect($data['methods'])->not->toHaveKey('isAboveCeiling');
+
+        // isAboveThreshold has required params but params attribute is set — included
+        expect($data['methods'])->toHaveKey('isAboveThreshold');
+    });
 });
 
 describe('EnumTransformer auto_include_enum_static_methods', function () {
@@ -367,6 +403,19 @@ describe('EnumTransformer auto_include_enum_static_methods', function () {
 
         expect($data['staticMethods'])->not->toHaveKey('highestValue')
             ->and($data['staticMethods'])->toHaveKey('filterByMinimum');
+    });
+
+    test('skips auto-included static methods with required parameters', function () {
+        config()->set('ts-publish.auto_include_enum_static_methods', true);
+
+        $transformer = new EnumTransformer(Priority::class);
+        $data = $transformer->data();
+
+        // filterByMaximum has required params and no params attribute — skipped even in auto-include
+        expect($data['staticMethods'])->not->toHaveKey('filterByMaximum');
+
+        // filterByMinimum has required params but params attribute is set — included
+        expect($data['staticMethods'])->toHaveKey('filterByMinimum');
     });
 });
 

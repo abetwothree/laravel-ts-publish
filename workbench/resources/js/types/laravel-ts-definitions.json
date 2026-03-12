@@ -1599,10 +1599,10 @@
                     "name": "isAboveThreshold",
                     "description": "Compare with threshold",
                     "returns": {
-                        "Low": null,
-                        "Medium": null,
-                        "High": null,
-                        "Critical": null
+                        "Low": false,
+                        "Medium": false,
+                        "High": true,
+                        "Critical": true
                     }
                 }
             },
@@ -1610,7 +1610,11 @@
                 "filterByMinimum": {
                     "name": "filterByMinimum",
                     "description": "Filter by minimum",
-                    "return": null
+                    "return": {
+                        "1": 1,
+                        "2": 2,
+                        "3": 3
+                    }
                 }
             }
         },

@@ -16,8 +16,12 @@ use Attribute;
 #[Attribute(Attribute::TARGET_METHOD)]
 class TsEnumMethod
 {
+    /**
+     * @param  array<string, mixed>  $params
+     */
     public function __construct(
         public string $name = '',
         public string $description = '',
+        public array $params = [],
     ) {}
 }

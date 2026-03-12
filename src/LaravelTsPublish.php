@@ -40,6 +40,26 @@ use UnitEnum;
  */
 class LaravelTsPublish
 {
+    protected static ?Closure $callCommandWith = null;
+
+    /**
+     * Set something to do when the publish command runs, using a callback Closure
+     */
+    public static function callCommandUsing(Closure $resolver): void
+    {
+        self::$callCommandWith = $resolver;
+    }
+
+    /**
+     * Invoke the callback set by callCommandUsing() before running the publish command.
+     */
+    public function callCommandWith(): void
+    {
+        if (self::$callCommandWith instanceof Closure) {
+            (self::$callCommandWith)();
+        }
+    }
+
     /**
      * @return array<string, string|(callable(): string)>
      */

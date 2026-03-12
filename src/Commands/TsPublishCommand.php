@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Commands;
 
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
@@ -27,6 +28,8 @@ class TsPublishCommand extends Command
 
     public function handle(): int
     {
+        LaravelTsPublish::callCommandWith();
+
         /** @var string|null $source */
         $source = $this->option('source');
 
