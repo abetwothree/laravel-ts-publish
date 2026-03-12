@@ -13,7 +13,9 @@ export interface Tag
 export interface TagRelations
 {
     // Relations
+    /** Posts with this tag (polymorphic many-to-many) */
     posts: Post[];
+    /** Products with this tag (polymorphic many-to-many) */
     products: Product[];
     // Counts
     posts_count: number;

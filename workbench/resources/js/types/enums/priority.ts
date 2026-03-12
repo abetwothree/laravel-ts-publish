@@ -1,5 +1,6 @@
 import { defineEnum } from '@tolki/enum';
 
+/** Int-backed enum with instance methods that return different types per case. */
 export const Priority = defineEnum({
     Low: 0,
     Medium: 1,

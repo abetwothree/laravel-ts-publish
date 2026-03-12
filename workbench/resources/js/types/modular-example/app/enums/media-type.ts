@@ -1,5 +1,6 @@
 import { defineEnum } from '@tolki/enum';
 
+/** String-backed enum with both instance and static methods. */
 export const MediaType = defineEnum({
     Image: 'image',
     Video: 'video',

@@ -2,9 +2,11 @@ import type { DatabaseNotification } from '../../illuminate/notifications';
 import type { RoleType, MembershipLevelType } from '../enums';
 import type { Profile, Post, Comment, Order, Address, Team, Image } from '.';
 
+/** Application user account */
 export interface User
 {
     id: number;
+    /** User name formatted with first letter capitalized */
     name: string;
     email: string;
     email_verified_at: string | null;
@@ -25,7 +27,9 @@ export interface User
 
 export interface UserMutators
 {
+    /** User initials (e.g. &quot;JD&quot; for &quot;John Doe&quot;) */
     initials: string;
+    /** Whether the user is a premium member */
     is_premium: boolean;
 }
 
@@ -39,7 +43,9 @@ export interface UserRelations
     addresses: Address[];
     teams: Team[];
     owned_teams: Team[];
+    /** Polymorphic images (avatar gallery, etc.) */
     images: Image[];
+    /** Get the entity&#039;s notifications. */
     notifications: DatabaseNotification[];
     // Counts
     profile_count: number;

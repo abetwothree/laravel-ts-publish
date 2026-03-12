@@ -114,6 +114,55 @@ The same options are available for enums with `included_enums`, `excluded_enums`
 > [!TIP]
 > Include and exclude settings accept both fully-qualified class names and directory paths. When a directory is provided, all matching classes within it will be discovered automatically.
 
+## Casing Configurations
+
+This package provides two independent config options to control the casing of generated property and method names:
+
+| Config Key           | Applies To                                    | Default    |
+|----------------------|-----------------------------------------------|------------|
+| `relationship_case`  | Model relationship names, `_count`, `_exists` | `'snake'`  |
+| `enum_method_case`   | Enum method and static method names           | `'camel'`  |
+
+Both accept `'snake'`, `'camel'`, or `'pascal'`.
+
+### Relationship Case Style
+
+Controls relationship names in the generated model TypeScript interfaces:
+
+```php
+// config/ts-publish.php
+
+'relationship_case' => 'snake', // default
+```
+
+| Config Value | Relationship `hasMany(Post::class)`  | Count                | Exists                |
+|--------------|--------------------------------------|----------------------|-----------------------|
+| `'snake'`    | `posts: Post[]`                      | `posts_count`        | `posts_exists`        |
+| `'camel'`    | `posts: Post[]`                      | `postsCount`         | `postsExists`         |
+| `'pascal'`   | `Posts: Post[]`                      | `PostsCount`         | `PostsExists`         |
+
+> [!NOTE]
+> For each relationship defined on a model, this package automatically generates `_count` and `_exists` properties alongside the relation itself. These correspond to [Laravel's `withCount` and `withExists`](https://laravel.com/docs/eloquent-relationships#counting-related-models) features and are included in every generated model interface.
+
+### Enum Method Case Style
+
+Controls the casing of enum method and static method names in the generated TypeScript output:
+
+```php
+// config/ts-publish.php
+
+'enum_method_case' => 'camel', // default
+```
+
+| Config Value | Method `getLabel()` | Static Method `AllLabels()` |
+|--------------|---------------------|-----------------------------|
+| `'snake'`    | `get_label`         | `all_labels`                |
+| `'camel'`    | `getLabel`          | `allLabels`                 |
+| `'pascal'`   | `GetLabel`          | `AllLabels`                 |
+
+> [!TIP]
+> This setting applies to all enum methods — both instance methods (via `#[TsEnumMethod]` or `auto_include_enum_methods`) and static methods (via `#[TsEnumStaticMethod]` or `auto_include_enum_static_methods`). You can still override individual method names using the `name` parameter on the attribute.
+
 ## Enums
 
 This package, like these others before it, ([spatie/typescript-transformer](https://github.com/spatie/typescript-transformer) or [modeltyper](https://github.com/fumeapp/modeltyper)) can convert enums from PHP to TypeScript for each enum case.
@@ -135,12 +184,12 @@ All attributes can be found at [this link](https://github.com/abetwothree/larave
 
 List of enum attributes & descriptions:
 
-| Attribute              | Target         | Description                                                                                                         |
-|------------------------|----------------|---------------------------------------------------------------------------------------------------------------------|
-| `#[TsEnumMethod]`      | Method         | Include a method's return values in the TypeScript output. Called per enum case, creates a key/value pair object.    |
-| `#[TsEnumStaticMethod]`| Static Method  | Include a static method's return value in the TypeScript output. Called once, added as a property on the enum.       |
-| `#[TsEnum]`            | Enum Class     | Rename the enum when converting to TypeScript. Useful to avoid naming conflicts across namespaces.                   |
-| `#[TsCase]`            | Enum Case      | Rename, change the frontend value, or add a description to an enum case.                                             |
+| Attribute              | Target         | Description                                                                                                             |
+|------------------------|----------------|-------------------------------------------------------------------------------------------------------------------------|
+| `#[TsEnumMethod]`      | Method         | Include a method's return values in the TypeScript output. Called per enum case, creates a key/value pair object.       |
+| `#[TsEnumStaticMethod]`| Static Method  | Include a static method's return value in the TypeScript output. Called once, added as a property on the enum.          |
+| `#[TsEnum]`            | Enum Class     | Rename the enum or add a description when converting to TypeScript. Useful to avoid naming conflicts across namespaces. |
+| `#[TsCase]`            | Enum Case      | Rename, change the frontend value, or add a description to an enum case.                                                |
 
 ### Enum Method #[TsEnumMethod]
 
@@ -247,12 +296,17 @@ public static function options(): array
 
 ### Enum Class Name #[TsEnum]
 
-Renaming an enum using the `TsEnum` attribute:
+Renaming an enum or adding a description using the `TsEnum` attribute:
+
+| Parameter     | Type     | Default           | Description                                              |
+|---------------|----------|-------------------|----------------------------------------------------------|
+| `name`        | `string` | Enum class name   | Override the TypeScript const name                       |
+| `description` | `string` | `''`              | Added as a JSDoc comment above the enum. Takes priority over any PHPDoc description. |
 
 ```php
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnum;
 
-#[TsEnum('UserStatus')]
+#[TsEnum('UserStatus', description: 'All possible user account statuses')]
 enum Status: string
 {
     case Active = 'active';
@@ -263,6 +317,7 @@ enum Status: string
 Generated TypeScript declaration type:
 
 ```TypeScript
+/** All possible user account statuses */
 export const UserStatus = {
     Active: 'active',
     Inactive: 'inactive',
@@ -488,6 +543,71 @@ enum Status: string
 
 > [!CAUTION]
 > These settings are disabled by default for security reasons — enabling them will expose the return values of all public methods on your enums. Make sure you're comfortable with that before enabling them.
+
+### PHPDoc Descriptions for Enums
+
+This package automatically reads PHPDoc doc blocks and outputs them as JSDoc comments in the generated TypeScript. Descriptions are read from the following locations:
+
+| Location              | Source                                         | JSDoc Placement                        |
+|-----------------------|------------------------------------------------|----------------------------------------|
+| Enum class            | Doc block above the enum class                 | Above the `export const` declaration   |
+| Enum cases            | Doc block above each case                      | Above the case property                |
+| Instance methods      | Doc block above the method                     | Above the method property              |
+| Static methods        | Doc block above the static method              | Above the static method property       |
+
+Lines starting with `@` (such as `@param`, `@return`, `@phpstan-type`, etc.) are automatically filtered out — only the human-readable description text is included.
+
+**Priority:** If an element has both a PHPDoc doc block and an attribute with a `description` parameter (e.g., `#[TsEnum(description: ...)]`, `#[TsCase(description: ...)]`, `#[TsEnumMethod(description: ...)]`), the **attribute description always takes priority** over the doc block.
+
+```php
+/**
+ * Represents the priority level of a task.
+ *
+ * @phpstan-type PriorityValue = int
+ */
+enum Priority: int
+{
+    /** Lowest priority level */
+    case Low = 0;
+
+    /** Standard priority */
+    case Medium = 1;
+
+    /** Highest priority level */
+    case High = 2;
+
+    /** Human-readable label for the priority */
+    #[TsEnumMethod]
+    public function label(): string
+    {
+        return match($this) {
+            self::Low => 'Low Priority',
+            self::Medium => 'Medium Priority',
+            self::High => 'High Priority',
+        };
+    }
+}
+```
+
+Generated TypeScript:
+
+```TypeScript
+/** Represents the priority level of a task. */
+export const Priority = {
+    /** Lowest priority level */
+    Low: 0,
+    /** Standard priority */
+    Medium: 1,
+    /** Highest priority level */
+    High: 2,
+    /** Human-readable label for the priority */
+    label: {
+        Low: 'Low Priority',
+        Medium: 'Medium Priority',
+        High: 'High Priority',
+    },
+} as const;
+```
 
 ## Models
 
@@ -862,54 +982,74 @@ export interface Product {
 }
 ```
 
-### Case Style
+### PHPDoc Descriptions for Models
 
-This package provides two independent config options to control the casing of generated property and method names:
+Similar to enums, this package automatically reads PHPDoc doc blocks from your model classes and outputs them as JSDoc comments in the generated TypeScript interfaces. Descriptions are read from the following locations:
 
-| Config Key           | Applies To                                    | Default    |
-|----------------------|-----------------------------------------------|------------|
-| `relationship_case`  | Model relationship names, `_count`, `_exists` | `'snake'`  |
-| `enum_method_case`   | Enum method and static method names           | `'camel'`  |
+| Location              | Source                                                          | JSDoc Placement                              |
+|-----------------------|-----------------------------------------------------------------|----------------------------------------------|
+| Model class           | Doc block above the model class                                 | Above the `export interface` declaration     |
+| Columns               | Doc block above the column's Attribute accessor method           | Above the column property                    |
+| Mutators              | Doc block above the mutator's Attribute accessor method          | Above the mutator property                   |
+| Relations             | Doc block above the relation method                             | Above the relation property                  |
 
-Both accept `'snake'`, `'camel'`, or `'pascal'`.
+For columns and mutators, the package looks for a doc block on the corresponding accessor method — either new-style (`protected function name(): Attribute`) or old-style (`public function getNameAttribute()`). The new-style accessor is checked first.
 
-#### Relationship Case Style
-
-Controls relationship names in the generated model TypeScript interfaces:
-
-```php
-// config/ts-publish.php
-
-'relationship_case' => 'snake', // default
-```
-
-| Config Value | Relationship `hasMany(Post::class)` | Count                | Exists                |
-|--------------|--------------------------------------|----------------------|-----------------------|
-| `'snake'`    | `posts: Post[]`                      | `posts_count`        | `posts_exists`        |
-| `'camel'`    | `posts: Post[]`                      | `postsCount`         | `postsExists`         |
-| `'pascal'`   | `Posts: Post[]`                      | `PostsCount`         | `PostsExists`         |
-
-> [!NOTE]
-> For each relationship defined on a model, this package automatically generates `_count` and `_exists` properties alongside the relation itself. These correspond to [Laravel's `withCount` and `withExists`](https://laravel.com/docs/eloquent-relationships#counting-related-models) features and are included in every generated model interface.
-
-#### Enum Method Case Style
-
-Controls the casing of enum method and static method names in the generated TypeScript output:
+Lines starting with `@` (such as `@param`, `@return`, `@phpstan-type`, etc.) are automatically filtered out.
 
 ```php
-// config/ts-publish.php
+/** Application user account */
+class User extends Model
+{
+    /** User name formatted with first letter capitalized */
+    protected function name(): Attribute
+    {
+        return Attribute::make(
+            get: fn ($value): string => ucfirst((string) $value),
+        );
+    }
 
-'enum_method_case' => 'camel', // default
+    /** User initials (e.g. "JD" for "John Doe") */
+    protected function initials(): Attribute
+    {
+        return Attribute::make(
+            get: fn (): string => collect(explode(' ', $this->name))
+                ->map(fn (string $part) => strtoupper(substr($part, 0, 1)))
+                ->implode(''),
+        );
+    }
+
+    /** Polymorphic images (avatar gallery, etc.) */
+    public function images(): MorphMany
+    {
+        return $this->morphMany(Image::class, 'imageable');
+    }
+}
 ```
 
-| Config Value | Method `getLabel()` | Static Method `AllLabels()` |
-|--------------|---------------------|-----------------------------|
-| `'snake'`    | `get_label`         | `all_labels`                |
-| `'camel'`    | `getLabel`          | `allLabels`                 |
-| `'pascal'`   | `GetLabel`          | `AllLabels`                 |
+Generated TypeScript using the `model-full` template:
 
-> [!TIP]
-> This setting applies to all enum methods — both instance methods (via `#[TsEnumMethod]` or `auto_include_enum_methods`) and static methods (via `#[TsEnumStaticMethod]` or `auto_include_enum_static_methods`). You can still override individual method names using the `name` parameter on the attribute.
+```TypeScript
+import type { Image } from './';
+
+/** Application user account */
+export interface User
+{
+    // Columns
+    id: number;
+    /** User name formatted with first letter capitalized */
+    name: string;
+    email: string;
+    // Mutators
+    /** User initials (e.g. "JD" for "John Doe") */
+    initials: string;
+    // Relations
+    /** Polymorphic images (avatar gallery, etc.) */
+    images: Image[];
+    images_count: number;
+    images_exists: boolean;
+}
+```
 
 ### Timestamps as Date Objects
 

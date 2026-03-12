@@ -14,6 +14,7 @@ use Illuminate\Notifications\Notifiable;
 use Workbench\App\Enums\MembershipLevel;
 use Workbench\App\Enums\Role;
 
+/** Application user account */
 class User extends Authenticatable
 {
     /** @use HasFactory<\Workbench\Database\Factories\UserFactory> */

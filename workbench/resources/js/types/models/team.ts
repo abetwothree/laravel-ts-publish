@@ -16,14 +16,18 @@ export interface Team
 
 export interface TeamMutators
 {
+    /** Whether the team has any members */
     has_member: boolean;
+    /** Number of members */
     member_count: number;
 }
 
 export interface TeamRelations
 {
     // Relations
+    /** The user who owns this team */
     owner: User;
+    /** Members of the team (pivot includes role and joined_at) */
     members: User[];
     // Counts
     owner_count: number;

@@ -4,10 +4,16 @@
 @endforeach
 
 @if (count($columns) > 0)
+@if($description)
+/** {{ LaravelTsPublish::sanitizeJsDoc($description) }} */
+@endif
 export interface {{ $modelName }}
 {
 @foreach ($columns as $name => $column)
-    {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $column !!};
+@if($column['description'])
+    /** {{ LaravelTsPublish::sanitizeJsDoc($column['description']) }} */
+@endif
+    {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $column['type'] !!};
 @endforeach
 }
 @endif
@@ -16,7 +22,10 @@ export interface {{ $modelName }}
 export interface {{ $modelName }}Mutators
 {
 @foreach ($mutators as $name => $mutator)
-    {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $mutator !!};
+@if($mutator['description'])
+    /** {{ LaravelTsPublish::sanitizeJsDoc($mutator['description']) }} */
+@endif
+    {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $mutator['type'] !!};
 @endforeach
 }
 @endif
@@ -26,7 +35,10 @@ export interface {{ $modelName }}Relations
 {
     // Relations
 @foreach ($relations as $name => $relation)
-    {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $relation !!};
+@if($relation['description'])
+    /** {{ LaravelTsPublish::sanitizeJsDoc($relation['description']) }} */
+@endif
+    {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $relation['type'] !!};
 @endforeach
     // Counts
 @foreach ($relations as $name => $relation)

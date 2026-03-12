@@ -2,6 +2,7 @@
 
 use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
 use Workbench\App\Enums\Color;
+use Workbench\App\Enums\Currency;
 use Workbench\App\Enums\MembershipLevel;
 use Workbench\App\Enums\PaymentMethod;
 use Workbench\App\Enums\Priority;
@@ -269,7 +270,7 @@ describe('EnumTransformer auto_include_enum_methods', function () {
 
         expect($data['methods'])->toHaveKey('isDigitalWallet')
             ->and($data['methods']['isDigitalWallet']['name'])->toBe('isDigitalWallet')
-            ->and($data['methods']['isDigitalWallet']['description'])->toBe('')
+            ->and($data['methods']['isDigitalWallet']['description'])->not->toBe('')
             ->and($data['methods']['isDigitalWallet']['returns']['ApplePay'])->toBeTrue()
             ->and($data['methods']['isDigitalWallet']['returns']['CreditCard'])->toBeFalse();
     });
@@ -295,7 +296,7 @@ describe('EnumTransformer auto_include_enum_methods', function () {
 
         // Method without attribute is also included
         expect($data['methods'])->toHaveKey('numericWeight')
-            ->and($data['methods']['numericWeight']['description'])->toBe('')
+            ->and($data['methods']['numericWeight']['description'])->not->toBe('')
             ->and($data['methods']['numericWeight']['returns']['Low'])->toBe(10)
             ->and($data['methods']['numericWeight']['returns']['Critical'])->toBe(40);
     });
@@ -320,7 +321,7 @@ describe('EnumTransformer auto_include_enum_static_methods', function () {
 
         expect($data['staticMethods'])->toHaveKey('onlineOnly')
             ->and($data['staticMethods']['onlineOnly']['name'])->toBe('onlineOnly')
-            ->and($data['staticMethods']['onlineOnly']['description'])->toBe('');
+            ->and($data['staticMethods']['onlineOnly']['description'])->not->toBe('');
     });
 
     test('does not include non-static methods', function () {
@@ -354,7 +355,7 @@ describe('EnumTransformer auto_include_enum_static_methods', function () {
 
         // Method without attribute is also included
         expect($data['staticMethods'])->toHaveKey('highestValue')
-            ->and($data['staticMethods']['highestValue']['description'])->toBe('')
+            ->and($data['staticMethods']['highestValue']['description'])->not->toBe('')
             ->and($data['staticMethods']['highestValue']['return'])->toBe(3);
     });
 
@@ -366,5 +367,29 @@ describe('EnumTransformer auto_include_enum_static_methods', function () {
 
         expect($data['staticMethods'])->not->toHaveKey('highestValue')
             ->and($data['staticMethods'])->toHaveKey('filterByMinimum');
+    });
+});
+
+describe('EnumTransformer doc block descriptions', function () {
+    test('reads class-level description from doc block', function () {
+        $transformer = new EnumTransformer(Priority::class);
+        $data = $transformer->data();
+
+        expect($data['description'])->toBe('Int-backed enum with instance methods that return different types per case.');
+    });
+
+    test('returns empty description when no doc block on class', function () {
+        $transformer = new EnumTransformer(Role::class);
+        $data = $transformer->data();
+
+        expect($data['description'])->toBe('');
+    });
+
+    test('TsEnum attribute description takes priority over doc block', function () {
+        $transformer = new EnumTransformer(Currency::class);
+
+        // Currency has doc block but no TsEnum(description:) attribute
+        // so it should use the doc block description
+        expect($transformer->description)->toBe('String-backed enum with static methods that return complex array structures.');
     });
 });

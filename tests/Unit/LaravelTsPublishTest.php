@@ -562,6 +562,54 @@ describe('sanitizeJsDoc', function () {
     });
 });
 
+describe('parseDocBlockDescription', function () {
+    test('returns empty string for false', function () {
+        expect($this->service->parseDocBlockDescription(false))->toBe('');
+    });
+
+    test('returns empty string for empty string', function () {
+        expect($this->service->parseDocBlockDescription(''))->toBe('');
+    });
+
+    test('extracts description from single-line doc block', function () {
+        $doc = '/** A simple description */';
+        expect($this->service->parseDocBlockDescription($doc))->toBe('A simple description');
+    });
+
+    test('extracts description from multi-line doc block', function () {
+        $doc = <<<'DOC'
+/**
+ * First line of description.
+ * Second line of description.
+ */
+DOC;
+        expect($this->service->parseDocBlockDescription($doc))->toBe('First line of description. Second line of description.');
+    });
+
+    test('filters out @-tag lines', function () {
+        $doc = <<<'DOC'
+/**
+ * The actual description.
+ *
+ * @param string $name
+ * @return void
+ * @phpstan-type Foo = array{bar: string}
+ */
+DOC;
+        expect($this->service->parseDocBlockDescription($doc))->toBe('The actual description.');
+    });
+
+    test('returns empty string when doc block has only tags', function () {
+        $doc = <<<'DOC'
+/**
+ * @param string $name
+ * @return void
+ */
+DOC;
+        expect($this->service->parseDocBlockDescription($doc))->toBe('');
+    });
+});
+
 describe('resolveClassFromFile', function () {
     test('resolves FQCN from an enum file', function () {
         $filePath = workbench_path('app/Enums/Status.php');

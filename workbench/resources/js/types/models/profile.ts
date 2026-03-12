@@ -21,9 +21,13 @@ export interface Profile
 
 export interface ProfileMutators
 {
+    /** Computed age from date_of_birth */
     age: number | null;
+    /** Full display name combining user name and bio snippet */
     display_summary: string;
+    /** Write-only mutator — normalizes phone number on set, no get */
     normalized_phone: unknown;
+    /** Old-style mutator for avatar URL capitalization */
     formatted_bio: string;
 }
 

@@ -1,5 +1,6 @@
 import { defineEnum } from '@tolki/enum';
 
+/** Int-backed enum with TsCase descriptions, instance methods, and static methods. Exercises the full attribute surface area in combination. */
 export const OrderStatus = defineEnum({
     /** Order has been placed but not yet processed */
     Pending: 0,

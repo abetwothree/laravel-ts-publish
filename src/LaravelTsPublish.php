@@ -492,6 +492,41 @@ class LaravelTsPublish
     }
 
     /**
+     * Extract the human-readable description from a PHPDoc block,
+     * ignoring all @-prefixed tags (@param, @return, @phpstan-*, etc.).
+     */
+    public function parseDocBlockDescription(string|false $docComment): string
+    {
+        if ($docComment === false || $docComment === '') {
+            return '';
+        }
+
+        $lines = explode("\n", $docComment);
+        $description = [];
+
+        foreach ($lines as $line) {
+            // Strip leading whitespace, asterisks, and the opening/closing markers
+            $cleaned = preg_replace('#^\s*/?\*+/?\s?#', '', $line) ?? '';
+            $cleaned = preg_replace('#\s*\*+/\s*$#', '', $cleaned) ?? '';
+            $trimmed = trim($cleaned);
+
+            // Skip empty remnants from /** and */
+            if ($trimmed === '' || $trimmed === '/') {
+                continue;
+            }
+
+            // Skip @-tag lines
+            if (str_starts_with($trimmed, '@')) {
+                continue;
+            }
+
+            $description[] = $trimmed;
+        }
+
+        return implode(' ', $description);
+    }
+
+    /**
      * Resolve the fully-qualified class name from a PHP file path.
      *
      * Returns null if the file does not exist or does not contain a class/enum declaration.

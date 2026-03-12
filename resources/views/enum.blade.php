@@ -3,6 +3,9 @@
 import { defineEnum } from '@tolki/enum';
 
 @endif
+@if($description)
+/** {{ LaravelTsPublish::sanitizeJsDoc($description) }} */
+@endif
 @if($metadataEnabled && $usesTolkiPackage)
 export const {{ $enumName }} = defineEnum({
 @else

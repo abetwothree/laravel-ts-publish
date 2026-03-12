@@ -35,13 +35,14 @@ use ReflectionClass;
  *     "resource": class-string<JsonResource>|null
  * }
  * @phpstan-type DbColumns = list<string>
- * @phpstan-type ColumnsList = array<string, string>
- * @phpstan-type MutatorsList = array<string, string>
- * @phpstan-type RelationsList = array<string, string>
+ * @phpstan-type ColumnsList = array<string, array{type: string, description: string}>
+ * @phpstan-type MutatorsList = array<string, array{type: string, description: string}>
+ * @phpstan-type RelationsList = array<string, array{type: string, description: string}>
  * @phpstan-type TsTypeOverrides = array<string, string>
  * @phpstan-type ResolvedImportMap = array<string, list<string>>
  * @phpstan-type ModelData = array{
  *    modelName: string,
+ *    description: string,
  *    filePath: string,
  *    columns: ColumnsList,
  *    resolvedImports: ResolvedImportMap,
@@ -58,6 +59,8 @@ class ModelTransformer extends CoreTransformer
     public protected(set) string $filePath;
 
     public protected(set) string $namespacePath;
+
+    public protected(set) string $description = '';
 
     public protected(set) Model $modelInstance;
 
@@ -126,6 +129,7 @@ class ModelTransformer extends CoreTransformer
     {
         return [
             'modelName' => $this->modelName,
+            'description' => $this->description,
             'filePath' => $this->filePath,
             'columns' => $this->columns,
             'mutators' => $this->mutators,
@@ -151,6 +155,7 @@ class ModelTransformer extends CoreTransformer
         $this->modelName = $this->reflectionModel->getShortName();
         $this->filePath = $this->resolveRelativePath((string) $this->reflectionModel->getFileName());
         $this->namespacePath = LaravelTsPublish::namespaceToPath($this->findable);
+        $this->description = LaravelTsPublish::parseDocBlockDescription($this->reflectionModel->getDocComment());
 
         return $this;
     }
@@ -214,7 +219,7 @@ class ModelTransformer extends CoreTransformer
 
             // #[TsCasts] override takes priority over automatic type resolution
             if (isset($this->tsTypeOverrides[$name])) {
-                $this->columns[$name] = $this->tsTypeOverrides[$name];
+                $this->columns[$name] = ['type' => $this->tsTypeOverrides[$name], 'description' => ''];
 
                 continue;
             }
@@ -239,7 +244,7 @@ class ModelTransformer extends CoreTransformer
                 $type .= ' | null';
             }
 
-            $this->columns[$name] = $type;
+            $this->columns[$name] = ['type' => $type, 'description' => $this->resolveAccessorDescription($name)];
 
             foreach ($typings['enumFqcns'] as $i => $fqcn) {
                 $this->enumFqcnMap[$fqcn] = $typings['enumTypes'][$i];
@@ -271,13 +276,13 @@ class ModelTransformer extends CoreTransformer
 
             // #[TsCasts] override takes priority
             if (isset($this->tsTypeOverrides[$name])) {
-                $this->mutators[$name] = $this->tsTypeOverrides[$name];
+                $this->mutators[$name] = ['type' => $this->tsTypeOverrides[$name], 'description' => ''];
 
                 continue;
             }
 
             $resolved = $this->resolveMutatorType($name);
-            $this->mutators[$name] = $resolved['type'];
+            $this->mutators[$name] = ['type' => $resolved['type'], 'description' => $this->resolveAccessorDescription($name)];
 
             foreach ($resolved['enumFqcns'] as $i => $fqcn) {
                 $this->enumFqcnMap[$fqcn] = $resolved['enumTypes'][$i];
@@ -337,7 +342,15 @@ class ModelTransformer extends CoreTransformer
                 : $relatedBasename;
 
             $relationName = LaravelTsPublish::keyCase($relation['name'], $case);
-            $this->relations[$relationName] = $relationType;
+
+            $description = '';
+            if ($this->reflectionModel->hasMethod($relation['name'])) {
+                $description = LaravelTsPublish::parseDocBlockDescription(
+                    $this->reflectionModel->getMethod($relation['name'])->getDocComment()
+                );
+            }
+
+            $this->relations[$relationName] = ['type' => $relationType, 'description' => $description];
             $this->modelFqcnMap[$relation['related']] = $relatedBasename;
             $this->modelFqcnRelations[$relation['related']][] = $relation['name'];
         }
@@ -379,6 +392,30 @@ class ModelTransformer extends CoreTransformer
         }
 
         return $result;
+    }
+
+    protected function resolveAccessorDescription(string $name): string
+    {
+        $newStyle = Str::camel($name);
+        $oldStyle = 'get'.Str::studly($name).'Attribute';
+
+        if ($this->reflectionModel->hasMethod($newStyle)) {
+            $desc = LaravelTsPublish::parseDocBlockDescription(
+                $this->reflectionModel->getMethod($newStyle)->getDocComment()
+            );
+
+            if ($desc !== '') {
+                return $desc;
+            }
+        }
+
+        if ($this->reflectionModel->hasMethod($oldStyle)) {
+            return LaravelTsPublish::parseDocBlockDescription(
+                $this->reflectionModel->getMethod($oldStyle)->getDocComment()
+            );
+        }
+
+        return '';
     }
 
     /**
@@ -510,9 +547,9 @@ class ModelTransformer extends CoreTransformer
                 continue;
             }
 
-            $currentType = $this->relations[$relationKey];
+            $currentType = $this->relations[$relationKey]['type'];
             $isArray = str_ends_with($currentType, '[]');
-            $this->relations[$relationKey] = $alias.($isArray ? '[]' : '');
+            $this->relations[$relationKey]['type'] = $alias.($isArray ? '[]' : '');
         }
 
         // Rewrite column and mutator types using precise FQCN→column tracking
@@ -525,18 +562,18 @@ class ModelTransformer extends CoreTransformer
 
             $pattern = '/(?<![A-Za-z0-9_$])'.preg_quote($originalName, '/').'(?![A-Za-z0-9_$])/';
 
-            foreach ($this->columns as $key => $type) {
+            foreach ($this->columns as $key => $entry) {
                 if (! in_array($fqcn, $this->columnFqcns[$key] ?? [])) {
                     continue;
                 }
-                $this->columns[$key] = preg_replace($pattern, $alias, $type) ?? $type;
+                $this->columns[$key]['type'] = preg_replace($pattern, $alias, $entry['type']) ?? $entry['type'];
             }
 
-            foreach ($this->mutators as $key => $type) {
+            foreach ($this->mutators as $key => $entry) {
                 if (! in_array($fqcn, $this->mutatorFqcns[$key] ?? [])) {
                     continue;
                 }
-                $this->mutators[$key] = preg_replace($pattern, $alias, $type) ?? $type;
+                $this->mutators[$key]['type'] = preg_replace($pattern, $alias, $entry['type']) ?? $entry['type'];
             }
         }
     }

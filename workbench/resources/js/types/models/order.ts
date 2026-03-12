@@ -30,8 +30,11 @@ export interface Order
 
 export interface OrderMutators
 {
+    /** Number of line items in this order */
     item_count: number;
+    /** Whether the order has been paid */
     is_paid: boolean;
+    /** Formatted total with currency symbol */
     formatted_total: string;
 }
 

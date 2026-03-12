@@ -27,8 +27,11 @@ export interface Post
 
 export interface PostMutators
 {
+    /** Title displayed in uppercase */
     title_display: string | null;
+    /** Excerpt of the post content */
     excerpt: string | null;
+    /** Estimated reading time formatted */
     reading_time: string;
 }
 
@@ -38,7 +41,9 @@ export interface PostRelations
     author: User;
     category: Category;
     comments: Comment[];
+    /** Polymorphic many-to-many with tags */
     tags: Tag[];
+    /** Polymorphic images */
     images: Image[];
     // Counts
     author_count: number;

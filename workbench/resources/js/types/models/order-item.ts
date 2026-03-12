@@ -17,6 +17,7 @@ export interface OrderItem
 
 export interface OrderItemMutators
 {
+    /** Line item subtotal computed from quantity × unit_price */
     subtotal: number;
 }
 

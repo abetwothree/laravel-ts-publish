@@ -24,12 +24,16 @@ declare global {
             updated_at: string | null;
             deleted_at: string | null;
             // Mutators
+            /** Whether the team has any members */
             has_member: boolean;
+            /** Number of members */
             member_count: number;
             // Relations
+            /** The user who owns this team */
             owner: User;
             owner_count: number;
             owner_exists: boolean;
+            /** Members of the team (pivot includes role and joined_at) */
             members: User[];
             members_count: number;
             members_exists: boolean;
@@ -48,14 +52,18 @@ declare global {
             updated_at: string | null;
             deleted_at: string | null;
             // Mutators
+            /** Full path breadcrumb (e.g. &quot;Electronics &gt; Phones &gt; Smartphones&quot;) */
             breadcrumb: string;
             // Relations
+            /** Self-referencing: parent category */
             parent: Category;
             parent_count: number;
             parent_exists: boolean;
+            /** Self-referencing: child categories */
             children: Category[];
             children_count: number;
             children_exists: boolean;
+            /** Posts in this category */
             posts: Post[];
             posts_count: number;
             posts_exists: boolean;
@@ -94,17 +102,23 @@ declare global {
             updated_at: string | null;
             deleted_at: string | null;
             // Mutators
+            /** Whether the product is on sale */
             is_on_sale: boolean;
+            /** Discount percentage (0-100) or null */
             discount_percentage: number | null;
+            /** Profit margin percentage */
             profit_margin: number | null;
+            /** Whether the product is in stock */
             in_stock: boolean;
             // Relations
             order_items: OrderItem[];
             order_items_count: number;
             order_items_exists: boolean;
+            /** Polymorphic many-to-many with tags */
             tags: Tag[];
             tags_count: number;
             tags_exists: boolean;
+            /** Polymorphic one-to-many with images */
             images: Image[];
             images_count: number;
             images_exists: boolean;
@@ -135,8 +149,11 @@ declare global {
             updated_at: string | null;
             deleted_at: string | null;
             // Mutators
+            /** Number of line items in this order */
             item_count: number;
+            /** Whether the order has been paid */
             is_paid: boolean;
+            /** Formatted total with currency symbol */
             formatted_total: string;
             // Relations
             user: User;
@@ -169,8 +186,11 @@ declare global {
             featured_image_url: string | null;
             is_pinned: boolean;
             // Mutators
+            /** Title displayed in uppercase */
             title_display: string | null;
+            /** Excerpt of the post content */
             excerpt: string | null;
+            /** Estimated reading time formatted */
             reading_time: string;
             // Relations
             author: User;
@@ -182,9 +202,11 @@ declare global {
             comments: Comment[];
             comments_count: number;
             comments_exists: boolean;
+            /** Polymorphic many-to-many with tags */
             tags: Tag[];
             tags_count: number;
             tags_exists: boolean;
+            /** Polymorphic images */
             images: Image[];
             images_count: number;
             images_exists: boolean;
@@ -207,6 +229,7 @@ declare global {
             updated_at: string | null;
             // Mutators
             full_address: string | null;
+            /** Whether coordinates are available */
             has_coordinates: boolean;
             // Relations
             user: User;
@@ -222,9 +245,11 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
             // Relations
+            /** Posts with this tag (polymorphic many-to-many) */
             posts: Post[];
             posts_count: number;
             posts_exists: boolean;
+            /** Products with this tag (polymorphic many-to-many) */
             products: Product[];
             products_count: number;
             products_exists: boolean;
@@ -243,6 +268,7 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
             // Mutators
+            /** Line item subtotal computed from quantity × unit_price */
             subtotal: number;
             // Relations
             order: Order;
@@ -252,9 +278,11 @@ declare global {
             product_count: number;
             product_exists: boolean;
         }
+        /** Application user account */
         export interface User {
             // Columns
             id: number;
+            /** User name formatted with first letter capitalized */
             name: string;
             email: string;
             email_verified_at: string | null;
@@ -272,7 +300,9 @@ declare global {
             last_login_at: string | null;
             last_login_ip: string | null;
             // Mutators
+            /** User initials (e.g. &quot;JD&quot; for &quot;John Doe&quot;) */
             initials: string;
+            /** Whether the user is a premium member */
             is_premium: boolean;
             // Relations
             profile: Profile;
@@ -296,9 +326,11 @@ declare global {
             owned_teams: Team[];
             owned_teams_count: number;
             owned_teams_exists: boolean;
+            /** Polymorphic images (avatar gallery, etc.) */
             images: Image[];
             images_count: number;
             images_exists: boolean;
+            /** Get the entity&#039;s notifications. */
             notifications: DatabaseNotification[];
             notifications_count: number;
             notifications_exists: boolean;
@@ -315,6 +347,7 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
             // Mutators
+            /** Short preview of the comment */
             preview: string;
             // Relations
             post: Post;
@@ -341,9 +374,13 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
             // Mutators
+            /** Computed age from date_of_birth */
             age: number | null;
+            /** Full display name combining user name and bio snippet */
             display_summary: string;
+            /** Write-only mutator — normalizes phone number on set, no get */
             normalized_phone: unknown;
+            /** Old-style mutator for avatar URL capitalization */
             formatted_bio: string;
             // Relations
             user: User;
@@ -368,10 +405,14 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
             // Mutators
+            /** Human-readable file size */
             size_for_humans: string;
+            /** Whether the image is landscape orientation */
             is_landscape: boolean;
+            /** Aspect ratio as a string (e.g. &quot;16:9&quot;) or null if dimensions not set */
             aspect_ratio: string | null;
             // Relations
+            /** Polymorphic parent (Product, Post, User, etc.) */
             imageable: Image;
             imageable_count: number;
             imageable_exists: boolean;
@@ -387,6 +428,7 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
             // Relations
+            /** Get the notifiable entity that the notification belongs to. */
             notifiable: DatabaseNotification;
             notifiable_count: number;
             notifiable_exists: boolean;
@@ -438,6 +480,7 @@ declare global {
     }
     // Enums
     export namespace enums {
+        /** String-backed enum with no attributes at all — tests the simplest backed enum path. */
         export interface PaymentMethod
         {
             CreditCard: 'credit_card',
@@ -452,6 +495,7 @@ declare global {
         export type PaymentMethodType = 'credit_card' | 'debit_card' | 'paypal' | 'bank_transfer' | 'cash_on_delivery' | 'crypto' | 'apple_pay' | 'google_pay';
         export type PaymentMethodKind = 'CreditCard' | 'DebitCard' | 'PayPal' | 'BankTransfer' | 'CashOnDelivery' | 'Crypto' | 'ApplePay' | 'GooglePay';
 
+        /** Pure unit enum with no attributes and no methods. Tests the absolute minimal enum path. */
         export interface MembershipLevel
         {
             Free: 'Free',
@@ -461,6 +505,7 @@ declare global {
         }
         export type MembershipLevelType = 'Free' | 'Basic' | 'Premium' | 'Enterprise';
 
+        /** Int-backed enum with instance methods that return different types per case. */
         export interface Priority
         {
             Low: 0,
@@ -471,6 +516,7 @@ declare global {
         export type PriorityType = 0 | 1 | 2 | 3;
         export type PriorityKind = 'Low' | 'Medium' | 'High' | 'Critical';
 
+        /** Pure unit enum (no backing type) — tests that the publisher handles unit enums where case names become the values in TypeScript. */
         export interface Visibility
         {
             Public: 'Public',
@@ -481,6 +527,7 @@ declare global {
         }
         export type VisibilityType = 'Public' | 'Private' | 'Protected' | 'Internal' | 'Draft';
 
+        /** String-backed enum with both instance and static methods. */
         export interface MediaType
         {
             Image: 'image',
@@ -492,6 +539,7 @@ declare global {
         export type MediaTypeType = 'image' | 'video' | 'audio' | 'document' | 'archive';
         export type MediaTypeKind = 'Image' | 'Video' | 'Audio' | 'Document' | 'Archive';
 
+        /** Int-backed enum with TsCase descriptions, instance methods, and static methods. Exercises the full attribute surface area in combination. */
         export interface OrderStatus
         {
             /** Order has been placed but not yet processed */
@@ -528,6 +576,7 @@ declare global {
         export type StatusType = 0 | 1;
         export type StatusKind = 'Draft' | 'Published';
 
+        /** String-backed enum with TsCase attribute overrides on individual cases. */
         export interface Color
         {
             /** Primary red color */
@@ -544,6 +593,7 @@ declare global {
         export type ColorType = 'red' | 'green' | 'blue' | 'yellow' | 'slate' | 'purple';
         export type ColorKind = 'Red' | 'Green' | 'Blue' | 'Yellow' | 'Slate' | 'Purple';
 
+        /** String-backed enum with static methods that return complex array structures. */
         export interface Currency
         {
             Usd: 'USD',

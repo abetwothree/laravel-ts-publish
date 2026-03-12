@@ -35,8 +35,8 @@ describe('ModelTransformer with User model', function () {
             ->toHaveKey('membership_level');
 
         // Enum columns resolve to their TypeType
-        expect($data['columns']['role'])->toBe('RoleType | null');
-        expect($data['columns']['membership_level'])->toBe('MembershipLevelType | null');
+        expect($data['columns']['role']['type'])->toBe('RoleType | null');
+        expect($data['columns']['membership_level']['type'])->toBe('MembershipLevelType | null');
     });
 
     test('resolves DB column type from Attribute accessor get closure', function () {
@@ -44,15 +44,15 @@ describe('ModelTransformer with User model', function () {
 
         // The `name` column has an Attribute accessor with get: fn($value): string
         // It should resolve to 'string' from the closure return type, not 'Attribute'
-        expect($data['columns']['name'])->toBe('string');
+        expect($data['columns']['name']['type'])->toBe('string');
     });
 
     test('transforms User model with TsCasts overrides on casts method', function () {
         $data = (new ModelTransformer(User::class))->data();
 
         // TsCasts applied on the casts() method override the default type inference
-        expect($data['columns']['settings'])->toBe('{ theme: "light" | "dark"; notifications: boolean; locale: string } | null');
-        expect($data['columns']['options'])->toBe('Record<string, unknown> | null');
+        expect($data['columns']['settings']['type'])->toBe('{ theme: "light" | "dark"; notifications: boolean; locale: string } | null');
+        expect($data['columns']['options']['type'])->toBe('Record<string, unknown> | null');
     });
 
     test('transforms User model enum imports', function () {
@@ -77,10 +77,10 @@ describe('ModelTransformer with User model', function () {
             ->toHaveKey('images');
 
         // HasOne → singular, HasMany/BelongsToMany/MorphMany → array
-        expect($data['relations']['profile'])->toBe('Profile');
-        expect($data['relations']['posts'])->toBe('Post[]');
-        expect($data['relations']['teams'])->toBe('Team[]');
-        expect($data['relations']['images'])->toBe('Image[]');
+        expect($data['relations']['profile']['type'])->toBe('Profile');
+        expect($data['relations']['posts']['type'])->toBe('Post[]');
+        expect($data['relations']['teams']['type'])->toBe('Team[]');
+        expect($data['relations']['images']['type'])->toBe('Image[]');
     });
 
     test('transforms User model mutators', function () {
@@ -89,8 +89,8 @@ describe('ModelTransformer with User model', function () {
         expect($data['mutators'])
             ->toHaveKey('initials')
             ->toHaveKey('is_premium')
-            ->and($data['mutators']['initials'])->toBe('string')
-            ->and($data['mutators']['is_premium'])->toBe('boolean');
+            ->and($data['mutators']['initials']['type'])->toBe('string')
+            ->and($data['mutators']['is_premium']['type'])->toBe('boolean');
     });
 
     test('transforms User model imports', function () {
@@ -110,8 +110,8 @@ describe('ModelTransformer with Address model that has class-level TsCasts', fun
         $data = (new ModelTransformer(Address::class))->data();
 
         expect($data['modelName'])->toBe('Address')
-            ->and($data['columns']['latitude'])->toBe('number | null')
-            ->and($data['columns']['longitude'])->toBe('number | null');
+            ->and($data['columns']['latitude']['type'])->toBe('number | null')
+            ->and($data['columns']['longitude']['type'])->toBe('number | null');
     });
 
     test('transforms Address model mutators', function () {
@@ -119,7 +119,7 @@ describe('ModelTransformer with Address model that has class-level TsCasts', fun
 
         expect($data['mutators'])
             ->toHaveKey('has_coordinates')
-            ->and($data['mutators']['has_coordinates'])->toBe('boolean');
+            ->and($data['mutators']['has_coordinates']['type'])->toBe('boolean');
     });
 
     test('transforms Address model mutator with TsCasts override', function () {
@@ -128,7 +128,7 @@ describe('ModelTransformer with Address model that has class-level TsCasts', fun
         // full_address mutator has a TsCasts override from the class-level attribute
         expect($data['mutators'])
             ->toHaveKey('full_address')
-            ->and($data['mutators']['full_address'])->toBe('string | null');
+            ->and($data['mutators']['full_address']['type'])->toBe('string | null');
     });
 });
 
@@ -139,10 +139,10 @@ describe('ModelTransformer with Product model that has TsCasts with custom impor
         expect($data['modelName'])->toBe('Product');
 
         // dimensions uses an inline type override with no import
-        expect($data['columns']['dimensions'])->toBe('{ length: number; width: number; height: number; unit: "cm" | "in" }');
+        expect($data['columns']['dimensions']['type'])->toBe('{ length: number; width: number; height: number; unit: "cm" | "in" }');
 
         // metadata uses array-with-import syntax
-        expect($data['columns']['metadata'])->toBe('ProductMetadata | ProductJsonMetaData | null');
+        expect($data['columns']['metadata']['type'])->toBe('ProductMetadata | ProductJsonMetaData | null');
     });
 
     test('Product model has custom imports from TsCasts', function () {
@@ -164,9 +164,9 @@ describe('ModelTransformer with Product model that has TsCasts with custom impor
             ->toHaveKey('order_items')
             ->toHaveKey('tags')
             ->toHaveKey('images')
-            ->and($data['relations']['order_items'])->toBe('OrderItem[]')
-            ->and($data['relations']['tags'])->toBe('Tag[]')
-            ->and($data['relations']['images'])->toBe('Image[]');
+            ->and($data['relations']['order_items']['type'])->toBe('OrderItem[]')
+            ->and($data['relations']['tags']['type'])->toBe('Tag[]')
+            ->and($data['relations']['images']['type'])->toBe('Image[]');
     });
 });
 
@@ -174,7 +174,7 @@ describe('ModelTransformer with Post model that has method-level TsCasts', funct
     test('transforms Post model with method-level TsCasts', function () {
         $data = (new ModelTransformer(Post::class))->data();
 
-        expect($data['columns']['metadata'])->toBe('Record<string, {title: string, content: string}>');
+        expect($data['columns']['metadata']['type'])->toBe('Record<string, {title: string, content: string}>');
     });
 
     test('transforms Post model enum imports', function () {
@@ -196,9 +196,9 @@ describe('ModelTransformer with Category model that has self-referencing relatio
             ->toHaveKey('parent')
             ->toHaveKey('children')
             ->toHaveKey('posts')
-            ->and($data['relations']['parent'])->toBe('Category')
-            ->and($data['relations']['children'])->toBe('Category[]')
-            ->and($data['relations']['posts'])->toBe('Post[]');
+            ->and($data['relations']['parent']['type'])->toBe('Category')
+            ->and($data['relations']['children']['type'])->toBe('Category[]')
+            ->and($data['relations']['posts']['type'])->toBe('Post[]');
 
         // Self-reference should NOT appear in model imports
         $modelImports = $data['resolvedImports']['./'] ?? [];
@@ -213,8 +213,8 @@ describe('ModelTransformer with Tag model that has MorphedByMany relations', fun
         expect($data['relations'])
             ->toHaveKey('posts')
             ->toHaveKey('products')
-            ->and($data['relations']['posts'])->toBe('Post[]')
-            ->and($data['relations']['products'])->toBe('Product[]');
+            ->and($data['relations']['posts']['type'])->toBe('Post[]')
+            ->and($data['relations']['products']['type'])->toBe('Product[]');
     });
 });
 
@@ -225,15 +225,15 @@ describe('ModelTransformer with Invoice model from modules directory', function 
         expect($data['modelName'])->toBe('Invoice')
             ->and($data['columns'])->toHaveKey('status')
             ->and($data['columns'])->toHaveKey('total')
-            ->and($data['columns']['status'])->toBe('InvoiceStatusType');
+            ->and($data['columns']['status']['type'])->toBe('InvoiceStatusType');
 
         expect($data['resolvedImports']['../enums'])->toContain('InvoiceStatusType');
 
         expect($data['relations'])
             ->toHaveKey('user')
             ->toHaveKey('payments')
-            ->and($data['relations']['user'])->toBe('User')
-            ->and($data['relations']['payments'])->toBe('Payment[]');
+            ->and($data['relations']['user']['type'])->toBe('User')
+            ->and($data['relations']['payments']['type'])->toBe('Payment[]');
     });
 });
 
@@ -241,16 +241,16 @@ describe('ModelTransformer with Order model that has complex TsCasts and multipl
     test('transforms Order model TsCasts inline types', function () {
         $data = (new ModelTransformer(Order::class))->data();
 
-        expect($data['columns']['shipping_address'])->toBe('{ line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string }');
-        expect($data['columns']['billing_address'])->toBe('{ line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string }');
+        expect($data['columns']['shipping_address']['type'])->toBe('{ line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string }');
+        expect($data['columns']['billing_address']['type'])->toBe('{ line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string }');
     });
 
     test('transforms Order model enum casts', function () {
         $data = (new ModelTransformer(Order::class))->data();
 
-        expect($data['columns']['status'])->toBe('OrderStatusType')
-            ->and($data['columns']['payment_method'])->toBe('PaymentMethodType | null')
-            ->and($data['columns']['currency'])->toBe('CurrencyType');
+        expect($data['columns']['status']['type'])->toBe('OrderStatusType')
+            ->and($data['columns']['payment_method']['type'])->toBe('PaymentMethodType | null')
+            ->and($data['columns']['currency']['type'])->toBe('CurrencyType');
 
         expect($data['resolvedImports']['../enums'])
             ->toContain('OrderStatusType')
@@ -272,14 +272,14 @@ describe('ModelTransformer with Profile model that has property-level TsCasts, w
         $data = (new ModelTransformer(Profile::class))->data();
 
         // Property-level #[TsCasts(['timezone' => 'string'])] should override
-        expect($data['columns']['timezone'])->toBe('string');
+        expect($data['columns']['timezone']['type'])->toBe('string');
     });
 
     test('transforms Profile model class-level TsCasts for columns', function () {
         $data = (new ModelTransformer(Profile::class))->data();
 
-        expect($data['columns']['social_links'])->toBe('{ twitter?: string; github?: string; linkedin?: string; website?: string }');
-        expect($data['columns']['settings'])->toBe('{ notifications_enabled: boolean; theme: "light" | "dark"; language: string }');
+        expect($data['columns']['social_links']['type'])->toBe('{ twitter?: string; github?: string; linkedin?: string; website?: string }');
+        expect($data['columns']['settings']['type'])->toBe('{ notifications_enabled: boolean; theme: "light" | "dark"; language: string }');
     });
 
     test('transforms Profile model write-only mutator as unknown', function () {
@@ -287,7 +287,7 @@ describe('ModelTransformer with Profile model that has property-level TsCasts, w
 
         // normalizedPhone is set-only — no get — should resolve to unknown
         expect($data['mutators'])->toHaveKey('normalized_phone')
-            ->and($data['mutators']['normalized_phone'])->toBe('unknown');
+            ->and($data['mutators']['normalized_phone']['type'])->toBe('unknown');
     });
 
     test('transforms Profile model old-style mutator', function () {
@@ -295,7 +295,7 @@ describe('ModelTransformer with Profile model that has property-level TsCasts, w
 
         // getFormattedBioAttribute → formatted_bio
         expect($data['mutators'])->toHaveKey('formatted_bio')
-            ->and($data['mutators']['formatted_bio'])->toBe('string');
+            ->and($data['mutators']['formatted_bio']['type'])->toBe('string');
     });
 });
 
@@ -305,7 +305,7 @@ describe('ModelTransformer with TrackingEvent model that has a helper method col
 
         expect($data['mutators'])
             ->toHaveKey('changes')
-            ->and($data['mutators']['changes'])->toBe('{ attributes: Record<string, unknown>; old: Record<string, unknown> }');
+            ->and($data['mutators']['changes']['type'])->toBe('{ attributes: Record<string, unknown>; old: Record<string, unknown> }');
     });
 });
 
@@ -424,8 +424,8 @@ describe('ModelTransformer import alias resolution for duplicate names', functio
             ->and($data['relations'])->toHaveKey('admin');
 
         // Types should use relationship-based aliases since each FQCN has exactly one relation
-        expect($data['relations']['customer'])->toBe('CustomerUser');
-        expect($data['relations']['admin'])->toBe('AdminUser');
+        expect($data['relations']['customer']['type'])->toBe('CustomerUser');
+        expect($data['relations']['admin']['type'])->toBe('AdminUser');
 
         // Imports should use "OriginalName as Alias" syntax
         $allImports = array_merge(...array_values($data['resolvedImports']));
@@ -441,8 +441,8 @@ describe('ModelTransformer import alias resolution for duplicate names', functio
         $data = (new ModelTransformer(Deal::class))->data();
 
         // Both columns should use namespace-prefixed aliases
-        expect($data['columns']['status'])->toBe('AppStatusType');
-        expect($data['columns']['crm_status'])->toBe('CrmStatusType');
+        expect($data['columns']['status']['type'])->toBe('AppStatusType');
+        expect($data['columns']['crm_status']['type'])->toBe('CrmStatusType');
 
         // Imports should use "as" aliasing syntax for the enum types
         $allImports = array_merge(...array_values($data['resolvedImports']));
@@ -456,8 +456,8 @@ describe('ModelTransformer import alias resolution for duplicate names', functio
         $data = (new ModelTransformer(Deal::class))->data();
 
         // Flat mode should still alias conflicting names
-        expect($data['relations']['customer'])->toBe('CustomerUser');
-        expect($data['relations']['admin'])->toBe('AdminUser');
+        expect($data['relations']['customer']['type'])->toBe('CustomerUser');
+        expect($data['relations']['admin']['type'])->toBe('AdminUser');
 
         expect($data['resolvedImports'])->toHaveKey('./');
         expect($data['resolvedImports']['./'])->toContain('User as AdminUser')
@@ -473,8 +473,8 @@ describe('ModelTransformer import alias resolution for duplicate names', functio
         // Deal is in crm/models
         // Crm\User is in crm/models → . (same dir)
         // App\User is in app/models → ../../app/models
-        expect($data['relations']['customer'])->toBe('CustomerUser');
-        expect($data['relations']['admin'])->toBe('AdminUser');
+        expect($data['relations']['customer']['type'])->toBe('CustomerUser');
+        expect($data['relations']['admin']['type'])->toBe('AdminUser');
 
         expect($data['resolvedImports'])->toHaveKey('.');
         expect($data['resolvedImports']['.'])->toContain('User as CustomerUser');
@@ -487,8 +487,8 @@ describe('ModelTransformer import alias resolution for duplicate names', functio
         // Invoice has unique model names (User, Payment) — no conflicts
         $data = (new ModelTransformer(Invoice::class))->data();
 
-        expect($data['relations']['user'])->toBe('User');
-        expect($data['relations']['payments'])->toBe('Payment[]');
+        expect($data['relations']['user']['type'])->toBe('User');
+        expect($data['relations']['payments']['type'])->toBe('Payment[]');
 
         // No "as" aliasing in imports
         $allImports = array_merge(...array_values($data['resolvedImports']));
@@ -524,5 +524,54 @@ describe('ModelTransformer import alias resolution for duplicate names', functio
 
         // Accounting\Enums\InvoiceStatus → strip 'Workbench\', skip 'Enums' → 'Accounting'
         expect($method->invoke($transformer, 'Workbench\\Accounting\\Enums\\InvoiceStatus'))->toBe('Accounting');
+    });
+});
+
+describe('ModelTransformer doc block descriptions', function () {
+    test('reads class-level description from doc block', function () {
+        $data = (new ModelTransformer(User::class))->data();
+
+        expect($data['description'])->toBe('Application user account');
+    });
+
+    test('returns empty description when no doc block on class', function () {
+        $data = (new ModelTransformer(Order::class))->data();
+
+        expect($data['description'])->toBe('');
+    });
+
+    test('reads accessor description for column from doc block', function () {
+        $data = (new ModelTransformer(User::class))->data();
+
+        // name() has /** User name formatted with first letter capitalized */
+        expect($data['columns']['name']['description'])->toBe('User name formatted with first letter capitalized');
+    });
+
+    test('reads accessor description for mutator from doc block', function () {
+        $data = (new ModelTransformer(User::class))->data();
+
+        // initials() has /** User initials (e.g. "JD" for "John Doe") */
+        expect($data['mutators']['initials']['description'])->toBe('User initials (e.g. "JD" for "John Doe")');
+    });
+
+    test('reads relation description from doc block', function () {
+        $data = (new ModelTransformer(User::class))->data();
+
+        // images() has /** Polymorphic images (avatar gallery, etc.) */
+        expect($data['relations']['images']['description'])->toBe('Polymorphic images (avatar gallery, etc.)');
+    });
+
+    test('returns empty description for column without accessor doc block', function () {
+        $data = (new ModelTransformer(User::class))->data();
+
+        // email has no accessor method at all
+        expect($data['columns']['email']['description'])->toBe('');
+    });
+
+    test('returns empty description for relation without doc block', function () {
+        $data = (new ModelTransformer(User::class))->data();
+
+        // profile() has no doc block
+        expect($data['relations']['profile']['description'])->toBe('');
     });
 });

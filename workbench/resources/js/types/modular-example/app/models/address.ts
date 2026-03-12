@@ -21,6 +21,7 @@ export interface Address
 export interface AddressMutators
 {
     full_address: string | null;
+    /** Whether coordinates are available */
     has_coordinates: boolean;
 }
 

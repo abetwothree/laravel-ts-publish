@@ -1,5 +1,6 @@
 import { defineEnum } from '@tolki/enum';
 
+/** String-backed enum with TsCase attribute overrides on individual cases. */
 export const Color = defineEnum({
     /** Primary red color */
     Red: 'red',

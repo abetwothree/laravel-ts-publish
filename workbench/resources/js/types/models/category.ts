@@ -17,14 +17,18 @@ export interface Category
 
 export interface CategoryMutators
 {
+    /** Full path breadcrumb (e.g. &quot;Electronics &gt; Phones &gt; Smartphones&quot;) */
     breadcrumb: string;
 }
 
 export interface CategoryRelations
 {
     // Relations
+    /** Self-referencing: parent category */
     parent: Category;
+    /** Self-referencing: child categories */
     children: Category[];
+    /** Posts in this category */
     posts: Post[];
     // Counts
     parent_count: number;
