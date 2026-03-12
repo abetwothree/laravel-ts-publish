@@ -304,15 +304,6 @@ class ModelTransformer extends CoreTransformer
 
     protected function transformRelations(): self
     {
-        $manyRelationTypes = [
-            'BelongsToMany',
-            'HasMany',
-            'HasManyThrough',
-            'MorphToMany',
-            'MorphMany',
-            'MorphedByMany',
-        ];
-
         /** @var Collection<int, RelationInfo> $allRelations */
         $allRelations = $this->modelInspect['relations'];
 
@@ -337,7 +328,7 @@ class ModelTransformer extends CoreTransformer
         foreach ($relations as $relation) {
             $relatedBasename = class_basename($relation['related']);
 
-            $relationType = in_array($relation['type'], $manyRelationTypes, true)
+            $relationType = str_contains(strtolower($relation['type']), 'many')
                 ? $relatedBasename.'[]'
                 : $relatedBasename;
 
