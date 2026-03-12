@@ -1,15 +1,15 @@
 @use('AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish')
-@foreach ($resolvedImports as $path => $types)
+@foreach ($data->resolvedImports as $path => $types)
 {{ $useTypeImports ? 'import type' : 'import' }} { {{ implode(', ', $types) }} } from '{{ $path }}';
 @endforeach
 
-@if (count($columns) > 0)
-@if($description)
-/** {{ LaravelTsPublish::sanitizeJsDoc($description) }} */
+@if (count($data->columns) > 0)
+@if($data->description)
+/** {{ LaravelTsPublish::sanitizeJsDoc($data->description) }} */
 @endif
-export interface {{ $modelName }}
+export interface {{ $data->modelName }}
 {
-@foreach ($columns as $name => $column)
+@foreach ($data->columns as $name => $column)
 @if($column['description'])
     /** {{ LaravelTsPublish::sanitizeJsDoc($column['description']) }} */
 @endif
@@ -17,11 +17,11 @@ export interface {{ $modelName }}
 @endforeach
 }
 @endif
-@if (count($mutators) > 0)
+@if (count($data->mutators) > 0)
 
-export interface {{ $modelName }}Mutators
+export interface {{ $data->modelName }}Mutators
 {
-@foreach ($mutators as $name => $mutator)
+@foreach ($data->mutators as $name => $mutator)
 @if($mutator['description'])
     /** {{ LaravelTsPublish::sanitizeJsDoc($mutator['description']) }} */
 @endif
@@ -29,39 +29,39 @@ export interface {{ $modelName }}Mutators
 @endforeach
 }
 @endif
-@if (count($relations) > 0)
+@if (count($data->relations) > 0)
 
-export interface {{ $modelName }}Relations
+export interface {{ $data->modelName }}Relations
 {
     // Relations
-@foreach ($relations as $name => $relation)
+@foreach ($data->relations as $name => $relation)
 @if($relation['description'])
     /** {{ LaravelTsPublish::sanitizeJsDoc($relation['description']) }} */
 @endif
     {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $relation['type'] !!};
 @endforeach
     // Counts
-@foreach ($relations as $name => $relation)
+@foreach ($data->relations as $name => $relation)
     {!! LaravelTsPublish::validJsObjectKey($name.'_count') !!}: number;
 @endforeach
     // Exists
-@foreach ($relations as $name => $relation)
+@foreach ($data->relations as $name => $relation)
     {!! LaravelTsPublish::validJsObjectKey($name.'_exists') !!}: boolean;
 @endforeach
 }
 @endif
-@if (count($relations) > 0)
+@if (count($data->relations) > 0)
 @endif
-@if(count($mutators) > 0 || count($relations) > 0)
+@if(count($data->mutators) > 0 || count($data->relations) > 0)
 
 @php
-$extends = [$modelName];
-if(count($mutators) > 0) {
-    $extends[] = $modelName.'Mutators';
+$extends = [$data->modelName];
+if(count($data->mutators) > 0) {
+    $extends[] = $data->modelName.'Mutators';
 }
-if(count($relations) > 0) {
-    $extends[] = $modelName.'Relations';
+if(count($data->relations) > 0) {
+    $extends[] = $data->modelName.'Relations';
 }
 @endphp
-export interface {{ $modelName }}All extends {{ implode(', ', $extends) }} {}
+export interface {{ $data->modelName }}All extends {{ implode(', ', $extends) }} {}
 @endif

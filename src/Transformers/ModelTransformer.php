@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
+use AbeTwoThree\LaravelTsPublish\Dtos\TsModelDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
@@ -18,6 +19,10 @@ use ReflectionClass;
 
 /**
  * @phpstan-import-type TypeScriptTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
+ * @phpstan-import-type ColumnsList from TsModelDto
+ * @phpstan-import-type ResolvedImportMap from TsModelDto
+ * @phpstan-import-type MutatorsList from TsModelDto
+ * @phpstan-import-type RelationsList from TsModelDto
  *
  * @phpstan-type AttributeInfo = array{name: string, type: string, cast: string|null, nullable: bool}
  * @phpstan-type RelationInfo = array{name: string, type: string, related: class-string<Model>}
@@ -35,20 +40,7 @@ use ReflectionClass;
  *     "resource": class-string<JsonResource>|null
  * }
  * @phpstan-type DbColumns = list<string>
- * @phpstan-type ColumnsList = array<string, array{type: string, description: string}>
- * @phpstan-type MutatorsList = array<string, array{type: string, description: string}>
- * @phpstan-type RelationsList = array<string, array{type: string, description: string}>
  * @phpstan-type TsTypeOverrides = array<string, string>
- * @phpstan-type ResolvedImportMap = array<string, list<string>>
- * @phpstan-type ModelData = array{
- *    modelName: string,
- *    description: string,
- *    filePath: string,
- *    columns: ColumnsList,
- *    resolvedImports: ResolvedImportMap,
- *    mutators: MutatorsList,
- *    relations: RelationsList,
- * }
  *
  * @extends CoreTransformer<Model>
  */
@@ -120,22 +112,21 @@ class ModelTransformer extends CoreTransformer
     }
 
     /**
-     * Get the transformed data
-     *
-     * @return ModelData
+     * Get the transformed data as a structured DTO.
      */
     #[Override]
-    public function data(): array
+    public function data(): TsModelDto
     {
-        return [
-            'modelName' => $this->modelName,
-            'description' => $this->description,
-            'filePath' => $this->filePath,
-            'columns' => $this->columns,
-            'mutators' => $this->mutators,
-            'relations' => $this->relations,
-            'resolvedImports' => $this->buildResolvedImports(),
-        ];
+        return new TsModelDto(
+            modelName: $this->modelName,
+            description: $this->description,
+            filePath: $this->filePath,
+            filename: $this->filename(),
+            columns: $this->columns,
+            mutators: $this->mutators,
+            relations: $this->relations,
+            resolvedImports: $this->buildResolvedImports(),
+        );
     }
 
     #[Override]

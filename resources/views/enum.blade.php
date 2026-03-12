@@ -3,21 +3,21 @@
 import { defineEnum } from '@tolki/enum';
 
 @endif
-@if($description)
-/** {{ LaravelTsPublish::sanitizeJsDoc($description) }} */
+@if($data->description)
+/** {{ LaravelTsPublish::sanitizeJsDoc($data->description) }} */
 @endif
 @if($metadataEnabled && $usesTolkiPackage)
-export const {{ $enumName }} = defineEnum({
+export const {{ $data->enumName }} = defineEnum({
 @else
-export const {{ $enumName }} = {
+export const {{ $data->enumName }} = {
 @endif
-@foreach ($cases as $case)
+@foreach ($data->cases as $case)
 @if($case['description'])
     /** {{ LaravelTsPublish::sanitizeJsDoc($case['description']) }} */
 @endif
     {!! LaravelTsPublish::validJsObjectKey($case['name']) !!}: {!! LaravelTsPublish::toJsLiteral($case['value']) !!},
 @endforeach
-@foreach ($methods as $methodName => $method)
+@foreach ($data->methods as $methodName => $method)
 @if($method['description'])
     /** {{ LaravelTsPublish::sanitizeJsDoc($method['description']) }} */
 @endif
@@ -27,20 +27,20 @@ export const {{ $enumName }} = {
 @endforeach
     },
 @endforeach
-@foreach ($staticMethods as $methodName => $method)
+@foreach ($data->staticMethods as $methodName => $method)
 @if($method['description'])
     /** {{ LaravelTsPublish::sanitizeJsDoc($method['description']) }} */
 @endif
     {!! LaravelTsPublish::validJsObjectKey($method['name']) !!}: {!! LaravelTsPublish::toJsLiteral($method['return']) !!},
 @endforeach
-@if($metadataEnabled && count($cases) > 0)
-    _cases: [{!! implode(', ', $backed ? $caseKinds : $caseTypes) !!}],
+@if($metadataEnabled && count($data->cases) > 0)
+    _cases: [{!! implode(', ', $data->backed ? $data->caseKinds : $data->caseTypes) !!}],
 @endif
-@if($metadataEnabled && count($methods) > 0)
-    _methods: [{!! implode(', ', array_map(fn($method) => LaravelTsPublish::toJsLiteral($method['name']), $methods)) !!}],
+@if($metadataEnabled && count($data->methods) > 0)
+    _methods: [{!! implode(', ', array_map(fn($method) => LaravelTsPublish::toJsLiteral($method['name']), $data->methods)) !!}],
 @endif
-@if($metadataEnabled && count($staticMethods) > 0)
-    _static: [{!! implode(', ', array_map(fn($method) => LaravelTsPublish::toJsLiteral($method['name']), $staticMethods)) !!}],
+@if($metadataEnabled && count($data->staticMethods) > 0)
+    _static: [{!! implode(', ', array_map(fn($method) => LaravelTsPublish::toJsLiteral($method['name']), $data->staticMethods)) !!}],
 @endif
 @if($metadataEnabled && $usesTolkiPackage)
 } as const);
@@ -48,8 +48,8 @@ export const {{ $enumName }} = {
 } as const;
 @endif
 
-export type {{ $enumName }}Type = {!! implode(' | ', $caseTypes) !!};
-@if($backed)
+export type {{ $data->enumName }}Type = {!! implode(' | ', $data->caseTypes) !!};
+@if($data->backed)
 
-export type {{ $enumName }}Kind = {!! implode(' | ', $caseKinds) !!};
+export type {{ $data->enumName }}Kind = {!! implode(' | ', $data->caseKinds) !!};
 @endif

@@ -9,8 +9,6 @@ use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use Override;
 
 /**
- * @phpstan-import-type ModelData from ModelTransformer
- *
  * @extends CoreWriter<ModelTransformer>
  */
 class ModelWriter extends CoreWriter
@@ -26,15 +24,14 @@ class ModelWriter extends CoreWriter
         /** @var view-string $template */
         $template = config()->string('ts-publish.model_template');
 
-        /** @var ModelData $data */
         $data = $transformer->data();
 
         $content = view(
             $template,
             [
-                ...$data,
                 'filename' => $filename,
                 'useTypeImports' => config()->boolean('ts-publish.use_type_imports'),
+                'data' => $data,
             ]
         )->render();
 

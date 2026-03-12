@@ -1,46 +1,46 @@
 @use('AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish')
-@foreach ($resolvedImports as $path => $types)
+@foreach ($data->resolvedImports as $path => $types)
 {{ $useTypeImports ? 'import type' : 'import' }} { {{ implode(', ', $types) }} } from '{{ $path }}';
 @endforeach
 
-@if (count($columns) > 0 || count($mutators) > 0 || count($relations) > 0)
-@if($description)
-/** {{ LaravelTsPublish::sanitizeJsDoc($description) }} */
+@if (count($data->columns) > 0 || count($data->mutators) > 0 || count($data->relations) > 0)
+@if($data->description)
+/** {{ LaravelTsPublish::sanitizeJsDoc($data->description) }} */
 @endif
-export interface {{ $modelName }}
+export interface {{ $data->modelName }}
 {
-@if (count($columns) > 0)
+@if (count($data->columns) > 0)
     // Columns
-@foreach ($columns as $name => $column)
+@foreach ($data->columns as $name => $column)
 @if($column['description'])
     /** {{ LaravelTsPublish::sanitizeJsDoc($column['description']) }} */
 @endif
     {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $column['type'] !!};
 @endforeach
 @endif
-@if (count($mutators) > 0)
+@if (count($data->mutators) > 0)
     // Mutators
-@foreach ($mutators as $name => $mutator)
+@foreach ($data->mutators as $name => $mutator)
 @if($mutator['description'])
     /** {{ LaravelTsPublish::sanitizeJsDoc($mutator['description']) }} */
 @endif
     {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $mutator['type'] !!};
 @endforeach
 @endif
-@if (count($relations) > 0)
+@if (count($data->relations) > 0)
     // Relations
-@foreach ($relations as $name => $relation)
+@foreach ($data->relations as $name => $relation)
 @if($relation['description'])
     /** {{ LaravelTsPublish::sanitizeJsDoc($relation['description']) }} */
 @endif
     {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $relation['type'] !!};
 @endforeach
     // Counts
-@foreach ($relations as $name => $relation)
+@foreach ($data->relations as $name => $relation)
     {!! LaravelTsPublish::validJsObjectKey($name.'_count') !!}: number;
 @endforeach
     // Exists
-@foreach ($relations as $name => $relation)
+@foreach ($data->relations as $name => $relation)
     {!! LaravelTsPublish::validJsObjectKey($name.'_exists') !!}: boolean;
 @endforeach
 @endif

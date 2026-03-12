@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsCase;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnum;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnumMethod;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnumStaticMethod;
+use AbeTwoThree\LaravelTsPublish\Dtos\TsEnumDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use BackedEnum;
 use Illuminate\Support\Str;
@@ -17,23 +18,13 @@ use Throwable;
 use UnitEnum;
 
 /**
- * @phpstan-type CasesList = list<array{name: string, value: string|int, description: string}>
+ * @phpstan-import-type CasesList from TsEnumDto
+ * @phpstan-import-type MethodsList from TsEnumDto
+ * @phpstan-import-type StaticMethodsList from TsEnumDto
+ * @phpstan-import-type CaseKindsList from TsEnumDto
+ * @phpstan-import-type CaseTypesList from TsEnumDto
+ *
  * @phpstan-type TsTypeOverrides = array<string, array{name?: string, value?: string|int, description?: string}>
- * @phpstan-type MethodsList = array<string, array{name: string, description: string, returns: array<string, mixed>}>
- * @phpstan-type StaticMethodsList = array<string, array{name: string, description: string, return: mixed}>
- * @phpstan-type CaseKindsList = list<string>
- * @phpstan-type CaseTypesList = list<string|int>
- * @phpstan-type EnumData = array{
- *     enumName: string,
- *     description: string,
- *     filePath: string,
- *     cases: CasesList,
- *     methods: MethodsList,
- *     staticMethods: StaticMethodsList,
- *     caseKinds: CaseKindsList,
- *     caseTypes: CaseTypesList,
- *     backed: bool,
- * }
  *
  * @extends CoreTransformer<UnitEnum|BackedEnum>
  */
@@ -87,22 +78,23 @@ class EnumTransformer extends CoreTransformer
     }
 
     /**
-     * @return EnumData
+     * Get the transformed data as a structured DTO.
      */
     #[Override]
-    public function data(): array
+    public function data(): TsEnumDto
     {
-        return [
-            'enumName' => $this->enumName,
-            'description' => $this->description,
-            'filePath' => $this->filePath,
-            'cases' => $this->cases,
-            'methods' => $this->methods,
-            'staticMethods' => $this->staticMethods,
-            'caseKinds' => $this->caseKinds,
-            'caseTypes' => $this->caseTypes,
-            'backed' => $this->backed,
-        ];
+        return new TsEnumDto(
+            enumName: $this->enumName,
+            description: $this->description,
+            filePath: $this->filePath,
+            filename: $this->filename(),
+            cases: $this->cases,
+            methods: $this->methods,
+            staticMethods: $this->staticMethods,
+            caseKinds: $this->caseKinds,
+            caseTypes: $this->caseTypes,
+            backed: $this->backed,
+        );
     }
 
     #[Override]
