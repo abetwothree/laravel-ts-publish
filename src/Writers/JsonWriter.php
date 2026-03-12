@@ -32,7 +32,8 @@ class JsonWriter
         $content = $this->createJsonContent($runner);
 
         if (config()->boolean('ts-publish.output_to_files')) {
-            $outputPath = config()->string('ts-publish.json_output_directory');
+            $jsonDir = config('ts-publish.json_output_directory');
+            $outputPath = is_string($jsonDir) ? $jsonDir : config()->string('ts-publish.output_directory');
             $filename = config()->string('ts-publish.json_filename');
 
             $this->filesystem->ensureDirectoryExists($outputPath);

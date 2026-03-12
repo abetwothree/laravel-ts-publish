@@ -49,7 +49,8 @@ class GlobalsWriter
         $content = view($template, $viewData)->render();
 
         if (config()->boolean('ts-publish.output_to_files')) {
-            $outputPath = config()->string('ts-publish.global_directory');
+            $globalDir = config('ts-publish.global_directory');
+            $outputPath = is_string($globalDir) ? $globalDir : config()->string('ts-publish.output_directory');
             $filename = config()->string('ts-publish.global_filename');
 
             $this->filesystem->ensureDirectoryExists($outputPath);

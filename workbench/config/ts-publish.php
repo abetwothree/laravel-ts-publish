@@ -242,9 +242,10 @@ return [
     */
     'output_globals_file' => false,
 
-    'global_directory' => resource_path('/js/types/'),
-
     'global_filename' => 'laravel-ts-global.d.ts',
+
+    /* Defaults to output_directory setting */
+    'global_directory' => null,
 
     'models_namespace' => 'models',
 
@@ -262,7 +263,8 @@ return [
 
     'json_filename' => 'laravel-ts-definitions.json',
 
-    'json_output_directory' => resource_path('/js/types/'),
+    /* Defaults to output_directory setting */
+    'json_output_directory' => null,
 
     /*
     |--------------------------------------------------------------------------
@@ -276,7 +278,8 @@ return [
 
     'collected_files_json_filename' => 'laravel-ts-collected-files.json',
 
-    'collected_files_json_output_directory' => resource_path('/js/types/'),
+    /* Defaults to output_directory setting */
+    'collected_files_json_output_directory' => null,
 
     /*
     |--------------------------------------------------------------------------
