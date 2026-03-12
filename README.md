@@ -114,6 +114,40 @@ The same options are available for enums with `included_enums`, `excluded_enums`
 > [!TIP]
 > Include and exclude settings accept both fully-qualified class names and directory paths. When a directory is provided, all matching classes within it will be discovered automatically.
 
+#### Conditional Publishing
+
+You can choose to publish only enums or only models, either through configuration or command flags.
+
+##### Via Configuration
+
+Disable enum or model publishing entirely in the config file:
+
+```php
+// config/ts-publish.php
+
+'publish_enums' => true,
+'publish_models' => true,
+```
+
+Setting either to `false` will skip that type on every run, including automatic post-migration publishing.
+
+##### Via Command Flags
+
+Use the `--only-enums` or `--only-models` flags to limit a single run:
+
+```bash
+php artisan ts:publish --only-enums
+php artisan ts:publish --only-models
+```
+
+These flags cannot be combined — passing both will return an error.
+
+##### Config & Flag Conflicts
+
+When a command flag requests a type that is disabled in config (e.g. `--only-enums` while `publish_enums` is `false`), the command will prompt you to confirm whether to override the config setting. In non-interactive environments (CI, queued jobs, post-migration hooks), the config value is respected and the command exits gracefully.
+
+If both types end up disabled (both config values are `false` and no override flag is given), the command prints a warning and exits with a success status.
+
 ## Casing Configurations
 
 This package provides two independent config options to control the casing of generated property and method names:
@@ -1434,6 +1468,8 @@ Below is a quick reference of all available configuration options:
 | `run_after_migrate`                   | `bool`     | `true`                               | Re-publish types after running migrations                        |
 | `output_to_files`                     | `bool`     | `true`                               | Write generated TypeScript to `.ts` files                        |
 | `output_directory`                    | `string`   | `resources/js/types/`                | Directory where TypeScript files are written                     |
+| `publish_enums`                       | `bool`     | `true`                               | Enable or disable enum publishing                                |
+| `publish_models`                      | `bool`     | `true`                               | Enable or disable model publishing                               |
 | `use_type_imports`                    | `bool`     | `true`                               | Use `import type` instead of `import` in model files             |
 | `modular_publishing`                  | `bool`     | `false`                              | Organize output into namespace-derived directory trees           |
 | `namespace_strip_prefix`              | `string`   | `''`                                 | Strip this prefix from namespaces in modular mode                |

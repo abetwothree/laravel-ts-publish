@@ -12,23 +12,33 @@ use AbeTwoThree\LaravelTsPublish\Runners\RunnerForSource;
 use Illuminate\Console\Command;
 use InvalidArgumentException;
 
+use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\intro;
 use function Laravel\Prompts\outro;
 use function Laravel\Prompts\table;
+use function Laravel\Prompts\warning;
 
 class TsPublishCommand extends Command
 {
     protected $signature = 'ts:publish
         {--preview=false : Output generated TypeScript declarations to the console instead of writing to files}
-        {--source= : FQCN or file path of a specific enum or model to republish}';
+        {--source= : FQCN or file path of a specific enum or model to republish}
+        {--only-enums : Only publish enums (ignoring models)}
+        {--only-models : Only publish models (ignoring enums)}';
 
     protected $description = 'Publish All TypeScript files from enums & models';
 
     public function handle(): int
     {
         LaravelTsPublish::callCommandWith();
+
+        if ($this->option('only-enums') && $this->option('only-models')) {
+            error('Cannot use --only-enums and --only-models together');
+
+            return self::FAILURE;
+        }
 
         /** @var string|null $source */
         $source = $this->option('source');
@@ -44,6 +54,13 @@ class TsPublishCommand extends Command
         intro('ts:publish');
 
         $runner = resolve(Runner::class);
+        $flags = $this->resolvePublishFlags();
+
+        if ($flags === null) {
+            return self::SUCCESS;
+        }
+
+        [$runner->shouldPublishEnums, $runner->shouldPublishModels] = $flags;
         $runner->run();
 
         if ($preview) {
@@ -69,6 +86,13 @@ class TsPublishCommand extends Command
 
         try {
             $runner = new RunnerForSource($source);
+            $flags = $this->resolvePublishFlags();
+
+            if ($flags === null) {
+                return self::SUCCESS;
+            }
+
+            [$runner->shouldPublishEnums, $runner->shouldPublishModels] = $flags;
             $runner->run();
         } catch (InvalidArgumentException $e) {
             error($e->getMessage());
@@ -88,6 +112,63 @@ class TsPublishCommand extends Command
         outro("{$enumCount} enums, {$modelCount} models — All done");
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Resolve the final publish flags from config values and command options.
+     *
+     * @return array{0: bool, 1: bool}|null [shouldPublishEnums, shouldPublishModels] or null to abort
+     */
+    protected function resolvePublishFlags(): ?array
+    {
+        $configEnums = config()->boolean('ts-publish.publish_enums');
+        $configModels = config()->boolean('ts-publish.publish_models');
+        $onlyEnums = (bool) $this->option('only-enums');
+        $onlyModels = (bool) $this->option('only-models');
+
+        $shouldPublishEnums = $configEnums;
+        $shouldPublishModels = $configModels;
+
+        if ($onlyEnums) {
+            $shouldPublishModels = false;
+
+            if (! $configEnums) {
+                $shouldPublishEnums = $this->promptConfigOverride('enums');
+
+                if (! $shouldPublishEnums) {
+                    return null;
+                }
+            }
+        }
+
+        if ($onlyModels) {
+            $shouldPublishEnums = false;
+
+            if (! $configModels) {
+                $shouldPublishModels = $this->promptConfigOverride('models');
+
+                if (! $shouldPublishModels) {
+                    return null;
+                }
+            }
+        }
+
+        if (! $shouldPublishEnums && ! $shouldPublishModels) {
+            warning('Both enums and models are disabled in config. Nothing to publish.');
+
+            return null;
+        }
+
+        return [$shouldPublishEnums, $shouldPublishModels];
+    }
+
+    protected function promptConfigOverride(string $type): bool
+    {
+        if (! $this->input->isInteractive()) {
+            return false;
+        }
+
+        return confirm("Config has {$type} publishing disabled. Override and publish {$type} anyway?", default: false);
     }
 
     protected function createPreview(Runner|RunnerForSource $runner): void

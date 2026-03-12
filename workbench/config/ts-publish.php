@@ -161,10 +161,16 @@ return [
     |
     | This will write "enums" & "models" folders with a file for each class.
     | It will create a "barrel" index.ts file to export all types.
+    |
+    | You can conditionally only publish enums or models by setting the options below.
     */
     'output_to_files' => true,
 
     'output_directory' => resource_path('/js/types/'),
+
+    'publish_enums' => true,
+
+    'publish_models' => true,
 
     /*
     |--------------------------------------------------------------------------

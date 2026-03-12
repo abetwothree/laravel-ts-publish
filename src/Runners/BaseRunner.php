@@ -38,5 +38,9 @@ abstract class BaseRunner
 
     public protected(set) string $watcherJsonContent = '';
 
+    public bool $shouldPublishEnums = true;
+
+    public bool $shouldPublishModels = true;
+
     abstract public function run(): void;
 }

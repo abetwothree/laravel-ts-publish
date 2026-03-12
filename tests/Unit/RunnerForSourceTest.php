@@ -106,3 +106,15 @@ test('writes single model file to disk', function () {
     // Cleanup
     (new Filesystem)->deleteDirectory($outputDir);
 });
+
+test('throws when enum publishing is disabled', function () {
+    $runner = new RunnerForSource('Workbench\App\Enums\Status');
+    $runner->shouldPublishEnums = false;
+    $runner->run();
+})->throws(InvalidArgumentException::class, 'Enum publishing is disabled');
+
+test('throws when model publishing is disabled', function () {
+    $runner = new RunnerForSource('Workbench\App\Models\User');
+    $runner->shouldPublishModels = false;
+    $runner->run();
+})->throws(InvalidArgumentException::class, 'Model publishing is disabled');

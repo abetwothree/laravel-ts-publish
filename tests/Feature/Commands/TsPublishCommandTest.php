@@ -156,3 +156,88 @@ test('ts:publish --source writes file to disk', function () {
     // Cleanup
     (new Filesystem)->deleteDirectory($outputDir);
 });
+
+test('ts:publish --only-enums shows only enum content in preview', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-enums' => true])
+        ->assertSuccessful()
+        ->expectsOutputToContain('Enums:')
+        ->doesntExpectOutputToContain('Models:');
+});
+
+test('ts:publish --only-models shows only model content in preview', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-models' => true])
+        ->assertSuccessful()
+        ->expectsOutputToContain('Models:')
+        ->doesntExpectOutputToContain('Enums:');
+});
+
+test('ts:publish --only-enums writes only enum files to disk', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-only-enums-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+
+    $this->artisan('ts:publish', ['--preview' => 'false', '--only-enums' => true])
+        ->assertSuccessful();
+
+    expect(is_dir("$outputDir/enums"))->toBeTrue()
+        ->and(is_dir("$outputDir/models"))->toBeFalse();
+
+    // Cleanup
+    (new Filesystem)->deleteDirectory($outputDir);
+});
+
+test('ts:publish --only-models writes only model files to disk', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-only-models-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+
+    $this->artisan('ts:publish', ['--preview' => 'false', '--only-models' => true])
+        ->assertSuccessful();
+
+    expect(is_dir("$outputDir/models"))->toBeTrue()
+        ->and(is_dir("$outputDir/enums"))->toBeFalse();
+
+    // Cleanup
+    (new Filesystem)->deleteDirectory($outputDir);
+});
+
+test('ts:publish fails when both --only-enums and --only-models are passed', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-enums' => true, '--only-models' => true])
+        ->assertFailed();
+});
+
+test('ts:publish warns and exits when both config types are disabled', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.publish_enums', false);
+    config()->set('ts-publish.publish_models', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true'])
+        ->assertSuccessful()
+        ->expectsOutputToContain('Nothing to publish');
+});
+
+test('ts:publish respects publish_enums false in config', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.publish_enums', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true'])
+        ->assertSuccessful()
+        ->expectsOutputToContain('Models:')
+        ->doesntExpectOutputToContain('Enums:');
+});
+
+test('ts:publish respects publish_models false in config', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.publish_models', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true'])
+        ->assertSuccessful()
+        ->expectsOutputToContain('Enums:')
+        ->doesntExpectOutputToContain('Models:');
+});
