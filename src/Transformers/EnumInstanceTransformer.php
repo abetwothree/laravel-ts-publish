@@ -40,7 +40,8 @@ class EnumInstanceTransformer
         $methods = [];
 
         foreach ($this->data->methods as $methodName => $methodData) {
-            $methods[$methodName] = $methodData['returns'][$this->enum->name] ?? '';
+            $resolvedName = $methodData['name'] ?? $methodName;
+            $methods[$resolvedName] = $methodData['returns'][$this->enum->name];
         }
 
         return $methods;
@@ -52,7 +53,8 @@ class EnumInstanceTransformer
         $static = [];
 
         foreach ($this->data->staticMethods as $methodName => $methodData) {
-            $static[$methodName] = $methodData['return'] ?? '';
+            $resolvedName = $methodData['name'] ?? $methodName;
+            $static[$resolvedName] = $methodData['return'];
         }
 
         return $static;
