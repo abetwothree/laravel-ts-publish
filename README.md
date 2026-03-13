@@ -1281,7 +1281,7 @@ public function toArray($request)
     return [
         'id' => $this->id,
         'name' => $this->name,
-        'status' => new EnumResource($this->status), // Assuming $this->status is model property casted to the Status enum
+        'status' => new EnumResource($this->resource->status), // Assuming "status" is a model property casted to the Status enum
     ];
 }
 ```
