@@ -18,6 +18,7 @@ use Illuminate\Database\Eloquent\Casts\AsStringable;
 use Illuminate\Database\Eloquent\Casts\AsUri;
 use Illuminate\Support\Carbon as SupportCarbon;
 use Illuminate\Support\Collection;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 
 class TypeScriptMap
 {
@@ -45,7 +46,7 @@ class TypeScriptMap
             AsEncryptedCollection::class => 'unknown[]',
             AsEnumArrayObject::class => 'unknown[]',
             AsEnumCollection::class => 'unknown[]',
-            \Illuminate\Database\Eloquent\Collection::class => 'Record<string, unknown>',
+            EloquentCollection::class => 'Record<string, unknown>',
             Collection::class => 'unknown[] | Record<string, unknown>',
 
             // Array types
