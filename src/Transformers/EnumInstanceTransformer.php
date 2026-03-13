@@ -11,7 +11,7 @@ use UnitEnum;
  * @phpstan-type StaticMethodList = array<string, mixed>
  * @phpstan-type EnumInstanceData = array<string, mixed>
  */
-class EnumInstanceTranformer
+class EnumInstanceTransformer
 {
     protected string|int $value;
 
