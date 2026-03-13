@@ -76,7 +76,7 @@ declare global {
             updated_at: string | null;
             deleted_at: string | null;
             // Mutators
-            /** Full path breadcrumb (e.g. &quot;Electronics &gt; Phones &gt; Smartphones&quot;) */
+            /** Full path breadcrumb (e.g. "Electronics > Phones > Smartphones") */
             breadcrumb: string;
             // Relations
             /** Self-referencing: parent category */
@@ -324,7 +324,7 @@ declare global {
             last_login_at: string | null;
             last_login_ip: string | null;
             // Mutators
-            /** User initials (e.g. &quot;JD&quot; for &quot;John Doe&quot;) */
+            /** User initials (e.g. "JD" for "John Doe") */
             initials: string;
             /** Whether the user is a premium member */
             is_premium: boolean;
@@ -354,7 +354,7 @@ declare global {
             images: Image[];
             images_count: number;
             images_exists: boolean;
-            /** Get the entity&#039;s notifications. */
+            /** Get the entity's notifications. */
             notifications: DatabaseNotification[];
             notifications_count: number;
             notifications_exists: boolean;
@@ -433,7 +433,7 @@ declare global {
             size_for_humans: string;
             /** Whether the image is landscape orientation */
             is_landscape: boolean;
-            /** Aspect ratio as a string (e.g. &quot;16:9&quot;) or null if dimensions not set */
+            /** Aspect ratio as a string (e.g. "16:9") or null if dimensions not set */
             aspect_ratio: string | null;
             // Relations
             /** Polymorphic parent (Product, Post, User, etc.) */

@@ -8,7 +8,8 @@ use Illuminate\Contracts\Support\Jsonable;
 use JsonSerializable;
 
 /**
- * @phpstan-type CasesList = list<array{name: string, value: string|int, description: string}>
+ * @phpstan-type CaseData = array{name: string, value: string|int, description: string}
+ * @phpstan-type CasesList = list<CaseData>
  * @phpstan-type MethodsList = array<string, array{name: string, description: string, returns: array<string, mixed>}>
  * @phpstan-type StaticMethodsList = array<string, array{name: string, description: string, return: mixed}>
  * @phpstan-type CaseKindsList = list<string>

@@ -31,16 +31,6 @@ describe('EnumResource with backed int enum', function () {
             ->toHaveKey('icon', 'pencil')
             ->toHaveKey('color', 'gray');
     });
-
-    it('includes static method return values', function () {
-        $result = (new EnumResource(Status::Published))->toArray(request());
-
-        expect($result)
-            ->toHaveKey('valueLabelPair')
-            ->toHaveKey('names', ['Draft', 'Published'])
-            ->toHaveKey('values', [0, 1])
-            ->toHaveKey('options', ['Draft' => 0, 'Published' => 1]);
-    });
 });
 
 describe('EnumResource with unit enum', function () {
@@ -91,10 +81,7 @@ describe('EnumResource with backed string enum', function () {
             ->toBeArray()
             ->toHaveKey('name', 'Usd')
             ->toHaveKey('value', 'USD')
-            ->toHaveKey('backed', true)
-            ->toHaveKey('symbols')
-            ->toHaveKey('default', 'USD')
-            ->toHaveKey('details');
+            ->toHaveKey('backed', true);
     });
 });
 
@@ -110,8 +97,7 @@ describe('EnumResource with parameterized methods', function () {
             ->toHaveKey('label', 'High Priority')
             ->toHaveKey('badgeColor', 'bg-orange-100 text-orange-800')
             ->toHaveKey('icon', 'arrow-up')
-            ->toHaveKey('isAboveThreshold', true)
-            ->toHaveKey('filterByMinimum');
+            ->toHaveKey('isAboveThreshold', true);
     });
 
     it('excludes methods with required params but no attribute params', function () {
@@ -142,5 +128,35 @@ describe('EnumResource with minimal enum', function () {
             ->toHaveKey('backed', false);
 
         expect($result)->toHaveCount(3);
+    });
+});
+
+describe('EnumResource with TsCase overrides', function () {
+    it('returns the overridden name and value from TsCase', function () {
+        $result = (new EnumResource(Color::Amber))->toArray(request());
+
+        expect($result)
+            ->toBeArray()
+            ->toHaveKey('name', 'Yellow')
+            ->toHaveKey('value', 'yellow')
+            ->toHaveKey('backed', true)
+            ->toHaveKey('hex', '#F59E0B')
+            ->toHaveKey('rgb', [245, 158, 11]);
+    });
+
+    it('returns the overridden name with original value when only name is overridden', function () {
+        $result = (new EnumResource(Color::Gray))->toArray(request());
+
+        expect($result)
+            ->toHaveKey('name', 'Slate')
+            ->toHaveKey('value', 'slate');
+    });
+
+    it('returns original name and value when no TsCase override exists', function () {
+        $result = (new EnumResource(Color::Purple))->toArray(request());
+
+        expect($result)
+            ->toHaveKey('name', 'Purple')
+            ->toHaveKey('value', 'purple');
     });
 });

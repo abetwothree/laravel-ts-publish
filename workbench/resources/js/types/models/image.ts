@@ -23,7 +23,7 @@ export interface ImageMutators
     size_for_humans: string;
     /** Whether the image is landscape orientation */
     is_landscape: boolean;
-    /** Aspect ratio as a string (e.g. &quot;16:9&quot;) or null if dimensions not set */
+    /** Aspect ratio as a string (e.g. "16:9") or null if dimensions not set */
     aspect_ratio: string | null;
 }
 

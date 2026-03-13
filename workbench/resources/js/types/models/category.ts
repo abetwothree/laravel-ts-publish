@@ -17,7 +17,7 @@ export interface Category
 
 export interface CategoryMutators
 {
-    /** Full path breadcrumb (e.g. &quot;Electronics &gt; Phones &gt; Smartphones&quot;) */
+    /** Full path breadcrumb (e.g. "Electronics > Phones > Smartphones") */
     breadcrumb: string;
 }
 

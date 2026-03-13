@@ -7,8 +7,9 @@ use BackedEnum;
 use UnitEnum;
 
 /**
+ * @phpstan-import-type CaseData from TsEnumDto
+ *
  * @phpstan-type MethodList = array<string, mixed>
- * @phpstan-type StaticMethodList = array<string, mixed>
  * @phpstan-type EnumInstanceData = array<string, mixed>
  */
 class EnumInstanceTransformer
@@ -25,38 +26,36 @@ class EnumInstanceTransformer
     /** @return EnumInstanceData */
     public function data(): array
     {
+        $case = $this->matchingCase();
+
         return [
-            'name' => $this->enum->name,
-            'value' => $this->value,
+            'name' => $case['name'],
+            'value' => $case['value'],
             'backed' => $this->data->backed,
             ...$this->resolvedMethods(),
-            ...$this->resolvedStaticMethods(),
         ];
+    }
+
+    /**
+     * Find the matching case in the DTO (which has TsCase overrides applied).
+     *
+     * @return CaseData
+     */
+    protected function matchingCase(): array
+    {
+        $index = array_search($this->enum, $this->enum::cases(), true);
+
+        /** @var int $index */
+        return $this->data->cases[$index];
     }
 
     /** @return MethodList */
     protected function resolvedMethods(): array
     {
-        $methods = [];
-
-        foreach ($this->data->methods as $methodName => $methodData) {
-            $resolvedName = $methodData['name'] ?? $methodName;
-            $methods[$resolvedName] = $methodData['returns'][$this->enum->name];
-        }
-
-        return $methods;
-    }
-
-    /** @return StaticMethodList */
-    protected function resolvedStaticMethods(): array
-    {
-        $static = [];
-
-        foreach ($this->data->staticMethods as $methodName => $methodData) {
-            $resolvedName = $methodData['name'] ?? $methodName;
-            $static[$resolvedName] = $methodData['return'];
-        }
-
-        return $static;
+        return collect($this->data->methods)
+            ->mapWithKeys(fn ($methodData) => [
+                $methodData['name'] => $methodData['returns'][$this->enum->name] ?? '',
+            ])
+            ->all();
     }
 }
