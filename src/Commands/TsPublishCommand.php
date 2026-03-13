@@ -10,8 +10,8 @@ use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Runners\RunnerForSource;
 use Illuminate\Console\Command;
-use InvalidArgumentException;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\error;
@@ -266,11 +266,11 @@ class TsPublishCommand extends Command
         $parts = [];
 
         if ($enumCount > 0) {
-            $parts[] = Str::plural("enum", $enumCount, true);
+            $parts[] = Str::plural('enum', $enumCount, true);
         }
 
         if ($modelCount > 0) {
-            $parts[] = Str::plural("model", $modelCount, true);
+            $parts[] = Str::plural('model', $modelCount, true);
         }
 
         if (count($parts) > 0) {
