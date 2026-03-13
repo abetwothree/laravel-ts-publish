@@ -16,14 +16,14 @@ declare global {
     export namespace {{ $namespace }} {
 @foreach ($transformers as $transformer)
 @if($transformer->description)
-        /** {{ LaravelTsPublish::sanitizeJsDoc($transformer->description) }} */
+        /** {!! LaravelTsPublish::sanitizeJsDoc($transformer->description) !!} */
 @endif
         export interface {{ $transformer->modelName }} {
 @if (count($transformer->columns) > 0)
             // Columns
 @foreach($transformer->columns as $name => $column)
 @if($column['description'])
-            /** {{ LaravelTsPublish::sanitizeJsDoc($column['description']) }} */
+            /** {!! LaravelTsPublish::sanitizeJsDoc($column['description']) !!} */
 @endif
             {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $column['type'] !!};
 @endforeach
@@ -32,7 +32,7 @@ declare global {
             // Mutators
 @foreach($transformer->mutators as $name => $mutator)
 @if($mutator['description'])
-            /** {{ LaravelTsPublish::sanitizeJsDoc($mutator['description']) }} */
+            /** {!! LaravelTsPublish::sanitizeJsDoc($mutator['description']) !!} */
 @endif
             {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $mutator['type'] !!};
 @endforeach
@@ -41,7 +41,7 @@ declare global {
             // Relations
 @foreach($transformer->relations as $name => $relation)
 @if($relation['description'])
-            /** {{ LaravelTsPublish::sanitizeJsDoc($relation['description']) }} */
+            /** {!! LaravelTsPublish::sanitizeJsDoc($relation['description']) !!} */
 @endif
             {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $relation['type'] !!};
             {!! LaravelTsPublish::validJsObjectKey($name.'_count') !!}: number;
@@ -58,13 +58,13 @@ declare global {
     export namespace {{ $namespace }} {
 @foreach ($transformers as $transformer)
 @if($transformer->description)
-        /** {{ LaravelTsPublish::sanitizeJsDoc($transformer->description) }} */
+        /** {!! LaravelTsPublish::sanitizeJsDoc($transformer->description) !!} */
 @endif
         export interface {{ $transformer->enumName }}
         {
 @foreach($transformer->cases as $case)
 @if($case['description'])
-            /** {{ LaravelTsPublish::sanitizeJsDoc($case['description']) }} */
+            /** {!! LaravelTsPublish::sanitizeJsDoc($case['description']) !!} */
 @endif
             {!! LaravelTsPublish::validJsObjectKey($case['name']) !!}: {!! LaravelTsPublish::toJsLiteral($case['value']) !!},
 @endforeach
@@ -86,14 +86,14 @@ declare global {
     export namespace {{ $modelsNamespace }} {
 @foreach ($models as $transformer)
 @if($transformer->description)
-        /** {{ LaravelTsPublish::sanitizeJsDoc($transformer->description) }} */
+        /** {!! LaravelTsPublish::sanitizeJsDoc($transformer->description) !!} */
 @endif
         export interface {{ $transformer->modelName }} {
 @if (count($transformer->columns) > 0)
             // Columns
 @foreach($transformer->columns as $name => $column)
 @if($column['description'])
-            /** {{ LaravelTsPublish::sanitizeJsDoc($column['description']) }} */
+            /** {!! LaravelTsPublish::sanitizeJsDoc($column['description']) !!} */
 @endif
             {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $column['type'] !!};
 @endforeach
@@ -102,7 +102,7 @@ declare global {
             // Mutators
 @foreach($transformer->mutators as $name => $mutator)
 @if($mutator['description'])
-            /** {{ LaravelTsPublish::sanitizeJsDoc($mutator['description']) }} */
+            /** {!! LaravelTsPublish::sanitizeJsDoc($mutator['description']) !!} */
 @endif
             {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $mutator['type'] !!};
 @endforeach
@@ -111,7 +111,7 @@ declare global {
             // Relations
 @foreach($transformer->relations as $name => $relation)
 @if($relation['description'])
-            /** {{ LaravelTsPublish::sanitizeJsDoc($relation['description']) }} */
+            /** {!! LaravelTsPublish::sanitizeJsDoc($relation['description']) !!} */
 @endif
             {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $relation['type'] !!};
             {!! LaravelTsPublish::validJsObjectKey($name.'_count') !!}: number;
@@ -127,13 +127,13 @@ declare global {
     export namespace {{ $enumsNamespace }} {
 @foreach ($enums as $transformer)
 @if($transformer->description)
-        /** {{ LaravelTsPublish::sanitizeJsDoc($transformer->description) }} */
+        /** {!! LaravelTsPublish::sanitizeJsDoc($transformer->description) !!} */
 @endif
         export interface {{ $transformer->enumName }}
         {
 @foreach($transformer->cases as $case)
 @if($case['description'])
-            /** {{ LaravelTsPublish::sanitizeJsDoc($case['description']) }} */
+            /** {!! LaravelTsPublish::sanitizeJsDoc($case['description']) !!} */
 @endif
             {!! LaravelTsPublish::validJsObjectKey($case['name']) !!}: {!! LaravelTsPublish::toJsLiteral($case['value']) !!},
 @endforeach
