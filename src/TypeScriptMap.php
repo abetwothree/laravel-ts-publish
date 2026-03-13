@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Casts\AsEnumCollection;
 use Illuminate\Database\Eloquent\Casts\AsFluent;
 use Illuminate\Database\Eloquent\Casts\AsStringable;
 use Illuminate\Database\Eloquent\Casts\AsUri;
+use Illuminate\Support\Carbon as SupportCarbon;
 use Illuminate\Support\Collection;
 
 class TypeScriptMap
@@ -97,7 +98,7 @@ class TypeScriptMap
             'timestamp' => fn () => $this->validateDate(),
             Carbon::class => fn () => $this->validateDate(),
             CarbonImmutable::class => fn () => $this->validateDate(),
-            \Illuminate\Support\Carbon::class => fn () => $this->validateDate(),
+            SupportCarbon::class => fn () => $this->validateDate(),
 
             'time' => 'string',
             'timetz' => 'string',
