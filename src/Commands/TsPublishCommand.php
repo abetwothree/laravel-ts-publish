@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Runners\RunnerForSource;
 use Illuminate\Console\Command;
 use InvalidArgumentException;
+use Illuminate\Support\Str;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\error;
@@ -259,17 +260,17 @@ class TsPublishCommand extends Command
 
     protected function createCompactSummary(Runner|RunnerForSource $runner): void
     {
-        $enumCount = count($runner->enumGenerators);
-        $modelCount = count($runner->modelGenerators);
+        $enumCount = $runner->enumGenerators->count();
+        $modelCount = $runner->modelGenerators->count();
 
         $parts = [];
 
         if ($enumCount > 0) {
-            $parts[] = "{$enumCount} enum".($enumCount !== 1 ? 's' : '');
+            $parts[] = Str::plural("enum", $enumCount, true);
         }
 
         if ($modelCount > 0) {
-            $parts[] = "{$modelCount} model".($modelCount !== 1 ? 's' : '');
+            $parts[] = Str::plural("model", $modelCount, true);
         }
 
         if (count($parts) > 0) {
