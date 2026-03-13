@@ -4,6 +4,20 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish;
 
+use Carbon\Carbon;
+use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Casts\AsArrayObject;
+use Illuminate\Database\Eloquent\Casts\AsBinary;
+use Illuminate\Database\Eloquent\Casts\AsCollection;
+use Illuminate\Database\Eloquent\Casts\AsEncryptedArrayObject;
+use Illuminate\Database\Eloquent\Casts\AsEncryptedCollection;
+use Illuminate\Database\Eloquent\Casts\AsEnumArrayObject;
+use Illuminate\Database\Eloquent\Casts\AsEnumCollection;
+use Illuminate\Database\Eloquent\Casts\AsFluent;
+use Illuminate\Database\Eloquent\Casts\AsStringable;
+use Illuminate\Database\Eloquent\Casts\AsUri;
+use Illuminate\Support\Collection;
+
 class TypeScriptMap
 {
     /** @var array<string, string|(callable(): string)>|null */
@@ -20,18 +34,18 @@ class TypeScriptMap
 
         $map = [
             // Laravel built-in cast classes (FQN — resolved before class_exists check)
-            \Illuminate\Database\Eloquent\Casts\AsStringable::class => 'string',
-            \Illuminate\Database\Eloquent\Casts\AsUri::class => 'string',
-            \Illuminate\Database\Eloquent\Casts\AsBinary::class => 'string',
-            \Illuminate\Database\Eloquent\Casts\AsFluent::class => 'object',
-            \Illuminate\Database\Eloquent\Casts\AsArrayObject::class => 'unknown[]',
-            \Illuminate\Database\Eloquent\Casts\AsCollection::class => 'unknown[]',
-            \Illuminate\Database\Eloquent\Casts\AsEncryptedArrayObject::class => 'unknown[]',
-            \Illuminate\Database\Eloquent\Casts\AsEncryptedCollection::class => 'unknown[]',
-            \Illuminate\Database\Eloquent\Casts\AsEnumArrayObject::class => 'unknown[]',
-            \Illuminate\Database\Eloquent\Casts\AsEnumCollection::class => 'unknown[]',
+            AsStringable::class => 'string',
+            AsUri::class => 'string',
+            AsBinary::class => 'string',
+            AsFluent::class => 'object',
+            AsArrayObject::class => 'unknown[]',
+            AsCollection::class => 'unknown[]',
+            AsEncryptedArrayObject::class => 'unknown[]',
+            AsEncryptedCollection::class => 'unknown[]',
+            AsEnumArrayObject::class => 'unknown[]',
+            AsEnumCollection::class => 'unknown[]',
             \Illuminate\Database\Eloquent\Collection::class => 'Record<string, unknown>',
-            \Illuminate\Support\Collection::class => 'unknown[] | Record<string, unknown>',
+            Collection::class => 'unknown[] | Record<string, unknown>',
 
             // Array types
             'array' => 'unknown[]',
@@ -81,8 +95,8 @@ class TypeScriptMap
             'immutable_datetime' => fn () => $this->validateDate(),
             'immutable_custom_datetime' => fn () => $this->validateDate(),
             'timestamp' => fn () => $this->validateDate(),
-            \Carbon\Carbon::class => fn () => $this->validateDate(),
-            \Carbon\CarbonImmutable::class => fn () => $this->validateDate(),
+            Carbon::class => fn () => $this->validateDate(),
+            CarbonImmutable::class => fn () => $this->validateDate(),
             \Illuminate\Support\Carbon::class => fn () => $this->validateDate(),
 
             'time' => 'string',

@@ -1,6 +1,7 @@
 <?php
 
 use AbeTwoThree\LaravelTsPublish\TypeScriptMap;
+use Illuminate\Support\Collection;
 
 beforeEach(function () {
     // Reset the static cache before each test
@@ -20,14 +21,14 @@ test('gather returns an array with expected type mappings', function () {
         ->toHaveKey('array')
         ->toHaveKey('json')
         ->toHaveKey('date')
-        ->toHaveKey(strtolower(Illuminate\Support\Collection::class))
+        ->toHaveKey(strtolower(Collection::class))
         ->toHaveKey(strtolower(Illuminate\Database\Eloquent\Collection::class))
         ->toHaveKey('null')
         ->and($map['string'])->toBe('string')
         ->and($map['integer'])->toBe('number')
         ->and($map['boolean'])->toBe('boolean')
         ->and($map['array'])->toBe('unknown[]')
-        ->and($map[strtolower(Illuminate\Support\Collection::class)])->toBe('unknown[] | Record<string, unknown>')
+        ->and($map[strtolower(Collection::class)])->toBe('unknown[] | Record<string, unknown>')
         ->and($map[strtolower(Illuminate\Database\Eloquent\Collection::class)])->toBe('Record<string, unknown>')
         ->and($map['null'])->toBe('null');
 });

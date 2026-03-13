@@ -4,8 +4,10 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
+use Workbench\App\Models\User;
 use Workbench\Shipping\Enums\Status as ShippingStatus;
 
 use function Orchestra\Testbench\workbench_path;
@@ -133,22 +135,22 @@ describe('phpToTypeScriptType', function () {
     });
 
     test('phpToTypeScriptType resolves any other class to its basename', function () {
-        $result = $this->service->phpToTypeScriptType(\Workbench\App\Models\User::class);
+        $result = $this->service->phpToTypeScriptType(User::class);
 
         expect($result['type'])->toBe('User')
             ->and($result['classes'])->toBe(['User'])
-            ->and($result['classFqcns'])->toBe([\Workbench\App\Models\User::class]);
+            ->and($result['classFqcns'])->toBe([User::class]);
     });
 
     test('phpToTypeScriptType resolves Illuminate support collections to array or object shapes', function () {
-        $result = $this->service->phpToTypeScriptType(\Illuminate\Support\Collection::class);
+        $result = $this->service->phpToTypeScriptType(Collection::class);
 
         expect($result['type'])->toBe('unknown[] | Record<string, unknown>')
             ->and($result['classes'])->toBeEmpty();
     });
 
     test('phpToTypeScriptType resolves Eloquent collections to arrays', function () {
-        $result = $this->service->phpToTypeScriptType(\Illuminate\Database\Eloquent\Collection::class);
+        $result = $this->service->phpToTypeScriptType(Illuminate\Database\Eloquent\Collection::class);
 
         expect($result['type'])->toBe('Record<string, unknown>')
             ->and($result['classes'])->toBeEmpty();
@@ -219,7 +221,7 @@ describe('resolveReflectionType', function () {
     });
 
     test('resolveReflectionType handles intersection types', function () {
-        $closure = fn (): \Countable&\Iterator => throw new \RuntimeException('not called');
+        $closure = fn (): Countable&\Iterator => throw new RuntimeException('not called');
         $returnType = (new ReflectionFunction($closure))->getReturnType();
 
         $result = $this->service->resolveReflectionType($returnType);

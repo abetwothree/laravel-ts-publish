@@ -13,11 +13,12 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Workbench\App\Enums\MembershipLevel;
 use Workbench\App\Enums\Role;
+use Workbench\Database\Factories\UserFactory;
 
 /** Application user account */
 class User extends Authenticatable
 {
-    /** @use HasFactory<\Workbench\Database\Factories\UserFactory> */
+    /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
 
     /**
