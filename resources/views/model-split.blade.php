@@ -50,8 +50,6 @@ export interface {{ $data->modelName }}Relations
 @endforeach
 }
 @endif
-@if (count($data->relations) > 0)
-@endif
 @if(count($data->mutators) > 0 || count($data->relations) > 0)
 
 @php
