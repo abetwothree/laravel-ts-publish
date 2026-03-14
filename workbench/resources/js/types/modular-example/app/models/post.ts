@@ -1,5 +1,7 @@
-import type { StatusType, VisibilityType, PriorityType } from '../enums';
-import type { User, Category, Comment, Tag, Image } from '.';
+import { type AsEnum } from '@tolki/enum';
+
+import type { Priority, PriorityType, Status, StatusType, Visibility, VisibilityType } from '../enums';
+import type { Category, Comment, Image, Tag, User } from '.';
 
 export interface Post
 {
@@ -25,6 +27,13 @@ export interface Post
     is_pinned: boolean;
 }
 
+export interface PostResource extends Omit<Post, 'status' | 'visibility' | 'priority'>
+{
+    status: AsEnum<typeof Status>;
+    visibility: AsEnum<typeof Visibility> | null;
+    priority: AsEnum<typeof Priority> | null;
+}
+
 export interface PostMutators
 {
     /** Title displayed in uppercase */
@@ -39,7 +48,7 @@ export interface PostRelations
 {
     // Relations
     author: User;
-    category: Category;
+    category_rel: Category;
     comments: Comment[];
     /** Polymorphic many-to-many with tags */
     tags: Tag[];
@@ -47,16 +56,18 @@ export interface PostRelations
     images: Image[];
     // Counts
     author_count: number;
-    category_count: number;
+    category_rel_count: number;
     comments_count: number;
     tags_count: number;
     images_count: number;
     // Exists
     author_exists: boolean;
-    category_exists: boolean;
+    category_rel_exists: boolean;
     comments_exists: boolean;
     tags_exists: boolean;
     images_exists: boolean;
 }
 
 export interface PostAll extends Post, PostMutators, PostRelations {}
+
+export interface PostAllResource extends PostResource, PostMutators, PostRelations {}

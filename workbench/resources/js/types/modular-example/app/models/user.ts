@@ -1,6 +1,8 @@
+import { type AsEnum } from '@tolki/enum';
+
 import type { DatabaseNotification } from '../../illuminate/notifications';
-import type { RoleType, MembershipLevelType } from '../enums';
-import type { Profile, Post, Comment, Order, Address, Team, Image } from '.';
+import type { MembershipLevel, MembershipLevelType, Role, RoleType } from '../enums';
+import type { Address, Comment, Image, Order, Post, Profile, Team } from '.';
 
 /** Application user account */
 export interface User
@@ -23,6 +25,12 @@ export interface User
     settings: { theme: "light" | "dark"; notifications: boolean; locale: string } | null;
     last_login_at: string | null;
     last_login_ip: string | null;
+}
+
+export interface UserResource extends Omit<User, 'role' | 'membership_level'>
+{
+    role: AsEnum<typeof Role> | null;
+    membership_level: AsEnum<typeof MembershipLevel> | null;
 }
 
 export interface UserMutators
@@ -70,3 +78,5 @@ export interface UserRelations
 }
 
 export interface UserAll extends User, UserMutators, UserRelations {}
+
+export interface UserAllResource extends UserResource, UserMutators, UserRelations {}

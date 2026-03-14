@@ -10,6 +10,25 @@ export {}
 /* prettier-ignore */
 declare global {
     export namespace accounting.models {
+        export interface Payment {
+            // Columns
+            id: number;
+            invoice_id: number;
+            status: PaymentStatusType;
+            method: PaymentMethodType;
+            currency: CurrencyType;
+            amount: number;
+            reference: string | null;
+            paid_at: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            // Mutators
+            due_notice: DueAtNoticeType;
+            // Relations
+            invoice: Invoice;
+            invoice_count: number;
+            invoice_exists: boolean;
+        }
         export interface Invoice {
             // Columns
             id: number;
@@ -220,9 +239,9 @@ declare global {
             author: User;
             author_count: number;
             author_exists: boolean;
-            category: Category;
-            category_count: number;
-            category_exists: boolean;
+            category_rel: Category;
+            category_rel_count: number;
+            category_rel_exists: boolean;
             comments: Comment[];
             comments_count: number;
             comments_exists: boolean;
@@ -442,6 +461,82 @@ declare global {
             imageable_exists: boolean;
         }
     }
+    export namespace blog.models {
+        export interface Reaction {
+            // Columns
+            id: number;
+            article_id: number;
+            user_id: number;
+            emoji: string;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            article: Article;
+            article_count: number;
+            article_exists: boolean;
+            user: User;
+            user_count: number;
+            user_exists: boolean;
+        }
+        export interface Article {
+            // Columns
+            id: number;
+            user_id: number;
+            title: string;
+            slug: string;
+            excerpt: string | null;
+            body: string;
+            status: ArticleStatusType;
+            content_type: ContentTypeType;
+            featured_image: string | null;
+            meta_description: string | null;
+            is_featured: boolean;
+            published_at: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            deleted_at: string | null;
+            // Relations
+            author: User;
+            author_count: number;
+            author_exists: boolean;
+            reactions: Reaction[];
+            reactions_count: number;
+            reactions_exists: boolean;
+        }
+    }
+    export namespace crm.models {
+        export interface User {
+            // Columns
+            id: number;
+            name: string;
+            email: string;
+            company: string | null;
+            status: StatusType;
+            created_at: string | null;
+            updated_at: string | null;
+        }
+        export interface Deal {
+            // Columns
+            id: number;
+            customer_id: number;
+            admin_id: number;
+            title: string;
+            status: AppStatusType;
+            crm_status: CrmStatusType;
+            value: number;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            /** The CRM customer this deal belongs to. */
+            customer: CustomerUser;
+            customer_count: number;
+            customer_exists: boolean;
+            /** The system admin/user managing this deal. */
+            admin: AdminUser;
+            admin_count: number;
+            admin_exists: boolean;
+        }
+    }
     export namespace illuminate.notifications {
         export interface DatabaseNotification {
             // Columns
@@ -482,8 +577,32 @@ declare global {
             tracking_events_count: number;
             tracking_events_exists: boolean;
         }
+        export interface TrackingEvent {
+            // Columns
+            id: number;
+            shipment_id: number;
+            status: string;
+            location: string | null;
+            description: string | null;
+            occurred_at: string;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            shipment: Shipment;
+            shipment_count: number;
+            shipment_exists: boolean;
+        }
     }
     export namespace accounting.enums {
+        export interface DueAtNotice
+        {
+            ComingUp: 'Payment due date is coming up',
+            DueToday: 'Payment is due today',
+            PastDue: 'Payment is past due',
+        }
+        export type DueAtNoticeType = 'Payment due date is coming up' | 'Payment is due today' | 'Payment is past due';
+        export type DueAtNoticeKind = 'ComingUp' | 'DueToday' | 'PastDue';
+
         export interface InvoiceStatus
         {
             Draft: 'draft',
@@ -632,7 +751,49 @@ declare global {
         export type CurrencyType = 'USD' | 'EUR' | 'GBP' | 'JPY' | 'CAD';
         export type CurrencyKind = 'Usd' | 'Eur' | 'Gbp' | 'Jpy' | 'Cad';
     }
+    export namespace blog.enums {
+        export interface ContentType
+        {
+            Post: 'post',
+            Tutorial: 'tutorial',
+            Review: 'review',
+            News: 'news',
+        }
+        export type ContentTypeType = 'post' | 'tutorial' | 'review' | 'news';
+        export type ContentTypeKind = 'Post' | 'Tutorial' | 'Review' | 'News';
+
+        export interface ArticleStatus
+        {
+            Draft: 'draft',
+            InReview: 'in_review',
+            Published: 'published',
+            Archived: 'archived',
+        }
+        export type ArticleStatusType = 'draft' | 'in_review' | 'published' | 'archived';
+        export type ArticleStatusKind = 'Draft' | 'InReview' | 'Published' | 'Archived';
+    }
+    export namespace crm.enums {
+        export interface Status
+        {
+            Lead: 'lead',
+            Prospect: 'prospect',
+            Active: 'active',
+            Churned: 'churned',
+        }
+        export type StatusType = 'lead' | 'prospect' | 'active' | 'churned';
+        export type StatusKind = 'Lead' | 'Prospect' | 'Active' | 'Churned';
+    }
     export namespace shipping.enums {
+        export interface Carrier
+        {
+            Ups: 'ups',
+            FedEx: 'fedex',
+            Usps: 'usps',
+            Dhl: 'dhl',
+        }
+        export type CarrierType = 'ups' | 'fedex' | 'usps' | 'dhl';
+        export type CarrierKind = 'Ups' | 'FedEx' | 'Usps' | 'Dhl';
+
         export interface ShipmentStatus
         {
             Pending: 'pending',
