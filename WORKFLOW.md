@@ -22,9 +22,7 @@ If you don't use the `@tolki/enum` package, make sure to set the `enums_use_tolk
 
 ### Recommended directory structure and configuration
 
-Update the directory where the files are published and then gitignore the generated files. This avoids committing a large number of generated files that are not typically used in production builds of a frontend app.
-
-The Vite plugin will trigger the publishing of enums before building assets on CI pipelines or servers, so the published files will still be available for production builds without being committed to version control.
+By default, the directory where the files are published is `resources/js/types/data`. It's recommended to gitignore the generated files to avoid committing a large number of generated files where the types are not typically used in production builds of a frontend app and the enum files can be easily regenerated on the server or CI pipeline before building assets for production. This also keeps your version control history cleaner and avoids merge conflicts in generated files.
 
 E.g.:
 
@@ -39,7 +37,7 @@ E.g.:
 /resources/js/types/data/
 ```
 
-If you use `Eslint` or `Oxlint` it's a good idea to add the published directory to the ignore list in your linter config as well.
+If you use `Eslint` or `Oxlint` it is recommend to add the published directory to the ignore list in your linter config as well.
 
 ### Importing the published files
 
@@ -73,6 +71,14 @@ Then import your types or enums like this:
 
 ```typescript
 import { Status } from '@data/enums';
+import { User } from '@data/models';
+```
+
+If you use the module publishing feature, you can also import the generated module files:
+
+```typescript
+import { Status } from '@data/app/Enums';
+import { User } from '@data/app/Models/Users';
 ```
 
 ### Add the Vite plugin for automatic publishing
@@ -101,6 +107,24 @@ Add the `ts:publish` command to the post update command hook in `composer.json` 
       "@php artisan ts:publish"
     ]
   }
+}
+```
+
+### Optionally, add the pre-command hook to your AppServiceProvider
+
+If you want to perform any additional configuration or setup before the publish command runs, you can use the `callCommandUsing` method in the `boot` method of your `AppServiceProvider` or any other service provider. See more info about this in the [Pre-Command Hook](https://github.com/abetwothree/laravel-ts-publish#pre-command-hook) section of the documentation.
+
+```php
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+
+class AppServiceProvider extends ServiceProvider
+{
+    public function boot(): void
+    {
+        LaravelTsPublish::callCommandUsing(function () {
+            // configure anything needed before the `ts:publish` command runs
+        });
+    }
 }
 ```
 

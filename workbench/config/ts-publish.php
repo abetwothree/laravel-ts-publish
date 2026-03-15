@@ -166,7 +166,7 @@ return [
     */
     'output_to_files' => true,
 
-    'output_directory' => resource_path('/js/types/'),
+    'output_directory' => resource_path('/js/types/data/'),
 
     'publish_enums' => true,
 
