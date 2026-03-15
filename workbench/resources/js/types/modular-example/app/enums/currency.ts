@@ -1,5 +1,6 @@
 import { defineEnum } from '@tolki/enum';
 
+/** String-backed enum with static methods that return complex array structures. */
 export const Currency = defineEnum({
     Usd: 'USD',
     Eur: 'EUR',

@@ -40,6 +40,26 @@ use UnitEnum;
  */
 class LaravelTsPublish
 {
+    protected static ?Closure $callCommandWith = null;
+
+    /**
+     * Set something to do when the publish command runs, using a callback Closure
+     */
+    public static function callCommandUsing(Closure $resolver): void
+    {
+        self::$callCommandWith = $resolver;
+    }
+
+    /**
+     * Invoke the callback set by callCommandUsing() before running the publish command.
+     */
+    public function callCommandWith(): void
+    {
+        if (self::$callCommandWith instanceof Closure) {
+            (self::$callCommandWith)();
+        }
+    }
+
     /**
      * @return array<string, string|(callable(): string)>
      */
@@ -489,6 +509,41 @@ class LaravelTsPublish
     public function sanitizeJsDoc(string $text): string
     {
         return str_replace('*/', '*\/', $text);
+    }
+
+    /**
+     * Extract the human-readable description from a PHPDoc block,
+     * ignoring all @-prefixed tags (@param, @return, @phpstan-*, etc.).
+     */
+    public function parseDocBlockDescription(string|false $docComment): string
+    {
+        if ($docComment === false || $docComment === '') {
+            return '';
+        }
+
+        $lines = explode("\n", $docComment);
+        $description = [];
+
+        foreach ($lines as $line) {
+            // Strip leading whitespace, asterisks, and the opening/closing markers
+            $cleaned = preg_replace('#^\s*/?\*+/?\s?#', '', $line) ?? '';
+            $cleaned = preg_replace('#\s*\*+/\s*$#', '', $cleaned) ?? '';
+            $trimmed = trim($cleaned);
+
+            // Skip empty remnants from /** and */
+            if ($trimmed === '' || $trimmed === '/') {
+                continue;
+            }
+
+            // Skip @-tag lines
+            if (str_starts_with($trimmed, '@')) {
+                continue;
+            }
+
+            $description[] = $trimmed;
+        }
+
+        return implode(' ', $description);
     }
 
     /**

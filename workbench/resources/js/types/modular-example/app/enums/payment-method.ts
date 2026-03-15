@@ -1,5 +1,6 @@
 import { defineEnum } from '@tolki/enum';
 
+/** String-backed enum with no attributes at all — tests the simplest backed enum path. */
 export const PaymentMethod = defineEnum({
     CreditCard: 'credit_card',
     DebitCard: 'debit_card',

@@ -55,15 +55,4 @@
       0 => 'Pest\\Laravel\\PestServiceProvider',
     ),
   ),
-  'abetwothree/laravel-ts-publish' => 
-  array (
-    'providers' => 
-    array (
-      0 => 'AbeTwoThree\\LaravelTsPublish\\LaravelTsPublishServiceProvider',
-    ),
-    'aliases' => 
-    array (
-      'LaravelTsPublish' => 'AbeTwoThree\\LaravelTsPublish\\Facades\\LaravelTsPublish',
-    ),
-  ),
 );

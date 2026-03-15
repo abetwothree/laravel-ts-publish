@@ -1,36 +1,71 @@
 @use('AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish')
-@foreach ($resolvedImports as $path => $types)
-{{ $useTypeImports ? 'import type' : 'import' }} { {{ implode(', ', $types) }} } from '{{ $path }}';
+@if($usesTolkiPackage && (count($data->enumColumns) > 0 || count($data->enumMutators) > 0))
+import { type AsEnum } from '@tolki/enum';
+
+@endif{{-- end tolki package --}}
+@foreach ($data->valueImports as $path => $names)
+import { {{ implode(', ', $names) }} } from '{{ $path }}';
+@endforeach
+@foreach ($data->typeImports as $path => $types)
+import type { {{ implode(', ', $types) }} } from '{{ $path }}';
 @endforeach
 
-@if (count($columns) > 0 || count($mutators) > 0 || count($relations) > 0)
-export interface {{ $modelName }}
+@if (count($data->columns) > 0 || count($data->mutators) > 0 || count($data->relations) > 0)
+@if($data->description)
+/** {!! LaravelTsPublish::sanitizeJsDoc($data->description) !!} */
+@endif
+export interface {{ $data->modelName }}
 {
-@if (count($columns) > 0)
+@if (count($data->columns) > 0)
     // Columns
-@foreach ($columns as $name => $column)
-    {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $column !!};
+@foreach ($data->columns as $name => $column)
+@if($column['description'])
+    /** {!! LaravelTsPublish::sanitizeJsDoc($column['description']) !!} */
+@endif
+    {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $column['type'] !!};
 @endforeach
 @endif
-@if (count($mutators) > 0)
+@if (count($data->mutators) > 0)
     // Mutators
-@foreach ($mutators as $name => $mutator)
-    {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $mutator !!};
+@foreach ($data->mutators as $name => $mutator)
+@if($mutator['description'])
+    /** {!! LaravelTsPublish::sanitizeJsDoc($mutator['description']) !!} */
+@endif
+    {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $mutator['type'] !!};
 @endforeach
 @endif
-@if (count($relations) > 0)
+@if (count($data->relations) > 0)
     // Relations
-@foreach ($relations as $name => $relation)
-    {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $relation !!};
+@foreach ($data->relations as $name => $relation)
+@if($relation['description'])
+    /** {!! LaravelTsPublish::sanitizeJsDoc($relation['description']) !!} */
+@endif
+    {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $relation['type'] !!};
 @endforeach
     // Counts
-@foreach ($relations as $name => $relation)
+@foreach ($data->relations as $name => $relation)
     {!! LaravelTsPublish::validJsObjectKey($name.'_count') !!}: number;
 @endforeach
     // Exists
-@foreach ($relations as $name => $relation)
+@foreach ($data->relations as $name => $relation)
     {!! LaravelTsPublish::validJsObjectKey($name.'_exists') !!}: boolean;
 @endforeach
 @endif
+}
+@endif
+@if (count($data->enumColumns) > 0 || count($data->enumMutators) > 0)
+
+@php
+$allEnumKeys = array_merge(array_keys($data->enumColumns), array_keys($data->enumMutators));
+$omitKeys = implode(' | ', array_map(fn($k) => "'" . $k . "'", $allEnumKeys));
+@endphp
+export interface {{ $data->modelName }}Resource extends Omit<{{ $data->modelName }}, {!! $omitKeys !!}>
+{
+@foreach ($data->enumColumns as $name => $enum)
+    {!! LaravelTsPublish::validJsObjectKey($name) !!}: AsEnum<typeof {!! $enum['constName'] !!}>{!! $enum['nullable'] ? ' | null' : '' !!};
+@endforeach
+@foreach ($data->enumMutators as $name => $enum)
+    {!! LaravelTsPublish::validJsObjectKey($name) !!}: AsEnum<typeof {!! $enum['constName'] !!}>{!! $enum['nullable'] ? ' | null' : '' !!};
+@endforeach
 }
 @endif

@@ -4,29 +4,45 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Commands;
 
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Runners\RunnerForSource;
 use Illuminate\Console\Command;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 
+use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\intro;
 use function Laravel\Prompts\outro;
 use function Laravel\Prompts\table;
+use function Laravel\Prompts\warning;
 
 class TsPublishCommand extends Command
 {
     protected $signature = 'ts:publish
         {--preview=false : Output generated TypeScript declarations to the console instead of writing to files}
-        {--source= : FQCN or file path of a specific enum or model to republish}';
+        {--source= : FQCN or file path of a specific enum or model to republish}
+        {--only-enums : Only publish enums (ignoring models)}
+        {--only-models : Only publish models (ignoring enums)}';
 
     protected $description = 'Publish All TypeScript files from enums & models';
 
     public function handle(): int
     {
+        LaravelTsPublish::callCommandWith();
+
+        if ($this->option('only-enums') && $this->option('only-models')) {
+            if (! $this->output->isQuiet()) {
+                error('Cannot use --only-enums and --only-models together');
+            }
+
+            return self::FAILURE;
+        }
+
         /** @var string|null $source */
         $source = $this->option('source');
 
@@ -38,21 +54,32 @@ class TsPublishCommand extends Command
         $preview = filter_var($this->option('preview'), FILTER_VALIDATE_BOOLEAN);
         config()->set('ts-publish.output_to_files', ! $preview);
 
-        intro('ts:publish');
-
-        $runner = resolve(Runner::class);
-        $runner->run();
-
-        if ($preview) {
-            $this->createPreview($runner);
-        } else {
-            $this->createPublishedFilesList($runner);
+        if (! $this->output->isQuiet()) {
+            intro('ts:publish');
         }
 
-        $enumCount = count($runner->enumGenerators);
-        $modelCount = count($runner->modelGenerators);
+        $runner = resolve(Runner::class);
+        $flags = $this->resolvePublishFlags();
 
-        outro("{$enumCount} enums, {$modelCount} models — All done");
+        if ($flags === null) {
+            return self::SUCCESS;
+        }
+
+        [$runner->shouldPublishEnums, $runner->shouldPublishModels] = $flags;
+        $runner->run();
+
+        if (! $this->output->isQuiet()) {
+            if ($preview) {
+                $this->createPreview($runner);
+            } else {
+                $this->createPublishedFilesList($runner);
+            }
+
+            $enumCount = count($runner->enumGenerators);
+            $modelCount = count($runner->modelGenerators);
+
+            outro("{$enumCount} enums, {$modelCount} models — All done");
+        }
 
         return self::SUCCESS;
     }
@@ -62,29 +89,101 @@ class TsPublishCommand extends Command
         $preview = filter_var($this->option('preview'), FILTER_VALIDATE_BOOLEAN);
         config()->set('ts-publish.output_to_files', ! $preview);
 
-        intro('ts:publish --source');
+        if (! $this->output->isQuiet()) {
+            intro('ts:publish --source');
+        }
 
         try {
             $runner = new RunnerForSource($source);
+            $flags = $this->resolvePublishFlags();
+
+            if ($flags === null) {
+                return self::SUCCESS;
+            }
+
+            [$runner->shouldPublishEnums, $runner->shouldPublishModels] = $flags;
             $runner->run();
         } catch (InvalidArgumentException $e) {
-            error($e->getMessage());
+            if (! $this->output->isQuiet()) {
+                error($e->getMessage());
+            }
 
             return self::FAILURE;
         }
 
-        if ($preview) {
-            $this->createPreview($runner);
-        } else {
-            $this->createPublishedFilesList($runner);
+        if (! $this->output->isQuiet()) {
+            if ($preview) {
+                $this->createPreview($runner);
+            } else {
+                $this->createPublishedFilesList($runner);
+            }
+
+            $enumCount = count($runner->enumGenerators);
+            $modelCount = count($runner->modelGenerators);
+
+            outro("{$enumCount} enums, {$modelCount} models — All done");
         }
 
-        $enumCount = count($runner->enumGenerators);
-        $modelCount = count($runner->modelGenerators);
-
-        outro("{$enumCount} enums, {$modelCount} models — All done");
-
         return self::SUCCESS;
+    }
+
+    /**
+     * Resolve the final publish flags from config values and command options.
+     *
+     * @return array{0: bool, 1: bool}|null [shouldPublishEnums, shouldPublishModels] or null to abort
+     */
+    protected function resolvePublishFlags(): ?array
+    {
+        $configEnums = config()->boolean('ts-publish.publish_enums');
+        $configModels = config()->boolean('ts-publish.publish_models');
+        $onlyEnums = (bool) $this->option('only-enums');
+        $onlyModels = (bool) $this->option('only-models');
+
+        $shouldPublishEnums = $configEnums;
+        $shouldPublishModels = $configModels;
+
+        if ($onlyEnums) {
+            $shouldPublishModels = false;
+
+            if (! $configEnums) {
+                $shouldPublishEnums = $this->promptConfigOverride('enums');
+
+                if (! $shouldPublishEnums) {
+                    return null;
+                }
+            }
+        }
+
+        if ($onlyModels) {
+            $shouldPublishEnums = false;
+
+            if (! $configModels) {
+                $shouldPublishModels = $this->promptConfigOverride('models');
+
+                if (! $shouldPublishModels) {
+                    return null;
+                }
+            }
+        }
+
+        if (! $shouldPublishEnums && ! $shouldPublishModels) {
+            if (! $this->output->isQuiet()) {
+                warning('Both enums and models are disabled in config. Nothing to publish.');
+            }
+
+            return null;
+        }
+
+        return [$shouldPublishEnums, $shouldPublishModels];
+    }
+
+    protected function promptConfigOverride(string $type): bool
+    {
+        if (! $this->input->isInteractive()) {
+            return false;
+        }
+
+        return confirm("Config has {$type} publishing disabled. Override and publish {$type} anyway?", default: false);
     }
 
     protected function createPreview(Runner|RunnerForSource $runner): void
@@ -152,6 +251,41 @@ class TsPublishCommand extends Command
 
         info("Published to: {$outputDirectory}");
 
+        if ($this->output->isVerbose()) {
+            $this->createVerboseFilesList($runner);
+        } else {
+            $this->createCompactSummary($runner);
+        }
+    }
+
+    protected function createCompactSummary(Runner|RunnerForSource $runner): void
+    {
+        $enumCount = $runner->enumGenerators->count();
+        $modelCount = $runner->modelGenerators->count();
+
+        $parts = [];
+
+        if ($enumCount > 0) {
+            $parts[] = Str::plural('enum', $enumCount, true);
+        }
+
+        if ($modelCount > 0) {
+            $parts[] = Str::plural('model', $modelCount, true);
+        }
+
+        if (count($parts) > 0) {
+            $this->line('  '.implode(', ', $parts));
+        }
+
+        $extras = $this->collectExtras($runner);
+
+        if (count($extras) > 0) {
+            $this->line('  Extras: '.implode(', ', array_map(fn (array $e) => $e[1], $extras)));
+        }
+    }
+
+    protected function createVerboseFilesList(Runner|RunnerForSource $runner): void
+    {
         if (count($runner->enumGenerators) > 0) {
             /** @var array<int, array<int, string>> $enumRows */
             $enumRows = $runner->enumGenerators->map(fn (EnumGenerator $g) => [
@@ -184,7 +318,23 @@ class TsPublishCommand extends Command
             );
         }
 
-        $extras = array_filter([
+        $extras = $this->collectExtras($runner);
+
+        if (count($extras) > 0) {
+            /** @var array<int, array<int, string>> $extras */
+            table(
+                headers: ['Type', 'File'],
+                rows: $extras,
+            );
+        }
+    }
+
+    /**
+     * @return array<int, array{0: string, 1: string}>
+     */
+    protected function collectExtras(Runner|RunnerForSource $runner): array
+    {
+        return array_filter([
             ...($runner->enumModularBarrels
                 ? array_map(fn (string $path) => ['Barrel', "{$path}/index.ts"], array_keys($runner->enumModularBarrels))
                 : ($runner->enumBarrelContent ? [['Barrel', 'enums/index.ts']] : [])),
@@ -194,13 +344,5 @@ class TsPublishCommand extends Command
             $runner->globalsContent ? ['Globals', config()->string('ts-publish.global_filename')] : null,
             $runner->jsonContent ? ['JSON', config()->string('ts-publish.json_filename')] : null,
         ]);
-
-        if (count($extras) > 0) {
-            /** @var array<int, array<int, string>> $extras */
-            table(
-                headers: ['Type', 'File'],
-                rows: $extras,
-            );
-        }
     }
 }

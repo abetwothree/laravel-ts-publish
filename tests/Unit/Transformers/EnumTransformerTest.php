@@ -2,6 +2,7 @@
 
 use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
 use Workbench\App\Enums\Color;
+use Workbench\App\Enums\Currency;
 use Workbench\App\Enums\MembershipLevel;
 use Workbench\App\Enums\PaymentMethod;
 use Workbench\App\Enums\Priority;
@@ -15,25 +16,25 @@ describe('EnumTransformer with backed int enum', function () {
         $transformer = new EnumTransformer(Status::class);
         $data = $transformer->data();
 
-        expect($data['enumName'])->toBe('Status')
-            ->and($data['backed'])->toBeTrue()
-            ->and($data['cases'])->toHaveCount(2)
-            ->and($data['cases'][0])->toBe(['name' => 'Draft', 'value' => 0, 'description' => ''])
-            ->and($data['cases'][1])->toBe(['name' => 'Published', 'value' => 1, 'description' => '']);
+        expect($data->enumName)->toBe('Status')
+            ->and($data->backed)->toBeTrue()
+            ->and($data->cases)->toHaveCount(2)
+            ->and($data->cases[0])->toBe(['name' => 'Draft', 'value' => 0, 'description' => ''])
+            ->and($data->cases[1])->toBe(['name' => 'Published', 'value' => 1, 'description' => '']);
     });
 
     test('transforms Status enum methods', function () {
         $transformer = new EnumTransformer(Status::class);
         $data = $transformer->data();
 
-        expect($data['methods'])
+        expect($data->methods)
             ->toHaveKey('icon')
             ->toHaveKey('color')
-            ->and($data['methods']['icon']['returns'])->toBe([
+            ->and($data->methods['icon']['returns'])->toBe([
                 'Draft' => 'pencil',
                 'Published' => 'check',
             ])
-            ->and($data['methods']['color']['returns'])->toBe([
+            ->and($data->methods['color']['returns'])->toBe([
                 'Draft' => 'gray',
                 'Published' => 'green',
             ]);
@@ -43,37 +44,37 @@ describe('EnumTransformer with backed int enum', function () {
         $transformer = new EnumTransformer(Status::class);
         $data = $transformer->data();
 
-        expect($data['methods']['icon']['description'])->toBe('Get the icon name for the status')
-            ->and($data['methods']['color']['description'])->toBe('');
+        expect($data->methods['icon']['description'])->toBe('Get the icon name for the status')
+            ->and($data->methods['color']['description'])->toBe('');
     });
 
     test('transforms Status static methods', function () {
         $transformer = new EnumTransformer(Status::class);
         $data = $transformer->data();
 
-        expect($data['staticMethods'])
+        expect($data->staticMethods)
             ->toHaveKey('valueLabelPair')
             ->toHaveKey('names')
             ->toHaveKey('values')
             ->toHaveKey('options');
 
-        expect($data['staticMethods']['valueLabelPair']['description'])->toBe('Get the key-value pair options for the status');
-        expect($data['staticMethods']['names']['return'])->toBe(['Draft', 'Published']);
-        expect($data['staticMethods']['values']['return'])->toBe([0, 1]);
+        expect($data->staticMethods['valueLabelPair']['description'])->toBe('Get the key-value pair options for the status');
+        expect($data->staticMethods['names']['return'])->toBe(['Draft', 'Published']);
+        expect($data->staticMethods['values']['return'])->toBe([0, 1]);
     });
 
     test('generates caseKinds for backed int enum', function () {
         $transformer = new EnumTransformer(Status::class);
         $data = $transformer->data();
 
-        expect($data['caseKinds'])->toBe(["'Draft'", "'Published'"]);
+        expect($data->caseKinds)->toBe(["'Draft'", "'Published'"]);
     });
 
     test('generates caseTypes for backed int enum', function () {
         $transformer = new EnumTransformer(Status::class);
         $data = $transformer->data();
 
-        expect($data['caseTypes'])->toBe([0, 1]);
+        expect($data->caseTypes)->toBe([0, 1]);
     });
 });
 
@@ -82,38 +83,38 @@ describe('EnumTransformer with backed string enum and TsCase overrides', functio
         $transformer = new EnumTransformer(Color::class);
         $data = $transformer->data();
 
-        expect($data['enumName'])->toBe('Color')
-            ->and($data['backed'])->toBeTrue()
-            ->and($data['cases'])->toHaveCount(6);
+        expect($data->enumName)->toBe('Color')
+            ->and($data->backed)->toBeTrue()
+            ->and($data->cases)->toHaveCount(6);
 
         // Cases with only description overrides keep original name/value
-        expect($data['cases'][0])->toBe(['name' => 'Red', 'value' => 'red', 'description' => 'Primary red color']);
-        expect($data['cases'][1])->toBe(['name' => 'Green', 'value' => 'green', 'description' => 'Primary green color']);
+        expect($data->cases[0])->toBe(['name' => 'Red', 'value' => 'red', 'description' => 'Primary red color']);
+        expect($data->cases[1])->toBe(['name' => 'Green', 'value' => 'green', 'description' => 'Primary green color']);
 
         // Amber has full name/value/description override
-        expect($data['cases'][3])->toBe(['name' => 'Yellow', 'value' => 'yellow', 'description' => 'Warning yellow']);
+        expect($data->cases[3])->toBe(['name' => 'Yellow', 'value' => 'yellow', 'description' => 'Warning yellow']);
 
         // Gray has name/value override without description
-        expect($data['cases'][4])->toBe(['name' => 'Slate', 'value' => 'slate', 'description' => '']);
+        expect($data->cases[4])->toBe(['name' => 'Slate', 'value' => 'slate', 'description' => '']);
 
         // Purple has no TsCase attribute
-        expect($data['cases'][5])->toBe(['name' => 'Purple', 'value' => 'purple', 'description' => '']);
+        expect($data->cases[5])->toBe(['name' => 'Purple', 'value' => 'purple', 'description' => '']);
     });
 
     test('Color enum methods return correct values', function () {
         $transformer = new EnumTransformer(Color::class);
         $data = $transformer->data();
 
-        expect($data['methods'])->toHaveKey('hex')->toHaveKey('rgb')
-            ->and($data['methods']['hex']['returns']['Red'])->toBe('#EF4444')
-            ->and($data['methods']['rgb']['returns']['Blue'])->toBe([59, 130, 246]);
+        expect($data->methods)->toHaveKey('hex')->toHaveKey('rgb')
+            ->and($data->methods['hex']['returns']['Red'])->toBe('#EF4444')
+            ->and($data->methods['rgb']['returns']['Blue'])->toBe([59, 130, 246]);
     });
 
     test('generates caseTypes for backed string enum', function () {
         $transformer = new EnumTransformer(Color::class);
         $data = $transformer->data();
 
-        expect($data['caseTypes'])->toContain("'red'", "'green'", "'blue'");
+        expect($data->caseTypes)->toContain("'red'", "'green'", "'blue'");
     });
 });
 
@@ -122,26 +123,26 @@ describe('EnumTransformer with unit enum', function () {
         $transformer = new EnumTransformer(Role::class);
         $data = $transformer->data();
 
-        expect($data['enumName'])->toBe('Role')
-            ->and($data['backed'])->toBeFalse()
-            ->and($data['cases'])->toHaveCount(3)
-            ->and($data['cases'][0])->toBe(['name' => 'Admin', 'value' => 'Admin', 'description' => ''])
-            ->and($data['methods'])->toBeEmpty()
-            ->and($data['staticMethods'])->toBeEmpty();
+        expect($data->enumName)->toBe('Role')
+            ->and($data->backed)->toBeFalse()
+            ->and($data->cases)->toHaveCount(3)
+            ->and($data->cases[0])->toBe(['name' => 'Admin', 'value' => 'Admin', 'description' => ''])
+            ->and($data->methods)->toBeEmpty()
+            ->and($data->staticMethods)->toBeEmpty();
     });
 
     test('unit enum has empty caseKinds', function () {
         $transformer = new EnumTransformer(Role::class);
         $data = $transformer->data();
 
-        expect($data['caseKinds'])->toBeEmpty();
+        expect($data->caseKinds)->toBeEmpty();
     });
 
     test('unit enum caseTypes use case names as strings', function () {
         $transformer = new EnumTransformer(Role::class);
         $data = $transformer->data();
 
-        expect($data['caseTypes'])->toBe(["'Admin'", "'User'", "'Guest'"]);
+        expect($data->caseTypes)->toBe(["'Admin'", "'User'", "'Guest'"]);
     });
 });
 
@@ -150,11 +151,11 @@ describe('EnumTransformer with minimal backed enum', function () {
         $transformer = new EnumTransformer(PaymentMethod::class);
         $data = $transformer->data();
 
-        expect($data['enumName'])->toBe('PaymentMethod')
-            ->and($data['backed'])->toBeTrue()
-            ->and($data['cases'])->toHaveCount(8)
-            ->and($data['methods'])->toBeEmpty()
-            ->and($data['staticMethods'])->toBeEmpty();
+        expect($data->enumName)->toBe('PaymentMethod')
+            ->and($data->backed)->toBeTrue()
+            ->and($data->cases)->toHaveCount(8)
+            ->and($data->methods)->toBeEmpty()
+            ->and($data->staticMethods)->toBeEmpty();
     });
 });
 
@@ -163,10 +164,10 @@ describe('EnumTransformer with minimal unit enum', function () {
         $transformer = new EnumTransformer(MembershipLevel::class);
         $data = $transformer->data();
 
-        expect($data['enumName'])->toBe('MembershipLevel')
-            ->and($data['backed'])->toBeFalse()
-            ->and($data['methods'])->toBeEmpty()
-            ->and($data['staticMethods'])->toBeEmpty();
+        expect($data->enumName)->toBe('MembershipLevel')
+            ->and($data->backed)->toBeFalse()
+            ->and($data->methods)->toBeEmpty()
+            ->and($data->staticMethods)->toBeEmpty();
     });
 });
 
@@ -183,35 +184,58 @@ describe('EnumTransformer filePath generation', function () {
         $transformer = new EnumTransformer(Status::class);
         $data = $transformer->data();
 
-        expect($data['filePath'])->toContain('Enums')
-            ->and($data['filePath'])->toContain('Status.php')
-            ->and($data['filePath'])->not->toStartWith('/');
+        expect($data->filePath)->toContain('Enums')
+            ->and($data->filePath)->toContain('Status.php')
+            ->and($data->filePath)->not->toStartWith('/');
     });
 });
 
-describe('EnumTransformer with Priority enum that has methods throwing exceptions when invoked', function () {
-    test('transforms Priority enum method that throws gracefully', function () {
+describe('EnumTransformer skips methods with required params and no params attribute', function () {
+    test('skips instance method with required params and no params set', function () {
         $transformer = new EnumTransformer(Priority::class);
         $data = $transformer->data();
 
-        // isAboveThreshold requires a parameter — invoke without one triggers the catch block
-        expect($data['methods'])->toHaveKey('isAboveThreshold')
-            ->and($data['methods']['isAboveThreshold']['description'])->toBe('Compare with threshold');
-
-        // All case returns should be null (caught exception)
-        foreach ($data['methods']['isAboveThreshold']['returns'] as $caseName => $value) {
-            expect($value)->toBeNull("Expected null for $caseName due to invocation error");
-        }
+        // isAboveCeiling requires a parameter and has no params set — should be skipped entirely
+        expect($data->methods)->not->toHaveKey('isAboveCeiling');
     });
 
-    test('transforms Priority enum static method that throws gracefully', function () {
+    test('skips static method with required params and no params set', function () {
         $transformer = new EnumTransformer(Priority::class);
         $data = $transformer->data();
 
-        // filterByMinimum requires a parameter — invoke without one triggers the catch block
-        expect($data['staticMethods'])->toHaveKey('filterByMinimum')
-            ->and($data['staticMethods']['filterByMinimum']['description'])->toBe('Filter by minimum')
-            ->and($data['staticMethods']['filterByMinimum']['return'])->toBeNull();
+        // filterByMaximum requires a parameter and has no params set — should be skipped entirely
+        expect($data->staticMethods)->not->toHaveKey('filterByMaximum');
+    });
+});
+
+describe('EnumTransformer includes methods with required params when params attribute is set', function () {
+    test('includes instance method with params and invokes with provided values', function () {
+        $transformer = new EnumTransformer(Priority::class);
+        $data = $transformer->data();
+
+        // isAboveThreshold has params: ['threshold' => 1] — should be included with correct per-case results
+        expect($data->methods)->toHaveKey('isAboveThreshold')
+            ->and($data->methods['isAboveThreshold']['description'])->toBe('Compare with threshold')
+            ->and($data->methods['isAboveThreshold']['returns'])->toBe([
+                'Low' => false,
+                'Medium' => false,
+                'High' => true,
+                'Critical' => true,
+            ]);
+    });
+
+    test('includes static method with params and invokes with provided values', function () {
+        $transformer = new EnumTransformer(Priority::class);
+        $data = $transformer->data();
+
+        // filterByMinimum has params: ['minimum' => 1] — should be included
+        expect($data->staticMethods)->toHaveKey('filterByMinimum')
+            ->and($data->staticMethods['filterByMinimum']['description'])->toBe('Filter by minimum');
+
+        // The return should be an array of Priority cases where value >= 1
+        $return = $data->staticMethods['filterByMinimum']['return'];
+        expect($return)->toBeArray()
+            ->and($return)->toHaveCount(3);
     });
 });
 
@@ -220,11 +244,11 @@ describe('EnumTransformer with TsEnum attribute', function () {
         $transformer = new EnumTransformer(ShippingStatus::class);
         $data = $transformer->data();
 
-        expect($data['enumName'])->toBe('ShipmentStatus')
-            ->and($data['backed'])->toBeTrue()
-            ->and($data['cases'])->toHaveCount(7)
-            ->and($data['cases'][0]['name'])->toBe('Pending')
-            ->and($data['cases'][0]['value'])->toBe('pending');
+        expect($data->enumName)->toBe('ShipmentStatus')
+            ->and($data->backed)->toBeTrue()
+            ->and($data->cases)->toHaveCount(7)
+            ->and($data->cases[0]['name'])->toBe('Pending')
+            ->and($data->cases[0]['value'])->toBe('pending');
     });
 
     test('TsEnum attribute overrides filename to kebab-cased custom name', function () {
@@ -237,7 +261,7 @@ describe('EnumTransformer with TsEnum attribute', function () {
         $transformer = new EnumTransformer(Status::class);
         $data = $transformer->data();
 
-        expect($data['enumName'])->toBe('Status')
+        expect($data->enumName)->toBe('Status')
             ->and($transformer->filename())->toBe('status');
     });
 });
@@ -267,11 +291,11 @@ describe('EnumTransformer auto_include_enum_methods', function () {
         $transformer = new EnumTransformer(PaymentMethod::class);
         $data = $transformer->data();
 
-        expect($data['methods'])->toHaveKey('isDigitalWallet')
-            ->and($data['methods']['isDigitalWallet']['name'])->toBe('isDigitalWallet')
-            ->and($data['methods']['isDigitalWallet']['description'])->toBe('')
-            ->and($data['methods']['isDigitalWallet']['returns']['ApplePay'])->toBeTrue()
-            ->and($data['methods']['isDigitalWallet']['returns']['CreditCard'])->toBeFalse();
+        expect($data->methods)->toHaveKey('isDigitalWallet')
+            ->and($data->methods['isDigitalWallet']['name'])->toBe('isDigitalWallet')
+            ->and($data->methods['isDigitalWallet']['description'])->not->toBe('')
+            ->and($data->methods['isDigitalWallet']['returns']['ApplePay'])->toBeTrue()
+            ->and($data->methods['isDigitalWallet']['returns']['CreditCard'])->toBeFalse();
     });
 
     test('does not include static methods', function () {
@@ -280,7 +304,7 @@ describe('EnumTransformer auto_include_enum_methods', function () {
         $transformer = new EnumTransformer(PaymentMethod::class);
         $data = $transformer->data();
 
-        expect($data['methods'])->not->toHaveKey('onlineOnly');
+        expect($data->methods)->not->toHaveKey('onlineOnly');
     });
 
     test('respects attribute name and description when present', function () {
@@ -290,14 +314,14 @@ describe('EnumTransformer auto_include_enum_methods', function () {
         $data = $transformer->data();
 
         // Methods with attribute keep their attribute settings
-        expect($data['methods']['label']['description'])->toBe('Human-readable label')
-            ->and($data['methods']['icon']['description'])->toBe('Icon name for the priority level');
+        expect($data->methods['label']['description'])->toBe('Human-readable label')
+            ->and($data->methods['icon']['description'])->toBe('Icon name for the priority level');
 
         // Method without attribute is also included
-        expect($data['methods'])->toHaveKey('numericWeight')
-            ->and($data['methods']['numericWeight']['description'])->toBe('')
-            ->and($data['methods']['numericWeight']['returns']['Low'])->toBe(10)
-            ->and($data['methods']['numericWeight']['returns']['Critical'])->toBe(40);
+        expect($data->methods)->toHaveKey('numericWeight')
+            ->and($data->methods['numericWeight']['description'])->not->toBe('')
+            ->and($data->methods['numericWeight']['returns']['Low'])->toBe(10)
+            ->and($data->methods['numericWeight']['returns']['Critical'])->toBe(40);
     });
 
     test('does not include methods without attribute when disabled', function () {
@@ -306,8 +330,21 @@ describe('EnumTransformer auto_include_enum_methods', function () {
         $transformer = new EnumTransformer(Priority::class);
         $data = $transformer->data();
 
-        expect($data['methods'])->not->toHaveKey('numericWeight')
-            ->and($data['methods'])->toHaveKey('label');
+        expect($data->methods)->not->toHaveKey('numericWeight')
+            ->and($data->methods)->toHaveKey('label');
+    });
+
+    test('skips auto-included methods with required parameters', function () {
+        config()->set('ts-publish.auto_include_enum_methods', true);
+
+        $transformer = new EnumTransformer(Priority::class);
+        $data = $transformer->data();
+
+        // isAboveCeiling has required params and no params attribute — skipped even in auto-include
+        expect($data->methods)->not->toHaveKey('isAboveCeiling');
+
+        // isAboveThreshold has required params but params attribute is set — included
+        expect($data->methods)->toHaveKey('isAboveThreshold');
     });
 });
 
@@ -318,9 +355,9 @@ describe('EnumTransformer auto_include_enum_static_methods', function () {
         $transformer = new EnumTransformer(PaymentMethod::class);
         $data = $transformer->data();
 
-        expect($data['staticMethods'])->toHaveKey('onlineOnly')
-            ->and($data['staticMethods']['onlineOnly']['name'])->toBe('onlineOnly')
-            ->and($data['staticMethods']['onlineOnly']['description'])->toBe('');
+        expect($data->staticMethods)->toHaveKey('onlineOnly')
+            ->and($data->staticMethods['onlineOnly']['name'])->toBe('onlineOnly')
+            ->and($data->staticMethods['onlineOnly']['description'])->not->toBe('');
     });
 
     test('does not include non-static methods', function () {
@@ -329,7 +366,7 @@ describe('EnumTransformer auto_include_enum_static_methods', function () {
         $transformer = new EnumTransformer(PaymentMethod::class);
         $data = $transformer->data();
 
-        expect($data['staticMethods'])->not->toHaveKey('isDigitalWallet');
+        expect($data->staticMethods)->not->toHaveKey('isDigitalWallet');
     });
 
     test('excludes built-in enum static methods', function () {
@@ -338,9 +375,9 @@ describe('EnumTransformer auto_include_enum_static_methods', function () {
         $transformer = new EnumTransformer(PaymentMethod::class);
         $data = $transformer->data();
 
-        expect($data['staticMethods'])->not->toHaveKey('cases')
-            ->and($data['staticMethods'])->not->toHaveKey('from')
-            ->and($data['staticMethods'])->not->toHaveKey('tryFrom');
+        expect($data->staticMethods)->not->toHaveKey('cases')
+            ->and($data->staticMethods)->not->toHaveKey('from')
+            ->and($data->staticMethods)->not->toHaveKey('tryFrom');
     });
 
     test('respects attribute name and description when present', function () {
@@ -350,12 +387,12 @@ describe('EnumTransformer auto_include_enum_static_methods', function () {
         $data = $transformer->data();
 
         // Method with attribute keeps its attribute settings
-        expect($data['staticMethods']['filterByMinimum']['description'])->toBe('Filter by minimum');
+        expect($data->staticMethods['filterByMinimum']['description'])->toBe('Filter by minimum');
 
         // Method without attribute is also included
-        expect($data['staticMethods'])->toHaveKey('highestValue')
-            ->and($data['staticMethods']['highestValue']['description'])->toBe('')
-            ->and($data['staticMethods']['highestValue']['return'])->toBe(3);
+        expect($data->staticMethods)->toHaveKey('highestValue')
+            ->and($data->staticMethods['highestValue']['description'])->not->toBe('')
+            ->and($data->staticMethods['highestValue']['return'])->toBe(3);
     });
 
     test('does not include static methods without attribute when disabled', function () {
@@ -364,7 +401,44 @@ describe('EnumTransformer auto_include_enum_static_methods', function () {
         $transformer = new EnumTransformer(Priority::class);
         $data = $transformer->data();
 
-        expect($data['staticMethods'])->not->toHaveKey('highestValue')
-            ->and($data['staticMethods'])->toHaveKey('filterByMinimum');
+        expect($data->staticMethods)->not->toHaveKey('highestValue')
+            ->and($data->staticMethods)->toHaveKey('filterByMinimum');
+    });
+
+    test('skips auto-included static methods with required parameters', function () {
+        config()->set('ts-publish.auto_include_enum_static_methods', true);
+
+        $transformer = new EnumTransformer(Priority::class);
+        $data = $transformer->data();
+
+        // filterByMaximum has required params and no params attribute — skipped even in auto-include
+        expect($data->staticMethods)->not->toHaveKey('filterByMaximum');
+
+        // filterByMinimum has required params but params attribute is set — included
+        expect($data->staticMethods)->toHaveKey('filterByMinimum');
+    });
+});
+
+describe('EnumTransformer doc block descriptions', function () {
+    test('reads class-level description from doc block', function () {
+        $transformer = new EnumTransformer(Priority::class);
+        $data = $transformer->data();
+
+        expect($data->description)->toBe('Int-backed enum with instance methods that return different types per case.');
+    });
+
+    test('returns empty description when no doc block on class', function () {
+        $transformer = new EnumTransformer(Role::class);
+        $data = $transformer->data();
+
+        expect($data->description)->toBe('');
+    });
+
+    test('TsEnum attribute description takes priority over doc block', function () {
+        $transformer = new EnumTransformer(Currency::class);
+
+        // Currency has doc block but no TsEnum(description:) attribute
+        // so it should use the doc block description
+        expect($transformer->description)->toBe('String-backed enum with static methods that return complex array structures.');
     });
 });

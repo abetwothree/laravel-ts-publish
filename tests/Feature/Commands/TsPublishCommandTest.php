@@ -68,6 +68,42 @@ test('ts:publish returns success exit code', function () {
         ->assertExitCode(0);
 });
 
+test('ts:publish writes model split template files', function () {
+    $outputDir = workbench_path('resources/js/types/split-template-example');
+
+    // Cleanup before test
+    $filesystem = new Filesystem;
+    if ($filesystem->exists($outputDir)) {
+        $filesystem->deleteDirectory($outputDir);
+    }
+
+    config()->set('ts-publish.model_template', 'laravel-ts-publish::model-split');
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.modular_publishing', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'false'])
+        ->assertSuccessful();
+});
+
+test('ts:publish writes model full template files', function () {
+    $outputDir = workbench_path('resources/js/types/full-template-example');
+
+    // Cleanup before test
+    $filesystem = new Filesystem;
+    if ($filesystem->exists($outputDir)) {
+        $filesystem->deleteDirectory($outputDir);
+    }
+
+    config()->set('ts-publish.model_template', 'laravel-ts-publish::model-full');
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.modular_publishing', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'false'])
+        ->assertSuccessful();
+});
+
 test('ts:publish writes modular files to namespace-based directories', function () {
     $outputDir = workbench_path('resources/js/types/modular-example');
 
@@ -77,7 +113,6 @@ test('ts:publish writes modular files to namespace-based directories', function 
         $filesystem->deleteDirectory($outputDir);
     }
 
-    // dd($outputDir);
     config()->set('ts-publish.output_directory', $outputDir);
     config()->set('ts-publish.output_to_files', true);
     config()->set('ts-publish.modular_publishing', true);
@@ -150,6 +185,153 @@ test('ts:publish --source writes file to disk', function () {
 
     $this->artisan('ts:publish', ['--preview' => 'false', '--source' => 'Workbench\App\Enums\Status'])
         ->assertSuccessful();
+
+    expect(file_exists("$outputDir/enums/status.ts"))->toBeTrue();
+
+    // Cleanup
+    (new Filesystem)->deleteDirectory($outputDir);
+});
+
+test('ts:publish --only-enums shows only enum content in preview', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-enums' => true])
+        ->assertSuccessful()
+        ->expectsOutputToContain('Enums:')
+        ->doesntExpectOutputToContain('Models:');
+});
+
+test('ts:publish --only-models shows only model content in preview', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-models' => true])
+        ->assertSuccessful()
+        ->expectsOutputToContain('Models:')
+        ->doesntExpectOutputToContain('Enums:');
+});
+
+test('ts:publish --only-enums writes only enum files to disk', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-only-enums-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+
+    $this->artisan('ts:publish', ['--preview' => 'false', '--only-enums' => true])
+        ->assertSuccessful();
+
+    expect(is_dir("$outputDir/enums"))->toBeTrue()
+        ->and(is_dir("$outputDir/models"))->toBeFalse();
+
+    // Cleanup
+    (new Filesystem)->deleteDirectory($outputDir);
+});
+
+test('ts:publish --only-models writes only model files to disk', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-only-models-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+
+    $this->artisan('ts:publish', ['--preview' => 'false', '--only-models' => true])
+        ->assertSuccessful();
+
+    expect(is_dir("$outputDir/models"))->toBeTrue()
+        ->and(is_dir("$outputDir/enums"))->toBeFalse();
+
+    // Cleanup
+    (new Filesystem)->deleteDirectory($outputDir);
+});
+
+test('ts:publish fails when both --only-enums and --only-models are passed', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-enums' => true, '--only-models' => true])
+        ->assertFailed();
+});
+
+test('ts:publish warns and exits when both config types are disabled', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.publish_enums', false);
+    config()->set('ts-publish.publish_models', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true'])
+        ->assertSuccessful()
+        ->expectsOutputToContain('Nothing to publish');
+});
+
+test('ts:publish respects publish_enums false in config', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.publish_enums', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true'])
+        ->assertSuccessful()
+        ->expectsOutputToContain('Models:')
+        ->doesntExpectOutputToContain('Enums:');
+});
+
+test('ts:publish respects publish_models false in config', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.publish_models', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true'])
+        ->assertSuccessful()
+        ->expectsOutputToContain('Enums:')
+        ->doesntExpectOutputToContain('Models:');
+});
+
+test('ts:publish verbose mode shows detailed tables', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-verbose-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+
+    $this->artisan('ts:publish', ['--preview' => 'false', '-v' => true])
+        ->assertSuccessful()
+        ->expectsOutputToContain("Published to: {$outputDir}")
+        ->expectsOutputToContain('Cases')
+        ->expectsOutputToContain('Columns');
+
+    // Cleanup
+    (new Filesystem)->deleteDirectory($outputDir);
+});
+
+test('ts:publish normal verbosity shows compact summary', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-normal-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+
+    $this->artisan('ts:publish', ['--preview' => 'false'])
+        ->assertSuccessful()
+        ->expectsOutputToContain("Published to: {$outputDir}")
+        ->doesntExpectOutputToContain('Cases')
+        ->doesntExpectOutputToContain('Columns');
+
+    // Cleanup
+    (new Filesystem)->deleteDirectory($outputDir);
+});
+
+test('ts:publish quiet mode produces no output', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-quiet-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+
+    $this->artisan('ts:publish', ['--preview' => 'false', '--quiet' => true])
+        ->assertSuccessful()
+        ->doesntExpectOutput();
+
+    // Files should still be written
+    expect(is_dir("$outputDir/enums"))->toBeTrue()
+        ->and(is_dir("$outputDir/models"))->toBeTrue();
+
+    // Cleanup
+    (new Filesystem)->deleteDirectory($outputDir);
+});
+
+test('ts:publish quiet mode with --source produces no output', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-quiet-source-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+
+    $this->artisan('ts:publish', ['--preview' => 'false', '--source' => 'Workbench\App\Enums\Status', '--quiet' => true])
+        ->assertSuccessful()
+        ->doesntExpectOutput();
 
     expect(file_exists("$outputDir/enums/status.ts"))->toBeTrue();
 

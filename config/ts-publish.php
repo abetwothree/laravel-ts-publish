@@ -161,10 +161,16 @@ return [
     |
     | This will write "enums" & "models" folders with a file for each class.
     | It will create a "barrel" index.ts file to export all types.
+    |
+    | You can conditionally only publish enums or models by setting the options below.
     */
     'output_to_files' => true,
 
     'output_directory' => resource_path('/js/types/'),
+
+    'publish_enums' => true,
+
+    'publish_models' => true,
 
     /*
     |--------------------------------------------------------------------------
@@ -214,21 +220,6 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Use Type-Only Imports
-    |--------------------------------------------------------------------------
-    |
-    | When enabled, model type imports use `import type { ... }` instead of
-    | `import { ... }`. This is required by stricter TypeScript setups that
-    | enable `verbatimModuleSyntax` or `isolatedModules`.
-    |
-    | Only affects model file imports (enum types, model interfaces, custom
-    | TsCasts imports). The enum `defineEnum` value import is unaffected.
-    */
-
-    'use_type_imports' => true,
-
-    /*
-    |--------------------------------------------------------------------------
     | Generate TypeScript Global Namespace Types
     |--------------------------------------------------------------------------
     |
@@ -236,9 +227,10 @@ return [
     */
     'output_globals_file' => false,
 
-    'global_directory' => resource_path('/js/types/'),
-
     'global_filename' => 'laravel-ts-global.d.ts',
+
+    /* Defaults to output_directory setting */
+    'global_directory' => null,
 
     'models_namespace' => 'models',
 
@@ -256,7 +248,8 @@ return [
 
     'json_filename' => 'laravel-ts-definitions.json',
 
-    'json_output_directory' => resource_path('/js/types/'),
+    /* Defaults to output_directory setting */
+    'json_output_directory' => null,
 
     /*
     |--------------------------------------------------------------------------
@@ -270,7 +263,8 @@ return [
 
     'collected_files_json_filename' => 'laravel-ts-collected-files.json',
 
-    'collected_files_json_output_directory' => resource_path('/js/types/'),
+    /* Defaults to output_directory setting */
+    'collected_files_json_output_directory' => null,
 
     /*
     |--------------------------------------------------------------------------
@@ -298,16 +292,19 @@ return [
     | ],
     */
 
-    'included_models' => [
-        // Only these models are used
-    ],
-
-    'excluded_models' => [
-        // These models are ignored
-    ],
-
+    /* Most flexible, anything added here will be included */
     'additional_model_directories' => [
-        // Add additional directories to search for models in addition to the default app/Models directory
+        //
+    ],
+
+    /* Most restrictive, only these models will be included */
+    'included_models' => [
+        //
+    ],
+
+    /* Excluded models will always be ignored */
+    'excluded_models' => [
+        //
     ],
 
     /*
@@ -326,16 +323,19 @@ return [
     | ],
     */
 
-    'included_enums' => [
-        // Only these enums are used
-    ],
-
-    'excluded_enums' => [
-        // These enums are ignored
-    ],
-
+    /* Most flexible, anything added here will be included */
     'additional_enum_directories' => [
-        // Add additional directories to search for enums in addition to the default app/Enums directory
+        //
+    ],
+
+    /* Most restrictive, only these enums will be included */
+    'included_enums' => [
+        //
+    ],
+
+    /* Excluded enums will always be ignored */
+    'excluded_enums' => [
+        //
     ],
 
     /*

@@ -15,6 +15,7 @@ export interface Comment
 
 export interface CommentMutators
 {
+    /** Short preview of the comment */
     preview: string;
 }
 

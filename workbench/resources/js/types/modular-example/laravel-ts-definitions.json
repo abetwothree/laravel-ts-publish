@@ -1,0 +1,2775 @@
+{
+    "models": {
+        "Payment": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "invoice_id",
+                "type": "number"
+            },
+            {
+                "name": "status",
+                "type": "PaymentStatusType"
+            },
+            {
+                "name": "method",
+                "type": "PaymentMethodType"
+            },
+            {
+                "name": "currency",
+                "type": "CurrencyType"
+            },
+            {
+                "name": "amount",
+                "type": "number"
+            },
+            {
+                "name": "reference",
+                "type": "string | null"
+            },
+            {
+                "name": "paid_at",
+                "type": "string | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "due_notice",
+                "type": "DueAtNoticeType"
+            },
+            {
+                "name": "invoice",
+                "type": "Invoice"
+            },
+            {
+                "name": "invoice_count",
+                "type": "number"
+            },
+            {
+                "name": "invoice_exists",
+                "type": "boolean"
+            }
+        ],
+        "Invoice": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "user_id",
+                "type": "number"
+            },
+            {
+                "name": "number",
+                "type": "string"
+            },
+            {
+                "name": "status",
+                "type": "InvoiceStatusType"
+            },
+            {
+                "name": "subtotal",
+                "type": "number"
+            },
+            {
+                "name": "tax",
+                "type": "number"
+            },
+            {
+                "name": "total",
+                "type": "number"
+            },
+            {
+                "name": "due_at",
+                "type": "string | null"
+            },
+            {
+                "name": "issued_at",
+                "type": "string | null"
+            },
+            {
+                "name": "paid_at",
+                "type": "string | null"
+            },
+            {
+                "name": "notes",
+                "type": "string | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "user",
+                "type": "User"
+            },
+            {
+                "name": "payments",
+                "type": "Payment[]"
+            },
+            {
+                "name": "user_count",
+                "type": "number"
+            },
+            {
+                "name": "payments_count",
+                "type": "number"
+            },
+            {
+                "name": "user_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "payments_exists",
+                "type": "boolean"
+            }
+        ],
+        "User": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "name",
+                "type": "string"
+            },
+            {
+                "name": "email",
+                "type": "string"
+            },
+            {
+                "name": "email_verified_at",
+                "type": "string | null"
+            },
+            {
+                "name": "password",
+                "type": "string"
+            },
+            {
+                "name": "options",
+                "type": "Record<string, unknown> | null"
+            },
+            {
+                "name": "remember_token",
+                "type": "string | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "role",
+                "type": "RoleType | null"
+            },
+            {
+                "name": "membership_level",
+                "type": "MembershipLevelType | null"
+            },
+            {
+                "name": "phone",
+                "type": "string | null"
+            },
+            {
+                "name": "avatar",
+                "type": "string | null"
+            },
+            {
+                "name": "bio",
+                "type": "string | null"
+            },
+            {
+                "name": "settings",
+                "type": "{ theme: \"light\" | \"dark\"; notifications: boolean; locale: string } | null"
+            },
+            {
+                "name": "last_login_at",
+                "type": "string | null"
+            },
+            {
+                "name": "last_login_ip",
+                "type": "string | null"
+            },
+            {
+                "name": "initials",
+                "type": "string"
+            },
+            {
+                "name": "is_premium",
+                "type": "boolean"
+            },
+            {
+                "name": "profile",
+                "type": "Profile"
+            },
+            {
+                "name": "posts",
+                "type": "Post[]"
+            },
+            {
+                "name": "comments",
+                "type": "Comment[]"
+            },
+            {
+                "name": "orders",
+                "type": "Order[]"
+            },
+            {
+                "name": "addresses",
+                "type": "Address[]"
+            },
+            {
+                "name": "teams",
+                "type": "Team[]"
+            },
+            {
+                "name": "owned_teams",
+                "type": "Team[]"
+            },
+            {
+                "name": "images",
+                "type": "Image[]"
+            },
+            {
+                "name": "notifications",
+                "type": "DatabaseNotification[]"
+            },
+            {
+                "name": "profile_count",
+                "type": "number"
+            },
+            {
+                "name": "posts_count",
+                "type": "number"
+            },
+            {
+                "name": "comments_count",
+                "type": "number"
+            },
+            {
+                "name": "orders_count",
+                "type": "number"
+            },
+            {
+                "name": "addresses_count",
+                "type": "number"
+            },
+            {
+                "name": "teams_count",
+                "type": "number"
+            },
+            {
+                "name": "owned_teams_count",
+                "type": "number"
+            },
+            {
+                "name": "images_count",
+                "type": "number"
+            },
+            {
+                "name": "notifications_count",
+                "type": "number"
+            },
+            {
+                "name": "profile_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "posts_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "comments_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "orders_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "addresses_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "teams_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "owned_teams_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "images_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "notifications_exists",
+                "type": "boolean"
+            }
+        ],
+        "Deal": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "customer_id",
+                "type": "number"
+            },
+            {
+                "name": "admin_id",
+                "type": "number"
+            },
+            {
+                "name": "title",
+                "type": "string"
+            },
+            {
+                "name": "status",
+                "type": "AppStatusType"
+            },
+            {
+                "name": "crm_status",
+                "type": "CrmStatusType"
+            },
+            {
+                "name": "value",
+                "type": "number"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "customer",
+                "type": "CustomerUser"
+            },
+            {
+                "name": "admin",
+                "type": "AdminUser"
+            },
+            {
+                "name": "customer_count",
+                "type": "number"
+            },
+            {
+                "name": "admin_count",
+                "type": "number"
+            },
+            {
+                "name": "customer_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "admin_exists",
+                "type": "boolean"
+            }
+        ],
+        "Shipment": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "order_id",
+                "type": "number"
+            },
+            {
+                "name": "tracking_number",
+                "type": "string | null"
+            },
+            {
+                "name": "carrier",
+                "type": "CarrierType"
+            },
+            {
+                "name": "status",
+                "type": "ShipmentStatusType"
+            },
+            {
+                "name": "weight_grams",
+                "type": "number | null"
+            },
+            {
+                "name": "estimated_delivery_at",
+                "type": "string | null"
+            },
+            {
+                "name": "shipped_at",
+                "type": "string | null"
+            },
+            {
+                "name": "delivered_at",
+                "type": "string | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "order",
+                "type": "Order"
+            },
+            {
+                "name": "tracking_events",
+                "type": "TrackingEvent[]"
+            },
+            {
+                "name": "order_count",
+                "type": "number"
+            },
+            {
+                "name": "tracking_events_count",
+                "type": "number"
+            },
+            {
+                "name": "order_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "tracking_events_exists",
+                "type": "boolean"
+            }
+        ],
+        "TrackingEvent": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "shipment_id",
+                "type": "number"
+            },
+            {
+                "name": "status",
+                "type": "string"
+            },
+            {
+                "name": "location",
+                "type": "string | null"
+            },
+            {
+                "name": "description",
+                "type": "string | null"
+            },
+            {
+                "name": "occurred_at",
+                "type": "string"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "changes",
+                "type": "{ attributes: Record<string, unknown>; old: Record<string, unknown> }"
+            }
+        ],
+        "Reaction": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "article_id",
+                "type": "number"
+            },
+            {
+                "name": "user_id",
+                "type": "number"
+            },
+            {
+                "name": "emoji",
+                "type": "string"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "article",
+                "type": "Article"
+            },
+            {
+                "name": "user",
+                "type": "User"
+            },
+            {
+                "name": "article_count",
+                "type": "number"
+            },
+            {
+                "name": "user_count",
+                "type": "number"
+            },
+            {
+                "name": "article_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "user_exists",
+                "type": "boolean"
+            }
+        ],
+        "Article": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "user_id",
+                "type": "number"
+            },
+            {
+                "name": "title",
+                "type": "string"
+            },
+            {
+                "name": "slug",
+                "type": "string"
+            },
+            {
+                "name": "excerpt",
+                "type": "string | null"
+            },
+            {
+                "name": "body",
+                "type": "string"
+            },
+            {
+                "name": "status",
+                "type": "ArticleStatusType"
+            },
+            {
+                "name": "content_type",
+                "type": "ContentTypeType"
+            },
+            {
+                "name": "featured_image",
+                "type": "string | null"
+            },
+            {
+                "name": "meta_description",
+                "type": "string | null"
+            },
+            {
+                "name": "is_featured",
+                "type": "boolean"
+            },
+            {
+                "name": "published_at",
+                "type": "string | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "deleted_at",
+                "type": "string | null"
+            },
+            {
+                "name": "author",
+                "type": "User"
+            },
+            {
+                "name": "reactions",
+                "type": "Reaction[]"
+            },
+            {
+                "name": "author_count",
+                "type": "number"
+            },
+            {
+                "name": "reactions_count",
+                "type": "number"
+            },
+            {
+                "name": "author_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "reactions_exists",
+                "type": "boolean"
+            }
+        ],
+        "Team": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "name",
+                "type": "string"
+            },
+            {
+                "name": "slug",
+                "type": "string"
+            },
+            {
+                "name": "description",
+                "type": "string | null"
+            },
+            {
+                "name": "owner_id",
+                "type": "number"
+            },
+            {
+                "name": "is_active",
+                "type": "boolean"
+            },
+            {
+                "name": "settings",
+                "type": "unknown[] | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "deleted_at",
+                "type": "string | null"
+            },
+            {
+                "name": "has_member",
+                "type": "boolean"
+            },
+            {
+                "name": "member_count",
+                "type": "number"
+            },
+            {
+                "name": "owner",
+                "type": "User"
+            },
+            {
+                "name": "members",
+                "type": "User[]"
+            },
+            {
+                "name": "owner_count",
+                "type": "number"
+            },
+            {
+                "name": "members_count",
+                "type": "number"
+            },
+            {
+                "name": "owner_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "members_exists",
+                "type": "boolean"
+            }
+        ],
+        "Category": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "name",
+                "type": "string"
+            },
+            {
+                "name": "slug",
+                "type": "string"
+            },
+            {
+                "name": "description",
+                "type": "string | null"
+            },
+            {
+                "name": "parent_id",
+                "type": "number | null"
+            },
+            {
+                "name": "sort_order",
+                "type": "number"
+            },
+            {
+                "name": "is_active",
+                "type": "boolean"
+            },
+            {
+                "name": "metadata",
+                "type": "Record<string, string | number>"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "deleted_at",
+                "type": "string | null"
+            },
+            {
+                "name": "breadcrumb",
+                "type": "string"
+            },
+            {
+                "name": "parent",
+                "type": "Category"
+            },
+            {
+                "name": "children",
+                "type": "Category[]"
+            },
+            {
+                "name": "posts",
+                "type": "Post[]"
+            },
+            {
+                "name": "parent_count",
+                "type": "number"
+            },
+            {
+                "name": "children_count",
+                "type": "number"
+            },
+            {
+                "name": "posts_count",
+                "type": "number"
+            },
+            {
+                "name": "parent_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "children_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "posts_exists",
+                "type": "boolean"
+            }
+        ],
+        "Product": [
+            {
+                "name": "id",
+                "type": "string"
+            },
+            {
+                "name": "name",
+                "type": "string"
+            },
+            {
+                "name": "slug",
+                "type": "string"
+            },
+            {
+                "name": "sku",
+                "type": "string"
+            },
+            {
+                "name": "description",
+                "type": "string | null"
+            },
+            {
+                "name": "price",
+                "type": "number"
+            },
+            {
+                "name": "compare_at_price",
+                "type": "number | null"
+            },
+            {
+                "name": "cost_price",
+                "type": "number | null"
+            },
+            {
+                "name": "quantity",
+                "type": "number"
+            },
+            {
+                "name": "weight",
+                "type": "number | null"
+            },
+            {
+                "name": "dimensions",
+                "type": "{ length: number; width: number; height: number; unit: \"cm\" | \"in\" }"
+            },
+            {
+                "name": "is_active",
+                "type": "boolean"
+            },
+            {
+                "name": "is_featured",
+                "type": "boolean"
+            },
+            {
+                "name": "published_at",
+                "type": "string | null"
+            },
+            {
+                "name": "metadata",
+                "type": "ProductMetadata | ProductJsonMetaData | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "deleted_at",
+                "type": "string | null"
+            },
+            {
+                "name": "is_on_sale",
+                "type": "boolean"
+            },
+            {
+                "name": "discount_percentage",
+                "type": "number | null"
+            },
+            {
+                "name": "profit_margin",
+                "type": "number | null"
+            },
+            {
+                "name": "in_stock",
+                "type": "boolean"
+            },
+            {
+                "name": "order_items",
+                "type": "OrderItem[]"
+            },
+            {
+                "name": "tags",
+                "type": "Tag[]"
+            },
+            {
+                "name": "images",
+                "type": "Image[]"
+            },
+            {
+                "name": "order_items_count",
+                "type": "number"
+            },
+            {
+                "name": "tags_count",
+                "type": "number"
+            },
+            {
+                "name": "images_count",
+                "type": "number"
+            },
+            {
+                "name": "order_items_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "tags_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "images_exists",
+                "type": "boolean"
+            }
+        ],
+        "Order": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "ulid",
+                "type": "string"
+            },
+            {
+                "name": "user_id",
+                "type": "number"
+            },
+            {
+                "name": "status",
+                "type": "OrderStatusType"
+            },
+            {
+                "name": "payment_method",
+                "type": "PaymentMethodType | null"
+            },
+            {
+                "name": "currency",
+                "type": "CurrencyType"
+            },
+            {
+                "name": "subtotal",
+                "type": "number"
+            },
+            {
+                "name": "tax",
+                "type": "number"
+            },
+            {
+                "name": "discount",
+                "type": "number"
+            },
+            {
+                "name": "total",
+                "type": "number"
+            },
+            {
+                "name": "shipping_address",
+                "type": "{ line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string }"
+            },
+            {
+                "name": "billing_address",
+                "type": "{ line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string }"
+            },
+            {
+                "name": "notes",
+                "type": "string | null"
+            },
+            {
+                "name": "placed_at",
+                "type": "string | null"
+            },
+            {
+                "name": "paid_at",
+                "type": "string | null"
+            },
+            {
+                "name": "shipped_at",
+                "type": "string | null"
+            },
+            {
+                "name": "delivered_at",
+                "type": "string | null"
+            },
+            {
+                "name": "cancelled_at",
+                "type": "string | null"
+            },
+            {
+                "name": "ip_address",
+                "type": "string | null"
+            },
+            {
+                "name": "user_agent",
+                "type": "string | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "deleted_at",
+                "type": "string | null"
+            },
+            {
+                "name": "item_count",
+                "type": "number"
+            },
+            {
+                "name": "is_paid",
+                "type": "boolean"
+            },
+            {
+                "name": "formatted_total",
+                "type": "string"
+            },
+            {
+                "name": "user",
+                "type": "User"
+            },
+            {
+                "name": "items",
+                "type": "OrderItem[]"
+            },
+            {
+                "name": "user_count",
+                "type": "number"
+            },
+            {
+                "name": "items_count",
+                "type": "number"
+            },
+            {
+                "name": "user_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "items_exists",
+                "type": "boolean"
+            }
+        ],
+        "Post": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "title",
+                "type": "string"
+            },
+            {
+                "name": "content",
+                "type": "string"
+            },
+            {
+                "name": "user_id",
+                "type": "number"
+            },
+            {
+                "name": "status",
+                "type": "StatusType"
+            },
+            {
+                "name": "published_at",
+                "type": "string | null"
+            },
+            {
+                "name": "metadata",
+                "type": "Record<string, {title: string, content: string}>"
+            },
+            {
+                "name": "rating",
+                "type": "number | null"
+            },
+            {
+                "name": "category",
+                "type": "string"
+            },
+            {
+                "name": "options",
+                "type": "unknown[] | null"
+            },
+            {
+                "name": "deleted_at",
+                "type": "string | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "category_id",
+                "type": "number | null"
+            },
+            {
+                "name": "visibility",
+                "type": "VisibilityType | null"
+            },
+            {
+                "name": "priority",
+                "type": "PriorityType | null"
+            },
+            {
+                "name": "word_count",
+                "type": "number | null"
+            },
+            {
+                "name": "reading_time_minutes",
+                "type": "number | null"
+            },
+            {
+                "name": "featured_image_url",
+                "type": "string | null"
+            },
+            {
+                "name": "is_pinned",
+                "type": "boolean"
+            },
+            {
+                "name": "title_display",
+                "type": "string | null"
+            },
+            {
+                "name": "excerpt",
+                "type": "string | null"
+            },
+            {
+                "name": "reading_time",
+                "type": "string"
+            },
+            {
+                "name": "author",
+                "type": "User"
+            },
+            {
+                "name": "category_rel",
+                "type": "Category"
+            },
+            {
+                "name": "comments",
+                "type": "Comment[]"
+            },
+            {
+                "name": "tags",
+                "type": "Tag[]"
+            },
+            {
+                "name": "images",
+                "type": "Image[]"
+            },
+            {
+                "name": "author_count",
+                "type": "number"
+            },
+            {
+                "name": "category_rel_count",
+                "type": "number"
+            },
+            {
+                "name": "comments_count",
+                "type": "number"
+            },
+            {
+                "name": "tags_count",
+                "type": "number"
+            },
+            {
+                "name": "images_count",
+                "type": "number"
+            },
+            {
+                "name": "author_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "category_rel_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "comments_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "tags_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "images_exists",
+                "type": "boolean"
+            }
+        ],
+        "Address": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "user_id",
+                "type": "number"
+            },
+            {
+                "name": "label",
+                "type": "string | null"
+            },
+            {
+                "name": "line_1",
+                "type": "string"
+            },
+            {
+                "name": "line_2",
+                "type": "string | null"
+            },
+            {
+                "name": "city",
+                "type": "string"
+            },
+            {
+                "name": "state",
+                "type": "string | null"
+            },
+            {
+                "name": "postal_code",
+                "type": "string"
+            },
+            {
+                "name": "country_code",
+                "type": "string"
+            },
+            {
+                "name": "latitude",
+                "type": "number | null"
+            },
+            {
+                "name": "longitude",
+                "type": "number | null"
+            },
+            {
+                "name": "is_default",
+                "type": "boolean"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "full_address",
+                "type": "string | null"
+            },
+            {
+                "name": "has_coordinates",
+                "type": "boolean"
+            },
+            {
+                "name": "user",
+                "type": "User"
+            },
+            {
+                "name": "user_count",
+                "type": "number"
+            },
+            {
+                "name": "user_exists",
+                "type": "boolean"
+            }
+        ],
+        "Tag": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "name",
+                "type": "string"
+            },
+            {
+                "name": "slug",
+                "type": "string"
+            },
+            {
+                "name": "color",
+                "type": "string | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "posts",
+                "type": "Post[]"
+            },
+            {
+                "name": "products",
+                "type": "Product[]"
+            },
+            {
+                "name": "posts_count",
+                "type": "number"
+            },
+            {
+                "name": "products_count",
+                "type": "number"
+            },
+            {
+                "name": "posts_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "products_exists",
+                "type": "boolean"
+            }
+        ],
+        "OrderItem": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "order_id",
+                "type": "number"
+            },
+            {
+                "name": "product_id",
+                "type": "string"
+            },
+            {
+                "name": "name",
+                "type": "string"
+            },
+            {
+                "name": "sku",
+                "type": "string"
+            },
+            {
+                "name": "quantity",
+                "type": "number"
+            },
+            {
+                "name": "unit_price",
+                "type": "number"
+            },
+            {
+                "name": "total_price",
+                "type": "number"
+            },
+            {
+                "name": "options",
+                "type": "Record<string, string | number | boolean> | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "subtotal",
+                "type": "number"
+            },
+            {
+                "name": "order",
+                "type": "Order"
+            },
+            {
+                "name": "product",
+                "type": "Product"
+            },
+            {
+                "name": "order_count",
+                "type": "number"
+            },
+            {
+                "name": "product_count",
+                "type": "number"
+            },
+            {
+                "name": "order_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "product_exists",
+                "type": "boolean"
+            }
+        ],
+        "Comment": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "content",
+                "type": "string"
+            },
+            {
+                "name": "post_id",
+                "type": "number"
+            },
+            {
+                "name": "user_id",
+                "type": "number"
+            },
+            {
+                "name": "is_flagged",
+                "type": "boolean"
+            },
+            {
+                "name": "flagged_at",
+                "type": "string | null"
+            },
+            {
+                "name": "metadata",
+                "type": "Record<string, unknown>"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "preview",
+                "type": "string"
+            },
+            {
+                "name": "post",
+                "type": "Post"
+            },
+            {
+                "name": "user",
+                "type": "User"
+            },
+            {
+                "name": "post_count",
+                "type": "number"
+            },
+            {
+                "name": "user_count",
+                "type": "number"
+            },
+            {
+                "name": "post_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "user_exists",
+                "type": "boolean"
+            }
+        ],
+        "Profile": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "user_id",
+                "type": "number"
+            },
+            {
+                "name": "bio",
+                "type": "string | null"
+            },
+            {
+                "name": "avatar_url",
+                "type": "string | null"
+            },
+            {
+                "name": "date_of_birth",
+                "type": "string | null"
+            },
+            {
+                "name": "website",
+                "type": "string | null"
+            },
+            {
+                "name": "phone_number",
+                "type": "string | null"
+            },
+            {
+                "name": "social_links",
+                "type": "{ twitter?: string; github?: string; linkedin?: string; website?: string }"
+            },
+            {
+                "name": "settings",
+                "type": "{ notifications_enabled: boolean; theme: \"light\" | \"dark\"; language: string }"
+            },
+            {
+                "name": "menu_settings",
+                "type": "MenuSettingsType | null"
+            },
+            {
+                "name": "timezone",
+                "type": "string"
+            },
+            {
+                "name": "locale",
+                "type": "string"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "age",
+                "type": "number | null"
+            },
+            {
+                "name": "display_summary",
+                "type": "string"
+            },
+            {
+                "name": "normalized_phone",
+                "type": "unknown"
+            },
+            {
+                "name": "formatted_bio",
+                "type": "string"
+            },
+            {
+                "name": "user",
+                "type": "User"
+            },
+            {
+                "name": "user_count",
+                "type": "number"
+            },
+            {
+                "name": "user_exists",
+                "type": "boolean"
+            }
+        ],
+        "Image": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "imageable_type",
+                "type": "string"
+            },
+            {
+                "name": "imageable_id",
+                "type": "number"
+            },
+            {
+                "name": "url",
+                "type": "string"
+            },
+            {
+                "name": "alt_text",
+                "type": "string | null"
+            },
+            {
+                "name": "disk",
+                "type": "string"
+            },
+            {
+                "name": "path",
+                "type": "string"
+            },
+            {
+                "name": "mime_type",
+                "type": "string"
+            },
+            {
+                "name": "size_bytes",
+                "type": "number"
+            },
+            {
+                "name": "width",
+                "type": "number | null"
+            },
+            {
+                "name": "height",
+                "type": "number | null"
+            },
+            {
+                "name": "sort_order",
+                "type": "number"
+            },
+            {
+                "name": "metadata",
+                "type": "unknown[] | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "size_for_humans",
+                "type": "string"
+            },
+            {
+                "name": "is_landscape",
+                "type": "boolean"
+            },
+            {
+                "name": "aspect_ratio",
+                "type": "string | null"
+            },
+            {
+                "name": "imageable",
+                "type": "Image"
+            },
+            {
+                "name": "imageable_count",
+                "type": "number"
+            },
+            {
+                "name": "imageable_exists",
+                "type": "boolean"
+            }
+        ],
+        "DatabaseNotification": [
+            {
+                "name": "id",
+                "type": "string"
+            },
+            {
+                "name": "type",
+                "type": "string"
+            },
+            {
+                "name": "notifiable_type",
+                "type": "string"
+            },
+            {
+                "name": "notifiable_id",
+                "type": "number"
+            },
+            {
+                "name": "data",
+                "type": "unknown[]"
+            },
+            {
+                "name": "read_at",
+                "type": "string | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "notifiable",
+                "type": "DatabaseNotification"
+            },
+            {
+                "name": "notifiable_count",
+                "type": "number"
+            },
+            {
+                "name": "notifiable_exists",
+                "type": "boolean"
+            }
+        ]
+    },
+    "enums": {
+        "DueAtNotice": {
+            "cases": [
+                {
+                    "name": "ComingUp",
+                    "value": "Payment due date is coming up",
+                    "description": ""
+                },
+                {
+                    "name": "DueToday",
+                    "value": "Payment is due today",
+                    "description": ""
+                },
+                {
+                    "name": "PastDue",
+                    "value": "Payment is past due",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'ComingUp'",
+                "'DueToday'",
+                "'PastDue'"
+            ],
+            "caseTypes": [
+                "'Payment due date is coming up'",
+                "'Payment is due today'",
+                "'Payment is past due'"
+            ],
+            "methods": [],
+            "staticMethods": []
+        },
+        "InvoiceStatus": {
+            "cases": [
+                {
+                    "name": "Draft",
+                    "value": "draft",
+                    "description": ""
+                },
+                {
+                    "name": "Sent",
+                    "value": "sent",
+                    "description": ""
+                },
+                {
+                    "name": "Paid",
+                    "value": "paid",
+                    "description": ""
+                },
+                {
+                    "name": "Overdue",
+                    "value": "overdue",
+                    "description": ""
+                },
+                {
+                    "name": "Cancelled",
+                    "value": "cancelled",
+                    "description": ""
+                },
+                {
+                    "name": "Void",
+                    "value": "void",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'Draft'",
+                "'Sent'",
+                "'Paid'",
+                "'Overdue'",
+                "'Cancelled'",
+                "'Void'"
+            ],
+            "caseTypes": [
+                "'draft'",
+                "'sent'",
+                "'paid'",
+                "'overdue'",
+                "'cancelled'",
+                "'void'"
+            ],
+            "methods": [],
+            "staticMethods": []
+        },
+        "PaymentStatus": {
+            "cases": [
+                {
+                    "name": "Pending",
+                    "value": "pending",
+                    "description": ""
+                },
+                {
+                    "name": "Completed",
+                    "value": "completed",
+                    "description": ""
+                },
+                {
+                    "name": "Failed",
+                    "value": "failed",
+                    "description": ""
+                },
+                {
+                    "name": "Refunded",
+                    "value": "refunded",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'Pending'",
+                "'Completed'",
+                "'Failed'",
+                "'Refunded'"
+            ],
+            "caseTypes": [
+                "'pending'",
+                "'completed'",
+                "'failed'",
+                "'refunded'"
+            ],
+            "methods": [],
+            "staticMethods": []
+        },
+        "Status": {
+            "cases": [
+                {
+                    "name": "Draft",
+                    "value": 0,
+                    "description": ""
+                },
+                {
+                    "name": "Published",
+                    "value": 1,
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'Draft'",
+                "'Published'"
+            ],
+            "caseTypes": [
+                0,
+                1
+            ],
+            "methods": {
+                "icon": {
+                    "name": "icon",
+                    "description": "Get the icon name for the status",
+                    "returns": {
+                        "Draft": "pencil",
+                        "Published": "check"
+                    }
+                },
+                "color": {
+                    "name": "color",
+                    "description": "",
+                    "returns": {
+                        "Draft": "gray",
+                        "Published": "green"
+                    }
+                }
+            },
+            "staticMethods": {
+                "valueLabelPair": {
+                    "name": "valueLabelPair",
+                    "description": "Get the key-value pair options for the status",
+                    "return": [
+                        {
+                            "label": "Draft",
+                            "value": 0
+                        },
+                        {
+                            "label": "Published",
+                            "value": 1
+                        }
+                    ]
+                },
+                "names": {
+                    "name": "names",
+                    "description": "",
+                    "return": [
+                        "Draft",
+                        "Published"
+                    ]
+                },
+                "values": {
+                    "name": "values",
+                    "description": "",
+                    "return": [
+                        0,
+                        1
+                    ]
+                },
+                "options": {
+                    "name": "options",
+                    "description": "",
+                    "return": {
+                        "Draft": 0,
+                        "Published": 1
+                    }
+                }
+            }
+        },
+        "Carrier": {
+            "cases": [
+                {
+                    "name": "Ups",
+                    "value": "ups",
+                    "description": ""
+                },
+                {
+                    "name": "FedEx",
+                    "value": "fedex",
+                    "description": ""
+                },
+                {
+                    "name": "Usps",
+                    "value": "usps",
+                    "description": ""
+                },
+                {
+                    "name": "Dhl",
+                    "value": "dhl",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'Ups'",
+                "'FedEx'",
+                "'Usps'",
+                "'Dhl'"
+            ],
+            "caseTypes": [
+                "'ups'",
+                "'fedex'",
+                "'usps'",
+                "'dhl'"
+            ],
+            "methods": [],
+            "staticMethods": []
+        },
+        "ShipmentStatus": {
+            "cases": [
+                {
+                    "name": "Pending",
+                    "value": "pending",
+                    "description": ""
+                },
+                {
+                    "name": "LabelCreated",
+                    "value": "label_created",
+                    "description": ""
+                },
+                {
+                    "name": "PickedUp",
+                    "value": "picked_up",
+                    "description": ""
+                },
+                {
+                    "name": "InTransit",
+                    "value": "in_transit",
+                    "description": ""
+                },
+                {
+                    "name": "OutForDelivery",
+                    "value": "out_for_delivery",
+                    "description": ""
+                },
+                {
+                    "name": "Delivered",
+                    "value": "delivered",
+                    "description": ""
+                },
+                {
+                    "name": "Returned",
+                    "value": "returned",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'Pending'",
+                "'LabelCreated'",
+                "'PickedUp'",
+                "'InTransit'",
+                "'OutForDelivery'",
+                "'Delivered'",
+                "'Returned'"
+            ],
+            "caseTypes": [
+                "'pending'",
+                "'label_created'",
+                "'picked_up'",
+                "'in_transit'",
+                "'out_for_delivery'",
+                "'delivered'",
+                "'returned'"
+            ],
+            "methods": [],
+            "staticMethods": []
+        },
+        "ContentType": {
+            "cases": [
+                {
+                    "name": "Post",
+                    "value": "post",
+                    "description": ""
+                },
+                {
+                    "name": "Tutorial",
+                    "value": "tutorial",
+                    "description": ""
+                },
+                {
+                    "name": "Review",
+                    "value": "review",
+                    "description": ""
+                },
+                {
+                    "name": "News",
+                    "value": "news",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'Post'",
+                "'Tutorial'",
+                "'Review'",
+                "'News'"
+            ],
+            "caseTypes": [
+                "'post'",
+                "'tutorial'",
+                "'review'",
+                "'news'"
+            ],
+            "methods": [],
+            "staticMethods": []
+        },
+        "ArticleStatus": {
+            "cases": [
+                {
+                    "name": "Draft",
+                    "value": "draft",
+                    "description": ""
+                },
+                {
+                    "name": "InReview",
+                    "value": "in_review",
+                    "description": ""
+                },
+                {
+                    "name": "Published",
+                    "value": "published",
+                    "description": ""
+                },
+                {
+                    "name": "Archived",
+                    "value": "archived",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'Draft'",
+                "'InReview'",
+                "'Published'",
+                "'Archived'"
+            ],
+            "caseTypes": [
+                "'draft'",
+                "'in_review'",
+                "'published'",
+                "'archived'"
+            ],
+            "methods": [],
+            "staticMethods": []
+        },
+        "PaymentMethod": {
+            "cases": [
+                {
+                    "name": "CreditCard",
+                    "value": "credit_card",
+                    "description": ""
+                },
+                {
+                    "name": "DebitCard",
+                    "value": "debit_card",
+                    "description": ""
+                },
+                {
+                    "name": "PayPal",
+                    "value": "paypal",
+                    "description": ""
+                },
+                {
+                    "name": "BankTransfer",
+                    "value": "bank_transfer",
+                    "description": ""
+                },
+                {
+                    "name": "CashOnDelivery",
+                    "value": "cash_on_delivery",
+                    "description": ""
+                },
+                {
+                    "name": "Crypto",
+                    "value": "crypto",
+                    "description": ""
+                },
+                {
+                    "name": "ApplePay",
+                    "value": "apple_pay",
+                    "description": ""
+                },
+                {
+                    "name": "GooglePay",
+                    "value": "google_pay",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'CreditCard'",
+                "'DebitCard'",
+                "'PayPal'",
+                "'BankTransfer'",
+                "'CashOnDelivery'",
+                "'Crypto'",
+                "'ApplePay'",
+                "'GooglePay'"
+            ],
+            "caseTypes": [
+                "'credit_card'",
+                "'debit_card'",
+                "'paypal'",
+                "'bank_transfer'",
+                "'cash_on_delivery'",
+                "'crypto'",
+                "'apple_pay'",
+                "'google_pay'"
+            ],
+            "methods": [],
+            "staticMethods": []
+        },
+        "MembershipLevel": {
+            "cases": [
+                {
+                    "name": "Free",
+                    "value": "Free",
+                    "description": ""
+                },
+                {
+                    "name": "Basic",
+                    "value": "Basic",
+                    "description": ""
+                },
+                {
+                    "name": "Premium",
+                    "value": "Premium",
+                    "description": ""
+                },
+                {
+                    "name": "Enterprise",
+                    "value": "Enterprise",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [],
+            "caseTypes": [
+                "'Free'",
+                "'Basic'",
+                "'Premium'",
+                "'Enterprise'"
+            ],
+            "methods": [],
+            "staticMethods": []
+        },
+        "Priority": {
+            "cases": [
+                {
+                    "name": "Low",
+                    "value": 0,
+                    "description": ""
+                },
+                {
+                    "name": "Medium",
+                    "value": 1,
+                    "description": ""
+                },
+                {
+                    "name": "High",
+                    "value": 2,
+                    "description": ""
+                },
+                {
+                    "name": "Critical",
+                    "value": 3,
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'Low'",
+                "'Medium'",
+                "'High'",
+                "'Critical'"
+            ],
+            "caseTypes": [
+                0,
+                1,
+                2,
+                3
+            ],
+            "methods": {
+                "label": {
+                    "name": "label",
+                    "description": "Human-readable label",
+                    "returns": {
+                        "Low": "Low Priority",
+                        "Medium": "Medium Priority",
+                        "High": "High Priority",
+                        "Critical": "Critical Priority"
+                    }
+                },
+                "badgeColor": {
+                    "name": "badgeColor",
+                    "description": "Tailwind badge color class",
+                    "returns": {
+                        "Low": "bg-gray-100 text-gray-800",
+                        "Medium": "bg-blue-100 text-blue-800",
+                        "High": "bg-orange-100 text-orange-800",
+                        "Critical": "bg-red-100 text-red-800"
+                    }
+                },
+                "icon": {
+                    "name": "icon",
+                    "description": "Icon name for the priority level",
+                    "returns": {
+                        "Low": "arrow-down",
+                        "Medium": "minus",
+                        "High": "arrow-up",
+                        "Critical": "exclamation-triangle"
+                    }
+                },
+                "isAboveThreshold": {
+                    "name": "isAboveThreshold",
+                    "description": "Compare with threshold",
+                    "returns": {
+                        "Low": false,
+                        "Medium": false,
+                        "High": true,
+                        "Critical": true
+                    }
+                }
+            },
+            "staticMethods": {
+                "filterByMinimum": {
+                    "name": "filterByMinimum",
+                    "description": "Filter by minimum",
+                    "return": {
+                        "1": 1,
+                        "2": 2,
+                        "3": 3
+                    }
+                }
+            }
+        },
+        "Visibility": {
+            "cases": [
+                {
+                    "name": "Public",
+                    "value": "Public",
+                    "description": ""
+                },
+                {
+                    "name": "Private",
+                    "value": "Private",
+                    "description": ""
+                },
+                {
+                    "name": "Protected",
+                    "value": "Protected",
+                    "description": ""
+                },
+                {
+                    "name": "Internal",
+                    "value": "Internal",
+                    "description": ""
+                },
+                {
+                    "name": "Draft",
+                    "value": "Draft",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [],
+            "caseTypes": [
+                "'Public'",
+                "'Private'",
+                "'Protected'",
+                "'Internal'",
+                "'Draft'"
+            ],
+            "methods": {
+                "isPublic": {
+                    "name": "isPublic",
+                    "description": "Whether the item is publicly accessible",
+                    "returns": {
+                        "Public": true,
+                        "Private": false,
+                        "Protected": false,
+                        "Internal": false,
+                        "Draft": false
+                    }
+                },
+                "description": {
+                    "name": "description",
+                    "description": "Description of the visibility level",
+                    "returns": {
+                        "Public": "Visible to everyone",
+                        "Private": "Only visible to the owner",
+                        "Protected": "Visible to team members",
+                        "Internal": "Visible to organization members",
+                        "Draft": "Not visible to anyone except the author"
+                    }
+                }
+            },
+            "staticMethods": []
+        },
+        "MediaType": {
+            "cases": [
+                {
+                    "name": "Image",
+                    "value": "image",
+                    "description": ""
+                },
+                {
+                    "name": "Video",
+                    "value": "video",
+                    "description": ""
+                },
+                {
+                    "name": "Audio",
+                    "value": "audio",
+                    "description": ""
+                },
+                {
+                    "name": "Document",
+                    "value": "document",
+                    "description": ""
+                },
+                {
+                    "name": "Archive",
+                    "value": "archive",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'Image'",
+                "'Video'",
+                "'Audio'",
+                "'Document'",
+                "'Archive'"
+            ],
+            "caseTypes": [
+                "'image'",
+                "'video'",
+                "'audio'",
+                "'document'",
+                "'archive'"
+            ],
+            "methods": {
+                "extensions": {
+                    "name": "extensions",
+                    "description": "Allowed file extensions for this media type",
+                    "returns": {
+                        "Image": [
+                            "jpg",
+                            "jpeg",
+                            "png",
+                            "gif",
+                            "webp",
+                            "svg"
+                        ],
+                        "Video": [
+                            "mp4",
+                            "webm",
+                            "mov",
+                            "avi"
+                        ],
+                        "Audio": [
+                            "mp3",
+                            "wav",
+                            "ogg",
+                            "flac"
+                        ],
+                        "Document": [
+                            "pdf",
+                            "doc",
+                            "docx",
+                            "xls",
+                            "xlsx",
+                            "csv"
+                        ],
+                        "Archive": [
+                            "zip",
+                            "tar",
+                            "gz",
+                            "rar",
+                            "7z"
+                        ]
+                    }
+                },
+                "maxSizeMb": {
+                    "name": "maxSizeMb",
+                    "description": "Maximum file size in MB",
+                    "returns": {
+                        "Image": 10,
+                        "Video": 500,
+                        "Audio": 50,
+                        "Document": 25,
+                        "Archive": 100
+                    }
+                },
+                "icon": {
+                    "name": "icon",
+                    "description": "Icon name",
+                    "returns": {
+                        "Image": "photo",
+                        "Video": "film",
+                        "Audio": "musical-note",
+                        "Document": "document-text",
+                        "Archive": "archive-box"
+                    }
+                }
+            },
+            "staticMethods": {
+                "mimePrefixes": {
+                    "name": "mimePrefixes",
+                    "description": "Get the MIME type prefixes",
+                    "return": {
+                        "image": "image\/",
+                        "video": "video\/",
+                        "audio": "audio\/",
+                        "document": "application\/",
+                        "archive": "application\/"
+                    }
+                }
+            }
+        },
+        "OrderStatus": {
+            "cases": [
+                {
+                    "name": "Pending",
+                    "value": 0,
+                    "description": "Order has been placed but not yet processed"
+                },
+                {
+                    "name": "Processing",
+                    "value": 1,
+                    "description": "Order is being prepared"
+                },
+                {
+                    "name": "Shipped",
+                    "value": 2,
+                    "description": "Order has been shipped"
+                },
+                {
+                    "name": "Delivered",
+                    "value": 3,
+                    "description": "Order has been delivered"
+                },
+                {
+                    "name": "Cancelled",
+                    "value": 4,
+                    "description": "Order was cancelled"
+                },
+                {
+                    "name": "Refunded",
+                    "value": 5,
+                    "description": "Order was refunded"
+                },
+                {
+                    "name": "OnHold",
+                    "value": 6,
+                    "description": "Order is on hold"
+                }
+            ],
+            "caseKinds": [
+                "'Pending'",
+                "'Processing'",
+                "'Shipped'",
+                "'Delivered'",
+                "'Cancelled'",
+                "'Refunded'",
+                "'OnHold'"
+            ],
+            "caseTypes": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+            ],
+            "methods": {
+                "label": {
+                    "name": "label",
+                    "description": "Human-readable label",
+                    "returns": {
+                        "Pending": "Pending",
+                        "Processing": "Processing",
+                        "Shipped": "Shipped",
+                        "Delivered": "Delivered",
+                        "Cancelled": "Cancelled",
+                        "Refunded": "Refunded",
+                        "OnHold": "On Hold"
+                    }
+                },
+                "color": {
+                    "name": "color",
+                    "description": "Tailwind color class for the status badge",
+                    "returns": {
+                        "Pending": "yellow",
+                        "Processing": "blue",
+                        "Shipped": "indigo",
+                        "Delivered": "green",
+                        "Cancelled": "red",
+                        "Refunded": "gray",
+                        "OnHold": "orange"
+                    }
+                },
+                "isCancellable": {
+                    "name": "isCancellable",
+                    "description": "Whether the order can still be cancelled",
+                    "returns": {
+                        "Pending": true,
+                        "Processing": true,
+                        "Shipped": false,
+                        "Delivered": false,
+                        "Cancelled": false,
+                        "Refunded": false,
+                        "OnHold": true
+                    }
+                }
+            },
+            "staticMethods": {
+                "completedStatuses": {
+                    "name": "completedStatuses",
+                    "description": "Get statuses that represent a completed order",
+                    "return": [
+                        3,
+                        4,
+                        5
+                    ]
+                },
+                "activeStatuses": {
+                    "name": "activeStatuses",
+                    "description": "Get statuses that represent an active order",
+                    "return": [
+                        0,
+                        1,
+                        2,
+                        6
+                    ]
+                }
+            }
+        },
+        "Role": {
+            "cases": [
+                {
+                    "name": "Admin",
+                    "value": "Admin",
+                    "description": ""
+                },
+                {
+                    "name": "User",
+                    "value": "User",
+                    "description": ""
+                },
+                {
+                    "name": "Guest",
+                    "value": "Guest",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [],
+            "caseTypes": [
+                "'Admin'",
+                "'User'",
+                "'Guest'"
+            ],
+            "methods": [],
+            "staticMethods": []
+        },
+        "Color": {
+            "cases": [
+                {
+                    "name": "Red",
+                    "value": "red",
+                    "description": "Primary red color"
+                },
+                {
+                    "name": "Green",
+                    "value": "green",
+                    "description": "Primary green color"
+                },
+                {
+                    "name": "Blue",
+                    "value": "blue",
+                    "description": "Primary blue color"
+                },
+                {
+                    "name": "Yellow",
+                    "value": "yellow",
+                    "description": "Warning yellow"
+                },
+                {
+                    "name": "Slate",
+                    "value": "slate",
+                    "description": ""
+                },
+                {
+                    "name": "Purple",
+                    "value": "purple",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'Red'",
+                "'Green'",
+                "'Blue'",
+                "'Yellow'",
+                "'Slate'",
+                "'Purple'"
+            ],
+            "caseTypes": [
+                "'red'",
+                "'green'",
+                "'blue'",
+                "'yellow'",
+                "'slate'",
+                "'purple'"
+            ],
+            "methods": {
+                "hex": {
+                    "name": "hex",
+                    "description": "Get the hex code for the color",
+                    "returns": {
+                        "Red": "#EF4444",
+                        "Green": "#22C55E",
+                        "Blue": "#3B82F6",
+                        "Amber": "#F59E0B",
+                        "Gray": "#64748B",
+                        "Purple": "#A855F7"
+                    }
+                },
+                "rgb": {
+                    "name": "rgb",
+                    "description": "Get the RGB tuple",
+                    "returns": {
+                        "Red": [
+                            239,
+                            68,
+                            68
+                        ],
+                        "Green": [
+                            34,
+                            197,
+                            94
+                        ],
+                        "Blue": [
+                            59,
+                            130,
+                            246
+                        ],
+                        "Amber": [
+                            245,
+                            158,
+                            11
+                        ],
+                        "Gray": [
+                            100,
+                            116,
+                            139
+                        ],
+                        "Purple": [
+                            168,
+                            85,
+                            247
+                        ]
+                    }
+                }
+            },
+            "staticMethods": []
+        },
+        "Currency": {
+            "cases": [
+                {
+                    "name": "Usd",
+                    "value": "USD",
+                    "description": ""
+                },
+                {
+                    "name": "Eur",
+                    "value": "EUR",
+                    "description": ""
+                },
+                {
+                    "name": "Gbp",
+                    "value": "GBP",
+                    "description": ""
+                },
+                {
+                    "name": "Jpy",
+                    "value": "JPY",
+                    "description": ""
+                },
+                {
+                    "name": "Cad",
+                    "value": "CAD",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'Usd'",
+                "'Eur'",
+                "'Gbp'",
+                "'Jpy'",
+                "'Cad'"
+            ],
+            "caseTypes": [
+                "'USD'",
+                "'EUR'",
+                "'GBP'",
+                "'JPY'",
+                "'CAD'"
+            ],
+            "methods": [],
+            "staticMethods": {
+                "symbols": {
+                    "name": "symbols",
+                    "description": "Get all currency symbols as a map",
+                    "return": {
+                        "USD": "$",
+                        "EUR": "\u20ac",
+                        "GBP": "\u00a3",
+                        "JPY": "\u00a5",
+                        "CAD": "C$"
+                    }
+                },
+                "default": {
+                    "name": "default",
+                    "description": "Get the default currency code",
+                    "return": "USD"
+                },
+                "details": {
+                    "name": "details",
+                    "description": "Get detailed info for all currencies",
+                    "return": [
+                        {
+                            "code": "USD",
+                            "symbol": "$",
+                            "decimals": 2
+                        },
+                        {
+                            "code": "EUR",
+                            "symbol": "\u20ac",
+                            "decimals": 2
+                        },
+                        {
+                            "code": "GBP",
+                            "symbol": "\u00a3",
+                            "decimals": 2
+                        },
+                        {
+                            "code": "JPY",
+                            "symbol": "\u00a5",
+                            "decimals": 0
+                        },
+                        {
+                            "code": "CAD",
+                            "symbol": "C$",
+                            "decimals": 2
+                        }
+                    ]
+                }
+            }
+        }
+    }
+}

@@ -48,18 +48,32 @@ enum Priority: int
         };
     }
 
-    /** Method that requires a parameter — invoke will throw, exercising the catch block */
-    #[TsEnumMethod(description: 'Compare with threshold')]
+    /** Method that requires a parameter — params provided via attribute */
+    #[TsEnumMethod(description: 'Compare with threshold', params: ['threshold' => 1])]
     public function isAboveThreshold(int $threshold): bool
     {
         return $this->value > $threshold;
     }
 
-    /** Static method that requires a parameter — invoke will throw, exercising the catch block */
-    #[TsEnumStaticMethod(description: 'Filter by minimum')]
+    /** Method that requires a parameter — no params provided, should be skipped */
+    #[TsEnumMethod(description: 'Compare with ceiling')]
+    public function isAboveCeiling(int $ceiling): bool
+    {
+        return $this->value > $ceiling;
+    }
+
+    /** Static method that requires a parameter — params provided via attribute */
+    #[TsEnumStaticMethod(description: 'Filter by minimum', params: ['minimum' => 1])]
     public static function filterByMinimum(int $minimum): array
     {
         return array_filter(self::cases(), fn (self $case) => $case->value >= $minimum);
+    }
+
+    /** Static method that requires a parameter — no params provided, should be skipped */
+    #[TsEnumStaticMethod(description: 'Filter by maximum')]
+    public static function filterByMaximum(int $maximum): array
+    {
+        return array_filter(self::cases(), fn (self $case) => $case->value <= $maximum);
     }
 
     /** Should NOT be published — no TsEnumMethod attribute */

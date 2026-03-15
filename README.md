@@ -114,6 +114,112 @@ The same options are available for enums with `included_enums`, `excluded_enums`
 > [!TIP]
 > Include and exclude settings accept both fully-qualified class names and directory paths. When a directory is provided, all matching classes within it will be discovered automatically.
 
+#### Conditional Publishing
+
+You can choose to publish only enums or only models, either through configuration or command flags.
+
+##### Via Configuration
+
+Disable enum or model publishing entirely in the config file:
+
+```php
+// config/ts-publish.php
+
+'publish_enums' => true,
+'publish_models' => true,
+```
+
+Setting either to `false` will skip that type on every run, including automatic post-migration publishing.
+
+##### Via Command Flags
+
+Use the `--only-enums` or `--only-models` flags to limit a single run:
+
+```bash
+php artisan ts:publish --only-enums
+php artisan ts:publish --only-models
+```
+
+These flags cannot be combined — passing both will return an error.
+
+##### Config & Flag Conflicts
+
+When a command flag requests a type that is disabled in config (e.g. `--only-enums` while `publish_enums` is `false`), the command will prompt you to confirm whether to override the config setting. In non-interactive environments (CI, queued jobs, post-migration hooks), the config value is respected and the command exits gracefully.
+
+If both types end up disabled (both config values are `false` and no override flag is given), the command prints a warning and exits with a success status.
+
+#### Verbosity Levels
+
+The `ts:publish` command supports three verbosity levels using the standard Artisan verbosity flags:
+
+| Flag | Output |
+|------|--------|
+| `--quiet` / `-q` | No output at all — only the exit code indicates success or failure. Ideal for automated tooling like the [Vite plugin](#enum-metadata-vite-plugin). |
+| *(default)* | A compact summary showing the output directory, file counts, and any extra files generated (barrels, globals, JSON). |
+| `--verbose` / `-v` | Detailed tables listing every generated file with per-file metadata (cases, methods, columns, mutators, relations). |
+
+```bash
+# Compact summary (default)
+php artisan ts:publish
+
+# Detailed tables
+php artisan ts:publish -v
+
+# Silent — for scripts, CI, or the Vite plugin
+php artisan ts:publish --quiet
+```
+
+In quiet mode, files are still generated normally — only console output is suppressed. The [Vite plugin](#enum-metadata-vite-plugin) passes `--quiet` by default since it only needs the exit code.
+
+## Casing Configurations
+
+This package provides two independent config options to control the casing of generated property and method names:
+
+| Config Key           | Applies To                                    | Default    |
+|----------------------|-----------------------------------------------|------------|
+| `relationship_case`  | Model relationship names, `_count`, `_exists` | `'snake'`  |
+| `enum_method_case`   | Enum method and static method names           | `'camel'`  |
+
+Both accept `'snake'`, `'camel'`, or `'pascal'`.
+
+### Relationship Case Style
+
+Controls relationship names in the generated model TypeScript interfaces:
+
+```php
+// config/ts-publish.php
+
+'relationship_case' => 'snake', // default
+```
+
+| Config Value | Relationship `hasMany(Post::class)`  | Count                | Exists                |
+|--------------|--------------------------------------|----------------------|-----------------------|
+| `'snake'`    | `posts: Post[]`                      | `posts_count`        | `posts_exists`        |
+| `'camel'`    | `posts: Post[]`                      | `postsCount`         | `postsExists`         |
+| `'pascal'`   | `Posts: Post[]`                      | `PostsCount`         | `PostsExists`         |
+
+> [!NOTE]
+> For each relationship defined on a model, this package automatically generates `_count` and `_exists` properties alongside the relation itself. These correspond to [Laravel's `withCount` and `withExists`](https://laravel.com/docs/eloquent-relationships#counting-related-models) features and are included in every generated model interface.
+
+### Enum Method Case Style
+
+Controls the casing of enum method and static method names in the generated TypeScript output:
+
+```php
+// config/ts-publish.php
+
+'enum_method_case' => 'camel', // default
+```
+
+| Config Value | Method `getLabel()` | Static Method `AllLabels()` |
+|--------------|---------------------|-----------------------------|
+| `'snake'`    | `get_label`         | `all_labels`                |
+| `'camel'`    | `getLabel`          | `allLabels`                 |
+| `'pascal'`   | `GetLabel`          | `AllLabels`                 |
+
+> [!TIP]
+> This setting applies to all enum methods — both instance methods (via `#[TsEnumMethod]` or `auto_include_enum_methods`) and static methods (via `#[TsEnumStaticMethod]` or `auto_include_enum_static_methods`). You can still override individual method names using the `name` parameter on the attribute.
+
 ## Enums
 
 This package, like these others before it, ([spatie/typescript-transformer](https://github.com/spatie/typescript-transformer) or [modeltyper](https://github.com/fumeapp/modeltyper)) can convert enums from PHP to TypeScript for each enum case.
@@ -123,6 +229,9 @@ However, PHP enums do not solely consist of enum cases, but can also have method
 By default, this package will only publish the enum cases and their values to TypeScript, but you can use the provided attributes to specify that you want to call certain methods or static methods and publish their return values in TypeScript as well. See below.
 
 Alternatively, you can enable the `auto_include_enum_methods` and `auto_include_enum_static_methods` config options to automatically include all public methods without needing to add attributes. See [Auto-Including All Enum Methods](#auto-including-all-enum-methods) for details.
+
+> [!TIP]
+> This package also provides an `EnumResource` JSON resource that lets you return a flattened, instance-specific representation of any enum case from your API routes. See [JSON Enum HTTP API Resource](#json-enum-http-api-resource) for details.
 
 > [!NOTE]
 > Whether you use the attributes or the global config options, only **public** methods are ever included. Private and protected methods are always excluded.
@@ -135,12 +244,12 @@ All attributes can be found at [this link](https://github.com/abetwothree/larave
 
 List of enum attributes & descriptions:
 
-| Attribute              | Target         | Description                                                                                                         |
-|------------------------|----------------|---------------------------------------------------------------------------------------------------------------------|
-| `#[TsEnumMethod]`      | Method         | Include a method's return values in the TypeScript output. Called per enum case, creates a key/value pair object.    |
-| `#[TsEnumStaticMethod]`| Static Method  | Include a static method's return value in the TypeScript output. Called once, added as a property on the enum.       |
-| `#[TsEnum]`            | Enum Class     | Rename the enum when converting to TypeScript. Useful to avoid naming conflicts across namespaces.                   |
-| `#[TsCase]`            | Enum Case      | Rename, change the frontend value, or add a description to an enum case.                                             |
+| Attribute              | Target         | Description                                                                                                             |
+|------------------------|----------------|-------------------------------------------------------------------------------------------------------------------------|
+| `#[TsEnumMethod]`      | Method         | Include a method's return values in the TypeScript output. Called per enum case, creates a key/value pair object.       |
+| `#[TsEnumStaticMethod]`| Static Method  | Include a static method's return value in the TypeScript output. Called once, added as a property on the enum.          |
+| `#[TsEnum]`            | Enum Class     | Rename the enum or add a description when converting to TypeScript. Useful to avoid naming conflicts across namespaces. |
+| `#[TsCase]`            | Enum Case      | Rename, change the frontend value, or add a description to an enum case.                                                |
 
 ### Enum Method #[TsEnumMethod]
 
@@ -178,12 +287,13 @@ export const Status = {
 } as const;
 ```
 
-The `#[TsEnumMethod]` attribute accepts optional `name` and `description` parameters:
+The `#[TsEnumMethod]` attribute accepts optional `name`, `description`, and `params` parameters:
 
-| Parameter     | Type     | Default           | Description                                       |
-|---------------|----------|-------------------|---------------------------------------------------|
-| `name`        | `string` | Method name       | Customize the key name used in the TypeScript output |
-| `description` | `string` | `''`              | Added as a JSDoc comment above the method output   |
+| Parameter     | Type     | Default           | Description                                                              |
+|---------------|----------|-------------------|--------------------------------------------------------------------------|
+| `name`        | `string` | Method name       | Customize the key name used in the TypeScript output                     |
+| `description` | `string` | `''`              | Added as a JSDoc comment above the method output                         |
+| `params`      | `array`  | `[]`              | Named arguments to pass when invoking the method (see example below)     |
 
 ```php
 #[TsEnumMethod(name: 'statusLabel', description: 'Human-readable label for this status')]
@@ -195,6 +305,48 @@ public function label(): string
     };
 }
 ```
+
+#### Methods with Required Parameters
+
+Methods that require parameters are **skipped by default** — they will not appear in the generated TypeScript output. This prevents producing misleading `null` values for methods that can't be called without arguments.
+
+To include a method that requires parameters, use the `params` property on the attribute to provide named arguments:
+
+```php
+enum Priority: int
+{
+    case Low = 0;
+    case Medium = 1;
+    case High = 2;
+
+    #[TsEnumMethod(description: 'Compare with threshold', params: ['threshold' => 1])]
+    public function isAboveThreshold(int $threshold): bool
+    {
+        return $this->value > $threshold;
+    }
+}
+```
+
+Generated TypeScript:
+
+```TypeScript
+export const Priority = {
+    Low: 0,
+    Medium: 1,
+    High: 2,
+    /** Compare with threshold */
+    isAboveThreshold: {
+        Low: false,
+        Medium: false,
+        High: true,
+    },
+} as const;
+```
+
+The `params` values must be constant expressions (scalars, arrays of scalars) since they are defined inside a PHP attribute. The values are spread as named arguments when the method is invoked for each enum case.
+
+> [!NOTE]
+> Methods with only optional parameters (parameters with default values) are still included without needing to set `params`, since they can be called without arguments.
 
 ### Enum Static Method #[TsEnumStaticMethod]
 
@@ -232,7 +384,13 @@ export const Status = {
 } as const;
 ```
 
-The `#[TsEnumStaticMethod]` attribute also accepts the same optional `name` and `description` parameters as `#[TsEnumMethod]`:
+The `#[TsEnumStaticMethod]` attribute accepts the same optional `name`, `description`, and `params` parameters as `#[TsEnumMethod]`:
+
+| Parameter     | Type     | Default           | Description                                                              |
+|---------------|----------|-------------------|--------------------------------------------------------------------------|
+| `name`        | `string` | Method name       | Customize the key name used in the TypeScript output                     |
+| `description` | `string` | `''`              | Added as a JSDoc comment above the method output                         |
+| `params`      | `array`  | `[]`              | Named arguments to pass when invoking the method                         |
 
 ```php
 #[TsEnumStaticMethod(name: 'allOptions', description: 'Array of all status options')]
@@ -245,14 +403,29 @@ public static function options(): array
 }
 ```
 
+Like `#[TsEnumMethod]`, static methods with required parameters are **skipped by default** unless `params` is provided:
+
+```php
+#[TsEnumStaticMethod(description: 'Filter by minimum priority', params: ['minimum' => 1])]
+public static function filterByMinimum(int $minimum): array
+{
+    return array_filter(self::cases(), fn (self $case) => $case->value >= $minimum);
+}
+```
+
 ### Enum Class Name #[TsEnum]
 
-Renaming an enum using the `TsEnum` attribute:
+Renaming an enum or adding a description using the `TsEnum` attribute:
+
+| Parameter     | Type     | Default           | Description                                                                          |
+|---------------|----------|-------------------|--------------------------------------------------------------------------------------|
+| `name`        | `string` | Enum class name   | Override the TypeScript const name                                                   |
+| `description` | `string` | `''`              | Added as a JSDoc comment above the enum. Takes priority over any PHPDoc description. |
 
 ```php
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnum;
 
-#[TsEnum('UserStatus')]
+#[TsEnum('UserStatus', description: 'All possible user account statuses')]
 enum Status: string
 {
     case Active = 'active';
@@ -263,6 +436,7 @@ enum Status: string
 Generated TypeScript declaration type:
 
 ```TypeScript
+/** All possible user account statuses */
 export const UserStatus = {
     Active: 'active',
     Inactive: 'inactive',
@@ -457,7 +631,10 @@ By default, only **public** methods decorated with the `#[TsEnumMethod]` or `#[T
 
 When enabled, every public method declared on the enum will be included in the TypeScript output — you no longer need to add `#[TsEnumMethod]` or `#[TsEnumStaticMethod]` to each method. Built-in enum methods like `cases()`, `from()`, and `tryFrom()` are always excluded automatically.
 
-You can still use `#[TsEnumMethod]` and `#[TsEnumStaticMethod]` to customize the `name` or `description` of individual methods when auto-inclusion is enabled:
+> [!NOTE]
+> Methods with required parameters are automatically skipped in auto-include mode since there is no attribute to provide `params` on. To include a method that requires parameters, add the `#[TsEnumMethod]` or `#[TsEnumStaticMethod]` attribute with the `params` property set.
+
+You can still use `#[TsEnumMethod]` and `#[TsEnumStaticMethod]` to customize the `name`, `description`, or `params` of individual methods when auto-inclusion is enabled:
 
 ```php
 enum Status: string
@@ -488,6 +665,71 @@ enum Status: string
 
 > [!CAUTION]
 > These settings are disabled by default for security reasons — enabling them will expose the return values of all public methods on your enums. Make sure you're comfortable with that before enabling them.
+
+### PHPDoc Descriptions for Enums
+
+This package automatically reads PHPDoc doc blocks and outputs them as JSDoc comments in the generated TypeScript. Descriptions are read from the following locations:
+
+| Location              | Source                                         | JSDoc Placement                        |
+|-----------------------|------------------------------------------------|----------------------------------------|
+| Enum class            | Doc block above the enum class                 | Above the `export const` declaration   |
+| Enum cases            | Doc block above each case                      | Above the case property                |
+| Instance methods      | Doc block above the method                     | Above the method property              |
+| Static methods        | Doc block above the static method              | Above the static method property       |
+
+Lines starting with `@` (such as `@param`, `@return`, `@phpstan-type`, etc.) are automatically filtered out — only the human-readable description text is included.
+
+**Priority:** If an element has both a PHPDoc doc block and an attribute with a `description` parameter (e.g., `#[TsEnum(description: ...)]`, `#[TsCase(description: ...)]`, `#[TsEnumMethod(description: ...)]`), the **attribute description always takes priority** over the doc block.
+
+```php
+/**
+ * Represents the priority level of a task.
+ *
+ * @phpstan-type PriorityValue = int
+ */
+enum Priority: int
+{
+    /** Lowest priority level */
+    case Low = 0;
+
+    /** Standard priority */
+    case Medium = 1;
+
+    /** Highest priority level */
+    case High = 2;
+
+    /** Human-readable label for the priority */
+    #[TsEnumMethod]
+    public function label(): string
+    {
+        return match($this) {
+            self::Low => 'Low Priority',
+            self::Medium => 'Medium Priority',
+            self::High => 'High Priority',
+        };
+    }
+}
+```
+
+Generated TypeScript:
+
+```TypeScript
+/** Represents the priority level of a task. */
+export const Priority = {
+    /** Lowest priority level */
+    Low: 0,
+    /** Standard priority */
+    Medium: 1,
+    /** Highest priority level */
+    High: 2,
+    /** Human-readable label for the priority */
+    label: {
+        Low: 'Low Priority',
+        Medium: 'Medium Priority',
+        High: 'High Priority',
+    },
+} as const;
+```
 
 ## Models
 
@@ -862,54 +1104,74 @@ export interface Product {
 }
 ```
 
-### Case Style
+### PHPDoc Descriptions for Models
 
-This package provides two independent config options to control the casing of generated property and method names:
+Similar to enums, this package automatically reads PHPDoc doc blocks from your model classes and outputs them as JSDoc comments in the generated TypeScript interfaces. Descriptions are read from the following locations:
 
-| Config Key           | Applies To                                    | Default    |
-|----------------------|-----------------------------------------------|------------|
-| `relationship_case`  | Model relationship names, `_count`, `_exists` | `'snake'`  |
-| `enum_method_case`   | Enum method and static method names           | `'camel'`  |
+| Location              | Source                                                          | JSDoc Placement                              |
+|-----------------------|-----------------------------------------------------------------|----------------------------------------------|
+| Model class           | Doc block above the model class                                 | Above the `export interface` declaration     |
+| Columns               | Doc block above the column's Attribute accessor method           | Above the column property                    |
+| Mutators              | Doc block above the mutator's Attribute accessor method          | Above the mutator property                   |
+| Relations             | Doc block above the relation method                             | Above the relation property                  |
 
-Both accept `'snake'`, `'camel'`, or `'pascal'`.
+For columns and mutators, the package looks for a doc block on the corresponding accessor method — either new-style (`protected function name(): Attribute`) or old-style (`public function getNameAttribute()`). The new-style accessor is checked first.
 
-#### Relationship Case Style
-
-Controls relationship names in the generated model TypeScript interfaces:
-
-```php
-// config/ts-publish.php
-
-'relationship_case' => 'snake', // default
-```
-
-| Config Value | Relationship `hasMany(Post::class)` | Count                | Exists                |
-|--------------|--------------------------------------|----------------------|-----------------------|
-| `'snake'`    | `posts: Post[]`                      | `posts_count`        | `posts_exists`        |
-| `'camel'`    | `posts: Post[]`                      | `postsCount`         | `postsExists`         |
-| `'pascal'`   | `Posts: Post[]`                      | `PostsCount`         | `PostsExists`         |
-
-> [!NOTE]
-> For each relationship defined on a model, this package automatically generates `_count` and `_exists` properties alongside the relation itself. These correspond to [Laravel's `withCount` and `withExists`](https://laravel.com/docs/eloquent-relationships#counting-related-models) features and are included in every generated model interface.
-
-#### Enum Method Case Style
-
-Controls the casing of enum method and static method names in the generated TypeScript output:
+Lines starting with `@` (such as `@param`, `@return`, `@phpstan-type`, etc.) are automatically filtered out.
 
 ```php
-// config/ts-publish.php
+/** Application user account */
+class User extends Model
+{
+    /** User name formatted with first letter capitalized */
+    protected function name(): Attribute
+    {
+        return Attribute::make(
+            get: fn ($value): string => ucfirst((string) $value),
+        );
+    }
 
-'enum_method_case' => 'camel', // default
+    /** User initials (e.g. "JD" for "John Doe") */
+    protected function initials(): Attribute
+    {
+        return Attribute::make(
+            get: fn (): string => collect(explode(' ', $this->name))
+                ->map(fn (string $part) => strtoupper(substr($part, 0, 1)))
+                ->implode(''),
+        );
+    }
+
+    /** Polymorphic images (avatar gallery, etc.) */
+    public function images(): MorphMany
+    {
+        return $this->morphMany(Image::class, 'imageable');
+    }
+}
 ```
 
-| Config Value | Method `getLabel()` | Static Method `AllLabels()` |
-|--------------|---------------------|-----------------------------|
-| `'snake'`    | `get_label`         | `all_labels`                |
-| `'camel'`    | `getLabel`          | `allLabels`                 |
-| `'pascal'`   | `GetLabel`          | `AllLabels`                 |
+Generated TypeScript using the `model-full` template:
 
-> [!TIP]
-> This setting applies to all enum methods — both instance methods (via `#[TsEnumMethod]` or `auto_include_enum_methods`) and static methods (via `#[TsEnumStaticMethod]` or `auto_include_enum_static_methods`). You can still override individual method names using the `name` parameter on the attribute.
+```TypeScript
+import type { Image } from './';
+
+/** Application user account */
+export interface User
+{
+    // Columns
+    id: number;
+    /** User name formatted with first letter capitalized */
+    name: string;
+    email: string;
+    // Mutators
+    /** User initials (e.g. "JD" for "John Doe") */
+    initials: string;
+    // Relations
+    /** Polymorphic images (avatar gallery, etc.) */
+    images: Image[];
+    images_count: number;
+    images_exists: boolean;
+}
+```
 
 ### Timestamps as Date Objects
 
@@ -943,30 +1205,6 @@ This package ships with a comprehensive set of PHP-to-TypeScript type mappings (
 > [!TIP]
 > Custom mappings are merged with the built-in map and take precedence. Type keys are case-insensitive. For per-model type overrides, use the `#[TsCasts]` attribute instead.
 
-### Type-Only Imports
-
-By default, model files use `import type { ... }` instead of `import { ... }` for all imported types. This is the correct syntax for stricter TypeScript configurations that enable `verbatimModuleSyntax` or `isolatedModules`:
-
-```TypeScript
-import type { StatusType } from '../enums';
-import type { Profile, Post } from './';
-
-export interface User {
-    id: number;
-    status: StatusType;
-}
-```
-
-If your project doesn't require type-only imports, you can disable this with:
-
-```php
-// config/ts-publish.php
-
-'use_type_imports' => false,
-```
-
-This only affects model file imports (enum types, model interfaces, and custom `#[TsCasts]` imports). The enum `import { defineEnum }` value import from `@tolki/enum` is unaffected.
-
 ### Output Options
 
 This package provides several output formats that can be enabled independently:
@@ -991,11 +1229,204 @@ When `output_globals_file` is enabled, a global declaration file is created that
 
 The JSON output from `output_collected_files_json` is designed to work with build tools and file watchers (like the [@tolki/enum Vite plugin](#enum-metadata-vite-plugin)) that need to know which PHP source files were collected so they can trigger a re-publish when those files change.
 
+## JSON Enum HTTP API Resource
+
+This package ships with an `EnumResource` — a Laravel [JSON resource](https://laravel.com/docs/eloquent-resources) that transforms any PHP enum case into a flat, API-friendly array. It runs the enum through the same transformer pipeline used for TypeScript publishing, so every `#[TsEnumMethod]` you've configured is automatically included.
+
+Configured `#[TsEnumStaticMethod]` are not included by default because they would have the same repeated values for every case. You're free to extend the `EnumResource` to include static methods or any other data. You can also always use the transformer data and create a custom resource if you want more control over the response shape.
+
+The `EnumResource` class is useful when you need to send a single enum instance (e.g., a model's status) to the frontend as a rich object with resolved method values, rather than just the raw string or integer value.
+
+### Basic Usage
+
+In a controller or route
+
+```php
+
+use AbeTwoThree\LaravelTsPublish\EnumResource;
+use App\Enums\Status;
+
+return new EnumResource(Status::Published);
+```
+
+From another HTTP API resource to automatically transform an enum property on a model or collection of models:
+
+```php
+
+namespace App\Http\Resources;
+ 
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+use AbeTwoThree\LaravelTsPublish\EnumResource;
+use App\Enums\Status;
+use App\Enums\MembershipLevel;
+
+class UserResource extends JsonResource
+{
+    public function toArray($request)
+    {
+        return [
+            'id' => $this->id,
+            'name' => $this->name,
+            // Assuming "status" is a model property casted to the Status enum
+            'status' => new EnumResource($this->status),
+            // Can also create enum resources from any enum case, not just model properties
+            'membership_level' => new EnumResource(MembershipLevel::Free),
+        ];
+    }
+}
+```
+
+### Enum Case Instance Response
+
+Response:
+
+```json
+{
+    "name": "Published",
+    "value": 1,
+    "backed": true,
+    "icon": "check",
+    "color": "green",
+}
+```
+
+### Response Shape
+
+Every response includes these base keys:
+
+| Key      | Type            | Description                                                             |
+|----------|-----------------|-------------------------------------------------------------------------|
+| `name`   | `string`        | The enum case name                                                      |
+| `value`  | `string \| int` | The backed value, or the case name for unit enums                       |
+| `backed` | `bool`          | Whether the enum is a backed enum                                       |
+
+Instance methods (decorated with `#[TsEnumMethod]` or with global all methods allowed config setting) are flattened as top-level keys with the resolved value **for the specific case** passed to the resource.
+
+### Unit Enums
+
+Unit enums (enums without a backed type) are also supported. Since they have no backed value, the `value` key will equal the case `name` and `backed` will be `false`:
+
+```php
+return new EnumResource(Role::Admin);
+```
+
+```json
+{
+    "name": "Admin",
+    "value": "Admin",
+    "backed": false
+}
+```
+
+### Relationship to TypeScript Publishing
+
+The `EnumResource` uses the same `EnumTransformer` pipeline as the `ts:publish` command. This means:
+
+- Only methods marked with `#[TsEnumMethod]` (or all public methods when auto-include is enabled) are included.
+- Methods with required parameters but no `params` on the attribute are excluded.
+- The `enum_method_case` config setting applies to the method key names in the response.
+
+This ensures the JSON response shape is consistent with the TypeScript types generated by this package.
+
+### Typing API Responses with `AsEnum`
+
+The `@tolki/enum` package exports an `AsEnum` utility type that resolves the `EnumResource` JSON response shape for any published enum. This gives you full type safety when consuming enum API responses on the frontend.
+
+```typescript
+import type { AsEnum } from '@tolki/enum';
+import type { Status } from '@/types/enums';
+
+// Full discriminated union of all cases
+type StatusResponse = AsEnum<typeof Status>;
+// { name: 'Draft'; value: 0; backed: true; icon: 'pencil'; color: 'gray'; ... }
+// | { name: 'Published'; value: 1; backed: true; icon: 'check'; color: 'green'; ... }
+```
+
+The optional second type parameter lets you pre-narrow to a specific case by value:
+
+```typescript
+// Narrowed to a single case
+type DraftResponse = AsEnum<typeof Status, 0>;
+// { name: 'Draft'; value: 0; backed: true; icon: 'pencil'; color: 'gray'; ... }
+```
+
+Use it to type your API responses:
+
+```typescript
+const response = await fetch(`/api/articles/${id}`);
+const article: { id: number; status: AsEnum<typeof Status> } = await response.json();
+
+if (article.status.value === 0) {
+    // TypeScript knows this is the Draft case
+    console.log(article.status.icon); // 'pencil'
+}
+```
+
+### Auto-Generated `Resource` Model Interface
+
+When `enums_use_tolki_package` is enabled (the default), any model with enum-cast columns automatically gets a `{Model}Resource` companion set of interfaces. These interfaces replace each enum-backed property with `AsEnum<typeof EnumName>`, so you don't have to compose `Omit` + `AsEnum` manually on model properties or mutators that are cast to enums.
+
+For a Post model that casts the database columns `status`, `visibility`, and `priority` to enums, the publisher will generate a `PostResource` interface that looks like this:
+
+```typescript
+export interface Post {
+    id: number;
+    title: string;
+    content: string;
+    status: StatusType;         // Original enum type
+    visibility: VisibilityType | null; // Original enum type
+    priority: PriorityType | null;     // Original enum type
+}
+
+// Auto-generated — no manual typing needed
+export interface PostResource extends Omit<Post, 'status' | 'visibility' | 'priority'>
+{
+    status: AsEnum<typeof Status>;
+    visibility: AsEnum<typeof Visibility> | null;
+    priority: AsEnum<typeof Priority> | null;
+}
+```
+
+Use it to auto type API responses that make use of `EnumResource` class:
+
+```typescript
+import type { PostResource } from '@js/types/models';
+
+const response = await fetch('/api/posts/1');
+const post: PostResource = await response.json();
+
+post.status.value; // 0 | 1
+post.status.icon;  // 'pencil' | 'check'
+```
+
+The interfaces are generated for both the `model-full` and `model-split` templates. In split mode, the template will create a `PostResource` interface for the properties interface and a `PostMutatorsResource` interface for the mutators interface, since mutators can also be enum-cast properties:
+
+```typescript
+export interface PostResource extends Omit<Post, 'status' | 'visibility' | 'priority'>
+{
+    status: AsEnum<typeof Status>;
+    // ...
+}
+
+export interface PostMutators
+{
+    due_notice: DueAtNoticeType;
+}
+
+export interface PostMutatorsResource extends Omit<PostMutators, 'due_notice'>
+{
+    due_notice: AsEnum<typeof DueAtNotice>;
+}
+```
+
+Naming conflicts are handled automatically — if two enum FQCNs share the same base name, namespace-prefixed aliases are used for both the type and const imports (e.g., `AppStatus`, `CrmStatus`).
+
 ## Modular Publishing
 
 By default, this package outputs all generated TypeScript files into flat `enums/` and `models/` directories:
 
-```
+```text
 resources/js/types/
 ├── enums/
 │   ├── article-status.ts
@@ -1024,7 +1455,7 @@ Set `modular_publishing` to `true` in your config file:
 
 With modular publishing enabled, the output structure changes to reflect your PHP namespaces:
 
-```
+```text
 resources/js/types/
 ├── app/
 │   ├── enums/
@@ -1168,6 +1599,61 @@ To swap a component, create a class that extends the default and override the co
 > [!TIP]
 > You can also publish and customize the Blade templates directly with `php artisan vendor:publish --tag="laravel-ts-publish-views"` if you only need to change the output format without modifying the pipeline logic.
 
+## Pre-Command Hook
+
+If you need to run custom logic right before the `ts:publish` command executes — such as dynamically configuring directories, adjusting included/excluded models, or performing any setup that requires processing — you can register a pre-command hook using `callCommandUsing`.
+
+This is useful because the closure is only executed when the `ts:publish` command actually runs, not at service provider boot time. This keeps your boot process fast and avoids unnecessary overhead on every request.
+
+### Basic Usage
+
+In your `AppServiceProvider` (or any service provider), register a closure in the `boot` method:
+
+```php
+use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
+
+public function boot(): void
+{
+    LaravelTsPublish::callCommandUsing(function () {
+        // This only runs when `php artisan ts:publish` is executed
+        config()->set('ts-publish.additional_model_directories', [
+            'modules/Blog/Models',
+            'modules/Shop/Models',
+        ]);
+    });
+}
+```
+
+### Dynamic Directory Discovery
+
+A common use case is using Symfony Finder to automatically discover module directories:
+
+```php
+use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
+use Symfony\Component\Finder\Finder;
+
+public function boot(): void
+{
+    LaravelTsPublish::callCommandUsing(function () {
+        $modelDirs = collect(Finder::create()->directories()->in(base_path('modules'))->name('Models')->depth(1))
+            ->map(fn ($dir) => $dir->getRelativePathname())
+            ->values()
+            ->all();
+
+        $enumDirs = collect(Finder::create()->directories()->in(base_path('modules'))->name('Enums')->depth(1))
+            ->map(fn ($dir) => $dir->getRelativePathname())
+            ->values()
+            ->all();
+
+        config()->set('ts-publish.additional_model_directories', $modelDirs);
+        config()->set('ts-publish.additional_enum_directories', $enumDirs);
+    });
+}
+```
+
+> [!NOTE]
+> Only one closure can be registered at a time. Calling `callCommandUsing` again will replace the previous closure.
+
 ## Configuration Reference
 
 Below is a quick reference of all available configuration options:
@@ -1177,7 +1663,8 @@ Below is a quick reference of all available configuration options:
 | `run_after_migrate`                   | `bool`     | `true`                               | Re-publish types after running migrations                        |
 | `output_to_files`                     | `bool`     | `true`                               | Write generated TypeScript to `.ts` files                        |
 | `output_directory`                    | `string`   | `resources/js/types/`                | Directory where TypeScript files are written                     |
-| `use_type_imports`                    | `bool`     | `true`                               | Use `import type` instead of `import` in model files             |
+| `publish_enums`                       | `bool`     | `true`                               | Enable or disable enum publishing                                |
+| `publish_models`                      | `bool`     | `true`                               | Enable or disable model publishing                               |
 | `modular_publishing`                  | `bool`     | `false`                              | Organize output into namespace-derived directory trees           |
 | `namespace_strip_prefix`              | `string`   | `''`                                 | Strip this prefix from namespaces in modular mode                |
 | `relationship_case`                   | `string`   | `'snake'`                            | Case style for relationships: `snake`, `camel`, or `pascal`      |

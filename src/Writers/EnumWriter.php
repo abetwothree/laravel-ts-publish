@@ -9,8 +9,6 @@ use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
 use Override;
 
 /**
- * @phpstan-import-type EnumData from EnumTransformer
- *
  * @extends CoreWriter<EnumTransformer>
  */
 class EnumWriter extends CoreWriter
@@ -23,7 +21,6 @@ class EnumWriter extends CoreWriter
     {
         $filename = $transformer->filename();
 
-        /** @var EnumData $data */
         $data = $transformer->data();
 
         /** @var view-string $template */
@@ -32,10 +29,10 @@ class EnumWriter extends CoreWriter
         $content = view(
             $template,
             [
-                ...$data,
                 'filename' => $filename,
                 'metadataEnabled' => config()->boolean('ts-publish.enum_metadata_enabled'),
                 'usesTolkiPackage' => config()->boolean('ts-publish.enums_use_tolki_package'),
+                'data' => $data,
             ]
         )->render();
 

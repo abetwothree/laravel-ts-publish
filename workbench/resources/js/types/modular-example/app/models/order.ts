@@ -1,5 +1,8 @@
-import type { OrderStatusType, PaymentMethodType, CurrencyType } from '../enums';
-import type { User, OrderItem } from '.';
+import { type AsEnum } from '@tolki/enum';
+
+import { Currency, OrderStatus, PaymentMethod } from '../enums';
+import type { CurrencyType, OrderStatusType, PaymentMethodType } from '../enums';
+import type { OrderItem, User } from '.';
 
 export interface Order
 {
@@ -28,10 +31,20 @@ export interface Order
     deleted_at: string | null;
 }
 
+export interface OrderResource extends Omit<Order, 'status' | 'payment_method' | 'currency'>
+{
+    status: AsEnum<typeof OrderStatus>;
+    payment_method: AsEnum<typeof PaymentMethod> | null;
+    currency: AsEnum<typeof Currency>;
+}
+
 export interface OrderMutators
 {
+    /** Number of line items in this order */
     item_count: number;
+    /** Whether the order has been paid */
     is_paid: boolean;
+    /** Formatted total with currency symbol */
     formatted_total: string;
 }
 
@@ -49,3 +62,5 @@ export interface OrderRelations
 }
 
 export interface OrderAll extends Order, OrderMutators, OrderRelations {}
+
+export interface OrderAllResource extends OrderResource, OrderMutators, OrderRelations {}

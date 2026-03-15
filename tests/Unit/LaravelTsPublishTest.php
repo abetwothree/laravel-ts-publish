@@ -4,8 +4,10 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
+use Workbench\App\Models\User;
 use Workbench\Shipping\Enums\Status as ShippingStatus;
 
 use function Orchestra\Testbench\workbench_path;
@@ -133,22 +135,22 @@ describe('phpToTypeScriptType', function () {
     });
 
     test('phpToTypeScriptType resolves any other class to its basename', function () {
-        $result = $this->service->phpToTypeScriptType(\Workbench\App\Models\User::class);
+        $result = $this->service->phpToTypeScriptType(User::class);
 
         expect($result['type'])->toBe('User')
             ->and($result['classes'])->toBe(['User'])
-            ->and($result['classFqcns'])->toBe([\Workbench\App\Models\User::class]);
+            ->and($result['classFqcns'])->toBe([User::class]);
     });
 
     test('phpToTypeScriptType resolves Illuminate support collections to array or object shapes', function () {
-        $result = $this->service->phpToTypeScriptType(\Illuminate\Support\Collection::class);
+        $result = $this->service->phpToTypeScriptType(Collection::class);
 
         expect($result['type'])->toBe('unknown[] | Record<string, unknown>')
             ->and($result['classes'])->toBeEmpty();
     });
 
     test('phpToTypeScriptType resolves Eloquent collections to arrays', function () {
-        $result = $this->service->phpToTypeScriptType(\Illuminate\Database\Eloquent\Collection::class);
+        $result = $this->service->phpToTypeScriptType(Illuminate\Database\Eloquent\Collection::class);
 
         expect($result['type'])->toBe('Record<string, unknown>')
             ->and($result['classes'])->toBeEmpty();
@@ -219,7 +221,7 @@ describe('resolveReflectionType', function () {
     });
 
     test('resolveReflectionType handles intersection types', function () {
-        $closure = fn (): \Countable&\Iterator => throw new \RuntimeException('not called');
+        $closure = fn (): Countable&\Iterator => throw new RuntimeException('not called');
         $returnType = (new ReflectionFunction($closure))->getReturnType();
 
         $result = $this->service->resolveReflectionType($returnType);
@@ -559,6 +561,126 @@ describe('sanitizeJsDoc', function () {
 
     test('handles empty string', function () {
         expect($this->service->sanitizeJsDoc(''))->toBe('');
+    });
+});
+
+describe('parseDocBlockDescription', function () {
+    test('returns empty string for false', function () {
+        expect($this->service->parseDocBlockDescription(false))->toBe('');
+    });
+
+    test('returns empty string for empty string', function () {
+        expect($this->service->parseDocBlockDescription(''))->toBe('');
+    });
+
+    test('extracts description from single-line doc block', function () {
+        $doc = '/** A simple description */';
+        expect($this->service->parseDocBlockDescription($doc))->toBe('A simple description');
+    });
+
+    test('extracts description from multi-line doc block', function () {
+        $doc = <<<'DOC'
+/**
+ * First line of description.
+ * Second line of description.
+ */
+DOC;
+        expect($this->service->parseDocBlockDescription($doc))->toBe('First line of description. Second line of description.');
+    });
+
+    test('filters out @-tag lines', function () {
+        $doc = <<<'DOC'
+/**
+ * The actual description.
+ *
+ * @param string $name
+ * @return void
+ * @phpstan-type Foo = array{bar: string}
+ */
+DOC;
+        expect($this->service->parseDocBlockDescription($doc))->toBe('The actual description.');
+    });
+
+    test('returns empty string when doc block has only tags', function () {
+        $doc = <<<'DOC'
+/**
+ * @param string $name
+ * @return void
+ */
+DOC;
+        expect($this->service->parseDocBlockDescription($doc))->toBe('');
+    });
+});
+
+describe('callCommandUsing and callCommandWith', function () {
+    afterEach(function () {
+        // Reset static state to prevent leaking across tests
+        $prop = (new ReflectionClass(LaravelTsPublish::class))->getProperty('callCommandWith');
+        $prop->setValue(null, null);
+    });
+
+    test('callCommandWith does nothing when no closure is registered', function () {
+        // Should not throw — just a no-op
+        $this->service->callCommandWith();
+
+        expect(true)->toBeTrue();
+    });
+
+    test('callCommandUsing registers a closure that callCommandWith executes', function () {
+        $called = false;
+
+        LaravelTsPublish::callCommandUsing(function () use (&$called) {
+            $called = true;
+        });
+
+        expect($called)->toBeFalse();
+
+        $this->service->callCommandWith();
+
+        expect($called)->toBeTrue();
+    });
+
+    test('callCommandWith can modify config values', function () {
+        LaravelTsPublish::callCommandUsing(function () {
+            config()->set('ts-publish.additional_model_directories', ['modules/Blog/Models']);
+        });
+
+        expect(config('ts-publish.additional_model_directories'))->not->toBe(['modules/Blog/Models']);
+
+        $this->service->callCommandWith();
+
+        expect(config('ts-publish.additional_model_directories'))->toBe(['modules/Blog/Models']);
+    });
+
+    test('later callCommandUsing replaces the previous closure', function () {
+        $firstCalled = false;
+        $secondCalled = false;
+
+        LaravelTsPublish::callCommandUsing(function () use (&$firstCalled) {
+            $firstCalled = true;
+        });
+
+        LaravelTsPublish::callCommandUsing(function () use (&$secondCalled) {
+            $secondCalled = true;
+        });
+
+        $this->service->callCommandWith();
+
+        expect($firstCalled)->toBeFalse()
+            ->and($secondCalled)->toBeTrue();
+    });
+
+    test('callCommandWith only runs the closure once per invocation', function () {
+        $count = 0;
+
+        LaravelTsPublish::callCommandUsing(function () use (&$count) {
+            $count++;
+        });
+
+        $this->service->callCommandWith();
+        $this->service->callCommandWith();
+
+        expect($count)->toBe(2);
     });
 });
 

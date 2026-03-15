@@ -1,5 +1,5 @@
-import type { ProductMetadata, ProductJsonMetaData } from '@js/types/product';
-import type { OrderItem, Tag, Image } from '.';
+import type { ProductJsonMetaData, ProductMetadata } from '@js/types/product';
+import type { Image, OrderItem, Tag } from '.';
 
 export interface Product
 {
@@ -25,9 +25,13 @@ export interface Product
 
 export interface ProductMutators
 {
+    /** Whether the product is on sale */
     is_on_sale: boolean;
+    /** Discount percentage (0-100) or null */
     discount_percentage: number | null;
+    /** Profit margin percentage */
     profit_margin: number | null;
+    /** Whether the product is in stock */
     in_stock: boolean;
 }
 
@@ -35,7 +39,9 @@ export interface ProductRelations
 {
     // Relations
     order_items: OrderItem[];
+    /** Polymorphic many-to-many with tags */
     tags: Tag[];
+    /** Polymorphic one-to-many with images */
     images: Image[];
     // Counts
     order_items_count: number;

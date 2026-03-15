@@ -11,9 +11,10 @@ Contributions are welcome and appreciated! Here's everything you need to get sta
 
 1. Fork the repo and clone your fork locally.
 2. Run `composer install` to install dependencies.
-3. Run `touch workbench/database/database.sqlite` to create the SQLite database file for testing.
-4. Run `vendor/bin/testbench migrate` to set up the test database.
-5. Run `composer test` to run the tests and ensure everything is set up correctly.
+3. Run `npm install` to install JavaScript dependencies.
+4. Run `touch workbench/database/database.sqlite` to create the SQLite database file for testing.
+5. Run `vendor/bin/testbench migrate` to set up the test database.
+6. Run `composer test` to run the tests and ensure everything is set up correctly.
 
 ## Workflow
 

@@ -11,6 +11,8 @@ use Orchestra\Testbench\Attributes\WithEnv;
 use Orchestra\Testbench\Concerns\WithWorkbench;
 use Orchestra\Testbench\TestCase as Orchestra;
 use ReflectionClass;
+use Symfony\Component\Finder\Finder;
+use Symfony\Component\Finder\SplFileInfo;
 use Workbench\Accounting\Enums\InvoiceStatus;
 use Workbench\Accounting\Enums\PaymentStatus;
 use Workbench\Accounting\Models\Invoice;
@@ -53,6 +55,14 @@ class TestCase extends Orchestra
         $workbenchConfigPath = workbench_path('config/ts-publish.php');
         copy($packageConfigPath, $workbenchConfigPath);
 
+        $modules = collect(
+            iterator_to_array(
+                (new Finder)->in(workbench_path('modules'))->directories()->depth('< 5')
+            )
+        )
+            ->map(fn (SplFileInfo $file) => $file->getPathname())
+            ->all();
+
         config()->set('database.default', 'testing');
         config()->set('app.key', 'base64:yTtQNlEOB1IqYydLG9Z5pKRSxhZffdOxT1iuZIJi+eM=');
         config()->set('ts-publish.output_globals_file', true);
@@ -62,11 +72,13 @@ class TestCase extends Orchestra
             DatabaseNotification::class,
             Invoice::class,
             Shipment::class,
+            ...$modules,
         ]);
         config()->set('ts-publish.additional_enum_directories', [
             InvoiceStatus::class,
             PaymentStatus::class,
             Status::class,
+            ...$modules,
         ]);
     }
 }

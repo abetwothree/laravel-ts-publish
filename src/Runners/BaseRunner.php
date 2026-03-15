@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace AbeTwoThree\LaravelTsPublish\Runners;
 
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
@@ -35,6 +37,10 @@ abstract class BaseRunner
     public protected(set) string $jsonContent = '';
 
     public protected(set) string $watcherJsonContent = '';
+
+    public bool $shouldPublishEnums = true;
+
+    public bool $shouldPublishModels = true;
 
     abstract public function run(): void;
 }

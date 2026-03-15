@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsCase;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnum;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnumMethod;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnumStaticMethod;
+use AbeTwoThree\LaravelTsPublish\Dtos\TsEnumDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use BackedEnum;
 use Illuminate\Support\Str;
@@ -17,28 +18,21 @@ use Throwable;
 use UnitEnum;
 
 /**
- * @phpstan-type CasesList = list<array{name: string, value: string|int, description: string}>
+ * @phpstan-import-type CasesList from TsEnumDto
+ * @phpstan-import-type MethodsList from TsEnumDto
+ * @phpstan-import-type StaticMethodsList from TsEnumDto
+ * @phpstan-import-type CaseKindsList from TsEnumDto
+ * @phpstan-import-type CaseTypesList from TsEnumDto
+ *
  * @phpstan-type TsTypeOverrides = array<string, array{name?: string, value?: string|int, description?: string}>
- * @phpstan-type MethodsList = array<string, array{name: string, description: string, returns: array<string, mixed>}>
- * @phpstan-type StaticMethodsList = array<string, array{name: string, description: string, return: mixed}>
- * @phpstan-type CaseKindsList = list<string>
- * @phpstan-type CaseTypesList = list<string|int>
- * @phpstan-type EnumData = array{
- *     enumName: string,
- *     filePath: string,
- *     cases: CasesList,
- *     methods: MethodsList,
- *     staticMethods: StaticMethodsList,
- *     caseKinds: CaseKindsList,
- *     caseTypes: CaseTypesList,
- *     backed: bool,
- * }
  *
  * @extends CoreTransformer<UnitEnum|BackedEnum>
  */
 class EnumTransformer extends CoreTransformer
 {
     public protected(set) string $enumName;
+
+    public protected(set) string $description = '';
 
     public protected(set) string $filePath;
 
@@ -84,21 +78,23 @@ class EnumTransformer extends CoreTransformer
     }
 
     /**
-     * @return EnumData
+     * Get the transformed data as a structured DTO.
      */
     #[Override]
-    public function data(): array
+    public function data(): TsEnumDto
     {
-        return [
-            'enumName' => $this->enumName,
-            'filePath' => $this->filePath,
-            'cases' => $this->cases,
-            'methods' => $this->methods,
-            'staticMethods' => $this->staticMethods,
-            'caseKinds' => $this->caseKinds,
-            'caseTypes' => $this->caseTypes,
-            'backed' => $this->backed,
-        ];
+        return new TsEnumDto(
+            enumName: $this->enumName,
+            description: $this->description,
+            filePath: $this->filePath,
+            filename: $this->filename(),
+            cases: $this->cases,
+            methods: $this->methods,
+            staticMethods: $this->staticMethods,
+            caseKinds: $this->caseKinds,
+            caseTypes: $this->caseTypes,
+            backed: $this->backed,
+        );
     }
 
     #[Override]
@@ -113,9 +109,17 @@ class EnumTransformer extends CoreTransformer
         $this->backed = $this->reflectionEnum->isBacked();
 
         $tsEnumAttrs = $this->reflectionEnum->getAttributes(TsEnum::class);
-        $this->enumName = $tsEnumAttrs
-            ? $tsEnumAttrs[0]->newInstance()->name
-            : $this->reflectionEnum->getShortName();
+
+        if ($tsEnumAttrs) {
+            $tsEnumInstance = $tsEnumAttrs[0]->newInstance();
+            $this->enumName = $tsEnumInstance->name;
+            $this->description = $tsEnumInstance->description !== ''
+                ? $tsEnumInstance->description
+                : LaravelTsPublish::parseDocBlockDescription($this->reflectionEnum->getDocComment());
+        } else {
+            $this->enumName = $this->reflectionEnum->getShortName();
+            $this->description = LaravelTsPublish::parseDocBlockDescription($this->reflectionEnum->getDocComment());
+        }
 
         $this->filePath = $this->resolveRelativePath((string) $this->reflectionEnum->getFileName());
         $this->namespacePath = LaravelTsPublish::namespaceToPath($this->findable);
@@ -172,10 +176,20 @@ class EnumTransformer extends CoreTransformer
 
             $value = $caseValue instanceof BackedEnum ? $caseValue->value : $caseName;
 
+            $description = $override['description'] ?? '';
+
+            if ($description === '') {
+                $constant = $this->reflectionEnum->getReflectionConstant($caseName);
+
+                if ($constant !== false) {
+                    $description = LaravelTsPublish::parseDocBlockDescription($constant->getDocComment());
+                }
+            }
+
             $this->cases[] = [
                 'name' => $override['name'] ?? $caseName,
                 'value' => $override['value'] ?? $value,
-                'description' => $override['description'] ?? '',
+                'description' => $description,
             ];
         }
 
@@ -205,12 +219,25 @@ class EnumTransformer extends CoreTransformer
             /** @var TsEnumMethod|null $tsEnumMethodInstance */
             $tsEnumMethodInstance = $tsEnumMethodAttribute?->newInstance();
 
+            $hasRequiredParams = $method->getNumberOfRequiredParameters() > 0;
+            $attributeParams = $tsEnumMethodInstance->params ?? [];
+
+            if ($hasRequiredParams && $attributeParams === []) {
+                continue;
+            }
+
+            $description = $tsEnumMethodInstance->description ?? '';
+
+            if ($description === '') {
+                $description = LaravelTsPublish::parseDocBlockDescription($method->getDocComment());
+            }
+
             // get the returns, we need to call the method with each case instance and collect the return values to know which TS types to import
             $returns = [];
             foreach ($this->reflectionEnum->getCases() as $case) {
                 try {
                     $caseInstance = $case->getValue();
-                    $returns[$case->getName()] = $method->invoke($caseInstance);
+                    $returns[$case->getName()] = $method->invokeArgs($caseInstance, $attributeParams);
                 } catch (Throwable) {
                     $returns[$case->getName()] = null;
                 }
@@ -218,7 +245,7 @@ class EnumTransformer extends CoreTransformer
 
             $this->methods[$methodName] = [
                 'name' => LaravelTsPublish::keyCase($tsEnumMethodInstance?->name ?: $methodName, $caseFormatting),
-                'description' => $tsEnumMethodInstance !== null ? $tsEnumMethodInstance->description : '',
+                'description' => $description,
                 'returns' => $returns,
             ];
         }
@@ -250,21 +277,34 @@ class EnumTransformer extends CoreTransformer
             /** @var TsEnumStaticMethod|null $tsEnumMethodInstance */
             $tsEnumMethodInstance = $tsEnumMethodAttribute?->newInstance();
 
+            $hasRequiredParams = $method->getNumberOfRequiredParameters() > 0;
+            $attributeParams = $tsEnumMethodInstance->params ?? [];
+
+            if ($hasRequiredParams && $attributeParams === []) {
+                continue;
+            }
+
+            $description = $tsEnumMethodInstance->description ?? '';
+
+            if ($description === '') {
+                $description = LaravelTsPublish::parseDocBlockDescription($method->getDocComment());
+            }
+
             // For methods, we just call it once and get the return value. It should be a primitive or an array of primitives that can be transformed to JavaScript for functional use.
             $return = null;
             try {
                 $case = $this->reflectionEnum->getCases()[0] ?? null;
                 if ($case) {
                     $caseInstance = $case->getValue();
-                    $return = $method->invoke($caseInstance);
+                    $return = $method->invokeArgs($caseInstance, $attributeParams);
                 }
             } catch (Throwable $e) {
-                // If the method requires parameters or something else goes wrong, we just ignore the return value and hope for the best
+                // If the method requires parameters or something else goes wrong, we just ignore the return value
             }
 
             $this->staticMethods[$methodName] = [
                 'name' => LaravelTsPublish::keyCase($tsEnumMethodInstance?->name ?: $methodName, $caseFormatting),
-                'description' => $tsEnumMethodInstance !== null ? $tsEnumMethodInstance->description : '',
+                'description' => $description,
                 'return' => $return,
             ];
         }

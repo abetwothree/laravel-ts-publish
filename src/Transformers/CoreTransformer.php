@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
+use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use Illuminate\Support\Str;
 
 /**
@@ -25,8 +26,7 @@ abstract class CoreTransformer
 
     abstract public function filename(): string;
 
-    /** @return array<string, mixed> */
-    abstract public function data(): array;
+    abstract public function data(): Datable;
 
     /**
      * Resolve an absolute file path to a path relative to the project root.

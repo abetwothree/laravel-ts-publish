@@ -37,8 +37,14 @@ class RunnerForSource extends BaseRunner
         $reflection = new ReflectionClass($fqcn);
 
         if ($reflection->isEnum()) {
+            if (! $this->shouldPublishEnums) {
+                throw new InvalidArgumentException("Enum publishing is disabled: {$fqcn}");
+            }
             $this->generateEnum($fqcn);
         } elseif ($reflection->isSubclassOf(Model::class) && ! $reflection->isAbstract()) {
+            if (! $this->shouldPublishModels) {
+                throw new InvalidArgumentException("Model publishing is disabled: {$fqcn}");
+            }
             $this->generateModel($fqcn);
         } else {
             throw new InvalidArgumentException("Class is not a publishable enum or model: {$fqcn}");

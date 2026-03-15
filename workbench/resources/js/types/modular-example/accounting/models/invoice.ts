@@ -1,3 +1,6 @@
+import { type AsEnum } from '@tolki/enum';
+
+import { InvoiceStatus } from '../enums';
 import type { User } from '../../app/models';
 import type { InvoiceStatusType } from '../enums';
 import type { Payment } from '.';
@@ -19,6 +22,11 @@ export interface Invoice
     updated_at: string | null;
 }
 
+export interface InvoiceResource extends Omit<Invoice, 'status'>
+{
+    status: AsEnum<typeof InvoiceStatus>;
+}
+
 export interface InvoiceRelations
 {
     // Relations
@@ -33,3 +41,5 @@ export interface InvoiceRelations
 }
 
 export interface InvoiceAll extends Invoice, InvoiceRelations {}
+
+export interface InvoiceAllResource extends InvoiceResource, InvoiceRelations {}

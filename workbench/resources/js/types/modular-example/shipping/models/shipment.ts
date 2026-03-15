@@ -1,3 +1,6 @@
+import { type AsEnum } from '@tolki/enum';
+
+import { Carrier, ShipmentStatus } from '../enums';
 import type { Order } from '../../app/models';
 import type { CarrierType, ShipmentStatusType } from '../enums';
 import type { TrackingEvent } from '.';
@@ -17,6 +20,12 @@ export interface Shipment
     updated_at: string | null;
 }
 
+export interface ShipmentResource extends Omit<Shipment, 'carrier' | 'status'>
+{
+    carrier: AsEnum<typeof Carrier>;
+    status: AsEnum<typeof ShipmentStatus>;
+}
+
 export interface ShipmentRelations
 {
     // Relations
@@ -31,3 +40,5 @@ export interface ShipmentRelations
 }
 
 export interface ShipmentAll extends Shipment, ShipmentRelations {}
+
+export interface ShipmentAllResource extends ShipmentResource, ShipmentRelations {}

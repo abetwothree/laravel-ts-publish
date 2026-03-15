@@ -27,7 +27,8 @@ class WatcherJsonWriter
         ], JSON_PRETTY_PRINT);
 
         if (config()->boolean('ts-publish.output_to_files')) {
-            $outputPath = config()->string('ts-publish.collected_files_json_output_directory');
+            $watcherDir = config('ts-publish.collected_files_json_output_directory');
+            $outputPath = is_string($watcherDir) ? $watcherDir : config()->string('ts-publish.output_directory');
             $filename = config()->string('ts-publish.collected_files_json_filename');
 
             $this->filesystem->ensureDirectoryExists($outputPath);

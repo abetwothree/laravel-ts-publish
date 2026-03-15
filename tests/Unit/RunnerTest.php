@@ -184,3 +184,116 @@ describe('Runner modular publishing', function () {
             ->toContain('export namespace accounting.enums');
     });
 });
+
+describe('Runner conditional publishing', function () {
+    test('skips enums when shouldPublishEnums is false', function () {
+        $runner = new Runner;
+        $runner->shouldPublishEnums = false;
+        $runner->run();
+
+        expect($runner->enumGenerators)->toBeEmpty()
+            ->and($runner->enumBarrelContent)->toBe('')
+            ->and($runner->modelGenerators)->not->toBeEmpty();
+    });
+
+    test('skips models when shouldPublishModels is false', function () {
+        $runner = new Runner;
+        $runner->shouldPublishModels = false;
+        $runner->run();
+
+        expect($runner->modelGenerators)->toBeEmpty()
+            ->and($runner->modelBarrelContent)->toBe('')
+            ->and($runner->enumGenerators)->not->toBeEmpty();
+    });
+
+    test('skips both when both flags are false', function () {
+        $runner = new Runner;
+        $runner->shouldPublishEnums = false;
+        $runner->shouldPublishModels = false;
+        $runner->run();
+
+        expect($runner->enumGenerators)->toBeEmpty()
+            ->and($runner->modelGenerators)->toBeEmpty()
+            ->and($runner->enumBarrelContent)->toBe('')
+            ->and($runner->modelBarrelContent)->toBe('');
+    });
+
+    test('globals only contains enums when models are skipped', function () {
+        config()->set('ts-publish.output_globals_file', true);
+
+        $runner = new Runner;
+        $runner->shouldPublishModels = false;
+        $runner->run();
+
+        expect($runner->globalsContent)
+            ->toContain('declare global')
+            ->toContain('export namespace enums')
+            ->not->toContain('export namespace models');
+    });
+
+    test('globals only contains models when enums are skipped', function () {
+        config()->set('ts-publish.output_globals_file', true);
+
+        $runner = new Runner;
+        $runner->shouldPublishEnums = false;
+        $runner->run();
+
+        expect($runner->globalsContent)
+            ->toContain('declare global')
+            ->toContain('export namespace models')
+            ->not->toContain('export namespace enums');
+    });
+
+    test('json output only contains enums when models are skipped', function () {
+        config()->set('ts-publish.output_json_file', true);
+
+        $runner = new Runner;
+        $runner->shouldPublishModels = false;
+        $runner->run();
+
+        $decoded = json_decode($runner->jsonContent, true);
+
+        expect($decoded)->toHaveKey('enums')
+            ->and($decoded)->toHaveKey('models')
+            ->and($decoded['enums'])->not->toBeEmpty()
+            ->and($decoded['models'])->toBeEmpty();
+    });
+
+    test('watcher json only contains enum files when models are skipped', function () {
+        config()->set('ts-publish.output_collected_files_json', true);
+
+        $runner = new Runner;
+        $runner->shouldPublishModels = false;
+        $runner->run();
+
+        $decoded = json_decode($runner->watcherJsonContent, true);
+
+        expect($decoded)->toBeArray()->not->toBeEmpty();
+
+        foreach ($decoded as $path) {
+            expect($path)->toContain('Enum');
+        }
+    });
+
+    test('respects publish_enums config value', function () {
+        config()->set('ts-publish.publish_enums', false);
+
+        $runner = new Runner;
+        $runner->shouldPublishEnums = config()->boolean('ts-publish.publish_enums');
+        $runner->run();
+
+        expect($runner->enumGenerators)->toBeEmpty()
+            ->and($runner->modelGenerators)->not->toBeEmpty();
+    });
+
+    test('respects publish_models config value', function () {
+        config()->set('ts-publish.publish_models', false);
+
+        $runner = new Runner;
+        $runner->shouldPublishModels = config()->boolean('ts-publish.publish_models');
+        $runner->run();
+
+        expect($runner->modelGenerators)->toBeEmpty()
+            ->and($runner->enumGenerators)->not->toBeEmpty();
+    });
+});

@@ -32,6 +32,14 @@ class Runner extends BaseRunner
 
     protected function generateEnums(): void
     {
+        if (! $this->shouldPublishEnums) {
+            /** @var Collection<int, EnumGenerator> $empty */
+            $empty = collect();
+            $this->enumGenerators = $empty;
+
+            return;
+        }
+
         /** @var EnumsCollector $collector */
         $collector = resolve(config()->string('ts-publish.enum_collector_class'));
 
@@ -64,6 +72,14 @@ class Runner extends BaseRunner
 
     protected function generateModels(): void
     {
+        if (! $this->shouldPublishModels) {
+            /** @var Collection<int, ModelGenerator> $empty */
+            $empty = collect();
+            $this->modelGenerators = $empty;
+
+            return;
+        }
+
         /** @var ModelsCollector $collector */
         $collector = resolve(config()->string('ts-publish.model_collector_class'));
 

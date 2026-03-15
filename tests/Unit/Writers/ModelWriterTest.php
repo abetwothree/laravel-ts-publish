@@ -3,7 +3,9 @@
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ModelWriter;
 use Illuminate\Filesystem\Filesystem;
+use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
+use Workbench\Crm\Models\Deal;
 
 test('writes model content from transformer', function () {
     $writer = new ModelWriter(new Filesystem);
@@ -72,30 +74,159 @@ test('writes model mutators interface', function () {
     expect($content)->toContain('export interface UserMutators');
 });
 
-test('uses import type syntax when use_type_imports is enabled', function () {
-    $writer = new ModelWriter(new Filesystem);
-    $transformer = new ModelTransformer(User::class);
+describe('ModelWriter Resource interface output', function () {
+    test('generates Resource interface for Post model in model-full template', function () {
+        $writer = new ModelWriter(new Filesystem);
+        $transformer = new ModelTransformer(Post::class);
 
-    config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.use_type_imports', true);
+        config()->set('ts-publish.output_to_files', false);
+        config()->set('ts-publish.model_template', 'laravel-ts-publish::model-full');
 
-    $content = $writer->write($transformer);
+        $content = $writer->write($transformer);
 
-    expect($content)
-        ->toContain('import type {')
-        ->not->toMatch('/^import \{/m');
-});
+        expect($content)
+            ->toContain('export interface PostResource extends Omit<Post,')
+            ->toContain('AsEnum<typeof Status>')
+            ->toContain('AsEnum<typeof Visibility> | null')
+            ->toContain('AsEnum<typeof Priority> | null');
+    });
 
-test('uses regular import syntax when use_type_imports is disabled', function () {
-    $writer = new ModelWriter(new Filesystem);
-    $transformer = new ModelTransformer(User::class);
+    test('generates Resource interface for Post model in model-split template', function () {
+        $writer = new ModelWriter(new Filesystem);
+        $transformer = new ModelTransformer(Post::class);
 
-    config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.use_type_imports', false);
+        config()->set('ts-publish.output_to_files', false);
+        config()->set('ts-publish.model_template', 'laravel-ts-publish::model-split');
 
-    $content = $writer->write($transformer);
+        $content = $writer->write($transformer);
 
-    expect($content)
-        ->toContain('import {')
-        ->not->toContain('import type {');
+        expect($content)
+            ->toContain('export interface PostResource extends Omit<Post,')
+            ->toContain('AsEnum<typeof Status>')
+            ->toContain('AsEnum<typeof Visibility> | null')
+            ->toContain('AsEnum<typeof Priority> | null');
+    });
+
+    test('uses typeof for non-type imports in Resource', function () {
+        $writer = new ModelWriter(new Filesystem);
+        $transformer = new ModelTransformer(Post::class);
+
+        config()->set('ts-publish.output_to_files', false);
+        config()->set('ts-publish.model_template', 'laravel-ts-publish::model-full');
+
+        $content = $writer->write($transformer);
+
+        expect($content)
+            ->toContain('AsEnum<typeof Status>')
+            ->toContain('AsEnum<typeof Visibility> | null')
+            ->toContain('AsEnum<typeof Priority> | null');
+    });
+
+    test('does not generate Resource when enums_use_tolki_package is disabled', function () {
+        $writer = new ModelWriter(new Filesystem);
+        $transformer = new ModelTransformer(Post::class);
+
+        config()->set('ts-publish.output_to_files', false);
+        config()->set('ts-publish.enums_use_tolki_package', false);
+
+        $content = $writer->write($transformer);
+
+        expect($content)->not->toContain('Resource');
+    });
+
+    test('does not generate Resource for model with no enum casts', function () {
+        $writer = new ModelWriter(new Filesystem);
+        $transformer = new ModelTransformer(User::class);
+
+        config()->set('ts-publish.output_to_files', false);
+
+        $content = $writer->write($transformer);
+
+        // User has enum casts (role, membership_level) so it WILL have Resource
+        expect($content)->toContain('UserResource');
+    });
+
+    test('generates Resource with aliased const names for Deal model', function () {
+        $writer = new ModelWriter(new Filesystem);
+        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+        $transformer = new ModelTransformer(Deal::class);
+
+        config()->set('ts-publish.output_to_files', false);
+        config()->set('ts-publish.model_template', 'laravel-ts-publish::model-full');
+        $content = $writer->write($transformer);
+
+        expect($content)
+            ->toContain('export interface DealResource')
+            ->toContain('AsEnum<typeof AppStatus>')
+            ->toContain('AsEnum<typeof CrmStatus>');
+    });
+
+    test('model-split Resource extends Omit of column interface only when only columns have enums', function () {
+        $writer = new ModelWriter(new Filesystem);
+        $transformer = new ModelTransformer(Post::class);
+
+        config()->set('ts-publish.output_to_files', false);
+        config()->set('ts-publish.model_template', 'laravel-ts-publish::model-split');
+
+        $content = $writer->write($transformer);
+
+        // Post has enum columns but no enum mutators
+        // Should extend Omit<Post, ...> and PostMutators (no Omit), and PostRelations
+        expect($content)
+            ->toContain('Omit<Post,')
+            ->not->toContain('Omit<PostMutators');
+    });
+
+    test('Omit keys include all enum column names', function () {
+        $writer = new ModelWriter(new Filesystem);
+        $transformer = new ModelTransformer(Post::class);
+
+        config()->set('ts-publish.output_to_files', false);
+        config()->set('ts-publish.model_template', 'laravel-ts-publish::model-full');
+
+        $content = $writer->write($transformer);
+
+        expect($content)
+            ->toContain("'status'")
+            ->toContain("'visibility'")
+            ->toContain("'priority'");
+    });
+
+    test('imports AsEnum from @tolki/enum', function () {
+        $writer = new ModelWriter(new Filesystem);
+        $transformer = new ModelTransformer(Post::class);
+
+        config()->set('ts-publish.output_to_files', false);
+
+        $content = $writer->write($transformer);
+
+        expect($content)->toContain("import { type AsEnum } from '@tolki/enum'");
+    });
+
+    test('imports enum const names as value imports and type names as type imports', function () {
+        $writer = new ModelWriter(new Filesystem);
+        $transformer = new ModelTransformer(Post::class);
+
+        config()->set('ts-publish.output_to_files', false);
+
+        $content = $writer->write($transformer);
+
+        // Enum const names should be value imports (no "type" keyword)
+        preg_match("/import \{ (.+) \} from '\.\.\/enums'/", $content, $valueMatches);
+        $valueNames = array_map('trim', explode(',', $valueMatches[1]));
+
+        expect($valueNames)
+            ->toContain('Priority')
+            ->toContain('Status')
+            ->toContain('Visibility');
+
+        // Enum type names should be type imports
+        preg_match("/import type \{ (.+) \} from '\.\.\/enums'/", $content, $typeMatches);
+        $typeNames = array_map('trim', explode(',', $typeMatches[1]));
+
+        expect($typeNames)
+            ->toContain('PriorityType')
+            ->toContain('StatusType')
+            ->toContain('VisibilityType');
+    });
 });

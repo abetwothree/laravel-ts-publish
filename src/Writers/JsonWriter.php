@@ -32,7 +32,8 @@ class JsonWriter
         $content = $this->createJsonContent($runner);
 
         if (config()->boolean('ts-publish.output_to_files')) {
-            $outputPath = config()->string('ts-publish.json_output_directory');
+            $jsonDir = config('ts-publish.json_output_directory');
+            $outputPath = is_string($jsonDir) ? $jsonDir : config()->string('ts-publish.output_directory');
             $filename = config()->string('ts-publish.json_filename');
 
             $this->filesystem->ensureDirectoryExists($outputPath);
@@ -61,27 +62,27 @@ class JsonWriter
         foreach ($transformers as $transformer) {
             $data[$transformer->modelName] = [];
 
-            $columns = array_map(fn ($type, $col) => [
+            $columns = array_map(fn ($entry, $col) => [
                 'name' => $col,
-                'type' => $type,
+                'type' => $entry['type'],
             ], $transformer->columns, array_keys($transformer->columns));
 
-            $mutators = array_map(fn ($type, $col) => [
+            $mutators = array_map(fn ($entry, $col) => [
                 'name' => $col,
-                'type' => $type,
+                'type' => $entry['type'],
             ], $transformer->mutators, array_keys($transformer->mutators));
 
-            $relations = array_map(fn ($type, $col) => [
+            $relations = array_map(fn ($entry, $col) => [
                 'name' => $col,
-                'type' => $type,
+                'type' => $entry['type'],
             ], $transformer->relations, array_keys($transformer->relations));
 
-            $relationCounts = array_map(fn ($type, $col) => [
+            $relationCounts = array_map(fn ($entry, $col) => [
                 'name' => $col.'_count',
                 'type' => 'number',
             ], $transformer->relations, array_keys($transformer->relations));
 
-            $relationExists = array_map(fn ($type, $col) => [
+            $relationExists = array_map(fn ($entry, $col) => [
                 'name' => $col.'_exists',
                 'type' => 'boolean',
             ], $transformer->relations, array_keys($transformer->relations));
