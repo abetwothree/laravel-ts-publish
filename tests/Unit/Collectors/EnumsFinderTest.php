@@ -22,7 +22,7 @@ test('enums collector includes only classes from a directory', function () {
     $enums = resolve(EnumsCollector::class)->collect();
 
     expect($enums)
-        ->toHaveCount(2)
+        ->toHaveCount(3)
         ->toContain('Workbench\Accounting\Enums\PaymentStatus')
         ->toContain('Workbench\Accounting\Enums\InvoiceStatus');
 });
@@ -36,7 +36,7 @@ test('enums collector includes a mix of class names and directories', function (
     $enums = resolve(EnumsCollector::class)->collect();
 
     expect($enums)
-        ->toHaveCount(3)
+        ->toHaveCount(4)
         ->toContain('Workbench\App\Enums\Status')
         ->toContain('Workbench\Accounting\Enums\PaymentStatus')
         ->toContain('Workbench\Accounting\Enums\InvoiceStatus');
@@ -51,7 +51,7 @@ test('enums collector excludes classes from a directory', function () {
 
     // InvoiceStatus, PaymentStatus, and Shipping\Status remain because they are in additional_enum_directories
     expect($enums)
-        ->toHaveCount(3)
+        ->toHaveCount(8)
         ->toContain('Workbench\Accounting\Enums\InvoiceStatus')
         ->toContain('Workbench\Accounting\Enums\PaymentStatus')
         ->toContain('Workbench\Shipping\Enums\Status');

@@ -12,7 +12,7 @@ test('models collector works correctly', function () {
 
     expect($models)
         ->toBeInstanceOf(Collection::class)
-        ->toHaveCount(16)
+        ->toHaveCount(22)
         ->toContain('Workbench\App\Models\TrackingEvent');
 });
 
@@ -53,7 +53,7 @@ test('models collector excludes classes from a directory', function () {
 
     // DatabaseNotification, Invoice, and Shipment should remain (added via additional_model_directories)
     expect($models)
-        ->toHaveCount(3)
+        ->toHaveCount(9)
         ->toContain('Illuminate\Notifications\DatabaseNotification')
         ->toContain('Workbench\Accounting\Models\Invoice')
         ->toContain('Workbench\Shipping\Models\Shipment');

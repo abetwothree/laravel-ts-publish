@@ -575,3 +575,115 @@ describe('ModelTransformer doc block descriptions', function () {
         expect($data->relations['profile']['description'])->toBe('');
     });
 });
+
+describe('ModelTransformer HasEnums enum column/mutator properties', function () {
+    test('populates enumColumns for Post model with enum-cast columns', function () {
+        $data = (new ModelTransformer(Post::class))->data();
+
+        expect($data->enumColumns)
+            ->toHaveKey('status')
+            ->toHaveKey('visibility')
+            ->toHaveKey('priority');
+
+        // status is not nullable
+        expect($data->enumColumns['status'])->toBe(['constName' => 'Status', 'nullable' => false]);
+        // visibility is nullable
+        expect($data->enumColumns['visibility'])->toBe(['constName' => 'Visibility', 'nullable' => true]);
+        // priority is nullable
+        expect($data->enumColumns['priority'])->toBe(['constName' => 'Priority', 'nullable' => true]);
+    });
+
+    test('enumColumns is empty when enums_use_tolki_package is disabled', function () {
+        config()->set('ts-publish.enums_use_tolki_package', false);
+
+        $data = (new ModelTransformer(Post::class))->data();
+
+        expect($data->enumColumns)->toBeEmpty();
+    });
+
+    test('enumColumns is empty for model with no enum casts', function () {
+        $data = (new ModelTransformer(Address::class))->data();
+
+        expect($data->enumColumns)->toBeEmpty();
+    });
+
+    test('enumMutators is empty for Post model (no enum-type mutators)', function () {
+        $data = (new ModelTransformer(Post::class))->data();
+
+        expect($data->enumMutators)->toBeEmpty();
+    });
+
+    test('uses aliased const names for Deal model enum columns', function () {
+        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+        $data = (new ModelTransformer(Deal::class))->data();
+
+        expect($data->enumColumns)
+            ->toHaveKey('status')
+            ->toHaveKey('crm_status');
+
+        expect($data->enumColumns['status']['constName'])->toBe('AppStatus');
+        expect($data->enumColumns['crm_status']['constName'])->toBe('CrmStatus');
+    });
+
+    test('does not add @tolki/enum import when enums_use_tolki_package is disabled', function () {
+        config()->set('ts-publish.enums_use_tolki_package', false);
+
+        $data = (new ModelTransformer(Post::class))->data();
+
+        expect($data->resolvedImports)->not->toHaveKey('@tolki/enum');
+    });
+
+    test('adds enum const names to import line for Post model', function () {
+        $data = (new ModelTransformer(Post::class))->data();
+
+        expect($data->resolvedImports['../enums'])
+            ->toContain('Status')
+            ->toContain('Visibility')
+            ->toContain('Priority')
+            // Type names still present
+            ->toContain('StatusType')
+            ->toContain('VisibilityType')
+            ->toContain('PriorityType');
+    });
+
+    test('adds aliased enum const names to imports for Deal model', function () {
+        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+        $data = (new ModelTransformer(Deal::class))->data();
+
+        $allImports = array_merge(...array_values($data->resolvedImports));
+        expect($allImports)->toContain('Status as AppStatus')
+            ->and($allImports)->toContain('Status as CrmStatus');
+    });
+
+    test('does not add enum const imports when enums_use_tolki_package is disabled', function () {
+        config()->set('ts-publish.enums_use_tolki_package', false);
+
+        $data = (new ModelTransformer(Post::class))->data();
+
+        // Should have type names but not const names
+        expect($data->resolvedImports['../enums'])
+            ->toContain('StatusType')
+            ->not->toContain('Status');
+    });
+
+    test('TsCasts-overridden columns are excluded from enumColumns', function () {
+        // Post has metadata with TsCasts override — should not appear in enumColumns
+        $data = (new ModelTransformer(Post::class))->data();
+
+        expect($data->enumColumns)->not->toHaveKey('metadata');
+    });
+
+    test('adds enum const names in modular mode', function () {
+        config()->set('ts-publish.modular_publishing', true);
+        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+        $data = (new ModelTransformer(Post::class))->data();
+
+        expect($data->resolvedImports['../enums'])
+            ->toContain('Status')
+            ->toContain('Visibility')
+            ->toContain('Priority');
+    });
+});

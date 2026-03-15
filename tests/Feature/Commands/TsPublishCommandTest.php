@@ -68,6 +68,42 @@ test('ts:publish returns success exit code', function () {
         ->assertExitCode(0);
 });
 
+test('ts:publish writes model split template files', function () {
+    $outputDir = workbench_path('resources/js/types/split-template-example');
+
+    // Cleanup before test
+    $filesystem = new Filesystem;
+    if ($filesystem->exists($outputDir)) {
+        $filesystem->deleteDirectory($outputDir);
+    }
+
+    config()->set('ts-publish.model_template', 'laravel-ts-publish::model-split');
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.modular_publishing', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'false'])
+        ->assertSuccessful();
+});
+
+test('ts:publish writes model full template files', function () {
+    $outputDir = workbench_path('resources/js/types/full-template-example');
+
+    // Cleanup before test
+    $filesystem = new Filesystem;
+    if ($filesystem->exists($outputDir)) {
+        $filesystem->deleteDirectory($outputDir);
+    }
+
+    config()->set('ts-publish.model_template', 'laravel-ts-publish::model-full');
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.modular_publishing', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'false'])
+        ->assertSuccessful();
+});
+
 test('ts:publish writes modular files to namespace-based directories', function () {
     $outputDir = workbench_path('resources/js/types/modular-example');
 
@@ -77,7 +113,6 @@ test('ts:publish writes modular files to namespace-based directories', function 
         $filesystem->deleteDirectory($outputDir);
     }
 
-    // dd($outputDir);
     config()->set('ts-publish.output_directory', $outputDir);
     config()->set('ts-publish.output_to_files', true);
     config()->set('ts-publish.modular_publishing', true);
