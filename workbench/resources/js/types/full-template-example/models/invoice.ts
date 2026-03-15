@@ -1,6 +1,7 @@
 import { type AsEnum } from '@tolki/enum';
 
-import type { InvoiceStatus, InvoiceStatusType } from '../enums';
+import { InvoiceStatus } from '../enums';
+import type { InvoiceStatusType } from '../enums';
 import type { Payment, User } from './';
 
 export interface Invoice

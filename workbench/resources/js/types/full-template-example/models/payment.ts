@@ -1,6 +1,7 @@
 import { type AsEnum } from '@tolki/enum';
 
-import type { Currency, CurrencyType, DueAtNotice, DueAtNoticeType, PaymentMethod, PaymentMethodType, PaymentStatus, PaymentStatusType } from '../enums';
+import { Currency, DueAtNotice, PaymentMethod, PaymentStatus } from '../enums';
+import type { CurrencyType, DueAtNoticeType, PaymentMethodType, PaymentStatusType } from '../enums';
 import type { Invoice } from './';
 
 export interface Payment

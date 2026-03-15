@@ -20,7 +20,8 @@ use ReflectionClass;
 /**
  * @phpstan-import-type TypeScriptTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
  * @phpstan-import-type ColumnsList from TsModelDto
- * @phpstan-import-type ResolvedImportMap from TsModelDto
+ * @phpstan-import-type TypesImportMap from TsModelDto
+ * @phpstan-import-type ValuesImportMap from TsModelDto
  * @phpstan-import-type MutatorsList from TsModelDto
  * @phpstan-import-type RelationsList from TsModelDto
  *
@@ -130,6 +131,7 @@ class ModelTransformer extends CoreTransformer
     public function data(): TsModelDto
     {
         $hasEnums = $this->shouldGenerateHasEnums();
+        $imports = $this->buildResolvedImports();
 
         return new TsModelDto(
             modelName: $this->modelName,
@@ -139,7 +141,8 @@ class ModelTransformer extends CoreTransformer
             columns: $this->columns,
             mutators: $this->mutators,
             relations: $this->relations,
-            resolvedImports: $this->buildResolvedImports(),
+            typeImports: $imports['typeImports'],
+            valueImports: $imports['valueImports'],
             enumColumns: $hasEnums ? $this->buildEnumColumns() : [],
             enumMutators: $hasEnums ? $this->buildEnumMutators() : [],
         );
@@ -598,27 +601,29 @@ class ModelTransformer extends CoreTransformer
     }
 
     /**
-     * Build the resolved imports map from accumulated FQCNs and custom imports.
+     * Build the type and value import maps from accumulated FQCNs and custom imports.
      *
-     * @return ResolvedImportMap
+     * @return array{typeImports: TypesImportMap, valueImports: ValuesImportMap}
      */
     protected function buildResolvedImports(): array
     {
-        $resolvedImports = [];
+        $typeImports = [];
+        $valueImports = [];
         $isModular = config()->boolean('ts-publish.modular_publishing');
+        $hasEnums = $this->shouldGenerateHasEnums();
 
         if ($isModular) {
             foreach ($this->enumFqcnMap as $fqcn => $typeName) {
                 $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
                 $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
-                $resolvedImports[$importPath][] = $this->formatImportName($fqcn, $typeName);
+                $typeImports[$importPath][] = $this->formatImportName($fqcn, $typeName);
             }
 
-            if ($this->shouldGenerateHasEnums()) {
+            if ($hasEnums) {
                 foreach ($this->enumPropertyFqcns() as $fqcn) {
                     $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
                     $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
-                    $resolvedImports[$importPath][] = $this->formatConstImportName($fqcn);
+                    $valueImports[$importPath][] = $this->formatConstImportName($fqcn);
                 }
             }
 
@@ -628,25 +633,31 @@ class ModelTransformer extends CoreTransformer
                 }
                 $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
                 $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
-                $resolvedImports[$importPath][] = $this->formatImportName($fqcn, $typeName);
+                $typeImports[$importPath][] = $this->formatImportName($fqcn, $typeName);
             }
         } else {
-            $enumImports = [];
+            $enumTypeImports = [];
             foreach ($this->enumFqcnMap as $fqcn => $typeName) {
-                $enumImports[] = $this->formatImportName($fqcn, $typeName);
+                $enumTypeImports[] = $this->formatImportName($fqcn, $typeName);
+            }
+            $enumTypeImports = array_values(array_unique($enumTypeImports));
+
+            if ($enumTypeImports) {
+                sort($enumTypeImports);
+                $typeImports['../enums'] = $enumTypeImports;
             }
 
-            if ($this->shouldGenerateHasEnums()) {
+            if ($hasEnums) {
+                $enumValueImports = [];
                 foreach ($this->enumPropertyFqcns() as $fqcn) {
-                    $enumImports[] = $this->formatConstImportName($fqcn);
+                    $enumValueImports[] = $this->formatConstImportName($fqcn);
                 }
-            }
+                $enumValueImports = array_values(array_unique($enumValueImports));
 
-            $enumImports = array_values(array_unique($enumImports));
-
-            if ($enumImports) {
-                sort($enumImports);
-                $resolvedImports['../enums'] = $enumImports;
+                if ($enumValueImports) {
+                    sort($enumValueImports);
+                    $valueImports['../enums'] = $enumValueImports;
+                }
             }
 
             $modelImports = [];
@@ -660,24 +671,33 @@ class ModelTransformer extends CoreTransformer
 
             if ($modelImports) {
                 sort($modelImports);
-                $resolvedImports['./'] = $modelImports;
+                $typeImports['./'] = $modelImports;
             }
         }
 
-        // Merge custom imports
+        // Merge custom imports into type imports
         foreach ($this->customImports as $path => $types) {
-            $existing = $resolvedImports[$path] ?? [];
-            $resolvedImports[$path] = array_values(array_unique([...$existing, ...$types]));
+            $existing = $typeImports[$path] ?? [];
+            $typeImports[$path] = array_values(array_unique([...$existing, ...$types]));
         }
 
         // Deduplicate per path
-        foreach ($resolvedImports as $path => $types) {
+        foreach ($typeImports as $path => $types) {
             $uniqueTypes = array_values(array_unique($types));
             sort($uniqueTypes);
-            $resolvedImports[$path] = $uniqueTypes;
+            $typeImports[$path] = $uniqueTypes;
         }
 
-        return LaravelTsPublish::sortImportPaths($resolvedImports);
+        foreach ($valueImports as $path => $types) {
+            $uniqueTypes = array_values(array_unique($types));
+            sort($uniqueTypes);
+            $valueImports[$path] = $uniqueTypes;
+        }
+
+        return [
+            'typeImports' => LaravelTsPublish::sortImportPaths($typeImports),
+            'valueImports' => LaravelTsPublish::sortImportPaths($valueImports),
+        ];
     }
 
     /**

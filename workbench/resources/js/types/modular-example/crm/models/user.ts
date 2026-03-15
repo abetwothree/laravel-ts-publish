@@ -1,6 +1,7 @@
 import { type AsEnum } from '@tolki/enum';
 
-import type { Status, StatusType } from '../enums';
+import { Status } from '../enums';
+import type { StatusType } from '../enums';
 
 export interface User
 {

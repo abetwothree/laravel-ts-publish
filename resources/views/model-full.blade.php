@@ -2,8 +2,11 @@
 @if($usesTolkiPackage && (count($data->enumColumns) > 0 || count($data->enumMutators) > 0))
 import { type AsEnum } from '@tolki/enum';
 
-@endif
-@foreach ($data->resolvedImports as $path => $types)
+@endif{{-- end tolki package --}}
+@foreach ($data->valueImports as $path => $names)
+import { {{ implode(', ', $names) }} } from '{{ $path }}';
+@endforeach
+@foreach ($data->typeImports as $path => $types)
 import type { {{ implode(', ', $types) }} } from '{{ $path }}';
 @endforeach
 

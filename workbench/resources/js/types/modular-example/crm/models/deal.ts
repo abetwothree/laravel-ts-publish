@@ -1,8 +1,10 @@
 import { type AsEnum } from '@tolki/enum';
 
-import type { Status as AppStatus, StatusType as AppStatusType } from '../../app/enums';
+import { Status as AppStatus } from '../../app/enums';
+import { Status as CrmStatus } from '../enums';
+import type { StatusType as AppStatusType } from '../../app/enums';
 import type { User as AdminUser } from '../../app/models';
-import type { Status as CrmStatus, StatusType as CrmStatusType } from '../enums';
+import type { StatusType as CrmStatusType } from '../enums';
 import type { User as CustomerUser } from '.';
 
 export interface Deal

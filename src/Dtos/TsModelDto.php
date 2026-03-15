@@ -9,7 +9,8 @@ use JsonSerializable;
 
 /**
  * @phpstan-type ColumnsList = array<string, array{type: string, description: string}>
- * @phpstan-type ResolvedImportMap = array<string, list<string>>
+ * @phpstan-type TypesImportMap = array<string, list<string>>
+ * @phpstan-type ValuesImportMap = array<string, list<string>>
  * @phpstan-type MutatorsList = array<string, array{type: string, description: string}>
  * @phpstan-type RelationsList = array<string, array{type: string, description: string}>
  * @phpstan-type EnumPropertyInfo = array{constName: string, nullable: bool}
@@ -20,14 +21,15 @@ use JsonSerializable;
  *    filePath: string,
  *    filename: string,
  *    columns: ColumnsList,
- *    resolvedImports: ResolvedImportMap,
+ *    typeImports: TypesImportMap,
+ *    valueImports: ValuesImportMap,
  *    mutators: MutatorsList,
  *    relations: RelationsList,
  *    enumColumns: EnumPropertiesList,
  *    enumMutators: EnumPropertiesList,
  * }
  *
- * @implements Arrayable<string, string|ColumnsList|RelationsList|MutatorsList|ResolvedImportMap|EnumPropertiesList>
+ * @implements Arrayable<string, string|ColumnsList|RelationsList|MutatorsList|TypesImportMap|ValuesImportMap|EnumPropertiesList>
  */
 class TsModelDto implements Arrayable, Datable, Jsonable, JsonSerializable
 {
@@ -35,7 +37,8 @@ class TsModelDto implements Arrayable, Datable, Jsonable, JsonSerializable
      * @param  ColumnsList  $columns
      * @param  MutatorsList  $mutators
      * @param  RelationsList  $relations
-     * @param  ResolvedImportMap  $resolvedImports
+     * @param  TypesImportMap  $typeImports
+     * @param  ValuesImportMap  $valueImports
      * @param  EnumPropertiesList  $enumColumns
      * @param  EnumPropertiesList  $enumMutators
      */
@@ -47,7 +50,8 @@ class TsModelDto implements Arrayable, Datable, Jsonable, JsonSerializable
         public array $columns,
         public array $mutators,
         public array $relations,
-        public array $resolvedImports,
+        public array $typeImports,
+        public array $valueImports = [],
         public array $enumColumns = [],
         public array $enumMutators = [],
     ) {}
@@ -63,7 +67,8 @@ class TsModelDto implements Arrayable, Datable, Jsonable, JsonSerializable
             'columns' => $this->columns,
             'mutators' => $this->mutators,
             'relations' => $this->relations,
-            'resolvedImports' => $this->resolvedImports,
+            'typeImports' => $this->typeImports,
+            'valueImports' => $this->valueImports,
             'enumColumns' => $this->enumColumns,
             'enumMutators' => $this->enumMutators,
         ];

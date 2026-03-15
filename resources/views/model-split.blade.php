@@ -3,7 +3,10 @@
 import { type AsEnum } from '@tolki/enum';
 
 @endif{{-- end tolki package --}}
-@foreach ($data->resolvedImports as $path => $types)
+@foreach ($data->valueImports as $path => $names)
+import { {{ implode(', ', $names) }} } from '{{ $path }}';
+@endforeach
+@foreach ($data->typeImports as $path => $types)
 import type { {{ implode(', ', $types) }} } from '{{ $path }}';
 @endforeach
 

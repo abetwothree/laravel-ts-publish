@@ -1,6 +1,7 @@
 import { type AsEnum } from '@tolki/enum';
 
-import type { ArticleStatus, ArticleStatusType, ContentType, ContentTypeType } from '../enums';
+import { ArticleStatus, ContentType } from '../enums';
+import type { ArticleStatusType, ContentTypeType } from '../enums';
 import type { Reaction, User } from './';
 
 export interface Article

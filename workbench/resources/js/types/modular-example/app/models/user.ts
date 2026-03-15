@@ -1,7 +1,8 @@
 import { type AsEnum } from '@tolki/enum';
 
+import { MembershipLevel, Role } from '../enums';
 import type { DatabaseNotification } from '../../illuminate/notifications';
-import type { MembershipLevel, MembershipLevelType, Role, RoleType } from '../enums';
+import type { MembershipLevelType, RoleType } from '../enums';
 import type { Address, Comment, Image, Order, Post, Profile, Team } from '.';
 
 /** Application user account */

@@ -1,6 +1,7 @@
 import { type AsEnum } from '@tolki/enum';
 
-import type { Carrier, CarrierType, ShipmentStatus, ShipmentStatusType } from '../enums';
+import { Carrier, ShipmentStatus } from '../enums';
+import type { CarrierType, ShipmentStatusType } from '../enums';
 import type { Order, TrackingEvent } from './';
 
 export interface Shipment

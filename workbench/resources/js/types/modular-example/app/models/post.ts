@@ -1,6 +1,7 @@
 import { type AsEnum } from '@tolki/enum';
 
-import type { Priority, PriorityType, Status, StatusType, Visibility, VisibilityType } from '../enums';
+import { Priority, Status, Visibility } from '../enums';
+import type { PriorityType, StatusType, VisibilityType } from '../enums';
 import type { Category, Comment, Image, Tag, User } from '.';
 
 export interface Post

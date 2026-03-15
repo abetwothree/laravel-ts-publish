@@ -203,7 +203,7 @@ describe('ModelWriter Resource interface output', function () {
         expect($content)->toContain("import { type AsEnum } from '@tolki/enum'");
     });
 
-    test('imports enum const names alongside type names', function () {
+    test('imports enum const names as value imports and type names as type imports', function () {
         $writer = new ModelWriter(new Filesystem);
         $transformer = new ModelTransformer(Post::class);
 
@@ -211,19 +211,22 @@ describe('ModelWriter Resource interface output', function () {
 
         $content = $writer->write($transformer);
 
-        // The enum import line should contain both type and const names
-        expect($content)->toMatch('/from \'\.\.\/enums\'.*$/m');
+        // Enum const names should be value imports (no "type" keyword)
+        preg_match("/import \{ (.+) \} from '\.\.\/enums'/", $content, $valueMatches);
+        $valueNames = array_map('trim', explode(',', $valueMatches[1]));
 
-        // Extract the enum import line
-        preg_match("/import type \{ (.+) \} from '\.\.\/enums'/", $content, $matches);
-        $importedNames = array_map('trim', explode(',', $matches[1]));
-
-        expect($importedNames)
-            ->toContain('Status')
-            ->toContain('StatusType')
-            ->toContain('Visibility')
-            ->toContain('VisibilityType')
+        expect($valueNames)
             ->toContain('Priority')
-            ->toContain('PriorityType');
+            ->toContain('Status')
+            ->toContain('Visibility');
+
+        // Enum type names should be type imports
+        preg_match("/import type \{ (.+) \} from '\.\.\/enums'/", $content, $typeMatches);
+        $typeNames = array_map('trim', explode(',', $typeMatches[1]));
+
+        expect($typeNames)
+            ->toContain('PriorityType')
+            ->toContain('StatusType')
+            ->toContain('VisibilityType');
     });
 });
