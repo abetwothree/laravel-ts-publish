@@ -1205,30 +1205,6 @@ This package ships with a comprehensive set of PHP-to-TypeScript type mappings (
 > [!TIP]
 > Custom mappings are merged with the built-in map and take precedence. Type keys are case-insensitive. For per-model type overrides, use the `#[TsCasts]` attribute instead.
 
-### Type-Only Imports
-
-By default, model files use `import type { ... }` instead of `import { ... }` for all imported types. This is the correct syntax for stricter TypeScript configurations that enable `verbatimModuleSyntax` or `isolatedModules`:
-
-```TypeScript
-import type { StatusType } from '../enums';
-import type { Profile, Post } from './';
-
-export interface User {
-    id: number;
-    status: StatusType;
-}
-```
-
-If your project doesn't require type-only imports, you can disable this with:
-
-```php
-// config/ts-publish.php
-
-'use_type_imports' => false,
-```
-
-This only affects model file imports (enum types, model interfaces, and custom `#[TsCasts]` imports). The enum `import { defineEnum }` value import from `@tolki/enum` is unaffected.
-
 ### Output Options
 
 This package provides several output formats that can be enabled independently:
@@ -1386,6 +1362,65 @@ if (article.status.value === 0) {
     console.log(article.status.icon); // 'pencil'
 }
 ```
+
+### Auto-Generated `Resource` Model Interface
+
+When `enums_use_tolki_package` is enabled (the default), any model with enum-cast columns automatically gets a `{Model}Resource` companion set of interfaces. These interfaces replace each enum-backed property with `AsEnum<typeof EnumName>`, so you don't have to compose `Omit` + `AsEnum` manually on model properties or mutators that are cast to enums.
+
+For a Post model that casts the database columns `status`, `visibility`, and `priority` to enums, the publisher will generate a `PostResource` interface that looks like this:
+
+```typescript
+export interface Post {
+    id: number;
+    title: string;
+    content: string;
+    status: StatusType;         // Original enum type
+    visibility: VisibilityType | null; // Original enum type
+    priority: PriorityType | null;     // Original enum type
+}
+
+// Auto-generated — no manual typing needed
+export interface PostResource extends Omit<Post, 'status' | 'visibility' | 'priority'>
+{
+    status: AsEnum<typeof Status>;
+    visibility: AsEnum<typeof Visibility> | null;
+    priority: AsEnum<typeof Priority> | null;
+}
+```
+
+Use it to auto type API responses that make use of `EnumResource` class:
+
+```typescript
+import type { PostResource } from '@js/types/models';
+
+const response = await fetch('/api/posts/1');
+const post: PostResource = await response.json();
+
+post.status.value; // 0 | 1
+post.status.icon;  // 'pencil' | 'check'
+```
+
+The interfaces are generated for both the `model-full` and `model-split` templates. In split mode, the template will create a `PostResource` interface for the properties interface and a `PostMutatorsResource` interface for the mutators interface, since mutators can also be enum-cast properties:
+
+```typescript
+export interface PostResource extends Omit<Post, 'status' | 'visibility' | 'priority'>
+{
+    status: AsEnum<typeof Status>;
+    // ...
+}
+
+export interface PostMutators
+{
+    due_notice: DueAtNoticeType;
+}
+
+export interface PostMutatorsResource extends Omit<PostMutators, 'due_notice'>
+{
+    due_notice: AsEnum<typeof DueAtNotice>;
+}
+```
+
+Naming conflicts are handled automatically — if two enum FQCNs share the same base name, namespace-prefixed aliases are used for both the type and const imports (e.g., `AppStatus`, `CrmStatus`).
 
 ## Modular Publishing
 
@@ -1630,7 +1665,6 @@ Below is a quick reference of all available configuration options:
 | `output_directory`                    | `string`   | `resources/js/types/`                | Directory where TypeScript files are written                     |
 | `publish_enums`                       | `bool`     | `true`                               | Enable or disable enum publishing                                |
 | `publish_models`                      | `bool`     | `true`                               | Enable or disable model publishing                               |
-| `use_type_imports`                    | `bool`     | `true`                               | Use `import type` instead of `import` in model files             |
 | `modular_publishing`                  | `bool`     | `false`                              | Organize output into namespace-derived directory trees           |
 | `namespace_strip_prefix`              | `string`   | `''`                                 | Strip this prefix from namespaces in modular mode                |
 | `relationship_case`                   | `string`   | `'snake'`                            | Case style for relationships: `snake`, `camel`, or `pascal`      |
