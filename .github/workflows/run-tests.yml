@@ -10,6 +10,9 @@ on:
       - 'composer.lock'
       - 'testbench.yaml'
 
+permissions:
+  contents: write
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -59,3 +62,10 @@ jobs:
 
       - name: Execute tests
         run: vendor/bin/pest --ci --coverage-clover clover.xml
+
+      - name: Make code coverage badge
+        uses: timkrase/phpunit-coverage-badge@v1.2.1
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          coverage_badge_path: assets/coverage.svg
+          push_badge: true
