@@ -48,6 +48,8 @@ By default, the generated TypeScript declaration types will be saved to the `res
 
 Additionally, by default, the package will look for models in the `app/Models` directory and enums in the `app/Enums` directory. You can customize these settings in the published configuration file.
 
+For a full installation and setup guide, see the [Installation & Setup](WORKFLOW.md) documentation.
+
 #### Preview Mode
 
 You can preview the generated TypeScript output in the console without writing any files by using the `--preview` flag:
