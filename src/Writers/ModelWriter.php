@@ -30,7 +30,8 @@ class ModelWriter extends CoreWriter
             $template,
             [
                 'filename' => $filename,
-                'useTypeImports' => config()->boolean('ts-publish.use_type_imports'),
+                'metadataEnabled' => config()->boolean('ts-publish.enum_metadata_enabled'),
+                'usesTolkiPackage' => config()->boolean('ts-publish.enums_use_tolki_package'),
                 'data' => $data,
             ]
         )->render();

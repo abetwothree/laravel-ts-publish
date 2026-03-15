@@ -12,6 +12,8 @@ use JsonSerializable;
  * @phpstan-type ResolvedImportMap = array<string, list<string>>
  * @phpstan-type MutatorsList = array<string, array{type: string, description: string}>
  * @phpstan-type RelationsList = array<string, array{type: string, description: string}>
+ * @phpstan-type EnumPropertyInfo = array{constName: string, nullable: bool}
+ * @phpstan-type EnumPropertiesList = array<string, EnumPropertyInfo>
  * @phpstan-type ModelData = array{
  *    modelName: string,
  *    description: string,
@@ -21,9 +23,11 @@ use JsonSerializable;
  *    resolvedImports: ResolvedImportMap,
  *    mutators: MutatorsList,
  *    relations: RelationsList,
+ *    enumColumns: EnumPropertiesList,
+ *    enumMutators: EnumPropertiesList,
  * }
  *
- * @implements Arrayable<string, string|ColumnsList|RelationsList|MutatorsList|ResolvedImportMap>
+ * @implements Arrayable<string, string|ColumnsList|RelationsList|MutatorsList|ResolvedImportMap|EnumPropertiesList>
  */
 class TsModelDto implements Arrayable, Datable, Jsonable, JsonSerializable
 {
@@ -32,6 +36,8 @@ class TsModelDto implements Arrayable, Datable, Jsonable, JsonSerializable
      * @param  MutatorsList  $mutators
      * @param  RelationsList  $relations
      * @param  ResolvedImportMap  $resolvedImports
+     * @param  EnumPropertiesList  $enumColumns
+     * @param  EnumPropertiesList  $enumMutators
      */
     public function __construct(
         public string $modelName,
@@ -42,6 +48,8 @@ class TsModelDto implements Arrayable, Datable, Jsonable, JsonSerializable
         public array $mutators,
         public array $relations,
         public array $resolvedImports,
+        public array $enumColumns = [],
+        public array $enumMutators = [],
     ) {}
 
     /** @return ModelData */
@@ -56,6 +64,8 @@ class TsModelDto implements Arrayable, Datable, Jsonable, JsonSerializable
             'mutators' => $this->mutators,
             'relations' => $this->relations,
             'resolvedImports' => $this->resolvedImports,
+            'enumColumns' => $this->enumColumns,
+            'enumMutators' => $this->enumMutators,
         ];
     }
 

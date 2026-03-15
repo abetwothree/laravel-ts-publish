@@ -98,6 +98,18 @@ class ModelTransformer extends CoreTransformer
     /** @var array<string, list<string>> */
     protected array $customImports = [];
 
+    /** @var array<string, string> FQCN => TypeScript const name (e.g. 'Status') */
+    protected array $enumConstMap = [];
+
+    /** @var array<string, array{fqcn: string, nullable: bool}> column_name => enum property info */
+    protected array $enumColumnProperties = [];
+
+    /** @var array<string, array{fqcn: string, nullable: bool}> mutator_name => enum property info */
+    protected array $enumMutatorProperties = [];
+
+    /** @var array<string, string> FQCN => aliased TypeScript const name (only for conflicting imports) */
+    protected array $constImportAliases = [];
+
     #[Override]
     public function transform(): self
     {
@@ -117,6 +129,8 @@ class ModelTransformer extends CoreTransformer
     #[Override]
     public function data(): TsModelDto
     {
+        $hasEnums = $this->shouldGenerateHasEnums();
+
         return new TsModelDto(
             modelName: $this->modelName,
             description: $this->description,
@@ -126,6 +140,8 @@ class ModelTransformer extends CoreTransformer
             mutators: $this->mutators,
             relations: $this->relations,
             resolvedImports: $this->buildResolvedImports(),
+            enumColumns: $hasEnums ? $this->buildEnumColumns() : [],
+            enumMutators: $hasEnums ? $this->buildEnumMutators() : [],
         );
     }
 
@@ -239,7 +255,15 @@ class ModelTransformer extends CoreTransformer
 
             foreach ($typings['enumFqcns'] as $i => $fqcn) {
                 $this->enumFqcnMap[$fqcn] = $typings['enumTypes'][$i];
+                $this->enumConstMap[$fqcn] = $typings['enums'][$i];
                 $this->columnFqcns[$name][] = $fqcn;
+            }
+
+            if ($typings['enumFqcns'] !== []) {
+                $this->enumColumnProperties[$name] = [
+                    'fqcn' => $typings['enumFqcns'][0],
+                    'nullable' => $attribute['nullable'],
+                ];
             }
 
             foreach ($typings['classFqcns'] as $i => $fqcn) {
@@ -277,7 +301,15 @@ class ModelTransformer extends CoreTransformer
 
             foreach ($resolved['enumFqcns'] as $i => $fqcn) {
                 $this->enumFqcnMap[$fqcn] = $resolved['enumTypes'][$i];
+                $this->enumConstMap[$fqcn] = $resolved['enums'][$i];
                 $this->mutatorFqcns[$name][] = $fqcn;
+            }
+
+            if ($resolved['enumFqcns'] !== []) {
+                $this->enumMutatorProperties[$name] = [
+                    'fqcn' => $resolved['enumFqcns'][0],
+                    'nullable' => str_contains($resolved['type'], 'null'),
+                ];
             }
 
             foreach ($resolved['classFqcns'] as $i => $fqcn) {
@@ -446,7 +478,12 @@ class ModelTransformer extends CoreTransformer
                         $alias = $this->computeNamespacePrefix($fqcn).$originalName;
                     }
                 } else {
-                    $alias = $this->computeNamespacePrefix($fqcn).$originalName;
+                    $prefix = $this->computeNamespacePrefix($fqcn);
+                    $alias = $prefix.$originalName;
+
+                    if (isset($this->enumConstMap[$fqcn])) {
+                        $this->constImportAliases[$fqcn] = $prefix.$this->enumConstMap[$fqcn];
+                    }
                 }
 
                 $this->importAliases[$fqcn] = $alias;
@@ -577,6 +614,14 @@ class ModelTransformer extends CoreTransformer
                 $resolvedImports[$importPath][] = $this->formatImportName($fqcn, $typeName);
             }
 
+            if ($this->shouldGenerateHasEnums()) {
+                foreach ($this->enumPropertyFqcns() as $fqcn) {
+                    $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
+                    $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
+                    $resolvedImports[$importPath][] = $this->formatConstImportName($fqcn);
+                }
+            }
+
             foreach ($this->modelFqcnMap as $fqcn => $typeName) {
                 if ($fqcn === $this->findable) {
                     continue;
@@ -590,6 +635,13 @@ class ModelTransformer extends CoreTransformer
             foreach ($this->enumFqcnMap as $fqcn => $typeName) {
                 $enumImports[] = $this->formatImportName($fqcn, $typeName);
             }
+
+            if ($this->shouldGenerateHasEnums()) {
+                foreach ($this->enumPropertyFqcns() as $fqcn) {
+                    $enumImports[] = $this->formatConstImportName($fqcn);
+                }
+            }
+
             $enumImports = array_values(array_unique($enumImports));
 
             if ($enumImports) {
@@ -620,7 +672,9 @@ class ModelTransformer extends CoreTransformer
 
         // Deduplicate per path
         foreach ($resolvedImports as $path => $types) {
-            $resolvedImports[$path] = array_values(array_unique($types));
+            $uniqueTypes = array_values(array_unique($types));
+            sort($uniqueTypes);
+            $resolvedImports[$path] = $uniqueTypes;
         }
 
         return LaravelTsPublish::sortImportPaths($resolvedImports);
@@ -638,5 +692,66 @@ class ModelTransformer extends CoreTransformer
         }
 
         return $typeName;
+    }
+
+    protected function shouldGenerateHasEnums(): bool
+    {
+        return config()->boolean('ts-publish.enums_use_tolki_package')
+            && ($this->enumColumnProperties !== [] || $this->enumMutatorProperties !== []);
+    }
+
+    /** @return list<string> */
+    protected function enumPropertyFqcns(): array
+    {
+        return array_values(array_unique([
+            ...array_column($this->enumColumnProperties, 'fqcn'),
+            ...array_column($this->enumMutatorProperties, 'fqcn'),
+        ]));
+    }
+
+    protected function formatConstImportName(string $fqcn): string
+    {
+        $constName = $this->enumConstMap[$fqcn];
+        $alias = $this->constImportAliases[$fqcn] ?? null;
+
+        if ($alias !== null && $alias !== $constName) {
+            return $constName.' as '.$alias;
+        }
+
+        return $constName;
+    }
+
+    /**
+     * @return array<string, array{constName: string, nullable: bool}>
+     */
+    protected function buildEnumColumns(): array
+    {
+        $result = [];
+
+        foreach ($this->enumColumnProperties as $name => $info) {
+            $result[$name] = [
+                'constName' => $this->constImportAliases[$info['fqcn']] ?? $this->enumConstMap[$info['fqcn']],
+                'nullable' => $info['nullable'],
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * @return array<string, array{constName: string, nullable: bool}>
+     */
+    protected function buildEnumMutators(): array
+    {
+        $result = [];
+
+        foreach ($this->enumMutatorProperties as $name => $info) {
+            $result[$name] = [
+                'constName' => $this->constImportAliases[$info['fqcn']] ?? $this->enumConstMap[$info['fqcn']],
+                'nullable' => $info['nullable'],
+            ];
+        }
+
+        return $result;
     }
 }

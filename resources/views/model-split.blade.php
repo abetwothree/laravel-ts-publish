@@ -4,7 +4,7 @@ import { type AsEnum } from '@tolki/enum';
 
 @endif{{-- end tolki package --}}
 @foreach ($data->resolvedImports as $path => $types)
-import { {{ implode(', ', $types) }} } from '{{ $path }}';
+import type { {{ implode(', ', $types) }} } from '{{ $path }}';
 @endforeach
 
 @if (count($data->columns) > 0)
@@ -26,7 +26,7 @@ export interface {{ $data->modelName }}
 $colKeys = implode(' | ', array_map(fn($k) => "'" . $k . "'", array_keys($data->enumColumns)));
 $hasEnumsExtends = 'Omit<' . $data->modelName . ', ' . $colKeys . '>';
 @endphp
-export interface {{ $data->modelName }}HasEnum extends {!! $hasEnumsExtends !!}
+export interface {{ $data->modelName }}Resource extends {!! $hasEnumsExtends !!}
 {
 @foreach ($data->enumColumns as $name => $enum)
     {!! LaravelTsPublish::validJsObjectKey($name) !!}: AsEnum<typeof {!! $enum['constName'] !!}>{!! $enum['nullable'] ? ' | null' : '' !!};
@@ -51,7 +51,7 @@ export interface {{ $data->modelName }}Mutators
 $colKeys = implode(' | ', array_map(fn($k) => "'" . $k . "'", array_keys($data->enumMutators)));
 $hasEnumsExtends = 'Omit<' . $data->modelName . 'Mutators, ' . $colKeys . '>';
 @endphp
-export interface {{ $data->modelName }}MutatorsHasEnum extends {!! $hasEnumsExtends !!}
+export interface {{ $data->modelName }}MutatorsResource extends {!! $hasEnumsExtends !!}
 {
 @foreach ($data->enumMutators as $name => $enum)
     {!! LaravelTsPublish::validJsObjectKey($name) !!}: AsEnum<typeof {!! $enum['constName'] !!}>{!! $enum['nullable'] ? ' | null' : '' !!};
@@ -96,50 +96,16 @@ export interface {{ $data->modelName }}All extends {{ implode(', ', $extends) }}
 @if($usesTolkiPackage && (count($data->enumColumns) > 0 || count($data->enumMutators) > 0))
 
 @php
-$extends = count($data->enumColumns) > 0 ? [$data->modelName.'HasEnum'] : [$data->modelName];
+$extends = count($data->enumColumns) > 0 ? [$data->modelName.'Resource'] : [$data->modelName];
 
 if(count($data->mutators) > 0) {
     $mutators =  $data->modelName.'Mutators';
-    $extends[] = count($data->enumMutators) > 0 ? $mutators.'HasEnum' : $mutators;
+    $extends[] = count($data->enumMutators) > 0 ? $mutators.'Resource' : $mutators;
 }
 
 if(count($data->relations) > 0) {
     $extends[] = $data->modelName.'Relations';
 }
 @endphp
-export interface {{ $data->modelName }}AllHasEnum extends {{ implode(', ', $extends) }} {}
+export interface {{ $data->modelName }}AllResource extends {{ implode(', ', $extends) }} {}
 @endif{{-- end all has enums extends --}}
-
-
-{{-- @if (count($data->enumColumns) > 0 || count($data->enumMutators) > 0)
-
-@php
-$hasEnumsExtends = [];
-if (count($data->columns) > 0) {
-    if (count($data->enumColumns) > 0) {
-        $colKeys = implode(' | ', array_map(fn($k) => "'" . $k . "'", array_keys($data->enumColumns)));
-        $hasEnumsExtends[] = 'Omit<' . $data->modelName . ', ' . $colKeys . '>';
-    } else {
-        $hasEnumsExtends[] = $data->modelName;
-    }
-}
-
-if (count($data->mutators) > 0) {
-    if (count($data->enumMutators) > 0) {
-        $mutKeys = implode(' | ', array_map(fn($k) => "'" . $k . "'", array_keys($data->enumMutators)));
-        $hasEnumsExtends[] = 'Omit<' . $data->modelName . 'Mutators, ' . $mutKeys . '>';
-    } else {
-        $hasEnumsExtends[] = $data->modelName . 'Mutators';
-    }
-}
-@endphp
-export interface {{ $data->modelName }}HasEnumsOrig extends {!! implode(', ', $hasEnumsExtends) !!}
-{
-@foreach ($data->enumColumns as $name => $enum)
-    {!! LaravelTsPublish::validJsObjectKey($name) !!}: AsEnum<typeof {!! $enum['constName'] !!}>{!! $enum['nullable'] ? ' | null' : '' !!};
-@endforeach
-@foreach ($data->enumMutators as $name => $enum)
-    {!! LaravelTsPublish::validJsObjectKey($name) !!}: AsEnum<typeof {!! $enum['constName'] !!}>{!! $enum['nullable'] ? ' | null' : '' !!};
-@endforeach
-}
-@endif --}}
