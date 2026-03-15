@@ -5,6 +5,7 @@ use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
+use Workbench\App\Casts\MenuSettings;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Models\User;
@@ -186,6 +187,16 @@ describe('methodReturnedTypes', function () {
     });
 });
 
+describe('resolveReflectionType with DNF types', function () {
+    test('intersection type inside union resolves to unknown', function () {
+        $reflection = new ReflectionClass(DnfReturnClass::class);
+        $result = $this->service->methodReturnedTypes($reflection, 'dnfMethod');
+
+        expect($result['type'])->toContain('unknown')
+            ->and($result['type'])->toContain('string');
+    });
+});
+
 describe('closureReturnedTypes', function () {
     test('closureReturnedTypes resolves a typed closure', function () {
         $closure = fn (): string => 'hello';
@@ -348,6 +359,17 @@ describe('resolveReflectionType with DNF union types', function () {
         $result = $this->service->resolveReflectionType($returnType);
 
         expect($result['type'])->toBe('unknown | string');
+    });
+
+    test('union type with customImports merges imports from named members', function () {
+        // MenuSettings has #[TsType(['type' => 'MenuSettingsType', 'import' => '@js/types/settings'])]
+        $closure = fn (): MenuSettings|string => 'hello';
+        $returnType = (new ReflectionFunction($closure))->getReturnType();
+
+        $result = $this->service->resolveReflectionType($returnType);
+
+        expect($result['type'])->toContain('MenuSettingsType')
+            ->and($result['customImports'])->toHaveKey('@js/types/settings');
     });
 });
 
@@ -544,6 +566,18 @@ describe('sortImportPaths', function () {
     test('empty array returns empty array', function () {
         expect($this->service->sortImportPaths([]))->toBe([]);
     });
+
+    test('non-package non-relative paths sort between packages and relative imports', function () {
+        $imports = [
+            '../enums' => ['Status'],
+            '~special/utils' => ['Helper'],
+            'luxon' => ['DateTime'],
+        ];
+
+        $sorted = $this->service->sortImportPaths($imports);
+
+        expect(array_keys($sorted))->toBe(['luxon', '~special/utils', '../enums']);
+    });
 });
 
 describe('sanitizeJsDoc', function () {
@@ -711,6 +745,13 @@ describe('resolveClassFromFile', function () {
 
         expect($result)->toBeNull();
     });
+
+    test('resolves class from relative file path via base_path', function () {
+        // Pass a relative path (no leading /) so base_path() is invoked
+        $result = $this->service->resolveClassFromFile('some/nonexistent/file.php');
+
+        expect($result)->toBeNull();
+    });
 });
 
 /**
@@ -764,5 +805,17 @@ class UnknownReturnCast implements CastsAttributes
     public function set(Model $model, string $key, mixed $value, array $attributes) // @phpstan-ignore missingType.return
     {
         return $value;
+    }
+}
+
+/**
+ * A class with a method returning a DNF type (PHP 8.2+) for testing
+ * ReflectionIntersectionType inside a union.
+ */
+class DnfReturnClass
+{
+    public function dnfMethod(): (Countable&Iterator)|string // @phpstan-ignore missingType.iterableValue
+    {
+        return 'hello';
     }
 }

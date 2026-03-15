@@ -7,6 +7,7 @@ use Workbench\App\Enums\MembershipLevel;
 use Workbench\App\Enums\PaymentMethod;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Role;
+use Workbench\App\Enums\Season;
 use Workbench\App\Enums\Status;
 use Workbench\Blog\Enums\ArticleStatus;
 use Workbench\Shipping\Enums\Status as ShippingStatus;
@@ -440,5 +441,65 @@ describe('EnumTransformer doc block descriptions', function () {
         // Currency has doc block but no TsEnum(description:) attribute
         // so it should use the doc block description
         expect($transformer->description)->toBe('String-backed enum with static methods that return complex array structures.');
+    });
+});
+
+describe('EnumTransformer with TsEnum description attribute', function () {
+    test('uses description from TsEnum attribute when provided', function () {
+        $transformer = new EnumTransformer(Season::class);
+        $data = $transformer->data();
+
+        expect($data->description)->toBe('The four seasons of the year')
+            ->and($data->enumName)->toBe('Season');
+    });
+});
+
+describe('EnumTransformer method invocation error handling', function () {
+    test('catches exception in instance method and returns null for that case', function () {
+        $transformer = new EnumTransformer(Season::class);
+        $data = $transformer->data();
+
+        expect($data->methods)->toHaveKey('warmGreeting')
+            ->and($data->methods['warmGreeting']['returns']['Spring'])->toBe('Enjoy the blooms!')
+            ->and($data->methods['warmGreeting']['returns']['Summer'])->toBe('Stay cool!')
+            ->and($data->methods['warmGreeting']['returns']['Autumn'])->toBe('Enjoy the leaves!')
+            ->and($data->methods['warmGreeting']['returns']['Winter'])->toBeNull();
+    });
+
+    test('catches exception in static method invocation', function () {
+        $transformer = new EnumTransformer(Season::class);
+        $data = $transformer->data();
+
+        expect($data->staticMethods)->toHaveKey('broken')
+            ->and($data->staticMethods['broken']['return'])->toBeNull();
+    });
+});
+
+describe('EnumTransformer parseTsTypeOverrides defensive branch', function () {
+    test('skips case when getReflectionConstant returns false', function () {
+        $transformer = new EnumTransformer(Status::class);
+
+        // Create a mock case that returns a name for which getReflectionConstant returns false
+        $mockCase = Mockery::mock(ReflectionEnumUnitCase::class);
+        $mockCase->shouldReceive('getName')->andReturn('_phantom_');
+
+        $realReflection = $transformer->reflectionEnum;
+        $mockReflection = Mockery::mock($realReflection);
+        $mockReflection->shouldReceive('getCases')->andReturn([$mockCase]);
+        $mockReflection->shouldReceive('getReflectionConstant')->with('_phantom_')->andReturn(false);
+
+        // Swap in the mock
+        $prop = new ReflectionProperty($transformer, 'reflectionEnum');
+        $prop->setValue($transformer, $mockReflection);
+
+        // Clear existing overrides and re-run
+        $overridesProp = new ReflectionProperty($transformer, 'tsTypeOverrides');
+        $overridesProp->setValue($transformer, []);
+
+        $method = new ReflectionMethod($transformer, 'parseTsTypeOverrides');
+        $method->invoke($transformer);
+
+        // No overrides should have been added since the constant was false
+        expect($transformer->tsTypeOverrides)->toBeEmpty();
     });
 });

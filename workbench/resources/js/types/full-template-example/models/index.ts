@@ -18,3 +18,4 @@ export * from './tag';
 export * from './team';
 export * from './tracking-event';
 export * from './user';
+export * from './warehouse';

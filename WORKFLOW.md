@@ -39,6 +39,8 @@ E.g.:
 /resources/js/types/data/
 ```
 
+If you use `Eslint` or `Oxlint` it's a good idea to add the published directory to the ignore list in your linter config as well.
+
 ### Importing the published files
 
 Create import aliases for the published files in `tsconfig.json` & `vite.config.ts` to avoid long relative paths in your code and to make it clear that these are generated files.

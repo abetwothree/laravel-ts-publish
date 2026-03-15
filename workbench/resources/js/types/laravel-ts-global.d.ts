@@ -537,6 +537,37 @@ declare global {
             user_count: number;
             user_exists: boolean;
         }
+        export interface Warehouse {
+            // Columns
+            id: number;
+            name: string;
+            /** Write-only accessor on DB column 'phone' — normalizes on set, no get */
+            phone: string | null;
+            coordinate_data: Coordinate | null;
+            status: WorkbenchStatusType | null;
+            manager_id: number | null;
+            primary_contact_id: number | null;
+            secondary_contact_id: number | null;
+            created_at: string | null;
+            updated_at: string | null;
+            // Mutators
+            /** Non-column accessor returning a plain class (Coordinate) */
+            location: Coordinate;
+            /** Non-column accessor returning a TsType class (MenuSettings) with custom import */
+            menu_config: MenuSettingsType | null;
+            /** Non-column accessor returning CRM Status enum — creates name conflict with column 'status' */
+            current_crm_status: CrmStatusType | null;
+            // Relations
+            manager: ManagerUser;
+            manager_count: number;
+            manager_exists: boolean;
+            primary_contact: CrmUser;
+            primary_contact_count: number;
+            primary_contact_exists: boolean;
+            secondary_contact: CrmUser;
+            secondary_contact_count: number;
+            secondary_contact_exists: boolean;
+        }
         export interface Image {
             // Columns
             id: number;
@@ -705,6 +736,17 @@ declare global {
         }
         export type PriorityType = 0 | 1 | 2 | 3;
         export type PriorityKind = 'Low' | 'Medium' | 'High' | 'Critical';
+
+        /** The four seasons of the year */
+        export interface Season
+        {
+            Spring: 'spring',
+            Summer: 'summer',
+            Autumn: 'autumn',
+            Winter: 'winter',
+        }
+        export type SeasonType = 'spring' | 'summer' | 'autumn' | 'winter';
+        export type SeasonKind = 'Spring' | 'Summer' | 'Autumn' | 'Winter';
 
         /** Pure unit enum (no backing type) — tests that the publisher handles unit enums where case names become the values in TypeScript. */
         export interface Visibility

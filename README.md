@@ -7,7 +7,11 @@
 
 This is an extremely flexible package that allows you to create TypeScript declaration types from your Laravel PHP models, enums, and other cast classes.
 
-Every application is different, and this package provides the tools to tailor TypeScript types to your specific needs.
+Enums are treated as first-class citizens with support for PHP like enum features, including methods and static methods.
+
+Every Laravel application is different, and this package provides the tools to tailor TypeScript types to your specific needs while providing powerful backend & frontend tooling to keep your frontend types in sync with your backend PHP code.
+
+For examples of the generated TypeScript output see the [Generated TypeScript Output Examples](workbench/resources/js/types/).
 
 > [!IMPORTANT]
 > Laravel TypeScript Publisher is currently in Beta, functionality, options, and API are subject to change prior to the v1.0.0 release.

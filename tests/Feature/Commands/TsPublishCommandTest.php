@@ -338,3 +338,49 @@ test('ts:publish quiet mode with --source produces no output', function () {
     // Cleanup
     (new Filesystem)->deleteDirectory($outputDir);
 });
+
+test('ts:publish --source exits successfully when both config types disabled', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.publish_enums', false);
+    config()->set('ts-publish.publish_models', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--source' => 'Workbench\App\Enums\Status'])
+        ->assertSuccessful()
+        ->expectsOutputToContain('Nothing to publish');
+});
+
+test('ts:publish --only-enums exits when config enums disabled and non-interactive', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.publish_enums', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-enums' => true, '--no-interaction' => true])
+        ->assertSuccessful();
+});
+
+test('ts:publish --only-enums overrides when user confirms interactively', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.publish_enums', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-enums' => true])
+        ->expectsConfirmation('Config has enums publishing disabled. Override and publish enums anyway?', 'yes')
+        ->assertSuccessful();
+});
+
+test('ts:publish --only-models exits when config models disabled and non-interactive', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.publish_models', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-models' => true, '--no-interaction' => true])
+        ->assertSuccessful();
+});
+
+test('ts:publish preview shows modular barrel files', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.modular_publishing', true);
+    config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+    $this->artisan('ts:publish', ['--preview' => 'true'])
+        ->assertSuccessful()
+        ->expectsOutputToContain('Enum Barrel Files:')
+        ->expectsOutputToContain('Model Barrel Files:');
+});

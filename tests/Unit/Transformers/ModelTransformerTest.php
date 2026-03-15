@@ -11,6 +11,7 @@ use Workbench\App\Models\Profile;
 use Workbench\App\Models\Tag;
 use Workbench\App\Models\TrackingEvent;
 use Workbench\App\Models\User;
+use Workbench\App\Models\Warehouse;
 use Workbench\Crm\Models\Deal;
 
 describe('ModelTransformer with User model', function () {
@@ -689,5 +690,122 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
             ->toContain('Status')
             ->toContain('Visibility')
             ->toContain('Priority');
+    });
+});
+
+describe('ModelTransformer with Warehouse model', function () {
+    test('write-only accessor on DB column falls back to column type', function () {
+        $data = (new ModelTransformer(Warehouse::class))->data();
+
+        // phone has a write-only Attribute (set only, no get) — falls back to DB column type
+        expect($data->columns)->toHaveKey('phone')
+            ->and($data->columns['phone']['type'])->toBe('string | null');
+    });
+
+    test('column cast to CastsAttributes returning a plain class tracks classFqcns', function () {
+        $data = (new ModelTransformer(Warehouse::class))->data();
+
+        // CoordinateCast.get() returns Coordinate — a class with no TsType/CastsAttributes
+        expect($data->columns)->toHaveKey('coordinate_data')
+            ->and($data->columns['coordinate_data']['type'])->toBe('Coordinate | null');
+    });
+
+    test('mutator returning a plain class tracks classFqcns', function () {
+        $data = (new ModelTransformer(Warehouse::class))->data();
+
+        expect($data->mutators)->toHaveKey('location')
+            ->and($data->mutators['location']['type'])->toBe('Coordinate');
+    });
+
+    test('mutator returning a TsType class includes customImports', function () {
+        $data = (new ModelTransformer(Warehouse::class))->data();
+
+        expect($data->mutators)->toHaveKey('menu_config')
+            ->and($data->mutators['menu_config']['type'])->toContain('MenuSettingsType');
+
+        expect($data->typeImports)->toHaveKey('@js/types/settings');
+    });
+
+    test('aliases conflicting enum types on mutators and rewrites types', function () {
+        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+        $data = (new ModelTransformer(Warehouse::class))->data();
+
+        // Column status uses App\Enums\Status → aliased to AppStatusType
+        expect($data->columns['status']['type'])->toBe('AppStatusType | null');
+        // Mutator current_crm_status uses Crm\Enums\Status → aliased to CrmStatusType
+        expect($data->mutators['current_crm_status']['type'])->toBe('CrmStatusType | null');
+    });
+
+    test('uses computeNamespacePrefix for model referenced by 2+ relations', function () {
+        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+        $data = (new ModelTransformer(Warehouse::class))->data();
+
+        // Crm\User has 2 relations (primaryContact, secondaryContact) → namespace prefix alias
+        expect($data->relations['primary_contact']['type'])->toBe('CrmUser')
+            ->and($data->relations['secondary_contact']['type'])->toBe('CrmUser');
+
+        // App\User has 1 relation (manager) → relation-based alias
+        expect($data->relations['manager']['type'])->toBe('ManagerUser');
+    });
+});
+
+describe('ModelTransformer resolveMutatorType edge cases', function () {
+    test('resolveMutatorType returns unknown when no matching accessor exists', function () {
+        $transformer = new ModelTransformer(User::class);
+
+        $method = new ReflectionMethod($transformer, 'resolveMutatorType');
+
+        // Pass a name with no matching new-style or old-style accessor
+        $result = $method->invoke($transformer, 'nonexistent_property');
+
+        expect($result['type'])->toBe('unknown');
+    });
+});
+
+describe('ModelTransformer rewriteTypeReferences defensive branches', function () {
+    test('skips when relation key is not in relations map', function () {
+        $transformer = new ModelTransformer(User::class);
+
+        // Inject a model FQCN relation that references a relation not in $this->relations
+        $prop = new ReflectionProperty($transformer, 'modelFqcnRelations');
+        $relations = $prop->getValue($transformer);
+        $relations['Fake\\Model\\Ghost'] = ['nonexistent_relation'];
+        $prop->setValue($transformer, $relations);
+
+        $aliasProp = new ReflectionProperty($transformer, 'importAliases');
+        $aliases = $aliasProp->getValue($transformer);
+        $aliases['Fake\\Model\\Ghost'] = 'AliasedGhost';
+        $aliasProp->setValue($transformer, $aliases);
+
+        $mapProp = new ReflectionProperty($transformer, 'modelFqcnMap');
+        $map = $mapProp->getValue($transformer);
+        $map['Fake\\Model\\Ghost'] = 'Ghost';
+        $mapProp->setValue($transformer, $map);
+
+        // Call rewriteTypeReferences — should not throw, just skip the nonexistent relation
+        $method = new ReflectionMethod($transformer, 'rewriteTypeReferences');
+        $method->invoke($transformer);
+
+        // Relations should remain unchanged
+        expect($transformer->relations)->not->toHaveKey('nonexistent_relation');
+    });
+
+    test('skips when FQCN has no mapped name in rewrite loop', function () {
+        $transformer = new ModelTransformer(User::class);
+
+        // Inject an import alias for a FQCN not tracked in either map
+        $aliasProp = new ReflectionProperty($transformer, 'importAliases');
+        $aliases = $aliasProp->getValue($transformer);
+        $aliases['Fake\\Unmapped\\Thing'] = 'AliasedThing';
+        $aliasProp->setValue($transformer, $aliases);
+
+        // Call rewriteTypeReferences — should hit the continue for unmapped FQCN
+        $method = new ReflectionMethod($transformer, 'rewriteTypeReferences');
+        $method->invoke($transformer);
+
+        // Nothing should have changed
+        expect($transformer->columns)->not->toBeEmpty();
     });
 });

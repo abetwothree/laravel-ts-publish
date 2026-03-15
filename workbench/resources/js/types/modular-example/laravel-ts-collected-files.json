@@ -10,6 +10,7 @@
     "app\/Enums\/PaymentMethod.php",
     "app\/Enums\/MembershipLevel.php",
     "app\/Enums\/Priority.php",
+    "app\/Enums\/Season.php",
     "app\/Enums\/Visibility.php",
     "app\/Enums\/MediaType.php",
     "app\/Enums\/OrderStatus.php",
@@ -37,6 +38,7 @@
     "app\/Models\/User.php",
     "app\/Models\/Comment.php",
     "app\/Models\/Profile.php",
+    "app\/Models\/Warehouse.php",
     "app\/Models\/Image.php",
     "vendor\/laravel\/framework\/src\/Illuminate\/Notifications\/DatabaseNotification.php"
 ]
