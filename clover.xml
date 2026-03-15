@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<coverage generated="1773585626">
-  <project timestamp="1773585626" name="Clover Coverage">
+<coverage generated="1773586121">
+  <project timestamp="1773586121" name="Clover Coverage">
     <package name="AbeTwoThree\LaravelTsPublish\Attributes">
       <file name="/home/runner/work/laravel-ts-publish/laravel-ts-publish/src/Attributes/TsCase.php">
         <class name="AbeTwoThree\LaravelTsPublish\Attributes\TsCase" namespace="AbeTwoThree\LaravelTsPublish\Attributes">
