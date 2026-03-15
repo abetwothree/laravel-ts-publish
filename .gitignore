@@ -31,3 +31,4 @@ phpstan.neon
 /coverage
 coverage.xml
 workbench/database/database.sqlite
+clover.xml
