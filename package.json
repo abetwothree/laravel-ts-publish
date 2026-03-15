@@ -1,0 +1,17 @@
+{
+  "name": "laravel-ts-publisher",
+  "version": "1.0.0",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abetwothree/laravel-ts-publish.git"
+  },
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/abetwothree/laravel-ts-publish/issues"
+  },
+  "homepage": "https://github.com/abetwothree/laravel-ts-publish#readme",
+  "dependencies": {
+    "@tolki/enum": "^0.0.5"
+  }
+}
