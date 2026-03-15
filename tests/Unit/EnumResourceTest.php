@@ -31,6 +31,16 @@ describe('EnumResource with backed int enum', function () {
             ->toHaveKey('icon', 'pencil')
             ->toHaveKey('color', 'gray');
     });
+
+    it('includes static method return values', function () {
+        $result = (new EnumResource(Status::Published))->toArray(request());
+
+        expect($result)
+            ->toHaveKey('valueLabelPair')
+            ->toHaveKey('names', ['Draft', 'Published'])
+            ->toHaveKey('values', [0, 1])
+            ->toHaveKey('options', ['Draft' => 0, 'Published' => 1]);
+    });
 });
 
 describe('EnumResource with unit enum', function () {
@@ -81,7 +91,10 @@ describe('EnumResource with backed string enum', function () {
             ->toBeArray()
             ->toHaveKey('name', 'Usd')
             ->toHaveKey('value', 'USD')
-            ->toHaveKey('backed', true);
+            ->toHaveKey('backed', true)
+            ->toHaveKey('symbols')
+            ->toHaveKey('default', 'USD')
+            ->toHaveKey('details');
     });
 });
 
@@ -97,7 +110,8 @@ describe('EnumResource with parameterized methods', function () {
             ->toHaveKey('label', 'High Priority')
             ->toHaveKey('badgeColor', 'bg-orange-100 text-orange-800')
             ->toHaveKey('icon', 'arrow-up')
-            ->toHaveKey('isAboveThreshold', true);
+            ->toHaveKey('isAboveThreshold', true)
+            ->toHaveKey('filterByMinimum');
     });
 
     it('excludes methods with required params but no attribute params', function () {

@@ -10,6 +10,7 @@ use UnitEnum;
  * @phpstan-import-type CaseData from TsEnumDto
  *
  * @phpstan-type MethodList = array<string, mixed>
+ * @phpstan-type StaticMethodList = array<string, mixed>
  * @phpstan-type EnumInstanceData = array<string, mixed>
  */
 class EnumInstanceTransformer
@@ -33,6 +34,7 @@ class EnumInstanceTransformer
             'value' => $case['value'],
             'backed' => $this->data->backed,
             ...$this->resolvedMethods(),
+            ...$this->resolvedStaticMethods(),
         ];
     }
 
@@ -55,6 +57,16 @@ class EnumInstanceTransformer
         return collect($this->data->methods)
             ->mapWithKeys(fn ($methodData) => [
                 $methodData['name'] => $methodData['returns'][$this->enum->name] ?? '',
+            ])
+            ->all();
+    }
+
+    /** @return StaticMethodList */
+    protected function resolvedStaticMethods(): array
+    {
+        return collect($this->data->staticMethods)
+            ->mapWithKeys(fn ($methodData) => [
+                $methodData['name'] => $methodData['return'],
             ])
             ->all();
     }

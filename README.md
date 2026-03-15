@@ -1231,9 +1231,7 @@ The JSON output from `output_collected_files_json` is designed to work with buil
 
 ## JSON Enum HTTP API Resource
 
-This package ships with an `EnumResource` — a Laravel [JSON resource](https://laravel.com/docs/eloquent-resources) that transforms any PHP enum case into a flat, API-friendly array. It runs the enum through the same transformer pipeline used for TypeScript publishing, so every `#[TsEnumMethod]` you've configured is automatically included.
-
-Configured `#[TsEnumStaticMethod]` are not included by default because they would have the same repeated values for every case. You're free to extend the `EnumResource` to include static methods or any other data. You can also always use the transformer data and create a custom resource if you want more control over the response shape.
+This package ships with an `EnumResource` — a Laravel [JSON resource](https://laravel.com/docs/eloquent-resources) that transforms any PHP enum case into a flat, API-friendly array. It runs the enum through the same transformer pipeline used for TypeScript publishing, so every `#[TsEnumMethod]` or `#[TsEnumStaticMethod]` you've configured is automatically included.
 
 The `EnumResource` class is useful when you need to send a single enum instance (e.g., a model's status) to the frontend as a rich object with resolved method values, rather than just the raw string or integer value.
 
@@ -1301,7 +1299,9 @@ Every response includes these base keys:
 | `value`  | `string \| int` | The backed value, or the case name for unit enums                       |
 | `backed` | `bool`          | Whether the enum is a backed enum                                       |
 
-Instance methods (decorated with `#[TsEnumMethod]` or with global all methods allowed config setting) are flattened as top-level keys with the resolved value **for the specific case** passed to the resource.
+Instance methods (decorated with `#[TsEnumMethod]` or with global all methods allowed config setting) are flattened as top-level keys with the resolved value **for the specific case** passed to the resource. Static methods (decorated with `#[TsEnumStaticMethod]` or with global all static methods allowed config setting) are included as top-level keys with the resolved value from the static method.
+
+This allows the `EnumResource` to provide the same data as the published TypeScript enum when you call the `from` method from the `@tolki/enum` package on the frontend on the enum with the same case value.
 
 ### Unit Enums
 
