@@ -14,7 +14,7 @@ Enums are treated as first-class citizens with support for PHP-like enum feature
 
 Every Laravel application is different, and this package provides the tools to tailor TypeScript types to your specific needs while providing powerful backend & frontend tooling to keep your frontend types in sync with your backend PHP code.
 
-For examples of the generated TypeScript output, see the [Generated TypeScript Output Examples](workbench/resources/js/types/).
+For examples of the generated TypeScript output, see the [Generated TypeScript Output Examples](workbench/resources/js/types/data/).
 
 > [!IMPORTANT]
 > Laravel TypeScript Publisher is currently in Beta, functionality, options, and API are subject to change prior to the v1.0.0 release.
@@ -51,7 +51,7 @@ You can publish your TypeScript declaration types using the `ts:publish` Artisan
 php artisan ts:publish
 ```
 
-By default, the generated TypeScript declaration types will be saved to the `resources/js/types/` directory and follow default configuration settings.
+By default, the generated TypeScript declaration types will be saved to the `resources/js/types/data/` directory and follow default configuration settings.
 
 Additionally, by default, the package will look for models in the `app/Models` directory and enums in the `app/Enums` directory. You can customize these settings in the published configuration file.
 
@@ -1436,7 +1436,7 @@ Naming conflicts are handled automatically — if two enum FQCNs share the same 
 By default, this package outputs all generated TypeScript files into flat `enums/` and `models/` directories:
 
 ```text
-resources/js/types/
+resources/js/types/data/
 ├── enums/
 │   ├── article-status.ts
 │   ├── invoice-status.ts
@@ -1465,7 +1465,7 @@ Set `modular_publishing` to `true` in your config file:
 With modular publishing enabled, the output structure changes to reflect your PHP namespaces:
 
 ```text
-resources/js/types/
+resources/js/types/data/
 ├── app/
 │   ├── enums/
 │   │   ├── role.ts
@@ -1584,7 +1584,7 @@ This package uses a **Collector → Generator → Transformer → Writer → Tem
 
 | Pipeline Stage | Config Key                | Default Class        | Responsibility                          |
 |----------------|---------------------------|----------------------|-----------------------------------------|
-| Collector      | `model_collector_class`   | `ModelsCollector`    | Discovers PHP model/enum classes        |
+| Collector      | `model_collector_class`   | `ModelsCollector`    | Discovers PHP model classes.            |
 | Collector      | `enum_collector_class`    | `EnumsCollector`     | Discovers PHP enum classes              |
 | Generator      | `model_generator_class`   | `ModelGenerator`     | Orchestrates transforming and writing   |
 | Generator      | `enum_generator_class`    | `EnumGenerator`      | Orchestrates transforming and writing   |
@@ -1594,6 +1594,8 @@ This package uses a **Collector → Generator → Transformer → Writer → Tem
 | Writer         | `enum_writer_class`       | `EnumWriter`         | Writes TypeScript enum files            |
 | Writer         | `barrel_writer_class`     | `BarrelWriter`       | Writes barrel `index.ts` files          |
 | Writer         | `globals_writer_class`    | `GlobalsWriter`      | Writes global declaration file          |
+| Writer         | `json_writer_class`       | `JsonWriter`         | Writes JSON definitions file            |
+| Writer         | `watcher_json_writer_class` | `WatcherJsonWriter`| Writes collected files JSON for watchers|
 | Template       | `model_template`          | `model-split`        | Blade template for model output         |
 | Template       | `enum_template`           | `enum`               | Blade template for enum output          |
 
@@ -1671,7 +1673,7 @@ Below is a quick reference of all available configuration options:
 |---------------------------------------|------------|--------------------------------------|------------------------------------------------------------------|
 | `run_after_migrate`                   | `bool`     | `true`                               | Re-publish types after running migrations                        |
 | `output_to_files`                     | `bool`     | `true`                               | Write generated TypeScript to `.ts` files                        |
-| `output_directory`                    | `string`   | `resources/js/types/`                | Directory where TypeScript files are written                     |
+| `output_directory`                    | `string`   | `resources/js/types/data`            | Directory where TypeScript files are written                     |
 | `publish_enums`                       | `bool`     | `true`                               | Enable or disable enum publishing                                |
 | `publish_models`                      | `bool`     | `true`                               | Enable or disable model publishing                               |
 | `modular_publishing`                  | `bool`     | `false`                              | Organize output into namespace-derived directory trees           |
@@ -1685,16 +1687,16 @@ Below is a quick reference of all available configuration options:
 | `enum_metadata_enabled`               | `bool`     | `true`                               | Include `_cases`, `_methods`, `_static` metadata on enums        |
 | `enums_use_tolki_package`             | `bool`     | `true`                               | Wrap enums in `defineEnum()` from `@tolki/enum`                  |
 | `output_globals_file`                 | `bool`     | `false`                              | Generate a `global.d.ts` namespace file                          |
-| `global_directory`                    | `string`   | `resources/js/types/`                | Directory for the global declaration file                        |
+| `global_directory`                    | `?string`  | null                                 | Directory for the global declaration file                        |
 | `global_filename`                     | `string`   | `laravel-ts-global.d.ts`             | Filename for the global declaration file                         |
 | `models_namespace`                    | `string`   | `'models'`                           | Namespace label used in the global declaration file              |
 | `enums_namespace`                     | `string`   | `'enums'`                            | Namespace label used in the global declaration file              |
 | `output_json_file`                    | `bool`     | `false`                              | Output all definitions as a JSON file                            |
 | `json_filename`                       | `string`   | `laravel-ts-definitions.json`        | Filename for the JSON output                                     |
-| `json_output_directory`               | `string`   | `resources/js/types/`                | Directory for the JSON output                                    |
+| `json_output_directory`               | `?string`  | null                                 | Directory for the JSON output                                    |
 | `output_collected_files_json`         | `bool`     | `true`                               | Output collected PHP file paths as JSON (for file watchers)      |
 | `collected_files_json_filename`       | `string`   | `laravel-ts-collected-files.json`    | Filename for the collected files JSON                            |
-| `collected_files_json_output_directory` | `string` | `resources/js/types/`                | Directory for the collected files JSON                           |
+| `collected_files_json_output_directory` | `?string`| null                                 | Directory for the collected files JSON                           |
 | `model_template`                      | `string`   | `laravel-ts-publish::model-split`    | Blade template for model TypeScript output                       |
 | `enum_template`                       | `string`   | `laravel-ts-publish::enum`           | Blade template for enum TypeScript output                        |
 | `globals_template`                    | `string`   | `laravel-ts-publish::globals`        | Blade template for global declaration output                     |
@@ -1704,6 +1706,9 @@ Below is a quick reference of all available configuration options:
 | `included_enums`                      | `array`    | `[]`                                 | Only publish these enums (empty = all)                           |
 | `excluded_enums`                      | `array`    | `[]`                                 | Exclude these enums from publishing                              |
 | `additional_enum_directories`         | `array`    | `[]`                                 | Extra directories to search for enums                            |
+
+> [!NOTE]
+> The 14 pipeline class config keys (e.g. `model_collector_class`, `enum_writer_class`, etc.) are listed in the [Extending & Customizing the Pipeline](#extending--customizing-the-pipeline) section above.
 
 See the [full configuration file](https://github.com/abetwothree/laravel-ts-publish/blob/main/config/ts-publish.php) for detailed comments on each option.
 

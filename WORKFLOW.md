@@ -115,7 +115,7 @@ Add the `ts:publish` command to the post update command hook in `composer.json` 
 If you want to perform any additional configuration or setup before the publish command runs, you can use the `callCommandUsing` method in the `boot` method of your `AppServiceProvider` or any other service provider. See more info about this in the [Pre-Command Hook](https://github.com/abetwothree/laravel-ts-publish#pre-command-hook) section of the documentation.
 
 ```php
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 
 class AppServiceProvider extends ServiceProvider
 {
