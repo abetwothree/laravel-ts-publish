@@ -58,12 +58,12 @@ abstract class CoreCollector
             ->flatMap(ClassMapGenerator::createMap(...))
             ->flip()
             ->merge($additionalClasses) // @phpstan-ignore argument.type
-            ->filter(function (string $file) {
-                if (! class_exists($file)) {
+            ->filter(function (string $class) {
+                if (! class_exists($class)) {
                     return false;
                 }
 
-                $reflection = new ReflectionClass($file);
+                $reflection = new ReflectionClass($class);
 
                 return $this->classFilter($reflection) && $reflection->getAttributes(TsExclude::class) === [];
             })

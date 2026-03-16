@@ -2,6 +2,7 @@
 
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
 use Illuminate\Support\Collection;
+use Illuminate\Filesystem\Filesystem;
 
 use function Orchestra\Testbench\workbench_path;
 
@@ -32,12 +33,13 @@ test('enums collector skips non-loadable classes from scanned directories', func
 
     config()->set('ts-publish.additional_enum_directories', [$tempDir]);
 
-    $enums = resolve(EnumsCollector::class)->collect();
+    try {
+        $enums = resolve(EnumsCollector::class)->collect();
 
-    expect($enums)->not->toContain('NonAutoloadable\Fake\BrokenEnum');
-
-    unlink($tempDir.'/BrokenEnum.php');
-    rmdir($tempDir);
+        expect($enums)->not->toContain('NonAutoloadable\Fake\BrokenEnum');
+    } finally {
+        (new Filesystem())->deleteDirectory($tempDir);
+    }
 });
 
 test('enums collector includes only classes from a directory', function () {
