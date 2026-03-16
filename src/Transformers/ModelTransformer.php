@@ -362,7 +362,7 @@ class ModelTransformer extends CoreTransformer
                 ? $relatedBasename.'[]'
                 : $relatedBasename;
 
-            if ($nullableRelations && ! $containsMany && $this->isRelationNullable($relation)) {
+            if ($nullableRelations && $this->isRelationNullable($relation)) {
                 $relationType .= ' | null';
             }
 

@@ -23,6 +23,7 @@ return [
     |
     | Ignore if not outputting to files
     */
+
     'run_after_migrate' => env('TS_PUBLISH_RUN_AFTER_MIGRATE', true),
 
     /*
@@ -35,6 +36,7 @@ return [
     |
     | Collectors find the given class types and pas the results to generators.
     */
+
     'model_collector_class' => ModelsCollector::class,
 
     'enum_collector_class' => EnumsCollector::class,
@@ -50,6 +52,7 @@ return [
     | Generators receive a collected class, pass it to its transformer,
     | and then pass the transformer to the writer to create the final output.
     */
+
     'model_generator_class' => ModelGenerator::class,
 
     'enum_generator_class' => EnumGenerator::class,
@@ -64,6 +67,7 @@ return [
     |
     | Transformers receive a class and transform it into a TypeScript definition.
     */
+
     'model_transformer_class' => ModelTransformer::class,
 
     'enum_transformer_class' => EnumTransformer::class,
@@ -82,6 +86,7 @@ return [
     |
     | The globals writer creates a global.d.ts file that contains a global namespace with all generated types from all categories
     */
+
     'model_writer_class' => ModelWriter::class,
 
     'enum_writer_class' => EnumWriter::class,
@@ -106,6 +111,7 @@ return [
     |
     | The easiest way to customize the output is to publish the templates and modify them as needed.
     */
+
     'model_template' => 'laravel-ts-publish::model-split',
 
     'enum_template' => 'laravel-ts-publish::enum',
@@ -125,6 +131,7 @@ return [
     | To configure TypeScript types on a per-model per-enum basis use attributes.
     | See AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
     */
+
     'custom_ts_mappings' => [
         // 'binary' => 'Blob',
     ],
@@ -164,6 +171,7 @@ return [
     |
     | You can conditionally only publish enums or models by setting the options below.
     */
+
     'output_to_files' => true,
 
     'output_directory' => resource_path('/js/types/data/'),
@@ -188,6 +196,7 @@ return [
     | Import paths between generated files are computed as relative paths
     | based on the namespace directory structure.
     */
+
     'modular_publishing' => false,
 
     /*
@@ -202,6 +211,7 @@ return [
     | `Modules\Blog\Models\Article` into `blog/models/article.ts`
     | instead of `modules/blog/models/article.ts`.
     */
+
     'namespace_strip_prefix' => '',
 
     /*
@@ -216,6 +226,8 @@ return [
 
     'relationship_case' => 'snake',
 
+    'enum_method_case' => 'camel',
+
     /*
     |--------------------------------------------------------------------------
     | Nullable Relations
@@ -229,6 +241,7 @@ return [
     | MorphTo → nullable when the morph type or id column is nullable in the DB
     | Collection relations (HasMany, BelongsToMany, etc.) → never nullable
     */
+
     'nullable_relations' => true,
 
     /*
@@ -248,12 +261,11 @@ return [
     |
     | See AbeTwoThree\LaravelTsPublish\RelationMap
     */
+
     'relation_nullability_map' => [
         // \Illuminate\Database\Eloquent\Relations\BelongsTo::class => 'nullable',
         // \Illuminate\Database\Eloquent\Relations\HasOne::class    => 'never',
     ],
-
-    'enum_method_case' => 'camel',
 
     /*
     |--------------------------------------------------------------------------
@@ -262,6 +274,7 @@ return [
     |
     | Specifies whether to create a "global.d.ts" file with a global namespace containing all generated types.
     */
+
     'output_globals_file' => false,
 
     'global_filename' => 'laravel-ts-global.d.ts',
@@ -281,6 +294,7 @@ return [
     | Specifies whether to output the generated TypeScript definitions in a JSON file.
     | This can be in addition to or instead of outputting to .d.ts files, depending on the "output_to_files" option.
     */
+
     'output_json_file' => false,
 
     'json_filename' => 'laravel-ts-definitions.json',
@@ -296,6 +310,7 @@ return [
     | Specifies whether to create a JSON file containing the list of collected models and enums file paths.
     | This is useful for npm processes to watch for changes in the collected files and trigger the publish command on change.
     */
+
     'output_collected_files_json' => true,
 
     'collected_files_json_filename' => 'laravel-ts-collected-files.json',
@@ -311,6 +326,7 @@ return [
     | Specifies whether to map timestamp fields as Date objects in the
     | generated TypeScript definitions instead of strings.
     */
+
     'timestamps_as_date' => false,
 
     /*
