@@ -644,6 +644,51 @@ DOC;
 DOC;
         expect($this->service->parseDocBlockDescription($doc))->toBe('');
     });
+
+    test('strips inline tags like {@inheritdoc}', function () {
+        $doc = <<<'DOC'
+/**
+ * {@inheritdoc}
+ */
+DOC;
+        expect($this->service->parseDocBlockDescription($doc))->toBe('');
+    });
+
+    test('strips inline tags mixed with description text', function () {
+        $doc = <<<'DOC'
+/**
+ * Some description {@see OtherClass} here.
+ */
+DOC;
+        expect($this->service->parseDocBlockDescription($doc))->toBe('Some description here.');
+    });
+
+    test('skips multi-line @phpstan-type continuation lines', function () {
+        $doc = <<<'DOC'
+/**
+ * The model description.
+ *
+ * @phpstan-type ModelData = array{
+ *    modelName: string,
+ *    description: string,
+ * }
+ */
+DOC;
+        expect($this->service->parseDocBlockDescription($doc))->toBe('The model description.');
+    });
+
+    test('handles description after multi-line tag block separated by blank line', function () {
+        $doc = <<<'DOC'
+/**
+ * @phpstan-type Foo = array{
+ *    bar: string,
+ * }
+ *
+ * Visible description after tag block.
+ */
+DOC;
+        expect($this->service->parseDocBlockDescription($doc))->toBe('Visible description after tag block.');
+    });
 });
 
 describe('callCommandUsing and callCommandWith', function () {

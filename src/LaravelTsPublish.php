@@ -523,6 +523,7 @@ class LaravelTsPublish
 
         $lines = explode("\n", $docComment);
         $description = [];
+        $inTag = false;
 
         foreach ($lines as $line) {
             // Strip leading whitespace, asterisks, and the opening/closing markers
@@ -532,11 +533,27 @@ class LaravelTsPublish
 
             // Skip empty remnants from /** and */
             if ($trimmed === '' || $trimmed === '/') {
+                $inTag = false;
+
                 continue;
             }
 
-            // Skip @-tag lines
+            // Skip @-tag lines and mark as inside a (possibly multi-line) tag
             if (str_starts_with($trimmed, '@')) {
+                $inTag = true;
+
+                continue;
+            }
+
+            // Skip continuation lines of multi-line @-tags
+            if ($inTag) {
+                continue;
+            }
+
+            // Strip inline tags like {@inheritdoc}, {@see ...}, {@link ...}
+            $trimmed = trim((string) preg_replace('/\s*\{@[^}]+\}\s*/', ' ', $trimmed));
+
+            if ($trimmed === '') {
                 continue;
             }
 
