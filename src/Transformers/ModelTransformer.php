@@ -414,7 +414,18 @@ class ModelTransformer extends CoreTransformer
             return true;
         }
 
+        /** @var string|list<string> $fkName */
         $fkName = $relationInstance->getForeignKeyName();
+
+        if (is_array($fkName)) {
+            foreach ($fkName as $column) {
+                if ($this->isAttributeNullable($column)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         return $this->isAttributeNullable($fkName);
     }
@@ -432,8 +443,19 @@ class ModelTransformer extends CoreTransformer
             return true;
         }
 
+        /** @var string|list<string> $fkName */
         $fkName = $relationInstance->getForeignKeyName();
         $morphType = $relationInstance->getMorphType();
+
+        if (is_array($fkName)) {
+            foreach ($fkName as $column) {
+                if ($this->isAttributeNullable($column)) {
+                    return true;
+                }
+            }
+
+            return $this->isAttributeNullable($morphType);
+        }
 
         return $this->isAttributeNullable($fkName) || $this->isAttributeNullable($morphType);
     }

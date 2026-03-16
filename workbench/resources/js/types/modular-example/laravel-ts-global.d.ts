@@ -124,6 +124,20 @@ declare global {
             // Mutators
             changes: { attributes: Record<string, unknown>; old: Record<string, unknown> };
         }
+        export interface CompositeComment {
+            // Columns
+            id: number;
+            body: string;
+            commentable_type: string;
+            commentable_id_1: number;
+            commentable_id_2: number | null;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            commentable: CompositeComment | null;
+            commentable_count: number;
+            commentable_exists: boolean;
+        }
         export interface Product {
             // Columns
             id: string;
@@ -297,6 +311,30 @@ declare global {
             products_count: number;
             products_exists: boolean;
         }
+        export interface TaskOwner {
+            // Columns
+            id: number;
+            name: string;
+            email: string;
+            email_verified_at: string | null;
+            password: string;
+            options: string | null;
+            remember_token: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            role: string | null;
+            membership_level: string | null;
+            phone: string | null;
+            avatar: string | null;
+            bio: string | null;
+            settings: string | null;
+            last_login_at: string | null;
+            last_login_ip: string | null;
+            // Relations
+            task_assignments: TaskAssignment[];
+            task_assignments_count: number;
+            task_assignments_exists: boolean;
+        }
         export interface OrderItem {
             // Columns
             id: number;
@@ -378,6 +416,19 @@ declare global {
             notifications_count: number;
             notifications_exists: boolean;
         }
+        export interface TaskAssignment {
+            // Columns
+            id: number;
+            title: string;
+            team_id: number;
+            category_id: number | null;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            assignee: TaskOwner | null;
+            assignee_count: number;
+            assignee_exists: boolean;
+        }
         export interface Comment {
             // Columns
             id: number;
@@ -430,6 +481,20 @@ declare global {
             user_count: number;
             user_exists: boolean;
         }
+        export interface StrictCompositeComment {
+            // Columns
+            id: number;
+            body: string;
+            commentable_type: string;
+            commentable_id_1: number;
+            commentable_id_2: number;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            commentable: StrictCompositeComment | null;
+            commentable_count: number;
+            commentable_exists: boolean;
+        }
         export interface Warehouse {
             // Columns
             id: number;
@@ -460,6 +525,19 @@ declare global {
             secondary_contact: CrmUser | null;
             secondary_contact_count: number;
             secondary_contact_exists: boolean;
+        }
+        export interface StrictTaskAssignment {
+            // Columns
+            id: number;
+            title: string;
+            team_id: number;
+            category_id: number;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            assignee: TaskOwner;
+            assignee_count: number;
+            assignee_exists: boolean;
         }
         export interface Image {
             // Columns

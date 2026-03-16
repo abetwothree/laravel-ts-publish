@@ -6,15 +6,20 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Workbench\Accounting\Models\Invoice;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Category;
+use Workbench\App\Models\CompositeComment;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Order;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Product;
 use Workbench\App\Models\Profile;
+use Workbench\App\Models\StrictCompositeComment;
+use Workbench\App\Models\StrictTaskAssignment;
 use Workbench\App\Models\Tag;
+use Workbench\App\Models\TaskAssignment;
 use Workbench\App\Models\TrackingEvent;
 use Workbench\App\Models\User;
 use Workbench\App\Models\Warehouse;
+use Workbench\App\Relations\CompositeMorphTo;
 use Workbench\Crm\Models\Deal;
 
 describe('ModelTransformer with User model', function () {
@@ -907,5 +912,49 @@ describe('ModelTransformer nullable relations', function () {
 
         // HasOne is not a MorphTo, so isMorphNullable guard returns true
         expect($data->relations['profile']['type'])->toBe('Profile | null');
+    });
+});
+
+describe('ModelTransformer composite foreign keys', function () {
+    test('BelongsTo with composite FK is nullable when any column is nullable', function () {
+        $data = (new ModelTransformer(TaskAssignment::class))->data();
+
+        // TaskAssignment.assignee uses composite FK ['team_id', 'category_id']
+        // category_id is nullable, so the relation should be nullable
+        expect($data->relations['assignee']['type'])->toBe('TaskOwner | null');
+    });
+
+    test('BelongsTo with composite FK is not nullable when all columns are non-nullable', function () {
+        $data = (new ModelTransformer(StrictTaskAssignment::class))->data();
+
+        // StrictTaskAssignment.assignee uses composite FK ['team_id', 'category_id']
+        // Both columns are NOT NULL, so the relation should not be nullable
+        expect($data->relations['assignee']['type'])->toBe('TaskOwner');
+    });
+});
+
+describe('ModelTransformer composite morph foreign keys', function () {
+    test('MorphTo with composite FK is nullable when any FK column is nullable', function () {
+        config()->set('ts-publish.relation_nullability_map', [
+            CompositeMorphTo::class => 'morph',
+        ]);
+
+        $data = (new ModelTransformer(CompositeComment::class))->data();
+
+        // CompositeComment.commentable uses composite FK ['commentable_id_1', 'commentable_id_2']
+        // commentable_id_2 is nullable, so the relation should be nullable
+        expect($data->relations['commentable']['type'])->toBe('CompositeComment | null');
+    });
+
+    test('MorphTo with composite FK is not nullable when all columns are non-nullable', function () {
+        config()->set('ts-publish.relation_nullability_map', [
+            CompositeMorphTo::class => 'morph',
+        ]);
+
+        $data = (new ModelTransformer(StrictCompositeComment::class))->data();
+
+        // StrictCompositeComment.commentable uses composite FK ['commentable_id_1', 'commentable_id_2']
+        // All FK columns and commentable_type are NOT NULL
+        expect($data->relations['commentable']['type'])->toBe('StrictCompositeComment');
     });
 });

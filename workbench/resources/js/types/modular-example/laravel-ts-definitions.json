@@ -788,6 +788,48 @@
                 "type": "boolean"
             }
         ],
+        "CompositeComment": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "body",
+                "type": "string"
+            },
+            {
+                "name": "commentable_type",
+                "type": "string"
+            },
+            {
+                "name": "commentable_id_1",
+                "type": "number"
+            },
+            {
+                "name": "commentable_id_2",
+                "type": "number | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "commentable",
+                "type": "CompositeComment | null"
+            },
+            {
+                "name": "commentable_count",
+                "type": "number"
+            },
+            {
+                "name": "commentable_exists",
+                "type": "boolean"
+            }
+        ],
         "Product": [
             {
                 "name": "id",
@@ -1326,6 +1368,88 @@
                 "type": "boolean"
             }
         ],
+        "TaskOwner": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "name",
+                "type": "string"
+            },
+            {
+                "name": "email",
+                "type": "string"
+            },
+            {
+                "name": "email_verified_at",
+                "type": "string | null"
+            },
+            {
+                "name": "password",
+                "type": "string"
+            },
+            {
+                "name": "options",
+                "type": "string | null"
+            },
+            {
+                "name": "remember_token",
+                "type": "string | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "role",
+                "type": "string | null"
+            },
+            {
+                "name": "membership_level",
+                "type": "string | null"
+            },
+            {
+                "name": "phone",
+                "type": "string | null"
+            },
+            {
+                "name": "avatar",
+                "type": "string | null"
+            },
+            {
+                "name": "bio",
+                "type": "string | null"
+            },
+            {
+                "name": "settings",
+                "type": "string | null"
+            },
+            {
+                "name": "last_login_at",
+                "type": "string | null"
+            },
+            {
+                "name": "last_login_ip",
+                "type": "string | null"
+            },
+            {
+                "name": "task_assignments",
+                "type": "TaskAssignment[]"
+            },
+            {
+                "name": "task_assignments_count",
+                "type": "number"
+            },
+            {
+                "name": "task_assignments_exists",
+                "type": "boolean"
+            }
+        ],
         "OrderItem": [
             {
                 "name": "id",
@@ -1397,6 +1521,44 @@
             },
             {
                 "name": "product_exists",
+                "type": "boolean"
+            }
+        ],
+        "TaskAssignment": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "title",
+                "type": "string"
+            },
+            {
+                "name": "team_id",
+                "type": "number"
+            },
+            {
+                "name": "category_id",
+                "type": "number | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "assignee",
+                "type": "TaskOwner | null"
+            },
+            {
+                "name": "assignee_count",
+                "type": "number"
+            },
+            {
+                "name": "assignee_exists",
                 "type": "boolean"
             }
         ],
@@ -1552,6 +1714,48 @@
                 "type": "boolean"
             }
         ],
+        "StrictCompositeComment": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "body",
+                "type": "string"
+            },
+            {
+                "name": "commentable_type",
+                "type": "string"
+            },
+            {
+                "name": "commentable_id_1",
+                "type": "number"
+            },
+            {
+                "name": "commentable_id_2",
+                "type": "number"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "commentable",
+                "type": "StrictCompositeComment | null"
+            },
+            {
+                "name": "commentable_count",
+                "type": "number"
+            },
+            {
+                "name": "commentable_exists",
+                "type": "boolean"
+            }
+        ],
         "Warehouse": [
             {
                 "name": "id",
@@ -1639,6 +1843,44 @@
             },
             {
                 "name": "secondary_contact_exists",
+                "type": "boolean"
+            }
+        ],
+        "StrictTaskAssignment": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "title",
+                "type": "string"
+            },
+            {
+                "name": "team_id",
+                "type": "number"
+            },
+            {
+                "name": "category_id",
+                "type": "number"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "assignee",
+                "type": "TaskOwner"
+            },
+            {
+                "name": "assignee_count",
+                "type": "number"
+            },
+            {
+                "name": "assignee_exists",
                 "type": "boolean"
             }
         ],
