@@ -35,7 +35,7 @@ You can publish the config file with:
 php artisan vendor:publish --tag="ts-publish-config"
 ```
 
-Optionally, you can publish the views using
+Optionally, you can publish the views using:
 
 ```bash
 php artisan vendor:publish --tag="laravel-ts-publish-views"
@@ -1342,7 +1342,7 @@ This ensures the JSON response shape is consistent with the TypeScript types gen
 
 The `@tolki/enum` package exports an `AsEnum` utility type that resolves the `EnumResource` JSON response shape for any published enum. This gives you full type safety when consuming enum API responses on the frontend.
 
-```typescript
+```TypeScript
 import type { AsEnum } from '@tolki/enum';
 import type { Status } from '@/types/enums';
 
@@ -1354,7 +1354,7 @@ type StatusResponse = AsEnum<typeof Status>;
 
 The optional second type parameter lets you pre-narrow to a specific case by value:
 
-```typescript
+```TypeScript
 // Narrowed to a single case
 type DraftResponse = AsEnum<typeof Status, 0>;
 // { name: 'Draft'; value: 0; backed: true; icon: 'pencil'; color: 'gray'; ... }
@@ -1362,7 +1362,7 @@ type DraftResponse = AsEnum<typeof Status, 0>;
 
 Use it to type your API responses:
 
-```typescript
+```TypeScript
 const response = await fetch(`/api/articles/${id}`);
 const article: { id: number; status: AsEnum<typeof Status> } = await response.json();
 
@@ -1378,7 +1378,7 @@ When `enums_use_tolki_package` is enabled (the default), any model with enum-cas
 
 For a Post model that casts the database columns `status`, `visibility`, and `priority` to enums, the publisher will generate a `PostResource` interface that looks like this:
 
-```typescript
+```TypeScript
 export interface Post {
     id: number;
     title: string;
@@ -1399,7 +1399,7 @@ export interface PostResource extends Omit<Post, 'status' | 'visibility' | 'prio
 
 Use it to auto type API responses that make use of `EnumResource` class:
 
-```typescript
+```TypeScript
 import type { PostResource } from '@js/types/models';
 
 const response = await fetch('/api/posts/1');
@@ -1411,7 +1411,7 @@ post.status.icon;  // 'pencil' | 'check'
 
 The interfaces are generated for both the `model-full` and `model-split` templates. In split mode, the template will create a `PostResource` interface for the properties interface and a `PostMutatorsResource` interface for the mutators interface, since mutators can also be enum-cast properties:
 
-```typescript
+```TypeScript
 export interface PostResource extends Omit<Post, 'status' | 'visibility' | 'priority'>
 {
     status: AsEnum<typeof Status>;
