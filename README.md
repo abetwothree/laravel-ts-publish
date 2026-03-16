@@ -518,7 +518,7 @@ export type StatusKind = 'Active' | 'Inactive'; // Only published if the enum is
 With those types, you can now validate that a value is a valid enum value or case key:
 
 ```TypeScript
-import { StatusType, StatusKind } from '@js/types/enums';
+import { StatusType, StatusKind } from '@js/types/data/enums';
 
 function setStatus(status: StatusType) {
     // status will only accept 'active' or 'inactive'
@@ -566,8 +566,8 @@ See more details about [defineEnum here](https://tolki.abe.dev/enums/enum-utilit
 With the `@tolki/enum` package, you can now create an "instance" of the enum from a case value like you'd get on the PHP side using the `from` function:
 
 ```TypeScript
-import { Status } from '@js/types/enums'; // Using example status from the previous example
-import { User } from '@js/types/models'; // Assuming you have a User model published as well
+import { Status } from '@js/types/data/enums'; // Using example status from the previous example
+import { User } from '@js/types/data/models'; // Assuming you have a User model published as well
 
 const user: User = {
     id: 1,
@@ -836,7 +836,7 @@ Example Inertia form where we use the entire `User` interface for the form data,
 ```vue
 <script setup>
 import { useForm } from '@inertiajs/vue3'
-import { User, UserRelations } from '@js/types/models';
+import { User, UserRelations } from '@js/types/data/models';
 
 interface UserForm extends User, Pick<UserRelations, 'profile_exists'>{
     profile: UserRelations['profile'] | null;
@@ -888,7 +888,7 @@ You will notice the need to call `Omit` with more properties to exclude the rela
 ```vue
 <script setup>
 import { useForm } from '@inertiajs/vue3'
-import { User } from '@js/types/models';
+import { User } from '@js/types/data/models';
 
 interface UserForm extends Omit<User, 'admin' | 'profile' | 'posts' | 'profile_count' | 'posts_count' | 'posts_exists'> {
     profile: User['profile'] | null;
@@ -1400,7 +1400,7 @@ export interface PostResource extends Omit<Post, 'status' | 'visibility' | 'prio
 Use it to type API responses that use the `EnumResource` class:
 
 ```TypeScript
-import type { PostResource } from '@js/types/models';
+import type { PostResource } from '@js/types/data/models';
 
 const response = await fetch('/api/posts/1');
 const post: PostResource = await response.json();
@@ -1573,9 +1573,9 @@ export * from './user';
 This allows you to import types from any namespace barrel:
 
 ```TypeScript
-import { User, Order } from '@js/types/app/models';
-import { Invoice } from '@js/types/accounting/models';
-import { InvoiceStatusType } from '@js/types/accounting/enums';
+import { User, Order } from '@js/types/data/app/models';
+import { Invoice } from '@js/types/data/accounting/models';
+import { InvoiceStatusType } from '@js/types/data/accounting/enums';
 ```
 
 ## Extending & Customizing the Pipeline
