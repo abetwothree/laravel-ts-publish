@@ -3,6 +3,7 @@
 use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
 use Workbench\App\Enums\Color;
 use Workbench\App\Enums\Currency;
+use Workbench\App\Enums\ExcludableEnum;
 use Workbench\App\Enums\MembershipLevel;
 use Workbench\App\Enums\PaymentMethod;
 use Workbench\App\Enums\Priority;
@@ -501,5 +502,41 @@ describe('EnumTransformer parseTsTypeOverrides defensive branch', function () {
 
         // No overrides should have been added since the constant was false
         expect($transformer->tsTypeOverrides)->toBeEmpty();
+    });
+});
+
+describe('EnumTransformer #[TsExclude] attribute', function () {
+    test('excludes methods with #[TsExclude] when auto_include_enum_methods is enabled', function () {
+        config()->set('ts-publish.auto_include_enum_methods', true);
+
+        $data = (new EnumTransformer(ExcludableEnum::class))->data();
+
+        expect($data->methods)->toHaveKey('label')
+            ->and($data->methods)->not->toHaveKey('secret');
+    });
+
+    test('TsExclude wins over explicit #[TsEnumMethod] attribute', function () {
+        config()->set('ts-publish.auto_include_enum_methods', true);
+
+        $data = (new EnumTransformer(ExcludableEnum::class))->data();
+
+        expect($data->methods)->not->toHaveKey('overridden');
+    });
+
+    test('excludes static methods with #[TsExclude] when auto_include_enum_static_methods is enabled', function () {
+        config()->set('ts-publish.auto_include_enum_static_methods', true);
+
+        $data = (new EnumTransformer(ExcludableEnum::class))->data();
+
+        expect($data->staticMethods)->toHaveKey('allLabels')
+            ->and($data->staticMethods)->not->toHaveKey('internalOnly');
+    });
+
+    test('TsExclude wins over explicit #[TsEnumStaticMethod] attribute', function () {
+        config()->set('ts-publish.auto_include_enum_static_methods', true);
+
+        $data = (new EnumTransformer(ExcludableEnum::class))->data();
+
+        expect($data->staticMethods)->not->toHaveKey('overriddenStatic');
     });
 });

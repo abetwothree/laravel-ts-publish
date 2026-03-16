@@ -7,6 +7,7 @@ use Workbench\Accounting\Models\Invoice;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Category;
 use Workbench\App\Models\CompositeComment;
+use Workbench\App\Models\ExcludableModel;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Order;
 use Workbench\App\Models\Post;
@@ -956,5 +957,27 @@ describe('ModelTransformer composite morph foreign keys', function () {
         // StrictCompositeComment.commentable uses composite FK ['commentable_id_1', 'commentable_id_2']
         // All FK columns and commentable_type are NOT NULL
         expect($data->relations['commentable']['type'])->toBe('StrictCompositeComment');
+    });
+});
+
+describe('ModelTransformer #[TsExclude] attribute', function () {
+    test('excludes mutators with #[TsExclude] on the accessor method', function () {
+        $data = (new ModelTransformer(ExcludableModel::class))->data();
+
+        expect($data->mutators)->toHaveKey('display_name')
+            ->and($data->mutators)->not->toHaveKey('secret_token');
+    });
+
+    test('excludes old-style mutators with #[TsExclude] on the getter method', function () {
+        $data = (new ModelTransformer(ExcludableModel::class))->data();
+
+        expect($data->mutators)->not->toHaveKey('legacy_token');
+    });
+
+    test('excludes relations with #[TsExclude] on the relation method', function () {
+        $data = (new ModelTransformer(ExcludableModel::class))->data();
+
+        expect($data->relations)->toHaveKey('posts')
+            ->and($data->relations)->not->toHaveKey('comments');
     });
 });

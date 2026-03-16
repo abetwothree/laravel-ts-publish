@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Collectors;
 
+use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use Composer\ClassMapGenerator\ClassMapGenerator;
 use Illuminate\Support\Collection;
 use ReflectionClass;
@@ -57,7 +58,15 @@ abstract class CoreCollector
             ->flatMap(ClassMapGenerator::createMap(...))
             ->flip()
             ->merge($additionalClasses) // @phpstan-ignore argument.type
-            ->filter(fn (string $file) => class_exists($file) && $this->classFilter(new ReflectionClass($file)))
+            ->filter(function (string $file) {
+                if (! class_exists($file)) {
+                    return false;
+                }
+
+                $reflection = new ReflectionClass($file);
+
+                return $this->classFilter($reflection) && $reflection->getAttributes(TsExclude::class) === [];
+            })
             ->when($included, function (Collection $collection) use ($included) {
                 $resolved = $this->resolveClassesAndDirectories($included);
 

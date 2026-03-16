@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsCase;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnum;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnumMethod;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnumStaticMethod;
+use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsEnumDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use BackedEnum;
@@ -216,6 +217,10 @@ class EnumTransformer extends CoreTransformer
                 }
             }
 
+            if ($method->getAttributes(TsExclude::class) !== []) {
+                continue;
+            }
+
             /** @var TsEnumMethod|null $tsEnumMethodInstance */
             $tsEnumMethodInstance = $tsEnumMethodAttribute?->newInstance();
 
@@ -272,6 +277,10 @@ class EnumTransformer extends CoreTransformer
                 ) {
                     continue;
                 }
+            }
+
+            if ($method->getAttributes(TsExclude::class) !== []) {
+                continue;
             }
 
             /** @var TsEnumStaticMethod|null $tsEnumMethodInstance */

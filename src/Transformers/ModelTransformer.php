@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
+use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsModelDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Database\Eloquent\Builder;
@@ -294,6 +295,10 @@ class ModelTransformer extends CoreTransformer
         foreach ($mutators as $mutator) {
             $name = $mutator['name'];
 
+            if ($this->isMutatorExcluded($name)) {
+                continue;
+            }
+
             // #[TsCasts] override takes priority
             if (isset($this->tsTypeOverrides[$name])) {
                 $this->mutators[$name] = ['type' => $this->tsTypeOverrides[$name], 'description' => ''];
@@ -355,6 +360,12 @@ class ModelTransformer extends CoreTransformer
             );
 
         foreach ($relations as $relation) {
+            if ($this->reflectionModel->hasMethod($relation['name'])
+                && $this->reflectionModel->getMethod($relation['name'])->getAttributes(TsExclude::class) !== []
+            ) {
+                continue;
+            }
+
             $relatedBasename = class_basename($relation['related']);
             $containsMany = str_contains(strtolower($relation['type']), 'many');
 
@@ -468,6 +479,26 @@ class ModelTransformer extends CoreTransformer
         $attribute = $attributes->first(fn (array $attr) => $attr['name'] === $columnName);
 
         return $attribute !== null ? $attribute['nullable'] : true;
+    }
+
+    protected function isMutatorExcluded(string $name): bool
+    {
+        $newStyle = Str::camel($name);
+        $oldStyle = 'get'.Str::studly($name).'Attribute';
+
+        if ($this->reflectionModel->hasMethod($newStyle)
+            && $this->reflectionModel->getMethod($newStyle)->getAttributes(TsExclude::class) !== []
+        ) {
+            return true;
+        }
+
+        if ($this->reflectionModel->hasMethod($oldStyle)
+            && $this->reflectionModel->getMethod($oldStyle)->getAttributes(TsExclude::class) !== []
+        ) {
+            return true;
+        }
+
+        return false;
     }
 
     /** @return TypeScriptTypeInfo */

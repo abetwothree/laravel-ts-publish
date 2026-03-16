@@ -14,6 +14,32 @@ test('enums collector works correctly', function () {
         ->toBeInstanceOf(Collection::class);
 });
 
+test('enums collector excludes classes with #[TsExclude]', function () {
+    $enums = resolve(EnumsCollector::class)->collect();
+
+    expect($enums)
+        ->not->toContain('Workbench\App\Enums\ExcludedEnum')
+        ->toContain('Workbench\App\Enums\ExcludableEnum');
+});
+
+test('enums collector skips non-loadable classes from scanned directories', function () {
+    $tempDir = sys_get_temp_dir().'/ts-publish-test-'.uniqid();
+    mkdir($tempDir, 0755, true);
+    file_put_contents(
+        $tempDir.'/BrokenEnum.php',
+        "<?php\n\nnamespace NonAutoloadable\\Fake;\n\nenum BrokenEnum: string\n{\n    case A = 'a';\n}\n"
+    );
+
+    config()->set('ts-publish.additional_enum_directories', [$tempDir]);
+
+    $enums = resolve(EnumsCollector::class)->collect();
+
+    expect($enums)->not->toContain('NonAutoloadable\Fake\BrokenEnum');
+
+    unlink($tempDir.'/BrokenEnum.php');
+    rmdir($tempDir);
+});
+
 test('enums collector includes only classes from a directory', function () {
     config()->set('ts-publish.included_enums', [
         workbench_path('modules/Accounting/Enums'),
