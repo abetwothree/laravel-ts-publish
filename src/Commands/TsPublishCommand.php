@@ -280,7 +280,13 @@ class TsPublishCommand extends Command
         $extras = $this->collectExtras($runner);
 
         if (count($extras) > 0) {
-            $this->line('  Extras: '.implode(', ', array_map(fn (array $e) => $e[1], $extras)));
+            $grouped = collect($extras)->groupBy(fn (array $e) => $e[0]);
+            $summary = $grouped->map(fn ($items, string $type) => $items->count() === 1
+                ? Str::lower($type)
+                : $items->count().' '.Str::lower(Str::plural($type, $items->count())),
+            )->values()->implode(', ');
+
+            $this->line("  Extras: {$summary}");
         }
     }
 
