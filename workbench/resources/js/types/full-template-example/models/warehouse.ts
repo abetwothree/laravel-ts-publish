@@ -27,9 +27,9 @@ export interface Warehouse
     /** Non-column accessor returning CRM Status enum — creates name conflict with column 'status' */
     current_crm_status: CrmStatusType | null;
     // Relations
-    manager: ManagerUser;
-    primary_contact: CrmUser;
-    secondary_contact: CrmUser;
+    manager: ManagerUser | null;
+    primary_contact: CrmUser | null;
+    secondary_contact: CrmUser | null;
     // Counts
     manager_count: number;
     primary_contact_count: number;

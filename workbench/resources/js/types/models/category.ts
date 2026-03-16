@@ -25,7 +25,7 @@ export interface CategoryRelations
 {
     // Relations
     /** Self-referencing: parent category */
-    parent: Category;
+    parent: Category | null;
     /** Self-referencing: child categories */
     children: Category[];
     /** Posts in this category */

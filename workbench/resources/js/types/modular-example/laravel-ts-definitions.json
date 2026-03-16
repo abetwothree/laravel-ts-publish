@@ -215,7 +215,7 @@
             },
             {
                 "name": "profile",
-                "type": "Profile"
+                "type": "Profile | null"
             },
             {
                 "name": "posts",
@@ -753,7 +753,7 @@
             },
             {
                 "name": "parent",
-                "type": "Category"
+                "type": "Category | null"
             },
             {
                 "name": "children",
@@ -1143,7 +1143,7 @@
             },
             {
                 "name": "category_rel",
-                "type": "Category"
+                "type": "Category | null"
             },
             {
                 "name": "comments",
@@ -1607,15 +1607,15 @@
             },
             {
                 "name": "manager",
-                "type": "ManagerUser"
+                "type": "ManagerUser | null"
             },
             {
                 "name": "primary_contact",
-                "type": "CrmUser"
+                "type": "CrmUser | null"
             },
             {
                 "name": "secondary_contact",
-                "type": "CrmUser"
+                "type": "CrmUser | null"
             },
             {
                 "name": "manager_count",

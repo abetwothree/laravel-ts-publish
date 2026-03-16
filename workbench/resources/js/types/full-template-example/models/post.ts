@@ -36,7 +36,7 @@ export interface Post
     reading_time: string;
     // Relations
     author: User;
-    category_rel: Category;
+    category_rel: Category | null;
     comments: Comment[];
     /** Polymorphic many-to-many with tags */
     tags: Tag[];

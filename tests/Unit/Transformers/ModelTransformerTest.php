@@ -1,9 +1,12 @@
 <?php
 
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Workbench\Accounting\Models\Invoice;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Category;
+use Workbench\App\Models\Image;
 use Workbench\App\Models\Order;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Product;
@@ -77,8 +80,8 @@ describe('ModelTransformer with User model', function () {
             ->toHaveKey('owned_teams')
             ->toHaveKey('images');
 
-        // HasOne → singular, HasMany/BelongsToMany/MorphMany → array
-        expect($data->relations['profile']['type'])->toBe('Profile');
+        // HasOne → singular nullable, HasMany/BelongsToMany/MorphMany → array
+        expect($data->relations['profile']['type'])->toBe('Profile | null');
         expect($data->relations['posts']['type'])->toBe('Post[]');
         expect($data->relations['teams']['type'])->toBe('Team[]');
         expect($data->relations['images']['type'])->toBe('Image[]');
@@ -197,7 +200,7 @@ describe('ModelTransformer with Category model that has self-referencing relatio
             ->toHaveKey('parent')
             ->toHaveKey('children')
             ->toHaveKey('posts')
-            ->and($data->relations['parent']['type'])->toBe('Category')
+            ->and($data->relations['parent']['type'])->toBe('Category | null')
             ->and($data->relations['children']['type'])->toBe('Category[]')
             ->and($data->relations['posts']['type'])->toBe('Post[]');
 
@@ -743,11 +746,11 @@ describe('ModelTransformer with Warehouse model', function () {
         $data = (new ModelTransformer(Warehouse::class))->data();
 
         // Crm\User has 2 relations (primaryContact, secondaryContact) → namespace prefix alias
-        expect($data->relations['primary_contact']['type'])->toBe('CrmUser')
-            ->and($data->relations['secondary_contact']['type'])->toBe('CrmUser');
+        expect($data->relations['primary_contact']['type'])->toBe('CrmUser | null')
+            ->and($data->relations['secondary_contact']['type'])->toBe('CrmUser | null');
 
         // App\User has 1 relation (manager) → relation-based alias
-        expect($data->relations['manager']['type'])->toBe('ManagerUser');
+        expect($data->relations['manager']['type'])->toBe('ManagerUser | null');
     });
 });
 
@@ -807,5 +810,102 @@ describe('ModelTransformer rewriteTypeReferences defensive branches', function (
 
         // Nothing should have changed
         expect($transformer->columns)->not->toBeEmpty();
+    });
+});
+
+describe('ModelTransformer nullable relations', function () {
+    test('BelongsTo with non-nullable FK is not nullable', function () {
+        $data = (new ModelTransformer(Post::class))->data();
+
+        // Post.user_id is NOT NULL → author BelongsTo is not nullable
+        expect($data->relations['author']['type'])->toBe('User');
+    });
+
+    test('BelongsTo with nullable FK is nullable', function () {
+        $data = (new ModelTransformer(Post::class))->data();
+
+        // Post.category_id is nullable → category_rel BelongsTo is nullable
+        expect($data->relations['category_rel']['type'])->toBe('Category | null');
+    });
+
+    test('MorphTo with non-nullable morph columns is not nullable', function () {
+        $data = (new ModelTransformer(Image::class))->data();
+
+        // Image uses morphs('imageable') — NOT NULL columns
+        expect($data->relations['imageable']['type'])->toBe('Image');
+    });
+
+    test('HasOne is always nullable', function () {
+        $data = (new ModelTransformer(User::class))->data();
+
+        expect($data->relations['profile']['type'])->toBe('Profile | null');
+    });
+
+    test('HasMany is never nullable', function () {
+        $data = (new ModelTransformer(User::class))->data();
+
+        expect($data->relations['posts']['type'])->toBe('Post[]');
+    });
+
+    test('Warehouse BelongsTo relations with nullable FKs are nullable', function () {
+        $data = (new ModelTransformer(Warehouse::class))->data();
+
+        // All three FK columns (manager_id, primary_contact_id, secondary_contact_id) are nullable
+        expect($data->relations['manager']['type'])->toContain('| null');
+        expect($data->relations['primary_contact']['type'])->toContain('| null');
+        expect($data->relations['secondary_contact']['type'])->toContain('| null');
+    });
+
+    test('nullable relations disabled via config', function () {
+        config()->set('ts-publish.nullable_relations', false);
+
+        $data = (new ModelTransformer(User::class))->data();
+
+        // HasOne should NOT be nullable when feature is disabled
+        expect($data->relations['profile']['type'])->toBe('Profile');
+    });
+
+    test('relation_nullability_map config overrides default strategy', function () {
+        config()->set('ts-publish.relation_nullability_map', [
+            HasOne::class => 'never',
+        ]);
+
+        $data = (new ModelTransformer(User::class))->data();
+
+        // HasOne overridden to 'never' — should not be nullable
+        expect($data->relations['profile']['type'])->toBe('Profile');
+    });
+
+    test('relation_nullability_map can make BelongsTo always nullable', function () {
+        config()->set('ts-publish.relation_nullability_map', [
+            BelongsTo::class => 'nullable',
+        ]);
+
+        $data = (new ModelTransformer(Post::class))->data();
+
+        // Even with non-nullable FK, BelongsTo is now always nullable
+        expect($data->relations['author']['type'])->toBe('User | null');
+    });
+
+    test('fk strategy on non-BelongsTo relation falls back to nullable', function () {
+        config()->set('ts-publish.relation_nullability_map', [
+            HasOne::class => 'fk',
+        ]);
+
+        $data = (new ModelTransformer(User::class))->data();
+
+        // HasOne is not a BelongsTo, so isForeignKeyNullable guard returns true
+        expect($data->relations['profile']['type'])->toBe('Profile | null');
+    });
+
+    test('morph strategy on non-MorphTo relation falls back to nullable', function () {
+        config()->set('ts-publish.relation_nullability_map', [
+            HasOne::class => 'morph',
+        ]);
+
+        $data = (new ModelTransformer(User::class))->data();
+
+        // HasOne is not a MorphTo, so isMorphNullable guard returns true
+        expect($data->relations['profile']['type'])->toBe('Profile | null');
     });
 });

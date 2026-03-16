@@ -19,7 +19,7 @@ export interface Category
     breadcrumb: string;
     // Relations
     /** Self-referencing: parent category */
-    parent: Category;
+    parent: Category | null;
     /** Self-referencing: child categories */
     children: Category[];
     /** Posts in this category */

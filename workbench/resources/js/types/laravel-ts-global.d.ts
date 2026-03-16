@@ -206,7 +206,7 @@ declare global {
             breadcrumb: string;
             // Relations
             /** Self-referencing: parent category */
-            parent: Category;
+            parent: Category | null;
             parent_count: number;
             parent_exists: boolean;
             /** Self-referencing: child categories */
@@ -346,7 +346,7 @@ declare global {
             author: User;
             author_count: number;
             author_exists: boolean;
-            category_rel: Category;
+            category_rel: Category | null;
             category_rel_count: number;
             category_rel_exists: boolean;
             comments: Comment[];
@@ -455,7 +455,7 @@ declare global {
             /** Whether the user is a premium member */
             is_premium: boolean;
             // Relations
-            profile: Profile;
+            profile: Profile | null;
             profile_count: number;
             profile_exists: boolean;
             posts: Post[];
@@ -558,13 +558,13 @@ declare global {
             /** Non-column accessor returning CRM Status enum — creates name conflict with column 'status' */
             current_crm_status: CrmStatusType | null;
             // Relations
-            manager: ManagerUser;
+            manager: ManagerUser | null;
             manager_count: number;
             manager_exists: boolean;
-            primary_contact: CrmUser;
+            primary_contact: CrmUser | null;
             primary_contact_count: number;
             primary_contact_exists: boolean;
-            secondary_contact: CrmUser;
+            secondary_contact: CrmUser | null;
             secondary_contact_count: number;
             secondary_contact_exists: boolean;
         }

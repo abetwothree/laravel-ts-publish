@@ -11,6 +11,8 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\ModelInspector;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -340,6 +342,7 @@ class ModelTransformer extends CoreTransformer
         $excludedModels = array_values(array_filter(config()->array('ts-publish.excluded_models', []), 'is_string'));
 
         $case = config()->string('ts-publish.relationship_case');
+        $nullableRelations = config()->boolean('ts-publish.nullable_relations');
 
         $relations = $allRelations
             ->when(
@@ -353,10 +356,15 @@ class ModelTransformer extends CoreTransformer
 
         foreach ($relations as $relation) {
             $relatedBasename = class_basename($relation['related']);
+            $containsMany = str_contains(strtolower($relation['type']), 'many');
 
-            $relationType = str_contains(strtolower($relation['type']), 'many')
+            $relationType = $containsMany
                 ? $relatedBasename.'[]'
                 : $relatedBasename;
+
+            if ($nullableRelations && $this->isRelationNullable($relation)) {
+                $relationType .= ' | null';
+            }
 
             $relationName = LaravelTsPublish::keyCase($relation['name'], $case);
 
@@ -373,6 +381,71 @@ class ModelTransformer extends CoreTransformer
         }
 
         return $this;
+    }
+
+    /**
+     * Determine whether a singular relation should be typed as nullable.
+     *
+     * @param  RelationInfo  $relation
+     */
+    protected function isRelationNullable(array $relation): bool
+    {
+        $strategy = LaravelTsPublish::relationStrategy($relation['type']);
+
+        return match ($strategy) {
+            'never' => false,
+            'nullable' => true,
+            'fk' => $this->isForeignKeyNullable($relation),
+            'morph' => $this->isMorphNullable($relation),
+            default => true,
+        };
+    }
+
+    /**
+     * Check if the BelongsTo foreign key column is nullable in the DB schema.
+     *
+     * @param  RelationInfo  $relation
+     */
+    protected function isForeignKeyNullable(array $relation): bool
+    {
+        $relationInstance = $this->modelInstance->{$relation['name']}();
+
+        if (! $relationInstance instanceof BelongsTo) {
+            return true;
+        }
+
+        $fkName = $relationInstance->getForeignKeyName();
+
+        return $this->isAttributeNullable($fkName);
+    }
+
+    /**
+     * Check if morph type or morph id columns are nullable in the DB schema.
+     *
+     * @param  RelationInfo  $relation
+     */
+    protected function isMorphNullable(array $relation): bool
+    {
+        $relationInstance = $this->modelInstance->{$relation['name']}();
+
+        if (! $relationInstance instanceof MorphTo) {
+            return true;
+        }
+
+        $fkName = $relationInstance->getForeignKeyName();
+        $morphType = $relationInstance->getMorphType();
+
+        return $this->isAttributeNullable($fkName) || $this->isAttributeNullable($morphType);
+    }
+
+    protected function isAttributeNullable(string $columnName): bool
+    {
+        /** @var Collection<int, AttributeInfo> $attributes */
+        $attributes = $this->modelInspect['attributes'];
+
+        $attribute = $attributes->first(fn (array $attr) => $attr['name'] === $columnName);
+
+        return $attribute !== null ? $attribute['nullable'] : true;
     }
 
     /** @return TypeScriptTypeInfo */
@@ -571,7 +644,8 @@ class ModelTransformer extends CoreTransformer
 
             $currentType = $this->relations[$relationKey]['type'];
             $isArray = str_ends_with($currentType, '[]');
-            $this->relations[$relationKey]['type'] = $alias.($isArray ? '[]' : '');
+            $isNullable = str_contains($currentType, '| null');
+            $this->relations[$relationKey]['type'] = $alias.($isArray ? '[]' : '').($isNullable ? ' | null' : '');
         }
 
         // Rewrite column and mutator types using precise FQCN→column tracking

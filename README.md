@@ -820,7 +820,7 @@ export interface UserMutators {
 }
 
 export interface UserRelations {
-    profile: Profile;
+    profile: Profile | null;
     posts: Post[];
     profile_count: number;
     posts_count: number;
@@ -870,7 +870,7 @@ export interface User {
     // Mutators
     admin: boolean; // From the accessor method
     // Relations
-    profile: Profile;
+    profile: Profile | null;
     posts: Post[];
     // Counts
     profile_count: number;
@@ -906,6 +906,80 @@ form.profile // Is Profile or null
 form.posts // TS error because posts is not part of the UserForm interface
 </script>
 ```
+
+### Nullable Relations
+
+By default, this package detects whether singular relations should be typed as nullable (`| null`) based on the relation type and database schema:
+
+| Relation Type     | Strategy   | Behavior                                                                     |
+|-------------------|------------|------------------------------------------------------------------------------|
+| `HasOne`          | `nullable` | Always `| null` — the related record may not exist                            |
+| `MorphOne`        | `nullable` | Always `| null`                                                               |
+| `HasOneThrough`   | `nullable` | Always `| null`                                                               |
+| `BelongsTo`       | `fk`       | `| null` only when the foreign key column is nullable in the database         |
+| `MorphTo`         | `morph`    | `| null` when either the morph type or morph id column is nullable            |
+| `HasMany`         | `never`    | Never nullable (returns an empty array, not null)                             |
+| `BelongsToMany`   | `never`    | Never nullable                                                                |
+| `MorphMany`       | `never`    | Never nullable                                                                |
+| `MorphToMany`     | `never`    | Never nullable                                                                |
+
+For example, a `User` model with a `HasOne` profile and a `HasMany` posts relation generates:
+
+```TypeScript
+export interface UserRelations {
+    profile: Profile | null;  // HasOne — always nullable
+    posts: Post[];            // HasMany — never nullable
+}
+```
+
+A `Post` model with a non-nullable `user_id` FK and a nullable `category_id` FK generates:
+
+```TypeScript
+export interface PostRelations {
+    author: User;              // BelongsTo — user_id is NOT NULL
+    category_rel: Category | null; // BelongsTo — category_id is nullable
+}
+```
+
+#### Disabling Nullable Relations
+
+To disable nullable relation detection entirely and keep all singular relations non-nullable:
+
+```php
+// config/ts-publish.php
+
+'nullable_relations' => false,
+```
+
+#### Overriding the Nullability Strategy
+
+You can override the default strategy for any relation type using the `relation_nullability_map` config. Keys are fully qualified class names — use the `::class` syntax for safety and IDE autocompletion:
+
+```php
+// config/ts-publish.php
+
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+
+'relation_nullability_map' => [
+    BelongsTo::class => 'nullable',  // Make all BelongsTo always nullable
+    HasOne::class    => 'never',     // Make HasOne never nullable
+],
+```
+
+This also supports custom relation types from third-party packages:
+
+```php
+use SomePackage\Relations\BelongsToTenant;
+
+'relation_nullability_map' => [
+    BelongsToTenant::class => 'fk',
+],
+```
+
+Available strategies: `'nullable'` (always), `'never'` (never), `'fk'` (check FK column), `'morph'` (check morph columns).
+
+See `AbeTwoThree\LaravelTsPublish\RelationMap` for the full default map.
 
 ### Model Attributes
 
@@ -1679,6 +1753,8 @@ Below is a quick reference of all available configuration options:
 | `modular_publishing`                  | `bool`     | `false`                              | Organize output into namespace-derived directory trees           |
 | `namespace_strip_prefix`              | `string`   | `''`                                 | Strip this prefix from namespaces in modular mode                |
 | `relationship_case`                   | `string`   | `'snake'`                            | Case style for relationships: `snake`, `camel`, or `pascal`      |
+| `nullable_relations`                  | `bool`     | `true`                               | Append `\| null` to singular relation types based on smart detection |
+| `relation_nullability_map`            | `array`    | `[]`                                 | Override nullability strategy per relation type                   |
 | `enum_method_case`                    | `string`   | `'camel'`                            | Case style for enum methods: `snake`, `camel`, or `pascal`       |
 | `timestamps_as_date`                  | `bool`     | `false`                              | Map date/datetime/timestamp to `Date` instead of `string`        |
 | `custom_ts_mappings`                  | `array`    | `[]`                                 | Override or extend PHP-to-TypeScript type mappings               |
