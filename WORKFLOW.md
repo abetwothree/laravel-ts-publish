@@ -1,10 +1,10 @@
-# Recommend Installation & Workflow
+# Recommended Installation & Workflow
 
 This is a recommended workflow for using this package, but feel free to adapt it to your needs.
 
 ## Installation & Setup
 
-### Install the this PHP package via composer
+### Install this PHP package via composer
 
 ```bash
 composer require abetwothree/laravel-ts-publish
@@ -37,7 +37,7 @@ E.g.:
 /resources/js/types/data/
 ```
 
-If you use `Eslint` or `Oxlint` it is recommend to add the published directory to the ignore list in your linter config as well.
+If you use ESLint or Oxlint, it is recommended to add the published directory to the ignore list in your linter config as well.
 
 ### Importing the published files
 
@@ -77,8 +77,8 @@ import { User } from '@data/models';
 If you use the module publishing feature, you can also import the generated module files:
 
 ```typescript
-import { Status } from '@data/app/Enums';
-import { User } from '@data/app/Models/Users';
+import { Status } from '@data/app/enums';
+import { User } from '@data/app/models';
 ```
 
 ### Add the Vite plugin for automatic publishing
