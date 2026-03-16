@@ -14,10 +14,23 @@ Enums are treated as first-class citizens with support for PHP-like enum feature
 
 Every Laravel application is different, and this package provides the tools to tailor TypeScript types to your specific needs while providing powerful backend & frontend tooling to keep your frontend types in sync with your backend PHP code.
 
-For examples of the generated TypeScript output, see the [Generated TypeScript Output Examples](workbench/resources/js/types/data/).
+For examples of the generated TypeScript output, see [these output examples](workbench/resources/js/types/).
 
 > [!IMPORTANT]
 > Laravel TypeScript Publisher is currently in Beta, functionality, options, and API are subject to change prior to the v1.0.0 release.
+
+## Table of Contents
+
+- 📦 [Installation](#installation)
+- 🚀 [Usage](#usage)
+- 🏷️ [Enums](#enums)
+- 🗃️ [Models](#models)
+- 🔤 [Casing Configurations](#casing-configurations)
+- 🌐 [Enum API Resource](#json-enum-http-api-resource)
+- 📂 [Modular Publishing](#modular-publishing)
+- 🔧 [Customizing the Pipeline](#extending--customizing-the-pipeline)
+- ⚡ [Pre-Command Hook](#pre-command-hook)
+- ⚙️ [Configuration Reference](#configuration-reference)
 
 ## Installation
 
@@ -179,55 +192,6 @@ php artisan ts:publish --quiet
 ```
 
 In quiet mode, files are still generated normally — only console output is suppressed. The [Vite plugin](#enum-metadata-vite-plugin) passes `--quiet` by default since it only needs the exit code.
-
-## Casing Configurations
-
-This package provides two independent config options to control the casing of generated property and method names:
-
-| Config Key           | Applies To                                    | Default    |
-|----------------------|-----------------------------------------------|------------|
-| `relationship_case`  | Model relationship names, `_count`, `_exists` | `'snake'`  |
-| `enum_method_case`   | Enum method and static method names           | `'camel'`  |
-
-Both accept `'snake'`, `'camel'`, or `'pascal'`.
-
-### Relationship Case Style
-
-Controls relationship names in the generated model TypeScript interfaces:
-
-```php
-// config/ts-publish.php
-
-'relationship_case' => 'snake', // default
-```
-
-| Config Value | Relationship `hasMany(Post::class)`  | Count                | Exists                |
-|--------------|--------------------------------------|----------------------|-----------------------|
-| `'snake'`    | `posts: Post[]`                      | `posts_count`        | `posts_exists`        |
-| `'camel'`    | `posts: Post[]`                      | `postsCount`         | `postsExists`         |
-| `'pascal'`   | `Posts: Post[]`                      | `PostsCount`         | `PostsExists`         |
-
-> [!NOTE]
-> For each relationship defined on a model, this package automatically generates `_count` and `_exists` properties alongside the relation itself. These correspond to [Laravel's `withCount` and `withExists`](https://laravel.com/docs/eloquent-relationships#counting-related-models) features and are included in every generated model interface.
-
-### Enum Method Case Style
-
-Controls the casing of enum method and static method names in the generated TypeScript output:
-
-```php
-// config/ts-publish.php
-
-'enum_method_case' => 'camel', // default
-```
-
-| Config Value | Method `getLabel()` | Static Method `AllLabels()` |
-|--------------|---------------------|-----------------------------|
-| `'snake'`    | `get_label`         | `all_labels`                |
-| `'camel'`    | `getLabel`          | `allLabels`                 |
-| `'pascal'`   | `GetLabel`          | `AllLabels`                 |
-
-> [!TIP]
-> This setting applies to all enum methods — both instance methods (via `#[TsEnumMethod]` or `auto_include_enum_methods`) and static methods (via `#[TsEnumStaticMethod]` or `auto_include_enum_static_methods`). You can still override individual method names using the `name` parameter on the attribute.
 
 ## Enums
 
@@ -1311,6 +1275,55 @@ When `output_globals_file` is enabled, a global declaration file is created that
 ```
 
 The JSON output from `output_collected_files_json` is designed to work with build tools and file watchers (like the [@tolki/enum Vite plugin](#enum-metadata-vite-plugin)) that need to know which PHP source files were collected so they can trigger a re-publish when those files change.
+
+## Casing Configurations
+
+This package provides two independent config options to control the casing of generated property and method names:
+
+| Config Key           | Applies To                                    | Default    |
+|----------------------|-----------------------------------------------|------------|
+| `relationship_case`  | Model relationship names, `_count`, `_exists` | `'snake'`  |
+| `enum_method_case`   | Enum method and static method names           | `'camel'`  |
+
+Both accept `'snake'`, `'camel'`, or `'pascal'`.
+
+### Relationship Case Style
+
+Controls relationship names in the generated model TypeScript interfaces:
+
+```php
+// config/ts-publish.php
+
+'relationship_case' => 'snake', // default
+```
+
+| Config Value | Relationship `hasMany(Post::class)`  | Count                | Exists                |
+|--------------|--------------------------------------|----------------------|-----------------------|
+| `'snake'`    | `posts: Post[]`                      | `posts_count`        | `posts_exists`        |
+| `'camel'`    | `posts: Post[]`                      | `postsCount`         | `postsExists`         |
+| `'pascal'`   | `Posts: Post[]`                      | `PostsCount`         | `PostsExists`         |
+
+> [!NOTE]
+> For each relationship defined on a model, this package automatically generates `_count` and `_exists` properties alongside the relation itself. These correspond to [Laravel's `withCount` and `withExists`](https://laravel.com/docs/eloquent-relationships#counting-related-models) features and are included in every generated model interface.
+
+### Enum Method Case Style
+
+Controls the casing of enum method and static method names in the generated TypeScript output:
+
+```php
+// config/ts-publish.php
+
+'enum_method_case' => 'camel', // default
+```
+
+| Config Value | Method `getLabel()` | Static Method `AllLabels()` |
+|--------------|---------------------|-----------------------------|
+| `'snake'`    | `get_label`         | `all_labels`                |
+| `'camel'`    | `getLabel`          | `allLabels`                 |
+| `'pascal'`   | `GetLabel`          | `AllLabels`                 |
+
+> [!TIP]
+> This setting applies to all enum methods — both instance methods (via `#[TsEnumMethod]` or `auto_include_enum_methods`) and static methods (via `#[TsEnumStaticMethod]` or `auto_include_enum_static_methods`). You can still override individual method names using the `name` parameter on the attribute.
 
 ## JSON Enum HTTP API Resource
 

@@ -23,6 +23,7 @@
     },
     "require-dev": {
         "archtechx/enums": "^1.1",
+        "awobaz/compoships": "^2.5",
         "larastan/larastan": "^3.0",
         "laravel/pint": "^1.14",
         "nunomaduro/collision": "^8.8",
