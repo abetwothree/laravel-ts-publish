@@ -877,15 +877,15 @@ By default, this package detects whether singular relations should be typed as n
 
 | Relation Type     | Strategy   | Behavior                                                                     |
 |-------------------|------------|------------------------------------------------------------------------------|
-| `HasOne`          | `nullable` | Always `| null` — the related record may not exist                            |
-| `MorphOne`        | `nullable` | Always `| null`                                                               |
-| `HasOneThrough`   | `nullable` | Always `| null`                                                               |
-| `BelongsTo`       | `fk`       | `| null` only when the foreign key column is nullable in the database         |
-| `MorphTo`         | `morph`    | `| null` when either the morph type or morph id column is nullable            |
-| `HasMany`         | `never`    | Never nullable (returns an empty array, not null)                             |
-| `BelongsToMany`   | `never`    | Never nullable                                                                |
-| `MorphMany`       | `never`    | Never nullable                                                                |
-| `MorphToMany`     | `never`    | Never nullable                                                                |
+| `HasOne`          | `nullable` | Always add `null` — the related record may not exist                         |
+| `MorphOne`        | `nullable` | Always add `null`                                                            |
+| `HasOneThrough`   | `nullable` | Always add `null`                                                            |
+| `BelongsTo`       | `fk`       | Add `null` only when the foreign key column is nullable in the database      |
+| `MorphTo`         | `morph`    | Add `null` when either the morph type or morph id column is nullable         |
+| `HasMany`         | `never`    | Never nullable (returns an empty array, not null)                            |
+| `BelongsToMany`   | `never`    | Never nullable                                                               |
+| `MorphMany`       | `never`    | Never nullable                                                               |
+| `MorphToMany`     | `never`    | Never nullable                                                               |
 
 For example, a `User` model with a `HasOne` profile and a `HasMany` posts relation generates:
 
