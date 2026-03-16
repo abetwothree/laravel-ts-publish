@@ -10,11 +10,11 @@
 
 This is an extremely flexible package that allows you to create TypeScript declaration types from your Laravel PHP models, enums, and other cast classes.
 
-Enums are treated as first-class citizens with support for PHP like enum features, including methods and static methods.
+Enums are treated as first-class citizens with support for PHP-like enum features, including methods and static methods.
 
 Every Laravel application is different, and this package provides the tools to tailor TypeScript types to your specific needs while providing powerful backend & frontend tooling to keep your frontend types in sync with your backend PHP code.
 
-For examples of the generated TypeScript output see the [Generated TypeScript Output Examples](workbench/resources/js/types/).
+For examples of the generated TypeScript output, see the [Generated TypeScript Output Examples](workbench/resources/js/types/).
 
 > [!IMPORTANT]
 > Laravel TypeScript Publisher is currently in Beta, functionality, options, and API are subject to change prior to the v1.0.0 release.
@@ -96,7 +96,7 @@ TS_PUBLISH_RUN_AFTER_MIGRATE=false
 
 #### Filtering Models & Enums
 
-You can fully customize which models and enums are included, excluded, or add additional directories to search in. By default, all models in `app/Models` and all enums in `app/Enums` are included.
+You can fully customize which models and enums are included or excluded, and add additional directories to search in. By default, all models in `app/Models` and all enums in `app/Enums` are included.
 
 ```php
 // config/ts-publish.php
@@ -231,7 +231,7 @@ Controls the casing of enum method and static method names in the generated Type
 
 ## Enums
 
-This package, like these others before it, ([spatie/typescript-transformer](https://github.com/spatie/typescript-transformer) or [modeltyper](https://github.com/fumeapp/modeltyper)) can convert enums from PHP to TypeScript for each enum case.
+This package, like others before it ([spatie/typescript-transformer](https://github.com/spatie/typescript-transformer) and [modeltyper](https://github.com/fumeapp/modeltyper)), can convert enums from PHP to TypeScript for each enum case.
 
 However, PHP enums do not solely consist of enum cases, but can also have methods and static methods that have valuable data to use on the frontend. This package allows you to use these features of PHP enums and publish the return values of these methods in TypeScript as well.
 
@@ -247,7 +247,7 @@ Alternatively, you can enable the `auto_include_enum_methods` and `auto_include_
 
 ### Enum Attributes
 
-To use the more advanced transforming features provided by this package for enums you'll need to use the PHP Attributes described below.
+To use the more advanced transforming features provided by this package for enums, you'll need to use the PHP Attributes described below.
 
 All attributes can be found at [this link](https://github.com/abetwothree/laravel-ts-publish/tree/main/src/Attributes) and are under the `AbeTwoThree\LaravelTsPublish\Attributes` namespace.
 
@@ -533,9 +533,9 @@ function setStatusByKey(status: StatusKind) {
 
 By default, this package will publish three metadata properties on the enum in TypeScript for the cases, methods, and static methods that are published. These properties are `_cases`, `_methods`, and `_static`.
 
-The purpose for these metadata properties is to be able create an "instance" of the enum from a case value like you'd get on the PHP side. To accomplish this, you need to use the [@tolki/enum](https://tolki.abe.dev/enums/) npm package.
+The purpose of these metadata properties is to be able to create an "instance" of the enum from a case value like you'd get on the PHP side. To accomplish this, you need to use the [@tolki/enum](https://tolki.abe.dev/enums/) npm package.
 
-By default, this packages configures the usage of the `@tolki/enum` package when enums are published. 
+By default, this package configures the usage of the `@tolki/enum` package when enums are published. 
 
 This is what a published enum looks like when using the `@tolki/enum` package on the frontend:
 
@@ -559,7 +559,7 @@ export const Status = defineEnum({
 } as const);
 ```
 
-The `defineEnum` function from the `@tolki/enum` package is a factory function that will bind PHP like methods to the enum object.
+The `defineEnum` function from the `@tolki/enum` package is a factory function that will bind PHP-like methods to the enum object.
 
 See more details about [defineEnum here](https://tolki.abe.dev/enums/enum-utilities-list.html#defineenum).
 
@@ -600,7 +600,7 @@ userStatus.options // [
                    // ]
 ```
 
-The `defineEnum` function currently also binds a `tryFrom` & `cases` functions to the enum.
+The `defineEnum` function currently also binds the `tryFrom` and `cases` functions to the enum.
 
 ### Enum Metadata Vite Plugin
 
@@ -881,7 +881,7 @@ export interface User {
 }
 ```
 
-Same Inertia form example as above would work with this `model-full` template as well since all properties, mutators, and relations are in the same interface.
+The same Inertia form example as above would work with this `model-full` template as well since all properties, mutators, and relations are in the same interface.
 
 You will notice the need to call `Omit` with more properties to exclude the relation properties that are not needed for this specific page, but that's the tradeoff with using a single interface for the model instead of splitting it into separate interfaces for the properties, mutators, and relations.
 
@@ -1246,7 +1246,7 @@ The `EnumResource` class is useful when you need to send a single enum instance 
 
 ### Basic Usage
 
-In a controller or route
+In a controller or route:
 
 ```php
 
@@ -1275,7 +1275,7 @@ class UserResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
-            // Assuming "status" is a model property casted to the Status enum
+            // Assuming "status" is a model property cast to the Status enum
             'status' => new EnumResource($this->status),
             // Can also create enum resources from any enum case, not just model properties
             'membership_level' => new EnumResource(MembershipLevel::Free),
@@ -1308,9 +1308,9 @@ Every response includes these base keys:
 | `value`  | `string \| int` | The backed value, or the case name for unit enums                       |
 | `backed` | `bool`          | Whether the enum is a backed enum                                       |
 
-Instance methods (decorated with `#[TsEnumMethod]` or with global all methods allowed config setting) are flattened as top-level keys with the resolved value **for the specific case** passed to the resource. Static methods (decorated with `#[TsEnumStaticMethod]` or with global all static methods allowed config setting) are included as top-level keys with the resolved value from the static method.
+Instance methods (decorated with `#[TsEnumMethod]` or via the auto-include config setting) are flattened as top-level keys with the resolved value **for the specific case** passed to the resource. Static methods (decorated with `#[TsEnumStaticMethod]` or via the auto-include config setting) are included as top-level keys with the resolved value from the static method.
 
-This allows the `EnumResource` to provide the same data as the published TypeScript enum when you call the `from` method from the `@tolki/enum` package on the frontend on the enum with the same case value.
+This allows the `EnumResource` to provide the same data as the published TypeScript enum when you call the `from` method from the `@tolki/enum` package on the enum with the matching case value.
 
 ### Unit Enums
 
@@ -1397,7 +1397,7 @@ export interface PostResource extends Omit<Post, 'status' | 'visibility' | 'prio
 }
 ```
 
-Use it to auto type API responses that make use of `EnumResource` class:
+Use it to type API responses that use the `EnumResource` class:
 
 ```TypeScript
 import type { PostResource } from '@js/types/models';
