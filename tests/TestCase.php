@@ -3,6 +3,7 @@
 namespace AbeTwoThree\LaravelTsPublish\Tests;
 
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublishServiceProvider;
+use AbeTwoThree\LaravelTsPublish\RelationMap;
 use AbeTwoThree\LaravelTsPublish\TypeScriptMap;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -34,6 +35,10 @@ class TestCase extends Orchestra
         // Reset the TypeScriptMap static cache so custom_ts_mappings from
         // one test don't leak into subsequent tests across files.
         $prop = (new ReflectionClass(TypeScriptMap::class))->getProperty('map');
+        $prop->setValue(null, null);
+
+        // Reset the RelationMap static cache for the same reason.
+        $prop = (new ReflectionClass(RelationMap::class))->getProperty('map');
         $prop->setValue(null, null);
 
         Factory::guessFactoryNamesUsing(

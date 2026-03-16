@@ -32,7 +32,7 @@ export interface User
     /** Whether the user is a premium member */
     is_premium: boolean;
     // Relations
-    profile: Profile;
+    profile: Profile | null;
     posts: Post[];
     comments: Comment[];
     orders: Order[];

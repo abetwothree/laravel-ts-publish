@@ -68,6 +68,24 @@ class LaravelTsPublish
         return (new TypeScriptMap)->gather();
     }
 
+    /**
+     * @return array<class-string, string>
+     */
+    public function relationsMap(): array
+    {
+        return (new RelationMap)->gather();
+    }
+
+    /**
+     * Resolve the nullability strategy for a relation type.
+     *
+     * Accepts a short class name (e.g. 'HasOne') or a FQCN.
+     */
+    public function relationStrategy(string $type): string
+    {
+        return (new RelationMap)->strategyFor($type);
+    }
+
     public function keyCase(string $key, string $case): string
     {
         return match ($case) {

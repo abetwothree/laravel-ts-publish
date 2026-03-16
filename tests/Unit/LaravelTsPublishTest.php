@@ -4,6 +4,16 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\HasOneThrough;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Database\Eloquent\Relations\MorphOne;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Support\Collection;
 use Workbench\App\Casts\MenuSettings;
 use Workbench\App\Enums\Role;
@@ -29,6 +39,25 @@ describe('typesMap', function () {
             ->toHaveKey('array')
             ->toHaveKey('json')
             ->toHaveKey('date');
+    });
+});
+
+describe('relationsMap', function () {
+    test('relationsMap returns an array of relation mappings', function () {
+        $map = $this->service->relationsMap();
+
+        expect($map)
+            ->toBeArray()
+            ->toHaveKey(HasOne::class)
+            ->toHaveKey(MorphOne::class)
+            ->toHaveKey(HasOneThrough::class)
+            ->toHaveKey(BelongsTo::class)
+            ->toHaveKey(MorphTo::class)
+            ->toHaveKey(HasMany::class)
+            ->toHaveKey(HasManyThrough::class)
+            ->toHaveKey(BelongsToMany::class)
+            ->toHaveKey(MorphMany::class)
+            ->toHaveKey(MorphToMany::class);
     });
 });
 

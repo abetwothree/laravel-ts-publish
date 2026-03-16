@@ -44,7 +44,7 @@ export interface UserMutators
 export interface UserRelations
 {
     // Relations
-    profile: Profile;
+    profile: Profile | null;
     posts: Post[];
     comments: Comment[];
     orders: Order[];

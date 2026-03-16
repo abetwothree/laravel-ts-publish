@@ -216,6 +216,43 @@ return [
 
     'relationship_case' => 'snake',
 
+    /*
+    |--------------------------------------------------------------------------
+    | Nullable Relations
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, singular relations (HasOne, BelongsTo, MorphOne, etc.) will
+    | generate TypeScript types with `| null` based on smart nullability detection.
+    |
+    | HasOne / MorphOne / HasOneThrough → always nullable
+    | BelongsTo → nullable when the foreign key column is nullable in the DB
+    | MorphTo → nullable when the morph type or id column is nullable in the DB
+    | Collection relations (HasMany, BelongsToMany, etc.) → never nullable
+    */
+    'nullable_relations' => true,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Relation Nullability Map
+    |--------------------------------------------------------------------------
+    |
+    | Override the default nullability strategy for specific relation types.
+    | Keys are fully qualified class names of Laravel relation classes.
+    | Use the ::class syntax for safety and IDE autocompletion.
+    |
+    | Available strategies:
+    |   'nullable' — always append | null
+    |   'never'    — never append | null
+    |   'fk'       — check the foreign key column's DB nullability
+    |   'morph'    — check both morph type and id columns' DB nullability
+    |
+    | See AbeTwoThree\LaravelTsPublish\RelationMap
+    */
+    'relation_nullability_map' => [
+        // \Illuminate\Database\Eloquent\Relations\BelongsTo::class => 'nullable',
+        // \Illuminate\Database\Eloquent\Relations\HasOne::class    => 'never',
+    ],
+
     'enum_method_case' => 'camel',
 
     /*

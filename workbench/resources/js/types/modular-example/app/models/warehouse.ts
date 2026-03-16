@@ -47,9 +47,9 @@ export interface WarehouseMutatorsResource extends Omit<WarehouseMutators, 'curr
 export interface WarehouseRelations
 {
     // Relations
-    manager: ManagerUser;
-    primary_contact: CrmUser;
-    secondary_contact: CrmUser;
+    manager: ManagerUser | null;
+    primary_contact: CrmUser | null;
+    secondary_contact: CrmUser | null;
     // Counts
     manager_count: number;
     primary_contact_count: number;
