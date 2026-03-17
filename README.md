@@ -25,6 +25,7 @@ For examples of the generated TypeScript output, see [these output examples](wor
 - 🚀 [Usage](#usage)
 - 🏷️ [Enums](#enums)
 - 🗃️ [Models](#models)
+- ❌ [Excluding Content](#excluding-with-tsexclude)
 - 🔤 [Casing Configurations](#casing-configurations)
 - 🌐 [Enum API Resource](#json-enum-http-api-resource)
 - 📂 [Modular Publishing](#modular-publishing)
