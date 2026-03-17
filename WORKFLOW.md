@@ -108,7 +108,7 @@ import { defineConfig } from "vite";
 import { laravelTsPublish } from "@tolki/enum/vite";
 
 export default defineConfig(({ mode }) => {
-    const env = loadEnv(mode, process.cwd());
+    const env = loadEnv(mode, process.cwd(), '');
 
     return {
         plugins: [
