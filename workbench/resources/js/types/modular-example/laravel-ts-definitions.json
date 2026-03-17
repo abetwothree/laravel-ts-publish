@@ -1562,6 +1562,92 @@
                 "type": "boolean"
             }
         ],
+        "ExcludableModel": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "name",
+                "type": "string"
+            },
+            {
+                "name": "email",
+                "type": "string"
+            },
+            {
+                "name": "email_verified_at",
+                "type": "string | null"
+            },
+            {
+                "name": "password",
+                "type": "string"
+            },
+            {
+                "name": "options",
+                "type": "string | null"
+            },
+            {
+                "name": "remember_token",
+                "type": "string | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "role",
+                "type": "string | null"
+            },
+            {
+                "name": "membership_level",
+                "type": "string | null"
+            },
+            {
+                "name": "phone",
+                "type": "string | null"
+            },
+            {
+                "name": "avatar",
+                "type": "string | null"
+            },
+            {
+                "name": "bio",
+                "type": "string | null"
+            },
+            {
+                "name": "settings",
+                "type": "string | null"
+            },
+            {
+                "name": "last_login_at",
+                "type": "string | null"
+            },
+            {
+                "name": "last_login_ip",
+                "type": "string | null"
+            },
+            {
+                "name": "display_name",
+                "type": "string"
+            },
+            {
+                "name": "posts",
+                "type": "Post[]"
+            },
+            {
+                "name": "posts_count",
+                "type": "number"
+            },
+            {
+                "name": "posts_exists",
+                "type": "boolean"
+            }
+        ],
         "Comment": [
             {
                 "name": "id",
@@ -2487,6 +2573,30 @@
                 "'Basic'",
                 "'Premium'",
                 "'Enterprise'"
+            ],
+            "methods": [],
+            "staticMethods": []
+        },
+        "ExcludableEnum": {
+            "cases": [
+                {
+                    "name": "Alpha",
+                    "value": "alpha",
+                    "description": ""
+                },
+                {
+                    "name": "Beta",
+                    "value": "beta",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'Alpha'",
+                "'Beta'"
+            ],
+            "caseTypes": [
+                "'alpha'",
+                "'beta'"
             ],
             "methods": [],
             "staticMethods": []

@@ -25,6 +25,7 @@ For examples of the generated TypeScript output, see [these output examples](wor
 - 🚀 [Usage](#usage)
 - 🏷️ [Enums](#enums)
 - 🗃️ [Models](#models)
+- ❌ [Excluding Content](#excluding-with-tsexclude)
 - 🔤 [Casing Configurations](#casing-configurations)
 - 🌐 [Enum API Resource](#json-enum-http-api-resource)
 - 📂 [Modular Publishing](#modular-publishing)
@@ -223,6 +224,7 @@ List of enum attributes & descriptions:
 | `#[TsEnumStaticMethod]`| Static Method  | Include a static method's return value in the TypeScript output. Called once, added as a property on the enum.          |
 | `#[TsEnum]`            | Enum Class     | Rename the enum or add a description when converting to TypeScript. Useful to avoid naming conflicts across namespaces. |
 | `#[TsCase]`            | Enum Case      | Rename, change the frontend value, or add a description to an enum case.                                                |
+| `#[TsExclude]`         | Class, Method  | Exclude an entire enum or specific enum methods from the TypeScript output. See [Excluding with TsExclude](#excluding-with-tsexclude). |
 
 ### Enum Method #[TsEnumMethod]
 
@@ -953,6 +955,7 @@ Like with enums, this package provides a few PHP attributes that you can use to 
 |--------------|----------------------------------|---------------------------------------------------------------------------------------------------------------------|
 | `#[TsCasts]` | `casts()` method, `$casts` property, or model class | Specify TypeScript types for model columns. Works similarly to Laravel's `casts` but for TypeScript.                 |
 | `#[TsType]`  | Custom cast class                | Specify the TypeScript type for any model property that uses this custom cast class.                                 |
+| `#[TsExclude]`| Model class, accessor method, or relation method | Exclude an entire model, specific accessors, or relations from the TypeScript output. See [Excluding with TsExclude](#excluding-with-tsexclude). |
 
 #### Examples using `#[TsCasts]` attribute
 
@@ -1275,6 +1278,98 @@ When `output_globals_file` is enabled, a global declaration file is created that
 ```
 
 The JSON output from `output_collected_files_json` is designed to work with build tools and file watchers (like the [@tolki/enum Vite plugin](#enum-metadata-vite-plugin)) that need to know which PHP source files were collected so they can trigger a re-publish when those files change.
+
+## Excluding with `#[TsExclude]`
+
+The `#[TsExclude]` attribute lets you exclude specific items from the TypeScript output. This is especially useful when `auto_include_enum_methods` or `auto_include_enum_static_methods` is enabled and you want to opt out individual enum methods.
+
+`#[TsExclude]` can be applied to:
+
+| Target             | Effect                                                   |
+|--------------------|----------------------------------------------------------|
+| Enum class         | Entire enum is excluded from collection and publishing   |
+| Enum method        | Method is excluded from the TypeScript output            |
+| Model class        | Entire model is excluded from collection and publishing  |
+| Model accessor     | Mutator/accessor is excluded from the TypeScript output  |
+| Model relation     | Relation is excluded from the TypeScript output          |
+
+> [!NOTE]
+> `#[TsExclude]` always takes priority — even if you use attributes like `#[TsEnumMethod]` or `#[TsEnumStaticMethod]` on enum methods, the methods will be excluded.
+
+### Excluding an entire enum or model
+
+```php
+use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
+
+#[TsExclude]
+enum InternalStatus: string
+{
+    case Pending = 'pending';
+    case Processing = 'processing';
+}
+
+#[TsExclude]
+class AuditLog extends Model
+{
+    // This model will not be published to TypeScript
+}
+```
+
+### Excluding specific enum methods
+
+```php
+use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
+
+enum Status: string
+{
+    case Active = 'active';
+    case Inactive = 'inactive';
+
+    // Included in TypeScript output
+    public function label(): string
+    {
+        return match($this) {
+            self::Active => 'Active',
+            self::Inactive => 'Inactive',
+        };
+    }
+
+    // Excluded from TypeScript output
+    #[TsExclude]
+    public function internalCode(): int
+    {
+        return match($this) {
+            self::Active => 100,
+            self::Inactive => 200,
+        };
+    }
+}
+```
+
+### Excluding model accessors and relations
+
+```php
+use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
+
+class User extends Model
+{
+    // Excluded from TypeScript output
+    #[TsExclude]
+    protected function secretToken(): Attribute
+    {
+        return Attribute::make(
+            get: fn (): string => 'hidden',
+        );
+    }
+
+    // Excluded from TypeScript output
+    #[TsExclude]
+    public function auditLogs(): HasMany
+    {
+        return $this->hasMany(AuditLog::class);
+    }
+}
+```
 
 ## Casing Configurations
 

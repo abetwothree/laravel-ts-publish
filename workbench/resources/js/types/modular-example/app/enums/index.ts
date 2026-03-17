@@ -1,5 +1,6 @@
 export * from './color';
 export * from './currency';
+export * from './excludable-enum';
 export * from './media-type';
 export * from './membership-level';
 export * from './order-status';

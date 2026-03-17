@@ -78,12 +78,14 @@ class TestCase extends Orchestra
             DatabaseNotification::class,
             Invoice::class,
             Shipment::class,
+            "Workbench\Shipping\Models\FalseShipmentClass",
             ...$modules,
         ]);
         config()->set('ts-publish.additional_enum_directories', [
             InvoiceStatus::class,
             PaymentStatus::class,
             Status::class,
+            "Workbench\Shipping\Enums\FalseStatusClass",
             ...$modules,
         ]);
     }

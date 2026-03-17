@@ -536,6 +536,35 @@ declare global {
             assignee_count: number;
             assignee_exists: boolean;
         }
+        /** Model with excluded mutator and relation via #[TsExclude]. */
+        export interface ExcludableModel {
+            // Columns
+            id: number;
+            name: string;
+            email: string;
+            email_verified_at: string | null;
+            password: string;
+            options: string | null;
+            remember_token: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            role: string | null;
+            membership_level: string | null;
+            phone: string | null;
+            avatar: string | null;
+            bio: string | null;
+            settings: string | null;
+            last_login_at: string | null;
+            last_login_ip: string | null;
+            // Mutators
+            /** Included mutator — should appear in TS output */
+            display_name: string;
+            // Relations
+            /** Included relation — should appear in TS output */
+            posts: Post[];
+            posts_count: number;
+            posts_exists: boolean;
+        }
         export interface Comment {
             // Columns
             id: number;
@@ -803,6 +832,15 @@ declare global {
             Enterprise: 'Enterprise',
         }
         export type MembershipLevelType = 'Free' | 'Basic' | 'Premium' | 'Enterprise';
+
+        /** Enum with methods excluded via #[TsExclude] — tests method-level exclusion when auto_include is enabled and when explicit attributes are present. */
+        export interface ExcludableEnum
+        {
+            Alpha: 'alpha',
+            Beta: 'beta',
+        }
+        export type ExcludableEnumType = 'alpha' | 'beta';
+        export type ExcludableEnumKind = 'Alpha' | 'Beta';
 
         /** Int-backed enum with instance methods that return different types per case. */
         export interface Priority

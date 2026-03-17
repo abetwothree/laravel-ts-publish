@@ -4,6 +4,7 @@ export * from './color';
 export * from './content-type';
 export * from './currency';
 export * from './due-at-notice';
+export * from './excludable-enum';
 export * from './invoice-status';
 export * from './media-type';
 export * from './membership-level';

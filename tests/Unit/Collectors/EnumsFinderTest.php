@@ -1,6 +1,7 @@
 <?php
 
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Collection;
 
 use function Orchestra\Testbench\workbench_path;
@@ -12,6 +13,33 @@ test('enums collector works correctly', function () {
 
     expect($enums)
         ->toBeInstanceOf(Collection::class);
+});
+
+test('enums collector excludes classes with #[TsExclude]', function () {
+    $enums = resolve(EnumsCollector::class)->collect();
+
+    expect($enums)
+        ->not->toContain('Workbench\App\Enums\ExcludedEnum')
+        ->toContain('Workbench\App\Enums\ExcludableEnum');
+});
+
+test('enums collector skips non-loadable classes from scanned directories', function () {
+    $tempDir = sys_get_temp_dir().'/ts-publish-test-'.uniqid();
+    mkdir($tempDir, 0755, true);
+    file_put_contents(
+        $tempDir.'/BrokenEnum.php',
+        "<?php\n\nnamespace NonAutoloadable\\Fake;\n\nenum BrokenEnum: string\n{\n    case A = 'a';\n}\n"
+    );
+
+    config()->set('ts-publish.additional_enum_directories', [$tempDir]);
+
+    try {
+        $enums = resolve(EnumsCollector::class)->collect();
+
+        expect($enums)->not->toContain('NonAutoloadable\Fake\BrokenEnum');
+    } finally {
+        (new Filesystem)->deleteDirectory($tempDir);
+    }
 });
 
 test('enums collector includes only classes from a directory', function () {

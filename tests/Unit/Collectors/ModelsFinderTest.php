@@ -12,8 +12,16 @@ test('models collector works correctly', function () {
 
     expect($models)
         ->toBeInstanceOf(Collection::class)
-        ->toHaveCount(28)
+        ->toHaveCount(29)
         ->toContain('Workbench\App\Models\TrackingEvent');
+});
+
+test('models collector excludes classes with #[TsExclude]', function () {
+    $models = resolve(ModelsCollector::class)->collect();
+
+    expect($models)
+        ->not->toContain('Workbench\App\Models\ExcludedModel')
+        ->toContain('Workbench\App\Models\ExcludableModel');
 });
 
 test('models collector includes only classes from a directory', function () {

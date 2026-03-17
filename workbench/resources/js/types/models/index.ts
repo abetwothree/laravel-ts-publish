@@ -5,6 +5,7 @@ export * from './comment';
 export * from './composite-comment';
 export * from './database-notification';
 export * from './deal';
+export * from './excludable-model';
 export * from './image';
 export * from './invoice';
 export * from './order';

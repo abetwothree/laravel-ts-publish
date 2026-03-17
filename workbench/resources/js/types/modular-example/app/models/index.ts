@@ -2,6 +2,7 @@ export * from './address';
 export * from './category';
 export * from './comment';
 export * from './composite-comment';
+export * from './excludable-model';
 export * from './image';
 export * from './order';
 export * from './order-item';
