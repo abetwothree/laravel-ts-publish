@@ -15,7 +15,7 @@ composer require abetwothree/laravel-ts-publish
 (Optional but recommended) Install the tolki/enum package to use the helper functions, types, and Vite plugin for automatic publishing on file changes or on production build.
 
 ```bash
-npm install @tolki/enum
+npm install @tolki/enum --save
 ```
 
 If you don't use the `@tolki/enum` package, make sure to set the `enums_use_tolki_package` config setting to `false` in the published configuration file.
@@ -88,13 +88,46 @@ import { User } from '@data/app/models';
 Be sure to read the [plugin documentation](https://tolki.abe.dev/enums/enum-vite-plugin.html) for the full details and configuration options.
 
 ```javascript
-import { defineConfig } from "vite";
+import { defineConfig } from 'vite';
 import { laravelTsPublish } from "@tolki/enum/vite";
 
 export default defineConfig({
   plugins: [laravelTsPublish()],
 });
 ```
+
+If you use docker (sail) for local development it may be worth to configure the command on your Vite config using an `.env` variable. Example:
+
+```text
+# .env - local
+VITE_TS_PUBLISH="./vendor/bin/sail artisan ts:publish"
+```
+
+```javascript
+import { defineConfig } from "vite";
+import { laravelTsPublish } from "@tolki/enum/vite";
+
+export default defineConfig(({ mode }) => {
+    const env = loadEnv(mode, process.cwd());
+
+    return {
+        plugins: [
+            laravelTsPublish({
+                command: env.VITE_TS_PUBLISH,
+            }),
+        ],
+        resolve: {
+            alias: {
+                '@data': path.resolve(__dirname, 'resources/js/types/data'),
+            },
+        },
+    };
+});
+```
+
+Then your cloud environment or CI pipelines it will default to the standard `php artisan ts:publish` command, but in your local environment it will use the sail command to run the publish command inside the container.
+
+Alternatively, in your cloud or CI environments you can set the `VITE_TS_PUBLISH` variable to whatever configuration of the `ts:publish` command you need to publish files in those environments.
 
 ### Add the publish command to composer post update hook
 
