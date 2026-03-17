@@ -16,9 +16,6 @@ Every Laravel application is different, and this package provides the tools to t
 
 For examples of the generated TypeScript output, see [these output examples](workbench/resources/js/types/).
 
-> [!IMPORTANT]
-> Laravel TypeScript Publisher is currently in Beta, functionality, options, and API are subject to change prior to the v1.0.0 release.
-
 ## Table of Contents
 
 - 📦 [Installation](#installation)
