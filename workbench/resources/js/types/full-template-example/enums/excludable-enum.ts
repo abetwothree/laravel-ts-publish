@@ -4,6 +4,7 @@ import { defineEnum } from '@tolki/enum';
 export const ExcludableEnum = defineEnum({
     Alpha: 'alpha',
     Beta: 'beta',
+    backed: true,
     _cases: ['Alpha', 'Beta'],
 } as const);
 

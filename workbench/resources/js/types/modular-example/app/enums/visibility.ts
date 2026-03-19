@@ -7,6 +7,7 @@ export const Visibility = defineEnum({
     Protected: 'Protected',
     Internal: 'Internal',
     Draft: 'Draft',
+    backed: false,
     /** Whether the item is publicly accessible */
     isPublic: {
         Public: true,

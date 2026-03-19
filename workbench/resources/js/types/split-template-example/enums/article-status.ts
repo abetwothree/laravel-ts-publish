@@ -5,6 +5,7 @@ export const ArticleStatus = defineEnum({
     InReview: 'in_review',
     Published: 'published',
     Archived: 'archived',
+    backed: true,
     _cases: ['Draft', 'InReview', 'Published', 'Archived'],
 } as const);
 

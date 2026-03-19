@@ -3,6 +3,7 @@ import { defineEnum } from '@tolki/enum';
 export const Status = defineEnum({
     Draft: 0,
     Published: 1,
+    backed: true,
     /** Get the icon name for the status */
     icon: {
         Draft: 'pencil',

@@ -5,6 +5,7 @@ export const Status = defineEnum({
     Prospect: 'prospect',
     Active: 'active',
     Churned: 'churned',
+    backed: true,
     _cases: ['Lead', 'Prospect', 'Active', 'Churned'],
 } as const);
 
