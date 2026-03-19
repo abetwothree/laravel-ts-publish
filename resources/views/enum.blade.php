@@ -17,6 +17,9 @@ export const {{ $data->enumName }} = {
 @endif
     {!! LaravelTsPublish::validJsObjectKey($case['name']) !!}: {!! LaravelTsPublish::toJsLiteral($case['value']) !!},
 @endforeach
+@if($metadataEnabled)
+    backed: {{ $data->backed ? 'true' : 'false' }},
+@endif
 @foreach ($data->methods as $methodName => $method)
 @if($method['description'])
     /** {!! LaravelTsPublish::sanitizeJsDoc($method['description']) !!} */

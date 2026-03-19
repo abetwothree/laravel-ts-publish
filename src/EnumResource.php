@@ -16,14 +16,18 @@ use UnitEnum;
  */
 class EnumResource extends JsonResource
 {
-    /** @var UnitEnum|BackedEnum */
+    /** @var UnitEnum|BackedEnum|null */
     public $resource;
 
     public static $wrap = '';
 
-    /** @return EnumInstanceData */
-    public function toArray(Request $request): array
+    /** @return EnumInstanceData|null */
+    public function toArray(Request $request): ?array
     {
+        if ($this->resource === null) {
+            return null;
+        }
+
         /** @var class-string<UnitEnum|BackedEnum> $enumClass */
         $enumClass = $this->resource::class;
 
