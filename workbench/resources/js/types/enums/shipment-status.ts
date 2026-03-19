@@ -8,6 +8,7 @@ export const ShipmentStatus = defineEnum({
     OutForDelivery: 'out_for_delivery',
     Delivered: 'delivered',
     Returned: 'returned',
+    backed: true,
     _cases: ['Pending', 'LabelCreated', 'PickedUp', 'InTransit', 'OutForDelivery', 'Delivered', 'Returned'],
 } as const);
 

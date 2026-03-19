@@ -7,6 +7,7 @@ export const Currency = defineEnum({
     Gbp: 'GBP',
     Jpy: 'JPY',
     Cad: 'CAD',
+    backed: true,
     /** Get all currency symbols as a map */
     symbols: {USD: '$', EUR: '€', GBP: '£', JPY: '¥', CAD: 'C$'},
     /** Get the default currency code */

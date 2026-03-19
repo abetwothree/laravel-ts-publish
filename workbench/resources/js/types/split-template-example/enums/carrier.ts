@@ -5,6 +5,7 @@ export const Carrier = defineEnum({
     FedEx: 'fedex',
     Usps: 'usps',
     Dhl: 'dhl',
+    backed: true,
     _cases: ['Ups', 'FedEx', 'Usps', 'Dhl'],
 } as const);
 

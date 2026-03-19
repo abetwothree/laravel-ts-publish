@@ -7,6 +7,7 @@ export const MediaType = defineEnum({
     Audio: 'audio',
     Document: 'document',
     Archive: 'archive',
+    backed: true,
     /** Allowed file extensions for this media type */
     extensions: {
         Image: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'],

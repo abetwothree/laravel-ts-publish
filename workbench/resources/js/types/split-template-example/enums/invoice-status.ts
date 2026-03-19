@@ -7,6 +7,7 @@ export const InvoiceStatus = defineEnum({
     Overdue: 'overdue',
     Cancelled: 'cancelled',
     Void: 'void',
+    backed: true,
     _cases: ['Draft', 'Sent', 'Paid', 'Overdue', 'Cancelled', 'Void'],
 } as const);
 

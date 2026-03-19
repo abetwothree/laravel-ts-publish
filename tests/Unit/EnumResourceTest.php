@@ -7,6 +7,9 @@ use Workbench\App\Enums\MembershipLevel;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
+use Workbench\App\Enums\Visibility;
+use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Models\Post;
 
 describe('EnumResource with backed int enum', function () {
     it('transforms the last case of a backed int enum', function () {
@@ -172,5 +175,103 @@ describe('EnumResource with TsCase overrides', function () {
         expect($result)
             ->toHaveKey('name', 'Purple')
             ->toHaveKey('value', 'purple');
+    });
+});
+
+describe('EnumResource with null resource', function () {
+    it('returns null when the resource is null', function () {
+        $result = (new EnumResource(null))->toArray(request());
+
+        expect($result)->toBeNull();
+    });
+});
+
+describe('Integration of EnumResource in PostResource class', function () {
+    it('transforms all enum properties into instanced enum format', function () {
+        $post = new Post([
+            'id' => 1,
+            'title' => 'Test Post',
+            'content' => 'Test content',
+            'user_id' => 1,
+            'status' => Status::Published,
+            'visibility' => Visibility::Public,
+            'priority' => Priority::High,
+        ]);
+
+        $result = (new PostResource($post))->response()->getData(true)['data'];
+
+        expect($result['status'])
+            ->toBeArray()
+            ->toHaveKey('name', 'Published')
+            ->toHaveKey('value', 1)
+            ->toHaveKey('backed', true)
+            ->toHaveKey('icon', 'check')
+            ->toHaveKey('color', 'green');
+
+        expect($result['visibility'])
+            ->toBeArray()
+            ->toHaveKey('name', 'Public')
+            ->toHaveKey('value', 'Public')
+            ->toHaveKey('backed', false)
+            ->toHaveKey('isPublic', true)
+            ->toHaveKey('description', 'Visible to everyone');
+
+        expect($result['priority'])
+            ->toBeArray()
+            ->toHaveKey('name', 'High')
+            ->toHaveKey('value', 2)
+            ->toHaveKey('backed', true)
+            ->toHaveKey('label', 'High Priority')
+            ->toHaveKey('icon', 'arrow-up');
+    });
+
+    it('returns null for nullable enum properties when they are null', function () {
+        $post = new Post([
+            'id' => 2,
+            'title' => 'Minimal Post',
+            'content' => 'Content',
+            'user_id' => 1,
+            'status' => Status::Draft,
+            'visibility' => null,
+            'priority' => null,
+        ]);
+
+        $result = (new PostResource($post))->response()->getData(true)['data'];
+
+        expect($result['status'])
+            ->toBeArray()
+            ->toHaveKey('name', 'Draft')
+            ->toHaveKey('value', 0)
+            ->toHaveKey('backed', true);
+
+        expect($result['visibility'])->toBeNull();
+        expect($result['priority'])->toBeNull();
+    });
+
+    it('handles mixed null and non-null enum properties', function () {
+        $post = new Post([
+            'id' => 3,
+            'title' => 'Partial Post',
+            'content' => 'Content',
+            'user_id' => 1,
+            'status' => Status::Published,
+            'visibility' => Visibility::Private,
+            'priority' => null,
+        ]);
+
+        $result = (new PostResource($post))->response()->getData(true)['data'];
+
+        expect($result['status'])
+            ->toBeArray()
+            ->toHaveKey('name', 'Published');
+
+        expect($result['visibility'])
+            ->toBeArray()
+            ->toHaveKey('name', 'Private')
+            ->toHaveKey('backed', false)
+            ->toHaveKey('isPublic', false)
+            ->toHaveKey('description', 'Only visible to the owner');
+
+        expect($result['priority'])->toBeNull();
     });
 });

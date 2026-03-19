@@ -4,6 +4,7 @@ export const DueAtNotice = defineEnum({
     ComingUp: 'Payment due date is coming up',
     DueToday: 'Payment is due today',
     PastDue: 'Payment is past due',
+    backed: true,
     _cases: ['ComingUp', 'DueToday', 'PastDue'],
 } as const);
 

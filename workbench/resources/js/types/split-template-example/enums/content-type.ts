@@ -5,6 +5,7 @@ export const ContentType = defineEnum({
     Tutorial: 'tutorial',
     Review: 'review',
     News: 'news',
+    backed: true,
     _cases: ['Post', 'Tutorial', 'Review', 'News'],
 } as const);
 

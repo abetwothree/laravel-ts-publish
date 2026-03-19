@@ -259,7 +259,7 @@ describe('Runner conditional publishing', function () {
             ->and($decoded['models'])->toBeEmpty();
     });
 
-    test('watcher json only contains enum files when models are skipped', function () {
+    test('watcher json includes all config-enabled file paths regardless of runner publish flags', function () {
         config()->set('ts-publish.output_collected_files_json', true);
 
         $runner = new Runner;
@@ -270,9 +270,13 @@ describe('Runner conditional publishing', function () {
 
         expect($decoded)->toBeArray()->not->toBeEmpty();
 
-        foreach ($decoded as $path) {
-            expect($path)->toContain('Enum');
-        }
+        $paths = collect($decoded);
+
+        // Watcher JSON should include both enum and model paths because
+        // both publish_enums and publish_models are true in config,
+        // even though the runner skipped model generation.
+        expect($paths->contains(fn ($p) => str_contains($p, 'Enum')))->toBeTrue()
+            ->and($paths->contains(fn ($p) => str_contains($p, 'Model')))->toBeTrue();
     });
 
     test('respects publish_enums config value', function () {

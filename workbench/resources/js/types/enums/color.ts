@@ -12,6 +12,7 @@ export const Color = defineEnum({
     Yellow: 'yellow',
     Slate: 'slate',
     Purple: 'purple',
+    backed: true,
     /** Get the hex code for the color */
     hex: {
         Red: '#EF4444',

@@ -6,6 +6,7 @@ export const Priority = defineEnum({
     Medium: 1,
     High: 2,
     Critical: 3,
+    backed: true,
     /** Human-readable label */
     label: {
         Low: 'Low Priority',

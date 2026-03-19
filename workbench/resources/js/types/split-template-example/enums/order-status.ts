@@ -16,6 +16,7 @@ export const OrderStatus = defineEnum({
     Refunded: 5,
     /** Order is on hold */
     OnHold: 6,
+    backed: true,
     /** Human-readable label */
     label: {
         Pending: 'Pending',

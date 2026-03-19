@@ -6,6 +6,7 @@ export const Season = defineEnum({
     Summer: 'summer',
     Autumn: 'autumn',
     Winter: 'winter',
+    backed: true,
     /** Average temperature in Celsius */
     avgTemp: {
         Spring: 15,
