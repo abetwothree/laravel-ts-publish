@@ -12,6 +12,6 @@
   },
   "homepage": "https://github.com/abetwothree/laravel-ts-publish#readme",
   "dependencies": {
-    "@tolki/enum": "^0.0.5"
+    "@tolki/enum": "^1.0.0"
   }
 }
