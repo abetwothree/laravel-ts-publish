@@ -259,7 +259,7 @@ describe('Runner conditional publishing', function () {
             ->and($decoded['models'])->toBeEmpty();
     });
 
-    test('watcher json includes all config-enabled file paths regardless of publish flags', function () {
+    test('watcher json includes all config-enabled file paths regardless of runner publish flags', function () {
         config()->set('ts-publish.output_collected_files_json', true);
 
         $runner = new Runner;
