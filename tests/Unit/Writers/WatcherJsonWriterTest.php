@@ -1,6 +1,5 @@
 <?php
 
-use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Writers\WatcherJsonWriter;
 use Illuminate\Filesystem\Filesystem;
 
@@ -8,11 +7,8 @@ test('writes watcher json content when enabled', function () {
     config()->set('ts-publish.output_collected_files_json', true);
     config()->set('ts-publish.output_to_files', false);
 
-    $runner = resolve(Runner::class);
-    $runner->run();
-
     $writer = new WatcherJsonWriter(new Filesystem);
-    $content = $writer->write($runner);
+    $content = $writer->write();
 
     $decoded = json_decode($content, true);
 
@@ -24,11 +20,8 @@ test('returns empty string when watcher json output is disabled', function () {
     config()->set('ts-publish.output_collected_files_json', false);
     config()->set('ts-publish.output_to_files', false);
 
-    $runner = resolve(Runner::class);
-    $runner->run();
-
     $writer = new WatcherJsonWriter(new Filesystem);
-    $content = $writer->write($runner);
+    $content = $writer->write();
 
     expect($content)->toBe('');
 });
@@ -37,11 +30,8 @@ test('watcher json contains file paths', function () {
     config()->set('ts-publish.output_collected_files_json', true);
     config()->set('ts-publish.output_to_files', false);
 
-    $runner = resolve(Runner::class);
-    $runner->run();
-
     $writer = new WatcherJsonWriter(new Filesystem);
-    $content = $writer->write($runner);
+    $content = $writer->write();
 
     $decoded = json_decode($content, true);
 
@@ -61,9 +51,54 @@ test('writes watcher json file to disk when output_to_files is enabled', functio
 
     config()->set('ts-publish.output_to_files', true);
 
-    $runner = resolve(Runner::class);
-    $runner->run();
-
     $writer = new WatcherJsonWriter($filesystem);
-    $writer->write($runner);
+    $writer->write();
+});
+
+test('watcher json includes both enum and model paths based on config', function () {
+    config()->set('ts-publish.output_collected_files_json', true);
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.publish_enums', true);
+    config()->set('ts-publish.publish_models', true);
+
+    $writer = new WatcherJsonWriter(new Filesystem);
+    $content = $writer->write();
+
+    $decoded = json_decode($content, true);
+    $paths = collect($decoded);
+
+    expect($paths->contains(fn ($p) => str_contains($p, 'Enum')))->toBeTrue()
+        ->and($paths->contains(fn ($p) => str_contains($p, 'Model')))->toBeTrue();
+});
+
+test('watcher json excludes enums when publish_enums config is false', function () {
+    config()->set('ts-publish.output_collected_files_json', true);
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.publish_enums', false);
+    config()->set('ts-publish.publish_models', true);
+
+    $writer = new WatcherJsonWriter(new Filesystem);
+    $content = $writer->write();
+
+    $decoded = json_decode($content, true);
+    $paths = collect($decoded);
+
+    expect($paths->contains(fn ($p) => str_contains($p, 'Enum')))->toBeFalse()
+        ->and($paths->contains(fn ($p) => str_contains($p, 'Model')))->toBeTrue();
+});
+
+test('watcher json excludes models when publish_models config is false', function () {
+    config()->set('ts-publish.output_collected_files_json', true);
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.publish_enums', true);
+    config()->set('ts-publish.publish_models', false);
+
+    $writer = new WatcherJsonWriter(new Filesystem);
+    $content = $writer->write();
+
+    $decoded = json_decode($content, true);
+    $paths = collect($decoded);
+
+    expect($paths->contains(fn ($p) => str_contains($p, 'Enum')))->toBeTrue()
+        ->and($paths->contains(fn ($p) => str_contains($p, 'Model')))->toBeFalse();
 });

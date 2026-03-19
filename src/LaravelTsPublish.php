@@ -61,6 +61,26 @@ class LaravelTsPublish
     }
 
     /**
+     * Resolve an absolute file path to a path relative to the project root.
+     * Falls back to a vendor-relative path for files outside base_path().
+     */
+    public static function resolveRelativePath(string $absolutePath): string
+    {
+        $basePath = base_path().DIRECTORY_SEPARATOR;
+
+        if (str_starts_with($absolutePath, $basePath)) {
+            return Str::after($absolutePath, $basePath);
+        }
+
+        // File is outside base_path() (e.g. vendor in a package development context)
+        if (str_contains($absolutePath, DIRECTORY_SEPARATOR.'vendor'.DIRECTORY_SEPARATOR)) {
+            return 'vendor'.DIRECTORY_SEPARATOR.Str::after($absolutePath, DIRECTORY_SEPARATOR.'vendor'.DIRECTORY_SEPARATOR);
+        }
+
+        return $absolutePath;
+    }
+
+    /**
      * @return array<string, string|(callable(): string)>
      */
     public function typesMap(): array

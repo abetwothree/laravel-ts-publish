@@ -132,6 +132,6 @@ class Runner extends BaseRunner
         /** @var WatcherJsonWriter $jsonWriter */
         $jsonWriter = resolve(config()->string('ts-publish.watcher_json_writer_class'));
 
-        $this->watcherJsonContent = $jsonWriter->write($this);
+        $this->watcherJsonContent = $jsonWriter->write();
     }
 }
