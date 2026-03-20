@@ -104,7 +104,7 @@ VITE_TS_PUBLISH="./vendor/bin/sail artisan ts:publish"
 ```
 
 ```javascript
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import { laravelTsPublish } from "@tolki/enum/vite";
 
 export default defineConfig(({ mode }) => {
