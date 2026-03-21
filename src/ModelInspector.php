@@ -56,7 +56,7 @@ class ModelInspector extends EloquentModelInspector
             observers: $modelInfo['observers'],
             collection: $modelInfo['collection'],
             builder: $modelInfo['builder'],
-            resource: $modelInfo['resource'],
+            resource: $modelInfo['resource'] ?? null,
         );
     }
 }
