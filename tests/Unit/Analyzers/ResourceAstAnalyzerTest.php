@@ -13,6 +13,7 @@ use Workbench\App\Http\Resources\DelegatingResource;
 use Workbench\App\Http\Resources\DelegatingWithMixinResource;
 use Workbench\App\Http\Resources\EmptyResource;
 use Workbench\App\Http\Resources\EmptyWithMixinResource;
+use Workbench\App\Http\Resources\NonArrayReturnResource;
 use Workbench\App\Http\Resources\OrderDetailResource;
 use Workbench\App\Http\Resources\OrderItemResource;
 use Workbench\App\Http\Resources\OrderResource;
@@ -22,6 +23,7 @@ use Workbench\App\Http\Resources\QuirkyResource;
 use Workbench\App\Http\Resources\SpreadJsonBaseResource;
 use Workbench\App\Http\Resources\TeamMemberResource;
 use Workbench\App\Http\Resources\TeamResource;
+use Workbench\App\Http\Resources\TraitSpreadCoverageResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Category;
@@ -876,5 +878,94 @@ describe('ResourceAstAnalyzer with trait method spread', function () {
 
         // morphValue comes from PostResource's trait spread, inherited via parent::toArray
         expect($names)->toContain('morphValue');
+    });
+});
+
+describe('ResourceAstAnalyzer non-array return', function () {
+    test('returns empty analysis for non-array non-parent return', function () {
+        $reflection = new ReflectionClass(NonArrayReturnResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        expect($analysis)->toBeInstanceOf(ResourceAnalysis::class)
+            ->and($analysis->properties)->toBe([]);
+    });
+});
+
+describe('ResourceAstAnalyzer trait spread doc type branches', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(TraitSpreadCoverageResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $this->analysis = $analyzer->analyze();
+    });
+
+    test('skips doc type resolution for already-known property types', function () {
+        $id = collect($this->analysis->properties)->firstWhere('name', 'id');
+
+        // id resolves to number from model, not overridden by docType 'string'
+        expect($id['type'])->toBe('number');
+    });
+
+    test('resolves callable PHPDoc types via tsMap', function () {
+        $dateVal = collect($this->analysis->properties)->firstWhere('name', 'date_val');
+
+        // datetime maps to a callable in tsMap
+        expect($dateVal['type'])->toBe('string');
+    });
+
+    test('passes through unmapped PHPDoc types as-is', function () {
+        $customVal = collect($this->analysis->properties)->firstWhere('name', 'custom_val');
+
+        // CustomObject is not in tsMap, passed through directly
+        expect($customVal['type'])->toBe('CustomObject');
+    });
+
+    test('includes properties from trait methods without docblocks', function () {
+        $plain = collect($this->analysis->properties)->firstWhere('name', 'plain');
+
+        expect($plain)->not->toBeNull()
+            ->and($plain['type'])->toBe('unknown');
+    });
+
+    test('includes properties from trait methods without array shape annotation', function () {
+        $basic = collect($this->analysis->properties)->firstWhere('name', 'basic');
+
+        expect($basic)->not->toBeNull()
+            ->and($basic['type'])->toBe('unknown');
+    });
+
+    test('resolves multiline @return array shape types', function () {
+        $firstName = collect($this->analysis->properties)->firstWhere('name', 'firstName');
+        $lastName = collect($this->analysis->properties)->firstWhere('name', 'lastName');
+        $isActive = collect($this->analysis->properties)->firstWhere('name', 'isActive');
+
+        expect($firstName['type'])->toBe('string')
+            ->and($lastName['type'])->toBe('string')
+            ->and($isActive['type'])->toBe('boolean');
+    });
+
+    test('applies TsResourceCasts type overrides on trait methods', function () {
+        $location = collect($this->analysis->properties)->firstWhere('name', 'location');
+
+        expect($location['type'])->toBe('GeoPoint');
+    });
+
+    test('applies TsResourceCasts optional flag on trait methods', function () {
+        $flag = collect($this->analysis->properties)->firstWhere('name', 'flag');
+
+        expect($flag['type'])->toBe('string | null')
+            ->and($flag['optional'])->toBeTrue();
+    });
+
+    test('adds new properties from TsResourceCasts on trait methods', function () {
+        $extra = collect($this->analysis->properties)->firstWhere('name', 'extra');
+
+        expect($extra)->not->toBeNull()
+            ->and($extra['type'])->toBe('Record<string, unknown>')
+            ->and($extra['optional'])->toBeFalse();
+    });
+
+    test('populates customImports from TsResourceCasts import paths', function () {
+        expect($this->analysis->customImports)->toBe(['@/types/geo' => 'GeoPoint']);
     });
 });

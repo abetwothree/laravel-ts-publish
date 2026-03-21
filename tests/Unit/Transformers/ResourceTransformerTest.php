@@ -13,6 +13,7 @@ use Workbench\App\Http\Resources\OrderResource;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\ProfileResource;
+use Workbench\App\Http\Resources\TraitSpreadCoverageResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Order;
@@ -632,5 +633,37 @@ describe('ResourceTransformer with trait method spread', function () {
 
         expect($data->properties)->toHaveKey('morphValue')
             ->and($data->properties['morphValue']['type'])->toBe('string');
+    });
+});
+
+describe('ResourceTransformer with trait TsResourceCasts', function () {
+    test('applies TsResourceCasts type override from trait method', function () {
+        $data = (new ResourceTransformer(TraitSpreadCoverageResource::class))->data();
+
+        expect($data->properties)->toHaveKey('location')
+            ->and($data->properties['location']['type'])->toBe('GeoPoint');
+    });
+
+    test('generates import from TsResourceCasts on trait method', function () {
+        $data = (new ResourceTransformer(TraitSpreadCoverageResource::class))->data();
+
+        expect($data->typeImports)->toHaveKey('@/types/geo')
+            ->and($data->typeImports['@/types/geo'])->toContain('GeoPoint');
+    });
+
+    test('adds new property from TsResourceCasts on trait method', function () {
+        $data = (new ResourceTransformer(TraitSpreadCoverageResource::class))->data();
+
+        expect($data->properties)->toHaveKey('extra')
+            ->and($data->properties['extra']['type'])->toBe('Record<string, unknown>');
+    });
+
+    test('resolves multiline @return array shape types from trait method', function () {
+        $data = (new ResourceTransformer(TraitSpreadCoverageResource::class))->data();
+
+        expect($data->properties)->toHaveKey('firstName')
+            ->and($data->properties['firstName']['type'])->toBe('string')
+            ->and($data->properties)->toHaveKey('isActive')
+            ->and($data->properties['isActive']['type'])->toBe('boolean');
     });
 });

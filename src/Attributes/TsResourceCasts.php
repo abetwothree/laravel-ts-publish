@@ -9,7 +9,9 @@ use Attribute;
 /**
  * Attribute to specify custom TypeScript types for a resource's properties.
  *
- * Applied on the resource class to override or extend the types inferred from AST analysis.
+ * Applied on the resource class or methods to override or extend the types inferred from AST analysis.
+ *
+ * Especially useful on trait methods to provide custom TypeScript types or import paths
  *
  * Each entry can be a plain type string, an array with 'type' and 'import' keys,
  * or an array with 'type' and 'optional' keys:
@@ -22,7 +24,7 @@ use Attribute;
  * ])]
  * ```
  */
-#[Attribute(Attribute::TARGET_CLASS)]
+#[Attribute(Attribute::TARGET_CLASS | Attribute::TARGET_METHOD)]
 class TsResourceCasts
 {
     /** @param array<string, string|array{type: string, import?: string, optional?: bool}> $types */

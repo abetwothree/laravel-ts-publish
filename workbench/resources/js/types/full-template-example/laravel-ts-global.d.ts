@@ -1201,6 +1201,8 @@ declare global {
             posts?: PostResource[];
             posts_count?: number;
         }
+        export interface NonArrayReturnResource {
+        }
         export interface ApiPostResource {
             morphValue: string;
             id: number;
@@ -1209,6 +1211,20 @@ declare global {
             status: StatusType;
             visibility: VisibilityType;
             priority: PriorityType;
+        }
+        export interface TraitSpreadCoverageResource {
+            id: number;
+            computed: string;
+            date_val: string;
+            custom_val: CustomObject;
+            plain: unknown;
+            basic: unknown;
+            firstName: string;
+            lastName: string;
+            isActive: boolean;
+            location: GeoPoint;
+            flag?: string | null;
+            extra: Record<string, unknown>;
         }
         export interface PostResource {
             morphValue: string;

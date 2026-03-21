@@ -340,6 +340,11 @@ class ResourceTransformer extends CoreTransformer
             $this->modelFqcnMap[$fqcn] = class_basename($fqcn);
         }
 
+        // Merge custom imports from trait method #[TsResourceCasts] attributes
+        foreach ($analysis->customImports as $importPath => $typeName) {
+            $this->customImports[$importPath] = $typeName;
+        }
+
         return $this;
     }
 

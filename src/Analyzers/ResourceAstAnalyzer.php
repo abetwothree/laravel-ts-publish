@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Analyzers;
 
+use AbeTwoThree\LaravelTsPublish\Attributes\TsResourceCasts;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelInspector;
@@ -120,6 +121,8 @@ class ResourceAstAnalyzer
         $directEnumFqcns = [];
         /** @var ClassMapType $modelFqcns */
         $modelFqcns = [];
+        /** @var ImportMapType $customImports */
+        $customImports = [];
 
         foreach ($array->items as $item) {
             // Handle ...parent::toArray($request) spread
@@ -139,6 +142,7 @@ class ResourceAstAnalyzer
                         $parentAnalysis->directEnumFqcns,
                         $parentAnalysis->modelFqcns,
                     );
+                    $customImports = [...$customImports, ...$parentAnalysis->customImports];
                 }
 
                 continue;
@@ -165,6 +169,7 @@ class ResourceAstAnalyzer
                         $spreadAnalysis->directEnumFqcns,
                         $spreadAnalysis->modelFqcns,
                     );
+                    $customImports = [...$customImports, ...$spreadAnalysis->customImports];
                 }
 
                 continue;
@@ -234,7 +239,7 @@ class ResourceAstAnalyzer
             $properties,
             $enumResources,
             $nestedResources,
-            customImports: [],
+            customImports: $customImports,
             directEnumFqcns: $directEnumFqcns,
             modelFqcns: $modelFqcns
         );
@@ -708,7 +713,7 @@ class ResourceAstAnalyzer
     protected function analyzeThisMethodSpread(string $methodName): ?ResourceAnalysis
     {
         if (! $this->resourceReflection->hasMethod($methodName)) {
-            return null;
+            return null; // @codeCoverageIgnore
         }
 
         $method = $this->resourceReflection->getMethod($methodName);
@@ -733,7 +738,7 @@ class ResourceAstAnalyzer
         });
 
         if (! $targetMethod instanceof ClassMethod || $targetMethod->stmts === null) {
-            return null;
+            return null; // @codeCoverageIgnore
         }
 
         $returnStmt = $finder->findFirst($targetMethod->stmts, function (Node $node): bool {
@@ -741,7 +746,7 @@ class ResourceAstAnalyzer
         });
 
         if (! $returnStmt instanceof Return_ || ! $returnStmt->expr instanceof Array_) {
-            return null;
+            return null; // @codeCoverageIgnore
         }
 
         $analysis = $this->analyzeReturnArray($returnStmt->expr);
@@ -761,6 +766,47 @@ class ResourceAstAnalyzer
             }
 
             unset($prop);
+        }
+
+        // Apply #[TsResourceCasts] attribute overrides from the method
+        foreach ($method->getAttributes(TsResourceCasts::class) as $attr) {
+            $instance = $attr->newInstance();
+
+            foreach ($instance->types as $property => $value) {
+                $type = is_array($value) ? $value['type'] : $value;
+                $optional = is_array($value) && isset($value['optional']) ? (bool) $value['optional'] : null;
+
+                $found = false;
+
+                foreach ($analysis->properties as &$prop) {
+                    if ($prop['name'] === $property) {
+                        $prop['type'] = $type;
+
+                        if ($optional !== null) {
+                            $prop['optional'] = $optional;
+                        }
+
+                        $found = true;
+
+                        break;
+                    }
+                }
+
+                unset($prop);
+
+                if (! $found) {
+                    $analysis->properties[] = [
+                        'name' => $property,
+                        'type' => $type,
+                        'optional' => $optional ?? false,
+                        'description' => '',
+                    ];
+                }
+
+                if (is_array($value) && isset($value['import'])) {
+                    $analysis->customImports[$value['import']] = $type;
+                }
+            }
         }
 
         return $analysis;
@@ -790,6 +836,7 @@ class ResourceAstAnalyzer
 
         foreach ($entries as $entry) {
             $entry = trim($entry);
+            $entry = (string) preg_replace('/^\*\s*/', '', $entry);
 
             if (! str_contains($entry, ':')) {
                 continue;
