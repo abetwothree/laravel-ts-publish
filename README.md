@@ -1322,6 +1322,8 @@ All conditional methods produce **optional** properties (with `?` in TypeScript)
 | `$this->whenAggregated('rel', 'col', 'fn')` | Include when aggregate is loaded  | `number`                 |
 | `$this->whenPivotLoaded('table')`           | Include when pivot is loaded      | `unknown`                |
 
+See [Nullable Relations](#nullable-relations) for `whenLoaded` nullability handling.
+
 #### Enum Properties with `EnumResource`
 
 Use `EnumResource::make()` to expose enum-cast properties as rich enum objects:
@@ -1365,6 +1367,136 @@ $this->mergeWhen($this->is_featured, [
     'dimensions' => $this->dimensions,
 ]),
 ```
+
+#### Parent `toArray()` Spread
+
+Extend a parent resource using `...parent::toArray($request)`. Parent properties appear first, and the child can override any key:
+
+```php
+class PostResource extends JsonResource
+{
+    public function toArray(Request $request): array
+    {
+        return [
+            'id' => $this->id,
+            'title' => $this->title,
+            'status' => EnumResource::make($this->status),
+        ];
+    }
+}
+
+class ApiPostResource extends PostResource
+{
+    public function toArray(Request $request): array
+    {
+        return [
+            ...parent::toArray($request),
+            'status' => $this->status,       // Overrides parent's EnumResource type
+        ];
+    }
+}
+```
+
+The child `ApiPostResource` inherits all parent properties (`id`, `title`, `status`), with `status` overridden to use the plain enum value instead of `EnumResource::make()`.
+
+If the parent itself extends `JsonResource` (the base class), the spread automatically delegates to the model's database attributes — see [JsonResource Base Delegation](#jsonresource-base-delegation).
+
+#### Trait Method Spread
+
+Spread trait method return values into `toArray()` with `...$this->traitMethod()`. The analyzer reads `@return array{key: type}` PHPDoc annotations to resolve property types:
+
+```php
+trait IncludesMorphValue
+{
+    /**
+     * @return array{morphValue: string}
+     */
+    protected function includeMorphValue(): array
+    {
+        return ['morphValue' => $this->resource->getMorphClass()];
+    }
+}
+
+class PostResource extends JsonResource
+{
+    use IncludesMorphValue;
+
+    public function toArray(Request $request): array
+    {
+        return [
+            ...$this->includeMorphValue(),
+            'id' => $this->id,
+            'title' => $this->title,
+        ];
+    }
+}
+```
+
+Generates:
+
+```typescript
+export interface Post {
+    morphValue: string;   // From trait PHPDoc
+    id: number;
+    title: string;
+}
+```
+
+Multiline `@return` shapes are also supported:
+
+```php
+/**
+ * @return array{
+ *     firstName: string,
+ *     lastName: string,
+ *     isActive: bool,
+ * }
+ */
+protected function includeProfile(): array
+{
+    // ...
+}
+```
+
+> [!TIP]
+> Trait spreads also flow through parent inheritance. If a parent resource spreads a trait method and a child extends it with `...parent::toArray($request)`, the child inherits the trait-contributed properties.
+
+> [!NOTE]
+> When a trait method has no `@return array{...}` PHPDoc, its properties will be typed as `unknown`.
+
+#### JsonResource Base Delegation
+
+Resources that have **no `toArray()` method** or whose `toArray()` simply returns `parent::toArray($request)` automatically generate properties from the backing model's database schema:
+
+```php
+/**
+ * @mixin User
+ */
+class UserResource extends JsonResource
+{
+    // No toArray() — properties auto-generated from User model
+}
+```
+
+You can also spread the base properties and add computed keys:
+
+```php
+/**
+ * @mixin User
+ */
+class UserResource extends JsonResource
+{
+    public function toArray(Request $request): array
+    {
+        return [
+            ...parent::toArray($request),
+            'full_name' => strtoupper($this->name),
+        ];
+    }
+}
+```
+
+The model is resolved from `#[TsResource(model:)]`, `@mixin` PHPDoc, or use statements. When no model can be detected, the resource produces an empty interface.
 
 ### Example
 
@@ -1434,13 +1566,13 @@ Notice how:
 
 ### Resource Attributes
 
-Two attributes are available for configuring resource TypeScript generation:
+Three attributes are available for configuring resource TypeScript generation:
 
-| Attribute            | Target         | Description                                                                  |
-|----------------------|----------------|------------------------------------------------------------------------------|
-| `#[TsResource]`      | Resource class | Override the interface name, specify the backing model, or add a description |
-| `#[TsResourceCasts]` | Resource class | Override or add property types with custom TypeScript types                  |
-| `#[TsExclude]`       | Resource class | Exclude the entire resource from the TypeScript output.                      |
+| Attribute            | Target                    | Description                                                                  |
+|----------------------|---------------------------|------------------------------------------------------------------------------|
+| `#[TsResource]`      | Resource class            | Override the interface name, specify the backing model, or add a description |
+| `#[TsResourceCasts]` | Resource class or method  | Override or add property types with custom TypeScript types                  |
+| `#[TsExclude]`       | Resource class            | Exclude the entire resource from the TypeScript output.                      |
 
 See [Excluding with TsExclude](#excluding-with-tsexclude)
 
@@ -1513,6 +1645,74 @@ export interface CommentResource
     coordinates: GeoPoint;
 }
 ```
+
+##### On Trait Methods
+
+`#[TsResourceCasts]` can also be applied to **trait methods** that are spread into `toArray()`. This lets you control types for trait-contributed properties without modifying the resource class:
+
+```php
+use AbeTwoThree\LaravelTsPublish\Attributes\TsResourceCasts;
+
+trait IncludesLocation
+{
+    #[TsResourceCasts([
+        'location' => ['type' => 'GeoPoint', 'import' => '@/types/geo'],
+        'flag' => ['type' => 'string | null', 'optional' => true],
+        'extra' => 'Record<string, unknown>',
+    ])]
+    protected function includeLocation(): array
+    {
+        return [
+            'location' => $this->coordinates,
+            'flag' => $this->flag,
+        ];
+    }
+}
+```
+
+The attribute works identically to the class-level version — overriding types, marking properties optional, adding imports, and appending new properties. Properties defined in the attribute that don't exist in the method's return array (like `extra` above) are appended.
+
+### Nullable Relations
+
+When `whenLoaded('relation')` resolves a relation type, the package determines whether it should include `| null` based on the relation kind and the database schema.
+
+This is controlled by the `nullable_relations` config option (enabled by default). The strategy for each relation type is:
+
+| Relation Type                         | Strategy    | Description                                          |
+|---------------------------------------|-------------|------------------------------------------------------|
+| `HasOne`, `MorphOne`, `HasOneThrough` | `nullable`  | Always nullable — the related record may not exist   |
+| `BelongsTo`                           | `fk`        | Checks the foreign key column's DB-level nullability |
+| `MorphTo`                             | `morph`     | Checks both the morph type and FK column nullability |
+| `HasMany`, `BelongsToMany`, etc.      | `never`     | Collection relations — typed as arrays, never null   |
+
+For example, a `BelongsTo` relation with a nullable foreign key:
+
+```php
+// Migration: $table->foreignId('user_id')->nullable();
+
+// Resource:
+'user' => UserResource::make($this->whenLoaded('user')),
+```
+
+Generates `user?: UserResource | null` — optional (from `whenLoaded`) and nullable (from the nullable FK).
+
+You can disable nullable relation detection globally:
+
+```php
+// config/ts-publish.php
+'nullable_relations' => false,
+```
+
+Or override the strategy for specific relation types using `relation_nullability_map`:
+
+```php
+// config/ts-publish.php
+'relation_nullability_map' => [
+    \Illuminate\Database\Eloquent\Relations\HasOne::class => 'never',
+],
+```
+
+Valid strategies are `'nullable'`, `'never'`, `'fk'`, and `'morph'`.
 
 ### Filtering Resources
 
