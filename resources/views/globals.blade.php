@@ -80,7 +80,26 @@ declare global {
     }
 @endif
 @endforeach
-@else
+@foreach ($groupedResources as $namespace => $transformers)
+@if ($transformers->count() > 0)
+    export namespace {{ $namespace }} {
+@foreach ($transformers as $transformer)
+@if($transformer->description)
+        /** {!! LaravelTsPublish::sanitizeJsDoc($transformer->description) !!} */
+@endif
+        export interface {{ $transformer->resourceName }} {
+@foreach ($transformer->properties as $name => $property)
+@if($property['description'])
+            /** {!! LaravelTsPublish::sanitizeJsDoc($property['description']) !!} */
+@endif
+            {!! LaravelTsPublish::validJsObjectKey($name) !!}{!! $property['optional'] ? '?' : '' !!}: {!! $property['type'] !!};
+@endforeach
+        }
+@endforeach
+    }
+@endif
+@endforeach
+@else{{-- end if $isModular --}}
 @if ($models->count() > 0)
     // Models
     export namespace {{ $modelsNamespace }} {
@@ -145,6 +164,24 @@ declare global {
 @if(!$loop->last)
 
 @endif
+@endforeach
+    }
+@endif
+@if ($resources->count() > 0)
+    // Resources
+    export namespace {{ $resourcesNamespace }} {
+@foreach ($resources as $transformer)
+@if($transformer->description)
+        /** {!! LaravelTsPublish::sanitizeJsDoc($transformer->description) !!} */
+@endif
+        export interface {{ $transformer->resourceName }} {
+@foreach ($transformer->properties as $name => $property)
+@if($property['description'])
+            /** {!! LaravelTsPublish::sanitizeJsDoc($property['description']) !!} */
+@endif
+            {!! LaravelTsPublish::validJsObjectKey($name) !!}{!! $property['optional'] ? '?' : '' !!}: {!! $property['type'] !!};
+@endforeach
+        }
 @endforeach
     }
 @endif

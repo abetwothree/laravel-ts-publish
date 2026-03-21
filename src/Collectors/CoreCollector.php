@@ -101,4 +101,13 @@ abstract class CoreCollector
             ->values()
             ->all();
     }
+
+    /**
+     * @param array<int, string> $setting
+     * @return array<int, string>
+     */
+    protected function sanitizeAllowSetting(array $setting): array
+    {
+        return array_values(array_filter($setting, 'is_string'));
+    }
 }
