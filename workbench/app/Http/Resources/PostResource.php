@@ -5,6 +5,7 @@ namespace Workbench\App\Http\Resources;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Workbench\App\Http\Resources\Concerns\IncludesMorphValue;
 use Workbench\App\Models\Post;
 
 /**
@@ -12,6 +13,8 @@ use Workbench\App\Models\Post;
  */
 class PostResource extends JsonResource
 {
+    use IncludesMorphValue;
+
     /**
      * Transform the resource into an array.
      *
@@ -20,6 +23,7 @@ class PostResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
+            ...$this->includeMorphValue(),
             'id' => $this->id,
             'title' => $this->title,
             'content' => $this->content,
