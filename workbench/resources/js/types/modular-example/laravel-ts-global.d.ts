@@ -965,4 +965,375 @@ declare global {
         export type ShipmentStatusType = 'pending' | 'label_created' | 'picked_up' | 'in_transit' | 'out_for_delivery' | 'delivered' | 'returned';
         export type ShipmentStatusKind = 'Pending' | 'LabelCreated' | 'PickedUp' | 'InTransit' | 'OutForDelivery' | 'Delivered' | 'Returned';
     }
+    export namespace accounting.http.resources {
+        /** Exercises: when(cond, EnumResource::make) — conditional enum, cross-module whenLoaded bare (App\User), Resource::collection sibling, whenCounted, when(cond, value), mergeWhen. */
+        export interface InvoiceResource {
+            id: number;
+            number: string;
+            status?: AsEnum<typeof InvoiceStatus>;
+            subtotal: number;
+            tax: number;
+            total: number;
+            due_at: string;
+            issued_at?: string;
+            paid_at?: string;
+            user?: User;
+            payments?: PaymentResource[];
+            payments_count?: number;
+            notes?: string | null;
+        }
+        /** Exercises: multiple EnumResource::make from different namespaces (PaymentStatus, Currency from App), whenHas on PaymentMethod enum attribute, whenNotNull. */
+        export interface PaymentResource {
+            id: number;
+            status: AsEnum<typeof PaymentStatus>;
+            currency: AsEnum<typeof Currency>;
+            amount: number;
+            method?: PaymentMethodType;
+            reference?: string | null;
+            paid_at?: string;
+        }
+    }
+    export namespace app.http.resources {
+        /** Resource that delegates to parent with a known model — tests JsonResource base delegation. */
+        export interface DelegatingWithMixinResource {
+            id: number;
+            name: string;
+            email: string;
+            email_verified_at: string;
+            password: string;
+            options: Record<string, unknown> | null;
+            remember_token: string | null;
+            created_at: string;
+            updated_at: string;
+            role: RoleType;
+            membership_level: MembershipLevelType;
+            phone: string | null;
+            avatar: string | null;
+            bio: string | null;
+            settings: { theme: "light" | "dark"; notifications: boolean; locale: string } | null;
+            last_login_at: string;
+            last_login_ip: string | null;
+            initials: unknown;
+            is_premium: unknown;
+        }
+        /** Resource spreading parent::toArray() from JsonResource base with extra keys. */
+        export interface SpreadJsonBaseResource {
+            id: number;
+            name: string;
+            email: string;
+            email_verified_at: string;
+            password: string;
+            options: Record<string, unknown> | null;
+            remember_token: string | null;
+            created_at: string;
+            updated_at: string;
+            role: RoleType;
+            membership_level: MembershipLevelType;
+            phone: string | null;
+            avatar: string | null;
+            bio: string | null;
+            settings: { theme: "light" | "dark"; notifications: boolean; locale: string } | null;
+            last_login_at: string;
+            last_login_ip: string | null;
+            initials: unknown;
+            is_premium: unknown;
+            full_name: unknown;
+        }
+        /** Exercises: multiple whenAggregated (sum/min/max), whenNotNull, when, whenCounted, two mergeWhen blocks, Resource::collection x2. */
+        export interface ProductResource {
+            id: string;
+            name: string;
+            slug: string;
+            sku: string;
+            description: string | null;
+            price: number;
+            compare_at_price?: number;
+            cost_price?: number;
+            quantity: number;
+            is_active: boolean;
+            is_featured: boolean;
+            published_at?: string;
+            tags?: TagResource[];
+            images?: ImageResource[];
+            orders_count?: number;
+            total_sold?: number;
+            min_unit_price?: number;
+            max_unit_price?: number;
+            weight?: number;
+            dimensions?: { length: number; width: number; height: number; unit: "cm" | "in" };
+            metadata?: ProductMetadata | ProductJsonMetaData | null;
+        }
+        /** Resource with no toArray override — tests guard clause. */
+        export interface EmptyResource {
+        }
+        export interface CommentResource {
+            id: number;
+            content: string;
+            is_flagged: boolean;
+            flagged_at?: string | null;
+            metadata: Record<string, unknown>;
+            author?: UserResource;
+            post?: PostResource;
+        }
+        /** Exercises: multiple whenHas on different column types, multiple whenNotNull. */
+        export interface ProfileResource {
+            id: number;
+            bio: string | null;
+            avatar_url: string | null;
+            date_of_birth?: string;
+            website?: string | null;
+            phone_number?: string | null;
+            social_links?: { twitter?: string; github?: string; linkedin?: string; website?: string };
+            timezone?: string;
+            locale?: string;
+        }
+        /** Exercises: whenCounted on two polymorphic relations. */
+        export interface TagResource {
+            id: number;
+            name: string;
+            slug: string;
+            color: string | null;
+            posts_count?: number;
+            products_count?: number;
+        }
+        /** User account resource. */
+        export interface UserResource {
+            id: number;
+            name: string;
+            email: string;
+            role: AsEnum<typeof Role>;
+            profile?: Profile | null;
+            posts?: PostResource[];
+            phone?: string | null;
+            avatar?: string | null;
+            posts_count?: number;
+            comments_count?: number;
+        }
+        /** Mailing address resource */
+        export interface Address {
+            morphValue: string;
+            id: number;
+            label: string | null;
+            line_1: string;
+            line_2?: string | null;
+            city: string;
+            state: string | null;
+            postal_code: string;
+            country_code: string;
+            latitude?: number | null;
+            longitude?: number | null;
+            is_default: boolean;
+            coordinates: GeoPoint;
+        }
+        /** Resource using FQCN @mixin — tests resolveModelClass FQCN branch. */
+        export interface FqcnMixinResource {
+            id: number;
+            total: number;
+        }
+        /** Exercises: whenNotNull on multiple nullable columns. */
+        export interface ImageResource {
+            id: number;
+            url: string;
+            alt_text: string | null;
+            mime_type: string;
+            size_bytes: number;
+            width?: number;
+            height?: number;
+        }
+        /** Exercises: self-referencing Resource::make and Resource::collection, when conditional, whenCounted, cross-resource PostResource::collection. */
+        export interface CategoryResource {
+            id: number;
+            name: string;
+            slug: string;
+            description?: string | null;
+            sort_order: number;
+            is_active: boolean;
+            parent?: CategoryResource;
+            children?: CategoryResource[];
+            posts?: PostResource[];
+            posts_count?: number;
+        }
+        export interface ApiPostResource {
+            morphValue: string;
+            id: number;
+            title: string;
+            content: string;
+            status: StatusType;
+            visibility: VisibilityType;
+            priority: PriorityType;
+        }
+        export interface PostResource {
+            morphValue: string;
+            id: number;
+            title: string;
+            content: string;
+            status: AsEnum<typeof Status>;
+            visibility: AsEnum<typeof Visibility>;
+            priority: AsEnum<typeof Priority>;
+        }
+        /** Resource that delegates to parent — tests non-array return guard. */
+        export interface DelegatingResource {
+        }
+        /** Exercises: when, whenLoaded + Resource::make, Resource::collection, whenCounted, mergeWhen. */
+        export interface TeamResource {
+            id: number;
+            name: string;
+            slug: string;
+            description?: string | null;
+            is_active: boolean;
+            owner?: UserResource;
+            members?: TeamMemberResource[];
+            members_count?: number;
+            settings?: unknown[];
+        }
+        export interface OrderResource {
+            id: number;
+            status: AsEnum<typeof OrderStatus>;
+            total: number;
+            currency: AsEnum<typeof Currency>;
+            items?: OrderItem[];
+            items_count?: number;
+            total_avg?: number;
+            paid_at?: string;
+            shipped_at?: string;
+            delivered_at?: string;
+        }
+        /** Exercises: whenLoaded with Resource::make, whenLoaded bare (1-arg form), whenNotNull on nullable JSON column. */
+        export interface OrderItemResource {
+            id: number;
+            name: string;
+            sku: string;
+            quantity: number;
+            unit_price: number;
+            total_price: number;
+            product?: ProductResource;
+            order?: Order;
+            options?: Record<string, string | number | boolean> | null;
+        }
+        /** Represents a user loaded through a team's belongsToMany pivot. Exercises: whenPivotLoaded, whenPivotLoadedAs, whenHas on enum attributes. */
+        export interface TeamMemberResource {
+            id: number;
+            name: string;
+            email: string;
+            role?: RoleType;
+            membership_level?: MembershipLevelType;
+            avatar?: string | null;
+            team_role?: unknown;
+            joined_at?: unknown;
+            subscription_role?: unknown;
+        }
+        /** Resource with no toArray override but a known model — tests implicit delegation. */
+        export interface EmptyWithMixinResource {
+            id: number;
+            name: string;
+            email: string;
+            email_verified_at: string;
+            password: string;
+            options: Record<string, unknown> | null;
+            remember_token: string | null;
+            created_at: string;
+            updated_at: string;
+            role: RoleType;
+            membership_level: MembershipLevelType;
+            phone: string | null;
+            avatar: string | null;
+            bio: string | null;
+            settings: { theme: "light" | "dark"; notifications: boolean; locale: string } | null;
+            last_login_at: string;
+            last_login_ip: string | null;
+            initials: unknown;
+            is_premium: unknown;
+        }
+        /** Edge-case resource exercising unusual but valid patterns for AST analyzer guard clauses. */
+        export interface QuirkyResource {
+            id: number;
+            flag?: unknown;
+            normal_merge_key?: number;
+            formatted: unknown;
+            plain_user: UserResource;
+            empty_user: UserResource;
+            empty_enum: unknown;
+            not_enum: unknown;
+            uncast_enum: unknown;
+            fake_field: unknown;
+            fake_relation?: unknown;
+        }
+        /** Exercises advanced merge patterns: mergeWhen with EnumResource::make, mergeWhen with Resource::make, whenLoaded with value arg. */
+        export interface OrderDetailResource {
+            id: number;
+            status: AsEnum<typeof OrderStatus>;
+            user?: UserResource;
+            payment_status?: AsEnum<typeof OrderStatus>;
+            payment_currency?: CurrencyType;
+            shipping_user?: UserResource;
+            order_items?: OrderItem[];
+        }
+    }
+    export namespace blog.http.resources {
+        /** Exercises: multiple whenLoaded bare — both same-module (Article) and cross-module (App\User) model type resolution. */
+        export interface ReactionResource {
+            id: number;
+            emoji: string;
+            article?: Article;
+            user?: User;
+        }
+        /** Exercises: multiple EnumResource::make, when(cond, Resource::collection), whenLoaded bare (cross-module App\User as author), whenNotNull, whenCounted, whenAggregated, when conditional with direct property. */
+        export interface ArticleResource {
+            id: number;
+            title: string;
+            slug: string;
+            excerpt?: string | null;
+            body: string;
+            status: AsEnum<typeof ArticleStatus>;
+            content_type: AsEnum<typeof ContentType>;
+            is_featured: boolean;
+            featured_image?: string | null;
+            meta_description?: string | null;
+            published_at?: string;
+            author?: User;
+            reactions?: ReactionResource[];
+            reactions_count?: number;
+            reactions_avg?: number;
+        }
+    }
+    export namespace crm.http.resources {
+        /** Exercises: dual enum conflict — $this->status (App\Enums\Status direct access) vs EnumResource::make($this->crm_status) (Crm\Enums\Status), whenLoaded bare with two different User models (Crm\User + App\User), when conditional. */
+        export interface DealResource {
+            id: number;
+            title: string;
+            value: number;
+            status: StatusType;
+            crm_status: AsEnum<typeof Status>;
+            customer?: User;
+            admin?: User;
+            closed_at?: string;
+        }
+    }
+    export namespace shipping.http.resources {
+        /** Exercises: direct enum property access ($this->status), whenLoaded bare on same-module relation (Shipment). */
+        export interface TrackingEventResource {
+            id: number;
+            status: string;
+            location: string | null;
+            description: string | null;
+            occurred_at: string;
+            shipment?: Shipment;
+        }
+        /** Exercises: EnumResource::make on two enums (Carrier, Status), when, whenNotNull, whenLoaded bare cross-module (App\Order), Resource::collection, whenCounted, whenAggregated, mergeWhen with complex expression. */
+        export interface ShipmentResource {
+            id: number;
+            tracking_number: string | null;
+            carrier: AsEnum<typeof Carrier>;
+            status: AsEnum<typeof ShipmentStatus>;
+            weight_grams: number;
+            estimated_delivery_at?: string;
+            shipped_at?: string;
+            delivered_at?: string;
+            order?: Order;
+            tracking_events?: TrackingEventResource[];
+            tracking_events_count?: number;
+            events_total?: number;
+            transit_time?: unknown;
+        }
+    }
 }
