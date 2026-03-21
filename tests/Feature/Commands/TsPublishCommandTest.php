@@ -251,6 +251,7 @@ test('ts:publish warns and exits when both config types are disabled', function 
     config()->set('ts-publish.output_to_files', false);
     config()->set('ts-publish.publish_enums', false);
     config()->set('ts-publish.publish_models', false);
+    config()->set('ts-publish.publish_resources', false);
 
     $this->artisan('ts:publish', ['--preview' => 'true'])
         ->assertSuccessful()
@@ -343,6 +344,7 @@ test('ts:publish --source exits successfully when both config types disabled', f
     config()->set('ts-publish.output_to_files', false);
     config()->set('ts-publish.publish_enums', false);
     config()->set('ts-publish.publish_models', false);
+    config()->set('ts-publish.publish_resources', false);
 
     $this->artisan('ts:publish', ['--preview' => 'true', '--source' => 'Workbench\App\Enums\Status'])
         ->assertSuccessful()
@@ -383,4 +385,36 @@ test('ts:publish preview shows modular barrel files', function () {
         ->assertSuccessful()
         ->expectsOutputToContain('Enum Barrel Files:')
         ->expectsOutputToContain('Model Barrel Files:');
+});
+
+test('ts:publish fails when both --only-enums and --only-resources are passed', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-enums' => true, '--only-resources' => true])
+        ->assertFailed();
+});
+
+test('ts:publish fails when both --only-models and --only-resources are passed', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-models' => true, '--only-resources' => true])
+        ->assertFailed();
+});
+
+test('ts:publish --only-resources shows only resource content in preview', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-resources' => true])
+        ->assertSuccessful()
+        ->expectsOutputToContain('Resources:')
+        ->doesntExpectOutputToContain('Enums:')
+        ->doesntExpectOutputToContain('Models:');
+});
+
+test('ts:publish --only-resources exits when config resources disabled and non-interactive', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.publish_resources', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-resources' => true, '--no-interaction' => true])
+        ->assertSuccessful();
 });

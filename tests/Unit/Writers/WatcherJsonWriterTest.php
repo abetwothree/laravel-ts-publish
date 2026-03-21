@@ -102,3 +102,31 @@ test('watcher json excludes models when publish_models config is false', functio
     expect($paths->contains(fn ($p) => str_contains($p, 'Enum')))->toBeTrue()
         ->and($paths->contains(fn ($p) => str_contains($p, 'Model')))->toBeFalse();
 });
+
+test('watcher json includes resource paths when publish_resources is enabled', function () {
+    config()->set('ts-publish.output_collected_files_json', true);
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.publish_resources', true);
+
+    $writer = new WatcherJsonWriter(new Filesystem);
+    $content = $writer->write();
+
+    $decoded = json_decode($content, true);
+    $paths = collect($decoded);
+
+    expect($paths->contains(fn ($p) => str_contains($p, 'Resource')))->toBeTrue();
+});
+
+test('watcher json excludes resources when publish_resources is false', function () {
+    config()->set('ts-publish.output_collected_files_json', true);
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.publish_resources', false);
+
+    $writer = new WatcherJsonWriter(new Filesystem);
+    $content = $writer->write();
+
+    $decoded = json_decode($content, true);
+    $paths = collect($decoded);
+
+    expect($paths->contains(fn ($p) => str_contains($p, 'Resource')))->toBeFalse();
+});

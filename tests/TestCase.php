@@ -68,25 +68,28 @@ class TestCase extends Orchestra
             ->map(fn (SplFileInfo $file) => $file->getPathname())
             ->all();
 
-        config()->set('database.default', 'testing');
-        config()->set('app.key', 'base64:yTtQNlEOB1IqYydLG9Z5pKRSxhZffdOxT1iuZIJi+eM=');
-        config()->set('ts-publish.output_directory', workbench_path('resources/js/types/'));
-        config()->set('ts-publish.output_globals_file', true);
-        config()->set('ts-publish.output_json_file', true);
-        config()->set('ts-publish.output_collected_files_json', true);
-        config()->set('ts-publish.additional_model_directories', [
-            DatabaseNotification::class,
-            Invoice::class,
-            Shipment::class,
-            "Workbench\Shipping\Models\FalseShipmentClass",
-            ...$modules,
-        ]);
-        config()->set('ts-publish.additional_enum_directories', [
-            InvoiceStatus::class,
-            PaymentStatus::class,
-            Status::class,
-            "Workbench\Shipping\Enums\FalseStatusClass",
-            ...$modules,
+        config()->set([
+            'database.default' => 'testing',
+            'app.key' => 'base64:yTtQNlEOB1IqYydLG9Z5pKRSxhZffdOxT1iuZIJi+eM=',
+            'ts-publish.output_directory' => workbench_path('resources/js/types/'),
+            'ts-publish.output_globals_file' => true,
+            'ts-publish.output_json_file' => true,
+            'ts-publish.output_collected_files_json' => true,
+            'ts-publish.additional_model_directories' => [
+                DatabaseNotification::class,
+                Invoice::class,
+                Shipment::class,
+                "Workbench\Shipping\Models\FalseShipmentClass",
+                ...$modules,
+            ],
+            'ts-publish.additional_enum_directories' => [
+                InvoiceStatus::class,
+                PaymentStatus::class,
+                Status::class,
+                "Workbench\Shipping\Enums\FalseStatusClass",
+                ...$modules,
+            ],
+            'ts-publish.additional_resource_directories' => $modules,
         ]);
     }
 }
