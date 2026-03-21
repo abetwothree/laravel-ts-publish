@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Runners;
 
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
 use Illuminate\Support\Collection;
@@ -22,6 +23,9 @@ abstract class BaseRunner
     /** @var Collection<int, ModelGenerator> */
     public protected(set) Collection $modelGenerators;
 
+    /** @var Collection<int, ResourceGenerator> */
+    public protected(set) Collection $resourceGenerators;
+
     public protected(set) string $enumBarrelContent = '';
 
     public protected(set) string $modelBarrelContent = '';
@@ -32,6 +36,11 @@ abstract class BaseRunner
     /** @var array<string, string> Barrel contents keyed by namespace path (modular mode only) */
     public protected(set) array $modelModularBarrels = [];
 
+    public protected(set) string $resourceBarrelContent = '';
+
+    /** @var array<string, string> Barrel contents keyed by namespace path (modular mode only) */
+    public protected(set) array $resourceModularBarrels = [];
+
     public protected(set) string $globalsContent = '';
 
     public protected(set) string $jsonContent = '';
@@ -41,6 +50,8 @@ abstract class BaseRunner
     public bool $shouldPublishEnums = true;
 
     public bool $shouldPublishModels = true;
+
+    public bool $shouldPublishResources = true;
 
     abstract public function run(): void;
 }

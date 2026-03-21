@@ -6,8 +6,10 @@ namespace AbeTwoThree\LaravelTsPublish\Runners;
 
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
+use AbeTwoThree\LaravelTsPublish\Collectors\ResourcesCollector;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\JsonWriter;
@@ -24,6 +26,7 @@ class Runner extends BaseRunner
 
         $this->generateEnums();
         $this->generateModels();
+        $this->generateResources();
 
         $this->generateGlobals();
         $this->generateJson();
@@ -106,6 +109,46 @@ class Runner extends BaseRunner
                 $this->modelGenerators,
                 'index',
                 'models'
+            );
+        }
+    }
+
+    protected function generateResources(): void
+    {
+        if (! $this->shouldPublishResources) {
+            /** @var Collection<int, ResourceGenerator> $empty */
+            $empty = collect();
+            $this->resourceGenerators = $empty;
+
+            return;
+        }
+
+        /** @var ResourcesCollector $collector */
+        $collector = resolve(config()->string('ts-publish.resource_collector_class'));
+
+        /** @var Collection<int, ResourceGenerator> $resourceGenerators */
+        $resourceGenerators = collect();
+
+        foreach ($collector->collect() as $resourceClass) {
+            /** @var ResourceGenerator $generator */
+            $generator = resolve(
+                config()->string('ts-publish.resource_generator_class'),
+                ['findable' => $resourceClass],
+            );
+
+            $resourceGenerators->push($generator);
+        }
+
+        $this->resourceGenerators = $resourceGenerators;
+
+        if (config()->boolean('ts-publish.modular_publishing')) {
+            $this->resourceModularBarrels = $this->barrelWriter->writeModular($this->resourceGenerators);
+            $this->resourceBarrelContent = implode("\n\n", $this->resourceModularBarrels);
+        } else {
+            $this->resourceBarrelContent = $this->barrelWriter->write(
+                $this->resourceGenerators,
+                'index',
+                config()->string('ts-publish.resources_namespace', 'resources')
             );
         }
     }

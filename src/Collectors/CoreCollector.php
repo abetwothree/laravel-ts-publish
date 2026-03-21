@@ -103,7 +103,7 @@ abstract class CoreCollector
     }
 
     /**
-     * @param array<int, string> $setting
+     * @param  array<int, string>  $setting
      * @return array<int, string>
      */
     protected function sanitizeAllowSetting(array $setting): array

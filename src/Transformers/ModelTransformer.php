@@ -6,15 +6,13 @@ namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
+use AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsModelDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
-use Illuminate\Database\Eloquent\Builder;
+use AbeTwoThree\LaravelTsPublish\ModelInspector;
+use AbeTwoThree\LaravelTsPublish\RelationNullable;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\ModelInspector;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\MorphTo;
-use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Override;
@@ -28,21 +26,8 @@ use ReflectionClass;
  * @phpstan-import-type MutatorsList from TsModelDto
  * @phpstan-import-type RelationsList from TsModelDto
  *
- * @phpstan-type AttributeInfo = array{name: string, type: string, cast: string|null, nullable: bool}
+ * @phpstan-type AttributeInfo = array{name: string, type: string|null, cast: string|null, nullable: bool}
  * @phpstan-type RelationInfo = array{name: string, type: string, related: class-string<Model>}
- * @phpstan-type ModelInspectData = array{
- *     "class": class-string<Model>,
- *     "database": string,
- *     "table": string,
- *     "policy": class-string|null,
- *     "attributes": Collection<int, AttributeInfo>,
- *     "relations": Collection<int, RelationInfo>,
- *     "events": Collection<int, array{event: string, class: class-string}>,
- *     "observers": Collection<int, array{event: string, observer: class-string}>,
- *     "collection": class-string<Collection<int, Model>>,
- *     "builder": class-string<Builder<Model>>,
- *     "resource": class-string<JsonResource>|null
- * }
  * @phpstan-type DbColumns = list<string>
  * @phpstan-type TsTypeOverrides = array<string, string>
  *
@@ -66,8 +51,7 @@ class ModelTransformer extends CoreTransformer
     /** @var DbColumns */
     public protected(set) array $dbColumns = [];
 
-    /** @var ModelInspectData */
-    public protected(set) array $modelInspect;
+    public protected(set) ModelInfo $modelInspect;
 
     /** @var ColumnsList */
     public protected(set) array $columns = [];
@@ -80,6 +64,8 @@ class ModelTransformer extends CoreTransformer
 
     /** @var TsTypeOverrides */
     public protected(set) array $tsTypeOverrides = [];
+
+    protected RelationNullable $relationNullable;
 
     /** @var array<string, string> FQCN => TypeScript type alias name */
     protected array $enumFqcnMap = [];
@@ -164,6 +150,9 @@ class ModelTransformer extends CoreTransformer
         $this->modelInstance = $modelInstance;
         $this->dbColumns = $this->modelInstance->getConnection()->getSchemaBuilder()->getColumnListing($this->modelInstance->getTable());
         $this->modelInspect = resolve(ModelInspector::class)->inspect($this->findable);
+        /** @var Collection<int, AttributeInfo> $attributes */
+        $attributes = $this->modelInspect->attributes;
+        $this->relationNullable = new RelationNullable($this->modelInstance, $attributes);
         $this->reflectionModel = new ReflectionClass($this->findable);
         $this->modelName = $this->reflectionModel->getShortName();
         $this->filePath = $this->resolveRelativePath((string) $this->reflectionModel->getFileName());
@@ -223,7 +212,7 @@ class ModelTransformer extends CoreTransformer
     protected function transformColumns(): self
     {
         /** @var Collection<int, AttributeInfo> $allAttributes */
-        $allAttributes = $this->modelInspect['attributes'];
+        $allAttributes = $this->modelInspect->attributes;
 
         $attributes = $allAttributes->filter(fn (array $attr) => in_array($attr['name'], $this->dbColumns));
 
@@ -246,9 +235,9 @@ class ModelTransformer extends CoreTransformer
                 $accessorType = $this->resolveMutatorType($name);
                 $typings = $accessorType['type'] !== 'unknown'
                     ? $accessorType
-                    : LaravelTsPublish::phpToTypeScriptType($attribute['type']);
+                    : LaravelTsPublish::phpToTypeScriptType($attribute['type'] ?? '');
             } else {
-                $typings = LaravelTsPublish::phpToTypeScriptType($cast ?? $attribute['type']);
+                $typings = LaravelTsPublish::phpToTypeScriptType($cast ?? $attribute['type'] ?? '');
             }
 
             $type = $typings['type'];
@@ -288,7 +277,7 @@ class ModelTransformer extends CoreTransformer
     protected function transformMutators(): self
     {
         /** @var Collection<int, AttributeInfo> $allAttributes */
-        $allAttributes = $this->modelInspect['attributes'];
+        $allAttributes = $this->modelInspect->attributes;
 
         $mutators = $allAttributes->filter(fn (array $attr) => ! in_array($attr['name'], $this->dbColumns));
 
@@ -338,7 +327,7 @@ class ModelTransformer extends CoreTransformer
     protected function transformRelations(): self
     {
         /** @var Collection<int, RelationInfo> $allRelations */
-        $allRelations = $this->modelInspect['relations'];
+        $allRelations = $this->modelInspect->relations;
 
         /** @var list<string> $includedModels */
         $includedModels = array_values(array_filter(config()->array('ts-publish.included_models', []), 'is_string'));
@@ -373,7 +362,7 @@ class ModelTransformer extends CoreTransformer
                 ? $relatedBasename.'[]'
                 : $relatedBasename;
 
-            if ($nullableRelations && $this->isRelationNullable($relation)) {
+            if ($nullableRelations && $this->relationNullable->isNullable($relation)) {
                 $relationType .= ' | null';
             }
 
@@ -392,93 +381,6 @@ class ModelTransformer extends CoreTransformer
         }
 
         return $this;
-    }
-
-    /**
-     * Determine whether a singular relation should be typed as nullable.
-     *
-     * @param  RelationInfo  $relation
-     */
-    protected function isRelationNullable(array $relation): bool
-    {
-        $strategy = LaravelTsPublish::relationStrategy($relation['type']);
-
-        return match ($strategy) {
-            'never' => false,
-            'nullable' => true,
-            'fk' => $this->isForeignKeyNullable($relation),
-            'morph' => $this->isMorphNullable($relation),
-            default => true,
-        };
-    }
-
-    /**
-     * Check if the BelongsTo foreign key column is nullable in the DB schema.
-     *
-     * @param  RelationInfo  $relation
-     */
-    protected function isForeignKeyNullable(array $relation): bool
-    {
-        $relationInstance = $this->modelInstance->{$relation['name']}();
-
-        if (! $relationInstance instanceof BelongsTo) {
-            return true;
-        }
-
-        /** @var string|list<string> $fkName */
-        $fkName = $relationInstance->getForeignKeyName();
-
-        if (is_array($fkName)) {
-            foreach ($fkName as $column) {
-                if ($this->isAttributeNullable($column)) {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        return $this->isAttributeNullable($fkName);
-    }
-
-    /**
-     * Check if morph type or morph id columns are nullable in the DB schema.
-     *
-     * @param  RelationInfo  $relation
-     */
-    protected function isMorphNullable(array $relation): bool
-    {
-        $relationInstance = $this->modelInstance->{$relation['name']}();
-
-        if (! $relationInstance instanceof MorphTo) {
-            return true;
-        }
-
-        /** @var string|list<string> $fkName */
-        $fkName = $relationInstance->getForeignKeyName();
-        $morphType = $relationInstance->getMorphType();
-
-        if (is_array($fkName)) {
-            foreach ($fkName as $column) {
-                if ($this->isAttributeNullable($column)) {
-                    return true;
-                }
-            }
-
-            return $this->isAttributeNullable($morphType);
-        }
-
-        return $this->isAttributeNullable($fkName) || $this->isAttributeNullable($morphType);
-    }
-
-    protected function isAttributeNullable(string $columnName): bool
-    {
-        /** @var Collection<int, AttributeInfo> $attributes */
-        $attributes = $this->modelInspect['attributes'];
-
-        $attribute = $attributes->first(fn (array $attr) => $attr['name'] === $columnName);
-
-        return $attribute !== null ? $attribute['nullable'] : true;
     }
 
     protected function isMutatorExcluded(string $name): bool

@@ -7,7 +7,9 @@ namespace AbeTwoThree\LaravelTsPublish\Runners;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Collection;
 use InvalidArgumentException;
 use ReflectionClass;
@@ -24,6 +26,10 @@ class RunnerForSource extends BaseRunner
         /** @var Collection<int, ModelGenerator> $modelGenerators */
         $modelGenerators = collect();
         $this->modelGenerators = $modelGenerators;
+
+        /** @var Collection<int, ResourceGenerator> $resourceGenerators */
+        $resourceGenerators = collect();
+        $this->resourceGenerators = $resourceGenerators;
     }
 
     public function run(): void
@@ -46,8 +52,13 @@ class RunnerForSource extends BaseRunner
                 throw new InvalidArgumentException("Model publishing is disabled: {$fqcn}");
             }
             $this->generateModel($fqcn);
+        } elseif ($reflection->isSubclassOf(JsonResource::class) && ! $reflection->isAbstract()) {
+            if (! $this->shouldPublishResources) {
+                throw new InvalidArgumentException("Resource publishing is disabled: {$fqcn}");
+            }
+            $this->generateResource($fqcn);
         } else {
-            throw new InvalidArgumentException("Class is not a publishable enum or model: {$fqcn}");
+            throw new InvalidArgumentException("Class is not a publishable enum, model, or resource: {$fqcn}");
         }
     }
 
@@ -86,5 +97,16 @@ class RunnerForSource extends BaseRunner
         );
 
         $this->modelGenerators = collect([$generator]);
+    }
+
+    protected function generateResource(string $fqcn): void
+    {
+        /** @var ResourceGenerator $generator */
+        $generator = resolve(
+            config()->string('ts-publish.resource_generator_class'),
+            ['findable' => $fqcn],
+        );
+
+        $this->resourceGenerators = collect([$generator]);
     }
 }

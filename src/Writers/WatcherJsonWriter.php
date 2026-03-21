@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
+use AbeTwoThree\LaravelTsPublish\Collectors\ResourcesCollector;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use BackedEnum;
 use Illuminate\Database\Eloquent\Model;
@@ -29,6 +30,7 @@ class WatcherJsonWriter
         $paths = [
             ...$this->collectEnumPaths(),
             ...$this->collectModelPaths(),
+            ...$this->collectResourcePaths(),
         ];
 
         sort($paths, SORT_STRING);
@@ -87,6 +89,29 @@ class WatcherJsonWriter
             $collector->collect()
                 ->map(function (string $fqcn): string {
                     /** @var class-string<Model> $fqcn */
+                    $reflection = new ReflectionClass($fqcn);
+
+                    return LaravelTsPublish::resolveRelativePath((string) $reflection->getFileName());
+                })
+                ->all()
+        );
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function collectResourcePaths(): array
+    {
+        if (! config()->boolean('ts-publish.publish_resources')) {
+            return [];
+        }
+
+        /** @var ResourcesCollector $collector */
+        $collector = resolve(config()->string('ts-publish.resource_collector_class'));
+
+        return array_values(
+            $collector->collect()
+                ->map(function (string $fqcn): string {
                     $reflection = new ReflectionClass($fqcn);
 
                     return LaravelTsPublish::resolveRelativePath((string) $reflection->getFileName());

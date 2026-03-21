@@ -15,7 +15,7 @@ use Illuminate\Support\Collection;
  * using the configured RelationMap strategies and DB-level column inspection.
  *
  * @phpstan-type RelationEntry = array{name: string, type: string, related: class-string<Model>}
- * @phpstan-type AttributeEntry = array{name: string, type: string, cast: string|null, nullable: bool}
+ * @phpstan-type AttributeEntry = array{name: string, type: string|null, cast: string|null, nullable: bool}
  */
 class RelationNullable
 {
@@ -48,11 +48,7 @@ class RelationNullable
      */
     protected function isForeignKeyNullable(array $relation): bool
     {
-        if ($this->modelInstance === null) {
-            return true;
-        }
-
-        $relationInstance = $this->modelInstance->{$relation['name']}();
+        $relationInstance = $this->modelInstance?->{$relation['name']}();
 
         if (! $relationInstance instanceof BelongsTo) {
             return true;
@@ -79,11 +75,7 @@ class RelationNullable
      */
     protected function isMorphNullable(array $relation): bool
     {
-        if ($this->modelInstance === null) {
-            return true;
-        }
-
-        $relationInstance = $this->modelInstance->{$relation['name']}();
+        $relationInstance = $this->modelInstance?->{$relation['name']}();
 
         if (! $relationInstance instanceof MorphTo) {
             return true;
@@ -108,11 +100,7 @@ class RelationNullable
 
     protected function isAttributeNullable(string $columnName): bool
     {
-        if ($this->attributes === null) {
-            return true;
-        }
-
-        $attribute = $this->attributes->first(fn (array $attr) => $attr['name'] === $columnName);
+        $attribute = $this->attributes?->first(fn (array $attr) => $attr['name'] === $columnName);
 
         return $attribute !== null ? $attribute['nullable'] : true;
     }
