@@ -4,14 +4,12 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Analyzers;
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ResolvesModelTypes;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResourceCasts;
-use AbeTwoThree\LaravelTsPublish\EnumResource;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
-use AbeTwoThree\LaravelTsPublish\ModelInspector;
-use AbeTwoThree\LaravelTsPublish\RelationNullable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Support\Collection;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -20,7 +18,6 @@ use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
-use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Return_;
@@ -38,26 +35,13 @@ use ReflectionClass;
  * @phpstan-import-type ClassMapType from ResourceAnalysis
  * @phpstan-import-type ImportMapType from ResourceAnalysis
  *
- * @phpstan-type ModelAttributeInfo = array{name: string, type: string|null, cast: string|null, nullable: bool}
- * @phpstan-type ModelRelationInfo = array{name: string, type: string, related: class-string<Model>}
+ * @phpstan-type ValueExpressionResult = array{type: string, optional: bool, enumFqcn?: class-string, directEnumFqcn?: class-string, resourceFqcn?: class-string, modelFqcn?: class-string}
+ * @phpstan-type PropertyExtractionResult = array{properties: ResourcePropertyInfoList, enumResources: ClassMapType, nestedResources: ClassMapType, directEnumFqcns: ClassMapType, modelFqcns: ClassMapType}
  */
 class ResourceAstAnalyzer
 {
-    protected ?Model $modelInstance = null;
-
-    protected ?RelationNullable $relationNullable = null;
-
-    /** @var Collection<int, ModelAttributeInfo>|null */
-    protected ?Collection $modelAttributes = null;
-
-    /** @var Collection<int, ModelRelationInfo>|null */
-    protected ?Collection $modelRelations = null;
-
-    /** @var list<string> */
-    protected array $conditionalMethods = [
-        'when', 'whenHas', 'whenNotNull', 'whenLoaded',
-        'whenCounted', 'whenAggregated', 'whenPivotLoaded', 'whenPivotLoadedAs',
-    ];
+    use InspectsAstNodes;
+    use ResolvesModelTypes;
 
     /**
      * @param  ReflectionClass<JsonResource>  $resourceReflection
@@ -77,13 +61,7 @@ class ResourceAstAnalyzer
         $filePath = (string) $this->resourceReflection->getFileName();
         $source = (string) file_get_contents($filePath);
 
-        $parser = (new ParserFactory)->createForNewestSupportedVersion();
-        /** @var list<Node\Stmt> $stmts */
-        $stmts = $parser->parse($source);
-
-        $traverser = new NodeTraverser;
-        $traverser->addVisitor(new NameResolver);
-        $stmts = $traverser->traverse($stmts);
+        $stmts = $this->parseAndResolveAst($source);
 
         $finder = new NodeFinder;
         $toArrayMethod = $finder->findFirst($stmts, function (Node $node): bool {
@@ -221,21 +199,7 @@ class ResourceAstAnalyzer
                 'description' => '',
             ];
 
-            if (isset($result['enumFqcn'])) {
-                $enumResources[$keyName] = $result['enumFqcn'];
-            }
-
-            if (isset($result['directEnumFqcn'])) {
-                $directEnumFqcns[$keyName] = $result['directEnumFqcn'];
-            }
-
-            if (isset($result['resourceFqcn'])) {
-                $nestedResources[$keyName] = $result['resourceFqcn'];
-            }
-
-            if (isset($result['modelFqcn'])) {
-                $modelFqcns[$keyName] = $result['modelFqcn'];
-            }
+            $this->dispatchFqcnResults($keyName, $result, $enumResources, $directEnumFqcns, $nestedResources, $modelFqcns);
 
         }
 
@@ -285,14 +249,7 @@ class ResourceAstAnalyzer
     /**
      * Analyze a value expression and return its type + optional status.
      *
-     * @return array{
-     *  type: string,
-     *  optional: bool,
-     *  enumFqcn?: class-string,
-     *  directEnumFqcn?: class-string,
-     *  resourceFqcn?: class-string,
-     *  modelFqcn?: class-string,
-     * }
+     * @return ValueExpressionResult
      */
     protected function analyzeValueExpression(Expr $expr): array
     {
@@ -354,13 +311,7 @@ class ResourceAstAnalyzer
     /**
      * Analyze $this->when(condition, value) — the value is the second arg.
      *
-     * @return array{
-     *  type: string,
-     *  optional: bool,
-     *  enumFqcn?: class-string,
-     *  directEnumFqcn?: class-string,
-     *  resourceFqcn?: class-string,
-     * }
+     * @return ValueExpressionResult
      */
     protected function analyzeWhen(MethodCall $call): array
     {
@@ -382,7 +333,7 @@ class ResourceAstAnalyzer
     /**
      * Analyze $this->whenHas('attribute') — the attribute name is the first arg string.
      *
-     * @return array{type: string, optional: bool, directEnumFqcn?: class-string}
+     * @return ValueExpressionResult
      */
     protected function analyzeWhenHas(MethodCall $call): array
     {
@@ -406,13 +357,7 @@ class ResourceAstAnalyzer
     /**
      * Analyze $this->whenNotNull($this->value) — resolve the inner expression type.
      *
-     * @return array{
-     *  type: string,
-     *  optional: bool,
-     *  enumFqcn?: class-string,
-     *  directEnumFqcn?: class-string,
-     *  resourceFqcn?: class-string,
-     * }
+     * @return ValueExpressionResult
      */
     protected function analyzeWhenNotNull(MethodCall $call): array
     {
@@ -431,7 +376,7 @@ class ResourceAstAnalyzer
     /**
      * Analyze $this->whenLoaded('relation') or $this->whenLoaded('relation', value, default).
      *
-     * @return array{type: string, optional: bool, resourceFqcn?: class-string, modelFqcn?: class-string}
+     * @return ValueExpressionResult
      */
     protected function analyzeWhenLoaded(MethodCall $call): array
     {
@@ -464,13 +409,7 @@ class ResourceAstAnalyzer
     /**
      * Analyze $this->mergeWhen(condition, [...]) — extract properties and FQCNs from 2nd arg array.
      *
-     * @return array{
-     *  properties: ResourcePropertyInfoList,
-     *  enumResources: ClassMapType,
-     *  nestedResources: ClassMapType,
-     *  directEnumFqcns: ClassMapType,
-     *  modelFqcns: ClassMapType
-     * }
+     * @return PropertyExtractionResult
      */
     protected function analyzeMergeExpression(MethodCall $call): array
     {
@@ -499,7 +438,7 @@ class ResourceAstAnalyzer
     /**
      * Analyze a static method call like EnumResource::make() or SomeResource::make/collection().
      *
-     * @return array{type: string, optional: bool, enumFqcn?: class-string, resourceFqcn?: class-string}
+     * @return ValueExpressionResult
      */
     protected function analyzeStaticCall(StaticCall $call): array
     {
@@ -547,7 +486,7 @@ class ResourceAstAnalyzer
     /**
      * Analyze EnumResource::make($this->prop) — resolve the enum class from the model property.
      *
-     * @return array{type: string, optional: bool, enumFqcn?: class-string}
+     * @return ValueExpressionResult
      */
     protected function analyzeEnumResourceMake(StaticCall $call): array
     {
@@ -585,7 +524,7 @@ class ResourceAstAnalyzer
     /**
      * Analyze $this->property — resolve the type from the backing model.
      *
-     * @return array{type: string, optional: bool, directEnumFqcn?: class-string}
+     * @return ValueExpressionResult
      */
     protected function analyzeThisProperty(Expr $expr): array
     {
@@ -609,13 +548,7 @@ class ResourceAstAnalyzer
     /**
      * Extract properties and FQCNs from an array expression, e.g. for mergeWhen's second argument.
      *
-     * @return array{
-     *  properties: ResourcePropertyInfoList,
-     *  enumResources: ClassMapType,
-     *  nestedResources: ClassMapType,
-     *  directEnumFqcns: ClassMapType,
-     *  modelFqcns: ClassMapType,
-     * }
+     * @return PropertyExtractionResult
      */
     protected function extractPropertiesFromArray(Array_ $array, bool $optional = false): array
     {
@@ -650,21 +583,7 @@ class ResourceAstAnalyzer
                 'description' => '',
             ];
 
-            if (isset($result['enumFqcn'])) {
-                $enumResources[$keyName] = $result['enumFqcn'];
-            }
-
-            if (isset($result['directEnumFqcn'])) {
-                $directEnumFqcns[$keyName] = $result['directEnumFqcn'];
-            }
-
-            if (isset($result['resourceFqcn'])) {
-                $nestedResources[$keyName] = $result['resourceFqcn'];
-            }
-
-            if (isset($result['modelFqcn'])) {
-                $modelFqcns[$keyName] = $result['modelFqcn'];
-            }
+            $this->dispatchFqcnResults($keyName, $result, $enumResources, $directEnumFqcns, $nestedResources, $modelFqcns);
         }
 
         return [
@@ -674,18 +593,6 @@ class ResourceAstAnalyzer
             'directEnumFqcns' => $directEnumFqcns,
             'modelFqcns' => $modelFqcns,
         ];
-    }
-
-    /**
-     * Check if an expression is a parent::toArray() call.
-     */
-    protected function isParentToArrayCall(Expr $expr): bool
-    {
-        return $expr instanceof StaticCall
-            && $expr->class instanceof Name
-            && $expr->class->toLowerString() === 'parent'
-            && $expr->name instanceof Identifier
-            && $expr->name->toString() === 'toArray';
     }
 
     /**
@@ -728,13 +635,7 @@ class ResourceAstAnalyzer
         }
 
         $source = (string) file_get_contents($filePath);
-        $parser = (new ParserFactory)->createForNewestSupportedVersion();
-        /** @var list<Node\Stmt> $stmts */
-        $stmts = $parser->parse($source);
-
-        $traverser = new NodeTraverser;
-        $traverser->addVisitor(new NameResolver);
-        $stmts = $traverser->traverse($stmts);
+        $stmts = $this->parseAndResolveAst($source);
 
         $finder = new NodeFinder;
         $targetMethod = $finder->findFirst($stmts, function (Node $node) use ($methodName): bool {
@@ -881,244 +782,54 @@ class ResourceAstAnalyzer
         return implode(' | ', array_unique($resolved));
     }
 
-    // -------------------------------------------------------------------------
-    // Helper methods
-    // -------------------------------------------------------------------------
-
     /**
-     * Check if a static call's first argument is a conditional expression
-     * (e.g. $this->whenLoaded('relation'), $this->when(...), etc.).
-     */
-    protected function hasConditionalArgument(StaticCall $call): bool
-    {
-        $args = $call->getArgs();
-
-        if (count($args) < 1) {
-            return false;
-        }
-
-        $inner = $args[0]->value;
-
-        foreach ($this->conditionalMethods as $method) {
-            if ($this->isThisMethodCall($inner, $method)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    protected function isThisMethodCall(Expr $expr, string $methodName): bool
-    {
-        return $expr instanceof MethodCall
-            && $expr->var instanceof Variable
-            && $expr->var->name === 'this'
-            && $expr->name instanceof Identifier
-            && $expr->name->toString() === $methodName;
-    }
-
-    protected function isThisPropertyFetch(Expr $expr): bool
-    {
-        return $expr instanceof PropertyFetch
-            && $expr->var instanceof Variable
-            && $expr->var->name === 'this';
-    }
-
-    protected function resolveKeyName(Expr $key): ?string
-    {
-        if ($key instanceof String_) {
-            return $key->value;
-        }
-
-        return null;
-    }
-
-    protected function resolveStaticCallClassName(StaticCall $call): ?string
-    {
-        if ($call->class instanceof Name) {
-            return $call->class->toString();
-        }
-
-        return null; // @codeCoverageIgnore
-    }
-
-    protected function isEnumResourceClass(string $fqcn): bool
-    {
-        return $fqcn === EnumResource::class
-            || $fqcn === 'EnumResource'
-            || is_a($fqcn, EnumResource::class, true);
-    }
-
-    protected function isResourceClass(string $fqcn): bool
-    {
-        return class_exists($fqcn) && is_a($fqcn, JsonResource::class, true);
-    }
-
-    // -------------------------------------------------------------------------
-    // Model resolution helpers
-    // -------------------------------------------------------------------------
-
-    /**
-     * Build a ResourceAnalysis from all model attributes when the resource
-     * delegates to JsonResource::toArray() (which returns $this->resource->toArray()).
-     */
-    protected function buildModelDelegatedAnalysis(): ?ResourceAnalysis
-    {
-        if ($this->modelAttributes === null) {
-            return null;
-        }
-
-        /** @var ResourcePropertyInfoList $properties */
-        $properties = [];
-        /** @var ClassMapType $directEnumFqcns */
-        $directEnumFqcns = [];
-
-        foreach ($this->modelAttributes as $attr) {
-            $info = $this->resolveModelAttributeTypeInfo($attr['name']);
-
-            $properties[] = [
-                'name' => $attr['name'],
-                'type' => $info['type'],
-                'optional' => false,
-                'description' => '',
-            ];
-
-            if ($info['enumFqcn'] !== null) {
-                $directEnumFqcns[$attr['name']] = $info['enumFqcn'];
-            }
-        }
-
-        return new ResourceAnalysis(
-            properties: $properties,
-            directEnumFqcns: $directEnumFqcns,
-        );
-    }
-
-    protected function loadModelInspectorData(): void
-    {
-        if ($this->modelClass === null || ! class_exists($this->modelClass)) {
-            return;
-        }
-
-        try {
-            /** @var Model $modelInstance */
-            $modelInstance = resolve($this->modelClass);
-            $this->modelInstance = $modelInstance;
-
-            $data = resolve(ModelInspector::class)->inspect($this->modelClass);
-            /** @var Collection<int, ModelAttributeInfo> $attributes */
-            $attributes = $data->attributes;
-            $this->modelAttributes = $attributes;
-            $this->modelRelations = $data->relations;
-            $this->relationNullable = new RelationNullable($this->modelInstance, $this->modelAttributes);
-        } catch (\Throwable) { // @codeCoverageIgnore
-            // Model may not have a working database connection during analysis
-        }
-    }
-
-    /**
-     * Resolve the TypeScript type and optional enum FQCN for a model attribute.
+     * Parse PHP source and resolve fully qualified names via AST traversal.
      *
-     * @return array{type: string, enumFqcn: class-string|null}
+     * @return array<Node>
      */
-    protected function resolveModelAttributeTypeInfo(string $attributeName): array
+    protected function parseAndResolveAst(string $source): array
     {
-        if ($this->modelAttributes === null) {
-            return ['type' => 'unknown', 'enumFqcn' => null];
-        }
+        $parser = (new ParserFactory)->createForNewestSupportedVersion();
+        /** @var list<Node\Stmt> $stmts */
+        $stmts = $parser->parse($source);
 
-        $attr = $this->modelAttributes->firstWhere('name', $attributeName);
+        $traverser = new NodeTraverser;
+        $traverser->addVisitor(new NameResolver);
 
-        if ($attr === null) {
-            return ['type' => 'unknown', 'enumFqcn' => null];
-        }
-
-        // Attribute accessors need special handling — resolve from DB column type
-        $cast = $attr['cast'];
-
-        if ($cast !== null && $cast !== '' && $cast !== 'attribute' && $cast !== 'accessor') {
-            $tsInfo = LaravelTsPublish::phpToTypeScriptType($cast);
-
-            /** @var class-string|null $enumFqcn */
-            $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
-
-            return ['type' => $tsInfo['type'], 'enumFqcn' => $enumFqcn];
-        }
-
-        // Fall back to DB column type
-        if ($attr['type'] === null || $attr['type'] === '') {
-            return ['type' => 'unknown', 'enumFqcn' => null];
-        }
-
-        $tsInfo = LaravelTsPublish::phpToTypeScriptType($attr['type']);
-        $type = $tsInfo['type'];
-
-        if ($attr['nullable'] && $type !== 'unknown') {
-            $type .= ' | null';
-        }
-
-        /** @var class-string|null $enumFqcn */
-        $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
-
-        return ['type' => $type, 'enumFqcn' => $enumFqcn];
+        return $traverser->traverse($stmts);
     }
 
     /**
-     * Resolve the enum class for a model property (if it's cast to an enum).
+     * Dispatch FQCN results from a value expression into the tracking maps.
      *
-     * @return class-string|null
+     * @param  ValueExpressionResult  $result
+     * @param  ClassMapType  $enumResources
+     * @param  ClassMapType  $directEnumFqcns
+     * @param  ClassMapType  $nestedResources
+     * @param  ClassMapType  $modelFqcns
      */
-    protected function resolveModelPropertyEnumClass(string $propertyName): ?string
-    {
-        if ($this->modelAttributes === null) {
-            return null;
+    protected function dispatchFqcnResults(
+        string $keyName,
+        array $result,
+        array &$enumResources,
+        array &$directEnumFqcns,
+        array &$nestedResources,
+        array &$modelFqcns,
+    ): void {
+        if (isset($result['enumFqcn'])) {
+            $enumResources[$keyName] = $result['enumFqcn'];
         }
 
-        $attr = $this->modelAttributes->firstWhere('name', $propertyName);
-
-        if ($attr === null || $attr['cast'] === null) {
-            return null;
+        if (isset($result['directEnumFqcn'])) {
+            $directEnumFqcns[$keyName] = $result['directEnumFqcn'];
         }
 
-        $cast = $attr['cast'];
-
-        // Check if the cast is an enum class
-        if (class_exists($cast) && (new ReflectionClass($cast))->isEnum()) {
-            return $cast;
+        if (isset($result['resourceFqcn'])) {
+            $nestedResources[$keyName] = $result['resourceFqcn'];
         }
 
-        return null;
-    }
-
-    /**
-     * @return array{type: string, modelFqcn: class-string|null}
-     */
-    protected function resolveModelRelationTypeInfo(string $relationName): array
-    {
-        if ($this->modelRelations === null) {
-            return ['type' => 'unknown', 'modelFqcn' => null];
+        if (isset($result['modelFqcn'])) {
+            $modelFqcns[$keyName] = $result['modelFqcn'];
         }
-
-        $relation = $this->modelRelations->firstWhere('name', $relationName);
-
-        if ($relation === null) {
-            return ['type' => 'unknown', 'modelFqcn' => null];
-        }
-
-        $relatedModel = class_basename($relation['related']);
-        $containsMany = str_contains(strtolower($relation['type']), 'many');
-
-        if ($containsMany) {
-            return ['type' => $relatedModel.'[]', 'modelFqcn' => $relation['related']];
-        }
-
-        $type = $relatedModel;
-        $nullableRelations = config()->boolean('ts-publish.nullable_relations');
-
-        if ($nullableRelations && $this->relationNullable?->isNullable($relation)) {
-            $type .= ' | null';
-        }
-
-        return ['type' => $type, 'modelFqcn' => $relation['related']];
     }
 }

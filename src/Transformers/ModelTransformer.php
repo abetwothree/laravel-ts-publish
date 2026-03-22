@@ -28,9 +28,9 @@ use ReflectionClass;
  * @phpstan-import-type ValuesImportMap from TsModelDto
  * @phpstan-import-type MutatorsList from TsModelDto
  * @phpstan-import-type RelationsList from TsModelDto
+ * @phpstan-import-type AttributeInfo from ModelInfo
+ * @phpstan-import-type RelationInfo from ModelInfo
  *
- * @phpstan-type AttributeInfo = array{name: string, type: string|null, cast: string|null, nullable: bool}
- * @phpstan-type RelationInfo = array{name: string, type: string, related: class-string<Model>}
  * @phpstan-type DbColumns = list<string>
  * @phpstan-type TsTypeOverrides = array<string, string>
  *

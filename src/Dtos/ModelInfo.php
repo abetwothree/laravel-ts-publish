@@ -17,8 +17,10 @@ use LogicException;
  *
  * @phpstan-type ModelClassType = class-string<TModel>
  * @phpstan-type PolicyClassType = class-string|null
- * @phpstan-type AttributesType = Collection<int, array<string, mixed>>
- * @phpstan-type RelationsType = Collection<int, array{name: string, type: string, related: class-string<Model>}>
+ * @phpstan-type AttributeInfo = array{name: string, type: string|null, cast: string|null, nullable: bool}
+ * @phpstan-type RelationInfo = array{name: string, type: string, related: class-string<Model>}
+ * @phpstan-type AttributesType = Collection<int, AttributeInfo>
+ * @phpstan-type RelationsType = Collection<int, RelationInfo>
  * @phpstan-type EventsType = Collection<int, array{event: string, class: string}>
  * @phpstan-type ObserversType = Collection<int, array{event: string, observer: array<int, string>}>
  * @phpstan-type CollectionType = class-string<EloquentCollection<int, TModel>>

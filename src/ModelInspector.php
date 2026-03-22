@@ -36,7 +36,7 @@ class ModelInspector extends EloquentModelInspector
          *  database: string,
          *  table: string,
          *  policy: class-string|null,
-         *  attributes: Collection<int, array<string, mixed>>,
+         *  attributes: Collection<int, array{name: string, type: string|null, cast: string|null, nullable: bool}>,
          *  relations: Collection<int, array{name: string, type: string, related: class-string<Model>}>,
          *  events: Collection<int, array{event: string, class: string}>,
          *  observers: Collection<int, array{event: string, observer: array<int, string>}>,
