@@ -35,17 +35,17 @@ class ModelInfo implements Arrayable, ArrayAccess
      * @param  class-string<JsonResource>|null  $resource  The JSON resource that represents the model.
      */
     public function __construct(
-        public $class,
-        public $database,
-        public $table,
-        public $policy,
-        public $attributes,
-        public $relations,
-        public $events,
-        public $observers,
-        public $collection,
-        public $builder,
-        public $resource
+        public string $class,
+        public string $database,
+        public string $table,
+        public ?string $policy,
+        public Collection $attributes,
+        public Collection $relations,
+        public Collection $events,
+        public Collection $observers,
+        public string $collection,
+        public string $builder,
+        public ?string $resource,
     ) {}
 
     /**
@@ -59,8 +59,8 @@ class ModelInfo implements Arrayable, ArrayAccess
      *     attributes: Collection<int, array<string, mixed>>,
      *     relations: Collection<int, array{name: string, type: string, related: class-string<Model>}>,
      *     events: Collection<int, array{event: string, class: string}>,
-     *     observers: Collection<int, array{event: string, observer: array<int, string>}>, collection: class-string<\Illuminate\Database\Eloquent\Collection<int, Model>>,
-
+     *     observers: Collection<int, array{event: string, observer: array<int, string>}>,
+     *     collection: class-string<\Illuminate\Database\Eloquent\Collection<int, Model>>,
      *     builder: class-string<Builder<Model>>,
      *     resource: class-string<JsonResource>|null
      * }

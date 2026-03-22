@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Runners;
 
+use AbeTwoThree\LaravelTsPublish\EnumResource;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Http\Resources\Json\ResourceCollection;
 use Illuminate\Support\Collection;
 use InvalidArgumentException;
 use ReflectionClass;
@@ -46,16 +48,19 @@ class RunnerForSource extends BaseRunner
             if (! $this->shouldPublishEnums) {
                 throw new InvalidArgumentException("Enum publishing is disabled: {$fqcn}");
             }
+
             $this->generateEnum($fqcn);
         } elseif ($reflection->isSubclassOf(Model::class) && ! $reflection->isAbstract()) {
             if (! $this->shouldPublishModels) {
                 throw new InvalidArgumentException("Model publishing is disabled: {$fqcn}");
             }
+
             $this->generateModel($fqcn);
-        } elseif ($reflection->isSubclassOf(JsonResource::class) && ! $reflection->isAbstract()) {
+        } elseif ($this->validResource($reflection)) {
             if (! $this->shouldPublishResources) {
                 throw new InvalidArgumentException("Resource publishing is disabled: {$fqcn}");
             }
+
             $this->generateResource($fqcn);
         } else {
             throw new InvalidArgumentException("Class is not a publishable enum, model, or resource: {$fqcn}");
@@ -108,5 +113,13 @@ class RunnerForSource extends BaseRunner
         );
 
         $this->resourceGenerators = collect([$generator]);
+    }
+
+    protected function validResource(ReflectionClass $reflection): bool
+    {
+        return $reflection->isSubclassOf(JsonResource::class)
+            && ! $reflection->isAbstract()
+            && ! $reflection->isSubclassOf(ResourceCollection::class)
+            && $reflection->getName() !== EnumResource::class;
     }
 }
