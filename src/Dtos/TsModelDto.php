@@ -8,9 +8,10 @@ use Illuminate\Contracts\Support\Jsonable;
 use JsonSerializable;
 
 /**
+ * @phpstan-import-type TypesImportMap from Datable
+ * @phpstan-import-type ValuesImportMap from Datable
+ *
  * @phpstan-type ColumnsList = array<string, array{type: string, description: string}>
- * @phpstan-type TypesImportMap = array<string, list<string>>
- * @phpstan-type ValuesImportMap = array<string, list<string>>
  * @phpstan-type MutatorsList = array<string, array{type: string, description: string}>
  * @phpstan-type RelationsList = array<string, array{type: string, description: string}>
  * @phpstan-type EnumPropertyInfo = array{constName: string, nullable: bool}

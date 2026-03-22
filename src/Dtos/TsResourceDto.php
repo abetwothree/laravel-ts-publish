@@ -8,10 +8,11 @@ use Illuminate\Contracts\Support\Jsonable;
 use JsonSerializable;
 
 /**
+ * @phpstan-import-type TypesImportMap from Datable
+ * @phpstan-import-type ValuesImportMap from Datable
+ *
  * @phpstan-type ResourceProperty = array{type: string, optional: bool, description: string}
  * @phpstan-type PropertiesList = array<string, ResourceProperty>
- * @phpstan-type TypesImportMap = array<string, list<string>>
- * @phpstan-type ValuesImportMap = array<string, list<string>>
  * @phpstan-type ResourceData = array{
  *     resourceName: string,
  *     description: string,

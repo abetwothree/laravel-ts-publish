@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Analyzers;
 
+use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
+
 /**
  * Holds the result of AST analysis of a resource's toArray() method.
+ *
+ * @phpstan-import-type TypesImportMap from Datable
  *
  * @phpstan-type ResourcePropertyInfo = array{
  *     name: string,
@@ -15,7 +19,7 @@ namespace AbeTwoThree\LaravelTsPublish\Analyzers;
  * }
  * @phpstan-type ResourcePropertyInfoList = list<ResourcePropertyInfo>
  * @phpstan-type ClassMapType = array<string, class-string>
- * @phpstan-type ImportMapType = array<string, list<string>>
+ * @phpstan-type ImportMapType = TypesImportMap
  */
 class ResourceAnalysis
 {
