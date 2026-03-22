@@ -747,7 +747,10 @@ describe('ResourceTransformer UseResource attribute model guess', function () {
 
         expect($data->properties)->toHaveKey('id')
             ->and($data->properties)->toHaveKey('description');
-    });
+    })->skip(
+        ! class_exists('Illuminate\Database\Eloquent\Attributes\UseResource'),
+        'UseResource attribute requires Laravel 12+',
+    );
 });
 
 describe('ResourceTransformer import collision deconfliction', function () {

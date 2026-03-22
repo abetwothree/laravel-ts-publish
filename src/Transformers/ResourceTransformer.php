@@ -159,7 +159,7 @@ class ResourceTransformer extends CoreTransformer
      * 1. #[TsResource(model:)] attribute
      * 2. @mixin docblock
      * 3. Convention-based guess (reverse of Laravel's TransformsToResource)
-     * 4. #[UseResource] attribute scan on collected models
+     * 4. #[UseResource] attribute scan on collected models (Laravel 12+)
      */
     protected function resolveModelClass(): self
     {
