@@ -115,6 +115,7 @@ class RunnerForSource extends BaseRunner
         $this->resourceGenerators = collect([$generator]);
     }
 
+    /** @param ReflectionClass<covariant object> $reflection */
     protected function validResource(ReflectionClass $reflection): bool
     {
         return $reflection->isSubclassOf(JsonResource::class)
