@@ -36,7 +36,6 @@ use ReflectionClass;
  * @phpstan-import-type ImportMapType from ResourceAnalysis
  *
  * @phpstan-type ValueExpressionResult = array{type: string, optional: bool, enumFqcn?: class-string, directEnumFqcn?: class-string, resourceFqcn?: class-string, modelFqcn?: class-string}
- * @phpstan-type PropertyExtractionResult = array{properties: ResourcePropertyInfoList, enumResources: ClassMapType, nestedResources: ClassMapType, directEnumFqcns: ClassMapType, modelFqcns: ClassMapType}
  */
 class ResourceAstAnalyzer
 {
@@ -109,20 +108,10 @@ class ResourceAstAnalyzer
 
                 if ($parentAnalysis !== null) {
                     $this->syncAnalysisMaps(
-                        $properties,
-                        $enumResources,
-                        $nestedResources,
-                        $directEnumFqcns,
-                        $modelFqcns,
-                        $parentAnalysis->properties,
-                        $parentAnalysis->enumResources,
-                        $parentAnalysis->nestedResources,
-                        $parentAnalysis->directEnumFqcns,
-                        $parentAnalysis->modelFqcns,
+                        $properties, $enumResources, $nestedResources,
+                        $directEnumFqcns, $modelFqcns, $customImports,
+                        $parentAnalysis,
                     );
-                    foreach ($parentAnalysis->customImports as $path => $types) {
-                        $customImports[$path] = [...($customImports[$path] ?? []), ...$types];
-                    }
                 }
 
                 continue;
@@ -138,20 +127,10 @@ class ResourceAstAnalyzer
 
                 if ($spreadAnalysis !== null) {
                     $this->syncAnalysisMaps(
-                        $properties,
-                        $enumResources,
-                        $nestedResources,
-                        $directEnumFqcns,
-                        $modelFqcns,
-                        $spreadAnalysis->properties,
-                        $spreadAnalysis->enumResources,
-                        $spreadAnalysis->nestedResources,
-                        $spreadAnalysis->directEnumFqcns,
-                        $spreadAnalysis->modelFqcns,
+                        $properties, $enumResources, $nestedResources,
+                        $directEnumFqcns, $modelFqcns, $customImports,
+                        $spreadAnalysis,
                     );
-                    foreach ($spreadAnalysis->customImports as $path => $types) {
-                        $customImports[$path] = [...($customImports[$path] ?? []), ...$types];
-                    }
                 }
 
                 continue;
@@ -162,16 +141,9 @@ class ResourceAstAnalyzer
                 $mergeResult = $this->analyzeMergeExpression($item->value);
 
                 $this->syncAnalysisMaps(
-                    $properties,
-                    $enumResources,
-                    $nestedResources,
-                    $directEnumFqcns,
-                    $modelFqcns,
-                    $mergeResult['properties'],
-                    $mergeResult['enumResources'],
-                    $mergeResult['nestedResources'],
-                    $mergeResult['directEnumFqcns'],
-                    $mergeResult['modelFqcns'],
+                    $properties, $enumResources, $nestedResources,
+                    $directEnumFqcns, $modelFqcns, $customImports,
+                    $mergeResult,
                 );
 
                 continue;
@@ -214,18 +186,14 @@ class ResourceAstAnalyzer
     }
 
     /**
-     * Synchronize analysis maps by merging new data into existing arrays.
+     * Merge a ResourceAnalysis result into the running accumulator arrays.
      *
      * @param  ResourcePropertyInfoList  $properties
      * @param  ClassMapType  $enumResources
      * @param  ClassMapType  $nestedResources
      * @param  ClassMapType  $directEnumFqcns
      * @param  ClassMapType  $modelFqcns
-     * @param  ResourcePropertyInfoList  $newProperties
-     * @param  ClassMapType  $newEnumResources
-     * @param  ClassMapType  $newNestedResources
-     * @param  ClassMapType  $newDirectEnumFqcns
-     * @param  ClassMapType  $newModelFqcns
+     * @param  ImportMapType  $customImports
      */
     protected function syncAnalysisMaps(
         array &$properties,
@@ -233,17 +201,18 @@ class ResourceAstAnalyzer
         array &$nestedResources,
         array &$directEnumFqcns,
         array &$modelFqcns,
-        array $newProperties = [],
-        array $newEnumResources = [],
-        array $newNestedResources = [],
-        array $newDirectEnumFqcns = [],
-        array $newModelFqcns = [],
+        array &$customImports,
+        ResourceAnalysis $source,
     ): void {
-        $properties = [...$properties, ...$newProperties];
-        $enumResources = [...$enumResources, ...$newEnumResources];
-        $nestedResources = [...$nestedResources, ...$newNestedResources];
-        $directEnumFqcns = [...$directEnumFqcns, ...$newDirectEnumFqcns];
-        $modelFqcns = [...$modelFqcns, ...$newModelFqcns];
+        $properties = [...$properties, ...$source->properties];
+        $enumResources = [...$enumResources, ...$source->enumResources];
+        $nestedResources = [...$nestedResources, ...$source->nestedResources];
+        $directEnumFqcns = [...$directEnumFqcns, ...$source->directEnumFqcns];
+        $modelFqcns = [...$modelFqcns, ...$source->modelFqcns];
+
+        foreach ($source->customImports as $path => $types) {
+            $customImports[$path] = [...($customImports[$path] ?? []), ...$types];
+        }
     }
 
     /**
@@ -408,21 +377,17 @@ class ResourceAstAnalyzer
 
     /**
      * Analyze $this->mergeWhen(condition, [...]) — extract properties and FQCNs from 2nd arg array.
-     *
-     * @return PropertyExtractionResult
      */
-    protected function analyzeMergeExpression(MethodCall $call): array
+    protected function analyzeMergeExpression(MethodCall $call): ResourceAnalysis
     {
-        $empty = ['properties' => [], 'enumResources' => [], 'nestedResources' => [], 'directEnumFqcns' => [], 'modelFqcns' => []];
-
         if (! $this->isThisMethodCall($call, 'mergeWhen')) {
-            return $empty;
+            return new ResourceAnalysis;
         }
 
         $args = $call->getArgs();
 
         if (count($args) < 2) {
-            return $empty;
+            return new ResourceAnalysis;
         }
 
         $valueExpr = $args[1]->value;
@@ -432,7 +397,7 @@ class ResourceAstAnalyzer
             return $this->extractPropertiesFromArray($valueExpr, optional: true);
         }
 
-        return $empty;
+        return new ResourceAnalysis;
     }
 
     /**
@@ -547,10 +512,8 @@ class ResourceAstAnalyzer
 
     /**
      * Extract properties and FQCNs from an array expression, e.g. for mergeWhen's second argument.
-     *
-     * @return PropertyExtractionResult
      */
-    protected function extractPropertiesFromArray(Array_ $array, bool $optional = false): array
+    protected function extractPropertiesFromArray(Array_ $array, bool $optional = false): ResourceAnalysis
     {
         /** @var ResourcePropertyInfoList $properties */
         $properties = [];
@@ -586,13 +549,13 @@ class ResourceAstAnalyzer
             $this->dispatchFqcnResults($keyName, $result, $enumResources, $directEnumFqcns, $nestedResources, $modelFqcns);
         }
 
-        return [
-            'properties' => $properties,
-            'enumResources' => $enumResources,
-            'nestedResources' => $nestedResources,
-            'directEnumFqcns' => $directEnumFqcns,
-            'modelFqcns' => $modelFqcns,
-        ];
+        return new ResourceAnalysis(
+            $properties,
+            $enumResources,
+            $nestedResources,
+            directEnumFqcns: $directEnumFqcns,
+            modelFqcns: $modelFqcns,
+        );
     }
 
     /**
