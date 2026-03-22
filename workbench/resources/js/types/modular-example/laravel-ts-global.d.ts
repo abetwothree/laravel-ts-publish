@@ -1351,15 +1351,19 @@ declare global {
             company: string | null;
             status: StatusType;
         }
-        /** Exercises: dual enum conflict — $this->status (App\Enums\Status direct access) vs EnumResource::make($this->crm_status) (Crm\Enums\Status), whenLoaded bare with two different User models (Crm\User + App\User), when conditional. */
+        /** Exercises: dual enum conflict — $this->status (App\Enums\Status direct access) vs EnumResource::make($this->crm_status) (Crm\Enums\Status), whenLoaded bare with two different User models (Crm\User + App\User), when conditional, resource wrapping with colliding resource names, dual EnumResource::make. */
         export interface DealResource {
             id: number;
             title: string;
             value: number;
-            status: StatusType;
-            crm_status: AsEnum<typeof Status>;
-            customer?: User;
-            admin?: User;
+            status: AppStatusType;
+            status_enum: AsEnum<typeof AppStatus>;
+            crm_status: CrmStatusType;
+            crm_enum: AsEnum<typeof CrmStatus>;
+            customer?: CrmUser;
+            admin?: AppUser;
+            customer_resource?: CrmUserResource;
+            admin_resource?: AppUserResource;
             closed_at?: string;
         }
     }

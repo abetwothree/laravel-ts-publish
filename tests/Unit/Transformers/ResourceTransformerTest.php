@@ -26,6 +26,7 @@ use Workbench\App\Models\TrackingEvent;
 use Workbench\App\Models\User;
 use Workbench\App\Models\Warehouse;
 use Workbench\App\Resources\DirectResource;
+use Workbench\Crm\Http\Resources\DealResource;
 use Workbench\Crm\Http\Resources\UserResource as CrmUserResource;
 use Workbench\Crm\Models\User as CrmUser;
 
@@ -746,5 +747,103 @@ describe('ResourceTransformer UseResource attribute model guess', function () {
 
         expect($data->properties)->toHaveKey('id')
             ->and($data->properties)->toHaveKey('description');
+    });
+});
+
+describe('ResourceTransformer import collision deconfliction', function () {
+    test('aliases colliding enum types and model types in modular mode', function () {
+        config()->set('ts-publish.modular_publishing', true);
+        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+        config()->set('ts-publish.enums_use_tolki_package', false);
+
+        $data = (new ResourceTransformer(DealResource::class))->data();
+
+        $allTypeImports = array_merge(...array_values($data->typeImports));
+
+        // Enum type imports should be aliased
+        expect($allTypeImports)->toContain('StatusType as AppStatusType')
+            ->toContain('StatusType as CrmStatusType');
+
+        // Model type imports should be aliased
+        expect($allTypeImports)->toContain('User as AppUser')
+            ->toContain('User as CrmUser');
+
+        // Resource type imports should be aliased
+        expect($allTypeImports)->toContain('UserResource as AppUserResource')
+            ->toContain('UserResource as CrmUserResource');
+
+        // Property types should be rewritten
+        expect($data->properties['status']['type'])->toBe('AppStatusType');
+        expect($data->properties['status_enum']['type'])->toBe('AppStatusType');
+        expect($data->properties['crm_status']['type'])->toBe('CrmStatusType');
+        expect($data->properties['crm_enum']['type'])->toBe('CrmStatusType');
+        expect($data->properties['customer']['type'])->toBe('CrmUser');
+        expect($data->properties['admin']['type'])->toBe('AppUser');
+        expect($data->properties['customer_resource']['type'])->toBe('CrmUserResource');
+        expect($data->properties['admin_resource']['type'])->toBe('AppUserResource');
+    });
+
+    test('aliases colliding types in non-modular mode without data loss', function () {
+        config()->set('ts-publish.modular_publishing', false);
+        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+        config()->set('ts-publish.enums_use_tolki_package', false);
+
+        $data = (new ResourceTransformer(DealResource::class))->data();
+
+        // Both StatusType entries should appear (not collapsed by array_unique)
+        $enumImports = $data->typeImports['../enums'] ?? [];
+        expect($enumImports)->toContain('StatusType as AppStatusType')
+            ->toContain('StatusType as CrmStatusType');
+
+        // Both User entries should appear
+        $modelImports = $data->typeImports['../models'] ?? [];
+        expect($modelImports)->toContain('User as AppUser')
+            ->toContain('User as CrmUser');
+
+        // Both UserResource entries should appear
+        $resourceImports = $data->typeImports['./'] ?? [];
+        expect($resourceImports)->toContain('UserResource as AppUserResource')
+            ->toContain('UserResource as CrmUserResource');
+    });
+
+    test('aliases enum type imports, value imports, and property types with tolki enabled', function () {
+        config()->set('ts-publish.modular_publishing', true);
+        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+        config()->set('ts-publish.enums_use_tolki_package', true);
+
+        $data = (new ResourceTransformer(DealResource::class))->data();
+
+        $allTypeImports = array_merge(...array_values($data->typeImports));
+        $allValueImports = array_merge(...array_values($data->valueImports));
+
+        // Models should be aliased
+        expect($allTypeImports)->toContain('User as AppUser')
+            ->toContain('User as CrmUser');
+
+        // Resources should be aliased
+        expect($allTypeImports)->toContain('UserResource as AppUserResource')
+            ->toContain('UserResource as CrmUserResource');
+
+        // Enum type imports should be aliased (kept for direct access properties)
+        expect($allTypeImports)->toContain('StatusType as AppStatusType')
+            ->toContain('StatusType as CrmStatusType');
+
+        // Enum value imports should be aliased (for EnumResource::make tolki rewrite)
+        expect($allValueImports)->toContain('Status as AppStatus')
+            ->toContain('Status as CrmStatus');
+
+        // Direct access properties use aliased type names
+        expect($data->properties['status']['type'])->toBe('AppStatusType');
+        expect($data->properties['crm_status']['type'])->toBe('CrmStatusType');
+
+        // EnumResource::make properties use aliased const names in AsEnum
+        expect($data->properties['status_enum']['type'])->toBe('AsEnum<typeof AppStatus>');
+        expect($data->properties['crm_enum']['type'])->toBe('AsEnum<typeof CrmStatus>');
+
+        // Model and resource properties use aliased names
+        expect($data->properties['customer']['type'])->toBe('CrmUser');
+        expect($data->properties['admin']['type'])->toBe('AppUser');
+        expect($data->properties['customer_resource']['type'])->toBe('CrmUserResource');
+        expect($data->properties['admin_resource']['type'])->toBe('AppUserResource');
     });
 });

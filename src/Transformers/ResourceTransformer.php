@@ -11,7 +11,6 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsResourceCasts;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsResourceDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
-use Illuminate\Database\Eloquent\Attributes\UseResource;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Str;
@@ -75,6 +74,21 @@ class ResourceTransformer extends CoreTransformer
     /** @var array<class-string, string> FQCN => model interface name */
     protected array $modelFqcnMap = [];
 
+    /** @var array<string, class-string> property name => model FQCN (from bare whenLoaded) */
+    protected array $propertyModelFqcns = [];
+
+    /** @var array<string, class-string> property name => resource FQCN (from nested resources) */
+    protected array $propertyResourceFqcns = [];
+
+    /** @var array<string, class-string> property name => enum FQCN (from direct enum access) */
+    protected array $propertyEnumFqcns = [];
+
+    /** @var array<class-string, string> FQCN => aliased type name */
+    protected array $importAliases = [];
+
+    /** @var array<class-string, string> FQCN => aliased const name */
+    protected array $constImportAliases = [];
+
     /** @var array<string, string> property name => TS type override from model's #[TsCasts] */
     protected array $modelTsCastsOverrides = [];
 
@@ -90,8 +104,9 @@ class ResourceTransformer extends CoreTransformer
             ->parseTsResourceCastsOverrides()
             ->runAstAnalysis()
             ->applyOverrides()
+            ->resolveImportConflicts()
             ->rewriteEnumResourceTypes()
-            ->buildImports();
+            ->buildResolvedImports();
 
         return $this;
     }
@@ -140,7 +155,11 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * Resolve the backing model class from #[TsResource(model:)] or @mixin docblock.
+     * Resolve the backing model class from
+     * 1. #[TsResource(model:)] attribute
+     * 2. @mixin docblock
+     * 3. Convention-based guess (reverse of Laravel's TransformsToResource)
+     * 4. #[UseResource] attribute scan on collected models
      */
     protected function resolveModelClass(): self
     {
@@ -301,7 +320,7 @@ class ResourceTransformer extends CoreTransformer
 
         foreach ($collector->collect() as $modelClass) {
             $reflection = new ReflectionClass($modelClass);
-            $attrs = $reflection->getAttributes(UseResource::class);
+            $attrs = $reflection->getAttributes('Illuminate\\Database\\Eloquent\\Attributes\\UseResource');
 
             if ($attrs !== [] && $attrs[0]->newInstance()->class === $this->findable) {
                 return $modelClass;
@@ -409,27 +428,31 @@ class ResourceTransformer extends CoreTransformer
             $this->enumConstMap[$fqcn] = $tsInfo['enums'][0] ?? class_basename($fqcn);
             $nullable = str_contains($this->properties[$propName]['type'] ?? '', 'null');
             $this->enumResourceProperties[$propName] = ['fqcn' => $fqcn, 'nullable' => $nullable];
+            $this->propertyEnumFqcns[$propName] = $fqcn;
         }
 
         // Populate enum tracking maps from direct $this->prop enum access
-        foreach ($analysis->directEnumFqcns as $fqcn) {
+        foreach ($analysis->directEnumFqcns as $propName => $fqcn) {
             if (! isset($this->enumFqcnMap[$fqcn])) {
                 $tsInfo = LaravelTsPublish::phpToTypeScriptType($fqcn);
                 $this->enumFqcnMap[$fqcn] = $tsInfo['enumTypes'][0] ?? class_basename($fqcn).'Type';
                 $this->enumConstMap[$fqcn] = $tsInfo['enums'][0] ?? class_basename($fqcn);
             }
+            $this->propertyEnumFqcns[$propName] = $fqcn;
         }
 
         // Populate nested resource tracking map (skip self-references)
-        foreach ($analysis->nestedResources as $fqcn) {
+        foreach ($analysis->nestedResources as $propName => $fqcn) {
             if ($fqcn !== $this->findable) {
                 $this->resourceFqcnMap[$fqcn] = class_basename($fqcn);
+                $this->propertyResourceFqcns[$propName] = $fqcn;
             }
         }
 
         // Populate model tracking map from bare whenLoaded relations
-        foreach ($analysis->modelFqcns as $fqcn) {
+        foreach ($analysis->modelFqcns as $propName => $fqcn) {
             $this->modelFqcnMap[$fqcn] = class_basename($fqcn);
+            $this->propertyModelFqcns[$propName] = $fqcn;
         }
 
         // Merge custom imports from trait method #[TsResourceCasts] attributes
@@ -482,7 +505,7 @@ class ResourceTransformer extends CoreTransformer
     /**
      * Build the type and value import maps from accumulated FQCNs and custom imports.
      */
-    protected function buildImports(): self
+    protected function buildResolvedImports(): self
     {
         $typeImports = [];
         $valueImports = [];
@@ -493,30 +516,34 @@ class ResourceTransformer extends CoreTransformer
             foreach ($this->enumFqcnMap as $fqcn => $typeName) {
                 $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
                 $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
-                $typeImports[$importPath][] = $typeName;
+                $typeImports[$importPath][] = $this->formatImportName($fqcn, $typeName);
             }
 
             if ($hasEnums) {
                 foreach ($this->enumResourcePropertyFqcns() as $fqcn) {
                     $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
                     $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
-                    $valueImports[$importPath][] = $this->enumConstMap[$fqcn];
+                    $valueImports[$importPath][] = $this->formatConstImportName($fqcn);
                 }
             }
 
             foreach ($this->resourceFqcnMap as $fqcn => $typeName) {
                 $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
                 $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
-                $typeImports[$importPath][] = $typeName;
+                $typeImports[$importPath][] = $this->formatImportName($fqcn, $typeName);
             }
 
             foreach ($this->modelFqcnMap as $fqcn => $typeName) {
                 $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
                 $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
-                $typeImports[$importPath][] = $typeName;
+                $typeImports[$importPath][] = $this->formatImportName($fqcn, $typeName);
             }
         } else {
-            $enumTypeImports = array_values(array_unique(array_values($this->enumFqcnMap)));
+            $enumTypeImports = [];
+            foreach ($this->enumFqcnMap as $fqcn => $typeName) {
+                $enumTypeImports[] = $this->formatImportName($fqcn, $typeName);
+            }
+            $enumTypeImports = array_values(array_unique($enumTypeImports));
 
             if ($enumTypeImports !== []) {
                 sort($enumTypeImports);
@@ -526,7 +553,7 @@ class ResourceTransformer extends CoreTransformer
             if ($hasEnums) {
                 $enumValueImports = [];
                 foreach ($this->enumResourcePropertyFqcns() as $fqcn) {
-                    $enumValueImports[] = $this->enumConstMap[$fqcn];
+                    $enumValueImports[] = $this->formatConstImportName($fqcn);
                 }
                 $enumValueImports = array_values(array_unique($enumValueImports));
 
@@ -536,14 +563,22 @@ class ResourceTransformer extends CoreTransformer
                 }
             }
 
-            $resourceImports = array_values(array_unique(array_values($this->resourceFqcnMap)));
+            $resourceImports = [];
+            foreach ($this->resourceFqcnMap as $fqcn => $typeName) {
+                $resourceImports[] = $this->formatImportName($fqcn, $typeName);
+            }
+            $resourceImports = array_values(array_unique($resourceImports));
 
             if ($resourceImports !== []) {
                 sort($resourceImports);
                 $typeImports['./'] = $resourceImports;
             }
 
-            $modelImports = array_values(array_unique(array_values($this->modelFqcnMap)));
+            $modelImports = [];
+            foreach ($this->modelFqcnMap as $fqcn => $typeName) {
+                $modelImports[] = $this->formatImportName($fqcn, $typeName);
+            }
+            $modelImports = array_values(array_unique($modelImports));
 
             if ($modelImports !== []) {
                 sort($modelImports);
@@ -595,7 +630,7 @@ class ResourceTransformer extends CoreTransformer
                 continue; // @codeCoverageIgnore
             }
 
-            $constName = $this->enumConstMap[$info['fqcn']];
+            $constName = $this->constImportAliases[$info['fqcn']] ?? $this->enumConstMap[$info['fqcn']];
             $type = 'AsEnum<typeof '.$constName.'>';
 
             if ($info['nullable']) {
@@ -607,11 +642,185 @@ class ResourceTransformer extends CoreTransformer
                 'type' => $type,
             ];
 
-            // Remove from type import map — these FQCNs get value imports instead
-            unset($this->enumFqcnMap[$info['fqcn']]);
+            // Remove from type import map unless this FQCN is also used for direct property access
+            $usedForDirectAccess = false;
+
+            foreach ($this->propertyEnumFqcns as $prop => $propFqcn) {
+                if ($propFqcn === $info['fqcn'] && ! isset($this->enumResourceProperties[$prop])) {
+                    $usedForDirectAccess = true;
+
+                    break;
+                }
+            }
+
+            if (! $usedForDirectAccess) {
+                unset($this->enumFqcnMap[$info['fqcn']]);
+            }
         }
 
         return $this;
+    }
+
+    /**
+     * Detect import name collisions across all FQCN maps and assign aliases.
+     */
+    protected function resolveImportConflicts(): self
+    {
+        /** @var array<string, list<array{fqcn: string, kind: 'enum'|'resource'|'model'}>> $reverseMap */
+        $reverseMap = [];
+
+        foreach ($this->enumFqcnMap as $fqcn => $typeName) {
+            $reverseMap[$typeName][] = ['fqcn' => $fqcn, 'kind' => 'enum'];
+        }
+
+        foreach ($this->resourceFqcnMap as $fqcn => $typeName) {
+            $reverseMap[$typeName][] = ['fqcn' => $fqcn, 'kind' => 'resource'];
+        }
+
+        foreach ($this->modelFqcnMap as $fqcn => $typeName) {
+            $reverseMap[$typeName][] = ['fqcn' => $fqcn, 'kind' => 'model'];
+        }
+
+        foreach ($reverseMap as $typeName => $entries) {
+            // Also conflict if the type name matches this resource's own name
+            $needsAlias = count($entries) > 1 || $typeName === $this->resourceName;
+
+            if (! $needsAlias) {
+                continue;
+            }
+
+            foreach ($entries as $entry) {
+                /** @var class-string $fqcn */
+                $fqcn = $entry['fqcn'];
+                $originalName = match ($entry['kind']) {
+                    'enum' => $this->enumFqcnMap[$fqcn],
+                    'resource' => $this->resourceFqcnMap[$fqcn],
+                    'model' => $this->modelFqcnMap[$fqcn],
+                };
+
+                $prefix = $this->computeNamespacePrefix($fqcn);
+                $alias = $prefix.$originalName;
+
+                $this->importAliases[$fqcn] = $alias;
+
+                if ($entry['kind'] === 'enum' && isset($this->enumConstMap[$fqcn])) {
+                    $this->constImportAliases[$fqcn] = $prefix.$this->enumConstMap[$fqcn];
+                }
+            }
+        }
+
+        if ($this->importAliases !== []) {
+            $this->rewriteTypeReferences();
+        }
+
+        return $this;
+    }
+
+    /**
+     * Compute a distinguishing namespace prefix for alias generation.
+     */
+    protected function computeNamespacePrefix(string $fqcn): string
+    {
+        $namespace = Str::beforeLast($fqcn, '\\');
+
+        $prefix = config()->string('ts-publish.namespace_strip_prefix', '');
+
+        if ($prefix !== '' && str_starts_with($namespace, $prefix)) {
+            $namespace = substr($namespace, strlen($prefix));
+        }
+
+        $segments = array_filter(explode('\\', $namespace));
+        $skip = ['Models', 'Enums', 'Http', 'Resources', 'App'];
+
+        foreach (array_reverse($segments) as $segment) {
+            if (! in_array($segment, $skip, true)) {
+                return Str::studly($segment);
+            }
+        }
+
+        $first = reset($segments);
+
+        return $first !== false ? Str::studly($first) : '';
+    }
+
+    /**
+     * Rewrite property type references to use aliased names.
+     */
+    protected function rewriteTypeReferences(): void
+    {
+        foreach ($this->importAliases as $fqcn => $alias) {
+            $originalName = $this->enumFqcnMap[$fqcn]
+                ?? $this->resourceFqcnMap[$fqcn]
+                ?? $this->modelFqcnMap[$fqcn]
+                ?? null;
+
+            if ($originalName === null || $originalName === $alias) {
+                continue; // @codeCoverageIgnore
+            }
+
+            $pattern = '/(?<![A-Za-z0-9_$])'.preg_quote($originalName, '/').'(?![A-Za-z0-9_$])/';
+
+            // Use property→FQCN tracking maps for precise replacement
+            $targetProperties = [];
+
+            foreach ($this->propertyEnumFqcns as $propName => $propFqcn) {
+                if ($propFqcn === $fqcn) {
+                    $targetProperties[] = $propName;
+                }
+            }
+
+            foreach ($this->propertyResourceFqcns as $propName => $propFqcn) {
+                if ($propFqcn === $fqcn) {
+                    $targetProperties[] = $propName;
+                }
+            }
+
+            foreach ($this->propertyModelFqcns as $propName => $propFqcn) {
+                if ($propFqcn === $fqcn) {
+                    $targetProperties[] = $propName;
+                }
+            }
+
+            foreach ($targetProperties as $propName) {
+                if (! isset($this->properties[$propName])) {
+                    continue; // @codeCoverageIgnore
+                }
+                $this->properties[$propName]['type'] = preg_replace(
+                    $pattern,
+                    $alias,
+                    $this->properties[$propName]['type'],
+                ) ?? $this->properties[$propName]['type'];
+            }
+        }
+    }
+
+    /**
+     * Format an import name, applying "OriginalName as Alias" syntax when aliased.
+     */
+    protected function formatImportName(string $fqcn, string $typeName): string
+    {
+        $alias = $this->importAliases[$fqcn] ?? null;
+
+        if ($alias !== null && $alias !== $typeName) {
+            return $typeName.' as '.$alias;
+        }
+
+        return $typeName;
+    }
+
+    /**
+     * Format a const import name, applying "OriginalName as Alias" syntax when aliased.
+     */
+    protected function formatConstImportName(string $fqcn): string
+    {
+        $constName = $this->enumConstMap[$fqcn];
+        $alias = $this->constImportAliases[$fqcn] ?? null;
+
+        if ($alias !== null && $alias !== $constName) {
+            return $constName.' as '.$alias;
+        }
+
+        return $constName;
     }
 
     protected function shouldGenerateHasEnums(): bool

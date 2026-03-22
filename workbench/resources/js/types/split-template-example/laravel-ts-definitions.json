@@ -3496,22 +3496,42 @@
             },
             {
                 "name": "status",
-                "type": "StatusType",
+                "type": "WorkbenchStatusType",
+                "optional": false
+            },
+            {
+                "name": "status_enum",
+                "type": "AsEnum<typeof WorkbenchStatus>",
                 "optional": false
             },
             {
                 "name": "crm_status",
-                "type": "AsEnum<typeof Status>",
+                "type": "CrmStatusType",
+                "optional": false
+            },
+            {
+                "name": "crm_enum",
+                "type": "AsEnum<typeof CrmStatus>",
                 "optional": false
             },
             {
                 "name": "customer",
-                "type": "User",
+                "type": "CrmUser",
                 "optional": true
             },
             {
                 "name": "admin",
-                "type": "User",
+                "type": "WorkbenchUser",
+                "optional": true
+            },
+            {
+                "name": "customer_resource",
+                "type": "CrmUserResource",
+                "optional": true
+            },
+            {
+                "name": "admin_resource",
+                "type": "WorkbenchUserResource",
                 "optional": true
             },
             {
