@@ -4262,6 +4262,11 @@
                 "name": "coordinates",
                 "type": "GeoPoint",
                 "optional": false
+            },
+            {
+                "name": "bounds",
+                "type": "GeoBounds",
+                "optional": false
             }
         ],
         "FqcnMixinResource": [

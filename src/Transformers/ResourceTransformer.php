@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
@@ -21,7 +22,8 @@ use ReflectionClass;
  * @phpstan-import-type PropertiesList from TsResourceDto
  * @phpstan-import-type TypesImportMap from TsResourceDto
  * @phpstan-import-type ValuesImportMap from TsResourceDto
- * @phpstan-import-type ResourcePropertyInfo from \AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis
+ * @phpstan-import-type ResourcePropertyInfo from ResourceAnalysis
+ * @phpstan-import-type ImportMapType from ResourceAnalysis
  *
  * @extends CoreTransformer<JsonResource>
  */
@@ -53,7 +55,7 @@ class ResourceTransformer extends CoreTransformer
     /** @var array<string, string> property name => custom type override */
     protected array $tsTypeOverrides = [];
 
-    /** @var array<string, string> custom import path => type name */
+    /** @var ImportMapType custom import path => list of type names */
     protected array $customImports = [];
 
     /** @var array<string, bool> property name => optional override */
@@ -239,9 +241,6 @@ class ResourceTransformer extends CoreTransformer
      *
      * @return class-string<Model>|null
      */
-    /**
-     * @return class-string<Model>|null
-     */
     protected function resolveClassFromUseStatements(string $shortName): ?string
     {
         $filePath = (string) $this->reflectionResource->getFileName();
@@ -394,7 +393,9 @@ class ResourceTransformer extends CoreTransformer
                     $this->tsTypeOverrides[$property] = $value['type'];
 
                     if (isset($value['import'])) {
-                        $this->customImports[$value['import']] = $value['type'];
+                        foreach (LaravelTsPublish::extractImportableTypes($value['type']) as $importName) {
+                            $this->customImports[$value['import']][] = $importName;
+                        }
                     }
 
                     if (isset($value['optional'])) {
@@ -461,8 +462,8 @@ class ResourceTransformer extends CoreTransformer
         }
 
         // Merge custom imports from trait method #[TsResourceCasts] attributes
-        foreach ($analysis->customImports as $importPath => $typeName) {
-            $this->customImports[$importPath] = $typeName;
+        foreach ($analysis->customImports as $importPath => $types) {
+            $this->customImports[$importPath] = [...($this->customImports[$importPath] ?? []), ...$types];
         }
 
         return $this;
@@ -479,7 +480,9 @@ class ResourceTransformer extends CoreTransformer
                 $this->properties[$property]['type'] = $type;
 
                 if (isset($this->modelTsCastsImportPaths[$property])) {
-                    $this->customImports[$this->modelTsCastsImportPaths[$property]] = $type;
+                    foreach (LaravelTsPublish::extractImportableTypes($type) as $importName) {
+                        $this->customImports[$this->modelTsCastsImportPaths[$property]][] = $importName;
+                    }
                 }
             }
         }
@@ -592,12 +595,10 @@ class ResourceTransformer extends CoreTransformer
         }
 
         // Merge custom imports from TsResourceCasts
-        foreach ($this->customImports as $importPath => $typeName) {
-            $importableTypes = LaravelTsPublish::extractImportableTypes($typeName);
-
-            if ($importableTypes !== []) {
+        foreach ($this->customImports as $importPath => $types) {
+            if ($types !== []) {
                 $existing = $typeImports[$importPath] ?? [];
-                $typeImports[$importPath] = array_values(array_unique([...$existing, ...$importableTypes]));
+                $typeImports[$importPath] = array_values(array_unique([...$existing, ...$types]));
             }
         }
 

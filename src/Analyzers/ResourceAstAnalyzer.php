@@ -142,7 +142,9 @@ class ResourceAstAnalyzer
                         $parentAnalysis->directEnumFqcns,
                         $parentAnalysis->modelFqcns,
                     );
-                    $customImports = [...$customImports, ...$parentAnalysis->customImports];
+                    foreach ($parentAnalysis->customImports as $path => $types) {
+                        $customImports[$path] = [...($customImports[$path] ?? []), ...$types];
+                    }
                 }
 
                 continue;
@@ -169,7 +171,9 @@ class ResourceAstAnalyzer
                         $spreadAnalysis->directEnumFqcns,
                         $spreadAnalysis->modelFqcns,
                     );
-                    $customImports = [...$customImports, ...$spreadAnalysis->customImports];
+                    foreach ($spreadAnalysis->customImports as $path => $types) {
+                        $customImports[$path] = [...($customImports[$path] ?? []), ...$types];
+                    }
                 }
 
                 continue;
@@ -804,7 +808,9 @@ class ResourceAstAnalyzer
                 }
 
                 if (is_array($value) && isset($value['import'])) {
-                    $analysis->customImports[$value['import']] = $type;
+                    foreach (LaravelTsPublish::extractImportableTypes($type) as $importName) {
+                        $analysis->customImports[$value['import']][] = $importName;
+                    }
                 }
             }
         }

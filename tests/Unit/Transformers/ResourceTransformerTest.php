@@ -496,8 +496,11 @@ describe('ResourceTransformer TsCasts waterfall from model', function () {
 
         // TsResourceCasts adds 'coordinates' with GeoPoint type and import (not in toArray)
         expect($data->properties['coordinates']['type'])->toBe('GeoPoint');
+        // TsResourceCasts adds 'bounds' with GeoBounds type from the same import path
+        expect($data->properties['bounds']['type'])->toBe('GeoBounds');
         expect($data->typeImports)->toHaveKey('@/types/geo');
-        expect($data->typeImports['@/types/geo'])->toContain('GeoPoint');
+        expect($data->typeImports['@/types/geo'])->toContain('GeoPoint')
+            ->and($data->typeImports['@/types/geo'])->toContain('GeoBounds');
     });
 
     test('ProfileResource inherits property-level TsCasts for timezone', function () {

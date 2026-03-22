@@ -15,7 +15,7 @@ namespace AbeTwoThree\LaravelTsPublish\Analyzers;
  * }
  * @phpstan-type ResourcePropertyInfoList = list<ResourcePropertyInfo>
  * @phpstan-type ClassMapType = array<string, class-string>
- * @phpstan-type ImportMapType = array<string, string>
+ * @phpstan-type ImportMapType = array<string, list<string>>
  */
 class ResourceAnalysis
 {
@@ -23,7 +23,7 @@ class ResourceAnalysis
      * @param  ResourcePropertyInfoList  $properties
      * @param  ClassMapType  $enumResources  property name => enum FQCN (via EnumResource::make)
      * @param  ClassMapType  $nestedResources  property name => resource FQCN
-     * @param  ImportMapType  $customImports  type name => import path
+     * @param  ImportMapType  $customImports  import path => list of type names
      * @param  ClassMapType  $directEnumFqcns  property name => enum FQCN (via direct $this->prop access)
      * @param  ClassMapType  $modelFqcns  property name => model FQCN (from bare whenLoaded)
      */

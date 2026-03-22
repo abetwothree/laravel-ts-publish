@@ -1,4 +1,4 @@
-import type { GeoPoint } from '@/types/geo';
+import type { GeoBounds, GeoPoint } from '@/types/geo';
 
 /** Mailing address resource */
 export interface Address
@@ -16,4 +16,5 @@ export interface Address
     longitude?: number | null;
     is_default: boolean;
     coordinates: GeoPoint;
+    bounds: GeoBounds;
 }

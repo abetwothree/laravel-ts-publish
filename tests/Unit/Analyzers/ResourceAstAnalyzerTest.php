@@ -966,6 +966,6 @@ describe('ResourceAstAnalyzer trait spread doc type branches', function () {
     });
 
     test('populates customImports from TsResourceCasts import paths', function () {
-        expect($this->analysis->customImports)->toBe(['@/types/geo' => 'GeoPoint']);
+        expect($this->analysis->customImports)->toBe(['@/types/geo' => ['GeoPoint']]);
     });
 });

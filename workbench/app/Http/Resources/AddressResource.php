@@ -18,6 +18,7 @@ use Workbench\App\Models\Address;
 #[TsResource(name: 'Address', description: 'Mailing address resource')]
 #[TsResourceCasts([
     'coordinates' => ['type' => 'GeoPoint', 'import' => '@/types/geo'],
+    'bounds' => ['type' => 'GeoBounds', 'import' => '@/types/geo'],
 ])]
 class AddressResource extends JsonResource
 {

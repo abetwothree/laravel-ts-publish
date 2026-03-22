@@ -1210,6 +1210,7 @@ declare global {
             longitude?: number | null;
             is_default: boolean;
             coordinates: GeoPoint;
+            bounds: GeoBounds;
         }
         /** Resource using FQCN @mixin — tests resolveModelClass FQCN branch. */
         export interface FqcnMixinResource {
