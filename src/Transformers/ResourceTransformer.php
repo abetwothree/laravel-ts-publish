@@ -317,7 +317,7 @@ class ResourceTransformer extends CoreTransformer
     {
         // Laravel 11 doesn't have the UseResource attribute
         if (! class_exists('Illuminate\\Database\\Eloquent\\Attributes\\UseResource')) {
-            return null;
+            return null; // @codeCoverageIgnore
         }
 
         /** @var ModelsCollector $collector */
