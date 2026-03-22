@@ -4,9 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Collectors;
 
-use AbeTwoThree\LaravelTsPublish\EnumResource;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Http\Resources\Json\ResourceCollection;
 use ReflectionClass;
 
 /**
@@ -22,10 +20,7 @@ class ResourcesCollector extends CoreCollector
     /** @param ReflectionClass<object> $reflection */
     protected function classFilter(ReflectionClass $reflection): bool
     {
-        return $reflection->isSubclassOf(JsonResource::class)
-            && ! $reflection->isAbstract()
-            && ! $reflection->isSubclassOf(ResourceCollection::class)
-            && $reflection->getName() !== EnumResource::class;
+        return $this->validateResource($reflection);
     }
 
     protected function finderSettings(): array

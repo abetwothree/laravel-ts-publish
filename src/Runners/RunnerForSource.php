@@ -4,20 +4,19 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Runners;
 
-use AbeTwoThree\LaravelTsPublish\EnumResource;
+use AbeTwoThree\LaravelTsPublish\Collectors\Concerns\ValidatesCollectorFiles;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Http\Resources\Json\ResourceCollection;
 use Illuminate\Support\Collection;
 use InvalidArgumentException;
 use ReflectionClass;
 
 class RunnerForSource extends BaseRunner
 {
+    use ValidatesCollectorFiles;
+
     public function __construct(
         protected string $source,
     ) {
@@ -44,19 +43,19 @@ class RunnerForSource extends BaseRunner
 
         $reflection = new ReflectionClass($fqcn);
 
-        if ($reflection->isEnum()) {
+        if ($this->validateEnum($reflection)) {
             if (! $this->shouldPublishEnums) {
                 throw new InvalidArgumentException("Enum publishing is disabled: {$fqcn}");
             }
 
             $this->generateEnum($fqcn);
-        } elseif ($reflection->isSubclassOf(Model::class) && ! $reflection->isAbstract()) {
+        } elseif ($this->validateModel($reflection)) {
             if (! $this->shouldPublishModels) {
                 throw new InvalidArgumentException("Model publishing is disabled: {$fqcn}");
             }
 
             $this->generateModel($fqcn);
-        } elseif ($this->validResource($reflection)) {
+        } elseif ($this->validateResource($reflection)) {
             if (! $this->shouldPublishResources) {
                 throw new InvalidArgumentException("Resource publishing is disabled: {$fqcn}");
             }
@@ -113,14 +112,5 @@ class RunnerForSource extends BaseRunner
         );
 
         $this->resourceGenerators = collect([$generator]);
-    }
-
-    /** @param ReflectionClass<covariant object> $reflection */
-    protected function validResource(ReflectionClass $reflection): bool
-    {
-        return $reflection->isSubclassOf(JsonResource::class)
-            && ! $reflection->isAbstract()
-            && ! $reflection->isSubclassOf(ResourceCollection::class)
-            && $reflection->getName() !== EnumResource::class;
     }
 }

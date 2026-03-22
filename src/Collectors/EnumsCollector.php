@@ -21,7 +21,7 @@ class EnumsCollector extends CoreCollector
     /** @param ReflectionClass<object> $reflection */
     protected function classFilter(ReflectionClass $reflection): bool
     {
-        return $reflection->isEnum();
+        return $this->validateEnum($reflection);
     }
 
     protected function finderSettings(): array

@@ -20,7 +20,7 @@ class ModelsCollector extends CoreCollector
     /** @param ReflectionClass<object> $reflection */
     protected function classFilter(ReflectionClass $reflection): bool
     {
-        return $reflection->isSubclassOf(Model::class) && ! $reflection->isAbstract();
+        return $this->validateModel($reflection);
     }
 
     protected function finderSettings(): array
