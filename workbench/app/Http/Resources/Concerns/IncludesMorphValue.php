@@ -9,7 +9,7 @@ trait IncludesMorphValue
      */
     protected function includeMorphValue(): array
     {
-        $morphValue = null;
+        $morphValue = '';
 
         if (method_exists($this->resource, 'getMorphClass')) {
             $morphValue = $this->resource->getMorphClass();
