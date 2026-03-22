@@ -51,6 +51,7 @@ class ModelTransformer extends CoreTransformer
     /** @var DbColumns */
     public protected(set) array $dbColumns = [];
 
+    /** @var ModelInfo<Model> */
     public protected(set) ModelInfo $modelInspect;
 
     /** @var ColumnsList */

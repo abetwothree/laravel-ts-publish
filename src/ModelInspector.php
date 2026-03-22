@@ -15,7 +15,7 @@ class ModelInspector extends EloquentModelInspector
 {
     /**
      * @param  class-string<Model>|string  $model
-     * @return ModelInfo
+     * @return ModelInfo<Model>
      *
      * @phpstan-ignore method.childReturnType
      */

@@ -5,6 +5,7 @@ namespace AbeTwoThree\LaravelTsPublish\Dtos;
 use ArrayAccess;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Collection;
@@ -12,6 +13,18 @@ use InvalidArgumentException;
 use LogicException;
 
 /**
+ * @template TModel of Model
+ *
+ * @phpstan-type ModelClassType = class-string<TModel>
+ * @phpstan-type PolicyClassType = class-string|null
+ * @phpstan-type AttributesType = Collection<int, array<string, mixed>>
+ * @phpstan-type RelationsType = Collection<int, array{name: string, type: string, related: class-string<Model>}>
+ * @phpstan-type EventsType = Collection<int, array{event: string, class: string}>
+ * @phpstan-type ObserversType = Collection<int, array{event: string, observer: array<int, string>}>
+ * @phpstan-type CollectionType = class-string<EloquentCollection<int, TModel>>
+ * @phpstan-type BuilderType = class-string<Builder<TModel>>
+ * @phpstan-type ResourceType = class-string<JsonResource>|null
+ *
  * @implements Arrayable<string, mixed>
  * @implements ArrayAccess<string, mixed>
  *
@@ -20,19 +33,17 @@ use LogicException;
 class ModelInfo implements Arrayable, ArrayAccess
 {
     /**
-     * @template TModel of \Illuminate\Database\Eloquent\Model
-     *
-     * @param  class-string<TModel>  $class  The model's fully-qualified class.
+     * @param  ModelClassType  $class  The model's fully-qualified class.
      * @param  string  $database  The database connection name.
      * @param  string  $table  The database table name.
-     * @param  class-string|null  $policy  The policy that applies to the model.
-     * @param  Collection<int, array<string, mixed>>  $attributes  The attributes available on the model.
-     * @param  Collection<int, array{name: string, type: string, related: class-string<Model>}>  $relations  The relations defined on the model.
-     * @param  Collection<int, array{event: string, class: string}>  $events  The events that the model dispatches.
-     * @param  Collection<int, array{event: string, observer: array<int, string>}>  $observers  The observers registered for the model.
-     * @param  class-string<\Illuminate\Database\Eloquent\Collection<int, TModel>>  $collection  The Collection class that collects the models.
-     * @param  class-string<Builder<TModel>>  $builder  The Builder class registered for the model.
-     * @param  class-string<JsonResource>|null  $resource  The JSON resource that represents the model.
+     * @param  PolicyClassType  $policy  The policy that applies to the model.
+     * @param  AttributesType  $attributes  The attributes available on the model.
+     * @param  RelationsType  $relations  The relations defined on the model.
+     * @param  EventsType  $events  The events that the model dispatches.
+     * @param  ObserversType  $observers  The observers registered for the model.
+     * @param  CollectionType  $collection  The Collection class that collects the models.
+     * @param  BuilderType  $builder  The Builder class registered for the model.
+     * @param  ResourceType  $resource  The JSON resource that represents the model.
      */
     public function __construct(
         public string $class,
@@ -52,17 +63,17 @@ class ModelInfo implements Arrayable, ArrayAccess
      * Convert the model info to an array.
      *
      * @return array{
-     *     "class": class-string<Model>,
+     *     "class": ModelClassType,
      *     database: string,
      *     table: string,
-     *     policy: class-string|null,
-     *     attributes: Collection<int, array<string, mixed>>,
-     *     relations: Collection<int, array{name: string, type: string, related: class-string<Model>}>,
-     *     events: Collection<int, array{event: string, class: string}>,
-     *     observers: Collection<int, array{event: string, observer: array<int, string>}>,
-     *     collection: class-string<\Illuminate\Database\Eloquent\Collection<int, Model>>,
-     *     builder: class-string<Builder<Model>>,
-     *     resource: class-string<JsonResource>|null
+     *     policy: PolicyClassType,
+     *     attributes: AttributesType,
+     *     relations: RelationsType,
+     *     events: EventsType,
+     *     observers: ObserversType,
+     *     collection: CollectionType,
+     *     builder: BuilderType,
+     *     resource: ResourceType,
      * }
      */
     public function toArray()
