@@ -316,7 +316,7 @@ class ResourceTransformer extends CoreTransformer
     protected function guessModelFromUseResourceAttribute(): ?string
     {
         // Laravel 11 doesn't have the UseResource attribute
-        if(!class_exists("Illuminate\\Database\\Eloquent\\Attributes\\UseResource")) {
+        if (! class_exists('Illuminate\\Database\\Eloquent\\Attributes\\UseResource')) {
             return null;
         }
 
