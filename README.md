@@ -1291,8 +1291,11 @@ By default, the package will look for resources in the `app/Http/Resources` dire
 The package uses PHP Parser to statically analyze each resource's `toArray()` method. It resolves property types by inspecting the backing Eloquent model's database schema and cast definitions. The backing model is determined from (in priority order):
 
 1. The `#[TsResource(model:)]` attribute
-2. The `@mixin` PHPDoc tag
-3. Use statements in the resource file
+2. The `@mixin` PHPDoc tag (resolved via use statements)
+3. Convention-based guess — reverses Laravel's naming convention (`App\Http\Resources\UserResource` → `App\Models\User`)
+4. `#[UseResource]` attribute scan — checks all collected models for a `#[UseResource(ResourceClass::class)]` attribute pointing to this resource
+
+Most resources only need `@mixin` or the naming convention. The `#[TsResource(model:)]` attribute is useful when the resource name doesn't match the model, and `#[UseResource]` handles cases where the resource lives outside the standard `Http\Resources` namespace.
 
 ### Supported Patterns
 

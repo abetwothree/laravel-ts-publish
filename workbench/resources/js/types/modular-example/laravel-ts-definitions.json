@@ -1524,6 +1524,48 @@
                 "type": "boolean"
             }
         ],
+        "Store": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "name",
+                "type": "string"
+            },
+            {
+                "name": "phone",
+                "type": "string | null"
+            },
+            {
+                "name": "coordinate_data",
+                "type": "string | null"
+            },
+            {
+                "name": "status",
+                "type": "string | null"
+            },
+            {
+                "name": "manager_id",
+                "type": "number | null"
+            },
+            {
+                "name": "primary_contact_id",
+                "type": "number | null"
+            },
+            {
+                "name": "secondary_contact_id",
+                "type": "number | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            }
+        ],
         "TaskAssignment": [
             {
                 "name": "id",
@@ -3384,6 +3426,58 @@
                 "optional": true
             }
         ],
+        "UserResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "name",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "email",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "role",
+                "type": "AsEnum<typeof Role>",
+                "optional": false
+            },
+            {
+                "name": "profile",
+                "type": "Profile | null",
+                "optional": true
+            },
+            {
+                "name": "posts",
+                "type": "PostResource[]",
+                "optional": true
+            },
+            {
+                "name": "phone",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "avatar",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "posts_count",
+                "type": "number",
+                "optional": true
+            },
+            {
+                "name": "comments_count",
+                "type": "number",
+                "optional": true
+            }
+        ],
         "DealResource": [
             {
                 "name": "id",
@@ -3968,6 +4062,18 @@
                 "optional": true
             }
         ],
+        "WarehouseResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "name",
+                "type": "string",
+                "optional": false
+            }
+        ],
         "ProfileResource": [
             {
                 "name": "id",
@@ -4015,6 +4121,18 @@
                 "optional": true
             }
         ],
+        "Store": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "name",
+                "type": "string",
+                "optional": false
+            }
+        ],
         "TagResource": [
             {
                 "name": "id",
@@ -4047,56 +4165,16 @@
                 "optional": true
             }
         ],
-        "UserResource": [
+        "EventLogResource": [
             {
                 "name": "id",
                 "type": "number",
                 "optional": false
             },
             {
-                "name": "name",
-                "type": "string",
-                "optional": false
-            },
-            {
-                "name": "email",
-                "type": "string",
-                "optional": false
-            },
-            {
-                "name": "role",
-                "type": "AsEnum<typeof Role>",
-                "optional": false
-            },
-            {
-                "name": "profile",
-                "type": "Profile | null",
-                "optional": true
-            },
-            {
-                "name": "posts",
-                "type": "PostResource[]",
-                "optional": true
-            },
-            {
-                "name": "phone",
+                "name": "description",
                 "type": "string | null",
-                "optional": true
-            },
-            {
-                "name": "avatar",
-                "type": "string | null",
-                "optional": true
-            },
-            {
-                "name": "posts_count",
-                "type": "number",
-                "optional": true
-            },
-            {
-                "name": "comments_count",
-                "type": "number",
-                "optional": true
+                "optional": false
             }
         ],
         "Address": [

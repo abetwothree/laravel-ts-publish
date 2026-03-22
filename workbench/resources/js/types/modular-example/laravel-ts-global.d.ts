@@ -599,6 +599,21 @@ declare global {
             imageable_exists: boolean;
         }
     }
+    export namespace app.models.admin {
+        export interface Store {
+            // Columns
+            id: number;
+            name: string;
+            phone: string | null;
+            coordinate_data: string | null;
+            status: string | null;
+            manager_id: number | null;
+            primary_contact_id: number | null;
+            secondary_contact_id: number | null;
+            created_at: string | null;
+            updated_at: string | null;
+        }
+    }
     export namespace blog.models {
         export interface Reaction {
             // Columns
@@ -1075,6 +1090,11 @@ declare global {
             author?: UserResource;
             post?: PostResource;
         }
+        /** Resource with no @mixin or TsResource — tests convention-based model guess. */
+        export interface WarehouseResource {
+            id: number;
+            name: string;
+        }
         /** Exercises: multiple whenHas on different column types, multiple whenNotNull. */
         export interface ProfileResource {
             id: number;
@@ -1108,6 +1128,11 @@ declare global {
             avatar?: string | null;
             posts_count?: number;
             comments_count?: number;
+        }
+        /** Resource with non-conventional name — tests #[UseResource] attribute model resolution. The backing model (TrackingEvent) uses #[UseResource(EventLogResource::class)] to point to this resource since it can't be found by naming convention. */
+        export interface EventLogResource {
+            id: number;
+            description: string | null;
         }
         /** Mailing address resource */
         export interface Address {
@@ -1285,6 +1310,12 @@ declare global {
             order_items?: OrderItem[];
         }
     }
+    export namespace app.http.resources.admin {
+        export interface Store {
+            id: number;
+            name: string;
+        }
+    }
     export namespace blog.http.resources {
         /** Exercises: multiple whenLoaded bare — both same-module (Article) and cross-module (App\User) model type resolution. */
         export interface ReactionResource {
@@ -1313,6 +1344,13 @@ declare global {
         }
     }
     export namespace crm.http.resources {
+        export interface UserResource {
+            id: number;
+            name: string;
+            email: string;
+            company: string | null;
+            status: StatusType;
+        }
         /** Exercises: dual enum conflict — $this->status (App\Enums\Status direct access) vs EnumResource::make($this->crm_status) (Crm\Enums\Status), whenLoaded bare with two different User models (Crm\User + App\User), when conditional. */
         export interface DealResource {
             id: number;

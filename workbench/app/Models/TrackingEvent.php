@@ -3,12 +3,15 @@
 namespace Workbench\App\Models;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
+use Illuminate\Database\Eloquent\Attributes\UseResource;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
+use Workbench\App\Http\Resources\EventLogResource;
 
 #[TsCasts([
     'changes' => '{ attributes: Record<string, unknown>; old: Record<string, unknown> }',
 ])]
+#[UseResource(EventLogResource::class)]
 class TrackingEvent extends Model
 {
     protected $fillable = [

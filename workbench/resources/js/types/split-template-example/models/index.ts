@@ -16,6 +16,7 @@ export * from './product';
 export * from './profile';
 export * from './reaction';
 export * from './shipment';
+export * from './store';
 export * from './strict-composite-comment';
 export * from './strict-task-assignment';
 export * from './tag';

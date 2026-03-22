@@ -2,12 +2,14 @@
 
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Workbench\App\Http\Resources\AddressResource;
+use Workbench\App\Http\Resources\Admin\Store as AdminStoreResource;
 use Workbench\App\Http\Resources\ApiPostResource;
 use Workbench\App\Http\Resources\CategoryResource;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\DelegatingWithMixinResource;
 use Workbench\App\Http\Resources\EmptyResource;
 use Workbench\App\Http\Resources\EmptyWithMixinResource;
+use Workbench\App\Http\Resources\EventLogResource;
 use Workbench\App\Http\Resources\FqcnMixinResource;
 use Workbench\App\Http\Resources\OrderResource;
 use Workbench\App\Http\Resources\PostResource;
@@ -15,10 +17,17 @@ use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\ProfileResource;
 use Workbench\App\Http\Resources\TraitSpreadCoverageResource;
 use Workbench\App\Http\Resources\UserResource;
+use Workbench\App\Http\Resources\WarehouseResource;
+use Workbench\App\Models\Admin\Store as AdminStore;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Order;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\TrackingEvent;
 use Workbench\App\Models\User;
+use Workbench\App\Models\Warehouse;
+use Workbench\App\Resources\DirectResource;
+use Workbench\Crm\Http\Resources\UserResource as CrmUserResource;
+use Workbench\Crm\Models\User as CrmUser;
 
 describe('ResourceTransformer with PostResource', function () {
     test('resolves model class from @mixin docblock', function () {
@@ -665,5 +674,77 @@ describe('ResourceTransformer with trait TsResourceCasts', function () {
             ->and($data->properties['firstName']['type'])->toBe('string')
             ->and($data->properties)->toHaveKey('isActive')
             ->and($data->properties['isActive']['type'])->toBe('boolean');
+    });
+});
+
+describe('ResourceTransformer convention-based model guess', function () {
+    test('resolves model from naming convention when no @mixin or TsResource & resolves properties', function () {
+        $data = (new ResourceTransformer(WarehouseResource::class))->data();
+
+        expect($data->modelClass)->toBe(Warehouse::class);
+
+        expect($data->properties)->toHaveKey('id')
+            ->and($data->properties['id']['type'])->toBe('number')
+            ->and($data->properties)->toHaveKey('name')
+            ->and($data->properties['name']['type'])->toBe('string');
+    });
+
+    test('convention guess does not override @mixin when present', function () {
+        $data = (new ResourceTransformer(PostResource::class))->data();
+
+        expect($data->modelClass)->toBe(Post::class);
+    });
+
+    test('resource without matching model stays null', function () {
+        $data = (new ResourceTransformer(EmptyResource::class))->data();
+
+        expect($data->modelClass)->toBeNull();
+    });
+
+    test('resolves model from convention in modularized namespace & resolves properties', function () {
+        $data = (new ResourceTransformer(CrmUserResource::class))->data();
+
+        expect($data->modelClass)->toBe(CrmUser::class);
+
+        expect($data->properties)->toHaveKey('id')
+            ->and($data->properties['id']['type'])->toBe('number')
+            ->and($data->properties)->toHaveKey('name')
+            ->and($data->properties['name']['type'])->toBe('string')
+            ->and($data->properties)->toHaveKey('email')
+            ->and($data->properties['email']['type'])->toBe('string');
+    });
+});
+
+describe('ResourceTransformer convention guess edge cases', function () {
+    test('returns null when resource is not in Http\Resources namespace', function () {
+        $data = (new ResourceTransformer(DirectResource::class))->data();
+
+        expect($data->modelClass)->toBeNull();
+    });
+
+    test('resolves model from subdirectory without Resource suffix', function () {
+        $data = (new ResourceTransformer(AdminStoreResource::class))->data();
+
+        expect($data->modelClass)->toBe(AdminStore::class);
+    });
+
+    test('resolves properties from subdirectory convention-guessed model', function () {
+        $data = (new ResourceTransformer(AdminStoreResource::class))->data();
+
+        expect($data->properties)->toHaveKey('id')
+            ->and($data->properties['id']['type'])->toBe('number')
+            ->and($data->properties)->toHaveKey('name')
+            ->and($data->properties['name']['type'])->toBe('string');
+    });
+});
+
+describe('ResourceTransformer UseResource attribute model guess', function () {
+    test('resolves model from #[UseResource] attribute on model & resolves properties', function () {
+        $data = (new ResourceTransformer(EventLogResource::class))->data();
+
+        expect($data->modelClass)->toBe(TrackingEvent::class);
+
+        expect($data->properties)->toHaveKey('id')
+            ->and($data->properties)->toHaveKey('description');
     });
 });

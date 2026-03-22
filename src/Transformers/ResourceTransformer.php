@@ -8,8 +8,10 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResourceCasts;
+use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsResourceDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use Illuminate\Database\Eloquent\Attributes\UseResource;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Str;
@@ -192,6 +194,24 @@ class ResourceTransformer extends CoreTransformer
             // @codeCoverageIgnoreEnd
         }
 
+        // Priority 3: convention-based guess (reverse of Laravel's TransformsToResource)
+        $guessed = $this->guessModelFromConvention();
+
+        if ($guessed !== null) {
+            $this->modelClass = $guessed;
+
+            return $this;
+        }
+
+        // Priority 4: scan models for #[UseResource] attribute pointing to this resource
+        $useResourceModel = $this->guessModelFromUseResourceAttribute();
+
+        if ($useResourceModel !== null) {
+            $this->modelClass = $useResourceModel;
+
+            return $this;
+        }
+
         return $this;
     }
 
@@ -217,6 +237,78 @@ class ResourceTransformer extends CoreTransformer
         }
 
         return null; // @codeCoverageIgnore
+    }
+
+    /**
+     * Guess the backing model by reversing Laravel's resource naming convention.
+     *
+     * Given `App\Http\Resources\{Sub}\{Name}Resource`, tries `App\Models\{Sub}\{Name}`.
+     *
+     * @return class-string<Model>|null
+     */
+    protected function guessModelFromConvention(): ?string
+    {
+        $resourceFqcn = $this->reflectionResource->getName();
+
+        if (! Str::contains($resourceFqcn, '\\Http\\Resources\\')) {
+            return null;
+        }
+
+        $beforeResources = Str::before($resourceFqcn, '\\Http\\Resources\\');
+        $afterResources = Str::after($resourceFqcn, '\\Http\\Resources\\');
+
+        $basename = class_basename($resourceFqcn);
+
+        $relativeNamespace = Str::contains($afterResources, '\\')
+            ? Str::before($afterResources, '\\'.$basename)
+            : '';
+
+        $prefix = $beforeResources.'\\Models\\'
+            .(strlen($relativeNamespace) > 0 ? $relativeNamespace.'\\' : '');
+
+        // Try without "Resource" suffix first (most common convention)
+        $withoutSuffix = Str::endsWith($basename, 'Resource')
+            ? Str::beforeLast($basename, 'Resource')
+            : null;
+
+        if ($withoutSuffix !== null && $withoutSuffix !== '') {
+            $candidate = $prefix.$withoutSuffix;
+
+            if (class_exists($candidate) && is_a($candidate, Model::class, true)) {
+                return $candidate;
+            }
+        }
+
+        // Try the class name as-is (e.g., App\Http\Resources\User → App\Models\User)
+        $candidate = $prefix.$basename;
+
+        if (class_exists($candidate) && is_a($candidate, Model::class, true)) {
+            return $candidate;
+        }
+
+        return null;
+    }
+
+    /**
+     * Scan collected models for a #[UseResource] attribute pointing to this resource.
+     *
+     * @return class-string<Model>|null
+     */
+    protected function guessModelFromUseResourceAttribute(): ?string
+    {
+        /** @var ModelsCollector $collector */
+        $collector = resolve(config()->string('ts-publish.model_collector_class'));
+
+        foreach ($collector->collect() as $modelClass) {
+            $reflection = new ReflectionClass($modelClass);
+            $attrs = $reflection->getAttributes(UseResource::class);
+
+            if ($attrs !== [] && $attrs[0]->newInstance()->class === $this->findable) {
+                return $modelClass;
+            }
+        }
+
+        return null;
     }
 
     /**
