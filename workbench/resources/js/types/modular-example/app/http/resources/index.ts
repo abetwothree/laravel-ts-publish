@@ -7,6 +7,7 @@ export * from './delegating-with-mixin-resource';
 export * from './empty-resource';
 export * from './empty-with-mixin-resource';
 export * from './event-log-resource';
+export * from './extended-address-resource';
 export * from './fqcn-mixin-resource';
 export * from './image-resource';
 export * from './non-array-return-resource';

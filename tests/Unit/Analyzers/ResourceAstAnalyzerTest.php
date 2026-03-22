@@ -13,6 +13,7 @@ use Workbench\App\Http\Resources\DelegatingResource;
 use Workbench\App\Http\Resources\DelegatingWithMixinResource;
 use Workbench\App\Http\Resources\EmptyResource;
 use Workbench\App\Http\Resources\EmptyWithMixinResource;
+use Workbench\App\Http\Resources\ExtendedAddressResource;
 use Workbench\App\Http\Resources\NonArrayReturnResource;
 use Workbench\App\Http\Resources\OrderDetailResource;
 use Workbench\App\Http\Resources\OrderItemResource;
@@ -823,6 +824,16 @@ describe('ResourceAstAnalyzer with parent::toArray spread', function () {
         // Parent PostResource uses EnumResource::make() for status, visibility, priority
         // Child overrides those keys with plain $this->prop, clearing the parent's enum resource tracking
         expect($analysis->enumResources)->toBeEmpty();
+    });
+
+    test('inherits customImports from parent trait TsResourceCasts', function () {
+        $reflection = new ReflectionClass(ExtendedAddressResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        expect($analysis->customImports)
+            ->toHaveKey('@/types/geo')
+            ->and($analysis->customImports['@/types/geo'])->toContain('GeoPoint');
     });
 });
 

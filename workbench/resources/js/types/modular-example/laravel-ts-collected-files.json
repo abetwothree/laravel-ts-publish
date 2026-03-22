@@ -21,6 +21,7 @@
     "app\/Http\/Resources\/EmptyResource.php",
     "app\/Http\/Resources\/EmptyWithMixinResource.php",
     "app\/Http\/Resources\/EventLogResource.php",
+    "app\/Http\/Resources\/ExtendedAddressResource.php",
     "app\/Http\/Resources\/FqcnMixinResource.php",
     "app\/Http\/Resources\/ImageResource.php",
     "app\/Http\/Resources\/NonArrayReturnResource.php",

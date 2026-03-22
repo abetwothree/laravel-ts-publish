@@ -4370,6 +4370,73 @@
                 "optional": true
             }
         ],
+        "ExtendedAddressResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "computed",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "date_val",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "custom_val",
+                "type": "CustomObject",
+                "optional": false
+            },
+            {
+                "name": "plain",
+                "type": "unknown",
+                "optional": false
+            },
+            {
+                "name": "basic",
+                "type": "unknown",
+                "optional": false
+            },
+            {
+                "name": "firstName",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "lastName",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "isActive",
+                "type": "boolean",
+                "optional": false
+            },
+            {
+                "name": "location",
+                "type": "GeoPoint",
+                "optional": false
+            },
+            {
+                "name": "flag",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "extra",
+                "type": "Record<string, unknown>",
+                "optional": false
+            },
+            {
+                "name": "extra_field",
+                "type": "unknown",
+                "optional": false
+            }
+        ],
         "NonArrayReturnResource": [],
         "ApiPostResource": [
             {

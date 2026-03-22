@@ -1179,6 +1179,22 @@ declare global {
             posts?: PostResource[];
             posts_count?: number;
         }
+        /** Exercises: parent spread inheriting customImports from parent trait TsResourceCasts. */
+        export interface ExtendedAddressResource {
+            id: number;
+            computed: string;
+            date_val: string;
+            custom_val: CustomObject;
+            plain: unknown;
+            basic: unknown;
+            firstName: string;
+            lastName: string;
+            isActive: boolean;
+            location: GeoPoint;
+            flag?: string | null;
+            extra: Record<string, unknown>;
+            extra_field: unknown;
+        }
         export interface NonArrayReturnResource {
         }
         export interface ApiPostResource {
