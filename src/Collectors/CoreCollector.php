@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Collectors;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
+use AbeTwoThree\LaravelTsPublish\Collectors\Concerns\ValidatesCollectorFiles;
 use Composer\ClassMapGenerator\ClassMapGenerator;
 use Illuminate\Support\Collection;
 use ReflectionClass;
@@ -14,6 +15,8 @@ use ReflectionClass;
  */
 abstract class CoreCollector
 {
+    use ValidatesCollectorFiles;
+
     abstract protected function defaultDirectory(): string;
 
     /** @param ReflectionClass<object> $reflection */
@@ -100,5 +103,14 @@ abstract class CoreCollector
             })
             ->values()
             ->all();
+    }
+
+    /**
+     * @param  array<mixed>  $setting
+     * @return list<string>
+     */
+    protected function sanitizeAllowSetting(array $setting): array
+    {
+        return array_values(array_filter($setting, 'is_string'));
     }
 }

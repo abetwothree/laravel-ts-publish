@@ -102,4 +102,20 @@ class Order extends Model
             }.number_format((float) $this->total, 2),
         );
     }
+
+    /** Trimmed notes — accessor on a nullable DB column */
+    protected function notes(): Attribute
+    {
+        return Attribute::make(
+            get: fn (?string $value): string => trim($value ?? ''),
+        );
+    }
+
+    /** Write-only mutator (no getter) for a non-DB column */
+    protected function searchIndex(): Attribute
+    {
+        return Attribute::make(
+            set: fn (string $value): string => strtolower($value),
+        );
+    }
 }

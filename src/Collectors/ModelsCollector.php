@@ -20,15 +20,15 @@ class ModelsCollector extends CoreCollector
     /** @param ReflectionClass<object> $reflection */
     protected function classFilter(ReflectionClass $reflection): bool
     {
-        return $reflection->isSubclassOf(Model::class) && ! $reflection->isAbstract();
+        return $this->validateModel($reflection);
     }
 
     protected function finderSettings(): array
     {
         return [
-            'included' => array_values(array_filter(config()->array('ts-publish.included_models'), 'is_string')),
-            'excluded' => array_values(array_filter(config()->array('ts-publish.excluded_models'), 'is_string')),
-            'additional_directories' => array_values(array_filter(config()->array('ts-publish.additional_model_directories'), 'is_string')),
+            'included' => $this->sanitizeAllowSetting(config()->array('ts-publish.included_models')),
+            'excluded' => $this->sanitizeAllowSetting(config()->array('ts-publish.excluded_models')),
+            'additional_directories' => $this->sanitizeAllowSetting(config()->array('ts-publish.additional_model_directories')),
         ];
     }
 }

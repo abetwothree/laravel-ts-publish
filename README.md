@@ -1,4 +1,4 @@
-# Laravel TypeScript Enums & Models Types Publisher
+# Laravel TypeScript Enums, Models, & Resources Publisher
 
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/abetwothree/laravel-ts-publish.svg?style=flat-square)](https://packagist.org/packages/abetwothree/laravel-ts-publish)
 [![GitHub Tests Action Status](https://img.shields.io/github/actions/workflow/status/abetwothree/laravel-ts-publish/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/abetwothree/laravel-ts-publish/actions?query=workflow%3Arun-tests+branch%3Amain)
@@ -8,7 +8,7 @@
 
 <p align="center"><img src="./assets/laravel-typescript-publish-logo-short.svg" width="50%" alt="Laravel TypeScript Publisher Logo"></p>
 
-This is an extremely flexible package that allows you to create TypeScript declaration types from your Laravel PHP models, enums, and other cast classes.
+This is an extremely flexible package that allows you to create TypeScript declaration types from your Laravel PHP models, enums, API resources, and other cast classes.
 
 Enums are treated as first-class citizens with support for PHP-like enum features, including methods and static methods.
 
@@ -22,6 +22,7 @@ For examples of the generated TypeScript output, see [these output examples](wor
 - 🚀 [Usage](#usage)
 - 🏷️ [Enums](#enums)
 - 🗃️ [Models](#models)
+- 📡 [API Resources](#api-resources)
 - ❌ [Excluding Content](#excluding-with-tsexclude)
 - 🔤 [Casing Configurations](#casing-configurations)
 - 🌐 [Enum API Resource](#json-enum-http-api-resource)
@@ -64,7 +65,7 @@ php artisan ts:publish
 
 By default, the generated TypeScript declaration types will be saved to the `resources/js/types/data/` directory and follow default configuration settings.
 
-Additionally, by default, the package will look for models in the `app/Models` directory and enums in the `app/Enums` directory. You can customize these settings in the published configuration file.
+Additionally, by default, the package will look for models in the `app/Models` directory, enums in the `app/Enums` directory, and API resources in the `app/Http/Resources` directory. You can customize these settings in the published configuration file.
 
 For a full installation and setup guide, see the [Installation & Setup](WORKFLOW.md) documentation.
 
@@ -80,11 +81,12 @@ This is useful for debugging or reviewing what will be generated before committi
 
 #### Single-File Republishing
 
-You can republish a single enum or model instead of the entire set by using the `--source` option with a fully-qualified class name or file path:
+You can republish a single enum, model, or resource instead of the entire set by using the `--source` option with a fully-qualified class name or file path:
 
 ```bash
 php artisan ts:publish --source="App\Enums\Status"
 php artisan ts:publish --source="app/Enums/Status.php"
+php artisan ts:publish --source="App\Http\Resources\UserResource"
 ```
 
 This is significantly faster than a full publish on large projects and is used automatically by the [Vite plugin](#enum-metadata-vite-plugin) to republish only the file that changed during development.
@@ -105,9 +107,9 @@ You can disable this behavior in the config file or via environment variable:
 TS_PUBLISH_RUN_AFTER_MIGRATE=false
 ```
 
-#### Filtering Models & Enums
+#### Filtering Models, Enums & Resources
 
-You can fully customize which models and enums are included or excluded, and add additional directories to search in. By default, all models in `app/Models` and all enums in `app/Enums` are included.
+You can fully customize which models, enums, and resources are included or excluded, and add additional directories to search in. By default, all models in `app/Models`, all enums in `app/Enums`, and all resources in `app/Http/Resources` are included.
 
 ```php
 // config/ts-publish.php
@@ -129,44 +131,46 @@ You can fully customize which models and enums are included or excluded, and add
 ],
 ```
 
-The same options are available for enums with `included_enums`, `excluded_enums`, and `additional_enum_directories`.
+The same options are available for enums with `included_enums`, `excluded_enums`, and `additional_enum_directories`, and for resources with `included_resources`, `excluded_resources`, and `additional_resource_directories`.
 
 > [!TIP]
 > Include and exclude settings accept both fully-qualified class names and directory paths. When a directory is provided, all matching classes within it will be discovered automatically.
 
 #### Conditional Publishing
 
-You can choose to publish only enums or only models, either through configuration or command flags.
+You can choose to publish only enums, only models, or only resources, either through configuration or command flags.
 
 ##### Via Configuration
 
-Disable enum or model publishing entirely in the config file:
+Disable enum, model, or resource publishing entirely in the config file:
 
 ```php
 // config/ts-publish.php
 
 'publish_enums' => true,
 'publish_models' => true,
+'publish_resources' => true,
 ```
 
-Setting either to `false` will skip that type on every run, including automatic post-migration publishing.
+Setting any to `false` will skip that type on every run, including automatic post-migration publishing.
 
 ##### Via Command Flags
 
-Use the `--only-enums` or `--only-models` flags to limit a single run:
+Use the `--only-enums`, `--only-models`, or `--only-resources` flags to limit a single run:
 
 ```bash
 php artisan ts:publish --only-enums
 php artisan ts:publish --only-models
+php artisan ts:publish --only-resources
 ```
 
-These flags cannot be combined — passing both will return an error.
+These flags cannot be combined — passing any two together will return an error.
 
 ##### Config & Flag Conflicts
 
 When a command flag requests a type that is disabled in config (e.g. `--only-enums` while `publish_enums` is `false`), the command will prompt you to confirm whether to override the config setting. In non-interactive environments (CI, queued jobs, post-migration hooks), the config value is respected and the command exits gracefully.
 
-If both types end up disabled (both config values are `false` and no override flag is given), the command prints a warning and exits with a success status.
+If all types end up disabled (all config values are `false` and no override flag is given), the command prints a warning and exits with a success status.
 
 #### Verbosity Levels
 
@@ -1276,24 +1280,507 @@ When `output_globals_file` is enabled, a global declaration file is created that
 
 The JSON output from `output_collected_files_json` is designed to work with build tools and file watchers (like the [@tolki/enum Vite plugin](#enum-metadata-vite-plugin)) that need to know which PHP source files were collected so they can trigger a re-publish when those files change.
 
+## API Resources
+
+This package can generate TypeScript interfaces from your Laravel [API Resources](https://laravel.com/docs/eloquent-resources) (`JsonResource` classes). It statically analyzes the `toArray()` method to extract property names, types, and optionality — producing a TypeScript interface that matches the shape of your API responses.
+
+By default, the package will look for resources in the `app/Http/Resources` directory. You can customize this with the `additional_resource_directories`, `included_resources`, and `excluded_resources` config options (see [Filtering Resources](#filtering-resources)).
+
+### How It Works
+
+The package uses PHP Parser to statically analyze each resource's `toArray()` method. It resolves property types by inspecting the backing Eloquent model's database schema and cast definitions. The backing model is determined from (in priority order):
+
+1. The `#[TsResource(model:)]` attribute
+2. The `@mixin` PHPDoc tag (resolved via use statements)
+3. Convention-based guess — reverses Laravel's naming convention (`App\Http\Resources\UserResource` → `App\Models\User`)
+4. `#[UseResource]` attribute scan — checks all collected models for a `#[UseResource(ResourceClass::class)]` attribute pointing to this resource (Laravel 12+ only)
+
+Most resources only need `@mixin` or the naming convention. The `#[TsResource(model:)]` attribute is useful when the resource name doesn't match the model, and `#[UseResource]` handles cases where the resource lives outside the standard `Http\Resources` namespace.
+
+### Supported Patterns
+
+The analyzer recognizes the following patterns inside `toArray()`:
+
+#### Direct Property Access
+
+```php
+'id' => $this->id,
+'name' => $this->name,
+'status' => $this->status,       // Enum cast → generates enum type
+```
+
+Types are resolved from the model's database columns and cast definitions.
+
+#### Conditional Methods
+
+All conditional methods produce **optional** properties (with `?` in TypeScript):
+
+| Method                                      | Description                       | Generated Type           |
+|---------------------------------------------|-----------------------------------|--------------------------|
+| `$this->when(cond, value)`                  | Include when condition is true    | Inferred from value      |
+| `$this->whenHas('attr')`                    | Include when attribute is present | From model column type   |
+| `$this->whenNotNull($this->attr)`           | Include when not null             | From model column type   |
+| `$this->whenLoaded('relation')`             | Include when relation is loaded   | From model relation type |
+| `$this->whenCounted('relation')`            | Include when count is loaded      | `number`                 |
+| `$this->whenAggregated('rel', 'col', 'fn')` | Include when aggregate is loaded  | `number`                 |
+| `$this->whenPivotLoaded('table')`           | Include when pivot is loaded      | `unknown`                |
+
+See [Nullable Relations](#nullable-relations) for `whenLoaded` nullability handling.
+
+#### Enum Properties with `EnumResource`
+
+Use `EnumResource::make()` to expose enum-cast properties as rich enum objects:
+
+```php
+'status' => EnumResource::make($this->status),
+'currency' => EnumResource::make($this->currency),
+```
+
+When `enums_use_tolki_package` is enabled (the default), these generate `AsEnum<typeof EnumName>` types with automatic imports. When disabled, they generate the enum's `Type` alias (e.g., `StatusType`).
+
+#### Nested Resources
+
+Reference other resources using `::make()` or `::collection()`:
+
+```php
+// Single nested resource (optional when inside whenLoaded)
+'author' => UserResource::make($this->whenLoaded('user')),
+
+// Collection of nested resources
+'tags' => TagResource::collection($this->whenLoaded('tags')),
+
+// Non-conditional nested resource
+'owner' => UserResource::make($this->user),
+```
+
+Self-referencing resources are also supported:
+
+```php
+'parent' => CategoryResource::make($this->whenLoaded('parent')),
+'children' => CategoryResource::collection($this->whenLoaded('children')),
+```
+
+#### Merge Operations
+
+Use `mergeWhen` to conditionally include groups of properties. All properties inside `mergeWhen` are marked as **optional**:
+
+```php
+$this->mergeWhen($this->is_featured, [
+    'weight' => $this->weight,
+    'dimensions' => $this->dimensions,
+]),
+```
+
+#### Parent `toArray()` Spread
+
+Extend a parent resource using `...parent::toArray($request)`. Parent properties appear first, and the child can override any key:
+
+```php
+class PostResource extends JsonResource
+{
+    public function toArray(Request $request): array
+    {
+        return [
+            'id' => $this->id,
+            'title' => $this->title,
+            'status' => EnumResource::make($this->status),
+        ];
+    }
+}
+
+class ApiPostResource extends PostResource
+{
+    public function toArray(Request $request): array
+    {
+        return [
+            ...parent::toArray($request),
+            'status' => $this->status,       // Overrides parent's EnumResource type
+        ];
+    }
+}
+```
+
+The child `ApiPostResource` inherits all parent properties (`id`, `title`, `status`), with `status` overridden to use the plain enum value instead of `EnumResource::make()`.
+
+If the parent itself extends `JsonResource` (the base class), the spread automatically delegates to the model's database attributes — see [JsonResource Base Delegation](#jsonresource-base-delegation).
+
+#### Trait Method Spread
+
+Spread trait method return values into `toArray()` with `...$this->traitMethod()`. The analyzer reads `@return array{key: type}` PHPDoc annotations to resolve property types:
+
+```php
+trait IncludesMorphValue
+{
+    /**
+     * @return array{morphValue: string}
+     */
+    protected function includeMorphValue(): array
+    {
+        return ['morphValue' => $this->resource->getMorphClass()];
+    }
+}
+
+class PostResource extends JsonResource
+{
+    use IncludesMorphValue;
+
+    public function toArray(Request $request): array
+    {
+        return [
+            ...$this->includeMorphValue(),
+            'id' => $this->id,
+            'title' => $this->title,
+        ];
+    }
+}
+```
+
+Generates:
+
+```typescript
+export interface Post {
+    morphValue: string;   // From trait PHPDoc
+    id: number;
+    title: string;
+}
+```
+
+Multiline `@return` shapes are also supported:
+
+```php
+/**
+ * @return array{
+ *     firstName: string,
+ *     lastName: string,
+ *     isActive: bool,
+ * }
+ */
+protected function includeProfile(): array
+{
+    // ...
+}
+```
+
+> [!TIP]
+> Trait spreads also flow through parent inheritance. If a parent resource spreads a trait method and a child extends it with `...parent::toArray($request)`, the child inherits the trait-contributed properties.
+
+> [!NOTE]
+> When a trait method has no `@return array{...}` PHPDoc, its properties will be typed as `unknown`.
+
+#### JsonResource Base Delegation
+
+Resources that have **no `toArray()` method** or whose `toArray()` simply returns `parent::toArray($request)` automatically generate properties from the backing model's database schema:
+
+```php
+/**
+ * @mixin User
+ */
+class UserResource extends JsonResource
+{
+    // No toArray() — properties auto-generated from User model
+}
+```
+
+You can also spread the base properties and add computed keys:
+
+```php
+/**
+ * @mixin User
+ */
+class UserResource extends JsonResource
+{
+    public function toArray(Request $request): array
+    {
+        return [
+            ...parent::toArray($request),
+            'full_name' => strtoupper($this->name),
+        ];
+    }
+}
+```
+
+The model is resolved from `#[TsResource(model:)]`, `@mixin` PHPDoc, or use statements. When no model can be detected, the resource produces an empty interface.
+
+### Example
+
+Given this resource:
+
+```php
+use AbeTwoThree\LaravelTsPublish\EnumResource;
+use Illuminate\Http\Resources\Json\JsonResource;
+use App\Models\User;
+
+/**
+ * User account resource.
+ *
+ * @mixin User
+ */
+class UserResource extends JsonResource
+{
+    public function toArray(Request $request): array
+    {
+        return [
+            'id' => $this->id,
+            'name' => $this->name,
+            'email' => $this->email,
+            'role' => EnumResource::make($this->role),
+            'profile' => $this->whenLoaded('profile'),
+            'posts' => PostResource::collection($this->whenLoaded('posts')),
+            'phone' => $this->whenHas('phone'),
+            'avatar' => $this->whenNotNull($this->avatar),
+            'posts_count' => $this->whenCounted('posts'),
+        ];
+    }
+}
+```
+
+The package generates the following TypeScript interface:
+
+```TypeScript
+import { type AsEnum } from '@tolki/enum';
+
+import { Role } from '../enums';
+import type { Profile } from '../models';
+import type { PostResource } from './';
+
+/** User account resource. */
+export interface UserResource
+{
+    id: number;
+    name: string;
+    email: string;
+    role: AsEnum<typeof Role>;
+    profile?: Profile | null;
+    posts?: PostResource[];
+    phone?: string | null;
+    avatar?: string | null;
+    posts_count?: number;
+}
+```
+
+Notice how:
+
+- Direct properties (`id`, `name`, `email`) are **required**
+- `whenLoaded`, `whenHas`, `whenNotNull`, and `whenCounted` properties are **optional** (`?`)
+- `EnumResource::make()` generates `AsEnum<typeof Role>` with the proper imports
+- `PostResource::collection()` is typed as `PostResource[]`
+- Bare `whenLoaded('profile')` resolves to the model relation type (`Profile | null`)
+- PHPDoc class descriptions are preserved as JSDoc comments
+
+### Resource Attributes
+
+Three attributes are available for configuring resource TypeScript generation:
+
+| Attribute            | Target                    | Description                                                                  |
+|----------------------|---------------------------|------------------------------------------------------------------------------|
+| `#[TsResource]`      | Resource class            | Override the interface name, specify the backing model, or add a description |
+| `#[TsResourceCasts]` | Resource class or method  | Override or add property types with custom TypeScript types                  |
+| `#[TsExclude]`       | Resource class            | Exclude the entire resource from the TypeScript output.                      |
+
+See [Excluding with TsExclude](#excluding-with-tsexclude)
+
+#### `#[TsResource]` — Configure Resource Generation
+
+Use this attribute to override the generated interface name, explicitly specify the backing model, or add a description:
+
+```php
+use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
+use App\Models\User;
+
+#[TsResource(name: 'UserData', model: User::class, description: 'User API response')]
+class UserResource extends JsonResource
+{
+    // ...
+}
+```
+
+| Parameter     | Type           | Default            | Description                                   |
+|---------------|----------------|--------------------|-----------------------------------------------|
+| `name`        | `?string`      | Class name         | Override the TypeScript interface name        |
+| `model`       | `?class-string`| Auto-detected      | Explicitly specify the backing Eloquent model |
+| `description` | `string`       | `''`               | Added as a JSDoc comment above the interface  |
+
+> [!TIP]
+> When `name` is set, it also affects the output filename. For example, `#[TsResource(name: 'Address')]` generates `address.ts` instead of `address-resource.ts`.
+
+#### `#[TsResourceCasts]` — Override Property Types
+
+Use this attribute to override inferred types or add virtual properties with custom TypeScript types:
+
+```php
+use AbeTwoThree\LaravelTsPublish\Attributes\TsResourceCasts;
+
+#[TsResourceCasts([
+    'metadata' => 'Record<string, unknown>',
+    'coordinates' => ['type' => 'GeoPoint', 'import' => '@/types/geo'],
+    'flagged_at' => ['type' => 'string | null', 'optional' => true],
+])]
+class CommentResource extends JsonResource
+{
+    // ...
+}
+```
+
+Each entry can be:
+
+| Format                | Example                                             | Description                            |
+|-----------------------|-----------------------------------------------------|----------------------------------------|
+| Plain string          | `'Record<string, unknown>'`                         | Override the type only                 |
+| Array with `import`   | `['type' => 'GeoPoint', 'import' => '@/types/geo']` | Custom type with an import statement   |
+| Array with `optional` | `['type' => 'string', 'optional' => true]`          | Override the type and mark as optional |
+
+Properties defined in `#[TsResourceCasts]` that don't exist in `toArray()` are appended to the generated interface. Properties that do exist have their types overridden.
+
+Generated TypeScript with the `coordinates` example:
+
+```TypeScript
+import type { GeoPoint } from '@/types/geo';
+
+export interface CommentResource
+{
+    id: number;
+    content: string;
+    is_flagged: boolean;
+    flagged_at?: string | null;
+    metadata: Record<string, unknown>;
+    author?: UserResource;
+    post?: PostResource;
+    coordinates: GeoPoint;
+}
+```
+
+##### On Trait Methods
+
+`#[TsResourceCasts]` can also be applied to **trait methods** that are spread into `toArray()`. This lets you control types for trait-contributed properties without modifying the resource class:
+
+```php
+use AbeTwoThree\LaravelTsPublish\Attributes\TsResourceCasts;
+
+trait IncludesLocation
+{
+    #[TsResourceCasts([
+        'location' => ['type' => 'GeoPoint', 'import' => '@/types/geo'],
+        'flag' => ['type' => 'string | null', 'optional' => true],
+        'extra' => 'Record<string, unknown>',
+    ])]
+    protected function includeLocation(): array
+    {
+        return [
+            'location' => $this->coordinates,
+            'flag' => $this->flag,
+        ];
+    }
+}
+```
+
+The attribute works identically to the class-level version — overriding types, marking properties optional, adding imports, and appending new properties. Properties defined in the attribute that don't exist in the method's return array (like `extra` above) are appended.
+
+### Nullable Relations
+
+When `whenLoaded('relation')` resolves a relation type, the package determines whether it should include `| null` based on the relation kind and the database schema.
+
+This is controlled by the `nullable_relations` config option (enabled by default). The strategy for each relation type is:
+
+| Relation Type                         | Strategy    | Description                                          |
+|---------------------------------------|-------------|------------------------------------------------------|
+| `HasOne`, `MorphOne`, `HasOneThrough` | `nullable`  | Always nullable — the related record may not exist   |
+| `BelongsTo`                           | `fk`        | Checks the foreign key column's DB-level nullability |
+| `MorphTo`                             | `morph`     | Checks both the morph type and FK column nullability |
+| `HasMany`, `BelongsToMany`, etc.      | `never`     | Collection relations — typed as arrays, never null   |
+
+For example, a `BelongsTo` relation with a nullable foreign key:
+
+```php
+// Migration: $table->foreignId('user_id')->nullable();
+
+// Resource:
+'user' => UserResource::make($this->whenLoaded('user')),
+```
+
+Generates `user?: UserResource | null` — optional (from `whenLoaded`) and nullable (from the nullable FK).
+
+You can disable nullable relation detection globally:
+
+```php
+// config/ts-publish.php
+'nullable_relations' => false,
+```
+
+Or override the strategy for specific relation types using `relation_nullability_map`:
+
+```php
+// config/ts-publish.php
+'relation_nullability_map' => [
+    \Illuminate\Database\Eloquent\Relations\HasOne::class => 'never',
+],
+```
+
+Valid strategies are `'nullable'`, `'never'`, `'fk'`, and `'morph'`.
+
+### Filtering Resources
+
+You can customize which resources are discovered using the same include/exclude pattern as models and enums:
+
+```php
+// config/ts-publish.php
+
+// Only publish these specific resources (leave empty to include all)
+'included_resources' => [
+    App\Http\Resources\UserResource::class,
+    App\Http\Resources\PostResource::class,
+],
+
+// Exclude specific resources from publishing
+'excluded_resources' => [
+    App\Http\Resources\InternalResource::class,
+],
+
+// Search additional directories for resources
+'additional_resource_directories' => [
+    'modules/Blog/Http/Resources',
+],
+```
+
+> [!TIP]
+> Like models and enums, include and exclude settings accept both fully-qualified class names and directory paths.
+
+### Conditional Resource Publishing
+
+You can disable resource publishing entirely in the config file:
+
+```php
+// config/ts-publish.php
+
+'publish_resources' => false,
+```
+
+Or publish only resources using the command flag:
+
+```bash
+php artisan ts:publish --only-resources
+```
+
+The `--only-resources` flag cannot be combined with `--only-enums` or `--only-models`.
+
 ## Excluding with `#[TsExclude]`
 
 The `#[TsExclude]` attribute lets you exclude specific items from the TypeScript output. This is especially useful when `auto_include_enum_methods` or `auto_include_enum_static_methods` is enabled and you want to opt out individual enum methods.
 
 `#[TsExclude]` can be applied to:
 
-| Target             | Effect                                                   |
-|--------------------|----------------------------------------------------------|
-| Enum class         | Entire enum is excluded from collection and publishing   |
-| Enum method        | Method is excluded from the TypeScript output            |
-| Model class        | Entire model is excluded from collection and publishing  |
-| Model accessor     | Mutator/accessor is excluded from the TypeScript output  |
-| Model relation     | Relation is excluded from the TypeScript output          |
+| Target             | Effect                                                      |
+|--------------------|-------------------------------------------------------------|
+| Enum class         | Entire enum is excluded from collection and publishing      |
+| Enum method        | Method is excluded from the TypeScript output               |
+| Model class        | Entire model is excluded from collection and publishing     |
+| Model accessor     | Mutator/accessor is excluded from the TypeScript output     |
+| Model relation     | Relation is excluded from the TypeScript output             |
+| Resource class     | Entire resource is excluded from collection and publishing  |
 
 > [!NOTE]
 > `#[TsExclude]` always takes priority — even if you use attributes like `#[TsEnumMethod]` or `#[TsEnumStaticMethod]` on enum methods, the methods will be excluded.
 
-### Excluding an entire enum or model
+### Excluding an entire enum, model, or resource
 
 ```php
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
@@ -1309,6 +1796,12 @@ enum InternalStatus: string
 class AuditLog extends Model
 {
     // This model will not be published to TypeScript
+}
+
+#[TsExclude]
+class InternalResource extends JsonResource
+{
+    // This resource will not be published to TypeScript
 }
 ```
 
@@ -1612,7 +2105,7 @@ Naming conflicts are handled automatically — if two enum FQCNs share the same 
 
 ## Modular Publishing
 
-By default, this package outputs all generated TypeScript files into flat `enums/` and `models/` directories:
+By default, this package outputs all generated TypeScript files into flat `enums/`, `models/`, and `resources/` directories:
 
 ```text
 resources/js/types/data/
@@ -1625,6 +2118,10 @@ resources/js/types/data/
 │   ├── user.ts
 │   ├── invoice.ts
 │   ├── shipment.ts
+│   └── index.ts
+├── resources/
+│   ├── user-resource.ts
+│   ├── order-resource.ts
 │   └── index.ts
 └── global.d.ts
 ```
@@ -1650,17 +2147,26 @@ resources/js/types/data/
 │   │   ├── role.ts
 │   │   ├── membership-level.ts
 │   │   └── index.ts
-│   └── models/
-│       ├── user.ts
-│       ├── order.ts
-│       └── index.ts
+│   ├── models/
+│   │   ├── user.ts
+│   │   ├── order.ts
+│   │   └── index.ts
+│   └── http/
+│       └── resources/
+│           ├── user-resource.ts
+│           ├── order-resource.ts
+│           └── index.ts
 ├── accounting/
 │   ├── enums/
 │   │   ├── invoice-status.ts
 │   │   └── index.ts
-│   └── models/
-│       ├── invoice.ts
-│       └── index.ts
+│   ├── models/
+│   │   ├── invoice.ts
+│   │   └── index.ts
+│   └── http/
+│       └── resources/
+│           ├── invoice-resource.ts
+│           └── index.ts
 ├── shipping/
 │   ├── enums/
 │   │   ├── shipment-status.ts
@@ -1761,22 +2267,27 @@ import { InvoiceStatusType } from '@js/types/data/accounting/enums';
 
 This package uses a **Collector → Generator → Transformer → Writer → Template** pipeline. Each stage is fully configurable via the config file, allowing you to extend or replace any component without modifying the package itself:
 
-| Pipeline Stage | Config Key                | Default Class        | Responsibility                          |
-|----------------|---------------------------|----------------------|-----------------------------------------|
-| Collector      | `model_collector_class`   | `ModelsCollector`    | Discovers PHP model classes.            |
-| Collector      | `enum_collector_class`    | `EnumsCollector`     | Discovers PHP enum classes              |
-| Generator      | `model_generator_class`   | `ModelGenerator`     | Orchestrates transforming and writing   |
-| Generator      | `enum_generator_class`    | `EnumGenerator`      | Orchestrates transforming and writing   |
-| Transformer    | `model_transformer_class` | `ModelTransformer`   | Converts PHP class into TypeScript data |
-| Transformer    | `enum_transformer_class`  | `EnumTransformer`    | Converts PHP enum into TypeScript data  |
-| Writer         | `model_writer_class`      | `ModelWriter`        | Writes TypeScript model files           |
-| Writer         | `enum_writer_class`       | `EnumWriter`         | Writes TypeScript enum files            |
-| Writer         | `barrel_writer_class`     | `BarrelWriter`       | Writes barrel `index.ts` files          |
-| Writer         | `globals_writer_class`    | `GlobalsWriter`      | Writes global declaration file          |
-| Writer         | `json_writer_class`       | `JsonWriter`         | Writes JSON definitions file            |
-| Writer         | `watcher_json_writer_class` | `WatcherJsonWriter`| Writes collected files JSON for watchers|
-| Template       | `model_template`          | `model-split`        | Blade template for model output         |
-| Template       | `enum_template`           | `enum`               | Blade template for enum output          |
+| Pipeline Stage | Config Key                  | Default Class          | Responsibility                          |
+|----------------|-----------------------------|------------------------|-----------------------------------------|
+| Collector      | `model_collector_class`     | `ModelsCollector`      | Discovers PHP model classes             |
+| Collector      | `enum_collector_class`      | `EnumsCollector`       | Discovers PHP enum classes              |
+| Collector      | `resource_collector_class`  | `ResourcesCollector`   | Discovers PHP resource classes          |
+| Generator      | `model_generator_class`     | `ModelGenerator`       | Orchestrates transforming and writing   |
+| Generator      | `enum_generator_class`      | `EnumGenerator`        | Orchestrates transforming and writing   |
+| Generator      | `resource_generator_class`  | `ResourceGenerator`    | Orchestrates transforming and writing   |
+| Transformer    | `model_transformer_class`   | `ModelTransformer`     | Converts PHP class into TypeScript data |
+| Transformer    | `enum_transformer_class`    | `EnumTransformer`      | Converts PHP enum into TypeScript data  |
+| Transformer    | `resource_transformer_class`| `ResourceTransformer`  | Converts PHP resource into TypeScript data |
+| Writer         | `model_writer_class`        | `ModelWriter`          | Writes TypeScript model files           |
+| Writer         | `enum_writer_class`         | `EnumWriter`           | Writes TypeScript enum files            |
+| Writer         | `resource_writer_class`     | `ResourceWriter`       | Writes TypeScript resource files        |
+| Writer         | `barrel_writer_class`       | `BarrelWriter`         | Writes barrel `index.ts` files          |
+| Writer         | `globals_writer_class`      | `GlobalsWriter`        | Writes global declaration file          |
+| Writer         | `json_writer_class`         | `JsonWriter`           | Writes JSON definitions file            |
+| Writer         | `watcher_json_writer_class` | `WatcherJsonWriter`    | Writes collected files JSON for watchers|
+| Template       | `model_template`            | `model-split`          | Blade template for model output         |
+| Template       | `enum_template`             | `enum`                 | Blade template for enum output          |
+| Template       | `resource_template`         | `resource`             | Blade template for resource output      |
 
 To swap a component, create a class that extends the default and override the config key:
 
@@ -1810,6 +2321,10 @@ public function boot(): void
             'modules/Blog/Models',
             'modules/Shop/Models',
         ]);
+        config()->set('ts-publish.additional_resource_directories', [
+            'modules/Blog/Http/Resources',
+            'modules/Shop/Http/Resources',
+        ]);
     });
 }
 ```
@@ -1835,8 +2350,14 @@ public function boot(): void
             ->values()
             ->all();
 
+        $resourceDirs = collect(Finder::create()->directories()->in(base_path('modules'))->name('Resources')->depth(2))
+            ->map(fn ($dir) => $dir->getRelativePathname())
+            ->values()
+            ->all();
+
         config()->set('ts-publish.additional_model_directories', $modelDirs);
         config()->set('ts-publish.additional_enum_directories', $enumDirs);
+        config()->set('ts-publish.additional_resource_directories', $resourceDirs);
     });
 }
 ```
@@ -1855,6 +2376,7 @@ Below is a quick reference of all available configuration options:
 | `output_directory`                    | `string`   | `resources/js/types/data`            | Directory where TypeScript files are written                     |
 | `publish_enums`                       | `bool`     | `true`                               | Enable or disable enum publishing                                |
 | `publish_models`                      | `bool`     | `true`                               | Enable or disable model publishing                               |
+| `publish_resources`                   | `bool`     | `true`                               | Enable or disable resource publishing                            |
 | `modular_publishing`                  | `bool`     | `false`                              | Organize output into namespace-derived directory trees           |
 | `namespace_strip_prefix`              | `string`   | `''`                                 | Strip this prefix from namespaces in modular mode                |
 | `relationship_case`                   | `string`   | `'snake'`                            | Case style for relationships: `snake`, `camel`, or `pascal`      |
@@ -1872,6 +2394,7 @@ Below is a quick reference of all available configuration options:
 | `global_filename`                     | `string`   | `laravel-ts-global.d.ts`             | Filename for the global declaration file                         |
 | `models_namespace`                    | `string`   | `'models'`                           | Namespace label used in the global declaration file              |
 | `enums_namespace`                     | `string`   | `'enums'`                            | Namespace label used in the global declaration file              |
+| `resources_namespace`                 | `string`   | `'resources'`                        | Namespace label used in the global declaration file              |
 | `output_json_file`                    | `bool`     | `false`                              | Output all definitions as a JSON file                            |
 | `json_filename`                       | `string`   | `laravel-ts-definitions.json`        | Filename for the JSON output                                     |
 | `json_output_directory`               | `?string`  | null                                 | Directory for the JSON output                                    |
@@ -1880,6 +2403,7 @@ Below is a quick reference of all available configuration options:
 | `collected_files_json_output_directory` | `?string`| null                                 | Directory for the collected files JSON                           |
 | `model_template`                      | `string`   | `laravel-ts-publish::model-split`    | Blade template for model TypeScript output                       |
 | `enum_template`                       | `string`   | `laravel-ts-publish::enum`           | Blade template for enum TypeScript output                        |
+| `resource_template`                   | `string`   | `laravel-ts-publish::resource`       | Blade template for resource TypeScript output                    |
 | `globals_template`                    | `string`   | `laravel-ts-publish::globals`        | Blade template for global declaration output                     |
 | `included_models`                     | `array`    | `[]`                                 | Only publish these models (empty = all)                          |
 | `excluded_models`                     | `array`    | `[]`                                 | Exclude these models from publishing                             |
@@ -1887,9 +2411,12 @@ Below is a quick reference of all available configuration options:
 | `included_enums`                      | `array`    | `[]`                                 | Only publish these enums (empty = all)                           |
 | `excluded_enums`                      | `array`    | `[]`                                 | Exclude these enums from publishing                              |
 | `additional_enum_directories`         | `array`    | `[]`                                 | Extra directories to search for enums                            |
+| `included_resources`                  | `array`    | `[]`                                 | Only publish these resources (empty = all)                       |
+| `excluded_resources`                  | `array`    | `[]`                                 | Exclude these resources from publishing                          |
+| `additional_resource_directories`     | `array`    | `[]`                                 | Extra directories to search for resources                        |
 
 > [!NOTE]
-> The 14 pipeline class config keys (e.g. `model_collector_class`, `enum_writer_class`, etc.) are listed in the [Extending & Customizing the Pipeline](#extending--customizing-the-pipeline) section above.
+> The 20 pipeline class config keys (e.g. `model_collector_class`, `enum_writer_class`, `resource_transformer_class`, etc.) are listed in the [Extending & Customizing the Pipeline](#extending--customizing-the-pipeline) section above.
 
 See the [full configuration file](https://github.com/abetwothree/laravel-ts-publish/blob/main/config/ts-publish.php) for detailed comments on each option.
 

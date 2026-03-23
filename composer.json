@@ -19,6 +19,7 @@
         "php": "^8.4",
         "composer/class-map-generator": "^1.7",
         "illuminate/contracts": "^11.0||^12.0",
+        "nikic/php-parser": "^5.0",
         "spatie/laravel-package-tools": "^1.16"
     },
     "require-dev": {
@@ -61,10 +62,10 @@
         ],
         "prepare": "@php vendor/bin/testbench package:discover --ansi",
         "analyse": "vendor/bin/phpstan analyse --verbose --ansi",
-        "test": "vendor/bin/pest",
-        "test-cov": "export XDEBUG_MODE=coverage && vendor/bin/pest --coverage --coverage-clover coverage.xml",
-        "test-cov-html": "export XDEBUG_MODE=coverage && vendor/bin/pest --coverage-html coverage",
-        "test-cov-xml": "export XDEBUG_MODE=coverage && vendor/bin/pest --coverage-xml coverage",
+        "test": "vendor/bin/pest --parallel",
+        "test-cov": "export XDEBUG_MODE=coverage && vendor/bin/pest --parallel --coverage --coverage-clover coverage.xml",
+        "test-cov-html": "export XDEBUG_MODE=coverage && vendor/bin/pest --parallel --coverage-html coverage",
+        "test-cov-xml": "export XDEBUG_MODE=coverage && vendor/bin/pest --parallel --coverage-xml coverage",
         "format": "vendor/bin/pint",
         "lint": [
             "@php vendor/bin/pint --ansi",

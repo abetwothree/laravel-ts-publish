@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
 use Illuminate\Filesystem\Filesystem;
@@ -48,6 +49,7 @@ class JsonWriter
         $data = [
             'models' => $this->createJsonForModels($runner),
             'enums' => $this->createJsonForEnums($runner),
+            'resources' => $this->createJsonForResources($runner),
         ];
 
         return (string) json_encode($data, JSON_PRETTY_PRINT);
@@ -123,6 +125,27 @@ class JsonWriter
                 'methods' => $transformer->methods,
                 'staticMethods' => $transformer->staticMethods,
             ];
+        }
+
+        return $data;
+    }
+
+    /** @return array<string, list<array{name: string, type: string, optional: bool}>> */
+    protected function createJsonForResources(Runner $runner): array
+    {
+        $transformers = $runner->resourceGenerators->map(fn (ResourceGenerator $g) => $g->transformer);
+        $data = [];
+
+        foreach ($transformers as $transformer) {
+            $data[$transformer->resourceName] = array_map(
+                fn (array $prop, string $name) => [
+                    'name' => $name,
+                    'type' => $prop['type'],
+                    'optional' => $prop['optional'],
+                ],
+                $transformer->properties,
+                array_keys($transformer->properties),
+            );
         }
 
         return $data;

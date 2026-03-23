@@ -2,6 +2,7 @@
 
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\RunnerForSource;
 use Illuminate\Filesystem\Filesystem;
 
@@ -59,7 +60,7 @@ test('throws for non-existent class', function () {
 test('throws for class that is not enum or model', function () {
     $runner = new RunnerForSource(RunnerForSource::class);
     $runner->run();
-})->throws(InvalidArgumentException::class, 'not a publishable enum or model');
+})->throws(InvalidArgumentException::class, 'not a publishable enum, model, or resource');
 
 test('throws for file that does not contain a class', function () {
     $runner = new RunnerForSource(workbench_path('routes/web.php'));
@@ -118,3 +119,19 @@ test('throws when model publishing is disabled', function () {
     $runner->shouldPublishModels = false;
     $runner->run();
 })->throws(InvalidArgumentException::class, 'Model publishing is disabled');
+
+test('generates single resource from FQCN', function () {
+    $runner = new RunnerForSource('Workbench\App\Http\Resources\PostResource');
+    $runner->run();
+
+    expect($runner->resourceGenerators)->toHaveCount(1)
+        ->and($runner->resourceGenerators->first())->toBeInstanceOf(ResourceGenerator::class)
+        ->and($runner->enumGenerators)->toHaveCount(0)
+        ->and($runner->modelGenerators)->toHaveCount(0);
+});
+
+test('throws when resource publishing is disabled', function () {
+    $runner = new RunnerForSource('Workbench\App\Http\Resources\PostResource');
+    $runner->shouldPublishResources = false;
+    $runner->run();
+})->throws(InvalidArgumentException::class, 'Resource publishing is disabled');

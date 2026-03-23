@@ -2,15 +2,19 @@
 
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
+use AbeTwoThree\LaravelTsPublish\Collectors\ResourcesCollector;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
+use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\EnumWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\JsonWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\ModelWriter;
+use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\WatcherJsonWriter;
 
 return [
@@ -41,6 +45,8 @@ return [
 
     'enum_collector_class' => EnumsCollector::class,
 
+    'resource_collector_class' => ResourcesCollector::class,
+
     /*
     |--------------------------------------------------------------------------
     | File Generator Classes
@@ -57,6 +63,8 @@ return [
 
     'enum_generator_class' => EnumGenerator::class,
 
+    'resource_generator_class' => ResourceGenerator::class,
+
     /*
     |--------------------------------------------------------------------------
     | File Transformer Classes
@@ -71,6 +79,8 @@ return [
     'model_transformer_class' => ModelTransformer::class,
 
     'enum_transformer_class' => EnumTransformer::class,
+
+    'resource_transformer_class' => ResourceTransformer::class,
 
     /*
     |--------------------------------------------------------------------------
@@ -90,6 +100,8 @@ return [
     'model_writer_class' => ModelWriter::class,
 
     'enum_writer_class' => EnumWriter::class,
+
+    'resource_writer_class' => ResourceWriter::class,
 
     'barrel_writer_class' => BarrelWriter::class,
 
@@ -117,6 +129,8 @@ return [
     'enum_template' => 'laravel-ts-publish::enum',
 
     'globals_template' => 'laravel-ts-publish::globals',
+
+    'resource_template' => 'laravel-ts-publish::resource',
 
     /*
     |--------------------------------------------------------------------------
@@ -179,6 +193,8 @@ return [
     'publish_enums' => true,
 
     'publish_models' => true,
+
+    'publish_resources' => true,
 
     /*
     |--------------------------------------------------------------------------
@@ -286,6 +302,8 @@ return [
 
     'enums_namespace' => 'enums',
 
+    'resources_namespace' => 'resources',
+
     /*
     |--------------------------------------------------------------------------
     | Output the Results in a JSON File
@@ -388,6 +406,36 @@ return [
 
     /* Excluded enums will always be ignored */
     'excluded_enums' => [
+        //
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Resource Collector Finder Settings
+    |--------------------------------------------------------------------------
+    |
+    | Below you can specify which resources to include, exclude, or add additional directories to search for resources in.
+    | By default, the package will look for resources in the app/Http/Resources directory and include all resources found there.
+    |
+    | Settings can be specific resource class names or directories to search for resources in. For example:
+    | 'included_resources' => [
+    |     'App\Http\Resources\UserResource', // Include only the UserResource
+    |     'App\Http\Resources\PostResource', // Include only the PostResource
+    | ],
+    */
+
+    /* Most flexible, anything added here will be included */
+    'additional_resource_directories' => [
+        //
+    ],
+
+    /* Most restrictive, only these resources will be included */
+    'included_resources' => [
+        //
+    ],
+
+    /* Excluded resources will always be ignored */
+    'excluded_resources' => [
         //
     ],
 

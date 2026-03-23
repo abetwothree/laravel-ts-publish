@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use Illuminate\Filesystem\Filesystem;
 
@@ -29,8 +30,10 @@ class GlobalsWriter
         $viewData = [
             'enums' => $runner->enumGenerators->map(fn (EnumGenerator $g) => $g->transformer),
             'models' => $runner->modelGenerators->map(fn (ModelGenerator $g) => $g->transformer),
+            'resources' => $runner->resourceGenerators->map(fn (ResourceGenerator $g) => $g->transformer),
             'modelsNamespace' => config()->string('ts-publish.models_namespace'),
             'enumsNamespace' => config()->string('ts-publish.enums_namespace'),
+            'resourcesNamespace' => config()->string('ts-publish.resources_namespace', 'resources'),
             'isModular' => $isModular,
         ];
 
@@ -43,6 +46,11 @@ class GlobalsWriter
             $viewData['groupedEnums'] = $runner->enumGenerators
                 ->groupBy(fn (EnumGenerator $g) => str_replace('/', '.', $g->transformer->namespacePath))
                 ->map(fn ($group) => $group->map(fn (EnumGenerator $g) => $g->transformer))
+                ->sortKeys();
+
+            $viewData['groupedResources'] = $runner->resourceGenerators
+                ->groupBy(fn (ResourceGenerator $g) => str_replace('/', '.', $g->transformer->namespacePath))
+                ->map(fn ($group) => $group->map(fn (ResourceGenerator $g) => $g->transformer))
                 ->sortKeys();
         }
 

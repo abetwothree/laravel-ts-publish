@@ -1062,6 +1062,10 @@
                 "type": "string"
             },
             {
+                "name": "search_index",
+                "type": "unknown"
+            },
+            {
                 "name": "user",
                 "type": "User"
             },
@@ -1522,6 +1526,48 @@
             {
                 "name": "product_exists",
                 "type": "boolean"
+            }
+        ],
+        "Store": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "name",
+                "type": "string"
+            },
+            {
+                "name": "phone",
+                "type": "string | null"
+            },
+            {
+                "name": "coordinate_data",
+                "type": "string | null"
+            },
+            {
+                "name": "status",
+                "type": "string | null"
+            },
+            {
+                "name": "manager_id",
+                "type": "number | null"
+            },
+            {
+                "name": "primary_contact_id",
+                "type": "number | null"
+            },
+            {
+                "name": "secondary_contact_id",
+                "type": "number | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
             }
         ],
         "TaskAssignment": [
@@ -3278,5 +3324,1964 @@
                 }
             }
         }
+    },
+    "resources": {
+        "InvoiceResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "number",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "status",
+                "type": "AsEnum<typeof InvoiceStatus>",
+                "optional": true
+            },
+            {
+                "name": "subtotal",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "tax",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "total",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "due_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "issued_at",
+                "type": "string",
+                "optional": true
+            },
+            {
+                "name": "paid_at",
+                "type": "string",
+                "optional": true
+            },
+            {
+                "name": "user",
+                "type": "User",
+                "optional": true
+            },
+            {
+                "name": "payments",
+                "type": "PaymentResource[]",
+                "optional": true
+            },
+            {
+                "name": "payments_count",
+                "type": "number",
+                "optional": true
+            },
+            {
+                "name": "notes",
+                "type": "string | null",
+                "optional": true
+            }
+        ],
+        "PaymentResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "status",
+                "type": "AsEnum<typeof PaymentStatus>",
+                "optional": false
+            },
+            {
+                "name": "currency",
+                "type": "AsEnum<typeof Currency>",
+                "optional": false
+            },
+            {
+                "name": "amount",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "method",
+                "type": "PaymentMethodType",
+                "optional": true
+            },
+            {
+                "name": "reference",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "paid_at",
+                "type": "string",
+                "optional": true
+            }
+        ],
+        "UserResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "name",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "email",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "role",
+                "type": "AsEnum<typeof Role>",
+                "optional": false
+            },
+            {
+                "name": "profile",
+                "type": "Profile | null",
+                "optional": true
+            },
+            {
+                "name": "posts",
+                "type": "PostResource[]",
+                "optional": true
+            },
+            {
+                "name": "phone",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "avatar",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "posts_count",
+                "type": "number",
+                "optional": true
+            },
+            {
+                "name": "comments_count",
+                "type": "number",
+                "optional": true
+            }
+        ],
+        "DealResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "title",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "value",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "status",
+                "type": "WorkbenchStatusType",
+                "optional": false
+            },
+            {
+                "name": "status_enum",
+                "type": "AsEnum<typeof WorkbenchStatus>",
+                "optional": false
+            },
+            {
+                "name": "crm_status",
+                "type": "CrmStatusType",
+                "optional": false
+            },
+            {
+                "name": "crm_enum",
+                "type": "AsEnum<typeof CrmStatus>",
+                "optional": false
+            },
+            {
+                "name": "customer",
+                "type": "CrmUser",
+                "optional": true
+            },
+            {
+                "name": "admin",
+                "type": "WorkbenchUser",
+                "optional": true
+            },
+            {
+                "name": "customer_resource",
+                "type": "CrmUserResource",
+                "optional": true
+            },
+            {
+                "name": "admin_resource",
+                "type": "WorkbenchUserResource",
+                "optional": true
+            },
+            {
+                "name": "closed_at",
+                "type": "string",
+                "optional": true
+            }
+        ],
+        "TrackingEventResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "status",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "location",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "description",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "occurred_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "shipment",
+                "type": "Shipment",
+                "optional": true
+            }
+        ],
+        "ShipmentResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "tracking_number",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "carrier",
+                "type": "AsEnum<typeof Carrier>",
+                "optional": false
+            },
+            {
+                "name": "status",
+                "type": "AsEnum<typeof ShipmentStatus>",
+                "optional": false
+            },
+            {
+                "name": "weight_grams",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "estimated_delivery_at",
+                "type": "string",
+                "optional": true
+            },
+            {
+                "name": "shipped_at",
+                "type": "string",
+                "optional": true
+            },
+            {
+                "name": "delivered_at",
+                "type": "string",
+                "optional": true
+            },
+            {
+                "name": "order",
+                "type": "Order",
+                "optional": true
+            },
+            {
+                "name": "tracking_events",
+                "type": "TrackingEventResource[]",
+                "optional": true
+            },
+            {
+                "name": "tracking_events_count",
+                "type": "number",
+                "optional": true
+            },
+            {
+                "name": "events_total",
+                "type": "number",
+                "optional": true
+            },
+            {
+                "name": "transit_time",
+                "type": "unknown",
+                "optional": true
+            }
+        ],
+        "ReactionResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "emoji",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "article",
+                "type": "Article",
+                "optional": true
+            },
+            {
+                "name": "user",
+                "type": "User",
+                "optional": true
+            }
+        ],
+        "ArticleResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "title",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "slug",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "excerpt",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "body",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "status",
+                "type": "AsEnum<typeof ArticleStatus>",
+                "optional": false
+            },
+            {
+                "name": "content_type",
+                "type": "AsEnum<typeof ContentType>",
+                "optional": false
+            },
+            {
+                "name": "is_featured",
+                "type": "boolean",
+                "optional": false
+            },
+            {
+                "name": "featured_image",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "meta_description",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "published_at",
+                "type": "string",
+                "optional": true
+            },
+            {
+                "name": "author",
+                "type": "User",
+                "optional": true
+            },
+            {
+                "name": "reactions",
+                "type": "ReactionResource[]",
+                "optional": true
+            },
+            {
+                "name": "reactions_count",
+                "type": "number",
+                "optional": true
+            },
+            {
+                "name": "reactions_avg",
+                "type": "number",
+                "optional": true
+            }
+        ],
+        "DelegatingWithMixinResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "name",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "email",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "email_verified_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "password",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "options",
+                "type": "Record<string, unknown> | null",
+                "optional": false
+            },
+            {
+                "name": "remember_token",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "created_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "updated_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "role",
+                "type": "RoleType",
+                "optional": false
+            },
+            {
+                "name": "membership_level",
+                "type": "MembershipLevelType",
+                "optional": false
+            },
+            {
+                "name": "phone",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "avatar",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "bio",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "settings",
+                "type": "{ theme: \"light\" | \"dark\"; notifications: boolean; locale: string } | null",
+                "optional": false
+            },
+            {
+                "name": "last_login_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "last_login_ip",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "initials",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "is_premium",
+                "type": "boolean",
+                "optional": false
+            }
+        ],
+        "OrderOnlyResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "status",
+                "type": "OrderStatusType",
+                "optional": false
+            },
+            {
+                "name": "total",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "user",
+                "type": "UserResource",
+                "optional": true
+            }
+        ],
+        "SpreadJsonBaseResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "name",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "email",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "email_verified_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "password",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "options",
+                "type": "Record<string, unknown> | null",
+                "optional": false
+            },
+            {
+                "name": "remember_token",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "created_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "updated_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "role",
+                "type": "RoleType",
+                "optional": false
+            },
+            {
+                "name": "membership_level",
+                "type": "MembershipLevelType",
+                "optional": false
+            },
+            {
+                "name": "phone",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "avatar",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "bio",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "settings",
+                "type": "{ theme: \"light\" | \"dark\"; notifications: boolean; locale: string } | null",
+                "optional": false
+            },
+            {
+                "name": "last_login_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "last_login_ip",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "initials",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "is_premium",
+                "type": "boolean",
+                "optional": false
+            },
+            {
+                "name": "full_name",
+                "type": "unknown",
+                "optional": false
+            }
+        ],
+        "ProductResource": [
+            {
+                "name": "id",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "name",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "slug",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "sku",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "description",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "price",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "compare_at_price",
+                "type": "number",
+                "optional": true
+            },
+            {
+                "name": "cost_price",
+                "type": "number",
+                "optional": true
+            },
+            {
+                "name": "quantity",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "is_active",
+                "type": "boolean",
+                "optional": false
+            },
+            {
+                "name": "is_featured",
+                "type": "boolean",
+                "optional": false
+            },
+            {
+                "name": "published_at",
+                "type": "string",
+                "optional": true
+            },
+            {
+                "name": "tags",
+                "type": "TagResource[]",
+                "optional": true
+            },
+            {
+                "name": "images",
+                "type": "ImageResource[]",
+                "optional": true
+            },
+            {
+                "name": "orders_count",
+                "type": "number",
+                "optional": true
+            },
+            {
+                "name": "total_sold",
+                "type": "number",
+                "optional": true
+            },
+            {
+                "name": "min_unit_price",
+                "type": "number",
+                "optional": true
+            },
+            {
+                "name": "max_unit_price",
+                "type": "number",
+                "optional": true
+            },
+            {
+                "name": "weight",
+                "type": "number",
+                "optional": true
+            },
+            {
+                "name": "dimensions",
+                "type": "{ length: number; width: number; height: number; unit: \"cm\" | \"in\" }",
+                "optional": true
+            },
+            {
+                "name": "metadata",
+                "type": "ProductMetadata | ProductJsonMetaData | null",
+                "optional": true
+            }
+        ],
+        "EmptyResource": [],
+        "CommentResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "content",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "is_flagged",
+                "type": "boolean",
+                "optional": false
+            },
+            {
+                "name": "flagged_at",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "metadata",
+                "type": "Record<string, unknown>",
+                "optional": false
+            },
+            {
+                "name": "author",
+                "type": "UserResource",
+                "optional": true
+            },
+            {
+                "name": "author_new",
+                "type": "UserResource",
+                "optional": true
+            },
+            {
+                "name": "author_direct",
+                "type": "UserResource",
+                "optional": false
+            },
+            {
+                "name": "post",
+                "type": "PostResource",
+                "optional": true
+            },
+            {
+                "name": "post_new",
+                "type": "PostResource",
+                "optional": true
+            },
+            {
+                "name": "post_direct",
+                "type": "PostResource",
+                "optional": false
+            }
+        ],
+        "WarehouseResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "name",
+                "type": "string",
+                "optional": false
+            }
+        ],
+        "ProfileResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "bio",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "avatar_url",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "date_of_birth",
+                "type": "string",
+                "optional": true
+            },
+            {
+                "name": "website",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "phone_number",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "social_links",
+                "type": "{ twitter?: string; github?: string; linkedin?: string; website?: string }",
+                "optional": true
+            },
+            {
+                "name": "timezone",
+                "type": "string",
+                "optional": true
+            },
+            {
+                "name": "locale",
+                "type": "string",
+                "optional": true
+            }
+        ],
+        "Store": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "name",
+                "type": "string",
+                "optional": false
+            }
+        ],
+        "TagResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "name",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "slug",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "color",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "posts_count",
+                "type": "number",
+                "optional": true
+            },
+            {
+                "name": "products_count",
+                "type": "number",
+                "optional": true
+            },
+            {
+                "name": "posts",
+                "type": "PostResource[]",
+                "optional": true
+            },
+            {
+                "name": "products",
+                "type": "ProductResource[]",
+                "optional": true
+            }
+        ],
+        "EventLogResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "description",
+                "type": "string | null",
+                "optional": false
+            }
+        ],
+        "OrderClosureResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "status_arrow",
+                "type": "OrderStatusType",
+                "optional": true
+            },
+            {
+                "name": "user_arrow",
+                "type": "UserResource",
+                "optional": true
+            },
+            {
+                "name": "items_arrow",
+                "type": "OrderItemResource[]",
+                "optional": true
+            },
+            {
+                "name": "notes_closure",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "shipped_at",
+                "type": "string",
+                "optional": true
+            },
+            {
+                "name": "tracking",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "currency_label",
+                "type": "CurrencyType",
+                "optional": false
+            },
+            {
+                "name": "total_display",
+                "type": "number",
+                "optional": false
+            }
+        ],
+        "Address": [
+            {
+                "name": "morphValue",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "label",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "line_1",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "line_2",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "city",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "state",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "postal_code",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "country_code",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "latitude",
+                "type": "number | null",
+                "optional": true
+            },
+            {
+                "name": "longitude",
+                "type": "number | null",
+                "optional": true
+            },
+            {
+                "name": "is_default",
+                "type": "boolean",
+                "optional": false
+            },
+            {
+                "name": "coordinates",
+                "type": "GeoPoint",
+                "optional": false
+            },
+            {
+                "name": "bounds",
+                "type": "GeoBounds",
+                "optional": false
+            }
+        ],
+        "FqcnMixinResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "total",
+                "type": "number",
+                "optional": false
+            }
+        ],
+        "ImageResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "url",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "alt_text",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "mime_type",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "size_bytes",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "width",
+                "type": "number",
+                "optional": true
+            },
+            {
+                "name": "height",
+                "type": "number",
+                "optional": true
+            }
+        ],
+        "CategoryResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "name",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "slug",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "description",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "sort_order",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "is_active",
+                "type": "boolean",
+                "optional": false
+            },
+            {
+                "name": "parent",
+                "type": "CategoryResource",
+                "optional": true
+            },
+            {
+                "name": "children",
+                "type": "CategoryResource[]",
+                "optional": true
+            },
+            {
+                "name": "posts",
+                "type": "PostResource[]",
+                "optional": true
+            },
+            {
+                "name": "posts_count",
+                "type": "number",
+                "optional": true
+            }
+        ],
+        "ExtendedAddressResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "computed",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "date_val",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "custom_val",
+                "type": "CustomObject",
+                "optional": false
+            },
+            {
+                "name": "plain",
+                "type": "unknown",
+                "optional": false
+            },
+            {
+                "name": "basic",
+                "type": "unknown",
+                "optional": false
+            },
+            {
+                "name": "firstName",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "lastName",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "isActive",
+                "type": "boolean",
+                "optional": false
+            },
+            {
+                "name": "location",
+                "type": "GeoPoint",
+                "optional": false
+            },
+            {
+                "name": "flag",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "extra",
+                "type": "Record<string, unknown>",
+                "optional": false
+            },
+            {
+                "name": "extra_field",
+                "type": "unknown",
+                "optional": false
+            }
+        ],
+        "NonArrayReturnResource": [],
+        "OrderCollection": [
+            {
+                "name": "data",
+                "type": "OrderResource[]",
+                "optional": false
+            },
+            {
+                "name": "total_count",
+                "type": "unknown",
+                "optional": false
+            }
+        ],
+        "OrderSummaryResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "is_paid",
+                "type": "boolean",
+                "optional": false
+            },
+            {
+                "name": "item_count",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "formatted_total",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "user",
+                "type": "User",
+                "optional": false
+            },
+            {
+                "name": "status",
+                "type": "OrderStatusType",
+                "optional": false
+            },
+            {
+                "name": "total",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "notes",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "search_index",
+                "type": "unknown",
+                "optional": false
+            }
+        ],
+        "OrderFilterEdgeResource": [],
+        "ApiPostResource": [
+            {
+                "name": "morphValue",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "title",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "content",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "status",
+                "type": "StatusType",
+                "optional": false
+            },
+            {
+                "name": "visibility",
+                "type": "VisibilityType",
+                "optional": false
+            },
+            {
+                "name": "priority",
+                "type": "PriorityType",
+                "optional": false
+            }
+        ],
+        "TraitSpreadCoverageResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "computed",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "date_val",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "custom_val",
+                "type": "CustomObject",
+                "optional": false
+            },
+            {
+                "name": "plain",
+                "type": "unknown",
+                "optional": false
+            },
+            {
+                "name": "basic",
+                "type": "unknown",
+                "optional": false
+            },
+            {
+                "name": "firstName",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "lastName",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "isActive",
+                "type": "boolean",
+                "optional": false
+            },
+            {
+                "name": "location",
+                "type": "GeoPoint",
+                "optional": false
+            },
+            {
+                "name": "flag",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "extra",
+                "type": "Record<string, unknown>",
+                "optional": false
+            }
+        ],
+        "PostResource": [
+            {
+                "name": "morphValue",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "title",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "content",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "status",
+                "type": "AsEnum<typeof Status>",
+                "optional": false
+            },
+            {
+                "name": "visibility",
+                "type": "AsEnum<typeof Visibility>",
+                "optional": false
+            },
+            {
+                "name": "priority",
+                "type": "AsEnum<typeof Priority>",
+                "optional": false
+            }
+        ],
+        "DelegatingResource": [],
+        "TeamResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "name",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "slug",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "description",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "is_active",
+                "type": "boolean",
+                "optional": false
+            },
+            {
+                "name": "owner",
+                "type": "UserResource",
+                "optional": true
+            },
+            {
+                "name": "members",
+                "type": "TeamMemberResource[]",
+                "optional": true
+            },
+            {
+                "name": "members_count",
+                "type": "number",
+                "optional": true
+            },
+            {
+                "name": "settings",
+                "type": "unknown[]",
+                "optional": true
+            }
+        ],
+        "MiscCollection": [
+            {
+                "name": "data",
+                "type": "unknown",
+                "optional": false
+            }
+        ],
+        "OrderResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "status",
+                "type": "AsEnum<typeof OrderStatus>",
+                "optional": false
+            },
+            {
+                "name": "total",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "currency",
+                "type": "AsEnum<typeof Currency>",
+                "optional": false
+            },
+            {
+                "name": "items",
+                "type": "OrderItem[]",
+                "optional": true
+            },
+            {
+                "name": "items_count",
+                "type": "number",
+                "optional": true
+            },
+            {
+                "name": "total_avg",
+                "type": "number",
+                "optional": true
+            },
+            {
+                "name": "paid_at",
+                "type": "string",
+                "optional": true
+            },
+            {
+                "name": "shipped_at",
+                "type": "string",
+                "optional": true
+            },
+            {
+                "name": "delivered_at",
+                "type": "string",
+                "optional": true
+            }
+        ],
+        "UserCollection": [
+            {
+                "name": "data",
+                "type": "UserResource[]",
+                "optional": false
+            },
+            {
+                "name": "has_admin",
+                "type": "unknown",
+                "optional": false
+            }
+        ],
+        "OrderItemResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "name",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "sku",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "quantity",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "unit_price",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "total_price",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "product",
+                "type": "ProductResource",
+                "optional": true
+            },
+            {
+                "name": "order",
+                "type": "Order",
+                "optional": true
+            },
+            {
+                "name": "options",
+                "type": "Record<string, string | number | boolean> | null",
+                "optional": true
+            }
+        ],
+        "TeamMemberResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "name",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "email",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "role",
+                "type": "RoleType",
+                "optional": true
+            },
+            {
+                "name": "membership_level",
+                "type": "MembershipLevelType",
+                "optional": true
+            },
+            {
+                "name": "avatar",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "team_role",
+                "type": "unknown",
+                "optional": true
+            },
+            {
+                "name": "joined_at",
+                "type": "unknown",
+                "optional": true
+            },
+            {
+                "name": "subscription_role",
+                "type": "unknown",
+                "optional": true
+            }
+        ],
+        "OrderExceptResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "ulid",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "user_id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "status",
+                "type": "OrderStatusType",
+                "optional": false
+            },
+            {
+                "name": "payment_method",
+                "type": "PaymentMethodType",
+                "optional": false
+            },
+            {
+                "name": "currency",
+                "type": "CurrencyType",
+                "optional": false
+            },
+            {
+                "name": "subtotal",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "tax",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "discount",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "total",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "shipping_address",
+                "type": "{ line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string }",
+                "optional": false
+            },
+            {
+                "name": "billing_address",
+                "type": "{ line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string }",
+                "optional": false
+            },
+            {
+                "name": "notes",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "placed_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "paid_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "shipped_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "delivered_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "cancelled_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "created_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "updated_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "deleted_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "item_count",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "is_paid",
+                "type": "boolean",
+                "optional": false
+            },
+            {
+                "name": "formatted_total",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "search_index",
+                "type": "unknown",
+                "optional": false
+            }
+        ],
+        "EmptyWithMixinResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "name",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "email",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "email_verified_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "password",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "options",
+                "type": "Record<string, unknown> | null",
+                "optional": false
+            },
+            {
+                "name": "remember_token",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "created_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "updated_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "role",
+                "type": "RoleType",
+                "optional": false
+            },
+            {
+                "name": "membership_level",
+                "type": "MembershipLevelType",
+                "optional": false
+            },
+            {
+                "name": "phone",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "avatar",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "bio",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "settings",
+                "type": "{ theme: \"light\" | \"dark\"; notifications: boolean; locale: string } | null",
+                "optional": false
+            },
+            {
+                "name": "last_login_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "last_login_ip",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "initials",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "is_premium",
+                "type": "boolean",
+                "optional": false
+            }
+        ],
+        "QuirkyResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "flag",
+                "type": "unknown",
+                "optional": true
+            },
+            {
+                "name": "extra",
+                "type": "unknown",
+                "optional": false
+            },
+            {
+                "name": "dynamic",
+                "type": "unknown",
+                "optional": true
+            },
+            {
+                "name": "normal_merge_key",
+                "type": "number",
+                "optional": true
+            },
+            {
+                "name": "formatted",
+                "type": "unknown",
+                "optional": false
+            },
+            {
+                "name": "plain_user",
+                "type": "UserResource",
+                "optional": false
+            },
+            {
+                "name": "empty_user",
+                "type": "UserResource",
+                "optional": false
+            },
+            {
+                "name": "empty_enum",
+                "type": "unknown",
+                "optional": false
+            },
+            {
+                "name": "fcc_enum",
+                "type": "unknown",
+                "optional": false
+            },
+            {
+                "name": "not_enum",
+                "type": "unknown",
+                "optional": false
+            },
+            {
+                "name": "uncast_enum",
+                "type": "unknown",
+                "optional": false
+            },
+            {
+                "name": "fake_field",
+                "type": "unknown",
+                "optional": false
+            },
+            {
+                "name": "fake_relation",
+                "type": "unknown",
+                "optional": true
+            }
+        ],
+        "OrderDetailResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "status",
+                "type": "AsEnum<typeof OrderStatus>",
+                "optional": false
+            },
+            {
+                "name": "user",
+                "type": "UserResource",
+                "optional": true
+            },
+            {
+                "name": "payment_status",
+                "type": "AsEnum<typeof OrderStatus>",
+                "optional": true
+            },
+            {
+                "name": "payment_currency",
+                "type": "CurrencyType",
+                "optional": true
+            },
+            {
+                "name": "shipping_user",
+                "type": "UserResource",
+                "optional": true
+            },
+            {
+                "name": "order_items",
+                "type": "OrderItem[]",
+                "optional": true
+            }
+        ]
     }
 }

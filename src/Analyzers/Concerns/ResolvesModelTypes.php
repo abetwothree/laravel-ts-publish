@@ -1,0 +1,230 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AbeTwoThree\LaravelTsPublish\Analyzers\Concerns;
+
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
+use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesAccessorType;
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\ModelInspector;
+use AbeTwoThree\LaravelTsPublish\RelationNullable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
+use ReflectionClass;
+
+/**
+ * Model type resolution helpers for the ResourceAstAnalyzer.
+ *
+ * @phpstan-import-type ResourcePropertyInfoList from ResourceAnalysis
+ * @phpstan-import-type ClassMapType from ResourceAnalysis
+ * @phpstan-import-type AttributeInfo from \AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo
+ * @phpstan-import-type RelationInfo from \AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo
+ *
+ * @phpstan-type ModelAttributeTypeResult = array{type: string, enumFqcn: class-string|null}
+ * @phpstan-type ModelRelationTypeResult = array{type: string, modelFqcn: class-string|null}
+ */
+trait ResolvesModelTypes
+{
+    use ResolvesAccessorType;
+
+    protected ?Model $modelInstance = null;
+
+    protected ?RelationNullable $relationNullable = null;
+
+    /** @var ReflectionClass<Model>|null */
+    protected ?ReflectionClass $modelReflection = null;
+
+    /** @var Collection<int, AttributeInfo>|null */
+    protected ?Collection $modelAttributes = null;
+
+    /** @var Collection<int, RelationInfo>|null */
+    protected ?Collection $modelRelations = null;
+
+    protected function loadModelInspectorData(): void
+    {
+        if ($this->modelClass === null || ! class_exists($this->modelClass)) {
+            return;
+        }
+
+        try {
+            /** @var Model $modelInstance */
+            $modelInstance = resolve($this->modelClass);
+            $this->modelInstance = $modelInstance;
+
+            $data = resolve(ModelInspector::class)->inspect($this->modelClass);
+            /** @var Collection<int, AttributeInfo> $attributes */
+            $attributes = $data->attributes;
+            $this->modelAttributes = $attributes;
+            $this->modelRelations = $data->relations;
+            $this->modelReflection = new ReflectionClass($this->modelClass);
+            $this->relationNullable = new RelationNullable($this->modelInstance, $this->modelAttributes);
+        } catch (\Throwable) { // @codeCoverageIgnore
+            // Model may not have a working database connection during analysis
+        }
+    }
+
+    /**
+     * Resolve the TypeScript type and optional enum FQCN for a model attribute.
+     *
+     * @return ModelAttributeTypeResult
+     */
+    protected function resolveModelAttributeTypeInfo(string $attributeName): array
+    {
+        if ($this->modelAttributes === null) {
+            return ['type' => 'unknown', 'enumFqcn' => null];
+        }
+
+        $attr = $this->modelAttributes->firstWhere('name', $attributeName);
+
+        if ($attr === null) {
+            return ['type' => 'unknown', 'enumFqcn' => null];
+        }
+
+        $cast = $attr['cast'];
+
+        // Accessor columns — resolve via reflection to get the accessor's return type
+        if (($cast === 'attribute' || $cast === 'accessor') && $this->modelInstance !== null && $this->modelReflection !== null) {
+            try {
+                $accessorInfo = $this->resolveAccessorType($attributeName, $this->modelInstance, $this->modelReflection);
+
+                if ($accessorInfo['type'] !== 'unknown') {
+                    $type = $accessorInfo['type'];
+
+                    if ($attr['nullable'] && ! str_contains($type, 'null')) {
+                        $type .= ' | null';
+                    }
+
+                    /** @var class-string|null $enumFqcn */
+                    $enumFqcn = $accessorInfo['enumFqcns'][0] ?? null;
+
+                    return ['type' => $type, 'enumFqcn' => $enumFqcn];
+                }
+            } catch (\Throwable) { // @codeCoverageIgnore
+                // Accessor may fail without full runtime context — fall through to DB type
+            }
+        }
+
+        // Regular casts (enum, date, json, etc.)
+        if ($cast !== null && $cast !== '' && $cast !== 'attribute' && $cast !== 'accessor') {
+            $tsInfo = LaravelTsPublish::phpToTypeScriptType($cast);
+
+            /** @var class-string|null $enumFqcn */
+            $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
+
+            return ['type' => $tsInfo['type'], 'enumFqcn' => $enumFqcn];
+        }
+
+        // Fall back to DB column type
+        if ($attr['type'] === null || $attr['type'] === '') {
+            return ['type' => 'unknown', 'enumFqcn' => null];
+        }
+
+        $tsInfo = LaravelTsPublish::phpToTypeScriptType($attr['type']);
+        $type = $tsInfo['type'];
+
+        if ($attr['nullable'] && $type !== 'unknown') {
+            $type .= ' | null';
+        }
+
+        /** @var class-string|null $enumFqcn */
+        $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
+
+        return ['type' => $type, 'enumFqcn' => $enumFqcn];
+    }
+
+    /**
+     * Resolve the enum class for a model property (if it's cast to an enum).
+     *
+     * @return class-string|null
+     */
+    protected function resolveModelPropertyEnumClass(string $propertyName): ?string
+    {
+        if ($this->modelAttributes === null) {
+            return null;
+        }
+
+        $attr = $this->modelAttributes->firstWhere('name', $propertyName);
+
+        if ($attr === null || $attr['cast'] === null) {
+            return null;
+        }
+
+        $cast = $attr['cast'];
+
+        // Check if the cast is an enum class
+        if (class_exists($cast) && (new ReflectionClass($cast))->isEnum()) {
+            return $cast;
+        }
+
+        return null;
+    }
+
+    /**
+     * @return ModelRelationTypeResult
+     */
+    protected function resolveModelRelationTypeInfo(string $relationName): array
+    {
+        if ($this->modelRelations === null) {
+            return ['type' => 'unknown', 'modelFqcn' => null];
+        }
+
+        $relation = $this->modelRelations->firstWhere('name', $relationName);
+
+        if ($relation === null) {
+            return ['type' => 'unknown', 'modelFqcn' => null];
+        }
+
+        $relatedModel = class_basename($relation['related']);
+        $containsMany = str_contains(strtolower($relation['type']), 'many');
+
+        if ($containsMany) {
+            return ['type' => $relatedModel.'[]', 'modelFqcn' => $relation['related']];
+        }
+
+        $type = $relatedModel;
+        $nullableRelations = config()->boolean('ts-publish.nullable_relations');
+
+        if ($nullableRelations && $this->relationNullable?->isNullable($relation)) {
+            $type .= ' | null';
+        }
+
+        return ['type' => $type, 'modelFqcn' => $relation['related']];
+    }
+
+    /**
+     * Build a ResourceAnalysis from all model attributes when the resource
+     * delegates to JsonResource::toArray() (which returns $this->resource->toArray()).
+     */
+    protected function buildModelDelegatedAnalysis(): ?ResourceAnalysis
+    {
+        if ($this->modelAttributes === null) {
+            return null;
+        }
+
+        /** @var ResourcePropertyInfoList $properties */
+        $properties = [];
+        /** @var ClassMapType $directEnumFqcns */
+        $directEnumFqcns = [];
+
+        foreach ($this->modelAttributes as $attr) {
+            $info = $this->resolveModelAttributeTypeInfo($attr['name']);
+
+            $properties[] = [
+                'name' => $attr['name'],
+                'type' => $info['type'],
+                'optional' => false,
+                'description' => '',
+            ];
+
+            if ($info['enumFqcn'] !== null) {
+                $directEnumFqcns[$attr['name']] = $info['enumFqcn'];
+            }
+        }
+
+        return new ResourceAnalysis(
+            properties: $properties,
+            directEnumFqcns: $directEnumFqcns,
+        );
+    }
+}

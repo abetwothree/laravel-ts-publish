@@ -4,17 +4,19 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
-use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
+use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
+use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesAccessorType;
+use AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsModelDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
-use Illuminate\Database\Eloquent\Builder;
+use AbeTwoThree\LaravelTsPublish\ModelInspector;
+use AbeTwoThree\LaravelTsPublish\RelationNullable;
+use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
+use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
+use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\TracksEnumImports;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\ModelInspector;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\MorphTo;
-use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Override;
@@ -27,22 +29,9 @@ use ReflectionClass;
  * @phpstan-import-type ValuesImportMap from TsModelDto
  * @phpstan-import-type MutatorsList from TsModelDto
  * @phpstan-import-type RelationsList from TsModelDto
+ * @phpstan-import-type AttributeInfo from ModelInfo
+ * @phpstan-import-type RelationInfo from ModelInfo
  *
- * @phpstan-type AttributeInfo = array{name: string, type: string, cast: string|null, nullable: bool}
- * @phpstan-type RelationInfo = array{name: string, type: string, related: class-string<Model>}
- * @phpstan-type ModelInspectData = array{
- *     "class": class-string<Model>,
- *     "database": string,
- *     "table": string,
- *     "policy": class-string|null,
- *     "attributes": Collection<int, AttributeInfo>,
- *     "relations": Collection<int, RelationInfo>,
- *     "events": Collection<int, array{event: string, class: class-string}>,
- *     "observers": Collection<int, array{event: string, observer: class-string}>,
- *     "collection": class-string<Collection<int, Model>>,
- *     "builder": class-string<Builder<Model>>,
- *     "resource": class-string<JsonResource>|null
- * }
  * @phpstan-type DbColumns = list<string>
  * @phpstan-type TsTypeOverrides = array<string, string>
  *
@@ -50,6 +39,12 @@ use ReflectionClass;
  */
 class ModelTransformer extends CoreTransformer
 {
+    use BuildsImportMaps;
+    use ParsesTsCasts;
+    use ResolvesAccessorType;
+    use ResolvesImportConflicts;
+    use TracksEnumImports;
+
     public protected(set) string $modelName;
 
     public protected(set) string $filePath;
@@ -66,8 +61,8 @@ class ModelTransformer extends CoreTransformer
     /** @var DbColumns */
     public protected(set) array $dbColumns = [];
 
-    /** @var ModelInspectData */
-    public protected(set) array $modelInspect;
+    /** @var ModelInfo<Model> */
+    public protected(set) ModelInfo $modelInspect;
 
     /** @var ColumnsList */
     public protected(set) array $columns = [];
@@ -81,17 +76,13 @@ class ModelTransformer extends CoreTransformer
     /** @var TsTypeOverrides */
     public protected(set) array $tsTypeOverrides = [];
 
-    /** @var array<string, string> FQCN => TypeScript type alias name */
-    protected array $enumFqcnMap = [];
+    protected RelationNullable $relationNullable;
 
     /** @var array<string, string> FQCN => TypeScript short name */
     protected array $modelFqcnMap = [];
 
     /** @var array<string, list<string>> FQCN => list of relation method names that reference it */
     protected array $modelFqcnRelations = [];
-
-    /** @var array<string, string> FQCN => aliased TypeScript name (only for conflicting imports) */
-    protected array $importAliases = [];
 
     /** @var array<string, list<string>> column_name => list of FQCNs (enum or model) referenced by that column */
     protected array $columnFqcns = [];
@@ -102,17 +93,11 @@ class ModelTransformer extends CoreTransformer
     /** @var array<string, list<string>> */
     protected array $customImports = [];
 
-    /** @var array<string, string> FQCN => TypeScript const name (e.g. 'Status') */
-    protected array $enumConstMap = [];
-
     /** @var array<string, array{fqcn: string, nullable: bool}> column_name => enum property info */
     protected array $enumColumnProperties = [];
 
     /** @var array<string, array{fqcn: string, nullable: bool}> mutator_name => enum property info */
     protected array $enumMutatorProperties = [];
-
-    /** @var array<string, string> FQCN => aliased TypeScript const name (only for conflicting imports) */
-    protected array $constImportAliases = [];
 
     #[Override]
     public function transform(): self
@@ -164,6 +149,9 @@ class ModelTransformer extends CoreTransformer
         $this->modelInstance = $modelInstance;
         $this->dbColumns = $this->modelInstance->getConnection()->getSchemaBuilder()->getColumnListing($this->modelInstance->getTable());
         $this->modelInspect = resolve(ModelInspector::class)->inspect($this->findable);
+        /** @var Collection<int, AttributeInfo> $attributes */
+        $attributes = $this->modelInspect->attributes;
+        $this->relationNullable = new RelationNullable($this->modelInstance, $attributes);
         $this->reflectionModel = new ReflectionClass($this->findable);
         $this->modelName = $this->reflectionModel->getShortName();
         $this->filePath = $this->resolveRelativePath((string) $this->reflectionModel->getFileName());
@@ -175,45 +163,13 @@ class ModelTransformer extends CoreTransformer
 
     protected function parseTsTypeOverrides(): self
     {
-        $classOverrides = [];
-        $propertyOverrides = [];
-        $methodOverrides = [];
+        $result = $this->parseTsCastsFromReflection($this->reflectionModel);
 
-        // Class-level (Laravel 13+ style, or when there is no $casts property/method)
-        foreach ($this->reflectionModel->getAttributes(TsCasts::class) as $attr) {
-            $instance = $attr->newInstance();
-            $classOverrides = array_merge($classOverrides, $instance->types);
-        }
+        $this->tsTypeOverrides = $result['overrides'];
 
-        // $casts property (older style)
-        if ($this->reflectionModel->hasProperty('casts')) {
-            foreach ($this->reflectionModel->getProperty('casts')->getAttributes(TsCasts::class) as $attr) {
-                $instance = $attr->newInstance();
-                $propertyOverrides = array_merge($propertyOverrides, $instance->types);
-            }
-        }
-
-        // casts() method (Laravel 9+ style)
-        if ($this->reflectionModel->hasMethod('casts')) {
-            foreach ($this->reflectionModel->getMethod('casts')->getAttributes(TsCasts::class) as $attr) {
-                $instance = $attr->newInstance();
-                $methodOverrides = array_merge($methodOverrides, $instance->types);
-            }
-        }
-
-        // Method wins over property wins over class, matching Laravel's own cast resolution
-        $merged = array_merge($classOverrides, $propertyOverrides, $methodOverrides);
-
-        foreach ($merged as $column => $value) {
-            if (is_array($value)) {
-                /** @var array{type: string, import: string} $value */
-                $this->tsTypeOverrides[$column] = $value['type'];
-
-                foreach (LaravelTsPublish::extractImportableTypes($value['type']) as $importName) {
-                    $this->customImports[$value['import']][] = $importName;
-                }
-            } else {
-                $this->tsTypeOverrides[$column] = $value;
+        foreach ($result['importPaths'] as $column => $importPath) {
+            foreach (LaravelTsPublish::extractImportableTypes($result['overrides'][$column]) as $importName) {
+                $this->customImports[$importPath][] = $importName;
             }
         }
 
@@ -223,7 +179,7 @@ class ModelTransformer extends CoreTransformer
     protected function transformColumns(): self
     {
         /** @var Collection<int, AttributeInfo> $allAttributes */
-        $allAttributes = $this->modelInspect['attributes'];
+        $allAttributes = $this->modelInspect->attributes;
 
         $attributes = $allAttributes->filter(fn (array $attr) => in_array($attr['name'], $this->dbColumns));
 
@@ -246,9 +202,9 @@ class ModelTransformer extends CoreTransformer
                 $accessorType = $this->resolveMutatorType($name);
                 $typings = $accessorType['type'] !== 'unknown'
                     ? $accessorType
-                    : LaravelTsPublish::phpToTypeScriptType($attribute['type']);
+                    : LaravelTsPublish::phpToTypeScriptType($attribute['type'] ?? '');
             } else {
-                $typings = LaravelTsPublish::phpToTypeScriptType($cast ?? $attribute['type']);
+                $typings = LaravelTsPublish::phpToTypeScriptType($cast ?? $attribute['type'] ?? '');
             }
 
             $type = $typings['type'];
@@ -288,7 +244,7 @@ class ModelTransformer extends CoreTransformer
     protected function transformMutators(): self
     {
         /** @var Collection<int, AttributeInfo> $allAttributes */
-        $allAttributes = $this->modelInspect['attributes'];
+        $allAttributes = $this->modelInspect->attributes;
 
         $mutators = $allAttributes->filter(fn (array $attr) => ! in_array($attr['name'], $this->dbColumns));
 
@@ -338,7 +294,7 @@ class ModelTransformer extends CoreTransformer
     protected function transformRelations(): self
     {
         /** @var Collection<int, RelationInfo> $allRelations */
-        $allRelations = $this->modelInspect['relations'];
+        $allRelations = $this->modelInspect->relations;
 
         /** @var list<string> $includedModels */
         $includedModels = array_values(array_filter(config()->array('ts-publish.included_models', []), 'is_string'));
@@ -373,7 +329,7 @@ class ModelTransformer extends CoreTransformer
                 ? $relatedBasename.'[]'
                 : $relatedBasename;
 
-            if ($nullableRelations && $this->isRelationNullable($relation)) {
+            if ($nullableRelations && $this->relationNullable->isNullable($relation)) {
                 $relationType .= ' | null';
             }
 
@@ -392,93 +348,6 @@ class ModelTransformer extends CoreTransformer
         }
 
         return $this;
-    }
-
-    /**
-     * Determine whether a singular relation should be typed as nullable.
-     *
-     * @param  RelationInfo  $relation
-     */
-    protected function isRelationNullable(array $relation): bool
-    {
-        $strategy = LaravelTsPublish::relationStrategy($relation['type']);
-
-        return match ($strategy) {
-            'never' => false,
-            'nullable' => true,
-            'fk' => $this->isForeignKeyNullable($relation),
-            'morph' => $this->isMorphNullable($relation),
-            default => true,
-        };
-    }
-
-    /**
-     * Check if the BelongsTo foreign key column is nullable in the DB schema.
-     *
-     * @param  RelationInfo  $relation
-     */
-    protected function isForeignKeyNullable(array $relation): bool
-    {
-        $relationInstance = $this->modelInstance->{$relation['name']}();
-
-        if (! $relationInstance instanceof BelongsTo) {
-            return true;
-        }
-
-        /** @var string|list<string> $fkName */
-        $fkName = $relationInstance->getForeignKeyName();
-
-        if (is_array($fkName)) {
-            foreach ($fkName as $column) {
-                if ($this->isAttributeNullable($column)) {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        return $this->isAttributeNullable($fkName);
-    }
-
-    /**
-     * Check if morph type or morph id columns are nullable in the DB schema.
-     *
-     * @param  RelationInfo  $relation
-     */
-    protected function isMorphNullable(array $relation): bool
-    {
-        $relationInstance = $this->modelInstance->{$relation['name']}();
-
-        if (! $relationInstance instanceof MorphTo) {
-            return true;
-        }
-
-        /** @var string|list<string> $fkName */
-        $fkName = $relationInstance->getForeignKeyName();
-        $morphType = $relationInstance->getMorphType();
-
-        if (is_array($fkName)) {
-            foreach ($fkName as $column) {
-                if ($this->isAttributeNullable($column)) {
-                    return true;
-                }
-            }
-
-            return $this->isAttributeNullable($morphType);
-        }
-
-        return $this->isAttributeNullable($fkName) || $this->isAttributeNullable($morphType);
-    }
-
-    protected function isAttributeNullable(string $columnName): bool
-    {
-        /** @var Collection<int, AttributeInfo> $attributes */
-        $attributes = $this->modelInspect['attributes'];
-
-        $attribute = $attributes->first(fn (array $attr) => $attr['name'] === $columnName);
-
-        return $attribute !== null ? $attribute['nullable'] : true;
     }
 
     protected function isMutatorExcluded(string $name): bool
@@ -504,37 +373,7 @@ class ModelTransformer extends CoreTransformer
     /** @return TypeScriptTypeInfo */
     protected function resolveMutatorType(string $name): array
     {
-        $result = LaravelTsPublish::emptyTypeScriptInfo();
-        $newStyle = Str::camel($name);
-        $oldStyle = 'get'.Str::studly($name).'Attribute';
-
-        // New-style: protected function titleDisplay(): Attribute
-        // Must invoke via reflection because the method is protected
-        if ($this->reflectionModel->hasMethod($newStyle)) {
-            $method = $this->reflectionModel->getMethod($newStyle);
-            $method->setAccessible(true);
-
-            $attrInstance = $method->invoke($this->modelInstance);
-
-            if ($attrInstance instanceof Attribute) {
-                if ($attrInstance->get !== null) {
-                    /** @var \Closure $getter */
-                    $getter = $attrInstance->get;
-
-                    return LaravelTsPublish::closureReturnedTypes($getter);
-                }
-
-                // write-only mutator (set only, no get) — not readable on the model shape
-                return $result;
-            }
-        }
-
-        // Old-style: public function getTitleDisplayAttribute($value): string
-        if ($this->reflectionModel->hasMethod($oldStyle)) {
-            return LaravelTsPublish::methodReturnedTypes($this->reflectionModel, $oldStyle);
-        }
-
-        return $result;
+        return $this->resolveAccessorType($name, $this->modelInstance, $this->reflectionModel);
     }
 
     protected function resolveAccessorDescription(string $name): string
@@ -627,39 +466,6 @@ class ModelTransformer extends CoreTransformer
     }
 
     /**
-     * Compute a distinguishing namespace prefix for alias generation.
-     *
-     * Strips the configured namespace prefix, removes the class name, walks
-     * backwards skipping common segments like Models/Enums, and returns the
-     * StudlyCase of the first meaningful segment.
-     */
-    protected function computeNamespacePrefix(string $fqcn): string
-    {
-        $namespace = Str::beforeLast($fqcn, '\\');
-
-        $prefix = config()->string('ts-publish.namespace_strip_prefix', '');
-
-        if ($prefix !== '' && str_starts_with($namespace, $prefix)) {
-            $namespace = substr($namespace, strlen($prefix));
-        }
-
-        $segments = array_filter(explode('\\', $namespace));
-        $skip = ['Models', 'Enums', 'App'];
-
-        // Walk backwards to find the first meaningful segment
-        foreach (array_reverse($segments) as $segment) {
-            if (! in_array($segment, $skip, true)) {
-                return Str::studly($segment);
-            }
-        }
-
-        // Fallback: use the first available segment
-        $first = reset($segments);
-
-        return $first !== false ? Str::studly($first) : '';
-    }
-
-    /**
      * Rewrite type references in columns, mutators, and relations to use aliases.
      *
      * Relations are rewritten using FQCN-to-relation tracking for precision.
@@ -739,35 +545,24 @@ class ModelTransformer extends CoreTransformer
         $isModular = config()->boolean('ts-publish.modular_publishing');
         $hasEnums = $this->shouldGenerateHasEnums();
 
+        // Filter out self-references from model FQCN map
+        $modelFqcnMap = array_filter(
+            $this->modelFqcnMap,
+            fn (string $typeName, string $fqcn) => $fqcn !== $this->findable,
+            ARRAY_FILTER_USE_BOTH,
+        );
+
         if ($isModular) {
-            foreach ($this->enumFqcnMap as $fqcn => $typeName) {
-                $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
-                $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
-                $typeImports[$importPath][] = $this->formatImportName($fqcn, $typeName);
-            }
+            $typeImports = [
+                ...$this->collectModularTypeImports($this->enumFqcnMap),
+                ...$this->collectModularTypeImports($modelFqcnMap),
+            ];
 
             if ($hasEnums) {
-                foreach ($this->enumPropertyFqcns() as $fqcn) {
-                    $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
-                    $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
-                    $valueImports[$importPath][] = $this->formatConstImportName($fqcn);
-                }
-            }
-
-            foreach ($this->modelFqcnMap as $fqcn => $typeName) {
-                if ($fqcn === $this->findable) {
-                    continue;
-                }
-                $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
-                $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
-                $typeImports[$importPath][] = $this->formatImportName($fqcn, $typeName);
+                $valueImports = $this->collectModularValueImports($this->enumPropertyFqcns());
             }
         } else {
-            $enumTypeImports = [];
-            foreach ($this->enumFqcnMap as $fqcn => $typeName) {
-                $enumTypeImports[] = $this->formatImportName($fqcn, $typeName);
-            }
-            $enumTypeImports = array_values(array_unique($enumTypeImports));
+            $enumTypeImports = $this->collectFlatTypeImports($this->enumFqcnMap);
 
             if ($enumTypeImports) {
                 sort($enumTypeImports);
@@ -775,11 +570,7 @@ class ModelTransformer extends CoreTransformer
             }
 
             if ($hasEnums) {
-                $enumValueImports = [];
-                foreach ($this->enumPropertyFqcns() as $fqcn) {
-                    $enumValueImports[] = $this->formatConstImportName($fqcn);
-                }
-                $enumValueImports = array_values(array_unique($enumValueImports));
+                $enumValueImports = $this->collectFlatValueImports($this->enumPropertyFqcns());
 
                 if ($enumValueImports) {
                     sort($enumValueImports);
@@ -787,14 +578,7 @@ class ModelTransformer extends CoreTransformer
                 }
             }
 
-            $modelImports = [];
-            foreach ($this->modelFqcnMap as $fqcn => $typeName) {
-                if ($fqcn === $this->findable) {
-                    continue;
-                }
-                $modelImports[] = $this->formatImportName($fqcn, $typeName);
-            }
-            $modelImports = array_values(array_unique($modelImports));
+            $modelImports = $this->collectFlatTypeImports($modelFqcnMap);
 
             if ($modelImports) {
                 sort($modelImports);
@@ -802,70 +586,18 @@ class ModelTransformer extends CoreTransformer
             }
         }
 
-        // Merge custom imports into type imports
-        foreach ($this->customImports as $path => $types) {
-            $existing = $typeImports[$path] ?? [];
-            $typeImports[$path] = array_values(array_unique([...$existing, ...$types]));
-        }
-
-        // Deduplicate per path
-        foreach ($typeImports as $path => $types) {
-            $uniqueTypes = array_values(array_unique($types));
-            sort($uniqueTypes);
-            $typeImports[$path] = $uniqueTypes;
-        }
-
-        foreach ($valueImports as $path => $types) {
-            $uniqueTypes = array_values(array_unique($types));
-            sort($uniqueTypes);
-            $valueImports[$path] = $uniqueTypes;
-        }
+        $typeImports = $this->mergeCustomImports($typeImports, $this->customImports);
 
         return [
-            'typeImports' => LaravelTsPublish::sortImportPaths($typeImports),
-            'valueImports' => LaravelTsPublish::sortImportPaths($valueImports),
+            'typeImports' => $this->deduplicateAndSortImports($typeImports),
+            'valueImports' => $this->deduplicateAndSortImports($valueImports),
         ];
     }
 
-    /**
-     * Format an import name, applying "OriginalName as Alias" syntax when aliased.
-     */
-    protected function formatImportName(string $fqcn, string $typeName): string
+    #[Override]
+    protected function enumProperties(): array
     {
-        $alias = $this->importAliases[$fqcn] ?? null;
-
-        if ($alias !== null && $alias !== $typeName) {
-            return $typeName.' as '.$alias;
-        }
-
-        return $typeName;
-    }
-
-    protected function shouldGenerateHasEnums(): bool
-    {
-        return config()->boolean('ts-publish.enums_use_tolki_package')
-            && ($this->enumColumnProperties !== [] || $this->enumMutatorProperties !== []);
-    }
-
-    /** @return list<string> */
-    protected function enumPropertyFqcns(): array
-    {
-        return array_values(array_unique([
-            ...array_column($this->enumColumnProperties, 'fqcn'),
-            ...array_column($this->enumMutatorProperties, 'fqcn'),
-        ]));
-    }
-
-    protected function formatConstImportName(string $fqcn): string
-    {
-        $constName = $this->enumConstMap[$fqcn];
-        $alias = $this->constImportAliases[$fqcn] ?? null;
-
-        if ($alias !== null && $alias !== $constName) {
-            return $constName.' as '.$alias;
-        }
-
-        return $constName;
+        return array_merge($this->enumColumnProperties, $this->enumMutatorProperties);
     }
 
     /**
