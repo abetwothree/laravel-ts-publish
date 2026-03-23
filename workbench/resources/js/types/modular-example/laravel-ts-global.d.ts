@@ -1250,8 +1250,11 @@ declare global {
             title: string;
             content: string;
             status: StatusType;
+            status_new: AsEnum<typeof Status>;
             visibility: VisibilityType | null;
+            visibility_new: AsEnum<typeof Visibility> | null;
             priority: PriorityType | null;
+            priority_new: AsEnum<typeof Priority> | null;
         }
         export interface TraitSpreadCoverageResource {
             id: number;
@@ -1273,8 +1276,11 @@ declare global {
             title: string;
             content: string;
             status: AsEnum<typeof Status>;
+            status_new: AsEnum<typeof Status>;
             visibility: AsEnum<typeof Visibility> | null;
+            visibility_new: AsEnum<typeof Visibility> | null;
             priority: AsEnum<typeof Priority> | null;
+            priority_new: AsEnum<typeof Priority> | null;
         }
         /** Resource that delegates to parent — tests non-array return guard. */
         export interface DelegatingResource {
@@ -1398,6 +1404,8 @@ declare global {
             fcc_enum: unknown;
             not_enum: unknown;
             uncast_enum: unknown;
+            empty_new_enum: unknown;
+            var_new_enum: unknown;
             fake_field: unknown;
             fake_relation?: unknown;
         }
@@ -1419,6 +1427,17 @@ declare global {
         }
     }
     export namespace blog.http.resources {
+        export interface ApiArticleResource {
+            id: number;
+            title: string;
+            slug: string;
+            excerpt: string | null;
+            body: string;
+            status: AsEnum<typeof ArticleStatus>;
+            content_type: AsEnum<typeof ContentType>;
+            is_featured: boolean;
+            author?: User;
+        }
         /** Exercises: multiple whenLoaded bare — both same-module (Article) and cross-module (App\User) model type resolution. */
         export interface ReactionResource {
             id: number;

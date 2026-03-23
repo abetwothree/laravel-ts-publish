@@ -20,8 +20,11 @@ test('generates PostResource typescript content', function () {
         ->toContain('title: string')
         ->toContain('content: string')
         ->toContain('status: AsEnum<typeof Status>')
+        ->toContain('status_new: AsEnum<typeof Status>')
         ->toContain('visibility: AsEnum<typeof Visibility> | null')
-        ->toContain('priority: AsEnum<typeof Priority> | null');
+        ->toContain('visibility_new: AsEnum<typeof Visibility> | null')
+        ->toContain('priority: AsEnum<typeof Priority> | null')
+        ->toContain('priority_new: AsEnum<typeof Priority> | null');
 });
 
 test('generates PostResource with type imports when tolki disabled', function () {
@@ -33,8 +36,11 @@ test('generates PostResource with type imports when tolki disabled', function ()
     expect($generator->content)
         ->toContain("import type { PriorityType, StatusType, VisibilityType } from '../enums'")
         ->toContain('status: StatusType')
+        ->toContain('status_new: StatusType')
         ->toContain('visibility: VisibilityType | null')
+        ->toContain('visibility_new: VisibilityType | null')
         ->toContain('priority: PriorityType | null')
+        ->toContain('priority_new: PriorityType | null')
         ->not->toContain('@tolki/enum');
 });
 

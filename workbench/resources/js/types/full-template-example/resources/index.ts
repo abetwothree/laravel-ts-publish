@@ -1,4 +1,5 @@
 export * from './address';
+export * from './api-article-resource';
 export * from './api-post-resource';
 export * from './article-resource';
 export * from './category-resource';

@@ -3643,6 +3643,53 @@
                 "optional": true
             }
         ],
+        "ApiArticleResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "title",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "slug",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "excerpt",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "body",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "status",
+                "type": "AsEnum<typeof ArticleStatus>",
+                "optional": false
+            },
+            {
+                "name": "content_type",
+                "type": "AsEnum<typeof ContentType>",
+                "optional": false
+            },
+            {
+                "name": "is_featured",
+                "type": "boolean",
+                "optional": false
+            },
+            {
+                "name": "author",
+                "type": "User",
+                "optional": true
+            }
+        ],
         "ReactionResource": [
             {
                 "name": "id",
@@ -4628,13 +4675,28 @@
                 "optional": false
             },
             {
+                "name": "status_new",
+                "type": "AsEnum<typeof Status>",
+                "optional": false
+            },
+            {
                 "name": "visibility",
                 "type": "VisibilityType | null",
                 "optional": false
             },
             {
+                "name": "visibility_new",
+                "type": "AsEnum<typeof Visibility> | null",
+                "optional": false
+            },
+            {
                 "name": "priority",
                 "type": "PriorityType | null",
+                "optional": false
+            },
+            {
+                "name": "priority_new",
+                "type": "AsEnum<typeof Priority> | null",
                 "optional": false
             }
         ],
@@ -4727,12 +4789,27 @@
                 "optional": false
             },
             {
+                "name": "status_new",
+                "type": "AsEnum<typeof Status>",
+                "optional": false
+            },
+            {
                 "name": "visibility",
                 "type": "AsEnum<typeof Visibility> | null",
                 "optional": false
             },
             {
+                "name": "visibility_new",
+                "type": "AsEnum<typeof Visibility> | null",
+                "optional": false
+            },
+            {
                 "name": "priority",
+                "type": "AsEnum<typeof Priority> | null",
+                "optional": false
+            },
+            {
+                "name": "priority_new",
                 "type": "AsEnum<typeof Priority> | null",
                 "optional": false
             }
@@ -5232,6 +5309,16 @@
             },
             {
                 "name": "uncast_enum",
+                "type": "unknown",
+                "optional": false
+            },
+            {
+                "name": "empty_new_enum",
+                "type": "unknown",
+                "optional": false
+            },
+            {
+                "name": "var_new_enum",
                 "type": "unknown",
                 "optional": false
             },

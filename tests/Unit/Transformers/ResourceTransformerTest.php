@@ -64,6 +64,14 @@ describe('ResourceTransformer with PostResource', function () {
         expect($data->properties['priority']['type'])->toBe('AsEnum<typeof Priority> | null');
     });
 
+    test('resolves new EnumResource() to AsEnum type with tolki enabled', function () {
+        $data = (new ResourceTransformer(PostResource::class))->data();
+
+        expect($data->properties['status_new']['type'])->toBe('AsEnum<typeof Status>');
+        expect($data->properties['visibility_new']['type'])->toBe('AsEnum<typeof Visibility> | null');
+        expect($data->properties['priority_new']['type'])->toBe('AsEnum<typeof Priority> | null');
+    });
+
     test('resolves EnumResource::make() to enum type with tolki disabled', function () {
         config()->set('ts-publish.enums_use_tolki_package', false);
 
@@ -74,12 +82,23 @@ describe('ResourceTransformer with PostResource', function () {
         expect($data->properties['priority']['type'])->toBe('PriorityType | null');
     });
 
+    test('resolves new EnumResource() to enum type with tolki disabled', function () {
+        config()->set('ts-publish.enums_use_tolki_package', false);
+
+        $data = (new ResourceTransformer(PostResource::class))->data();
+
+        expect($data->properties['status_new']['type'])->toBe('StatusType');
+        expect($data->properties['visibility_new']['type'])->toBe('VisibilityType | null');
+        expect($data->properties['priority_new']['type'])->toBe('PriorityType | null');
+    });
+
     test('marks basic properties as non-optional', function () {
         $data = (new ResourceTransformer(PostResource::class))->data();
 
         expect($data->properties['id']['optional'])->toBeFalse();
         expect($data->properties['title']['optional'])->toBeFalse();
         expect($data->properties['status']['optional'])->toBeFalse();
+        expect($data->properties['status_new']['optional'])->toBeFalse();
     });
 
     test('generates correct filename', function () {
@@ -588,8 +607,11 @@ describe('ResourceTransformer with parent::toArray spread', function () {
             ->and($data->properties)->toHaveKey('title')
             ->and($data->properties)->toHaveKey('content')
             ->and($data->properties)->toHaveKey('status')
+            ->and($data->properties)->toHaveKey('status_new')
             ->and($data->properties)->toHaveKey('visibility')
-            ->and($data->properties)->toHaveKey('priority');
+            ->and($data->properties)->toHaveKey('visibility_new')
+            ->and($data->properties)->toHaveKey('priority')
+            ->and($data->properties)->toHaveKey('priority_new');
     });
 
     test('ApiPostResource parent properties have correct types', function () {
@@ -611,6 +633,17 @@ describe('ResourceTransformer with parent::toArray spread', function () {
         expect($data->properties['status']['type'])->toBe('StatusType');
         expect($data->properties['visibility']['type'])->toBe('VisibilityType | null');
         expect($data->properties['priority']['type'])->toBe('PriorityType | null');
+    });
+
+    test('non-overridden _new enum resource properties flow through from parent', function () {
+        config()->set('ts-publish.enums_use_tolki_package', false);
+
+        $data = (new ResourceTransformer(ApiPostResource::class))->data();
+
+        // Parent has new EnumResource() for _new keys, child does not override them
+        expect($data->properties['status_new']['type'])->toBe('StatusType');
+        expect($data->properties['visibility_new']['type'])->toBe('VisibilityType | null');
+        expect($data->properties['priority_new']['type'])->toBe('PriorityType | null');
     });
 
     test('ApiPostResource has enum type imports from parent', function () {

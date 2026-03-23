@@ -4,7 +4,9 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
 use Workbench\Accounting\Models\Invoice;
+use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
+use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Resources\AddressResource;
 use Workbench\App\Http\Resources\ApiPostResource;
 use Workbench\App\Http\Resources\CategoryResource;
@@ -62,7 +64,7 @@ describe('ResourceAstAnalyzer with PostResource', function () {
 
         $names = array_column($analysis->properties, 'name');
 
-        expect($names)->toContain('id', 'title', 'content', 'status', 'visibility', 'priority');
+        expect($names)->toContain('id', 'title', 'content', 'status', 'status_new', 'visibility', 'visibility_new', 'priority', 'priority_new');
     });
 
     test('identifies EnumResource::make calls', function () {
@@ -72,8 +74,11 @@ describe('ResourceAstAnalyzer with PostResource', function () {
 
         expect($analysis->enumResources)
             ->toHaveKey('status')
+            ->toHaveKey('status_new')
             ->toHaveKey('visibility')
-            ->toHaveKey('priority');
+            ->toHaveKey('visibility_new')
+            ->toHaveKey('priority')
+            ->toHaveKey('priority_new');
     });
 });
 
@@ -555,6 +560,19 @@ describe('ResourceAstAnalyzer edge cases', function () {
             ->and($analysis->enumResources['status'])->toBe(Status::class);
     });
 
+    test('resolves enum FQCN from new EnumResource for model property', function () {
+        $reflection = new ReflectionClass(PostResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $analysis = $analyzer->analyze();
+
+        expect($analysis->enumResources)->toHaveKey('status_new')
+            ->and($analysis->enumResources['status_new'])->toBe(Status::class)
+            ->and($analysis->enumResources)->toHaveKey('visibility_new')
+            ->and($analysis->enumResources['visibility_new'])->toBe(Visibility::class)
+            ->and($analysis->enumResources)->toHaveKey('priority_new')
+            ->and($analysis->enumResources['priority_new'])->toBe(Priority::class);
+    });
+
     test('resolves direct enum property from whenHas', function () {
         $reflection = new ReflectionClass(UserResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection, User::class);
@@ -831,6 +849,18 @@ describe('ResourceAstAnalyzer with QuirkyResource', function () {
 
         expect($notEnum['type'])->toBe('unknown');
     });
+
+    test('resolves new EnumResource with no args as unknown', function () {
+        $emptyNewEnum = collect($this->analysis->properties)->firstWhere('name', 'empty_new_enum');
+
+        expect($emptyNewEnum['type'])->toBe('unknown');
+    });
+
+    test('resolves new EnumResource with non-property arg as unknown', function () {
+        $varNewEnum = collect($this->analysis->properties)->firstWhere('name', 'var_new_enum');
+
+        expect($varNewEnum['type'])->toBe('unknown');
+    });
 });
 
 describe('ResourceAstAnalyzer with non-existent model', function () {
@@ -881,14 +911,21 @@ describe('ResourceAstAnalyzer with parent::toArray spread', function () {
         expect($idIndex)->toBeLessThan($statusIndex);
     });
 
-    test('child overrides clear parent enum resource tracking', function () {
+    test('child overrides clear parent enum resource tracking for overridden keys', function () {
         $reflection = new ReflectionClass(ApiPostResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
         $analysis = $analyzer->analyze();
 
         // Parent PostResource uses EnumResource::make() for status, visibility, priority
         // Child overrides those keys with plain $this->prop, clearing the parent's enum resource tracking
-        expect($analysis->enumResources)->toBeEmpty();
+        // But _new variants from parent are NOT overridden, so they remain as enum resources
+        expect($analysis->enumResources)
+            ->not->toHaveKey('status')
+            ->not->toHaveKey('visibility')
+            ->not->toHaveKey('priority')
+            ->toHaveKey('status_new')
+            ->toHaveKey('visibility_new')
+            ->toHaveKey('priority_new');
     });
 
     test('inherits customImports from parent trait TsResourceCasts', function () {

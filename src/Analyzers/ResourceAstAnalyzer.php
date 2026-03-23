@@ -532,6 +532,18 @@ class ResourceAstAnalyzer
 
         $className = $expr->class->toString();
 
+        // new EnumResource($this->prop)
+        if ($this->isEnumResourceClass($className)) {
+            $args = $expr->getArgs();
+
+            if (count($args) >= 1) {
+                return $this->resolveEnumFromPropertyArg($args[0]->value)
+                    ?? ['type' => 'unknown', 'optional' => false];
+            }
+
+            return ['type' => 'unknown', 'optional' => false];
+        }
+
         if (! $this->isResourceClass($className)) {
             return ['type' => 'unknown', 'optional' => false]; // @codeCoverageIgnore
         }
@@ -564,27 +576,39 @@ class ResourceAstAnalyzer
             return ['type' => 'unknown', 'optional' => false];
         }
 
-        $innerExpr = $args[0]->value;
+        return $this->resolveEnumFromPropertyArg($args[0]->value)
+            ?? ['type' => 'unknown', 'optional' => false];
+    }
 
-        // EnumResource::make($this->prop)
-        if ($this->isThisPropertyFetch($innerExpr)) {
-            /** @var PropertyFetch $innerExpr */
-            $propName = $innerExpr->name instanceof Identifier ? $innerExpr->name->toString() : null;
-
-            if ($propName !== null) {
-                $info = $this->resolveModelAttributeTypeInfo($propName);
-
-                if ($info['enumFqcn'] !== null) {
-                    return [
-                        'type' => $info['type'],
-                        'optional' => false,
-                        'enumFqcn' => $info['enumFqcn'],
-                    ];
-                }
-            }
+    /**
+     * Resolve an enum type from a $this->property expression (shared by EnumResource::make and new EnumResource).
+     *
+     * @return ValueExpressionResult|null
+     */
+    protected function resolveEnumFromPropertyArg(Expr $argExpr): ?array
+    {
+        if (! $this->isThisPropertyFetch($argExpr)) {
+            return null;
         }
 
-        return ['type' => 'unknown', 'optional' => false];
+        /** @var PropertyFetch $argExpr */
+        $propName = $argExpr->name instanceof Identifier ? $argExpr->name->toString() : null;
+
+        if ($propName === null) {
+            return null; // @codeCoverageIgnore
+        }
+
+        $info = $this->resolveModelAttributeTypeInfo($propName);
+
+        if ($info['enumFqcn'] === null) {
+            return null;
+        }
+
+        return [
+            'type' => $info['type'],
+            'optional' => false,
+            'enumFqcn' => $info['enumFqcn'],
+        ];
     }
 
     /**
