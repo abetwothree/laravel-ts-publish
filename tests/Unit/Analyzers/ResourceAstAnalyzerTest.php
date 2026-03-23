@@ -1191,6 +1191,14 @@ describe('ResourceAstAnalyzer with OrderExceptResource (direct return)', functio
     test('except preserves enum FQCNs for non-excluded columns', function () {
         expect($this->analysis->directEnumFqcns)->toHaveKey('status');
     });
+
+    test('nullable non-enum cast column includes null in type', function () {
+        // paid_at is a nullable datetime cast — validates the regular cast branch adds | null
+        $paidAt = collect($this->analysis->properties)->firstWhere('name', 'paid_at');
+
+        expect($paidAt)->not->toBeNull()
+            ->and($paidAt['type'])->toBe('string | null');
+    });
 });
 
 describe('ResourceAstAnalyzer with OrderFilterEdgeResource (edge cases)', function () {
