@@ -1512,11 +1512,33 @@ protected function includeProfile(): array
 }
 ```
 
+Another option for defining the return types of a trait method is to use the `#[TsResourceCasts]` attribute on the trait method itself with the same syntax as the `#[TsCasts]` attribute for models:
+
+```php
+use AbeTwoThree\LaravelTsPublish\Attributes\TsResourceCasts;
+
+trait IncludesExtras
+{
+    #[TsResourceCasts([
+        'location' => ['type' => 'GeoPoint', 'import' => '@/types/geo'],
+        'flag' => ['type' => 'string | null', 'optional' => true],
+        'extra' => 'Record<string, unknown>',
+    ])]
+    protected function includeCastedExtras(): array
+    {
+        return [
+            'location' => strtoupper('x'),
+            'flag' => strtolower('y'),
+        ];
+    }
+}
+```
+
 > [!TIP]
 > Trait spreads also flow through parent inheritance. If a parent resource spreads a trait method and a child extends it with `...parent::toArray($request)`, the child inherits the trait-contributed properties.
 
 > [!NOTE]
-> When a trait method has no `@return array{...}` PHPDoc, its properties will be typed as `unknown`.
+> When a trait method has no `@return array{...}` PHPDoc or `#[TsResourceCasts]` attribute, its properties will be typed as `unknown`.
 
 #### JsonResource Base Delegation
 
