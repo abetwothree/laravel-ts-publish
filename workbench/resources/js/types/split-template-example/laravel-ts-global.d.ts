@@ -1091,6 +1091,13 @@ declare global {
             initials: string;
             is_premium: boolean;
         }
+        /** Exercises ...$this->only([...]) spread with additional manual keys. */
+        export interface OrderOnlyResource {
+            id: number;
+            status: OrderStatusType;
+            total: number;
+            user?: UserResource;
+        }
         /** Resource spreading parent::toArray() from JsonResource base with extra keys. */
         export interface SpreadJsonBaseResource {
             id: number;
@@ -1273,6 +1280,9 @@ declare global {
             notes: string | null;
             search_index: unknown;
         }
+        /** Edge-case resource for $this->only() / $this->except() guard clause coverage. No @mixin — so buildModelDelegatedAnalysis() returns null. */
+        export interface OrderFilterEdgeResource {
+        }
         export interface ApiPostResource {
             morphValue: string;
             id: number;
@@ -1355,6 +1365,34 @@ declare global {
             team_role?: unknown;
             joined_at?: unknown;
             subscription_role?: unknown;
+        }
+        /** Exercises return $this->except([...]) as a direct return. */
+        export interface OrderExceptResource {
+            id: number;
+            ulid: string;
+            user_id: number;
+            status: OrderStatusType;
+            payment_method: PaymentMethodType;
+            currency: CurrencyType;
+            subtotal: number;
+            tax: number;
+            discount: number;
+            total: number;
+            shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
+            billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
+            notes: string | null;
+            placed_at: string;
+            paid_at: string;
+            shipped_at: string;
+            delivered_at: string;
+            cancelled_at: string;
+            created_at: string;
+            updated_at: string;
+            deleted_at: string;
+            item_count: number;
+            is_paid: boolean;
+            formatted_total: string;
+            search_index: unknown;
         }
         /** Resource with no toArray override but a known model — tests implicit delegation. */
         export interface EmptyWithMixinResource {

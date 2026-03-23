@@ -16,7 +16,10 @@ use Workbench\App\Http\Resources\EmptyWithMixinResource;
 use Workbench\App\Http\Resources\ExtendedAddressResource;
 use Workbench\App\Http\Resources\NonArrayReturnResource;
 use Workbench\App\Http\Resources\OrderDetailResource;
+use Workbench\App\Http\Resources\OrderExceptResource;
+use Workbench\App\Http\Resources\OrderFilterEdgeResource;
 use Workbench\App\Http\Resources\OrderItemResource;
+use Workbench\App\Http\Resources\OrderOnlyResource;
 use Workbench\App\Http\Resources\OrderResource;
 use Workbench\App\Http\Resources\OrderSummaryResource;
 use Workbench\App\Http\Resources\PostResource;
@@ -1058,5 +1061,97 @@ describe('ResourceAstAnalyzer with OrderSummaryResource', function () {
         expect($searchIndex)->not->toBeNull()
             ->and($searchIndex['type'])->toBe('unknown')
             ->and($searchIndex['optional'])->toBeFalse();
+    });
+});
+
+describe('ResourceAstAnalyzer with OrderOnlyResource (spread only)', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(OrderOnlyResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, Order::class))->analyze();
+    });
+
+    test('only spread includes exactly the listed properties', function () {
+        $names = array_column($this->analysis->properties, 'name');
+
+        expect($names)->toContain('id', 'total', 'status')
+            ->and($names)->toContain('user')
+            ->and($names)->not->toContain('ulid', 'subtotal', 'tax', 'notes');
+    });
+
+    test('resolves types for only-listed properties', function () {
+        $id = collect($this->analysis->properties)->firstWhere('name', 'id');
+        $total = collect($this->analysis->properties)->firstWhere('name', 'total');
+        $status = collect($this->analysis->properties)->firstWhere('name', 'status');
+
+        expect($id['type'])->toBe('number')
+            ->and($total['type'])->toBe('number')
+            ->and($status['type'])->toBe('OrderStatusType');
+    });
+
+    test('preserves enum FQCN through only filter', function () {
+        expect($this->analysis->directEnumFqcns)->toHaveKey('status')
+            ->and($this->analysis->directEnumFqcns)->not->toHaveKey('total');
+    });
+
+    test('manual keys alongside only spread are preserved', function () {
+        $user = collect($this->analysis->properties)->firstWhere('name', 'user');
+
+        expect($user)->not->toBeNull()
+            ->and($user['type'])->toBe('UserResource')
+            ->and($user['optional'])->toBeTrue();
+    });
+});
+
+describe('ResourceAstAnalyzer with OrderExceptResource (direct return)', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(OrderExceptResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, Order::class))->analyze();
+    });
+
+    test('except excludes the listed properties', function () {
+        $names = array_column($this->analysis->properties, 'name');
+
+        expect($names)->not->toContain('ip_address', 'user_agent');
+    });
+
+    test('except includes non-excluded properties with correct types', function () {
+        $id = collect($this->analysis->properties)->firstWhere('name', 'id');
+        $total = collect($this->analysis->properties)->firstWhere('name', 'total');
+        $status = collect($this->analysis->properties)->firstWhere('name', 'status');
+
+        expect($id)->not->toBeNull()
+            ->and($id['type'])->toBe('number')
+            ->and($total)->not->toBeNull()
+            ->and($total['type'])->toBe('number')
+            ->and($status)->not->toBeNull()
+            ->and($status['type'])->toBe('OrderStatusType');
+    });
+
+    test('except preserves enum FQCNs for non-excluded columns', function () {
+        expect($this->analysis->directEnumFqcns)->toHaveKey('status');
+    });
+});
+
+describe('ResourceAstAnalyzer with OrderFilterEdgeResource (edge cases)', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(OrderFilterEdgeResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, null))->analyze();
+    });
+
+    test('variable arg in only() is gracefully skipped', function () {
+        // ...$this->only($request->input(...)) has non-Array_ arg — returns null, skipped
+        expect($this->analysis->properties)->toBeArray();
+    });
+
+    test('empty array in except() is gracefully skipped', function () {
+        // ...$this->except([]) has empty keys — returns null, skipped
+        expect($this->analysis->properties)->toBeArray();
+    });
+
+    test('valid keys with no model returns empty analysis', function () {
+        // ...$this->only(['id', 'name']) has valid keys but no model — buildModelDelegatedAnalysis returns null
+        // All three spreads return null, so the analysis is empty
+        expect($this->analysis->properties)->toBeEmpty()
+            ->and($this->analysis->directEnumFqcns)->toBeEmpty();
     });
 });

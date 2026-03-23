@@ -3839,6 +3839,28 @@
                 "optional": false
             }
         ],
+        "OrderOnlyResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "status",
+                "type": "OrderStatusType",
+                "optional": false
+            },
+            {
+                "name": "total",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "user",
+                "type": "UserResource",
+                "optional": true
+            }
+        ],
         "SpreadJsonBaseResource": [
             {
                 "name": "id",
@@ -4489,6 +4511,7 @@
                 "optional": false
             }
         ],
+        "OrderFilterEdgeResource": [],
         "ApiPostResource": [
             {
                 "name": "morphValue",
@@ -4817,6 +4840,133 @@
                 "name": "subscription_role",
                 "type": "unknown",
                 "optional": true
+            }
+        ],
+        "OrderExceptResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "ulid",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "user_id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "status",
+                "type": "OrderStatusType",
+                "optional": false
+            },
+            {
+                "name": "payment_method",
+                "type": "PaymentMethodType",
+                "optional": false
+            },
+            {
+                "name": "currency",
+                "type": "CurrencyType",
+                "optional": false
+            },
+            {
+                "name": "subtotal",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "tax",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "discount",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "total",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "shipping_address",
+                "type": "{ line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string }",
+                "optional": false
+            },
+            {
+                "name": "billing_address",
+                "type": "{ line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string }",
+                "optional": false
+            },
+            {
+                "name": "notes",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "placed_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "paid_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "shipped_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "delivered_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "cancelled_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "created_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "updated_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "deleted_at",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "item_count",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "is_paid",
+                "type": "boolean",
+                "optional": false
+            },
+            {
+                "name": "formatted_total",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "search_index",
+                "type": "unknown",
+                "optional": false
             }
         ],
         "EmptyWithMixinResource": [

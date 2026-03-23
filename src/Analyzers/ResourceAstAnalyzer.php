@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Analyzers;
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\FiltersModelAttributes;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ResolvesModelTypes;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResourceCasts;
@@ -39,6 +40,7 @@ use ReflectionClass;
  */
 class ResourceAstAnalyzer
 {
+    use FiltersModelAttributes;
     use InspectsAstNodes;
     use ResolvesModelTypes;
 
@@ -80,6 +82,11 @@ class ResourceAstAnalyzer
                 return $this->analyzeParentToArray() ?? $this->buildModelDelegatedAnalysis() ?? new ResourceAnalysis;
             }
 
+            // return $this->only([...]) or return $this->except([...])
+            if ($returnStmt instanceof Return_ && $returnStmt->expr instanceof MethodCall) {
+                return $this->analyzeThisAttributeFilter($returnStmt->expr) ?? new ResourceAnalysis;
+            }
+
             return new ResourceAnalysis;
         }
 
@@ -111,6 +118,26 @@ class ResourceAstAnalyzer
                         $properties, $enumResources, $nestedResources,
                         $directEnumFqcns, $modelFqcns, $customImports,
                         $parentAnalysis,
+                    );
+                }
+
+                continue;
+            }
+
+            // Handle ...$this->only([...]) or ...$this->except([...]) spread
+            if ($item->key === null && $item->unpack
+                && $item->value instanceof MethodCall
+                && $item->value->var instanceof Variable
+                && $item->value->var->name === 'this'
+                && $item->value->name instanceof Identifier
+                && in_array($item->value->name->toString(), $this->supportedAttributeFilters(), true)) {
+                $filterAnalysis = $this->analyzeThisAttributeFilter($item->value);
+
+                if ($filterAnalysis !== null) {
+                    $this->syncAnalysisMaps(
+                        $properties, $enumResources, $nestedResources,
+                        $directEnumFqcns, $modelFqcns, $customImports,
+                        $filterAnalysis,
                     );
                 }
 
