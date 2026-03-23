@@ -78,7 +78,7 @@ class ModelInfo implements Arrayable, ArrayAccess
      *     resource: ResourceType,
      * }
      */
-    public function toArray()
+    public function toArray(): array
     {
         return [
             'class' => $this->class,
