@@ -16,10 +16,12 @@ use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
+use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Return_;
@@ -301,13 +303,15 @@ class ResourceAstAnalyzer
             return ['type' => 'unknown', 'optional' => true];
         }
 
-        // EnumResource::make($this->prop)
+        // EnumResource::make($this->prop) or SomeResource::make/collection()
         if ($expr instanceof StaticCall) {
             return $this->analyzeStaticCall($expr);
         }
 
-        // SomeResource::collection($this->whenLoaded('relation'))
-        // Already handled by static call above
+        // new SomeResource($this->prop)
+        if ($expr instanceof New_) {
+            return $this->analyzeNewResource($expr);
+        }
 
         // $this->property
         if ($this->isThisPropertyFetch($expr)) {
@@ -513,6 +517,34 @@ class ResourceAstAnalyzer
         }
 
         return ['type' => 'unknown', 'optional' => false];
+    }
+
+    /**
+     * Analyze `new SomeResource(...)` — resolve as a nested resource.
+     *
+     * @return ValueExpressionResult
+     */
+    protected function analyzeNewResource(New_ $expr): array
+    {
+        if (! $expr->class instanceof Name) {
+            return ['type' => 'unknown', 'optional' => false]; // @codeCoverageIgnore
+        }
+
+        $className = $expr->class->toString();
+
+        if (! $this->isResourceClass($className)) {
+            return ['type' => 'unknown', 'optional' => false]; // @codeCoverageIgnore
+        }
+
+        $resourceName = class_basename($className);
+        $optional = $this->hasConditionalNewArgument($expr);
+
+        /** @var class-string $className */
+        return [
+            'type' => $resourceName,
+            'optional' => $optional,
+            'resourceFqcn' => $className,
+        ];
     }
 
     /**

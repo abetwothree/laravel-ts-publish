@@ -8,5 +8,9 @@ export interface CommentResource
     flagged_at?: string | null;
     metadata: Record<string, unknown>;
     author?: UserResource;
+    author_new?: UserResource;
+    author_direct: UserResource;
     post?: PostResource;
+    post_new?: PostResource;
+    post_direct: PostResource;
 }

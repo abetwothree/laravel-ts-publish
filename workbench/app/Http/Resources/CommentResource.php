@@ -28,7 +28,11 @@ class CommentResource extends JsonResource
             'flagged_at' => $this->flagged_at,
             'metadata' => $this->metadata,
             'author' => UserResource::make($this->whenLoaded('user')),
+            'author_new' => new UserResource($this->whenLoaded('user')),
+            'author_direct' => new UserResource($this->user),
             'post' => PostResource::make($this->whenLoaded('post')),
+            'post_new' => new PostResource($this->whenLoaded('post')),
+            'post_direct' => new PostResource($this->post),
         ];
     }
 }

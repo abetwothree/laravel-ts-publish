@@ -1098,7 +1098,11 @@ declare global {
             flagged_at?: string | null;
             metadata: Record<string, unknown>;
             author?: UserResource;
+            author_new?: UserResource;
+            author_direct: UserResource;
             post?: PostResource;
+            post_new?: PostResource;
+            post_direct: PostResource;
         }
         /** Resource with no @mixin or TsResource — tests convention-based model guess. */
         export interface WarehouseResource {

@@ -10,6 +10,7 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
@@ -43,6 +44,28 @@ trait InspectsAstNodes
 
         if (count($args) < 1) {
             return false;
+        }
+
+        $inner = $args[0]->value;
+
+        foreach ($this->conditionalMethods as $method) {
+            if ($this->isThisMethodCall($inner, $method)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if a `new Resource(...)` call's first argument is a conditional expression.
+     */
+    protected function hasConditionalNewArgument(New_ $expr): bool
+    {
+        $args = $expr->getArgs();
+
+        if (count($args) < 1) {
+            return false; // @codeCoverageIgnore
         }
 
         $inner = $args[0]->value;

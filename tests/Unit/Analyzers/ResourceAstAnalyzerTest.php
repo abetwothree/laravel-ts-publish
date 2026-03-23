@@ -176,6 +176,47 @@ describe('ResourceAstAnalyzer with CommentResource', function () {
         expect($author['optional'])->toBeTrue()
             ->and($post['optional'])->toBeTrue();
     });
+
+    test('resolves new Resource() instantiation as nested resource', function () {
+        $reflection = new ReflectionClass(CommentResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Comment::class);
+        $analysis = $analyzer->analyze();
+
+        $authorNew = collect($analysis->properties)->firstWhere('name', 'author_new');
+        $postNew = collect($analysis->properties)->firstWhere('name', 'post_new');
+
+        expect($authorNew)->not->toBeNull()
+            ->and($authorNew['type'])->toBe('UserResource')
+            ->and($authorNew['optional'])->toBeTrue()
+            ->and($postNew)->not->toBeNull()
+            ->and($postNew['type'])->toBe('PostResource')
+            ->and($postNew['optional'])->toBeTrue();
+    });
+
+    test('tracks new Resource() FQCNs in nestedResources', function () {
+        $reflection = new ReflectionClass(CommentResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Comment::class);
+        $analysis = $analyzer->analyze();
+
+        expect($analysis->nestedResources)->toHaveKey('author_new')
+            ->and($analysis->nestedResources['author_new'])->toBe(UserResource::class)
+            ->and($analysis->nestedResources)->toHaveKey('post_new')
+            ->and($analysis->nestedResources['post_new'])->toBe(PostResource::class);
+    });
+
+    test('resolves non-conditional new Resource() as non-optional', function () {
+        $reflection = new ReflectionClass(CommentResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Comment::class);
+        $analysis = $analyzer->analyze();
+
+        $postDirect = collect($analysis->properties)->firstWhere('name', 'post_direct');
+
+        expect($postDirect)->not->toBeNull()
+            ->and($postDirect['type'])->toBe('PostResource')
+            ->and($postDirect['optional'])->toBeFalse()
+            ->and($analysis->nestedResources)->toHaveKey('post_direct')
+            ->and($analysis->nestedResources['post_direct'])->toBe(PostResource::class);
+    });
 });
 
 describe('ResourceAstAnalyzer with TeamMemberResource', function () {

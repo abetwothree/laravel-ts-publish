@@ -4103,9 +4103,29 @@
                 "optional": true
             },
             {
+                "name": "author_new",
+                "type": "UserResource",
+                "optional": true
+            },
+            {
+                "name": "author_direct",
+                "type": "UserResource",
+                "optional": false
+            },
+            {
                 "name": "post",
                 "type": "PostResource",
                 "optional": true
+            },
+            {
+                "name": "post_new",
+                "type": "PostResource",
+                "optional": true
+            },
+            {
+                "name": "post_direct",
+                "type": "PostResource",
+                "optional": false
             }
         ],
         "WarehouseResource": [
