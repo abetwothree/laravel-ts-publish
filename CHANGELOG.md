@@ -2,6 +2,14 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## Support for transforming Eloquent API Resources to TypeScript declaration files - 2026-03-23
+
+### What's Changed
+
+* Eloquent API Resources to TypeScript by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/8
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v1.0.1...v1.1.0
+
 ## v1 release 🎉  - 2026-03-17
 
 ### What's Changed
