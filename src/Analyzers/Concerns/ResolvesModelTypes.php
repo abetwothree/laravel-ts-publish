@@ -108,11 +108,16 @@ trait ResolvesModelTypes
         // Regular casts (enum, date, json, etc.)
         if ($cast !== null && $cast !== '' && $cast !== 'attribute' && $cast !== 'accessor') {
             $tsInfo = LaravelTsPublish::phpToTypeScriptType($cast);
+            $type = $tsInfo['type'];
+
+            if ($attr['nullable'] && ! str_contains($type, 'null')) {
+                $type .= ' | null';
+            }
 
             /** @var class-string|null $enumFqcn */
             $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
 
-            return ['type' => $tsInfo['type'], 'enumFqcn' => $enumFqcn];
+            return ['type' => $type, 'enumFqcn' => $enumFqcn];
         }
 
         // Fall back to DB column type

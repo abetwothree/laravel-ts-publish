@@ -576,9 +576,16 @@ class ResourceAstAnalyzer
 
                 if ($enumFqcn !== null) {
                     $tsInfo = LaravelTsPublish::phpToTypeScriptType($enumFqcn);
+                    $type = $tsInfo['type'];
+
+                    $attr = $this->modelAttributes?->firstWhere('name', $propName);
+
+                    if ($attr !== null && $attr['nullable'] && ! str_contains($type, 'null')) {
+                        $type .= ' | null';
+                    }
 
                     return [
-                        'type' => $tsInfo['type'],
+                        'type' => $type,
                         'optional' => false,
                         'enumFqcn' => $enumFqcn,
                     ];

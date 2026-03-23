@@ -60,8 +60,8 @@ describe('ResourceTransformer with PostResource', function () {
         $data = (new ResourceTransformer(PostResource::class))->data();
 
         expect($data->properties['status']['type'])->toBe('AsEnum<typeof Status>');
-        expect($data->properties['visibility']['type'])->toBe('AsEnum<typeof Visibility>');
-        expect($data->properties['priority']['type'])->toBe('AsEnum<typeof Priority>');
+        expect($data->properties['visibility']['type'])->toBe('AsEnum<typeof Visibility> | null');
+        expect($data->properties['priority']['type'])->toBe('AsEnum<typeof Priority> | null');
     });
 
     test('resolves EnumResource::make() to enum type with tolki disabled', function () {
@@ -70,8 +70,8 @@ describe('ResourceTransformer with PostResource', function () {
         $data = (new ResourceTransformer(PostResource::class))->data();
 
         expect($data->properties['status']['type'])->toBe('StatusType');
-        expect($data->properties['visibility']['type'])->toBe('VisibilityType');
-        expect($data->properties['priority']['type'])->toBe('PriorityType');
+        expect($data->properties['visibility']['type'])->toBe('VisibilityType | null');
+        expect($data->properties['priority']['type'])->toBe('PriorityType | null');
     });
 
     test('marks basic properties as non-optional', function () {
@@ -145,7 +145,7 @@ describe('ResourceTransformer with UserResource', function () {
     test('resolves EnumResource::make() to AsEnum type', function () {
         $data = (new ResourceTransformer(UserResource::class))->data();
 
-        expect($data->properties['role']['type'])->toBe('AsEnum<typeof Role>');
+        expect($data->properties['role']['type'])->toBe('AsEnum<typeof Role> | null');
         expect($data->properties['role']['optional'])->toBeFalse();
     });
 
@@ -154,7 +154,7 @@ describe('ResourceTransformer with UserResource', function () {
 
         $data = (new ResourceTransformer(UserResource::class))->data();
 
-        expect($data->properties['role']['type'])->toBe('RoleType');
+        expect($data->properties['role']['type'])->toBe('RoleType | null');
     });
 
     test('resolves nested resource collection type', function () {
@@ -609,8 +609,8 @@ describe('ResourceTransformer with parent::toArray spread', function () {
 
         // Parent has EnumResource::make() → StatusType, child has $this->status → StatusType
         expect($data->properties['status']['type'])->toBe('StatusType');
-        expect($data->properties['visibility']['type'])->toBe('VisibilityType');
-        expect($data->properties['priority']['type'])->toBe('PriorityType');
+        expect($data->properties['visibility']['type'])->toBe('VisibilityType | null');
+        expect($data->properties['priority']['type'])->toBe('PriorityType | null');
     });
 
     test('ApiPostResource has enum type imports from parent', function () {

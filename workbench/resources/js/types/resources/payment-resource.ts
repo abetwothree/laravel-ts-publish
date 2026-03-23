@@ -12,5 +12,5 @@ export interface PaymentResource
     amount: number;
     method?: PaymentMethodType;
     reference?: string | null;
-    paid_at?: string;
+    paid_at?: string | null;
 }

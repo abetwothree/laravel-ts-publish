@@ -556,7 +556,7 @@ class ResourceTransformer extends CoreTransformer
             $type = 'AsEnum<typeof '.$constName.'>';
 
             if ($info['nullable']) {
-                $type .= ' | null'; // @codeCoverageIgnore
+                $type .= ' | null';
             }
 
             $this->properties[$propName] = [

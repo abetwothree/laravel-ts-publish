@@ -10,19 +10,19 @@ export interface ProductResource
     sku: string;
     description: string | null;
     price: number;
-    compare_at_price?: number;
-    cost_price?: number;
+    compare_at_price?: number | null;
+    cost_price?: number | null;
     quantity: number;
     is_active: boolean;
     is_featured: boolean;
-    published_at?: string;
+    published_at?: string | null;
     tags?: TagResource[];
     images?: ImageResource[];
     orders_count?: number;
     total_sold?: number;
     min_unit_price?: number;
     max_unit_price?: number;
-    weight?: number;
+    weight?: number | null;
     dimensions?: { length: number; width: number; height: number; unit: "cm" | "in" };
     metadata?: ProductMetadata | ProductJsonMetaData | null;
 }

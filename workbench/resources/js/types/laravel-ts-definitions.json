@@ -3359,17 +3359,17 @@
             },
             {
                 "name": "due_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": false
             },
             {
                 "name": "issued_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": true
             },
             {
                 "name": "paid_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": true
             },
             {
@@ -3426,7 +3426,7 @@
             },
             {
                 "name": "paid_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": true
             }
         ],
@@ -3448,7 +3448,7 @@
             },
             {
                 "name": "role",
-                "type": "AsEnum<typeof Role>",
+                "type": "AsEnum<typeof Role> | null",
                 "optional": false
             },
             {
@@ -3540,7 +3540,7 @@
             },
             {
                 "name": "closed_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": true
             }
         ],
@@ -3599,22 +3599,22 @@
             },
             {
                 "name": "weight_grams",
-                "type": "number",
+                "type": "number | null",
                 "optional": false
             },
             {
                 "name": "estimated_delivery_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": true
             },
             {
                 "name": "shipped_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": true
             },
             {
                 "name": "delivered_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": true
             },
             {
@@ -3718,7 +3718,7 @@
             },
             {
                 "name": "published_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": true
             },
             {
@@ -3760,7 +3760,7 @@
             },
             {
                 "name": "email_verified_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": false
             },
             {
@@ -3780,22 +3780,22 @@
             },
             {
                 "name": "created_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": false
             },
             {
                 "name": "updated_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": false
             },
             {
                 "name": "role",
-                "type": "RoleType",
+                "type": "RoleType | null",
                 "optional": false
             },
             {
                 "name": "membership_level",
-                "type": "MembershipLevelType",
+                "type": "MembershipLevelType | null",
                 "optional": false
             },
             {
@@ -3820,7 +3820,7 @@
             },
             {
                 "name": "last_login_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": false
             },
             {
@@ -3879,7 +3879,7 @@
             },
             {
                 "name": "email_verified_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": false
             },
             {
@@ -3899,22 +3899,22 @@
             },
             {
                 "name": "created_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": false
             },
             {
                 "name": "updated_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": false
             },
             {
                 "name": "role",
-                "type": "RoleType",
+                "type": "RoleType | null",
                 "optional": false
             },
             {
                 "name": "membership_level",
-                "type": "MembershipLevelType",
+                "type": "MembershipLevelType | null",
                 "optional": false
             },
             {
@@ -3939,7 +3939,7 @@
             },
             {
                 "name": "last_login_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": false
             },
             {
@@ -3996,12 +3996,12 @@
             },
             {
                 "name": "compare_at_price",
-                "type": "number",
+                "type": "number | null",
                 "optional": true
             },
             {
                 "name": "cost_price",
-                "type": "number",
+                "type": "number | null",
                 "optional": true
             },
             {
@@ -4021,7 +4021,7 @@
             },
             {
                 "name": "published_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": true
             },
             {
@@ -4056,7 +4056,7 @@
             },
             {
                 "name": "weight",
-                "type": "number",
+                "type": "number | null",
                 "optional": true
             },
             {
@@ -4158,7 +4158,7 @@
             },
             {
                 "name": "date_of_birth",
-                "type": "string",
+                "type": "string | null",
                 "optional": true
             },
             {
@@ -4281,7 +4281,7 @@
             },
             {
                 "name": "shipped_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": true
             },
             {
@@ -4412,12 +4412,12 @@
             },
             {
                 "name": "width",
-                "type": "number",
+                "type": "number | null",
                 "optional": true
             },
             {
                 "name": "height",
-                "type": "number",
+                "type": "number | null",
                 "optional": true
             }
         ],
@@ -4629,12 +4629,12 @@
             },
             {
                 "name": "visibility",
-                "type": "VisibilityType",
+                "type": "VisibilityType | null",
                 "optional": false
             },
             {
                 "name": "priority",
-                "type": "PriorityType",
+                "type": "PriorityType | null",
                 "optional": false
             }
         ],
@@ -4728,12 +4728,12 @@
             },
             {
                 "name": "visibility",
-                "type": "AsEnum<typeof Visibility>",
+                "type": "AsEnum<typeof Visibility> | null",
                 "optional": false
             },
             {
                 "name": "priority",
-                "type": "AsEnum<typeof Priority>",
+                "type": "AsEnum<typeof Priority> | null",
                 "optional": false
             }
         ],
@@ -4781,7 +4781,7 @@
             },
             {
                 "name": "settings",
-                "type": "unknown[]",
+                "type": "unknown[] | null",
                 "optional": true
             }
         ],
@@ -4830,17 +4830,17 @@
             },
             {
                 "name": "paid_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": true
             },
             {
                 "name": "shipped_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": true
             },
             {
                 "name": "delivered_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": true
             }
         ],
@@ -4921,12 +4921,12 @@
             },
             {
                 "name": "role",
-                "type": "RoleType",
+                "type": "RoleType | null",
                 "optional": true
             },
             {
                 "name": "membership_level",
-                "type": "MembershipLevelType",
+                "type": "MembershipLevelType | null",
                 "optional": true
             },
             {
@@ -4973,7 +4973,7 @@
             },
             {
                 "name": "payment_method",
-                "type": "PaymentMethodType",
+                "type": "PaymentMethodType | null",
                 "optional": false
             },
             {
@@ -5018,42 +5018,42 @@
             },
             {
                 "name": "placed_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": false
             },
             {
                 "name": "paid_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": false
             },
             {
                 "name": "shipped_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": false
             },
             {
                 "name": "delivered_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": false
             },
             {
                 "name": "cancelled_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": false
             },
             {
                 "name": "created_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": false
             },
             {
                 "name": "updated_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": false
             },
             {
                 "name": "deleted_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": false
             },
             {
@@ -5095,7 +5095,7 @@
             },
             {
                 "name": "email_verified_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": false
             },
             {
@@ -5115,22 +5115,22 @@
             },
             {
                 "name": "created_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": false
             },
             {
                 "name": "updated_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": false
             },
             {
                 "name": "role",
-                "type": "RoleType",
+                "type": "RoleType | null",
                 "optional": false
             },
             {
                 "name": "membership_level",
-                "type": "MembershipLevelType",
+                "type": "MembershipLevelType | null",
                 "optional": false
             },
             {
@@ -5155,7 +5155,7 @@
             },
             {
                 "name": "last_login_at",
-                "type": "string",
+                "type": "string | null",
                 "optional": false
             },
             {

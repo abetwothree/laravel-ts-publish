@@ -23,5 +23,5 @@ export interface DealResource
     admin?: AppUser;
     customer_resource?: CrmUserResource;
     admin_resource?: AppUserResource;
-    closed_at?: string;
+    closed_at?: string | null;
 }

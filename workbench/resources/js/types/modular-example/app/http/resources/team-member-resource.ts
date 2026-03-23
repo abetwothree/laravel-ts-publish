@@ -6,8 +6,8 @@ export interface TeamMemberResource
     id: number;
     name: string;
     email: string;
-    role?: RoleType;
-    membership_level?: MembershipLevelType;
+    role?: RoleType | null;
+    membership_level?: MembershipLevelType | null;
     avatar?: string | null;
     team_role?: unknown;
     joined_at?: unknown;

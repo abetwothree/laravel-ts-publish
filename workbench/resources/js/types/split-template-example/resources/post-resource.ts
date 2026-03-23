@@ -9,6 +9,6 @@ export interface PostResource
     title: string;
     content: string;
     status: AsEnum<typeof Status>;
-    visibility: AsEnum<typeof Visibility>;
-    priority: AsEnum<typeof Priority>;
+    visibility: AsEnum<typeof Visibility> | null;
+    priority: AsEnum<typeof Priority> | null;
 }

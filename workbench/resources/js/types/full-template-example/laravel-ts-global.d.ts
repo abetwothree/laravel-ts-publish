@@ -979,9 +979,9 @@ declare global {
             subtotal: number;
             tax: number;
             total: number;
-            due_at: string;
-            issued_at?: string;
-            paid_at?: string;
+            due_at: string | null;
+            issued_at?: string | null;
+            paid_at?: string | null;
             user?: User;
             payments?: PaymentResource[];
             payments_count?: number;
@@ -995,7 +995,7 @@ declare global {
             amount: number;
             method?: PaymentMethodType;
             reference?: string | null;
-            paid_at?: string;
+            paid_at?: string | null;
         }
         export interface UserResource {
             id: number;
@@ -1017,7 +1017,7 @@ declare global {
             admin?: WorkbenchUser;
             customer_resource?: CrmUserResource;
             admin_resource?: WorkbenchUserResource;
-            closed_at?: string;
+            closed_at?: string | null;
         }
         /** Exercises: direct enum property access ($this->status), whenLoaded bare on same-module relation (Shipment). */
         export interface TrackingEventResource {
@@ -1034,10 +1034,10 @@ declare global {
             tracking_number: string | null;
             carrier: AsEnum<typeof Carrier>;
             status: AsEnum<typeof ShipmentStatus>;
-            weight_grams: number;
-            estimated_delivery_at?: string;
-            shipped_at?: string;
-            delivered_at?: string;
+            weight_grams: number | null;
+            estimated_delivery_at?: string | null;
+            shipped_at?: string | null;
+            delivered_at?: string | null;
             order?: Order;
             tracking_events?: TrackingEventResource[];
             tracking_events_count?: number;
@@ -1063,7 +1063,7 @@ declare global {
             is_featured: boolean;
             featured_image?: string | null;
             meta_description?: string | null;
-            published_at?: string;
+            published_at?: string | null;
             author?: User;
             reactions?: ReactionResource[];
             reactions_count?: number;
@@ -1074,19 +1074,19 @@ declare global {
             id: number;
             name: string;
             email: string;
-            email_verified_at: string;
+            email_verified_at: string | null;
             password: string;
             options: Record<string, unknown> | null;
             remember_token: string | null;
-            created_at: string;
-            updated_at: string;
-            role: RoleType;
-            membership_level: MembershipLevelType;
+            created_at: string | null;
+            updated_at: string | null;
+            role: RoleType | null;
+            membership_level: MembershipLevelType | null;
             phone: string | null;
             avatar: string | null;
             bio: string | null;
             settings: { theme: "light" | "dark"; notifications: boolean; locale: string } | null;
-            last_login_at: string;
+            last_login_at: string | null;
             last_login_ip: string | null;
             initials: string;
             is_premium: boolean;
@@ -1103,19 +1103,19 @@ declare global {
             id: number;
             name: string;
             email: string;
-            email_verified_at: string;
+            email_verified_at: string | null;
             password: string;
             options: Record<string, unknown> | null;
             remember_token: string | null;
-            created_at: string;
-            updated_at: string;
-            role: RoleType;
-            membership_level: MembershipLevelType;
+            created_at: string | null;
+            updated_at: string | null;
+            role: RoleType | null;
+            membership_level: MembershipLevelType | null;
             phone: string | null;
             avatar: string | null;
             bio: string | null;
             settings: { theme: "light" | "dark"; notifications: boolean; locale: string } | null;
-            last_login_at: string;
+            last_login_at: string | null;
             last_login_ip: string | null;
             initials: string;
             is_premium: boolean;
@@ -1129,19 +1129,19 @@ declare global {
             sku: string;
             description: string | null;
             price: number;
-            compare_at_price?: number;
-            cost_price?: number;
+            compare_at_price?: number | null;
+            cost_price?: number | null;
             quantity: number;
             is_active: boolean;
             is_featured: boolean;
-            published_at?: string;
+            published_at?: string | null;
             tags?: TagResource[];
             images?: ImageResource[];
             orders_count?: number;
             total_sold?: number;
             min_unit_price?: number;
             max_unit_price?: number;
-            weight?: number;
+            weight?: number | null;
             dimensions?: { length: number; width: number; height: number; unit: "cm" | "in" };
             metadata?: ProductMetadata | ProductJsonMetaData | null;
         }
@@ -1171,7 +1171,7 @@ declare global {
             id: number;
             bio: string | null;
             avatar_url: string | null;
-            date_of_birth?: string;
+            date_of_birth?: string | null;
             website?: string | null;
             phone_number?: string | null;
             social_links?: { twitter?: string; github?: string; linkedin?: string; website?: string };
@@ -1198,7 +1198,7 @@ declare global {
             id: number;
             name: string;
             email: string;
-            role: AsEnum<typeof Role>;
+            role: AsEnum<typeof Role> | null;
             profile?: Profile | null;
             posts?: PostResource[];
             phone?: string | null;
@@ -1218,7 +1218,7 @@ declare global {
             user_arrow?: UserResource;
             items_arrow?: OrderItemResource[];
             notes_closure?: string | null;
-            shipped_at?: string;
+            shipped_at?: string | null;
             tracking?: string | null;
             currency_label: CurrencyType;
             total_display: number;
@@ -1252,8 +1252,8 @@ declare global {
             alt_text: string | null;
             mime_type: string;
             size_bytes: number;
-            width?: number;
-            height?: number;
+            width?: number | null;
+            height?: number | null;
         }
         /** Exercises: self-referencing Resource::make and Resource::collection, when conditional, whenCounted, cross-resource PostResource::collection. */
         export interface CategoryResource {
@@ -1311,8 +1311,8 @@ declare global {
             title: string;
             content: string;
             status: StatusType;
-            visibility: VisibilityType;
-            priority: PriorityType;
+            visibility: VisibilityType | null;
+            priority: PriorityType | null;
         }
         export interface TraitSpreadCoverageResource {
             id: number;
@@ -1334,8 +1334,8 @@ declare global {
             title: string;
             content: string;
             status: AsEnum<typeof Status>;
-            visibility: AsEnum<typeof Visibility>;
-            priority: AsEnum<typeof Priority>;
+            visibility: AsEnum<typeof Visibility> | null;
+            priority: AsEnum<typeof Priority> | null;
         }
         /** Resource that delegates to parent — tests non-array return guard. */
         export interface DelegatingResource {
@@ -1350,7 +1350,7 @@ declare global {
             owner?: UserResource;
             members?: TeamMemberResource[];
             members_count?: number;
-            settings?: unknown[];
+            settings?: unknown[] | null;
         }
         export interface MiscCollection {
             data: unknown;
@@ -1363,9 +1363,9 @@ declare global {
             items?: OrderItem[];
             items_count?: number;
             total_avg?: number;
-            paid_at?: string;
-            shipped_at?: string;
-            delivered_at?: string;
+            paid_at?: string | null;
+            shipped_at?: string | null;
+            delivered_at?: string | null;
         }
         export interface UserCollection {
             data: UserResource[];
@@ -1388,8 +1388,8 @@ declare global {
             id: number;
             name: string;
             email: string;
-            role?: RoleType;
-            membership_level?: MembershipLevelType;
+            role?: RoleType | null;
+            membership_level?: MembershipLevelType | null;
             avatar?: string | null;
             team_role?: unknown;
             joined_at?: unknown;
@@ -1401,7 +1401,7 @@ declare global {
             ulid: string;
             user_id: number;
             status: OrderStatusType;
-            payment_method: PaymentMethodType;
+            payment_method: PaymentMethodType | null;
             currency: CurrencyType;
             subtotal: number;
             tax: number;
@@ -1410,14 +1410,14 @@ declare global {
             shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             notes: string | null;
-            placed_at: string;
-            paid_at: string;
-            shipped_at: string;
-            delivered_at: string;
-            cancelled_at: string;
-            created_at: string;
-            updated_at: string;
-            deleted_at: string;
+            placed_at: string | null;
+            paid_at: string | null;
+            shipped_at: string | null;
+            delivered_at: string | null;
+            cancelled_at: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            deleted_at: string | null;
             item_count: number;
             is_paid: boolean;
             formatted_total: string;
@@ -1428,19 +1428,19 @@ declare global {
             id: number;
             name: string;
             email: string;
-            email_verified_at: string;
+            email_verified_at: string | null;
             password: string;
             options: Record<string, unknown> | null;
             remember_token: string | null;
-            created_at: string;
-            updated_at: string;
-            role: RoleType;
-            membership_level: MembershipLevelType;
+            created_at: string | null;
+            updated_at: string | null;
+            role: RoleType | null;
+            membership_level: MembershipLevelType | null;
             phone: string | null;
             avatar: string | null;
             bio: string | null;
             settings: { theme: "light" | "dark"; notifications: boolean; locale: string } | null;
-            last_login_at: string;
+            last_login_at: string | null;
             last_login_ip: string | null;
             initials: string;
             is_premium: boolean;

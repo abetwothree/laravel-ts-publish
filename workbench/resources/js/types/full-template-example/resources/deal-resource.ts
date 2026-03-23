@@ -19,5 +19,5 @@ export interface DealResource
     admin?: WorkbenchUser;
     customer_resource?: CrmUserResource;
     admin_resource?: WorkbenchUserResource;
-    closed_at?: string;
+    closed_at?: string | null;
 }
