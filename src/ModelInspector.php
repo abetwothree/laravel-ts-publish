@@ -27,8 +27,8 @@ class ModelInspector extends EloquentModelInspector
 
         if ($modelInfo instanceof Arrayable) {
             /** @var array<string, mixed> $data */
-            $data = $modelInfo->toArray(); // @codeCoverageIgnore
-            $modelInfo = $data; // @codeCoverageIgnore
+            $data = $modelInfo->toArray();
+            $modelInfo = $data;
         }
 
         /** @var array{
