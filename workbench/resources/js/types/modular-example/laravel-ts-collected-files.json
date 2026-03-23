@@ -28,6 +28,7 @@
     "app\/Http\/Resources\/OrderDetailResource.php",
     "app\/Http\/Resources\/OrderItemResource.php",
     "app\/Http\/Resources\/OrderResource.php",
+    "app\/Http\/Resources\/OrderSummaryResource.php",
     "app\/Http\/Resources\/PostResource.php",
     "app\/Http\/Resources\/ProductResource.php",
     "app\/Http\/Resources\/ProfileResource.php",

@@ -301,6 +301,7 @@ declare global {
             total: number;
             shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
+            /** Trimmed notes — accessor on a nullable DB column */
             notes: string | null;
             placed_at: string | null;
             paid_at: string | null;
@@ -319,6 +320,8 @@ declare global {
             is_paid: boolean;
             /** Formatted total with currency symbol */
             formatted_total: string;
+            /** Write-only mutator (no getter) for a non-DB column */
+            search_index: unknown;
             // Relations
             user: User;
             user_count: number;
@@ -1085,8 +1088,8 @@ declare global {
             settings: { theme: "light" | "dark"; notifications: boolean; locale: string } | null;
             last_login_at: string;
             last_login_ip: string | null;
-            initials: unknown;
-            is_premium: unknown;
+            initials: string;
+            is_premium: boolean;
         }
         /** Resource spreading parent::toArray() from JsonResource base with extra keys. */
         export interface SpreadJsonBaseResource {
@@ -1107,8 +1110,8 @@ declare global {
             settings: { theme: "light" | "dark"; notifications: boolean; locale: string } | null;
             last_login_at: string;
             last_login_ip: string | null;
-            initials: unknown;
-            is_premium: unknown;
+            initials: string;
+            is_premium: boolean;
             full_name: unknown;
         }
         /** Exercises: multiple whenAggregated (sum/min/max), whenNotNull, when, whenCounted, two mergeWhen blocks, Resource::collection x2. */
@@ -1258,6 +1261,18 @@ declare global {
         }
         export interface NonArrayReturnResource {
         }
+        /** Exercises direct property access for accessors, mutators, and relations without using whenLoaded or other conditional wrappers. */
+        export interface OrderSummaryResource {
+            id: number;
+            is_paid: boolean;
+            item_count: number;
+            formatted_total: string;
+            user: User;
+            status: OrderStatusType;
+            total: number;
+            notes: string | null;
+            search_index: unknown;
+        }
         export interface ApiPostResource {
             morphValue: string;
             id: number;
@@ -1360,8 +1375,8 @@ declare global {
             settings: { theme: "light" | "dark"; notifications: boolean; locale: string } | null;
             last_login_at: string;
             last_login_ip: string | null;
-            initials: unknown;
-            is_premium: unknown;
+            initials: string;
+            is_premium: boolean;
         }
         /** Edge-case resource exercising unusual but valid patterns for AST analyzer guard clauses. */
         export interface QuirkyResource {

@@ -18,6 +18,7 @@ use Workbench\App\Http\Resources\NonArrayReturnResource;
 use Workbench\App\Http\Resources\OrderDetailResource;
 use Workbench\App\Http\Resources\OrderItemResource;
 use Workbench\App\Http\Resources\OrderResource;
+use Workbench\App\Http\Resources\OrderSummaryResource;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\QuirkyResource;
@@ -978,5 +979,84 @@ describe('ResourceAstAnalyzer trait spread doc type branches', function () {
 
     test('populates customImports from TsResourceCasts import paths', function () {
         expect($this->analysis->customImports)->toBe(['@/types/geo' => ['GeoPoint']]);
+    });
+});
+
+describe('ResourceAstAnalyzer with OrderSummaryResource', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(OrderSummaryResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, Order::class))->analyze();
+    });
+
+    test('resolves accessor column (is_paid) via reflection', function () {
+        $isPaid = collect($this->analysis->properties)->firstWhere('name', 'is_paid');
+
+        expect($isPaid)->not->toBeNull()
+            ->and($isPaid['type'])->toBe('boolean')
+            ->and($isPaid['optional'])->toBeFalse();
+    });
+
+    test('resolves pure mutator (item_count) via reflection', function () {
+        $itemCount = collect($this->analysis->properties)->firstWhere('name', 'item_count');
+
+        expect($itemCount)->not->toBeNull()
+            ->and($itemCount['type'])->toBe('number')
+            ->and($itemCount['optional'])->toBeFalse();
+    });
+
+    test('resolves pure mutator (formatted_total) via reflection', function () {
+        $formattedTotal = collect($this->analysis->properties)->firstWhere('name', 'formatted_total');
+
+        expect($formattedTotal)->not->toBeNull()
+            ->and($formattedTotal['type'])->toBe('string')
+            ->and($formattedTotal['optional'])->toBeFalse();
+    });
+
+    test('resolves direct relation access (user) to model type', function () {
+        $user = collect($this->analysis->properties)->firstWhere('name', 'user');
+
+        expect($user)->not->toBeNull()
+            ->and($user['type'])->toBe('User')
+            ->and($user['optional'])->toBeFalse();
+    });
+
+    test('tracks direct relation model FQCN', function () {
+        expect($this->analysis->modelFqcns)->toHaveKey('user');
+    });
+
+    test('resolves enum cast column (status) correctly', function () {
+        $status = collect($this->analysis->properties)->firstWhere('name', 'status');
+
+        expect($status)->not->toBeNull()
+            ->and($status['type'])->toBe('OrderStatusType')
+            ->and($status['optional'])->toBeFalse();
+    });
+
+    test('resolves regular DB column (total) correctly', function () {
+        $total = collect($this->analysis->properties)->firstWhere('name', 'total');
+
+        expect($total)->not->toBeNull()
+            ->and($total['type'])->toBe('number')
+            ->and($total['optional'])->toBeFalse();
+    });
+
+    test('tracks direct enum FQCN for enum cast column', function () {
+        expect($this->analysis->directEnumFqcns)->toHaveKey('status');
+    });
+
+    test('resolves nullable accessor column (notes) with null union', function () {
+        $notes = collect($this->analysis->properties)->firstWhere('name', 'notes');
+
+        expect($notes)->not->toBeNull()
+            ->and($notes['type'])->toBe('string | null')
+            ->and($notes['optional'])->toBeFalse();
+    });
+
+    test('resolves write-only mutator (search_index) to unknown', function () {
+        $searchIndex = collect($this->analysis->properties)->firstWhere('name', 'search_index');
+
+        expect($searchIndex)->not->toBeNull()
+            ->and($searchIndex['type'])->toBe('unknown')
+            ->and($searchIndex['optional'])->toBeFalse();
     });
 });

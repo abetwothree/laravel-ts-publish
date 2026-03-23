@@ -1062,6 +1062,10 @@
                 "type": "string"
             },
             {
+                "name": "search_index",
+                "type": "unknown"
+            },
+            {
                 "name": "user",
                 "type": "User"
             },
@@ -3826,12 +3830,12 @@
             },
             {
                 "name": "initials",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             },
             {
                 "name": "is_premium",
-                "type": "unknown",
+                "type": "boolean",
                 "optional": false
             }
         ],
@@ -3923,12 +3927,12 @@
             },
             {
                 "name": "initials",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             },
             {
                 "name": "is_premium",
-                "type": "unknown",
+                "type": "boolean",
                 "optional": false
             },
             {
@@ -4438,6 +4442,53 @@
             }
         ],
         "NonArrayReturnResource": [],
+        "OrderSummaryResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "is_paid",
+                "type": "boolean",
+                "optional": false
+            },
+            {
+                "name": "item_count",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "formatted_total",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "user",
+                "type": "User",
+                "optional": false
+            },
+            {
+                "name": "status",
+                "type": "OrderStatusType",
+                "optional": false
+            },
+            {
+                "name": "total",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "notes",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "search_index",
+                "type": "unknown",
+                "optional": false
+            }
+        ],
         "ApiPostResource": [
             {
                 "name": "morphValue",
@@ -4856,12 +4907,12 @@
             },
             {
                 "name": "initials",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             },
             {
                 "name": "is_premium",
-                "type": "unknown",
+                "type": "boolean",
                 "optional": false
             }
         ],

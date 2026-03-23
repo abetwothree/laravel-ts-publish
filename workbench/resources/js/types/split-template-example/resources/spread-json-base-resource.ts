@@ -20,7 +20,7 @@ export interface SpreadJsonBaseResource
     settings: { theme: "light" | "dark"; notifications: boolean; locale: string } | null;
     last_login_at: string;
     last_login_ip: string | null;
-    initials: unknown;
-    is_premium: unknown;
+    initials: string;
+    is_premium: boolean;
     full_name: unknown;
 }

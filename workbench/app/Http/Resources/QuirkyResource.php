@@ -53,7 +53,7 @@ class QuirkyResource extends JsonResource
             // EnumResource::make with non-enum property — tests resolveModelPropertyEnumClass fallback
             'not_enum' => EnumResource::make($this->total),
             // EnumResource::make with uncasted property — tests resolveModelPropertyEnumClass null cast
-            'uncast_enum' => EnumResource::make($this->notes),
+            'uncast_enum' => EnumResource::make($this->ip_address),
             // $this->property for nonexistent column — tests resolveModelAttributeTypeInfo attr not found
             'fake_field' => $this->nonexistent_column,
             // bare whenLoaded for nonexistent relation — tests resolveModelRelationTypeInfo not found

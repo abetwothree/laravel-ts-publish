@@ -19,6 +19,7 @@ export interface Order
     total: number;
     shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
     billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
+    /** Trimmed notes — accessor on a nullable DB column */
     notes: string | null;
     placed_at: string | null;
     paid_at: string | null;
@@ -37,6 +38,8 @@ export interface Order
     is_paid: boolean;
     /** Formatted total with currency symbol */
     formatted_total: string;
+    /** Write-only mutator (no getter) for a non-DB column */
+    search_index: unknown;
     // Relations
     user: User;
     items: OrderItem[];

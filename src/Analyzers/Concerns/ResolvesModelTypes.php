@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
+use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesAccessorType;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelInspector;
 use AbeTwoThree\LaravelTsPublish\RelationNullable;
@@ -25,9 +26,14 @@ use ReflectionClass;
  */
 trait ResolvesModelTypes
 {
+    use ResolvesAccessorType;
+
     protected ?Model $modelInstance = null;
 
     protected ?RelationNullable $relationNullable = null;
+
+    /** @var ReflectionClass<Model>|null */
+    protected ?ReflectionClass $modelReflection = null;
 
     /** @var Collection<int, AttributeInfo>|null */
     protected ?Collection $modelAttributes = null;
@@ -51,6 +57,7 @@ trait ResolvesModelTypes
             $attributes = $data->attributes;
             $this->modelAttributes = $attributes;
             $this->modelRelations = $data->relations;
+            $this->modelReflection = new ReflectionClass($this->modelClass);
             $this->relationNullable = new RelationNullable($this->modelInstance, $this->modelAttributes);
         } catch (\Throwable) { // @codeCoverageIgnore
             // Model may not have a working database connection during analysis
@@ -74,9 +81,31 @@ trait ResolvesModelTypes
             return ['type' => 'unknown', 'enumFqcn' => null];
         }
 
-        // Attribute accessors need special handling — resolve from DB column type
         $cast = $attr['cast'];
 
+        // Accessor columns — resolve via reflection to get the accessor's return type
+        if (($cast === 'attribute' || $cast === 'accessor') && $this->modelInstance !== null && $this->modelReflection !== null) {
+            try {
+                $accessorInfo = $this->resolveAccessorType($attributeName, $this->modelInstance, $this->modelReflection);
+
+                if ($accessorInfo['type'] !== 'unknown') {
+                    $type = $accessorInfo['type'];
+
+                    if ($attr['nullable'] && ! str_contains($type, 'null')) {
+                        $type .= ' | null';
+                    }
+
+                    /** @var class-string|null $enumFqcn */
+                    $enumFqcn = $accessorInfo['enumFqcns'][0] ?? null;
+
+                    return ['type' => $type, 'enumFqcn' => $enumFqcn];
+                }
+            } catch (\Throwable) { // @codeCoverageIgnore
+                // Accessor may fail without full runtime context — fall through to DB type
+            }
+        }
+
+        // Regular casts (enum, date, json, etc.)
         if ($cast !== null && $cast !== '' && $cast !== 'attribute' && $cast !== 'accessor') {
             $tsInfo = LaravelTsPublish::phpToTypeScriptType($cast);
 

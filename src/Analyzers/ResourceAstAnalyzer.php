@@ -489,6 +489,10 @@ class ResourceAstAnalyzer
     /**
      * Analyze $this->property — resolve the type from the backing model.
      *
+     * Resolution order (matches Laravel's Model::__get):
+     * 1. Model attributes (DB columns, accessors, mutators)
+     * 2. Model relations
+     *
      * @return ValueExpressionResult
      */
     protected function analyzeThisProperty(Expr $expr): array
@@ -500,14 +504,33 @@ class ResourceAstAnalyzer
             return ['type' => 'unknown', 'optional' => false]; // @codeCoverageIgnore
         }
 
+        // 1. Try model attributes (DB columns, accessors, mutators)
         $info = $this->resolveModelAttributeTypeInfo($propName);
-        $result = ['type' => $info['type'], 'optional' => false];
 
-        if ($info['enumFqcn'] !== null) {
-            $result['directEnumFqcn'] = $info['enumFqcn'];
+        if ($info['type'] !== 'unknown') {
+            $result = ['type' => $info['type'], 'optional' => false];
+
+            if ($info['enumFqcn'] !== null) {
+                $result['directEnumFqcn'] = $info['enumFqcn'];
+            }
+
+            return $result;
         }
 
-        return $result;
+        // 2. Fall back to model relations
+        $relationInfo = $this->resolveModelRelationTypeInfo($propName);
+
+        if ($relationInfo['type'] !== 'unknown') {
+            $result = ['type' => $relationInfo['type'], 'optional' => false];
+
+            if ($relationInfo['modelFqcn'] !== null) {
+                $result['modelFqcn'] = $relationInfo['modelFqcn'];
+            }
+
+            return $result;
+        }
+
+        return ['type' => 'unknown', 'optional' => false];
     }
 
     /**

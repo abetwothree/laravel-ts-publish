@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
+use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesAccessorType;
 use AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsModelDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -40,6 +41,7 @@ class ModelTransformer extends CoreTransformer
 {
     use BuildsImportMaps;
     use ParsesTsCasts;
+    use ResolvesAccessorType;
     use ResolvesImportConflicts;
     use TracksEnumImports;
 
@@ -371,37 +373,7 @@ class ModelTransformer extends CoreTransformer
     /** @return TypeScriptTypeInfo */
     protected function resolveMutatorType(string $name): array
     {
-        $result = LaravelTsPublish::emptyTypeScriptInfo();
-        $newStyle = Str::camel($name);
-        $oldStyle = 'get'.Str::studly($name).'Attribute';
-
-        // New-style: protected function titleDisplay(): Attribute
-        // Must invoke via reflection because the method is protected
-        if ($this->reflectionModel->hasMethod($newStyle)) {
-            $method = $this->reflectionModel->getMethod($newStyle);
-            $method->setAccessible(true);
-
-            $attrInstance = $method->invoke($this->modelInstance);
-
-            if ($attrInstance instanceof Attribute) {
-                if ($attrInstance->get !== null) {
-                    /** @var \Closure $getter */
-                    $getter = $attrInstance->get;
-
-                    return LaravelTsPublish::closureReturnedTypes($getter);
-                }
-
-                // write-only mutator (set only, no get) — not readable on the model shape
-                return $result;
-            }
-        }
-
-        // Old-style: public function getTitleDisplayAttribute($value): string
-        if ($this->reflectionModel->hasMethod($oldStyle)) {
-            return LaravelTsPublish::methodReturnedTypes($this->reflectionModel, $oldStyle);
-        }
-
-        return $result;
+        return $this->resolveAccessorType($name, $this->modelInstance, $this->reflectionModel);
     }
 
     protected function resolveAccessorDescription(string $name): string

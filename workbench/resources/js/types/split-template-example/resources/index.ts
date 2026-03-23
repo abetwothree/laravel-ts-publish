@@ -17,6 +17,7 @@ export * from './non-array-return-resource';
 export * from './order-detail-resource';
 export * from './order-item-resource';
 export * from './order-resource';
+export * from './order-summary-resource';
 export * from './payment-resource';
 export * from './post-resource';
 export * from './product-resource';
