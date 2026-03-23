@@ -50,6 +50,8 @@ class QuirkyResource extends JsonResource
             'empty_user' => UserResource::make(),
             // EnumResource::make with no args — tests analyzeEnumResourceMake guard
             'empty_enum' => EnumResource::make(),
+            // EnumResource::make as first-class callable — tests isFirstClassCallable guard
+            'fcc_enum' => EnumResource::make(...),
             // EnumResource::make with non-enum property — tests resolveModelPropertyEnumClass fallback
             'not_enum' => EnumResource::make($this->total),
             // EnumResource::make with uncasted property — tests resolveModelPropertyEnumClass null cast

@@ -26,6 +26,7 @@ use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\QuirkyResource;
 use Workbench\App\Http\Resources\SpreadJsonBaseResource;
+use Workbench\App\Http\Resources\TagResource;
 use Workbench\App\Http\Resources\TeamMemberResource;
 use Workbench\App\Http\Resources\TeamResource;
 use Workbench\App\Http\Resources\TraitSpreadCoverageResource;
@@ -37,6 +38,7 @@ use Workbench\App\Models\Order;
 use Workbench\App\Models\OrderItem;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Product;
+use Workbench\App\Models\Tag;
 use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
 use Workbench\Blog\Http\Resources\ReactionResource;
@@ -745,6 +747,13 @@ describe('ResourceAstAnalyzer with QuirkyResource', function () {
         expect($emptyEnum['type'])->toBe('unknown');
     });
 
+    test('resolves EnumResource::make first-class callable as unknown', function () {
+        $fccEnum = collect($this->analysis->properties)->firstWhere('name', 'fcc_enum');
+
+        expect($fccEnum['type'])->toBe('unknown')
+            ->and($fccEnum['optional'])->toBeFalse();
+    });
+
     test('resolves nonexistent model attribute as unknown', function () {
         $fakeField = collect($this->analysis->properties)->firstWhere('name', 'fake_field');
 
@@ -1153,5 +1162,33 @@ describe('ResourceAstAnalyzer with OrderFilterEdgeResource (edge cases)', functi
         // All three spreads return null, so the analysis is empty
         expect($this->analysis->properties)->toBeEmpty()
             ->and($this->analysis->directEnumFqcns)->toBeEmpty();
+    });
+});
+
+describe('ResourceAstAnalyzer with TagResource (first-class callable collection)', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(TagResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, Tag::class))->analyze();
+    });
+
+    test('does not crash on Resource::collection(...) first-class callable syntax', function () {
+        expect($this->analysis)->toBeInstanceOf(ResourceAnalysis::class);
+    });
+
+    test('resolves first-class callable collection to resource array type', function () {
+        $posts = collect($this->analysis->properties)->firstWhere('name', 'posts');
+        $products = collect($this->analysis->properties)->firstWhere('name', 'products');
+
+        expect($posts)->not->toBeNull()
+            ->and($posts['type'])->toBe('PostResource[]')
+            ->and($posts['optional'])->toBeTrue()
+            ->and($products)->not->toBeNull()
+            ->and($products['type'])->toBe('ProductResource[]')
+            ->and($products['optional'])->toBeTrue();
+    });
+
+    test('tracks nested resource FQCNs for first-class callable collections', function () {
+        expect($this->analysis->nestedResources)->toHaveKey('posts')
+            ->and($this->analysis->nestedResources)->toHaveKey('products');
     });
 });

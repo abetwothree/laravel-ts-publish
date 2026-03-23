@@ -4209,6 +4209,16 @@
                 "name": "products_count",
                 "type": "number",
                 "optional": true
+            },
+            {
+                "name": "posts",
+                "type": "PostResource[]",
+                "optional": true
+            },
+            {
+                "name": "products",
+                "type": "ProductResource[]",
+                "optional": true
             }
         ],
         "EventLogResource": [
@@ -5099,6 +5109,11 @@
             },
             {
                 "name": "empty_enum",
+                "type": "unknown",
+                "optional": false
+            },
+            {
+                "name": "fcc_enum",
                 "type": "unknown",
                 "optional": false
             },

@@ -32,3 +32,5 @@ phpstan.neon
 coverage.xml
 workbench/database/database.sqlite
 clover.xml
+AGENTS.md
+CLAUDE.md

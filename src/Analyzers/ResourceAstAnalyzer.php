@@ -249,6 +249,11 @@ class ResourceAstAnalyzer
      */
     protected function analyzeValueExpression(Expr $expr): array
     {
+        // First-class callables (e.g. $this->when(...)) have no args — bail early
+        if ($expr instanceof MethodCall && $expr->isFirstClassCallable()) {
+            return ['type' => 'unknown', 'optional' => false]; // @codeCoverageIgnore
+        }
+
         // $this->when(condition, value) or $this->when(condition, value, default)
         if ($this->isThisMethodCall($expr, 'when')) {
             /** @var MethodCall $expr */
@@ -411,6 +416,10 @@ class ResourceAstAnalyzer
             return new ResourceAnalysis;
         }
 
+        if ($call->isFirstClassCallable()) {
+            return new ResourceAnalysis; // @codeCoverageIgnore
+        }
+
         $args = $call->getArgs();
 
         if (count($args) < 2) {
@@ -482,6 +491,10 @@ class ResourceAstAnalyzer
      */
     protected function analyzeEnumResourceMake(StaticCall $call): array
     {
+        if ($call->isFirstClassCallable()) {
+            return ['type' => 'unknown', 'optional' => false];
+        }
+
         $args = $call->getArgs();
 
         if (count($args) < 1) {

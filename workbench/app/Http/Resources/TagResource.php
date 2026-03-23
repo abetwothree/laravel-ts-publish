@@ -25,6 +25,8 @@ class TagResource extends JsonResource
             'color' => $this->color,
             'posts_count' => $this->whenCounted('posts'),
             'products_count' => $this->whenCounted('products'),
+            'posts' => $this->whenLoaded('posts', PostResource::collection(...)),
+            'products' => $this->whenLoaded('products', ProductResource::collection(...)),
         ];
     }
 }

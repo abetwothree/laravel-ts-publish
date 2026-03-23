@@ -65,6 +65,10 @@ trait FiltersModelAttributes
      */
     protected function extractFilterKeys(MethodCall $call): ?array
     {
+        if ($call->isFirstClassCallable()) {
+            return null; // @codeCoverageIgnore
+        }
+
         $args = $call->getArgs();
 
         if (count($args) < 1 || ! $args[0]->value instanceof Array_) {

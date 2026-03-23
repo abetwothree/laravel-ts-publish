@@ -32,6 +32,10 @@ trait InspectsAstNodes
      */
     protected function hasConditionalArgument(StaticCall $call): bool
     {
+        if ($call->isFirstClassCallable()) {
+            return false;
+        }
+
         $args = $call->getArgs();
 
         if (count($args) < 1) {

@@ -1,3 +1,5 @@
+import type { PostResource, ProductResource } from '.';
+
 /** Exercises: whenCounted on two polymorphic relations. */
 export interface TagResource
 {
@@ -7,4 +9,6 @@ export interface TagResource
     color: string | null;
     posts_count?: number;
     products_count?: number;
+    posts?: PostResource[];
+    products?: ProductResource[];
 }

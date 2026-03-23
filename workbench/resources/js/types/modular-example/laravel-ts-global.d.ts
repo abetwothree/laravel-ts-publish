@@ -1125,6 +1125,8 @@ declare global {
             color: string | null;
             posts_count?: number;
             products_count?: number;
+            posts?: PostResource[];
+            products?: ProductResource[];
         }
         /** User account resource. */
         export interface UserResource {
@@ -1364,6 +1366,7 @@ declare global {
             plain_user: UserResource;
             empty_user: UserResource;
             empty_enum: unknown;
+            fcc_enum: unknown;
             not_enum: unknown;
             uncast_enum: unknown;
             fake_field: unknown;
