@@ -14,7 +14,10 @@ use Workbench\App\Http\Resources\DelegatingWithMixinResource;
 use Workbench\App\Http\Resources\EmptyResource;
 use Workbench\App\Http\Resources\EmptyWithMixinResource;
 use Workbench\App\Http\Resources\ExtendedAddressResource;
+use Workbench\App\Http\Resources\MiscCollection;
 use Workbench\App\Http\Resources\NonArrayReturnResource;
+use Workbench\App\Http\Resources\OrderClosureResource;
+use Workbench\App\Http\Resources\OrderCollection;
 use Workbench\App\Http\Resources\OrderDetailResource;
 use Workbench\App\Http\Resources\OrderExceptResource;
 use Workbench\App\Http\Resources\OrderFilterEdgeResource;
@@ -30,6 +33,7 @@ use Workbench\App\Http\Resources\TagResource;
 use Workbench\App\Http\Resources\TeamMemberResource;
 use Workbench\App\Http\Resources\TeamResource;
 use Workbench\App\Http\Resources\TraitSpreadCoverageResource;
+use Workbench\App\Http\Resources\UserCollection;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Category;
@@ -707,8 +711,12 @@ describe('ResourceAstAnalyzer with QuirkyResource', function () {
             ->and($flag['optional'])->toBeTrue();
     });
 
-    test('handles non-mergeWhen key-less method calls gracefully', function () {
-        expect($this->analysis->properties)->toBeArray();
+    test('extracts properties from $this->merge([...]) as non-optional', function () {
+        $extra = collect($this->analysis->properties)->firstWhere('name', 'extra');
+
+        expect($extra)->not->toBeNull()
+            ->and($extra['type'])->toBe('unknown')
+            ->and($extra['optional'])->toBeFalse();
     });
 
     test('handles mergeWhen with single arg gracefully', function () {
@@ -716,9 +724,12 @@ describe('ResourceAstAnalyzer with QuirkyResource', function () {
         expect($this->analysis->properties)->toBeArray();
     });
 
-    test('handles mergeWhen with non-array second arg', function () {
-        // $this->mergeWhen(cond, fn() => [...]) — closure, not array literal
-        expect($this->analysis->properties)->toBeArray();
+    test('resolves mergeWhen with closure returning array as optional properties', function () {
+        $dynamic = collect($this->analysis->properties)->firstWhere('name', 'dynamic');
+
+        expect($dynamic)->not->toBeNull()
+            ->and($dynamic['type'])->toBe('unknown')
+            ->and($dynamic['optional'])->toBeTrue();
     });
 
     test('resolves non-resource static call as unknown', function () {
@@ -1190,5 +1201,142 @@ describe('ResourceAstAnalyzer with TagResource (first-class callable collection)
     test('tracks nested resource FQCNs for first-class callable collections', function () {
         expect($this->analysis->nestedResources)->toHaveKey('posts')
             ->and($this->analysis->nestedResources)->toHaveKey('products');
+    });
+});
+
+describe('ResourceAstAnalyzer with OrderClosureResource', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(OrderClosureResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, Order::class))->analyze();
+    });
+
+    test('resolves arrow function returning $this->property', function () {
+        $statusArrow = collect($this->analysis->properties)->firstWhere('name', 'status_arrow');
+
+        expect($statusArrow)->not->toBeNull()
+            ->and($statusArrow['optional'])->toBeTrue();
+    });
+
+    test('resolves arrow function returning Resource::make()', function () {
+        $userArrow = collect($this->analysis->properties)->firstWhere('name', 'user_arrow');
+
+        expect($userArrow)->not->toBeNull()
+            ->and($userArrow['type'])->toBe('UserResource')
+            ->and($userArrow['optional'])->toBeTrue();
+    });
+
+    test('resolves arrow function returning Resource::collection()', function () {
+        $itemsArrow = collect($this->analysis->properties)->firstWhere('name', 'items_arrow');
+
+        expect($itemsArrow)->not->toBeNull()
+            ->and($itemsArrow['type'])->toBe('OrderItemResource[]')
+            ->and($itemsArrow['optional'])->toBeTrue();
+    });
+
+    test('resolves full closure with return statement', function () {
+        $notesClosure = collect($this->analysis->properties)->firstWhere('name', 'notes_closure');
+
+        expect($notesClosure)->not->toBeNull()
+            ->and($notesClosure['type'])->toBe('string | null')
+            ->and($notesClosure['optional'])->toBeTrue();
+    });
+
+    test('resolves mergeWhen with closure returning array as optional', function () {
+        $shippedAt = collect($this->analysis->properties)->firstWhere('name', 'shipped_at');
+        $tracking = collect($this->analysis->properties)->firstWhere('name', 'tracking');
+
+        expect($shippedAt)->not->toBeNull()
+            ->and($shippedAt['optional'])->toBeTrue()
+            ->and($tracking)->not->toBeNull()
+            ->and($tracking['optional'])->toBeTrue();
+    });
+
+    test('resolves merge with closure returning array as non-optional', function () {
+        $currencyLabel = collect($this->analysis->properties)->firstWhere('name', 'currency_label');
+
+        expect($currencyLabel)->not->toBeNull()
+            ->and($currencyLabel['optional'])->toBeFalse();
+    });
+
+    test('resolves merge with array literal as non-optional', function () {
+        $totalDisplay = collect($this->analysis->properties)->firstWhere('name', 'total_display');
+
+        expect($totalDisplay)->not->toBeNull()
+            ->and($totalDisplay['type'])->toBe('number')
+            ->and($totalDisplay['optional'])->toBeFalse();
+    });
+
+    test('tracks nested resource FQCNs from closure expressions', function () {
+        expect($this->analysis->nestedResources)->toHaveKey('user_arrow')
+            ->and($this->analysis->nestedResources)->toHaveKey('items_arrow');
+    });
+});
+
+describe('ResourceAstAnalyzer with UserCollection (convention-based)', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(UserCollection::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection))->analyze();
+    });
+
+    test('resolves $this->collection to singular resource array type', function () {
+        $data = collect($this->analysis->properties)->firstWhere('name', 'data');
+
+        expect($data)->not->toBeNull()
+            ->and($data['type'])->toBe('UserResource[]')
+            ->and($data['optional'])->toBeFalse();
+    });
+
+    test('tracks singular resource FQCN in nestedResources', function () {
+        expect($this->analysis->nestedResources)
+            ->toHaveKey('data')
+            ->and($this->analysis->nestedResources['data'])->toBe(UserResource::class);
+    });
+
+    test('resolves non-collection properties normally', function () {
+        $hasAdmin = collect($this->analysis->properties)->firstWhere('name', 'has_admin');
+
+        expect($hasAdmin)->not->toBeNull()
+            ->and($hasAdmin['type'])->toBe('unknown');
+    });
+});
+
+describe('ResourceAstAnalyzer with OrderCollection (explicit $collects)', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(OrderCollection::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection))->analyze();
+    });
+
+    test('resolves $this->collection via explicit $collects property', function () {
+        $data = collect($this->analysis->properties)->firstWhere('name', 'data');
+
+        expect($data)->not->toBeNull()
+            ->and($data['type'])->toBe('OrderResource[]')
+            ->and($data['optional'])->toBeFalse();
+    });
+
+    test('tracks OrderResource FQCN in nestedResources', function () {
+        expect($this->analysis->nestedResources)
+            ->toHaveKey('data')
+            ->and($this->analysis->nestedResources['data'])->toBe(OrderResource::class);
+    });
+
+    test('resolves other properties as unknown when no model backing', function () {
+        $totalCount = collect($this->analysis->properties)->firstWhere('name', 'total_count');
+
+        expect($totalCount)->not->toBeNull()
+            ->and($totalCount['type'])->toBe('unknown');
+    });
+});
+
+describe('ResourceAstAnalyzer with MiscCollection (unresolvable singular)', function () {
+    test('falls back to unknown when singular resource cannot be resolved', function () {
+        $reflection = new ReflectionClass(MiscCollection::class);
+        $analysis = (new ResourceAstAnalyzer($reflection))->analyze();
+
+        $data = collect($analysis->properties)->firstWhere('name', 'data');
+
+        expect($data)->not->toBeNull()
+            ->and($data['type'])->toBe('unknown')
+            ->and($analysis->nestedResources)->not->toHaveKey('data');
     });
 });

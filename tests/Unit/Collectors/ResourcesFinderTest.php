@@ -45,3 +45,11 @@ test('resources collector respects excluded_resources config', function () {
         ->not->toContain('Workbench\App\Http\Resources\PostResource')
         ->toContain('Workbench\App\Http\Resources\UserResource');
 });
+
+test('resources collector includes ResourceCollection subclasses', function () {
+    $resources = resolve(ResourcesCollector::class)->collect();
+
+    expect($resources)
+        ->toContain('Workbench\App\Http\Resources\UserCollection')
+        ->toContain('Workbench\App\Http\Resources\OrderCollection');
+});

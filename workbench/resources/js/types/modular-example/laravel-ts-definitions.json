@@ -4233,6 +4233,53 @@
                 "optional": false
             }
         ],
+        "OrderClosureResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "status_arrow",
+                "type": "OrderStatusType",
+                "optional": true
+            },
+            {
+                "name": "user_arrow",
+                "type": "UserResource",
+                "optional": true
+            },
+            {
+                "name": "items_arrow",
+                "type": "OrderItemResource[]",
+                "optional": true
+            },
+            {
+                "name": "notes_closure",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "shipped_at",
+                "type": "string",
+                "optional": true
+            },
+            {
+                "name": "tracking",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "currency_label",
+                "type": "CurrencyType",
+                "optional": false
+            },
+            {
+                "name": "total_display",
+                "type": "number",
+                "optional": false
+            }
+        ],
         "Address": [
             {
                 "name": "morphValue",
@@ -4474,6 +4521,18 @@
             }
         ],
         "NonArrayReturnResource": [],
+        "OrderCollection": [
+            {
+                "name": "data",
+                "type": "OrderResource[]",
+                "optional": false
+            },
+            {
+                "name": "total_count",
+                "type": "unknown",
+                "optional": false
+            }
+        ],
         "OrderSummaryResource": [
             {
                 "name": "id",
@@ -4706,6 +4765,13 @@
                 "optional": true
             }
         ],
+        "MiscCollection": [
+            {
+                "name": "data",
+                "type": "unknown",
+                "optional": false
+            }
+        ],
         "OrderResource": [
             {
                 "name": "id",
@@ -4756,6 +4822,18 @@
                 "name": "delivered_at",
                 "type": "string",
                 "optional": true
+            }
+        ],
+        "UserCollection": [
+            {
+                "name": "data",
+                "type": "UserResource[]",
+                "optional": false
+            },
+            {
+                "name": "has_admin",
+                "type": "unknown",
+                "optional": false
             }
         ],
         "OrderItemResource": [
@@ -5084,6 +5162,16 @@
             },
             {
                 "name": "flag",
+                "type": "unknown",
+                "optional": true
+            },
+            {
+                "name": "extra",
+                "type": "unknown",
+                "optional": false
+            },
+            {
+                "name": "dynamic",
                 "type": "unknown",
                 "optional": true
             },

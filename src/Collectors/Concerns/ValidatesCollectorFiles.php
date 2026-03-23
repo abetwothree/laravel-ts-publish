@@ -5,7 +5,6 @@ namespace AbeTwoThree\LaravelTsPublish\Collectors\Concerns;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Http\Resources\Json\ResourceCollection;
 use ReflectionClass;
 
 trait ValidatesCollectorFiles
@@ -27,7 +26,6 @@ trait ValidatesCollectorFiles
     {
         return $reflection->isSubclassOf(JsonResource::class)
             && ! $reflection->isAbstract()
-            && ! $reflection->isSubclassOf(ResourceCollection::class)
             && $reflection->getName() !== EnumResource::class;
     }
 }

@@ -7,6 +7,8 @@ namespace AbeTwoThree\LaravelTsPublish\Analyzers\Concerns;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
@@ -14,6 +16,7 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
+use PhpParser\Node\Stmt\Return_;
 
 /**
  * AST node inspection and predicate helpers for resource analysis.
@@ -109,5 +112,28 @@ trait InspectsAstNodes
             && $expr->class->toLowerString() === 'parent'
             && $expr->name instanceof Identifier
             && $expr->name->toString() === 'toArray';
+    }
+
+    /**
+     * Resolve the return expression from a closure or arrow function.
+     *
+     * - ArrowFunction: returns the expression body directly.
+     * - Closure: returns the expression from the first Return_ statement.
+     */
+    protected function resolveClosureReturnExpression(Expr $expr): ?Expr
+    {
+        if ($expr instanceof ArrowFunction) {
+            return $expr->expr;
+        }
+
+        if ($expr instanceof ClosureExpr) {
+            foreach ($expr->stmts as $stmt) {
+                if ($stmt instanceof Return_ && $stmt->expr !== null) {
+                    return $stmt->expr;
+                }
+            }
+        }
+
+        return null;
     }
 }

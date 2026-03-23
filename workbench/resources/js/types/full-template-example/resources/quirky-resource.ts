@@ -5,6 +5,8 @@ export interface QuirkyResource
 {
     id: number;
     flag?: unknown;
+    extra: unknown;
+    dynamic?: unknown;
     normal_merge_key?: number;
     formatted: unknown;
     plain_user: UserResource;

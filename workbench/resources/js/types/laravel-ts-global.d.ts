@@ -1207,6 +1207,18 @@ declare global {
             id: number;
             description: string | null;
         }
+        /** Exercises closure / arrow function patterns in value expressions and merge methods. */
+        export interface OrderClosureResource {
+            id: number;
+            status_arrow?: OrderStatusType;
+            user_arrow?: UserResource;
+            items_arrow?: OrderItemResource[];
+            notes_closure?: string | null;
+            shipped_at?: string;
+            tracking?: string | null;
+            currency_label: CurrencyType;
+            total_display: number;
+        }
         /** Mailing address resource */
         export interface Address {
             morphValue: string;
@@ -1270,6 +1282,10 @@ declare global {
         }
         export interface NonArrayReturnResource {
         }
+        export interface OrderCollection {
+            data: OrderResource[];
+            total_count: unknown;
+        }
         /** Exercises direct property access for accessors, mutators, and relations without using whenLoaded or other conditional wrappers. */
         export interface OrderSummaryResource {
             id: number;
@@ -1332,6 +1348,9 @@ declare global {
             members_count?: number;
             settings?: unknown[];
         }
+        export interface MiscCollection {
+            data: unknown;
+        }
         export interface OrderResource {
             id: number;
             status: AsEnum<typeof OrderStatus>;
@@ -1343,6 +1362,10 @@ declare global {
             paid_at?: string;
             shipped_at?: string;
             delivered_at?: string;
+        }
+        export interface UserCollection {
+            data: UserResource[];
+            has_admin: unknown;
         }
         /** Exercises: whenLoaded with Resource::make, whenLoaded bare (1-arg form), whenNotNull on nullable JSON column. */
         export interface OrderItemResource {
@@ -1422,6 +1445,8 @@ declare global {
         export interface QuirkyResource {
             id: number;
             flag?: unknown;
+            extra: unknown;
+            dynamic?: unknown;
             normal_merge_key?: number;
             formatted: unknown;
             plain_user: UserResource;

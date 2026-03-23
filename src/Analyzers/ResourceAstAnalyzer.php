@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsResourceCasts;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -163,7 +164,7 @@ class ResourceAstAnalyzer
                 continue;
             }
 
-            // Handle mergeWhen / $this->mergeWhen(...)
+            // Handle $this->merge([...]) or $this->mergeWhen(condition, [...])
             if ($item->key === null && $item->value instanceof MethodCall) {
                 $mergeResult = $this->analyzeMergeExpression($item->value);
 
@@ -252,6 +253,13 @@ class ResourceAstAnalyzer
         // First-class callables (e.g. $this->when(...)) have no args — bail early
         if ($expr instanceof MethodCall && $expr->isFirstClassCallable()) {
             return ['type' => 'unknown', 'optional' => false]; // @codeCoverageIgnore
+        }
+
+        // Closures / arrow functions — resolve the return expression and recurse
+        $closureReturn = $this->resolveClosureReturnExpression($expr);
+
+        if ($closureReturn !== null) {
+            return $this->analyzeValueExpression($closureReturn);
         }
 
         // $this->when(condition, value) or $this->when(condition, value, default)
@@ -408,12 +416,18 @@ class ResourceAstAnalyzer
     }
 
     /**
-     * Analyze $this->mergeWhen(condition, [...]) — extract properties and FQCNs from 2nd arg array.
+     * Analyze $this->merge([...]) or $this->mergeWhen(condition, [...]) — extract properties from the array arg.
+     *
+     * merge(array): unconditional — properties are NOT optional.
+     * mergeWhen(condition, array): conditional — properties ARE optional.
      */
     protected function analyzeMergeExpression(MethodCall $call): ResourceAnalysis
     {
-        if (! $this->isThisMethodCall($call, 'mergeWhen')) {
-            return new ResourceAnalysis;
+        $isMerge = $this->isThisMethodCall($call, 'merge');
+        $isMergeWhen = $this->isThisMethodCall($call, 'mergeWhen');
+
+        if (! $isMerge && ! $isMergeWhen) {
+            return new ResourceAnalysis; // @codeCoverageIgnore
         }
 
         if ($call->isFirstClassCallable()) {
@@ -422,18 +436,35 @@ class ResourceAstAnalyzer
 
         $args = $call->getArgs();
 
-        if (count($args) < 2) {
-            return new ResourceAnalysis;
+        // merge(array) — 1 arg, not optional
+        if ($isMerge && count($args) >= 1) {
+            return $this->resolveArrayOrClosureToProperties($args[0]->value, optional: false);
         }
 
-        $valueExpr = $args[1]->value;
-
-        // mergeWhen(condition, ['key' => 'value', ...])
-        if ($valueExpr instanceof Array_) {
-            return $this->extractPropertiesFromArray($valueExpr, optional: true);
+        // mergeWhen(condition, array) — 2 args, optional
+        if ($isMergeWhen && count($args) >= 2) {
+            return $this->resolveArrayOrClosureToProperties($args[1]->value, optional: true);
         }
 
         return new ResourceAnalysis;
+    }
+
+    /**
+     * Resolve an expression that's either an Array_ literal or a closure returning an Array_ into properties.
+     */
+    protected function resolveArrayOrClosureToProperties(Expr $expr, bool $optional): ResourceAnalysis
+    {
+        if ($expr instanceof Array_) {
+            return $this->extractPropertiesFromArray($expr, $optional);
+        }
+
+        $resolved = $this->resolveClosureReturnExpression($expr);
+
+        if ($resolved instanceof Array_) {
+            return $this->extractPropertiesFromArray($resolved, $optional);
+        }
+
+        return new ResourceAnalysis; // @codeCoverageIgnore
     }
 
     /**
@@ -542,6 +573,11 @@ class ResourceAstAnalyzer
 
         if ($propName === null) {
             return ['type' => 'unknown', 'optional' => false]; // @codeCoverageIgnore
+        }
+
+        // 0. Handle $this->collection in ResourceCollection subclasses
+        if ($propName === 'collection' && $this->isResourceCollection()) {
+            return $this->analyzeCollectionProperty();
         }
 
         // 1. Try model attributes (DB columns, accessors, mutators)
@@ -823,6 +859,72 @@ class ResourceAstAnalyzer
         $traverser->addVisitor(new NameResolver);
 
         return $traverser->traverse($stmts);
+    }
+
+    protected function isResourceCollection(): bool
+    {
+        return $this->resourceReflection->isSubclassOf(ResourceCollection::class);
+    }
+
+    /**
+     * Resolve the singular resource FQCN for a ResourceCollection.
+     *
+     * Checks the explicit $collects property first, then falls back
+     * to naming convention (UserCollection → UserResource).
+     *
+     * @return class-string<JsonResource>|null
+     */
+    protected function resolveSingularResourceClass(): ?string
+    {
+        /** @var array<string, mixed> $defaults */
+        $defaults = $this->resourceReflection->getDefaultProperties();
+        $collects = $defaults['collects'] ?? null;
+
+        if (is_string($collects) && class_exists($collects) && is_a($collects, JsonResource::class, true)) {
+            return $collects;
+        }
+
+        $className = $this->resourceReflection->getShortName();
+        $namespace = $this->resourceReflection->getNamespaceName();
+
+        if (str_ends_with($className, 'Collection')) {
+            $base = substr($className, 0, -10);
+
+            $candidate = $namespace.'\\'.$base.'Resource';
+
+            if (class_exists($candidate) && is_a($candidate, JsonResource::class, true)) {
+                return $candidate;
+            }
+
+            $candidate = $namespace.'\\'.$base; // @codeCoverageIgnoreStart
+
+            if (class_exists($candidate) && is_a($candidate, JsonResource::class, true)) {
+                return $candidate;
+            } // @codeCoverageIgnoreEnd
+        }
+
+        return null;
+    }
+
+    /**
+     * Analyze $this->collection in a ResourceCollection, resolving it
+     * to the singular resource type as an array.
+     *
+     * @return ValueExpressionResult
+     */
+    protected function analyzeCollectionProperty(): array
+    {
+        $singular = $this->resolveSingularResourceClass();
+
+        if ($singular === null) {
+            return ['type' => 'unknown', 'optional' => false];
+        }
+
+        return [
+            'type' => class_basename($singular).'[]',
+            'optional' => false,
+            'resourceFqcn' => $singular,
+        ];
     }
 
     /**
