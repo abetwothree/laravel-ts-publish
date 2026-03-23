@@ -2,6 +2,15 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v1.1.1 - 2026-03-23
+
+### What's Changed
+
+* Support Laravel 13 by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/10
+* Implement nullable enums and other casted values by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/9
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v1.1.0...v1.1.1
+
 ## Support for transforming Eloquent API Resources to TypeScript declaration files - 2026-03-23
 
 ### What's Changed
