@@ -139,33 +139,6 @@ trait ResolvesModelTypes
     }
 
     /**
-     * Resolve the enum class for a model property (if it's cast to an enum).
-     *
-     * @return class-string|null
-     */
-    protected function resolveModelPropertyEnumClass(string $propertyName): ?string
-    {
-        if ($this->modelAttributes === null) {
-            return null;
-        }
-
-        $attr = $this->modelAttributes->firstWhere('name', $propertyName);
-
-        if ($attr === null || $attr['cast'] === null) {
-            return null;
-        }
-
-        $cast = $attr['cast'];
-
-        // Check if the cast is an enum class
-        if (class_exists($cast) && (new ReflectionClass($cast))->isEnum()) {
-            return $cast;
-        }
-
-        return null;
-    }
-
-    /**
      * @return ModelRelationTypeResult
      */
     protected function resolveModelRelationTypeInfo(string $relationName): array
