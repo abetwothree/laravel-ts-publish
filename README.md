@@ -8,11 +8,11 @@
 
 <p align="center"><img src="./assets/laravel-typescript-publish-logo-short.svg" width="50%" alt="Laravel TypeScript Publisher Logo"></p>
 
-This is an extremely flexible package that allows you to create TypeScript declaration types from your Laravel PHP models, enums, API resources, and other cast classes.
+This is an extremely flexible package that allows you to transform Laravel PHP models, enums, API resources, and other cast classes into TypeScript declaration types.
 
-Enums are treated as first-class citizens with support for PHP-like enum features, including methods and static methods.
+Enums are treated as functional objects with support for PHP-like enum functions and the the inclusion of your custom methods.
 
-Every Laravel application is different, and this package provides the tools to tailor TypeScript types to your specific needs while providing powerful backend & frontend tooling to keep your frontend types in sync with your backend PHP code.
+Every Laravel application is different, and this package aims to provide the tools to tailor TypeScript types to your specific needs while providing powerful backend & frontend tooling to keep your frontend types in sync with your backend PHP code.
 
 For examples of the generated TypeScript output, see [these output examples](workbench/resources/js/types/).
 
@@ -1340,11 +1340,14 @@ When `enums_use_tolki_package` is enabled (the default), these generate `AsEnum<
 
 #### Nested Resources
 
-Reference other resources using `::make()` or `::collection()`:
+Reference other resources using `::make()`, `::collection()`, or `new`:
 
 ```php
 // Single nested resource (optional when inside whenLoaded)
 'author' => UserResource::make($this->whenLoaded('user')),
+
+// Using new instead of ::make() — works identically
+'author' => new UserResource($this->whenLoaded('user')),
 
 // Collection of nested resources
 'tags' => TagResource::collection($this->whenLoaded('tags')),
@@ -1352,6 +1355,8 @@ Reference other resources using `::make()` or `::collection()`:
 // Non-conditional nested resource
 'owner' => UserResource::make($this->user),
 ```
+
+Both `SomeResource::make(...)` and `new SomeResource(...)` are fully supported and behave identically — the analyzer resolves the resource type, tracks the FQCN for imports, and detects conditional arguments for optionality.
 
 Self-referencing resources are also supported:
 
@@ -1362,14 +1367,60 @@ Self-referencing resources are also supported:
 
 #### Merge Operations
 
-Use `mergeWhen` to conditionally include groups of properties. All properties inside `mergeWhen` are marked as **optional**:
+Use `merge` and `mergeWhen` to spread additional properties into the response:
 
 ```php
+// Unconditional merge — properties are required (not optional)
+$this->merge([
+    'full_name' => $this->first_name . ' ' . $this->last_name,
+    'total_display' => $this->total,
+]),
+
+// Conditional merge — properties are optional
 $this->mergeWhen($this->is_featured, [
     'weight' => $this->weight,
     'dimensions' => $this->dimensions,
 ]),
 ```
+
+Both `merge` and `mergeWhen` also accept closures and arrow functions instead of array literals:
+
+```php
+// merge with closure
+$this->merge(fn () => [
+    'currency_label' => $this->currency,
+]),
+
+// mergeWhen with closure
+$this->mergeWhen($this->paid_at !== null, fn () => [
+    'shipped_at' => $this->shipped_at,
+    'tracking' => $this->tracking_number,
+]),
+```
+
+| Method                          | Optionality    | Description                       |
+|---------------------------------|----------------|-----------------------------------|
+| `$this->merge([...])`           | Required       | Properties are always present     |
+| `$this->mergeWhen(cond, [...])` | Optional (`?`) | Properties included conditionally |
+
+#### Closure & Arrow Function Values
+
+The analyzer resolves closures and arrow functions used as value arguments. Simple closures that return a single expression are analyzed recursively:
+
+```php
+// Arrow function — return expression analyzed directly
+'status' => $this->when(true, fn () => $this->status),
+
+// Arrow function returning a nested resource
+'user' => $this->when(true, fn () => UserResource::make($this->user)),
+
+// Full closure — first return statement is analyzed
+'notes' => $this->when(true, function () {
+    return $this->notes;
+}),
+```
+
+This works anywhere a value expression is expected — including `when`, `whenLoaded`, `whenNotNull`, `merge`, and `mergeWhen`.
 
 #### Parent `toArray()` Spread
 
@@ -1500,6 +1551,87 @@ class UserResource extends JsonResource
 ```
 
 The model is resolved from `#[TsResource(model:)]`, `@mixin` PHPDoc, or use statements. When no model can be detected, the resource produces an empty interface.
+
+#### Attribute Filters (`only` / `except`)
+
+Resources that use `$this->only([...])` or `$this->except([...])` to filter model attributes are supported — both as a direct return value and as a spread:
+
+```php
+// As the return value
+public function toArray(Request $request): array
+{
+    return $this->only(['id', 'name', 'email']);
+}
+
+// As a spread in a return array
+public function toArray(Request $request): array
+{
+    return [
+        ...$this->except(['password', 'remember_token']),
+        'role' => EnumResource::make($this->role),
+    ];
+}
+```
+
+Both methods delegate to the backing model's full database schema and filter by the listed keys. Properties retain their original types from the model.
+
+> [!NOTE]
+> Currently only `only` and `except` are supported as attribute filter methods. Other collection-style methods are not analyzed. If you find you need additional methods, open and issue, or better yet, submit a PR with the added functionality! [See FiltersModelAttributes](src/Analyzers/Concerns/FiltersModelAttributes.php)
+
+#### Resource Collections
+
+`ResourceCollection` subclasses are supported. The analyzer resolves `$this->collection` to the singular resource type as an array:
+
+```php
+use Illuminate\Http\Resources\Json\ResourceCollection;
+
+class UserCollection extends ResourceCollection
+{
+    public function toArray(Request $request): array
+    {
+        return [
+            'data' => $this->collection,
+            'has_admin' => true,
+        ];
+    }
+}
+```
+
+Generates:
+
+```typescript
+import type { UserResource } from './';
+
+export interface UserCollection
+{
+    data: UserResource[];
+    has_admin: unknown;
+}
+```
+
+The singular resource is resolved from:
+
+1. **Explicit `$collects` property** — if defined on the collection class
+2. **Naming convention** — `UserCollection` → `UserResource` (strips "Collection", appends "Resource")
+
+```php
+class OrderCollection extends ResourceCollection
+{
+    // Explicit: use OrderResource as the singular resource
+    public $collects = OrderResource::class;
+
+    public function toArray(Request $request): array
+    {
+        return [
+            'data' => $this->collection,
+        ];
+    }
+}
+```
+
+When the singular resource cannot be resolved (e.g., `MiscCollection` with no matching `MiscResource`), `$this->collection` falls back to `unknown`.
+
+Larger support for `ResourceCollection` features (e.g., pagination metadata, `additional()` method, etc.) may be added in a future release.
 
 ### Example
 
