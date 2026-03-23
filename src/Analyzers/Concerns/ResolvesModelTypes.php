@@ -108,11 +108,16 @@ trait ResolvesModelTypes
         // Regular casts (enum, date, json, etc.)
         if ($cast !== null && $cast !== '' && $cast !== 'attribute' && $cast !== 'accessor') {
             $tsInfo = LaravelTsPublish::phpToTypeScriptType($cast);
+            $type = $tsInfo['type'];
+
+            if ($attr['nullable'] && ! str_contains($type, 'null')) {
+                $type .= ' | null';
+            }
 
             /** @var class-string|null $enumFqcn */
             $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
 
-            return ['type' => $tsInfo['type'], 'enumFqcn' => $enumFqcn];
+            return ['type' => $type, 'enumFqcn' => $enumFqcn];
         }
 
         // Fall back to DB column type
@@ -131,33 +136,6 @@ trait ResolvesModelTypes
         $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
 
         return ['type' => $type, 'enumFqcn' => $enumFqcn];
-    }
-
-    /**
-     * Resolve the enum class for a model property (if it's cast to an enum).
-     *
-     * @return class-string|null
-     */
-    protected function resolveModelPropertyEnumClass(string $propertyName): ?string
-    {
-        if ($this->modelAttributes === null) {
-            return null;
-        }
-
-        $attr = $this->modelAttributes->firstWhere('name', $propertyName);
-
-        if ($attr === null || $attr['cast'] === null) {
-            return null;
-        }
-
-        $cast = $attr['cast'];
-
-        // Check if the cast is an enum class
-        if (class_exists($cast) && (new ReflectionClass($cast))->isEnum()) {
-            return $cast;
-        }
-
-        return null;
     }
 
     /**

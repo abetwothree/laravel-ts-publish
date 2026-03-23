@@ -17,7 +17,7 @@ export interface ArticleResource
     is_featured: boolean;
     featured_image?: string | null;
     meta_description?: string | null;
-    published_at?: string;
+    published_at?: string | null;
     author?: User;
     reactions?: ReactionResource[];
     reactions_count?: number;

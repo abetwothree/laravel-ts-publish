@@ -12,7 +12,7 @@ export interface OrderResource
     items?: OrderItem[];
     items_count?: number;
     total_avg?: number;
-    paid_at?: string;
-    shipped_at?: string;
-    delivered_at?: string;
+    paid_at?: string | null;
+    shipped_at?: string | null;
+    delivered_at?: string | null;
 }

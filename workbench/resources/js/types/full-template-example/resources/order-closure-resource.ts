@@ -9,7 +9,7 @@ export interface OrderClosureResource
     user_arrow?: UserResource;
     items_arrow?: OrderItemResource[];
     notes_closure?: string | null;
-    shipped_at?: string;
+    shipped_at?: string | null;
     tracking?: string | null;
     currency_label: CurrencyType;
     total_display: number;

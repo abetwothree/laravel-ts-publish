@@ -52,9 +52,9 @@ class QuirkyResource extends JsonResource
             'empty_enum' => EnumResource::make(),
             // EnumResource::make as first-class callable — tests isFirstClassCallable guard
             'fcc_enum' => EnumResource::make(...),
-            // EnumResource::make with non-enum property — tests resolveModelPropertyEnumClass fallback
+            // EnumResource::make with non-enum property — tests analyzeEnumResourceMake non-enum fallback
             'not_enum' => EnumResource::make($this->total),
-            // EnumResource::make with uncasted property — tests resolveModelPropertyEnumClass null cast
+            // EnumResource::make with uncasted property — tests analyzeEnumResourceMake null-enum fallback
             'uncast_enum' => EnumResource::make($this->ip_address),
             // $this->property for nonexistent column — tests resolveModelAttributeTypeInfo attr not found
             'fake_field' => $this->nonexistent_column,

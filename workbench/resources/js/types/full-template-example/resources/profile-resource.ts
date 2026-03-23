@@ -4,7 +4,7 @@ export interface ProfileResource
     id: number;
     bio: string | null;
     avatar_url: string | null;
-    date_of_birth?: string;
+    date_of_birth?: string | null;
     website?: string | null;
     phone_number?: string | null;
     social_links?: { twitter?: string; github?: string; linkedin?: string; website?: string };

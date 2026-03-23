@@ -11,10 +11,10 @@ export interface ShipmentResource
     tracking_number: string | null;
     carrier: AsEnum<typeof Carrier>;
     status: AsEnum<typeof ShipmentStatus>;
-    weight_grams: number;
-    estimated_delivery_at?: string;
-    shipped_at?: string;
-    delivered_at?: string;
+    weight_grams: number | null;
+    estimated_delivery_at?: string | null;
+    shipped_at?: string | null;
+    delivered_at?: string | null;
     order?: Order;
     tracking_events?: TrackingEventResource[];
     tracking_events_count?: number;

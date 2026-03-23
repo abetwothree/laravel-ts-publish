@@ -20,8 +20,8 @@ test('generates PostResource typescript content', function () {
         ->toContain('title: string')
         ->toContain('content: string')
         ->toContain('status: AsEnum<typeof Status>')
-        ->toContain('visibility: AsEnum<typeof Visibility>')
-        ->toContain('priority: AsEnum<typeof Priority>');
+        ->toContain('visibility: AsEnum<typeof Visibility> | null')
+        ->toContain('priority: AsEnum<typeof Priority> | null');
 });
 
 test('generates PostResource with type imports when tolki disabled', function () {
@@ -33,8 +33,8 @@ test('generates PostResource with type imports when tolki disabled', function ()
     expect($generator->content)
         ->toContain("import type { PriorityType, StatusType, VisibilityType } from '../enums'")
         ->toContain('status: StatusType')
-        ->toContain('visibility: VisibilityType')
-        ->toContain('priority: PriorityType')
+        ->toContain('visibility: VisibilityType | null')
+        ->toContain('priority: PriorityType | null')
         ->not->toContain('@tolki/enum');
 });
 
@@ -50,7 +50,7 @@ test('generates UserResource with optional properties', function () {
         ->toContain('export interface UserResource')
         ->toContain('id: number')
         ->toContain('name: string')
-        ->toContain('role: AsEnum<typeof Role>')
+        ->toContain('role: AsEnum<typeof Role> | null')
         ->toContain('profile?:')
         ->toContain('phone?:')
         ->toContain('avatar?:')

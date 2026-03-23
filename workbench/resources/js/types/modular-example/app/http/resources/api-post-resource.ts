@@ -7,6 +7,6 @@ export interface ApiPostResource
     title: string;
     content: string;
     status: StatusType;
-    visibility: VisibilityType;
-    priority: PriorityType;
+    visibility: VisibilityType | null;
+    priority: PriorityType | null;
 }

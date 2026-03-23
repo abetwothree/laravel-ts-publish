@@ -572,15 +572,13 @@ class ResourceAstAnalyzer
             $propName = $innerExpr->name instanceof Identifier ? $innerExpr->name->toString() : null;
 
             if ($propName !== null) {
-                $enumFqcn = $this->resolveModelPropertyEnumClass($propName);
+                $info = $this->resolveModelAttributeTypeInfo($propName);
 
-                if ($enumFqcn !== null) {
-                    $tsInfo = LaravelTsPublish::phpToTypeScriptType($enumFqcn);
-
+                if ($info['enumFqcn'] !== null) {
                     return [
-                        'type' => $tsInfo['type'],
+                        'type' => $info['type'],
                         'optional' => false,
-                        'enumFqcn' => $enumFqcn,
+                        'enumFqcn' => $info['enumFqcn'],
                     ];
                 }
             }
