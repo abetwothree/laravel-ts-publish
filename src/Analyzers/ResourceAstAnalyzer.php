@@ -15,6 +15,7 @@ use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\PropertyFetch;
@@ -161,6 +162,27 @@ class ResourceAstAnalyzer
                         $directEnumFqcns, $modelFqcns, $customImports,
                         $spreadAnalysis,
                     );
+                }
+
+                continue;
+            }
+
+            // Handle ...functionCall() spread (bare trait method calls without $this->)
+            if ($item->key === null && $item->unpack
+                && $item->value instanceof FuncCall
+                && $item->value->name instanceof Name) {
+                $funcName = $item->value->name->getLast();
+
+                if ($this->resourceReflection->hasMethod($funcName)) {
+                    $spreadAnalysis = $this->analyzeThisMethodSpread($funcName);
+
+                    if ($spreadAnalysis !== null) {
+                        $this->syncAnalysisMaps(
+                            $properties, $enumResources, $nestedResources,
+                            $directEnumFqcns, $modelFqcns, $customImports,
+                            $spreadAnalysis,
+                        );
+                    }
                 }
 
                 continue;

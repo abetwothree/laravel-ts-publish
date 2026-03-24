@@ -6,6 +6,7 @@ use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\OrderResource;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\UserResource;
+use Workbench\Blog\Http\Resources\ApiArticleResource;
 
 test('generates PostResource typescript content', function () {
     config()->set('ts-publish.output_to_files', false);
@@ -120,4 +121,23 @@ test('filename delegates to transformer', function () {
     $generator = resolve(ResourceGenerator::class, ['findable' => PostResource::class]);
 
     expect($generator->filename())->toBe('post-resource');
+});
+
+test('generates ApiArticleResource with parent trait spreads and enum types', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.modular_publishing', true);
+    config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+    $generator = resolve(ResourceGenerator::class, ['findable' => ApiArticleResource::class]);
+
+    expect($generator->content)
+        ->toContain('export interface ApiArticleResource')
+        ->toContain('morphValue: string')
+        ->toContain('firstName: string')
+        ->toContain('title: string')
+        ->toContain('slug: string')
+        ->toContain('excerpt: string | null')
+        ->toContain('body: string')
+        ->toContain('is_featured: boolean')
+        ->toContain('author?:');
 });

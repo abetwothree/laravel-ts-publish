@@ -1045,7 +1045,19 @@ declare global {
             transit_time?: unknown;
         }
         export interface ApiArticleResource {
+            morphValue: string;
             id: number;
+            computed: string;
+            date_val: string;
+            custom_val: CustomObject;
+            plain: unknown;
+            basic: unknown;
+            firstName: string;
+            lastName: string;
+            isActive: boolean;
+            location: GeoPoint;
+            flag?: string | null;
+            extra: Record<string, unknown>;
             title: string;
             slug: string;
             excerpt: string | null;
@@ -1221,6 +1233,22 @@ declare global {
         export interface EventLogResource {
             id: number;
             description: string | null;
+        }
+        /** Fixture resource exercising bare function call spreads (without $this->). */
+        export interface BareFuncCallResource {
+            morphValue: string;
+            id: number;
+            computed: string;
+            date_val: string;
+            custom_val: CustomObject;
+            plain: unknown;
+            basic: unknown;
+            firstName: string;
+            lastName: string;
+            isActive: boolean;
+            location: GeoPoint;
+            flag?: string | null;
+            extra: Record<string, unknown>;
         }
         /** Exercises closure / arrow function patterns in value expressions and merge methods. */
         export interface OrderClosureResource {

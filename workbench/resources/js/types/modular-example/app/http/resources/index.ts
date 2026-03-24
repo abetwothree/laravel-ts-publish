@@ -1,5 +1,6 @@
 export * from './address';
 export * from './api-post-resource';
+export * from './bare-func-call-resource';
 export * from './category-resource';
 export * from './comment-resource';
 export * from './delegating-resource';

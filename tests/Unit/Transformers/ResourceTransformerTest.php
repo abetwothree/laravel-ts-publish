@@ -26,6 +26,7 @@ use Workbench\App\Models\TrackingEvent;
 use Workbench\App\Models\User;
 use Workbench\App\Models\Warehouse;
 use Workbench\App\Resources\DirectResource;
+use Workbench\Blog\Http\Resources\ApiArticleResource;
 use Workbench\Crm\Http\Resources\DealResource;
 use Workbench\Crm\Http\Resources\UserResource as CrmUserResource;
 use Workbench\Crm\Models\User as CrmUser;
@@ -884,5 +885,57 @@ describe('ResourceTransformer import collision deconfliction', function () {
         expect($data->properties['admin']['type'])->toBe('AppUser');
         expect($data->properties['customer_resource']['type'])->toBe('CrmUserResource');
         expect($data->properties['admin_resource']['type'])->toBe('AppUserResource');
+    });
+});
+
+describe('ResourceTransformer with ApiArticleResource (abstract parent + trait spreads)', function () {
+    test('includes properties from parent CommonResource trait method spreads', function () {
+        $data = (new ResourceTransformer(ApiArticleResource::class))->data();
+
+        expect($data->properties)->toHaveKey('morphValue')
+            ->and($data->properties)->toHaveKey('firstName')
+            ->and($data->properties)->toHaveKey('isActive')
+            ->and($data->properties)->toHaveKey('location')
+            ->and($data->properties)->toHaveKey('flag');
+    });
+
+    test('resolves enum types with tolki enabled', function () {
+        $data = (new ResourceTransformer(ApiArticleResource::class))->data();
+
+        expect($data->properties['status']['type'])->toBe('AsEnum<typeof ArticleStatus>')
+            ->and($data->properties['content_type']['type'])->toBe('AsEnum<typeof ContentType>');
+    });
+
+    test('resolves enum types with tolki disabled', function () {
+        config()->set('ts-publish.enums_use_tolki_package', false);
+
+        $data = (new ResourceTransformer(ApiArticleResource::class))->data();
+
+        expect($data->properties['status']['type'])->toBe('ArticleStatusType')
+            ->and($data->properties['content_type']['type'])->toBe('ContentTypeType');
+    });
+
+    test('author from whenLoaded is optional', function () {
+        $data = (new ResourceTransformer(ApiArticleResource::class))->data();
+
+        expect($data->properties['author']['optional'])->toBeTrue()
+            ->and($data->properties['author']['type'])->toBe('User');
+    });
+
+    test('includes custom import from parent TsResourceCasts trait', function () {
+        $data = (new ResourceTransformer(ApiArticleResource::class))->data();
+
+        $allTypes = array_merge(...array_values($data->typeImports));
+
+        expect($allTypes)->toContain('GeoPoint');
+    });
+
+    test('resolves $this->only properties with Article model types', function () {
+        $data = (new ResourceTransformer(ApiArticleResource::class))->data();
+
+        expect($data->properties['title']['type'])->toBe('string')
+            ->and($data->properties['slug']['type'])->toBe('string')
+            ->and($data->properties['excerpt']['type'])->toBe('string | null')
+            ->and($data->properties['body']['type'])->toBe('string');
     });
 });

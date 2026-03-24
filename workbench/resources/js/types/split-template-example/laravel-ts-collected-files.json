@@ -14,6 +14,7 @@
     "app\/Http\/Resources\/AddressResource.php",
     "app\/Http\/Resources\/Admin\/Store.php",
     "app\/Http\/Resources\/ApiPostResource.php",
+    "app\/Http\/Resources\/BareFuncCallResource.php",
     "app\/Http\/Resources\/CategoryResource.php",
     "app\/Http\/Resources\/CommentResource.php",
     "app\/Http\/Resources\/DelegatingResource.php",

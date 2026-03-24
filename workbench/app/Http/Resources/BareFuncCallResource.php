@@ -9,9 +9,11 @@ use Workbench\App\Http\Resources\Concerns\IncludesMorphValue;
 use Workbench\App\Models\Comment;
 
 /**
+ * Fixture resource exercising bare function call spreads (without $this->).
+ *
  * @mixin Comment
  */
-abstract class CommonResource extends JsonResource
+class BareFuncCallResource extends JsonResource
 {
     use IncludesExtras;
     use IncludesMorphValue;
@@ -19,12 +21,12 @@ abstract class CommonResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
-            ...$this->includeMorphValue(),
-            ...$this->includeTypedExtras(),
-            ...$this->includeNoDocs(),
-            ...$this->includeNoShape(),
-            ...$this->includeMultilineShape(),
-            ...$this->includeCastedExtras(),
+            ...includeMorphValue(),
+            ...includeTypedExtras(),
+            ...includeNoDocs(),
+            ...includeNoShape(),
+            ...includeMultilineShape(),
+            ...includeCastedExtras(),
         ];
     }
 }
