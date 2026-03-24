@@ -42,4 +42,5 @@ export * from './tracking-event-resource';
 export * from './trait-spread-coverage-resource';
 export * from './user-collection';
 export * from './user-resource';
+export * from './var-return-spread-resource';
 export * from './warehouse-resource';

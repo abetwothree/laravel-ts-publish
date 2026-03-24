@@ -39,6 +39,7 @@ use Workbench\App\Http\Resources\TeamResource;
 use Workbench\App\Http\Resources\TraitSpreadCoverageResource;
 use Workbench\App\Http\Resources\UserCollection;
 use Workbench\App\Http\Resources\UserResource;
+use Workbench\App\Http\Resources\VarReturnSpreadResource;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Category;
 use Workbench\App\Models\Comment;
@@ -1484,6 +1485,109 @@ describe('ResourceAstAnalyzer with bare function call spread', function () {
             ->and($flag['optional'])->toBeTrue()
             ->and($extra['type'])->toBe('Record<string, unknown>')
             ->and($analysis->customImports)->toHaveKey('@/types/geo');
+    });
+});
+
+describe('ResourceAstAnalyzer with variable-return trait method spreads', function () {
+    test('resolves base array properties from variable return', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $names = array_column($analysis->properties, 'name');
+
+        expect($names)->toContain('id')
+            ->toContain('baseKey')
+            ->toContain('always');
+    });
+
+    test('resolves PHPDoc types on variable-return method', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $baseKey = collect($analysis->properties)->firstWhere('name', 'baseKey');
+
+        expect($baseKey['type'])->toBe('string');
+    });
+
+    test('marks unconditional dim assignments as not optional', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $always = collect($analysis->properties)->firstWhere('name', 'always');
+
+        expect($always)->not->toBeNull()
+            ->and($always['optional'])->toBeFalse();
+    });
+
+    test('marks conditional dim assignments inside if blocks as optional', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $conditionalKey = collect($analysis->properties)->firstWhere('name', 'conditionalKey');
+        $sometimes = collect($analysis->properties)->firstWhere('name', 'sometimes');
+
+        expect($conditionalKey)->not->toBeNull()
+            ->and($conditionalKey['optional'])->toBeTrue()
+            ->and($sometimes)->not->toBeNull()
+            ->and($sometimes['optional'])->toBeTrue();
+    });
+
+    test('marks elseif and else branch assignments as optional', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $ifBranch = collect($analysis->properties)->firstWhere('name', 'ifBranch');
+        $elseifBranch = collect($analysis->properties)->firstWhere('name', 'elseifBranch');
+        $elseBranch = collect($analysis->properties)->firstWhere('name', 'elseBranch');
+
+        expect($ifBranch['optional'])->toBeTrue()
+            ->and($elseifBranch['optional'])->toBeTrue()
+            ->and($elseBranch['optional'])->toBeTrue();
+    });
+
+    test('resolves all properties from all variable-return methods', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $names = array_column($analysis->properties, 'name');
+
+        expect($names)->toContain('id')
+            ->toContain('baseKey')
+            ->toContain('conditionalKey')
+            ->toContain('always')
+            ->toContain('sometimes')
+            ->toContain('ifBranch')
+            ->toContain('elseifBranch')
+            ->toContain('elseBranch');
+    });
+
+    test('returns empty analysis for method call return (not array or variable)', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        // includeFromMethodCall returns $this->includeNonAnalyzable() — not an array literal
+        // or variable, so the else fallback produces no properties for that spread
+        $names = array_column($analysis->properties, 'name');
+
+        expect($names)->not->toContain('dynamic');
+    });
+
+    test('marks conditional base array assignment properties as optional', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $conditionalBaseKey = collect($analysis->properties)->firstWhere('name', 'conditionalBaseKey');
+
+        expect($conditionalBaseKey)->not->toBeNull()
+            ->and($conditionalBaseKey['optional'])->toBeTrue();
     });
 });
 

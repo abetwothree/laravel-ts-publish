@@ -47,6 +47,7 @@
     "app\/Http\/Resources\/TraitSpreadCoverageResource.php",
     "app\/Http\/Resources\/UserCollection.php",
     "app\/Http\/Resources\/UserResource.php",
+    "app\/Http\/Resources\/VarReturnSpreadResource.php",
     "app\/Http\/Resources\/WarehouseResource.php",
     "app\/Models\/Address.php",
     "app\/Models\/Admin\/Store.php",

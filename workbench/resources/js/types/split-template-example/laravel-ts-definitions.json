@@ -4360,6 +4360,53 @@
                 "optional": false
             }
         ],
+        "VarReturnSpreadResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "baseKey",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "conditionalKey",
+                "type": "unknown",
+                "optional": true
+            },
+            {
+                "name": "always",
+                "type": "unknown",
+                "optional": false
+            },
+            {
+                "name": "sometimes",
+                "type": "unknown",
+                "optional": true
+            },
+            {
+                "name": "ifBranch",
+                "type": "unknown",
+                "optional": true
+            },
+            {
+                "name": "elseifBranch",
+                "type": "unknown",
+                "optional": true
+            },
+            {
+                "name": "elseBranch",
+                "type": "unknown",
+                "optional": true
+            },
+            {
+                "name": "conditionalBaseKey",
+                "type": "unknown",
+                "optional": true
+            }
+        ],
         "BareFuncCallResource": [
             {
                 "name": "morphValue",

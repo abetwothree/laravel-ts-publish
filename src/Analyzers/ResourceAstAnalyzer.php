@@ -15,6 +15,8 @@ use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\ArrayDimFetch;
+use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
@@ -25,6 +27,8 @@ use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\ClassMethod;
+use PhpParser\Node\Stmt\Expression as ExpressionStmt;
+use PhpParser\Node\Stmt\If_;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\NodeFinder;
 use PhpParser\NodeTraverser;
@@ -788,11 +792,14 @@ class ResourceAstAnalyzer
             return $node instanceof Return_;
         });
 
-        if (! $returnStmt instanceof Return_ || ! $returnStmt->expr instanceof Array_) {
-            return null; // @codeCoverageIgnore
+        if ($returnStmt instanceof Return_ && $returnStmt->expr instanceof Array_) {
+            $analysis = $this->analyzeReturnArray($returnStmt->expr);
+        } elseif ($returnStmt instanceof Return_ && $returnStmt->expr instanceof Variable
+            && is_string($returnStmt->expr->name)) {
+            $analysis = $this->resolveVariableReturnAnalysis($targetMethod->stmts, $returnStmt->expr->name);
+        } else {
+            $analysis = new ResourceAnalysis;
         }
-
-        $analysis = $this->analyzeReturnArray($returnStmt->expr);
 
         // Apply PHPDoc @return array shape types to resolve unknown property types
         $docTypes = $this->parseReturnArrayShape($method);
@@ -855,6 +862,147 @@ class ResourceAstAnalyzer
         }
 
         return $analysis;
+    }
+
+    /**
+     * Resolve properties from a method that builds an array variable and returns it.
+     *
+     * Handles: $data = [...]; $data['key'] = expr; if (...) { $data['key'] = expr; } return $data;
+     *
+     * @param  array<Node\Stmt>  $stmts
+     */
+    protected function resolveVariableReturnAnalysis(array $stmts, string $varName): ResourceAnalysis
+    {
+        /** @var ResourcePropertyInfoList $properties */
+        $properties = [];
+        /** @var ClassMapType $enumResources */
+        $enumResources = [];
+        /** @var ClassMapType $nestedResources */
+        $nestedResources = [];
+        /** @var ClassMapType $directEnumFqcns */
+        $directEnumFqcns = [];
+        /** @var ClassMapType $modelFqcns */
+        $modelFqcns = [];
+        /** @var ImportMapType $customImports */
+        $customImports = [];
+
+        $this->collectVariableArrayAssignments(
+            $stmts, $varName, false,
+            $properties, $enumResources, $nestedResources,
+            $directEnumFqcns, $modelFqcns, $customImports,
+        );
+
+        return new ResourceAnalysis(
+            $properties,
+            $enumResources,
+            $nestedResources,
+            customImports: $customImports,
+            directEnumFqcns: $directEnumFqcns,
+            modelFqcns: $modelFqcns,
+        );
+    }
+
+    /**
+     * Recursively collect array assignments to a variable from method statements.
+     *
+     * Assignments inside if/elseif/else blocks are marked as optional.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     * @param  ResourcePropertyInfoList  $properties
+     * @param  ClassMapType  $enumResources
+     * @param  ClassMapType  $nestedResources
+     * @param  ClassMapType  $directEnumFqcns
+     * @param  ClassMapType  $modelFqcns
+     * @param  ImportMapType  $customImports
+     */
+    protected function collectVariableArrayAssignments(
+        array $stmts,
+        string $varName,
+        bool $isConditional,
+        array &$properties,
+        array &$enumResources,
+        array &$nestedResources,
+        array &$directEnumFqcns,
+        array &$modelFqcns,
+        array &$customImports,
+    ): void {
+        foreach ($stmts as $stmt) {
+            if (! $stmt instanceof ExpressionStmt && ! $stmt instanceof If_) {
+                continue;
+            }
+
+            // $var = [...] — base array assignment
+            if ($stmt instanceof ExpressionStmt
+                && $stmt->expr instanceof Assign
+                && $stmt->expr->var instanceof Variable
+                && $stmt->expr->var->name === $varName
+                && $stmt->expr->expr instanceof Array_) {
+                $baseAnalysis = $this->analyzeReturnArray($stmt->expr->expr);
+
+                if ($isConditional) {
+                    foreach ($baseAnalysis->properties as &$prop) {
+                        $prop['optional'] = true;
+                    }
+
+                    unset($prop);
+                }
+
+                $this->syncAnalysisMaps(
+                    $properties, $enumResources, $nestedResources,
+                    $directEnumFqcns, $modelFqcns, $customImports,
+                    $baseAnalysis,
+                );
+
+                continue;
+            }
+
+            // $var['key'] = expr — individual key assignment
+            if ($stmt instanceof ExpressionStmt
+                && $stmt->expr instanceof Assign
+                && $stmt->expr->var instanceof ArrayDimFetch
+                && $stmt->expr->var->var instanceof Variable
+                && $stmt->expr->var->var->name === $varName
+                && $stmt->expr->var->dim instanceof String_) {
+                $keyName = $stmt->expr->var->dim->value;
+                $result = $this->analyzeValueExpression($stmt->expr->expr);
+
+                $properties[] = [
+                    'name' => $keyName,
+                    'type' => $result['type'],
+                    'optional' => $isConditional || $result['optional'],
+                    'description' => '',
+                ];
+
+                $this->dispatchFqcnResults($keyName, $result, $enumResources, $directEnumFqcns, $nestedResources, $modelFqcns);
+
+                continue;
+            }
+
+            // if/elseif/else — recurse with isConditional = true
+            if ($stmt instanceof If_) {
+                $this->collectVariableArrayAssignments(
+                    $stmt->stmts, $varName, true,
+                    $properties, $enumResources, $nestedResources,
+                    $directEnumFqcns, $modelFqcns, $customImports,
+                );
+
+                foreach ($stmt->elseifs as $elseif) {
+                    $this->collectVariableArrayAssignments(
+                        $elseif->stmts, $varName, true,
+                        $properties, $enumResources, $nestedResources,
+                        $directEnumFqcns, $modelFqcns, $customImports,
+                    );
+                }
+
+                if ($stmt->else !== null) {
+                    $this->collectVariableArrayAssignments(
+                        $stmt->else->stmts, $varName, true,
+                        $properties, $enumResources, $nestedResources,
+                        $directEnumFqcns, $modelFqcns, $customImports,
+                    );
+                }
+            }
+        }
     }
 
     /**
