@@ -27,9 +27,13 @@ use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\ClassMethod;
+use PhpParser\Node\Stmt\Do_;
 use PhpParser\Node\Stmt\Expression as ExpressionStmt;
+use PhpParser\Node\Stmt\For_;
+use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\If_;
 use PhpParser\Node\Stmt\Return_;
+use PhpParser\Node\Stmt\While_;
 use PhpParser\NodeFinder;
 use PhpParser\NodeTraverser;
 use PhpParser\NodeVisitor\NameResolver;
@@ -927,7 +931,9 @@ class ResourceAstAnalyzer
         array &$customImports,
     ): void {
         foreach ($stmts as $stmt) {
-            if (! $stmt instanceof ExpressionStmt && ! $stmt instanceof If_) {
+            if (! $stmt instanceof ExpressionStmt && ! $stmt instanceof If_
+                && ! $stmt instanceof Foreach_ && ! $stmt instanceof For_
+                && ! $stmt instanceof While_ && ! $stmt instanceof Do_) {
                 continue;
             }
 
@@ -1001,6 +1007,16 @@ class ResourceAstAnalyzer
                         $directEnumFqcns, $modelFqcns, $customImports,
                     );
                 }
+            }
+
+            // Loop bodies — recurse with isConditional = true (loops may execute 0 times)
+            if ($stmt instanceof Foreach_ || $stmt instanceof For_
+                || $stmt instanceof While_ || $stmt instanceof Do_) {
+                $this->collectVariableArrayAssignments(
+                    $stmt->stmts, $varName, true,
+                    $properties, $enumResources, $nestedResources,
+                    $directEnumFqcns, $modelFqcns, $customImports,
+                );
             }
         }
     }

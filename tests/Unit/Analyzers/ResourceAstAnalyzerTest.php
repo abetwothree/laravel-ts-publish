@@ -1589,6 +1589,63 @@ describe('ResourceAstAnalyzer with variable-return trait method spreads', functi
         expect($conditionalBaseKey)->not->toBeNull()
             ->and($conditionalBaseKey['optional'])->toBeTrue();
     });
+
+    test('marks foreach loop dim assignments as optional', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $foreachKey = collect($analysis->properties)->firstWhere('name', 'foreachKey');
+
+        expect($foreachKey)->not->toBeNull()
+            ->and($foreachKey['optional'])->toBeTrue();
+    });
+
+    test('marks for loop dim assignments as optional', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $forKey = collect($analysis->properties)->firstWhere('name', 'forKey');
+
+        expect($forKey)->not->toBeNull()
+            ->and($forKey['optional'])->toBeTrue();
+    });
+
+    test('marks while loop dim assignments as optional', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $whileKey = collect($analysis->properties)->firstWhere('name', 'whileKey');
+
+        expect($whileKey)->not->toBeNull()
+            ->and($whileKey['optional'])->toBeTrue();
+    });
+
+    test('marks do-while loop dim assignments as optional', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $doWhileKey = collect($analysis->properties)->firstWhere('name', 'doWhileKey');
+
+        expect($doWhileKey)->not->toBeNull()
+            ->and($doWhileKey['optional'])->toBeTrue();
+    });
+
+    test('resolves all loop properties in variable-return methods', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $names = array_column($analysis->properties, 'name');
+
+        expect($names)->toContain('foreachKey')
+            ->toContain('forKey')
+            ->toContain('whileKey')
+            ->toContain('doWhileKey');
+    });
 });
 
 describe('ResourceAstAnalyzer with ApiArticleResource (abstract parent + only + enum)', function () {

@@ -88,4 +88,80 @@ trait IncludesConditionalData
 
         return $data;
     }
+
+    /**
+     * Handle assignments inside a foreach loop
+     */
+    protected function returnsFromForEach(): array
+    {
+        $data = [];
+
+        foreach (['a', 'b', 'c'] as $item) {
+            if ($item === 'b') {
+                $data['foundB'] = true;
+            } else {
+                $data[$item] = false;
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * Simple foreach with string-keyed dim assignments and variable return.
+     */
+    protected function returnsFromSimpleForEach(): array
+    {
+        $data = [];
+
+        foreach (['a', 'b'] as $item) {
+            $data['foreachKey'] = strtolower($item);
+        }
+
+        return $data;
+    }
+
+    /**
+     * Handle assignments inside a for loop.
+     */
+    protected function returnsFromForLoop(): array
+    {
+        $data = [];
+
+        for ($i = 0; $i < 3; $i++) {
+            $data['forKey'] = strtoupper('value');
+        }
+
+        return $data;
+    }
+
+    /**
+     * Handle assignments inside a while loop.
+     */
+    protected function returnsFromWhileLoop(): array
+    {
+        $data = [];
+
+        while ($this->resource !== null) {
+            $data['whileKey'] = strtolower('loop');
+
+            break;
+        }
+
+        return $data;
+    }
+
+    /**
+     * Handle assignments inside a do-while loop.
+     */
+    protected function returnsFromDoWhile(): array
+    {
+        $data = [];
+
+        do {
+            $data['doWhileKey'] = strtoupper('once');
+        } while (false);
+
+        return $data;
+    }
 }

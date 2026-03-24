@@ -1161,6 +1161,11 @@ declare global {
             elseifBranch?: unknown;
             elseBranch?: unknown;
             conditionalBaseKey?: unknown;
+            foundB?: unknown;
+            foreachKey?: unknown;
+            forKey?: unknown;
+            whileKey?: unknown;
+            doWhileKey?: unknown;
         }
         /** Fixture resource exercising bare function call spreads (without $this->). */
         export interface BareFuncCallResource {

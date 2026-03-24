@@ -4405,6 +4405,31 @@
                 "name": "conditionalBaseKey",
                 "type": "unknown",
                 "optional": true
+            },
+            {
+                "name": "foundB",
+                "type": "unknown",
+                "optional": true
+            },
+            {
+                "name": "foreachKey",
+                "type": "unknown",
+                "optional": true
+            },
+            {
+                "name": "forKey",
+                "type": "unknown",
+                "optional": true
+            },
+            {
+                "name": "whileKey",
+                "type": "unknown",
+                "optional": true
+            },
+            {
+                "name": "doWhileKey",
+                "type": "unknown",
+                "optional": true
             }
         ],
         "BareFuncCallResource": [

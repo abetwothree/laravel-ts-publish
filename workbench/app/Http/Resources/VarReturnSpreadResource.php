@@ -25,6 +25,11 @@ class VarReturnSpreadResource extends JsonResource
             ...$this->includeMultiBranch(),
             ...$this->includeFromMethodCall(),
             ...$this->includeConditionalBase(),
+            ...$this->returnsFromForEach(),
+            ...$this->returnsFromSimpleForEach(),
+            ...$this->returnsFromForLoop(),
+            ...$this->returnsFromWhileLoop(),
+            ...$this->returnsFromDoWhile(),
         ];
     }
 }
