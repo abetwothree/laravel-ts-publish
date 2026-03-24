@@ -15,6 +15,8 @@ export interface QuirkyResource
     fcc_enum: unknown;
     not_enum: unknown;
     uncast_enum: unknown;
+    empty_new_enum: unknown;
+    var_new_enum: unknown;
     fake_field: unknown;
     fake_relation?: unknown;
 }

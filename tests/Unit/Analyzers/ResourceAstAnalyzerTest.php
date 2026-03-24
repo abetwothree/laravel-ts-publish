@@ -4,11 +4,15 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
 use Workbench\Accounting\Models\Invoice;
+use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
+use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Resources\AddressResource;
 use Workbench\App\Http\Resources\ApiPostResource;
+use Workbench\App\Http\Resources\BareFuncCallResource;
 use Workbench\App\Http\Resources\CategoryResource;
 use Workbench\App\Http\Resources\CommentResource;
+use Workbench\App\Http\Resources\CommonResource;
 use Workbench\App\Http\Resources\DelegatingResource;
 use Workbench\App\Http\Resources\DelegatingWithMixinResource;
 use Workbench\App\Http\Resources\EmptyResource;
@@ -35,6 +39,7 @@ use Workbench\App\Http\Resources\TeamResource;
 use Workbench\App\Http\Resources\TraitSpreadCoverageResource;
 use Workbench\App\Http\Resources\UserCollection;
 use Workbench\App\Http\Resources\UserResource;
+use Workbench\App\Http\Resources\VarReturnSpreadResource;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Category;
 use Workbench\App\Models\Comment;
@@ -45,7 +50,11 @@ use Workbench\App\Models\Product;
 use Workbench\App\Models\Tag;
 use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
+use Workbench\Blog\Enums\ArticleStatus;
+use Workbench\Blog\Enums\ContentType;
+use Workbench\Blog\Http\Resources\ApiArticleResource;
 use Workbench\Blog\Http\Resources\ReactionResource;
+use Workbench\Blog\Models\Article;
 use Workbench\Blog\Models\Reaction;
 use Workbench\Crm\Http\Resources\DealResource;
 use Workbench\Crm\Models\Deal;
@@ -62,7 +71,7 @@ describe('ResourceAstAnalyzer with PostResource', function () {
 
         $names = array_column($analysis->properties, 'name');
 
-        expect($names)->toContain('id', 'title', 'content', 'status', 'visibility', 'priority');
+        expect($names)->toContain('id', 'title', 'content', 'status', 'status_new', 'visibility', 'visibility_new', 'priority', 'priority_new');
     });
 
     test('identifies EnumResource::make calls', function () {
@@ -72,8 +81,11 @@ describe('ResourceAstAnalyzer with PostResource', function () {
 
         expect($analysis->enumResources)
             ->toHaveKey('status')
+            ->toHaveKey('status_new')
             ->toHaveKey('visibility')
-            ->toHaveKey('priority');
+            ->toHaveKey('visibility_new')
+            ->toHaveKey('priority')
+            ->toHaveKey('priority_new');
     });
 });
 
@@ -555,6 +567,19 @@ describe('ResourceAstAnalyzer edge cases', function () {
             ->and($analysis->enumResources['status'])->toBe(Status::class);
     });
 
+    test('resolves enum FQCN from new EnumResource for model property', function () {
+        $reflection = new ReflectionClass(PostResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $analysis = $analyzer->analyze();
+
+        expect($analysis->enumResources)->toHaveKey('status_new')
+            ->and($analysis->enumResources['status_new'])->toBe(Status::class)
+            ->and($analysis->enumResources)->toHaveKey('visibility_new')
+            ->and($analysis->enumResources['visibility_new'])->toBe(Visibility::class)
+            ->and($analysis->enumResources)->toHaveKey('priority_new')
+            ->and($analysis->enumResources['priority_new'])->toBe(Priority::class);
+    });
+
     test('resolves direct enum property from whenHas', function () {
         $reflection = new ReflectionClass(UserResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection, User::class);
@@ -831,6 +856,18 @@ describe('ResourceAstAnalyzer with QuirkyResource', function () {
 
         expect($notEnum['type'])->toBe('unknown');
     });
+
+    test('resolves new EnumResource with no args as unknown', function () {
+        $emptyNewEnum = collect($this->analysis->properties)->firstWhere('name', 'empty_new_enum');
+
+        expect($emptyNewEnum['type'])->toBe('unknown');
+    });
+
+    test('resolves new EnumResource with non-property arg as unknown', function () {
+        $varNewEnum = collect($this->analysis->properties)->firstWhere('name', 'var_new_enum');
+
+        expect($varNewEnum['type'])->toBe('unknown');
+    });
 });
 
 describe('ResourceAstAnalyzer with non-existent model', function () {
@@ -881,14 +918,21 @@ describe('ResourceAstAnalyzer with parent::toArray spread', function () {
         expect($idIndex)->toBeLessThan($statusIndex);
     });
 
-    test('child overrides clear parent enum resource tracking', function () {
+    test('child overrides clear parent enum resource tracking for overridden keys', function () {
         $reflection = new ReflectionClass(ApiPostResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
         $analysis = $analyzer->analyze();
 
         // Parent PostResource uses EnumResource::make() for status, visibility, priority
         // Child overrides those keys with plain $this->prop, clearing the parent's enum resource tracking
-        expect($analysis->enumResources)->toBeEmpty();
+        // But _new variants from parent are NOT overridden, so they remain as enum resources
+        expect($analysis->enumResources)
+            ->not->toHaveKey('status')
+            ->not->toHaveKey('visibility')
+            ->not->toHaveKey('priority')
+            ->toHaveKey('status_new')
+            ->toHaveKey('visibility_new')
+            ->toHaveKey('priority_new');
     });
 
     test('inherits customImports from parent trait TsResourceCasts', function () {
@@ -1387,5 +1431,310 @@ describe('ResourceAstAnalyzer with MiscCollection (unresolvable singular)', func
         expect($data)->not->toBeNull()
             ->and($data['type'])->toBe('unknown')
             ->and($analysis->nestedResources)->not->toHaveKey('data');
+    });
+});
+
+describe('ResourceAstAnalyzer with bare function call spread', function () {
+    test('resolves bare function call trait methods as spread properties', function () {
+        $reflection = new ReflectionClass(BareFuncCallResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Comment::class);
+        $analysis = $analyzer->analyze();
+
+        $names = array_column($analysis->properties, 'name');
+
+        expect($names)->toContain('morphValue')
+            ->toContain('id')
+            ->toContain('computed')
+            ->toContain('date_val')
+            ->toContain('custom_val')
+            ->toContain('plain')
+            ->toContain('basic')
+            ->toContain('firstName')
+            ->toContain('lastName')
+            ->toContain('isActive')
+            ->toContain('location')
+            ->toContain('flag')
+            ->toContain('extra');
+    });
+
+    test('resolves PHPDoc types from bare function call spreads', function () {
+        $reflection = new ReflectionClass(BareFuncCallResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Comment::class);
+        $analysis = $analyzer->analyze();
+
+        $morphValue = collect($analysis->properties)->firstWhere('name', 'morphValue');
+        $firstName = collect($analysis->properties)->firstWhere('name', 'firstName');
+        $isActive = collect($analysis->properties)->firstWhere('name', 'isActive');
+
+        expect($morphValue['type'])->toBe('string')
+            ->and($firstName['type'])->toBe('string')
+            ->and($isActive['type'])->toBe('boolean');
+    });
+
+    test('resolves TsResourceCasts from bare function call spreads', function () {
+        $reflection = new ReflectionClass(BareFuncCallResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Comment::class);
+        $analysis = $analyzer->analyze();
+
+        $location = collect($analysis->properties)->firstWhere('name', 'location');
+        $flag = collect($analysis->properties)->firstWhere('name', 'flag');
+        $extra = collect($analysis->properties)->firstWhere('name', 'extra');
+
+        expect($location['type'])->toBe('GeoPoint')
+            ->and($flag['type'])->toBe('string | null')
+            ->and($flag['optional'])->toBeTrue()
+            ->and($extra['type'])->toBe('Record<string, unknown>')
+            ->and($analysis->customImports)->toHaveKey('@/types/geo');
+    });
+});
+
+describe('ResourceAstAnalyzer with variable-return trait method spreads', function () {
+    test('resolves base array properties from variable return', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $names = array_column($analysis->properties, 'name');
+
+        expect($names)->toContain('id')
+            ->toContain('baseKey')
+            ->toContain('always');
+    });
+
+    test('resolves PHPDoc types on variable-return method', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $baseKey = collect($analysis->properties)->firstWhere('name', 'baseKey');
+
+        expect($baseKey['type'])->toBe('string');
+    });
+
+    test('marks unconditional dim assignments as not optional', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $always = collect($analysis->properties)->firstWhere('name', 'always');
+
+        expect($always)->not->toBeNull()
+            ->and($always['optional'])->toBeFalse();
+    });
+
+    test('marks conditional dim assignments inside if blocks as optional', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $conditionalKey = collect($analysis->properties)->firstWhere('name', 'conditionalKey');
+        $sometimes = collect($analysis->properties)->firstWhere('name', 'sometimes');
+
+        expect($conditionalKey)->not->toBeNull()
+            ->and($conditionalKey['optional'])->toBeTrue()
+            ->and($sometimes)->not->toBeNull()
+            ->and($sometimes['optional'])->toBeTrue();
+    });
+
+    test('marks elseif and else branch assignments as optional', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $ifBranch = collect($analysis->properties)->firstWhere('name', 'ifBranch');
+        $elseifBranch = collect($analysis->properties)->firstWhere('name', 'elseifBranch');
+        $elseBranch = collect($analysis->properties)->firstWhere('name', 'elseBranch');
+
+        expect($ifBranch['optional'])->toBeTrue()
+            ->and($elseifBranch['optional'])->toBeTrue()
+            ->and($elseBranch['optional'])->toBeTrue();
+    });
+
+    test('resolves all properties from all variable-return methods', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $names = array_column($analysis->properties, 'name');
+
+        expect($names)->toContain('id')
+            ->toContain('baseKey')
+            ->toContain('conditionalKey')
+            ->toContain('always')
+            ->toContain('sometimes')
+            ->toContain('ifBranch')
+            ->toContain('elseifBranch')
+            ->toContain('elseBranch');
+    });
+
+    test('returns empty analysis for method call return (not array or variable)', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        // includeFromMethodCall returns $this->includeNonAnalyzable() — not an array literal
+        // or variable, so the else fallback produces no properties for that spread
+        $names = array_column($analysis->properties, 'name');
+
+        expect($names)->not->toContain('dynamic');
+    });
+
+    test('marks conditional base array assignment properties as optional', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $conditionalBaseKey = collect($analysis->properties)->firstWhere('name', 'conditionalBaseKey');
+
+        expect($conditionalBaseKey)->not->toBeNull()
+            ->and($conditionalBaseKey['optional'])->toBeTrue();
+    });
+
+    test('marks foreach loop dim assignments as optional', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $foreachKey = collect($analysis->properties)->firstWhere('name', 'foreachKey');
+
+        expect($foreachKey)->not->toBeNull()
+            ->and($foreachKey['optional'])->toBeTrue();
+    });
+
+    test('marks for loop dim assignments as optional', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $forKey = collect($analysis->properties)->firstWhere('name', 'forKey');
+
+        expect($forKey)->not->toBeNull()
+            ->and($forKey['optional'])->toBeTrue();
+    });
+
+    test('marks while loop dim assignments as optional', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $whileKey = collect($analysis->properties)->firstWhere('name', 'whileKey');
+
+        expect($whileKey)->not->toBeNull()
+            ->and($whileKey['optional'])->toBeTrue();
+    });
+
+    test('marks do-while loop dim assignments as optional', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $doWhileKey = collect($analysis->properties)->firstWhere('name', 'doWhileKey');
+
+        expect($doWhileKey)->not->toBeNull()
+            ->and($doWhileKey['optional'])->toBeTrue();
+    });
+
+    test('resolves all loop properties in variable-return methods', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $names = array_column($analysis->properties, 'name');
+
+        expect($names)->toContain('foreachKey')
+            ->toContain('forKey')
+            ->toContain('whileKey')
+            ->toContain('doWhileKey');
+    });
+
+    test('de-duplicates repeated key assignments keeping correct optionality', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $statusProps = collect($analysis->properties)->where('name', 'status');
+
+        // Should appear exactly once (de-duplicated)
+        expect($statusProps)->toHaveCount(1);
+
+        // Unconditional assignment exists, so optional must be false
+        expect($statusProps->first()['optional'])->toBeFalse();
+    });
+});
+
+describe('ResourceAstAnalyzer with ApiArticleResource (abstract parent + only + enum)', function () {
+    test('resolves properties from parent CommonResource trait method spreads', function () {
+        $reflection = new ReflectionClass(ApiArticleResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Article::class);
+        $analysis = $analyzer->analyze();
+
+        $names = array_column($analysis->properties, 'name');
+
+        expect($names)->toContain('morphValue')
+            ->toContain('firstName')
+            ->toContain('lastName')
+            ->toContain('isActive')
+            ->toContain('location')
+            ->toContain('flag');
+    });
+
+    test('resolves $this->only() spread properties with Article model types', function () {
+        $reflection = new ReflectionClass(ApiArticleResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Article::class);
+        $analysis = $analyzer->analyze();
+
+        $title = collect($analysis->properties)->firstWhere('name', 'title');
+        $slug = collect($analysis->properties)->firstWhere('name', 'slug');
+        $excerpt = collect($analysis->properties)->firstWhere('name', 'excerpt');
+        $body = collect($analysis->properties)->firstWhere('name', 'body');
+
+        expect($title['type'])->toBe('string')
+            ->and($slug['type'])->toBe('string')
+            ->and($excerpt['type'])->toBe('string | null')
+            ->and($body['type'])->toBe('string');
+    });
+
+    test('resolves EnumResource::make to ArticleStatus enum', function () {
+        $reflection = new ReflectionClass(ApiArticleResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Article::class);
+        $analysis = $analyzer->analyze();
+
+        expect($analysis->enumResources)
+            ->toHaveKey('status')
+            ->and($analysis->enumResources['status'])->toBe(ArticleStatus::class);
+    });
+
+    test('resolves new EnumResource to ContentType enum', function () {
+        $reflection = new ReflectionClass(ApiArticleResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Article::class);
+        $analysis = $analyzer->analyze();
+
+        expect($analysis->enumResources)
+            ->toHaveKey('content_type')
+            ->and($analysis->enumResources['content_type'])->toBe(ContentType::class);
+    });
+
+    test('resolves whenLoaded author as optional with User model', function () {
+        $reflection = new ReflectionClass(ApiArticleResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Article::class);
+        $analysis = $analyzer->analyze();
+
+        $author = collect($analysis->properties)->firstWhere('name', 'author');
+
+        expect($author['type'])->toBe('User')
+            ->and($author['optional'])->toBeTrue()
+            ->and($analysis->modelFqcns)->toHaveKey('author');
+    });
+
+    test('child only id overrides parent trait id', function () {
+        $reflection = new ReflectionClass(ApiArticleResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Article::class);
+        $analysis = $analyzer->analyze();
+
+        // Parent CommonResource trait has 'id' from includeTypedExtras (type: string via PHPDoc)
+        // Child $this->only(['id', ...]) resolves 'id' against Article model (type: number)
+        $id = collect($analysis->properties)->firstWhere('name', 'id');
+
+        expect($id['type'])->toBe('number');
     });
 });

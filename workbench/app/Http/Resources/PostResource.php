@@ -28,8 +28,11 @@ class PostResource extends JsonResource
             'title' => $this->title,
             'content' => $this->content,
             'status' => EnumResource::make($this->status),
+            'status_new' => new EnumResource($this->status),
             'visibility' => EnumResource::make($this->visibility),
+            'visibility_new' => new EnumResource($this->visibility),
             'priority' => EnumResource::make($this->priority),
+            'priority_new' => new EnumResource($this->priority),
         ];
     }
 }

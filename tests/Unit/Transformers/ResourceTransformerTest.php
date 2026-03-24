@@ -26,6 +26,7 @@ use Workbench\App\Models\TrackingEvent;
 use Workbench\App\Models\User;
 use Workbench\App\Models\Warehouse;
 use Workbench\App\Resources\DirectResource;
+use Workbench\Blog\Http\Resources\ApiArticleResource;
 use Workbench\Crm\Http\Resources\DealResource;
 use Workbench\Crm\Http\Resources\UserResource as CrmUserResource;
 use Workbench\Crm\Models\User as CrmUser;
@@ -64,6 +65,14 @@ describe('ResourceTransformer with PostResource', function () {
         expect($data->properties['priority']['type'])->toBe('AsEnum<typeof Priority> | null');
     });
 
+    test('resolves new EnumResource() to AsEnum type with tolki enabled', function () {
+        $data = (new ResourceTransformer(PostResource::class))->data();
+
+        expect($data->properties['status_new']['type'])->toBe('AsEnum<typeof Status>');
+        expect($data->properties['visibility_new']['type'])->toBe('AsEnum<typeof Visibility> | null');
+        expect($data->properties['priority_new']['type'])->toBe('AsEnum<typeof Priority> | null');
+    });
+
     test('resolves EnumResource::make() to enum type with tolki disabled', function () {
         config()->set('ts-publish.enums_use_tolki_package', false);
 
@@ -74,12 +83,23 @@ describe('ResourceTransformer with PostResource', function () {
         expect($data->properties['priority']['type'])->toBe('PriorityType | null');
     });
 
+    test('resolves new EnumResource() to enum type with tolki disabled', function () {
+        config()->set('ts-publish.enums_use_tolki_package', false);
+
+        $data = (new ResourceTransformer(PostResource::class))->data();
+
+        expect($data->properties['status_new']['type'])->toBe('StatusType');
+        expect($data->properties['visibility_new']['type'])->toBe('VisibilityType | null');
+        expect($data->properties['priority_new']['type'])->toBe('PriorityType | null');
+    });
+
     test('marks basic properties as non-optional', function () {
         $data = (new ResourceTransformer(PostResource::class))->data();
 
         expect($data->properties['id']['optional'])->toBeFalse();
         expect($data->properties['title']['optional'])->toBeFalse();
         expect($data->properties['status']['optional'])->toBeFalse();
+        expect($data->properties['status_new']['optional'])->toBeFalse();
     });
 
     test('generates correct filename', function () {
@@ -588,8 +608,11 @@ describe('ResourceTransformer with parent::toArray spread', function () {
             ->and($data->properties)->toHaveKey('title')
             ->and($data->properties)->toHaveKey('content')
             ->and($data->properties)->toHaveKey('status')
+            ->and($data->properties)->toHaveKey('status_new')
             ->and($data->properties)->toHaveKey('visibility')
-            ->and($data->properties)->toHaveKey('priority');
+            ->and($data->properties)->toHaveKey('visibility_new')
+            ->and($data->properties)->toHaveKey('priority')
+            ->and($data->properties)->toHaveKey('priority_new');
     });
 
     test('ApiPostResource parent properties have correct types', function () {
@@ -611,6 +634,17 @@ describe('ResourceTransformer with parent::toArray spread', function () {
         expect($data->properties['status']['type'])->toBe('StatusType');
         expect($data->properties['visibility']['type'])->toBe('VisibilityType | null');
         expect($data->properties['priority']['type'])->toBe('PriorityType | null');
+    });
+
+    test('non-overridden _new enum resource properties flow through from parent', function () {
+        config()->set('ts-publish.enums_use_tolki_package', false);
+
+        $data = (new ResourceTransformer(ApiPostResource::class))->data();
+
+        // Parent has new EnumResource() for _new keys, child does not override them
+        expect($data->properties['status_new']['type'])->toBe('StatusType');
+        expect($data->properties['visibility_new']['type'])->toBe('VisibilityType | null');
+        expect($data->properties['priority_new']['type'])->toBe('PriorityType | null');
     });
 
     test('ApiPostResource has enum type imports from parent', function () {
@@ -851,5 +885,57 @@ describe('ResourceTransformer import collision deconfliction', function () {
         expect($data->properties['admin']['type'])->toBe('AppUser');
         expect($data->properties['customer_resource']['type'])->toBe('CrmUserResource');
         expect($data->properties['admin_resource']['type'])->toBe('AppUserResource');
+    });
+});
+
+describe('ResourceTransformer with ApiArticleResource (abstract parent + trait spreads)', function () {
+    test('includes properties from parent CommonResource trait method spreads', function () {
+        $data = (new ResourceTransformer(ApiArticleResource::class))->data();
+
+        expect($data->properties)->toHaveKey('morphValue')
+            ->and($data->properties)->toHaveKey('firstName')
+            ->and($data->properties)->toHaveKey('isActive')
+            ->and($data->properties)->toHaveKey('location')
+            ->and($data->properties)->toHaveKey('flag');
+    });
+
+    test('resolves enum types with tolki enabled', function () {
+        $data = (new ResourceTransformer(ApiArticleResource::class))->data();
+
+        expect($data->properties['status']['type'])->toBe('AsEnum<typeof ArticleStatus>')
+            ->and($data->properties['content_type']['type'])->toBe('AsEnum<typeof ContentType>');
+    });
+
+    test('resolves enum types with tolki disabled', function () {
+        config()->set('ts-publish.enums_use_tolki_package', false);
+
+        $data = (new ResourceTransformer(ApiArticleResource::class))->data();
+
+        expect($data->properties['status']['type'])->toBe('ArticleStatusType')
+            ->and($data->properties['content_type']['type'])->toBe('ContentTypeType');
+    });
+
+    test('author from whenLoaded is optional', function () {
+        $data = (new ResourceTransformer(ApiArticleResource::class))->data();
+
+        expect($data->properties['author']['optional'])->toBeTrue()
+            ->and($data->properties['author']['type'])->toBe('User');
+    });
+
+    test('includes custom import from parent TsResourceCasts trait', function () {
+        $data = (new ResourceTransformer(ApiArticleResource::class))->data();
+
+        $allTypes = array_merge(...array_values($data->typeImports));
+
+        expect($allTypes)->toContain('GeoPoint');
+    });
+
+    test('resolves $this->only properties with Article model types', function () {
+        $data = (new ResourceTransformer(ApiArticleResource::class))->data();
+
+        expect($data->properties['title']['type'])->toBe('string')
+            ->and($data->properties['slug']['type'])->toBe('string')
+            ->and($data->properties['excerpt']['type'])->toBe('string | null')
+            ->and($data->properties['body']['type'])->toBe('string');
     });
 });

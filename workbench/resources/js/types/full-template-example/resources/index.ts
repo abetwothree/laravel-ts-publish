@@ -1,6 +1,8 @@
 export * from './address';
+export * from './api-article-resource';
 export * from './api-post-resource';
 export * from './article-resource';
+export * from './bare-func-call-resource';
 export * from './category-resource';
 export * from './comment-resource';
 export * from './deal-resource';
@@ -40,4 +42,5 @@ export * from './tracking-event-resource';
 export * from './trait-spread-coverage-resource';
 export * from './user-collection';
 export * from './user-resource';
+export * from './var-return-spread-resource';
 export * from './warehouse-resource';
