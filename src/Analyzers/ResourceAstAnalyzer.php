@@ -999,6 +999,13 @@ class ResourceAstAnalyzer
                     ];
                 }
 
+                unset(
+                    $enumResources[$keyName],
+                    $nestedResources[$keyName],
+                    $directEnumFqcns[$keyName],
+                    $modelFqcns[$keyName],
+                );
+
                 $this->dispatchFqcnResults($keyName, $result, $enumResources, $directEnumFqcns, $nestedResources, $modelFqcns);
 
                 continue;
