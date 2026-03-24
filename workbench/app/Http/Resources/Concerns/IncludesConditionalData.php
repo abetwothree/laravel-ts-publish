@@ -164,4 +164,20 @@ trait IncludesConditionalData
 
         return $data;
     }
+
+    /**
+     * Duplicate key: unconditional then conditional override.
+     * The key should appear once and be NOT optional.
+     */
+    protected function includesDuplicateKey(): array
+    {
+        $data = [];
+        $data['status'] = strtolower('active');
+
+        if ($this->resource !== null) {
+            $data['status'] = strtoupper('inactive');
+        }
+
+        return $data;
+    }
 }

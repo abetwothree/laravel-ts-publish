@@ -4430,6 +4430,11 @@
                 "name": "doWhileKey",
                 "type": "unknown",
                 "optional": true
+            },
+            {
+                "name": "status",
+                "type": "unknown",
+                "optional": false
             }
         ],
         "BareFuncCallResource": [

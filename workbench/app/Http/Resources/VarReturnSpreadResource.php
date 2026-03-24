@@ -30,6 +30,7 @@ class VarReturnSpreadResource extends JsonResource
             ...$this->returnsFromForLoop(),
             ...$this->returnsFromWhileLoop(),
             ...$this->returnsFromDoWhile(),
+            ...$this->includesDuplicateKey(),
         ];
     }
 }

@@ -971,13 +971,33 @@ class ResourceAstAnalyzer
                 && $stmt->expr->var->dim instanceof String_) {
                 $keyName = $stmt->expr->var->dim->value;
                 $result = $this->analyzeValueExpression($stmt->expr->expr);
+                $optional = $isConditional || $result['optional'];
 
-                $properties[] = [
-                    'name' => $keyName,
-                    'type' => $result['type'],
-                    'optional' => $isConditional || $result['optional'],
-                    'description' => '',
-                ];
+                $existingIndex = null;
+
+                foreach ($properties as $index => $existing) {
+                    if ($existing['name'] === $keyName) {
+                        $existingIndex = $index;
+
+                        break;
+                    }
+                }
+
+                if ($existingIndex !== null) {
+                    $properties[$existingIndex] = [
+                        'name' => $keyName,
+                        'type' => $result['type'],
+                        'optional' => $properties[$existingIndex]['optional'] && $optional,
+                        'description' => '',
+                    ];
+                } else {
+                    $properties[] = [
+                        'name' => $keyName,
+                        'type' => $result['type'],
+                        'optional' => $optional,
+                        'description' => '',
+                    ];
+                }
 
                 $this->dispatchFqcnResults($keyName, $result, $enumResources, $directEnumFqcns, $nestedResources, $modelFqcns);
 

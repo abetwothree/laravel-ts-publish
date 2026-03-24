@@ -1250,6 +1250,7 @@ declare global {
             forKey?: unknown;
             whileKey?: unknown;
             doWhileKey?: unknown;
+            status: unknown;
         }
         /** Fixture resource exercising bare function call spreads (without $this->). */
         export interface BareFuncCallResource {

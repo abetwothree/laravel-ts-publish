@@ -1646,6 +1646,20 @@ describe('ResourceAstAnalyzer with variable-return trait method spreads', functi
             ->toContain('whileKey')
             ->toContain('doWhileKey');
     });
+
+    test('de-duplicates repeated key assignments keeping correct optionality', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $statusProps = collect($analysis->properties)->where('name', 'status');
+
+        // Should appear exactly once (de-duplicated)
+        expect($statusProps)->toHaveCount(1);
+
+        // Unconditional assignment exists, so optional must be false
+        expect($statusProps->first()['optional'])->toBeFalse();
+    });
 });
 
 describe('ResourceAstAnalyzer with ApiArticleResource (abstract parent + only + enum)', function () {

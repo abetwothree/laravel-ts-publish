@@ -15,4 +15,5 @@ export interface VarReturnSpreadResource
     forKey?: unknown;
     whileKey?: unknown;
     doWhileKey?: unknown;
+    status: unknown;
 }
