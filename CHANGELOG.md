@@ -2,6 +2,14 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v1.1.2 - 2026-03-24
+
+### What's Changed
+
+* Edge cases with resources by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/11
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v1.1.1...v1.1.2
+
 ## v1.1.1 - 2026-03-23
 
 ### What's Changed
