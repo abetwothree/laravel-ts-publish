@@ -1104,7 +1104,10 @@ declare global {
             post_new?: PostResource;
             post_direct: PostResource;
         }
-        /** Resource with no @mixin or TsResource — tests convention-based model guess. */
+        /** Child resource that uses SharedExtendsInterface AND extends a parent that also uses it. SharedExtendsInterface should appear only once in the result despite being reachable via two paths. */
+        export interface ChildSharedResource {
+        }
+        /** Resource with no @mixin or TsResource — tests convention-based model guess. Also tests multiple TsExtends in parent class, trait, and locally. */
         export interface WarehouseResource {
             id: number;
             name: string;
@@ -1290,6 +1293,8 @@ declare global {
             priority: PriorityType | null;
             priority_new: AsEnum<typeof Priority> | null;
         }
+        export interface RoutableResource {
+        }
         export interface TraitSpreadCoverageResource {
             id: number;
             computed: string;
@@ -1423,6 +1428,9 @@ declare global {
             last_login_ip: string | null;
             initials: string;
             is_premium: boolean;
+        }
+        /** Parent resource that uses SharedExtendsInterface — tests BFS dedup when child also uses the same trait. */
+        export interface BaseSharedResource {
         }
         /** Edge-case resource exercising unusual but valid patterns for AST analyzer guard clauses. */
         export interface QuirkyResource {

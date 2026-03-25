@@ -2,6 +2,7 @@
 
 namespace Workbench\App\Models;
 
+use AbeTwoThree\LaravelTsPublish\Attributes\TsExtends;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -11,6 +12,8 @@ use Workbench\App\Enums\Status;
 use Workbench\App\ValueObjects\Coordinate;
 use Workbench\Crm\Enums\Status as CrmStatus;
 
+#[TsExtends('HasTimestamps', import: '@/types/common')]
+#[TsExtends('Pick<Auditable, "created_by" | "updated_by">', import: '@/types/audit', types: ['Auditable'])]
 class Warehouse extends Model
 {
     protected $fillable = [

@@ -981,3 +981,135 @@ describe('ModelTransformer #[TsExclude] attribute', function () {
             ->and($data->relations)->not->toHaveKey('comments');
     });
 });
+
+describe('ModelTransformer with #[TsExtends] attribute', function () {
+    test('Warehouse model has tsExtends from attribute', function () {
+        $data = (new ModelTransformer(Warehouse::class))->data();
+
+        expect($data->tsExtends)->toHaveCount(2)
+            ->and($data->tsExtends[0])->toBe('HasTimestamps')
+            ->and($data->tsExtends[1])->toBe('Pick<Auditable, "created_by" | "updated_by">');
+    });
+
+    test('Warehouse model imports types from TsExtends', function () {
+        $data = (new ModelTransformer(Warehouse::class))->data();
+
+        expect($data->typeImports)->toHaveKey('@/types/common')
+            ->and($data->typeImports['@/types/common'])->toContain('HasTimestamps')
+            ->and($data->typeImports)->toHaveKey('@/types/audit')
+            ->and($data->typeImports['@/types/audit'])->toContain('Auditable');
+    });
+
+    test('model without TsExtends has empty tsExtends', function () {
+        $data = (new ModelTransformer(User::class))->data();
+
+        expect($data->tsExtends)->toBe([]);
+    });
+});
+
+describe('ModelTransformer with config-based ts_extends', function () {
+    test('applies global model extends from config', function () {
+        config()->set('ts-publish.ts_extends.models', [
+            'GlobalBase',
+        ]);
+
+        $data = (new ModelTransformer(User::class))->data();
+
+        expect($data->tsExtends)->toContain('GlobalBase');
+    });
+
+    test('applies config extends with import', function () {
+        config()->set('ts-publish.ts_extends.models', [
+            ['extends' => 'Trackable', 'import' => '@/types/tracking'],
+        ]);
+
+        $data = (new ModelTransformer(User::class))->data();
+
+        expect($data->tsExtends)->toContain('Trackable')
+            ->and($data->typeImports)->toHaveKey('@/types/tracking')
+            ->and($data->typeImports['@/types/tracking'])->toContain('Trackable');
+    });
+
+    test('merges attribute and config extends', function () {
+        config()->set('ts-publish.ts_extends.models', [
+            'GlobalBase',
+        ]);
+
+        $data = (new ModelTransformer(Warehouse::class))->data();
+
+        expect($data->tsExtends)->toContain('HasTimestamps')
+            ->and($data->tsExtends)->toContain('Pick<Auditable, "created_by" | "updated_by">')
+            ->and($data->tsExtends)->toContain('GlobalBase');
+    });
+
+    test('config with explicit types for generic extends', function () {
+        config()->set('ts-publish.ts_extends.models', [
+            ['extends' => 'Omit<Auditable, "deleted_at">', 'import' => '@/types/audit', 'types' => ['Auditable']],
+        ]);
+
+        $data = (new ModelTransformer(User::class))->data();
+
+        expect($data->tsExtends)->toContain('Omit<Auditable, "deleted_at">')
+            ->and($data->typeImports)->toHaveKey('@/types/audit')
+            ->and($data->typeImports['@/types/audit'])->toContain('Auditable');
+    });
+
+    test('config array entry without import key is collected without an import', function () {
+        config()->set('ts-publish.ts_extends.models', [
+            ['extends' => 'GloballyKnown'],
+        ]);
+
+        $data = (new ModelTransformer(User::class))->data();
+
+        expect($data->tsExtends)->toContain('GloballyKnown')
+            ->and($data->typeImports)->not->toHaveKey('GloballyKnown');
+    });
+});
+
+describe('ModelTransformer TsExtends deduplication and conflict resolution', function () {
+    test('situation 1 — identical (extends, no-import) pairs are deduplicated', function () {
+        config()->set('ts-publish.ts_extends.models', ['SameType', 'SameType']);
+
+        $data = (new ModelTransformer(User::class))->data();
+
+        expect($data->tsExtends)->toBe(['SameType']);
+    });
+
+    test('situation 2 — same type name from different import paths gets aliased', function () {
+        config()->set('ts-publish.ts_extends.models', [
+            ['extends' => 'Trackable', 'import' => '@/types/tracking'],
+            ['extends' => 'Trackable', 'import' => '@/types/legacy'],
+        ]);
+
+        $data = (new ModelTransformer(User::class))->data();
+
+        expect($data->tsExtends)->toBe(['TrackingTrackable', 'LegacyTrackable'])
+            ->and($data->typeImports['@/types/tracking'])->toBe(['Trackable as TrackingTrackable'])
+            ->and($data->typeImports['@/types/legacy'])->toBe(['Trackable as LegacyTrackable']);
+    });
+
+    test('situation 2 — alias is applied inside a generic extends clause via preg_replace', function () {
+        config()->set('ts-publish.ts_extends.models', [
+            ['extends' => 'Pick<Trackable, "created_by">', 'import' => '@/types/tracking', 'types' => ['Trackable']],
+            ['extends' => 'Trackable', 'import' => '@/types/legacy'],
+        ]);
+
+        $data = (new ModelTransformer(User::class))->data();
+
+        expect($data->tsExtends)->toBe(['Pick<TrackingTrackable, "created_by">', 'LegacyTrackable'])
+            ->and($data->typeImports['@/types/tracking'])->toBe(['Trackable as TrackingTrackable'])
+            ->and($data->typeImports['@/types/legacy'])->toBe(['Trackable as LegacyTrackable']);
+    });
+
+    test('situation 3 — same type name from same import path is deduplicated to a single import', function () {
+        config()->set('ts-publish.ts_extends.models', [
+            ['extends' => 'Trackable', 'import' => '@/types/tracking'],
+            ['extends' => 'Pick<Trackable, "created_by">', 'import' => '@/types/tracking', 'types' => ['Trackable']],
+        ]);
+
+        $data = (new ModelTransformer(User::class))->data();
+
+        expect($data->tsExtends)->toBe(['Trackable', 'Pick<Trackable, "created_by">'])
+            ->and($data->typeImports['@/types/tracking'])->toBe(['Trackable']);
+    });
+});

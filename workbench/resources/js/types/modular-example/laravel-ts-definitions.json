@@ -4235,6 +4235,7 @@
                 "optional": false
             }
         ],
+        "ChildSharedResource": [],
         "WarehouseResource": [
             {
                 "name": "id",
@@ -4904,6 +4905,7 @@
                 "optional": false
             }
         ],
+        "RoutableResource": [],
         "TraitSpreadCoverageResource": [
             {
                 "name": "id",
@@ -5455,6 +5457,7 @@
                 "optional": false
             }
         ],
+        "BaseSharedResource": [],
         "QuirkyResource": [
             {
                 "name": "id",

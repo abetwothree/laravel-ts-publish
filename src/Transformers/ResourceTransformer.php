@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsResourceDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
+use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\TracksEnumImports;
 use Illuminate\Database\Eloquent\Model;
@@ -34,6 +35,7 @@ class ResourceTransformer extends CoreTransformer
 {
     use BuildsImportMaps;
     use ParsesTsCasts;
+    use ParsesTsExtends;
     use ResolvesImportConflicts;
     use TracksEnumImports;
 
@@ -93,10 +95,14 @@ class ResourceTransformer extends CoreTransformer
     /** @var array<string, string> property name => import path from model's #[TsCasts] */
     protected array $modelTsCastsImportPaths = [];
 
+    /** @var list<string> TypeScript extends clauses */
+    protected array $tsExtends = [];
+
     #[Override]
     public function transform(): self
     {
         $this->initReflection()
+            ->parseTsExtends()
             ->resolveModelClass()
             ->parseModelTsCastsOverrides()
             ->parseTsResourceCastsOverrides()
@@ -121,6 +127,7 @@ class ResourceTransformer extends CoreTransformer
             typeImports: $this->typeImports,
             valueImports: $this->valueImports,
             modelClass: $this->modelClass,
+            tsExtends: $this->tsExtends,
         );
     }
 
@@ -147,6 +154,19 @@ class ResourceTransformer extends CoreTransformer
         } else {
             $this->resourceName = $this->reflectionResource->getShortName();
             $this->description = LaravelTsPublish::parseDocBlockDescription($this->reflectionResource->getDocComment());
+        }
+
+        return $this;
+    }
+
+    protected function parseTsExtends(): self
+    {
+        $result = $this->parseTsExtendsFromReflection($this->reflectionResource, 'resources');
+
+        $this->tsExtends = $result['extends'];
+
+        foreach ($result['imports'] as $importPath => $typeNames) {
+            $this->customImports[$importPath] = [...($this->customImports[$importPath] ?? []), ...$typeNames];
         }
 
         return $this;

@@ -2,14 +2,19 @@
 
 namespace Workbench\App\Http\Resources;
 
+use AbeTwoThree\LaravelTsPublish\Attributes\TsExtends;
 use Illuminate\Http\Request;
-use Illuminate\Http\Resources\Json\JsonResource;
+use Workbench\App\Http\Resources\Concerns\ExtendsInterfaces;
 
 /**
  * Resource with no @mixin or TsResource — tests convention-based model guess.
+ * Also tests multiple TsExtends in parent class, trait, and locally.
  */
-class WarehouseResource extends JsonResource
+#[TsExtends('BaseResource', import: '@/types/base')]
+class WarehouseResource extends RoutableResource
 {
+    use ExtendsInterfaces;
+
     /**
      * @return array<string, mixed>
      */

@@ -5,6 +5,7 @@ use Workbench\App\Http\Resources\AddressResource;
 use Workbench\App\Http\Resources\Admin\Store as AdminStoreResource;
 use Workbench\App\Http\Resources\ApiPostResource;
 use Workbench\App\Http\Resources\CategoryResource;
+use Workbench\App\Http\Resources\ChildSharedResource;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\DelegatingWithMixinResource;
 use Workbench\App\Http\Resources\EmptyResource;
@@ -937,5 +938,150 @@ describe('ResourceTransformer with ApiArticleResource (abstract parent + trait s
             ->and($data->properties['slug']['type'])->toBe('string')
             ->and($data->properties['excerpt']['type'])->toBe('string | null')
             ->and($data->properties['body']['type'])->toBe('string');
+    });
+});
+
+describe('ResourceTransformer with #[TsExtends] attribute', function () {
+    test('WarehouseResource has tsExtends from attribute, trait, and parent class', function () {
+        $data = (new ResourceTransformer(WarehouseResource::class))->data();
+
+        expect($data->tsExtends)->toBe([
+            'BaseResource',
+            'ExtendableInterface',
+            'Omit<Timestamps, "created_at" | "updated_at">',
+            'ResourceRoutes',
+            'Pick<Routable, "store" | "update">',
+        ]);
+    });
+
+    test('WarehouseResource imports types from TsExtends', function () {
+        $data = (new ResourceTransformer(WarehouseResource::class))->data();
+
+        expect($data->typeImports)->toHaveKey('@/types/base')
+            ->and($data->typeImports['@/types/base'])->toContain('BaseResource');
+    });
+
+    test('resource without TsExtends has empty tsExtends', function () {
+        $data = (new ResourceTransformer(PostResource::class))->data();
+
+        expect($data->tsExtends)->toBe([]);
+    });
+});
+
+describe('ResourceTransformer with config-based ts_extends', function () {
+    test('applies global resource extends from config', function () {
+        config()->set('ts-publish.ts_extends.resources', [
+            'GlobalResource',
+        ]);
+
+        $data = (new ResourceTransformer(PostResource::class))->data();
+
+        expect($data->tsExtends)->toContain('GlobalResource');
+    });
+
+    test('applies config extends with import', function () {
+        config()->set('ts-publish.ts_extends.resources', [
+            ['extends' => 'ApiResource', 'import' => '@/types/api'],
+        ]);
+
+        $data = (new ResourceTransformer(PostResource::class))->data();
+
+        expect($data->tsExtends)->toContain('ApiResource')
+            ->and($data->typeImports)->toHaveKey('@/types/api')
+            ->and($data->typeImports['@/types/api'])->toContain('ApiResource');
+    });
+
+    test('merges attribute and config extends for resources', function () {
+        config()->set('ts-publish.ts_extends.resources', [
+            'GlobalResource',
+        ]);
+
+        $data = (new ResourceTransformer(WarehouseResource::class))->data();
+
+        expect($data->tsExtends)->toContain('BaseResource')
+            ->and($data->tsExtends)->toContain('GlobalResource');
+    });
+
+    test('config array entry without import key is collected without an import', function () {
+        config()->set('ts-publish.ts_extends.resources', [
+            ['extends' => 'GloballyKnown'],
+        ]);
+
+        $data = (new ResourceTransformer(PostResource::class))->data();
+
+        expect($data->tsExtends)->toContain('GloballyKnown')
+            ->and($data->typeImports)->not->toHaveKey('GloballyKnown');
+    });
+});
+
+describe('ResourceTransformer TsExtends deduplication and conflict resolution', function () {
+    test('situation 1 — identical (extends, no-import) pairs are deduplicated', function () {
+        config()->set('ts-publish.ts_extends.resources', ['SameType', 'SameType']);
+
+        $data = (new ResourceTransformer(PostResource::class))->data();
+
+        expect($data->tsExtends)->toBe(['SameType']);
+    });
+
+    test('situation 1 — identical (extends, import) pairs from config are deduplicated', function () {
+        config()->set('ts-publish.ts_extends.resources', [
+            ['extends' => 'BaseItem', 'import' => '@/types/base'],
+            ['extends' => 'BaseItem', 'import' => '@/types/base'],
+        ]);
+
+        $data = (new ResourceTransformer(PostResource::class))->data();
+
+        expect($data->tsExtends)->toBe(['BaseItem'])
+            ->and($data->typeImports['@/types/base'])->toBe(['BaseItem']);
+    });
+
+    test('situation 2 — same type name from different import paths gets aliased', function () {
+        config()->set('ts-publish.ts_extends.resources', [
+            ['extends' => 'Routable', 'import' => '@/types/routing'],
+            ['extends' => 'Routable', 'import' => '@/types/legacy'],
+        ]);
+
+        $data = (new ResourceTransformer(PostResource::class))->data();
+
+        expect($data->tsExtends)->toBe(['RoutingRoutable', 'LegacyRoutable'])
+            ->and($data->typeImports['@/types/routing'])->toBe(['Routable as RoutingRoutable'])
+            ->and($data->typeImports['@/types/legacy'])->toBe(['Routable as LegacyRoutable']);
+    });
+
+    test('situation 2 — alias is applied inside a generic extends clause via preg_replace', function () {
+        config()->set('ts-publish.ts_extends.resources', [
+            ['extends' => 'Pick<Routable, "store" | "update">', 'import' => '@/types/routing', 'types' => ['Routable']],
+            ['extends' => 'Routable', 'import' => '@/types/legacy'],
+        ]);
+
+        $data = (new ResourceTransformer(PostResource::class))->data();
+
+        expect($data->tsExtends)->toBe(['Pick<RoutingRoutable, "store" | "update">', 'LegacyRoutable'])
+            ->and($data->typeImports['@/types/routing'])->toBe(['Routable as RoutingRoutable'])
+            ->and($data->typeImports['@/types/legacy'])->toBe(['Routable as LegacyRoutable']);
+    });
+
+    test('situation 3 — same type name from same import path is deduplicated to a single import', function () {
+        config()->set('ts-publish.ts_extends.resources', [
+            ['extends' => 'Routable', 'import' => '@/types/routing'],
+            ['extends' => 'Pick<Routable, "store" | "update">', 'import' => '@/types/routing', 'types' => ['Routable']],
+        ]);
+
+        $data = (new ResourceTransformer(PostResource::class))->data();
+
+        expect($data->tsExtends)->toBe(['Routable', 'Pick<Routable, "store" | "update">'])
+            ->and($data->typeImports['@/types/routing'])->toBe(['Routable']);
+    });
+});
+
+describe('ResourceTransformer TsExtends BFS trait deduplication', function () {
+    test('trait shared by both child and parent is only processed once', function () {
+        // ChildSharedResource uses SharedExtendsInterface directly AND extends BaseSharedResource
+        // which also uses SharedExtendsInterface. The BFS $visited guard should prevent
+        // SharedInterface from appearing twice in the extends list.
+        $data = (new ResourceTransformer(ChildSharedResource::class))->data();
+
+        expect($data->tsExtends)->toBe(['SharedInterface'])
+            ->and($data->typeImports['@/types/shared'])->toBe(['SharedInterface']);
     });
 });

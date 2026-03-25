@@ -22,9 +22,10 @@ use JsonSerializable;
  *     typeImports: TypesImportMap,
  *     valueImports: ValuesImportMap,
  *     modelClass: class-string|null,
+ *     tsExtends: list<string>,
  * }
  *
- * @implements Arrayable<string, string|PropertiesList|TypesImportMap|ValuesImportMap|null>
+ * @implements Arrayable<string, string|PropertiesList|TypesImportMap|ValuesImportMap|list<string>|null>
  */
 class TsResourceDto implements Arrayable, Datable, Jsonable, JsonSerializable
 {
@@ -33,6 +34,7 @@ class TsResourceDto implements Arrayable, Datable, Jsonable, JsonSerializable
      * @param  TypesImportMap  $typeImports
      * @param  ValuesImportMap  $valueImports
      * @param  class-string|null  $modelClass
+     * @param  list<string>  $tsExtends
      */
     public function __construct(
         public string $resourceName,
@@ -43,6 +45,7 @@ class TsResourceDto implements Arrayable, Datable, Jsonable, JsonSerializable
         public array $typeImports,
         public array $valueImports = [],
         public ?string $modelClass = null,
+        public array $tsExtends = [],
     ) {}
 
     /** @return ResourceData */
@@ -57,6 +60,7 @@ class TsResourceDto implements Arrayable, Datable, Jsonable, JsonSerializable
             'typeImports' => $this->typeImports,
             'valueImports' => $this->valueImports,
             'modelClass' => $this->modelClass,
+            'tsExtends' => $this->tsExtends,
         ];
     }
 

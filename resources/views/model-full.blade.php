@@ -14,7 +14,7 @@ import type { {{ implode(', ', $types) }} } from '{{ $path }}';
 @if($data->description)
 /** {!! LaravelTsPublish::sanitizeJsDoc($data->description) !!} */
 @endif
-export interface {{ $data->modelName }}
+export interface {{ $data->modelName }}{!! count($data->tsExtends) > 0 ? ' extends ' . implode(', ', $data->tsExtends) : '' !!}
 {
 @if (count($data->columns) > 0)
     // Columns
