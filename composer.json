@@ -77,7 +77,8 @@
             "Composer\\Config::disableProcessTimeout",
             "@build",
             "@php vendor/bin/testbench serve --ansi"
-        ]
+        ],
+        "ts:publish": "@php vendor/bin/testbench ts:publish --ansi"
     },
     "config": {
         "sort-packages": true,
