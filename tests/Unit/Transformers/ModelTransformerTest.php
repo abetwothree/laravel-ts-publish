@@ -5,10 +5,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Workbench\Accounting\Models\Invoice;
 use Workbench\App\Models\Address;
+use Workbench\App\Models\BaseSharedExtendableModel;
 use Workbench\App\Models\Category;
+use Workbench\App\Models\ChildSharedExtendableModel;
 use Workbench\App\Models\CompositeComment;
 use Workbench\App\Models\ExcludableModel;
 use Workbench\App\Models\Image;
+use Workbench\App\Models\ModelWithNestedTraitExtends;
+use Workbench\App\Models\ModelWithParentExtends;
+use Workbench\App\Models\ModelWithTraitExtends;
 use Workbench\App\Models\Order;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Product;
@@ -1111,5 +1116,47 @@ describe('ModelTransformer TsExtends deduplication and conflict resolution', fun
 
         expect($data->tsExtends)->toBe(['Trackable', 'Pick<Trackable, "created_by">'])
             ->and($data->typeImports['@/types/tracking'])->toBe(['Trackable']);
+    });
+});
+
+describe('ModelTransformer TsExtends BFS inheritance traversal', function () {
+    test('picks up #[TsExtends] from a used trait', function () {
+        $data = (new ModelTransformer(ModelWithTraitExtends::class))->data();
+
+        expect($data->tsExtends)->toContain('TraitInterface')
+            ->and($data->typeImports)->toHaveKey('@/types/model-trait')
+            ->and($data->typeImports['@/types/model-trait'])->toContain('TraitInterface');
+    });
+
+    test('picks up #[TsExtends] from a nested trait (trait-of-trait)', function () {
+        $data = (new ModelTransformer(ModelWithNestedTraitExtends::class))->data();
+
+        expect($data->tsExtends)->toContain('TraitInterface')
+            ->and($data->typeImports)->toHaveKey('@/types/model-trait')
+            ->and($data->typeImports['@/types/model-trait'])->toContain('TraitInterface');
+    });
+
+    test('picks up #[TsExtends] from a parent class', function () {
+        $data = (new ModelTransformer(ModelWithParentExtends::class))->data();
+
+        expect($data->tsExtends)->toContain('ParentModelInterface')
+            ->and($data->typeImports)->toHaveKey('@/types/model-parent')
+            ->and($data->typeImports['@/types/model-parent'])->toContain('ParentModelInterface');
+    });
+
+    test('BFS visited guard prevents duplicate extends when trait is shared by model and parent', function () {
+        // ChildSharedExtendableModel uses SharedExtendsTrait directly AND extends
+        // BaseSharedExtendableModel which also uses SharedExtendsTrait. The BFS $visited
+        // guard should prevent SharedModelInterface from appearing twice.
+        $data = (new ModelTransformer(ChildSharedExtendableModel::class))->data();
+
+        expect($data->tsExtends)->toBe(['SharedModelInterface'])
+            ->and($data->typeImports['@/types/shared-model'])->toBe(['SharedModelInterface']);
+    });
+
+    test('parent model itself only has its own extends, not inheriting upward', function () {
+        $data = (new ModelTransformer(BaseSharedExtendableModel::class))->data();
+
+        expect($data->tsExtends)->toBe(['SharedModelInterface']);
     });
 });
