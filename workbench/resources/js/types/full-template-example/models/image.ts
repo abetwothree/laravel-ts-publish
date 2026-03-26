@@ -1,3 +1,10 @@
+import { type AsEnum } from '@tolki/enum';
+
+import { Status } from '../enums';
+import type { MenuSettingsType } from '@js/types/settings';
+import type { StatusType } from '../enums';
+import type { User } from './';
+
 export interface Image
 {
     // Columns
@@ -26,6 +33,17 @@ export interface Image
     extension: string | null;
     /** This is the size test to parse from the docblock in the test for accessor type resolution. */
     size: number;
+    flexible_id: string | number | null;
+    optional_label: string | null;
+    status_from_docblock: StatusType | null;
+    uploader_from_docblock: User | null;
+    config_from_docblock: MenuSettingsType;
+    data_from_docblock: unknown[];
+    label_from_docblock: string;
+    no_docblock_accessor: unknown;
+    wrong_format_docblock: unknown;
+    positive_int_accessor: number;
+    numeric_string_accessor: string;
     // Relations
     /** Polymorphic parent (Product, Post, User, etc.) */
     imageable: Image;
@@ -33,4 +51,9 @@ export interface Image
     imageable_count: number;
     // Exists
     imageable_exists: boolean;
+}
+
+export interface ImageResource extends Omit<Image, 'status_from_docblock'>
+{
+    status_from_docblock: AsEnum<typeof Status> | null;
 }

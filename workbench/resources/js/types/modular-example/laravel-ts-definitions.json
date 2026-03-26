@@ -2098,6 +2098,50 @@
                 "type": "number"
             },
             {
+                "name": "flexible_id",
+                "type": "string | number | null"
+            },
+            {
+                "name": "optional_label",
+                "type": "string | null"
+            },
+            {
+                "name": "status_from_docblock",
+                "type": "StatusType | null"
+            },
+            {
+                "name": "uploader_from_docblock",
+                "type": "User | null"
+            },
+            {
+                "name": "config_from_docblock",
+                "type": "MenuSettingsType"
+            },
+            {
+                "name": "data_from_docblock",
+                "type": "unknown[]"
+            },
+            {
+                "name": "label_from_docblock",
+                "type": "string"
+            },
+            {
+                "name": "no_docblock_accessor",
+                "type": "unknown"
+            },
+            {
+                "name": "wrong_format_docblock",
+                "type": "unknown"
+            },
+            {
+                "name": "positive_int_accessor",
+                "type": "number"
+            },
+            {
+                "name": "numeric_string_accessor",
+                "type": "string"
+            },
+            {
                 "name": "imageable",
                 "type": "Image"
             },

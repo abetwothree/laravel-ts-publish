@@ -10,6 +10,8 @@ use BackedEnum;
 use Closure;
 use Composer\ClassMapGenerator\PhpFileParser;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
+use Illuminate\Contracts\Support\Arrayable;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use ReflectionClass;
 use ReflectionFunction;
@@ -119,10 +121,13 @@ class LaravelTsPublish
     /**
      * Resolve the TypeScript type for a given PHP type, using the following resolution order:
      *
+     * 0. ?T nullable shorthand → recurse on T and append | null
      * 1. Exact map match
      * 2. #[TsType] on any class — explicit annotation wins for cast classes, enums, or anything else
      * 3. PHP enum → StatusType (type alias), enums: [Status], enumTypes: [StatusType]
      * 4. CastsAttributes implementor without #[TsType] → infer from get() return type (named or union), otherwise unknown
+     * 5a. Arrayable (non-Model) → unknown[]
+     * 5b. __toString (non-Model) → string
      * 5. Any other class → class_basename()
      * 6. encrypted:* compound casts
      * 7. Partial TS map string match
@@ -135,6 +140,14 @@ class LaravelTsPublish
         $typesMap = $this->typesMap(); // keys are already lowercased
         $lower = strtolower($phpType);
         $result = $this->emptyTypeScriptInfo();
+
+        // 0. Nullable shorthand ?T → recurse on T and append | null
+        if (str_starts_with($phpType, '?')) {
+            $inner = $this->phpToTypeScriptType(substr($phpType, 1));
+            $inner['type'] .= ' | null';
+
+            return $inner;
+        }
 
         // 1. Exact map match
         $mapping = $typesMap[$lower] ?? null;
@@ -196,6 +209,28 @@ class LaravelTsPublish
             }
 
             $result['type'] = 'unknown';
+
+            return $result;
+        }
+
+        // 5a. Arrayable (non-Model) → unknown[] — checked before step 5 to avoid Model being caught here
+        //     Model implements Arrayable transitively, so we exclude Model subclasses explicitly.
+        if (class_exists($phpType)
+            && ! is_a($phpType, Model::class, true)
+            && is_a($phpType, Arrayable::class, true)
+        ) {
+            $result['type'] = 'unknown[]';
+
+            return $result;
+        }
+
+        // 5b. __toString magic method → string (covers both `implements \Stringable` and direct __toString)
+        //     Exclude Model subclasses — Model defines __toString() returning JSON; models should stay at step 5.
+        if (class_exists($phpType)
+            && ! is_a($phpType, Model::class, true)
+            && method_exists($phpType, '__toString')
+        ) {
+            $result['type'] = 'string';
 
             return $result;
         }
