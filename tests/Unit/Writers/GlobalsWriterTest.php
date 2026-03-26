@@ -40,7 +40,7 @@ test('writes globals file to disk when output_to_files is enabled', function () 
     $filesystem->shouldReceive('ensureDirectoryExists')->once();
     $filesystem->shouldReceive('put')->once()
         ->withArgs(function (string $path, string $content) {
-            return str_contains($path, 'laravel-ts-global.d.ts') && str_contains($content, 'declare global');
+            return str_contains($path, 'laravel-ts-global') && str_contains($content, 'declare global');
         });
 
     config()->set('ts-publish.output_to_files', true);

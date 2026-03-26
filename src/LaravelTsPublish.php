@@ -540,6 +540,35 @@ class LaravelTsPublish
     }
 
     /**
+     * Prefix unqualified type names in a TypeScript type string with their global namespace.
+     *
+     * Used when generating the globals file, where types from other namespaces must be
+     * fully qualified (e.g. `PaymentStatusType` → `enums.PaymentStatusType`).
+     *
+     * @param  string  $typeStr  The TypeScript type string to rewrite.
+     * @param  array<string, list<string>>  $namespacedTypes  Map of namespace prefix → type names it owns.
+     * @param  string  $skipNamespace  Skip types that already belong to this namespace (current context).
+     */
+    public function qualifyGlobalType(string $typeStr, array $namespacedTypes, string $skipNamespace = ''): string
+    {
+        foreach ($namespacedTypes as $namespace => $typeNames) {
+            if ($namespace === $skipNamespace) {
+                continue;
+            }
+
+            // Match longer names first to avoid partial replacements (e.g. 'StatusType' before 'Status')
+            usort($typeNames, fn (string $a, string $b): int => strlen($b) - strlen($a));
+
+            foreach ($typeNames as $typeName) {
+                $pattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($typeName, '/').'(?![A-Za-z0-9_$])/';
+                $typeStr = preg_replace($pattern, $namespace.'.'.$typeName, $typeStr) ?? $typeStr;
+            }
+        }
+
+        return $typeStr;
+    }
+
+    /**
      * Sanitize a string for safe inclusion in a JSDoc comment.
      *
      * Prevents premature comment termination by escaping the closing sequence.
