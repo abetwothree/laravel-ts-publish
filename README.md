@@ -23,6 +23,7 @@ For examples of the generated TypeScript output, see [these output examples](wor
 - 🏷️ [Enums](#enums)
 - 🗃️ [Models](#models)
 - 📡 [API Resources](#api-resources)
+- 🧬 [Extending Interfaces](#extending-interfaces-with-tsextends--configs)
 - ❌ [Excluding Content](#excluding-with-tsexclude)
 - 🔤 [Casing Configurations](#casing-configurations)
 - 🌐 [Enum API Resource](#json-enum-http-api-resource)
@@ -1915,6 +1916,112 @@ php artisan ts:publish --only-resources
 ```
 
 The `--only-resources` flag cannot be combined with `--only-enums` or `--only-models`.
+
+## Extending Interfaces with `#[TsExtends]` & Configs
+
+The `#[TsExtends]` attribute allows you to specify that a generated TypeScript interface should extend one or more other interfaces. This is useful when this package's limitations doesn't include properties on your interfaces. Another use is for sharing common properties across multiple models or resources without duplication.
+
+You can place the `#[TsExtends]` attribute on any model or resource class, their parent classes, or even on traits used by those classes. The specified interfaces will be included in the generated TypeScript `extends` clause for any class that has the attribute directly or inherits it from a parent class or trait.
+
+The `#[TsExtends]` attribute can be place multiple times on the same class or trait to define multiple interfaces that should be extended. The interfaces specified in all `#[TsExtends]` attributes on the class and its parents/traits will be combined into a single `extends` clause.
+
+The `#[TsExtends]` attribute accepts the following parameters:
+
+| Parameter     | Type           | Default            | Description                                                      |
+|---------------|----------------|--------------------|------------------------------------------------------------------|
+| `extends`     | `string`       | `required`         | The interface to use or the way it should be used.               |
+| `import`      | `?string`      | `null`             | The import path for the extended interfaces.                     |
+| `types`       | `string[]`     | `[]`               | The names of the interfaces to import from the specified module. |
+
+### Example usage of `#[TsExtends]`
+
+```php
+use AbeTwoThree\LaravelTsPublish\Attributes\TsExtends;
+
+#[TsExtends('ExampleInterface', '@js/types/models')]
+class User extends Model
+{
+    // This model's generated TypeScript interface will extend ExampleInterface from @js/types/models
+}
+```
+
+The above will generate the following TypeScript interface for the `User` model:
+
+```typescript
+import type { ExampleInterface } from '@js/types/models';
+
+export interface User extends ExampleInterface
+{
+    // ... model properties
+}
+```
+
+You can also specify the interface extension with TypeScript helpers like `Partial`, `Pick`, or `Omit`. Use the third argument to list the interfaces used in the extension for proper importing and the first argument will be output as-is in the generated TypeScript:
+
+```php
+use AbeTwoThree\LaravelTsPublish\Attributes\TsExtends;
+
+#[TsExtends('Partial<ExampleInterface>', '@js/types/resources', ['ExampleInterface'])]
+#[TsExtends('Pick<ModularInterface, "id" | "name">', '@js/types/resources', ['ModularInterface'])]
+class UserResource extends JsonResource
+{
+    // This resource's generated TypeScript interface will extend Partial<ExampleInterface> and Pick<ModularInterface, "id" | "name">
+}
+```
+
+The generated TypeScript interface for `UserResource` will look like this:
+
+```typescript
+import type { ExampleInterface, ModularInterface } from '@js/types/resources';
+
+export interface UserResource extends Partial<ExampleInterface>, Pick<ModularInterface, "id" | "name">
+{
+    // ... resource properties
+}
+```
+
+### Global Interface Extensions
+
+In some cases, you may want all your models or resources to extend a common interface without having to add `#[TsExtends]` to each class. You can achieve this with the `ts_extends.models` and `ts_extends.resources` config options:
+
+```php
+// config/ts-publish.php
+'ts_extends' => [
+    'models' => [
+        'HasTimestamps',
+        ['extends' => 'BaseFields', 'import' => '@/types/base'],
+        ['extends' => 'Pick<Auditable, "created_by">', 'import' => '@/types/audit', 'types' => ['Auditable']],
+    ],
+    'resources' => [
+        ['extends' => 'BaseResource', 'import' => '@/types/base'],
+    ],
+],
+```
+
+With the above config, all generated model interfaces will extend `HasTimestamps`, `BaseFields`, and `Pick<Auditable, "created_by">`, while all resource interfaces will extend `BaseResource`. The necessary imports will be included automatically.
+
+Example model:
+
+```typescript
+import type { BaseFields } from '@/types/base';
+import type { Auditable } from '@/types/audit';
+
+export interface User extends HasTimestamps, BaseFields, Pick<Auditable, "created_by">
+{
+    // ... model properties
+}
+```
+
+Example resource:
+
+```typescript
+import type { BaseResource } from '@/types/base';
+
+export interface UserResource extends BaseResource
+{
+    // ... resource properties
+}
+```
 
 ## Excluding with `#[TsExclude]`
 
