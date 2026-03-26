@@ -198,7 +198,10 @@ trait ParsesTsExtends
                         $existing[] = $tn;
                     }
                 }
-                $imports[$entry['import']] = $existing;
+
+                if ($existing !== []) {
+                    $imports[$entry['import']] = $existing;
+                }
             }
 
             $extendsClauses[] = $extendsClause;
