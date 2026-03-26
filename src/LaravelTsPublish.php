@@ -270,42 +270,15 @@ class LaravelTsPublish
 
         // Union type — includes DNF members (e.g. (A&B)|null), intersection slots become unknown
         if ($returnType instanceof ReflectionUnionType) {
-            $types = [];
-            $enums = [];
-            $enumTypes = [];
-            $classes = [];
-            /** @var array<string, list<string>> $customImports */
-            $customImports = [];
-            $enumFqcns = [];
-            $classFqcns = [];
+            $infos = [];
 
             foreach ($returnType->getTypes() as $type) {
-                if ($type instanceof ReflectionNamedType) {
-                    $resolved = $this->phpToTypeScriptType($type->getName());
-                    $types[] = $resolved['type'];
-                    $enums = [...$enums,      ...$resolved['enums']];
-                    $enumTypes = [...$enumTypes,  ...$resolved['enumTypes']];
-                    $classes = [...$classes,    ...$resolved['classes']];
-                    $enumFqcns = [...$enumFqcns,  ...$resolved['enumFqcns']];
-                    $classFqcns = [...$classFqcns, ...$resolved['classFqcns']];
-
-                    foreach ($resolved['customImports'] as $path => $importTypes) {
-                        $customImports[$path] = [...($customImports[$path] ?? []), ...$importTypes];
-                    }
-                } else {
-                    $types[] = 'unknown'; // ReflectionIntersectionType inside a DNF union
-                }
+                $infos[] = $type instanceof ReflectionNamedType
+                    ? $this->phpToTypeScriptType($type->getName())
+                    : $this->emptyTypeScriptInfo(); // ReflectionIntersectionType inside a DNF union → unknown
             }
 
-            $result['type'] = implode(' | ', array_unique($types));
-            $result['enums'] = array_values(array_unique($enums));
-            $result['enumTypes'] = array_values(array_unique($enumTypes));
-            $result['classes'] = array_values(array_unique($classes));
-            $result['customImports'] = $customImports;
-            $result['enumFqcns'] = array_values(array_unique($enumFqcns));
-            $result['classFqcns'] = array_values(array_unique($classFqcns));
-
-            return $result;
+            return $this->mergeTypeScriptInfos($infos);
         }
 
         return $result;
@@ -423,6 +396,48 @@ class LaravelTsPublish
     public function emptyTypeScriptInfo(): array
     {
         return ['type' => 'unknown', 'enums' => [], 'enumTypes' => [], 'classes' => [], 'customImports' => [], 'enumFqcns' => [], 'classFqcns' => []];
+    }
+
+    /**
+     * Merge a list of TypeScriptTypeInfo results into one, joining type strings with ' | '.
+     *
+     * @param  list<TypeScriptTypeInfo>  $infos
+     * @return TypeScriptTypeInfo
+     */
+    public function mergeTypeScriptInfos(array $infos): array
+    {
+        $types = [];
+        $enums = [];
+        $enumTypes = [];
+        $classes = [];
+        /** @var array<string, list<string>> $customImports */
+        $customImports = [];
+        $enumFqcns = [];
+        $classFqcns = [];
+
+        foreach ($infos as $info) {
+            $types[] = $info['type'];
+            $enums = [...$enums, ...$info['enums']];
+            $enumTypes = [...$enumTypes, ...$info['enumTypes']];
+            $classes = [...$classes, ...$info['classes']];
+            $enumFqcns = [...$enumFqcns, ...$info['enumFqcns']];
+            $classFqcns = [...$classFqcns, ...$info['classFqcns']];
+
+            foreach ($info['customImports'] as $path => $importTypes) {
+                $customImports[$path] = [...($customImports[$path] ?? []), ...$importTypes];
+            }
+        }
+
+        $result = $this->emptyTypeScriptInfo();
+        $result['type'] = implode(' | ', array_unique($types));
+        $result['enums'] = array_values(array_unique($enums));
+        $result['enumTypes'] = array_values(array_unique($enumTypes));
+        $result['classes'] = array_values(array_unique($classes));
+        $result['customImports'] = $customImports;
+        $result['enumFqcns'] = array_values(array_unique($enumFqcns));
+        $result['classFqcns'] = array_values(array_unique($classFqcns));
+
+        return $result;
     }
 
     /**

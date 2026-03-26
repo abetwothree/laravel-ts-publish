@@ -2090,6 +2090,14 @@
                 "type": "string | null"
             },
             {
+                "name": "extension",
+                "type": "string | null"
+            },
+            {
+                "name": "size",
+                "type": "number"
+            },
+            {
                 "name": "imageable",
                 "type": "Image"
             },

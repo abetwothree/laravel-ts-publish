@@ -25,6 +25,9 @@ export interface ImageMutators
     is_landscape: boolean;
     /** Aspect ratio as a string (e.g. "16:9") or null if dimensions not set */
     aspect_ratio: string | null;
+    extension: string | null;
+    /** This is the size test to parse from the docblock in the test for accessor type resolution. */
+    size: number;
 }
 
 export interface ImageRelations

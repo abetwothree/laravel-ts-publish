@@ -80,4 +80,24 @@ class Image extends Model
             },
         );
     }
+
+    /** @return Attribute<string|null, never> */
+    protected function extension(): Attribute
+    {
+        return Attribute::make(
+            get: fn () => pathinfo($this->path ?? '', PATHINFO_EXTENSION) ?: null,
+        );
+    }
+
+    /**
+     * This is the size test to parse from the docblock in the test for accessor type resolution.
+     *
+     * @return Attribute<number, never>
+     */
+    protected function size(): Attribute
+    {
+        return Attribute::make(
+            get: fn () => $this->size_bytes,
+        );
+    }
 }
