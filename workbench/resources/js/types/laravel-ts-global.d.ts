@@ -45,6 +45,8 @@ declare global {
             notes: string | null;
             created_at: string | null;
             updated_at: string | null;
+            // Mutators
+            latest_payment: Payment | null;
             // Relations
             user: User;
             user_count: number;
@@ -230,6 +232,7 @@ declare global {
             updated_at: string | null;
             // Mutators
             changes: { attributes: Record<string, unknown>; old: Record<string, unknown> };
+            diff: unknown[] | Record<string, unknown>;
         }
         export interface CompositeComment {
             // Columns
@@ -377,6 +380,27 @@ declare global {
             images: Image[];
             images_count: number;
             images_exists: boolean;
+        }
+        /** Child model that uses SharedExtendsTrait directly AND extends a parent that also uses it. SharedModelInterface should appear only once despite being reachable via two paths. */
+        export interface ChildSharedExtendableModel {
+            // Columns
+            id: number;
+            name: string;
+            email: string;
+            email_verified_at: string | null;
+            password: string;
+            options: string | null;
+            remember_token: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            role: string | null;
+            membership_level: string | null;
+            phone: string | null;
+            avatar: string | null;
+            bio: string | null;
+            settings: string | null;
+            last_login_at: string | null;
+            last_login_ip: string | null;
         }
         export interface Address {
             // Columns
@@ -539,6 +563,48 @@ declare global {
             notifications_count: number;
             notifications_exists: boolean;
         }
+        export interface ModelWithNestedTraitExtends {
+            // Columns
+            id: number;
+            name: string;
+            email: string;
+            email_verified_at: string | null;
+            password: string;
+            options: string | null;
+            remember_token: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            role: string | null;
+            membership_level: string | null;
+            phone: string | null;
+            avatar: string | null;
+            bio: string | null;
+            settings: string | null;
+            last_login_at: string | null;
+            last_login_ip: string | null;
+        }
+        export interface BaseExtendableModel {
+        }
+        export interface BaseSharedExtendableModel {
+            // Columns
+            id: number;
+            name: string;
+            email: string;
+            email_verified_at: string | null;
+            password: string;
+            options: string | null;
+            remember_token: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            role: string | null;
+            membership_level: string | null;
+            phone: string | null;
+            avatar: string | null;
+            bio: string | null;
+            settings: string | null;
+            last_login_at: string | null;
+            last_login_ip: string | null;
+        }
         export interface TaskAssignment {
             // Columns
             id: number;
@@ -691,6 +757,46 @@ declare global {
             assignee_count: number;
             assignee_exists: boolean;
         }
+        export interface ModelWithParentExtends {
+            // Columns
+            id: number;
+            name: string;
+            email: string;
+            email_verified_at: string | null;
+            password: string;
+            options: string | null;
+            remember_token: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            role: string | null;
+            membership_level: string | null;
+            phone: string | null;
+            avatar: string | null;
+            bio: string | null;
+            settings: string | null;
+            last_login_at: string | null;
+            last_login_ip: string | null;
+        }
+        export interface ModelWithTraitExtends {
+            // Columns
+            id: number;
+            name: string;
+            email: string;
+            email_verified_at: string | null;
+            password: string;
+            options: string | null;
+            remember_token: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            role: string | null;
+            membership_level: string | null;
+            phone: string | null;
+            avatar: string | null;
+            bio: string | null;
+            settings: string | null;
+            last_login_at: string | null;
+            last_login_ip: string | null;
+        }
         export interface Image {
             // Columns
             id: number;
@@ -715,6 +821,20 @@ declare global {
             is_landscape: boolean;
             /** Aspect ratio as a string (e.g. "16:9") or null if dimensions not set */
             aspect_ratio: string | null;
+            extension: string | null;
+            /** This is the size test to parse from the docblock in the test for accessor type resolution. */
+            size: number;
+            flexible_id: string | number | null;
+            optional_label: string | null;
+            status_from_docblock: StatusType | null;
+            uploader_from_docblock: User | null;
+            config_from_docblock: MenuSettingsType;
+            data_from_docblock: unknown[];
+            label_from_docblock: string;
+            no_docblock_accessor: unknown;
+            wrong_format_docblock: string | null;
+            positive_int_accessor: number;
+            numeric_string_accessor: string;
             // Relations
             /** Polymorphic parent (Product, Post, User, etc.) */
             imageable: Image;
@@ -986,6 +1106,8 @@ declare global {
             payments?: PaymentResource[];
             payments_count?: number;
             notes?: string | null;
+            latest_payment_only: { invoice_id: number; status: PaymentStatusType; method: PaymentMethodType; currency: CurrencyType; amount: number; reference: string | null; paid_at: string | null } | null;
+            latest_payment_excluded: { id: number; created_at: string | null; updated_at: string | null; due_notice: DueAtNoticeType; invoice: Invoice } | null;
         }
         /** Exercises: multiple EnumResource::make from different namespaces (PaymentStatus, Currency from App), whenHas on PaymentMethod enum attribute, whenNotNull. */
         export interface PaymentResource {
@@ -1113,12 +1235,24 @@ declare global {
             last_login_ip: string | null;
             initials: string;
             is_premium: boolean;
+            profile: Profile | null;
+            posts: Post[];
+            comments: Comment[];
+            orders: Order[];
+            addresses: Address[];
+            teams: Team[];
+            ownedTeams: Team[];
+            images: Image[];
+            notifications: DatabaseNotification[];
         }
         /** Exercises ...$this->only([...]) spread with additional manual keys. */
         export interface OrderOnlyResource {
             id: number;
             status: OrderStatusType;
             total: number;
+            notes: string | null;
+            item_count: number;
+            items: OrderItem[];
             user?: UserResource;
         }
         /** Resource spreading parent::toArray() from JsonResource base with extra keys. */
@@ -1142,6 +1276,15 @@ declare global {
             last_login_ip: string | null;
             initials: string;
             is_premium: boolean;
+            profile: Profile | null;
+            posts: Post[];
+            comments: Comment[];
+            orders: Order[];
+            addresses: Address[];
+            teams: Team[];
+            ownedTeams: Team[];
+            images: Image[];
+            notifications: DatabaseNotification[];
             full_name: unknown;
         }
         /** Exercises: multiple whenAggregated (sum/min/max), whenNotNull, when, whenCounted, two mergeWhen blocks, Resource::collection x2. */
@@ -1183,8 +1326,13 @@ declare global {
             post?: PostResource;
             post_new?: PostResource;
             post_direct: PostResource;
+            post_limited: { id: number; title: string };
+            post_extended: { id: number; title: string; content: string; user_id: number; status: StatusType; published_at: string | null; metadata: unknown[] | null; rating: number | null; category: string; options: unknown[] | null; deleted_at: string | null; category_id: number | null; visibility: VisibilityType | null; priority: PriorityType | null; word_count: number | null; reading_time_minutes: number | null; featured_image_url: string | null; is_pinned: boolean; title_display: string | null; excerpt: string | null; reading_time: string; author: User; categoryRel: Category; comments: Comment[]; tags: Tag[]; images: Image[] } | null;
         }
-        /** Resource with no @mixin or TsResource — tests convention-based model guess. */
+        /** Child resource that uses SharedExtendsInterface AND extends a parent that also uses it. SharedExtendsInterface should appear only once in the result despite being reachable via two paths. */
+        export interface ChildSharedResource {
+        }
+        /** Resource with no @mixin or TsResource — tests convention-based model guess. Also tests multiple TsExtends in parent class, trait, and locally. */
         export interface WarehouseResource {
             id: number;
             name: string;
@@ -1294,6 +1442,7 @@ declare global {
             latitude?: number | null;
             longitude?: number | null;
             is_default: boolean;
+            user: { id: number; name: string };
             coordinates: GeoPoint;
             bounds: GeoBounds;
         }
@@ -1374,6 +1523,8 @@ declare global {
             priority: PriorityType | null;
             priority_new: AsEnum<typeof Priority> | null;
         }
+        export interface RoutableResource {
+        }
         export interface TraitSpreadCoverageResource {
             id: number;
             computed: string;
@@ -1445,6 +1596,8 @@ declare global {
             product?: ProductResource;
             order?: Order;
             options?: Record<string, string | number | boolean> | null;
+            order_limited: { id: number; total: number } | null;
+            order_extended: { id: number; ulid: string; user_id: number; status: OrderStatusType; payment_method: PaymentMethodType | null; currency: CurrencyType; subtotal: number; tax: number; discount: number; total: number; shipping_address: unknown[] | null; billing_address: unknown[] | null; notes: string | null; placed_at: string | null; paid_at: string | null; shipped_at: string | null; delivered_at: string | null; cancelled_at: string | null; ip_address: string | null; user_agent: string | null; deleted_at: string | null; item_count: number; is_paid: boolean; formatted_total: string; user: User; items: OrderItem[] };
         }
         /** Represents a user loaded through a team's belongsToMany pivot. Exercises: whenPivotLoaded, whenPivotLoadedAs, whenHas on enum attributes. */
         export interface TeamMemberResource {
@@ -1485,6 +1638,8 @@ declare global {
             is_paid: boolean;
             formatted_total: string;
             search_index: unknown;
+            user: User;
+            items: OrderItem[];
         }
         /** Resource with no toArray override but a known model — tests implicit delegation. */
         export interface EmptyWithMixinResource {
@@ -1507,6 +1662,18 @@ declare global {
             last_login_ip: string | null;
             initials: string;
             is_premium: boolean;
+            profile: Profile | null;
+            posts: Post[];
+            comments: Comment[];
+            orders: Order[];
+            addresses: Address[];
+            teams: Team[];
+            ownedTeams: Team[];
+            images: Image[];
+            notifications: DatabaseNotification[];
+        }
+        /** Parent resource that uses SharedExtendsInterface — tests BFS dedup when child also uses the same trait. */
+        export interface BaseSharedResource {
         }
         /** Edge-case resource exercising unusual but valid patterns for AST analyzer guard clauses. */
         export interface QuirkyResource {

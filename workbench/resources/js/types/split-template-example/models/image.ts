@@ -1,3 +1,10 @@
+import { type AsEnum } from '@tolki/enum';
+
+import { Status } from '../enums';
+import type { MenuSettingsType } from '@js/types/settings';
+import type { StatusType } from '../enums';
+import type { User } from './';
+
 export interface Image
 {
     id: number;
@@ -25,6 +32,25 @@ export interface ImageMutators
     is_landscape: boolean;
     /** Aspect ratio as a string (e.g. "16:9") or null if dimensions not set */
     aspect_ratio: string | null;
+    extension: string | null;
+    /** This is the size test to parse from the docblock in the test for accessor type resolution. */
+    size: number;
+    flexible_id: string | number | null;
+    optional_label: string | null;
+    status_from_docblock: StatusType | null;
+    uploader_from_docblock: User | null;
+    config_from_docblock: MenuSettingsType;
+    data_from_docblock: unknown[];
+    label_from_docblock: string;
+    no_docblock_accessor: unknown;
+    wrong_format_docblock: string | null;
+    positive_int_accessor: number;
+    numeric_string_accessor: string;
+}
+
+export interface ImageMutatorsResource extends Omit<ImageMutators, 'status_from_docblock'>
+{
+    status_from_docblock: AsEnum<typeof Status> | null;
 }
 
 export interface ImageRelations
@@ -39,3 +65,5 @@ export interface ImageRelations
 }
 
 export interface ImageAll extends Image, ImageMutators, ImageRelations {}
+
+export interface ImageAllResource extends Image, ImageMutatorsResource, ImageRelations {}

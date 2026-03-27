@@ -29,6 +29,8 @@ class OrderItemResource extends JsonResource
             'product' => ProductResource::make($this->whenLoaded('product')),
             'order' => $this->whenLoaded('order'),
             'options' => $this->whenNotNull($this->options),
+            'order_limited' => $this->order?->only('id', 'total'), // relation with only specific attributes
+            'order_extended' => $this->order->except('created_at', 'updated_at'), // relation with except specific attributes
         ];
     }
 }

@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelInspector;
 use AbeTwoThree\LaravelTsPublish\RelationNullable;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
+use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\TracksEnumImports;
 use Illuminate\Database\Eloquent\Casts\Attribute;
@@ -41,6 +42,7 @@ class ModelTransformer extends CoreTransformer
 {
     use BuildsImportMaps;
     use ParsesTsCasts;
+    use ParsesTsExtends;
     use ResolvesAccessorType;
     use ResolvesImportConflicts;
     use TracksEnumImports;
@@ -99,10 +101,14 @@ class ModelTransformer extends CoreTransformer
     /** @var array<string, array{fqcn: string, nullable: bool}> mutator_name => enum property info */
     protected array $enumMutatorProperties = [];
 
+    /** @var list<string> TypeScript extends clauses */
+    protected array $tsExtends = [];
+
     #[Override]
     public function transform(): self
     {
         $this->initInstance()
+            ->parseTsExtends()
             ->parseTsTypeOverrides()
             ->transformColumns()
             ->transformMutators()
@@ -133,6 +139,7 @@ class ModelTransformer extends CoreTransformer
             valueImports: $imports['valueImports'],
             enumColumns: $hasEnums ? $this->buildEnumColumns() : [],
             enumMutators: $hasEnums ? $this->buildEnumMutators() : [],
+            tsExtends: $this->tsExtends,
         );
     }
 
@@ -157,6 +164,19 @@ class ModelTransformer extends CoreTransformer
         $this->filePath = $this->resolveRelativePath((string) $this->reflectionModel->getFileName());
         $this->namespacePath = LaravelTsPublish::namespaceToPath($this->findable);
         $this->description = LaravelTsPublish::parseDocBlockDescription($this->reflectionModel->getDocComment());
+
+        return $this;
+    }
+
+    protected function parseTsExtends(): self
+    {
+        $result = $this->parseTsExtendsFromReflection($this->reflectionModel, 'models');
+
+        $this->tsExtends = $result['extends'];
+
+        foreach ($result['imports'] as $importPath => $typeNames) {
+            $this->customImports[$importPath] = [...($this->customImports[$importPath] ?? []), ...$typeNames];
+        }
 
         return $this;
     }
@@ -562,28 +582,13 @@ class ModelTransformer extends CoreTransformer
                 $valueImports = $this->collectModularValueImports($this->enumPropertyFqcns());
             }
         } else {
-            $enumTypeImports = $this->collectFlatTypeImports($this->enumFqcnMap);
+            ['typeImports' => $typeImports, 'valueImports' => $valueImports] = $this->buildFlatEnumImports(
+                $this->enumFqcnMap,
+                $this->enumPropertyFqcns(),
+                $hasEnums,
+            );
 
-            if ($enumTypeImports) {
-                sort($enumTypeImports);
-                $typeImports['../enums'] = $enumTypeImports;
-            }
-
-            if ($hasEnums) {
-                $enumValueImports = $this->collectFlatValueImports($this->enumPropertyFqcns());
-
-                if ($enumValueImports) {
-                    sort($enumValueImports);
-                    $valueImports['../enums'] = $enumValueImports;
-                }
-            }
-
-            $modelImports = $this->collectFlatTypeImports($modelFqcnMap);
-
-            if ($modelImports) {
-                sort($modelImports);
-                $typeImports['./'] = $modelImports;
-            }
+            $this->addSortedImports($typeImports, './', $this->collectFlatTypeImports($modelFqcnMap));
         }
 
         $typeImports = $this->mergeCustomImports($typeImports, $this->customImports);

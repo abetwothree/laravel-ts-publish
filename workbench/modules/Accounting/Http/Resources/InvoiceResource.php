@@ -37,6 +37,24 @@ class InvoiceResource extends JsonResource
             $this->mergeWhen($this->status?->value === 'paid', [
                 'notes' => $this->notes,
             ]),
+            'latest_payment_only' => $this->latest_payment?->only(
+                'invoice_id',
+                'status',
+                'method',
+                'currency',
+                'amount',
+                'reference',
+                'paid_at',
+            ),
+            'latest_payment_excluded' => $this->latest_payment?->except(
+                'invoice_id',
+                'status',
+                'method',
+                'currency',
+                'amount',
+                'reference',
+                'paid_at',
+            ),
         ];
     }
 }

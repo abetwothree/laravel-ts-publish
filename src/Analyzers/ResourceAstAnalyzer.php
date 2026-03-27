@@ -20,6 +20,7 @@ use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
@@ -48,7 +49,7 @@ use ReflectionClass;
  * @phpstan-import-type ClassMapType from ResourceAnalysis
  * @phpstan-import-type ImportMapType from ResourceAnalysis
  *
- * @phpstan-type ValueExpressionResult = array{type: string, optional: bool, enumFqcn?: class-string, directEnumFqcn?: class-string, resourceFqcn?: class-string, modelFqcn?: class-string}
+ * @phpstan-type ValueExpressionResult = array{type: string, optional: bool, enumFqcn?: class-string, directEnumFqcn?: class-string, resourceFqcn?: class-string, modelFqcn?: class-string, embeddedEnumFqcns?: list<class-string>, embeddedModelFqcns?: list<class-string>}
  */
 class ResourceAstAnalyzer
 {
@@ -346,6 +347,17 @@ class ResourceAstAnalyzer
         // $this->property
         if ($this->isThisPropertyFetch($expr)) {
             return $this->analyzeThisProperty($expr);
+        }
+
+        // $this->relation->only([...]) or $this->relation?->only([...])
+        if (($expr instanceof MethodCall || $expr instanceof NullsafeMethodCall)
+            && $expr->name instanceof Identifier
+            && in_array($expr->name->toString(), $this->supportedAttributeFilters(), true)
+            && $expr->var instanceof PropertyFetch
+            && $expr->var->var instanceof Variable
+            && $expr->var->var->name === 'this'
+        ) {
+            return $this->analyzeRelationFilter($expr);
         }
 
         return ['type' => 'unknown', 'optional' => false];
@@ -1195,6 +1207,63 @@ class ResourceAstAnalyzer
     }
 
     /**
+     * Analyze `$this->relation->only([...])` or `$this->relation?->only([...])`.
+     *
+     * Resolves the relation's model class, filters it to the specified keys,
+     * and returns an inline TypeScript type like `{ id: number; name: string }`.
+     * Nullable chaining (`?->`) appends `| null` to the type.
+     *
+     * @return ValueExpressionResult
+     */
+    protected function analyzeRelationFilter(MethodCall|NullsafeMethodCall $call): array
+    {
+        $result = ['type' => 'unknown', 'optional' => false];
+
+        $nullable = $call instanceof NullsafeMethodCall;
+        $methodName = $call->name instanceof Identifier ? $call->name->toString() : null;
+
+        if ($methodName === null) {
+            return $result; // @codeCoverageIgnore
+        }
+
+        /** @var PropertyFetch $varExpr */
+        $varExpr = $call->var;
+        $propName = $varExpr->name instanceof Identifier ? $varExpr->name->toString() : null;
+
+        if ($propName === null) {
+            return $result; // @codeCoverageIgnore
+        }
+
+        $relationInfo = $this->resolveModelRelationTypeInfo($propName);
+        $modelFqcn = $relationInfo['modelFqcn'] ?? $this->resolveAccessorModelFqcn($propName);
+
+        if ($modelFqcn === null) {
+            return $result; // @codeCoverageIgnore
+        }
+
+        $keys = $this->extractFilterKeys($call);
+
+        if ($keys === null || $keys === []) {
+            return $result; // @codeCoverageIgnore
+        }
+
+        $include = $methodName === 'only';
+        $filterResult = $this->resolveFilteredRelationType($modelFqcn, $keys, $include);
+        $inlineType = $filterResult['type'];
+
+        if ($nullable && $inlineType !== 'unknown') {
+            $inlineType .= ' | null';
+        }
+
+        return [
+            ...$result,
+            'type' => $inlineType,
+            'embeddedEnumFqcns' => $filterResult['enumFqcns'],
+            'embeddedModelFqcns' => $filterResult['modelFqcns'],
+        ];
+    }
+
+    /**
      * Dispatch FQCN results from a value expression into the tracking maps.
      *
      * @param  ValueExpressionResult  $result
@@ -1225,6 +1294,16 @@ class ResourceAstAnalyzer
 
         if (isset($result['modelFqcn'])) {
             $modelFqcns[$keyName] = $result['modelFqcn'];
+        }
+
+        // Embedded FQCNs from inline relation filter types (e.g. $this->post->only([...])).
+        // Using FQCN as both key and value: ResourceTransformer only reads the value, never the key.
+        foreach ($result['embeddedEnumFqcns'] ?? [] as $fqcn) {
+            $directEnumFqcns[$fqcn] = $fqcn;
+        }
+
+        foreach ($result['embeddedModelFqcns'] ?? [] as $fqcn) {
+            $modelFqcns[$fqcn] = $fqcn;
         }
     }
 }

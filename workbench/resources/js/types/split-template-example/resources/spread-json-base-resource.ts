@@ -1,4 +1,5 @@
 import type { MembershipLevelType, RoleType } from '../enums';
+import type { Address, Comment, DatabaseNotification, Image, Order, Post, Profile, Team } from '../models';
 
 /** Resource spreading parent::toArray() from JsonResource base with extra keys. */
 export interface SpreadJsonBaseResource
@@ -22,5 +23,14 @@ export interface SpreadJsonBaseResource
     last_login_ip: string | null;
     initials: string;
     is_premium: boolean;
+    profile: Profile | null;
+    posts: Post[];
+    comments: Comment[];
+    orders: Order[];
+    addresses: Address[];
+    teams: Team[];
+    ownedTeams: Team[];
+    images: Image[];
+    notifications: DatabaseNotification[];
     full_name: unknown;
 }

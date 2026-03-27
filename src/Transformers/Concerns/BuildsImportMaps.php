@@ -120,4 +120,39 @@ trait BuildsImportMaps
 
         return array_values(array_unique($imports));
     }
+
+    /**
+     * Build flat enum type and value imports for the '../enums' import path.
+     *
+     * @param  array<string, string>  $enumFqcnMap  FQCN => TypeScript type name
+     * @param  list<string>  $enumFqcns  Ordered list of enum FQCNs for value imports
+     * @return array{typeImports: TypesImportMap, valueImports: TypesImportMap}
+     */
+    protected function buildFlatEnumImports(array $enumFqcnMap, array $enumFqcns, bool $hasEnums): array
+    {
+        $typeImports = [];
+        $valueImports = [];
+
+        $this->addSortedImports($typeImports, '../enums', $this->collectFlatTypeImports($enumFqcnMap));
+
+        if ($hasEnums) {
+            $this->addSortedImports($valueImports, '../enums', $this->collectFlatValueImports($enumFqcns));
+        }
+
+        return ['typeImports' => $typeImports, 'valueImports' => $valueImports];
+    }
+
+    /**
+     * Sort $items and add to $imports under $path if non-empty.
+     *
+     * @param  TypesImportMap  $imports
+     * @param  list<string>  $items
+     */
+    protected function addSortedImports(array &$imports, string $path, array $items): void
+    {
+        if ($items !== []) {
+            sort($items);
+            $imports[$path] = $items;
+        }
+    }
 }

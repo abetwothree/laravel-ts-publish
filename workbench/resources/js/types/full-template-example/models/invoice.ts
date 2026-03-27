@@ -20,6 +20,8 @@ export interface Invoice
     notes: string | null;
     created_at: string | null;
     updated_at: string | null;
+    // Mutators
+    latest_payment: Payment | null;
     // Relations
     user: User;
     payments: Payment[];

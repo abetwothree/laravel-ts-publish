@@ -4,6 +4,7 @@ use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
 use Illuminate\Filesystem\Filesystem;
 use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Http\Resources\WarehouseResource;
 
 test('writes resource content from transformer', function () {
     $writer = new ResourceWriter(new Filesystem);
@@ -77,4 +78,30 @@ test('writes to namespace-based directory in modular mode', function () {
     config()->set('ts-publish.modular_publishing', true);
 
     $writer->write($transformer);
+});
+
+test('renders extends clause from TsExtends attribute', function () {
+    $writer = new ResourceWriter(new Filesystem);
+    $transformer = new ResourceTransformer(WarehouseResource::class);
+
+    config()->set('ts-publish.output_to_files', false);
+
+    $content = $writer->write($transformer);
+
+    expect($content)
+        ->toContain('export interface WarehouseResource extends BaseResource')
+        ->toContain("import type { BaseResource } from '@/types/base'");
+});
+
+test('resource without TsExtends renders plain interface', function () {
+    $writer = new ResourceWriter(new Filesystem);
+    $transformer = new ResourceTransformer(PostResource::class);
+
+    config()->set('ts-publish.output_to_files', false);
+
+    $content = $writer->write($transformer);
+
+    expect($content)
+        ->toContain('export interface PostResource')
+        ->not->toContain('extends');
 });

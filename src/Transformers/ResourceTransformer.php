@@ -10,9 +10,11 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResourceCasts;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
+use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesClassNames;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsResourceDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
+use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\TracksEnumImports;
 use Illuminate\Database\Eloquent\Model;
@@ -34,6 +36,8 @@ class ResourceTransformer extends CoreTransformer
 {
     use BuildsImportMaps;
     use ParsesTsCasts;
+    use ParsesTsExtends;
+    use ResolvesClassNames;
     use ResolvesImportConflicts;
     use TracksEnumImports;
 
@@ -93,10 +97,14 @@ class ResourceTransformer extends CoreTransformer
     /** @var array<string, string> property name => import path from model's #[TsCasts] */
     protected array $modelTsCastsImportPaths = [];
 
+    /** @var list<string> TypeScript extends clauses */
+    protected array $tsExtends = [];
+
     #[Override]
     public function transform(): self
     {
         $this->initReflection()
+            ->parseTsExtends()
             ->resolveModelClass()
             ->parseModelTsCastsOverrides()
             ->parseTsResourceCastsOverrides()
@@ -121,6 +129,7 @@ class ResourceTransformer extends CoreTransformer
             typeImports: $this->typeImports,
             valueImports: $this->valueImports,
             modelClass: $this->modelClass,
+            tsExtends: $this->tsExtends,
         );
     }
 
@@ -152,6 +161,19 @@ class ResourceTransformer extends CoreTransformer
         return $this;
     }
 
+    protected function parseTsExtends(): self
+    {
+        $result = $this->parseTsExtendsFromReflection($this->reflectionResource, 'resources');
+
+        $this->tsExtends = $result['extends'];
+
+        foreach ($result['imports'] as $importPath => $typeNames) {
+            $this->customImports[$importPath] = [...($this->customImports[$importPath] ?? []), ...$typeNames];
+        }
+
+        return $this;
+    }
+
     /**
      * Resolve the backing model class from
      * 1. #[TsResource(model:)] attribute
@@ -178,37 +200,13 @@ class ResourceTransformer extends CoreTransformer
         $docComment = $this->reflectionResource->getDocComment();
 
         if ($docComment !== false && preg_match('/@mixin\s+([\w\\\\]+)/', $docComment, $matches)) {
-            $mixinClass = ltrim($matches[1], '\\');
+            $resolved = $this->resolveDocblockType($matches[1], $this->reflectionResource);
 
-            // If already a FQCN (unreachable when Pint enforces fully_qualified_strict_types)
-            // @codeCoverageIgnoreStart
-            if (class_exists($mixinClass) && is_a($mixinClass, Model::class, true)) {
-                $this->modelClass = $mixinClass;
-
-                return $this;
-            }
-            // @codeCoverageIgnoreEnd
-
-            // Resolve from use statements in the source file
-            $resolved = $this->resolveClassFromUseStatements($mixinClass);
-
-            if ($resolved !== null) {
+            if (class_exists($resolved) && is_a($resolved, Model::class, true)) {
                 $this->modelClass = $resolved;
 
                 return $this;
             }
-
-            // Try to resolve relative to the resource's namespace
-            // @codeCoverageIgnoreStart
-            $resourceNamespace = $this->reflectionResource->getNamespaceName();
-            $fullClass = $resourceNamespace.'\\'.$mixinClass;
-
-            if (class_exists($fullClass) && is_a($fullClass, Model::class, true)) {
-                $this->modelClass = $fullClass;
-
-                return $this;
-            }
-            // @codeCoverageIgnoreEnd
         }
 
         // Priority 3: convention-based guess (reverse of Laravel's TransformsToResource)
@@ -230,27 +228,6 @@ class ResourceTransformer extends CoreTransformer
         }
 
         return $this;
-    }
-
-    /**
-     * Resolve a short class name from the resource file's use statements.
-     *
-     * @return class-string<Model>|null
-     */
-    protected function resolveClassFromUseStatements(string $shortName): ?string
-    {
-        $filePath = (string) $this->reflectionResource->getFileName();
-        $source = (string) file_get_contents($filePath);
-
-        if (preg_match_all('/^use\s+([\w\\\\]+\\\\'.preg_quote($shortName, '/').')\s*;/m', $source, $matches)) {
-            $fqcn = $matches[1][0];
-
-            if (class_exists($fqcn) && is_a($fqcn, Model::class, true)) {
-                return $fqcn;
-            }
-        }
-
-        return null; // @codeCoverageIgnore
     }
 
     /**
@@ -498,35 +475,14 @@ class ResourceTransformer extends CoreTransformer
                 $valueImports = $this->collectModularValueImports($this->enumPropertyFqcns());
             }
         } else {
-            $enumTypeImports = $this->collectFlatTypeImports($this->enumFqcnMap);
+            ['typeImports' => $typeImports, 'valueImports' => $valueImports] = $this->buildFlatEnumImports(
+                $this->enumFqcnMap,
+                $this->enumPropertyFqcns(),
+                $hasEnums,
+            );
 
-            if ($enumTypeImports !== []) {
-                sort($enumTypeImports);
-                $typeImports['../enums'] = $enumTypeImports;
-            }
-
-            if ($hasEnums) {
-                $enumValueImports = $this->collectFlatValueImports($this->enumPropertyFqcns());
-
-                if ($enumValueImports !== []) {
-                    sort($enumValueImports);
-                    $valueImports['../enums'] = $enumValueImports;
-                }
-            }
-
-            $resourceImports = $this->collectFlatTypeImports($this->resourceFqcnMap);
-
-            if ($resourceImports !== []) {
-                sort($resourceImports);
-                $typeImports['./'] = $resourceImports;
-            }
-
-            $modelImports = $this->collectFlatTypeImports($this->modelFqcnMap);
-
-            if ($modelImports !== []) {
-                sort($modelImports);
-                $typeImports['../models'] = $modelImports;
-            }
+            $this->addSortedImports($typeImports, './', $this->collectFlatTypeImports($this->resourceFqcnMap));
+            $this->addSortedImports($typeImports, '../models', $this->collectFlatTypeImports($this->modelFqcnMap));
         }
 
         $typeImports = $this->mergeCustomImports($typeImports, $this->customImports);

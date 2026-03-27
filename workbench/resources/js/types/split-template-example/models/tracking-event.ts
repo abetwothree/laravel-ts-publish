@@ -13,6 +13,7 @@ export interface TrackingEvent
 export interface TrackingEventMutators
 {
     changes: { attributes: Record<string, unknown>; old: Record<string, unknown> };
+    diff: unknown[] | Record<string, unknown>;
 }
 
 export interface TrackingEventAll extends TrackingEvent, TrackingEventMutators {}

@@ -112,6 +112,10 @@
                 "type": "string | null"
             },
             {
+                "name": "latest_payment",
+                "type": "Payment | null"
+            },
+            {
                 "name": "user",
                 "type": "User"
             },
@@ -490,6 +494,10 @@
             {
                 "name": "changes",
                 "type": "{ attributes: Record<string, unknown>; old: Record<string, unknown> }"
+            },
+            {
+                "name": "diff",
+                "type": "unknown[] | Record<string, unknown>"
             }
         ],
         "Reaction": [
@@ -1244,6 +1252,76 @@
                 "type": "boolean"
             }
         ],
+        "ChildSharedExtendableModel": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "name",
+                "type": "string"
+            },
+            {
+                "name": "email",
+                "type": "string"
+            },
+            {
+                "name": "email_verified_at",
+                "type": "string | null"
+            },
+            {
+                "name": "password",
+                "type": "string"
+            },
+            {
+                "name": "options",
+                "type": "string | null"
+            },
+            {
+                "name": "remember_token",
+                "type": "string | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "role",
+                "type": "string | null"
+            },
+            {
+                "name": "membership_level",
+                "type": "string | null"
+            },
+            {
+                "name": "phone",
+                "type": "string | null"
+            },
+            {
+                "name": "avatar",
+                "type": "string | null"
+            },
+            {
+                "name": "bio",
+                "type": "string | null"
+            },
+            {
+                "name": "settings",
+                "type": "string | null"
+            },
+            {
+                "name": "last_login_at",
+                "type": "string | null"
+            },
+            {
+                "name": "last_login_ip",
+                "type": "string | null"
+            }
+        ],
         "Address": [
             {
                 "name": "id",
@@ -1567,6 +1645,147 @@
             },
             {
                 "name": "updated_at",
+                "type": "string | null"
+            }
+        ],
+        "ModelWithNestedTraitExtends": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "name",
+                "type": "string"
+            },
+            {
+                "name": "email",
+                "type": "string"
+            },
+            {
+                "name": "email_verified_at",
+                "type": "string | null"
+            },
+            {
+                "name": "password",
+                "type": "string"
+            },
+            {
+                "name": "options",
+                "type": "string | null"
+            },
+            {
+                "name": "remember_token",
+                "type": "string | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "role",
+                "type": "string | null"
+            },
+            {
+                "name": "membership_level",
+                "type": "string | null"
+            },
+            {
+                "name": "phone",
+                "type": "string | null"
+            },
+            {
+                "name": "avatar",
+                "type": "string | null"
+            },
+            {
+                "name": "bio",
+                "type": "string | null"
+            },
+            {
+                "name": "settings",
+                "type": "string | null"
+            },
+            {
+                "name": "last_login_at",
+                "type": "string | null"
+            },
+            {
+                "name": "last_login_ip",
+                "type": "string | null"
+            }
+        ],
+        "BaseExtendableModel": [],
+        "BaseSharedExtendableModel": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "name",
+                "type": "string"
+            },
+            {
+                "name": "email",
+                "type": "string"
+            },
+            {
+                "name": "email_verified_at",
+                "type": "string | null"
+            },
+            {
+                "name": "password",
+                "type": "string"
+            },
+            {
+                "name": "options",
+                "type": "string | null"
+            },
+            {
+                "name": "remember_token",
+                "type": "string | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "role",
+                "type": "string | null"
+            },
+            {
+                "name": "membership_level",
+                "type": "string | null"
+            },
+            {
+                "name": "phone",
+                "type": "string | null"
+            },
+            {
+                "name": "avatar",
+                "type": "string | null"
+            },
+            {
+                "name": "bio",
+                "type": "string | null"
+            },
+            {
+                "name": "settings",
+                "type": "string | null"
+            },
+            {
+                "name": "last_login_at",
+                "type": "string | null"
+            },
+            {
+                "name": "last_login_ip",
                 "type": "string | null"
             }
         ],
@@ -2016,6 +2235,146 @@
                 "type": "boolean"
             }
         ],
+        "ModelWithParentExtends": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "name",
+                "type": "string"
+            },
+            {
+                "name": "email",
+                "type": "string"
+            },
+            {
+                "name": "email_verified_at",
+                "type": "string | null"
+            },
+            {
+                "name": "password",
+                "type": "string"
+            },
+            {
+                "name": "options",
+                "type": "string | null"
+            },
+            {
+                "name": "remember_token",
+                "type": "string | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "role",
+                "type": "string | null"
+            },
+            {
+                "name": "membership_level",
+                "type": "string | null"
+            },
+            {
+                "name": "phone",
+                "type": "string | null"
+            },
+            {
+                "name": "avatar",
+                "type": "string | null"
+            },
+            {
+                "name": "bio",
+                "type": "string | null"
+            },
+            {
+                "name": "settings",
+                "type": "string | null"
+            },
+            {
+                "name": "last_login_at",
+                "type": "string | null"
+            },
+            {
+                "name": "last_login_ip",
+                "type": "string | null"
+            }
+        ],
+        "ModelWithTraitExtends": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "name",
+                "type": "string"
+            },
+            {
+                "name": "email",
+                "type": "string"
+            },
+            {
+                "name": "email_verified_at",
+                "type": "string | null"
+            },
+            {
+                "name": "password",
+                "type": "string"
+            },
+            {
+                "name": "options",
+                "type": "string | null"
+            },
+            {
+                "name": "remember_token",
+                "type": "string | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "role",
+                "type": "string | null"
+            },
+            {
+                "name": "membership_level",
+                "type": "string | null"
+            },
+            {
+                "name": "phone",
+                "type": "string | null"
+            },
+            {
+                "name": "avatar",
+                "type": "string | null"
+            },
+            {
+                "name": "bio",
+                "type": "string | null"
+            },
+            {
+                "name": "settings",
+                "type": "string | null"
+            },
+            {
+                "name": "last_login_at",
+                "type": "string | null"
+            },
+            {
+                "name": "last_login_ip",
+                "type": "string | null"
+            }
+        ],
         "Image": [
             {
                 "name": "id",
@@ -2088,6 +2447,58 @@
             {
                 "name": "aspect_ratio",
                 "type": "string | null"
+            },
+            {
+                "name": "extension",
+                "type": "string | null"
+            },
+            {
+                "name": "size",
+                "type": "number"
+            },
+            {
+                "name": "flexible_id",
+                "type": "string | number | null"
+            },
+            {
+                "name": "optional_label",
+                "type": "string | null"
+            },
+            {
+                "name": "status_from_docblock",
+                "type": "StatusType | null"
+            },
+            {
+                "name": "uploader_from_docblock",
+                "type": "User | null"
+            },
+            {
+                "name": "config_from_docblock",
+                "type": "MenuSettingsType"
+            },
+            {
+                "name": "data_from_docblock",
+                "type": "unknown[]"
+            },
+            {
+                "name": "label_from_docblock",
+                "type": "string"
+            },
+            {
+                "name": "no_docblock_accessor",
+                "type": "unknown"
+            },
+            {
+                "name": "wrong_format_docblock",
+                "type": "string | null"
+            },
+            {
+                "name": "positive_int_accessor",
+                "type": "number"
+            },
+            {
+                "name": "numeric_string_accessor",
+                "type": "string"
             },
             {
                 "name": "imageable",
@@ -3391,6 +3802,16 @@
                 "name": "notes",
                 "type": "string | null",
                 "optional": true
+            },
+            {
+                "name": "latest_payment_only",
+                "type": "{ invoice_id: number; status: PaymentStatusType; method: PaymentMethodType; currency: CurrencyType; amount: number; reference: string | null; paid_at: string | null } | null",
+                "optional": false
+            },
+            {
+                "name": "latest_payment_excluded",
+                "type": "{ id: number; created_at: string | null; updated_at: string | null; due_notice: DueAtNoticeType; invoice: Invoice } | null",
+                "optional": false
             }
         ],
         "PaymentResource": [
@@ -3944,6 +4365,51 @@
                 "name": "is_premium",
                 "type": "boolean",
                 "optional": false
+            },
+            {
+                "name": "profile",
+                "type": "Profile | null",
+                "optional": false
+            },
+            {
+                "name": "posts",
+                "type": "Post[]",
+                "optional": false
+            },
+            {
+                "name": "comments",
+                "type": "Comment[]",
+                "optional": false
+            },
+            {
+                "name": "orders",
+                "type": "Order[]",
+                "optional": false
+            },
+            {
+                "name": "addresses",
+                "type": "Address[]",
+                "optional": false
+            },
+            {
+                "name": "teams",
+                "type": "Team[]",
+                "optional": false
+            },
+            {
+                "name": "ownedTeams",
+                "type": "Team[]",
+                "optional": false
+            },
+            {
+                "name": "images",
+                "type": "Image[]",
+                "optional": false
+            },
+            {
+                "name": "notifications",
+                "type": "DatabaseNotification[]",
+                "optional": false
             }
         ],
         "OrderOnlyResource": [
@@ -3960,6 +4426,21 @@
             {
                 "name": "total",
                 "type": "number",
+                "optional": false
+            },
+            {
+                "name": "notes",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "item_count",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "items",
+                "type": "OrderItem[]",
                 "optional": false
             },
             {
@@ -4062,6 +4543,51 @@
             {
                 "name": "is_premium",
                 "type": "boolean",
+                "optional": false
+            },
+            {
+                "name": "profile",
+                "type": "Profile | null",
+                "optional": false
+            },
+            {
+                "name": "posts",
+                "type": "Post[]",
+                "optional": false
+            },
+            {
+                "name": "comments",
+                "type": "Comment[]",
+                "optional": false
+            },
+            {
+                "name": "orders",
+                "type": "Order[]",
+                "optional": false
+            },
+            {
+                "name": "addresses",
+                "type": "Address[]",
+                "optional": false
+            },
+            {
+                "name": "teams",
+                "type": "Team[]",
+                "optional": false
+            },
+            {
+                "name": "ownedTeams",
+                "type": "Team[]",
+                "optional": false
+            },
+            {
+                "name": "images",
+                "type": "Image[]",
+                "optional": false
+            },
+            {
+                "name": "notifications",
+                "type": "DatabaseNotification[]",
                 "optional": false
             },
             {
@@ -4233,8 +4759,19 @@
                 "name": "post_direct",
                 "type": "PostResource",
                 "optional": false
+            },
+            {
+                "name": "post_limited",
+                "type": "{ id: number; title: string }",
+                "optional": false
+            },
+            {
+                "name": "post_extended",
+                "type": "{ id: number; title: string; content: string; user_id: number; status: StatusType; published_at: string | null; metadata: unknown[] | null; rating: number | null; category: string; options: unknown[] | null; deleted_at: string | null; category_id: number | null; visibility: VisibilityType | null; priority: PriorityType | null; word_count: number | null; reading_time_minutes: number | null; featured_image_url: string | null; is_pinned: boolean; title_display: string | null; excerpt: string | null; reading_time: string; author: User; categoryRel: Category; comments: Comment[]; tags: Tag[]; images: Image[] } | null",
+                "optional": false
             }
         ],
+        "ChildSharedResource": [],
         "WarehouseResource": [
             {
                 "name": "id",
@@ -4613,6 +5150,11 @@
                 "optional": false
             },
             {
+                "name": "user",
+                "type": "{ id: number; name: string }",
+                "optional": false
+            },
+            {
                 "name": "coordinates",
                 "type": "GeoPoint",
                 "optional": false
@@ -4904,6 +5446,7 @@
                 "optional": false
             }
         ],
+        "RoutableResource": [],
         "TraitSpreadCoverageResource": [
             {
                 "name": "id",
@@ -5182,6 +5725,16 @@
                 "name": "options",
                 "type": "Record<string, string | number | boolean> | null",
                 "optional": true
+            },
+            {
+                "name": "order_limited",
+                "type": "{ id: number; total: number } | null",
+                "optional": false
+            },
+            {
+                "name": "order_extended",
+                "type": "{ id: number; ulid: string; user_id: number; status: OrderStatusType; payment_method: PaymentMethodType | null; currency: CurrencyType; subtotal: number; tax: number; discount: number; total: number; shipping_address: unknown[] | null; billing_address: unknown[] | null; notes: string | null; placed_at: string | null; paid_at: string | null; shipped_at: string | null; delivered_at: string | null; cancelled_at: string | null; ip_address: string | null; user_agent: string | null; deleted_at: string | null; item_count: number; is_paid: boolean; formatted_total: string; user: User; items: OrderItem[] }",
+                "optional": false
             }
         ],
         "TeamMemberResource": [
@@ -5356,6 +5909,16 @@
                 "name": "search_index",
                 "type": "unknown",
                 "optional": false
+            },
+            {
+                "name": "user",
+                "type": "User",
+                "optional": false
+            },
+            {
+                "name": "items",
+                "type": "OrderItem[]",
+                "optional": false
             }
         ],
         "EmptyWithMixinResource": [
@@ -5453,8 +6016,54 @@
                 "name": "is_premium",
                 "type": "boolean",
                 "optional": false
+            },
+            {
+                "name": "profile",
+                "type": "Profile | null",
+                "optional": false
+            },
+            {
+                "name": "posts",
+                "type": "Post[]",
+                "optional": false
+            },
+            {
+                "name": "comments",
+                "type": "Comment[]",
+                "optional": false
+            },
+            {
+                "name": "orders",
+                "type": "Order[]",
+                "optional": false
+            },
+            {
+                "name": "addresses",
+                "type": "Address[]",
+                "optional": false
+            },
+            {
+                "name": "teams",
+                "type": "Team[]",
+                "optional": false
+            },
+            {
+                "name": "ownedTeams",
+                "type": "Team[]",
+                "optional": false
+            },
+            {
+                "name": "images",
+                "type": "Image[]",
+                "optional": false
+            },
+            {
+                "name": "notifications",
+                "type": "DatabaseNotification[]",
+                "optional": false
             }
         ],
+        "BaseSharedResource": [],
         "QuirkyResource": [
             {
                 "name": "id",

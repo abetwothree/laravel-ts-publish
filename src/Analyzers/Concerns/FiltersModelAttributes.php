@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Analyzers\Concerns;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Scalar\String_;
@@ -59,11 +60,13 @@ trait FiltersModelAttributes
     }
 
     /**
-     * Extract string keys from the first Array_ argument of a filter method call.
+     * Extract string keys from a filter method call's arguments.
+     *
+     * Supports both the array form `->only(['id', 'name'])` and the variadic form `->only('id', 'name')`.
      *
      * @return list<string>|null
      */
-    protected function extractFilterKeys(MethodCall $call): ?array
+    protected function extractFilterKeys(MethodCall|NullsafeMethodCall $call): ?array
     {
         if ($call->isFirstClassCallable()) {
             return null; // @codeCoverageIgnore
@@ -71,20 +74,35 @@ trait FiltersModelAttributes
 
         $args = $call->getArgs();
 
-        if (count($args) < 1 || ! $args[0]->value instanceof Array_) {
-            return null;
+        if (count($args) < 1) {
+            return null; // @codeCoverageIgnore
         }
 
+        // Array form: ->only(['id', 'name'])
+        if ($args[0]->value instanceof Array_) {
+            /** @var list<string> $keys */
+            $keys = [];
+
+            foreach ($args[0]->value->items as $arrayItem) {
+                if ($arrayItem->value instanceof String_) {
+                    $keys[] = $arrayItem->value->value;
+                }
+            }
+
+            return $keys !== [] ? $keys : null;
+        }
+
+        // Variadic form: ->only('id', 'name')
         /** @var list<string> $keys */
         $keys = [];
 
-        foreach ($args[0]->value->items as $arrayItem) {
-            if ($arrayItem->value instanceof String_) {
-                $keys[] = $arrayItem->value->value;
+        foreach ($args as $arg) {
+            if ($arg->value instanceof String_) {
+                $keys[] = $arg->value->value;
             }
         }
 
-        return $keys;
+        return $keys !== [] ? $keys : null;
     }
 
     /**
@@ -141,9 +159,18 @@ trait FiltersModelAttributes
             ARRAY_FILTER_USE_KEY,
         );
 
+        $filteredModelFqcns = array_filter(
+            $analysis->modelFqcns,
+            fn (string $key): bool => $include
+                ? in_array($key, $keys, true)
+                : ! in_array($key, $keys, true),
+            ARRAY_FILTER_USE_KEY,
+        );
+
         return new ResourceAnalysis(
             properties: $filteredProperties,
             directEnumFqcns: $filteredEnumFqcns,
+            modelFqcns: $filteredModelFqcns,
         );
     }
 }

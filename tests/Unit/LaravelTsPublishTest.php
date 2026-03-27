@@ -3,6 +3,7 @@
 use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
+use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -197,6 +198,69 @@ describe('phpToTypeScriptType', function () {
 
     test('phpToTypeScriptType returns unknown for unresolvable types', function () {
         expect($this->service->phpToTypeScriptType('some_completely_fake_type')['type'])->toBe('unknown');
+    });
+
+    // Nullable shorthand ?T
+    test('phpToTypeScriptType resolves ?string to string | null', function () {
+        $result = $this->service->phpToTypeScriptType('?string');
+
+        expect($result['type'])->toBe('string | null');
+    });
+
+    test('phpToTypeScriptType resolves ?int to number | null', function () {
+        $result = $this->service->phpToTypeScriptType('?int');
+
+        expect($result['type'])->toBe('number | null');
+    });
+
+    test('phpToTypeScriptType resolves ?Status enum to StatusType | null', function () {
+        $result = $this->service->phpToTypeScriptType('?'.Status::class);
+
+        expect($result['type'])->toBe('StatusType | null')
+            ->and($result['enumFqcns'])->toContain(Status::class);
+    });
+
+    // Arrayable (step 5a)
+    test('phpToTypeScriptType resolves Arrayable class to unknown[]', function () {
+        $result = $this->service->phpToTypeScriptType(ArrayableValueObject::class);
+
+        expect($result['type'])->toBe('unknown[]')
+            ->and($result['classes'])->toBeEmpty()
+            ->and($result['classFqcns'])->toBeEmpty();
+    });
+
+    // __toString (step 5b)
+    test('phpToTypeScriptType resolves class with __toString to string', function () {
+        $result = $this->service->phpToTypeScriptType(StringableValueObject::class);
+
+        expect($result['type'])->toBe('string')
+            ->and($result['classes'])->toBeEmpty()
+            ->and($result['classFqcns'])->toBeEmpty();
+    });
+
+    // PHPStan primitives
+    test('phpToTypeScriptType resolves numeric-string to string via exact map', function () {
+        expect($this->service->phpToTypeScriptType('numeric-string')['type'])->toBe('string');
+    });
+
+    test('phpToTypeScriptType resolves positive-int to number via partial map match', function () {
+        expect($this->service->phpToTypeScriptType('positive-int')['type'])->toBe('number');
+    });
+
+    test('phpToTypeScriptType resolves array-key to string | number', function () {
+        expect($this->service->phpToTypeScriptType('array-key')['type'])->toBe('string | number');
+    });
+
+    test('phpToTypeScriptType resolves scalar to string | number | boolean', function () {
+        expect($this->service->phpToTypeScriptType('scalar')['type'])->toBe('string | number | boolean');
+    });
+
+    test('phpToTypeScriptType resolves never to never', function () {
+        expect($this->service->phpToTypeScriptType('never')['type'])->toBe('never');
+    });
+
+    test('phpToTypeScriptType resolves void to void', function () {
+        expect($this->service->phpToTypeScriptType('void')['type'])->toBe('void');
     });
 });
 
@@ -891,5 +955,29 @@ class DnfReturnClass
     public function dnfMethod(): (Countable&Iterator)|string // @phpstan-ignore missingType.iterableValue
     {
         return 'hello';
+    }
+}
+
+/**
+ * A value object implementing Arrayable for testing step 5a resolution.
+ *
+ * @implements Arrayable<string, mixed>
+ */
+class ArrayableValueObject implements Arrayable
+{
+    public function toArray(): array
+    {
+        return [];
+    }
+}
+
+/**
+ * A value object with __toString for testing step 5b resolution.
+ */
+class StringableValueObject
+{
+    public function __toString(): string
+    {
+        return 'value';
     }
 }

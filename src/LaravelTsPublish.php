@@ -10,6 +10,8 @@ use BackedEnum;
 use Closure;
 use Composer\ClassMapGenerator\PhpFileParser;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
+use Illuminate\Contracts\Support\Arrayable;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use ReflectionClass;
 use ReflectionFunction;
@@ -119,10 +121,13 @@ class LaravelTsPublish
     /**
      * Resolve the TypeScript type for a given PHP type, using the following resolution order:
      *
+     * 0. ?T nullable shorthand → recurse on T and append | null
      * 1. Exact map match
      * 2. #[TsType] on any class — explicit annotation wins for cast classes, enums, or anything else
      * 3. PHP enum → StatusType (type alias), enums: [Status], enumTypes: [StatusType]
      * 4. CastsAttributes implementor without #[TsType] → infer from get() return type (named or union), otherwise unknown
+     * 5a. Arrayable (non-Model) → unknown[]
+     * 5b. __toString (non-Model) → string
      * 5. Any other class → class_basename()
      * 6. encrypted:* compound casts
      * 7. Partial TS map string match
@@ -135,6 +140,14 @@ class LaravelTsPublish
         $typesMap = $this->typesMap(); // keys are already lowercased
         $lower = strtolower($phpType);
         $result = $this->emptyTypeScriptInfo();
+
+        // 0. Nullable shorthand ?T → recurse on T and append | null
+        if (str_starts_with($phpType, '?')) {
+            $inner = $this->phpToTypeScriptType(substr($phpType, 1));
+            $inner['type'] .= ' | null';
+
+            return $inner;
+        }
 
         // 1. Exact map match
         $mapping = $typesMap[$lower] ?? null;
@@ -196,6 +209,28 @@ class LaravelTsPublish
             }
 
             $result['type'] = 'unknown';
+
+            return $result;
+        }
+
+        // 5a. Arrayable (non-Model) → unknown[] — checked before step 5 to avoid Model being caught here
+        //     Model implements Arrayable transitively, so we exclude Model subclasses explicitly.
+        if (class_exists($phpType)
+            && ! is_a($phpType, Model::class, true)
+            && is_a($phpType, Arrayable::class, true)
+        ) {
+            $result['type'] = 'unknown[]';
+
+            return $result;
+        }
+
+        // 5b. __toString magic method → string (covers both `implements \Stringable` and direct __toString)
+        //     Exclude Model subclasses — Model defines __toString() returning JSON; models should stay at step 5.
+        if (class_exists($phpType)
+            && ! is_a($phpType, Model::class, true)
+            && method_exists($phpType, '__toString')
+        ) {
+            $result['type'] = 'string';
 
             return $result;
         }
@@ -270,42 +305,15 @@ class LaravelTsPublish
 
         // Union type — includes DNF members (e.g. (A&B)|null), intersection slots become unknown
         if ($returnType instanceof ReflectionUnionType) {
-            $types = [];
-            $enums = [];
-            $enumTypes = [];
-            $classes = [];
-            /** @var array<string, list<string>> $customImports */
-            $customImports = [];
-            $enumFqcns = [];
-            $classFqcns = [];
+            $infos = [];
 
             foreach ($returnType->getTypes() as $type) {
-                if ($type instanceof ReflectionNamedType) {
-                    $resolved = $this->phpToTypeScriptType($type->getName());
-                    $types[] = $resolved['type'];
-                    $enums = [...$enums,      ...$resolved['enums']];
-                    $enumTypes = [...$enumTypes,  ...$resolved['enumTypes']];
-                    $classes = [...$classes,    ...$resolved['classes']];
-                    $enumFqcns = [...$enumFqcns,  ...$resolved['enumFqcns']];
-                    $classFqcns = [...$classFqcns, ...$resolved['classFqcns']];
-
-                    foreach ($resolved['customImports'] as $path => $importTypes) {
-                        $customImports[$path] = [...($customImports[$path] ?? []), ...$importTypes];
-                    }
-                } else {
-                    $types[] = 'unknown'; // ReflectionIntersectionType inside a DNF union
-                }
+                $infos[] = $type instanceof ReflectionNamedType
+                    ? $this->phpToTypeScriptType($type->getName())
+                    : $this->emptyTypeScriptInfo(); // ReflectionIntersectionType inside a DNF union → unknown
             }
 
-            $result['type'] = implode(' | ', array_unique($types));
-            $result['enums'] = array_values(array_unique($enums));
-            $result['enumTypes'] = array_values(array_unique($enumTypes));
-            $result['classes'] = array_values(array_unique($classes));
-            $result['customImports'] = $customImports;
-            $result['enumFqcns'] = array_values(array_unique($enumFqcns));
-            $result['classFqcns'] = array_values(array_unique($classFqcns));
-
-            return $result;
+            return $this->mergeTypeScriptInfos($infos);
         }
 
         return $result;
@@ -423,6 +431,48 @@ class LaravelTsPublish
     public function emptyTypeScriptInfo(): array
     {
         return ['type' => 'unknown', 'enums' => [], 'enumTypes' => [], 'classes' => [], 'customImports' => [], 'enumFqcns' => [], 'classFqcns' => []];
+    }
+
+    /**
+     * Merge a list of TypeScriptTypeInfo results into one, joining type strings with ' | '.
+     *
+     * @param  list<TypeScriptTypeInfo>  $infos
+     * @return TypeScriptTypeInfo
+     */
+    public function mergeTypeScriptInfos(array $infos): array
+    {
+        $types = [];
+        $enums = [];
+        $enumTypes = [];
+        $classes = [];
+        /** @var array<string, list<string>> $customImports */
+        $customImports = [];
+        $enumFqcns = [];
+        $classFqcns = [];
+
+        foreach ($infos as $info) {
+            $types[] = $info['type'];
+            $enums = [...$enums, ...$info['enums']];
+            $enumTypes = [...$enumTypes, ...$info['enumTypes']];
+            $classes = [...$classes, ...$info['classes']];
+            $enumFqcns = [...$enumFqcns, ...$info['enumFqcns']];
+            $classFqcns = [...$classFqcns, ...$info['classFqcns']];
+
+            foreach ($info['customImports'] as $path => $importTypes) {
+                $customImports[$path] = [...($customImports[$path] ?? []), ...$importTypes];
+            }
+        }
+
+        $result = $this->emptyTypeScriptInfo();
+        $result['type'] = implode(' | ', array_unique($types));
+        $result['enums'] = array_values(array_unique($enums));
+        $result['enumTypes'] = array_values(array_unique($enumTypes));
+        $result['classes'] = array_values(array_unique($classes));
+        $result['customImports'] = $customImports;
+        $result['enumFqcns'] = array_values(array_unique($enumFqcns));
+        $result['classFqcns'] = array_values(array_unique($classFqcns));
+
+        return $result;
     }
 
     /**
