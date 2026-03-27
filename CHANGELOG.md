@@ -2,6 +2,16 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v1.2.0 - 2026-03-27
+
+### What's Changed
+
+* Mutators attributes doc block types by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/13
+* Ability to extend interfaces by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/12
+* Greater support for model `only` & `exclude` methods with relations by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/14
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v1.1.2...v1.2.0
+
 ## v1.1.2 - 2026-03-24
 
 ### What's Changed
