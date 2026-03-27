@@ -1166,6 +1166,8 @@ declare global {
             id: number;
             status: OrderStatusType;
             total: number;
+            notes: string | null;
+            item_count: number;
             items: OrderItem[];
             user?: UserResource;
         }

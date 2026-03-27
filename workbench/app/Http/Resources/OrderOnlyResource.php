@@ -23,9 +23,9 @@ class OrderOnlyResource extends JsonResource
                 'id',
                 'total',
                 'status',
-                // Use only with keys that aren't directly DB attributes
-                'name', // accessor publish with accessor return type
-                'initials', // mutator publish with mutator return type
+                // Use "only" with keys that aren't directly DB attributes
+                'notes', // accessor publish with accessor return type
+                'item_count', // mutator publish with mutator return type
                 'items', // relation publish with relation return type & import
             ]),
             'user' => UserResource::make($this->whenLoaded('user')),
