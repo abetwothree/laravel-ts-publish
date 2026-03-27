@@ -27,6 +27,11 @@ export interface InvoiceResource extends Omit<Invoice, 'status'>
     status: AsEnum<typeof InvoiceStatus>;
 }
 
+export interface InvoiceMutators
+{
+    latest_payment: Payment | null;
+}
+
 export interface InvoiceRelations
 {
     // Relations
@@ -40,6 +45,6 @@ export interface InvoiceRelations
     payments_exists: boolean;
 }
 
-export interface InvoiceAll extends Invoice, InvoiceRelations {}
+export interface InvoiceAll extends Invoice, InvoiceMutators, InvoiceRelations {}
 
-export interface InvoiceAllResource extends InvoiceResource, InvoiceRelations {}
+export interface InvoiceAllResource extends InvoiceResource, InvoiceMutators, InvoiceRelations {}

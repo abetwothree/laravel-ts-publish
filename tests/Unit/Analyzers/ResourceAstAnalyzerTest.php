@@ -361,6 +361,52 @@ describe('ResourceAstAnalyzer with InvoiceResource', function () {
 
         expect($status['optional'])->toBeTrue();
     });
+
+    test('latest_payment_only resolves inline type from accessor-returned model', function () {
+        $reflection = new ReflectionClass(InvoiceResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Invoice::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'latest_payment_only');
+
+        expect($prop['type'])
+            ->not->toBe('unknown')
+            ->toContain('invoice_id: number')
+            ->toContain('| null');
+    });
+
+    test('latest_payment_excluded resolves inline type from accessor-returned model', function () {
+        $reflection = new ReflectionClass(InvoiceResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Invoice::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'latest_payment_excluded');
+
+        expect($prop['type'])
+            ->not->toBe('unknown')
+            ->toContain('id: number')
+            ->toContain('| null');
+    });
+
+    test('has enum imports from accessor model filter (latest_payment_only)', function () {
+        $reflection = new ReflectionClass(InvoiceResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Invoice::class);
+        $analysis = $analyzer->analyze();
+
+        expect($analysis->directEnumFqcns)
+            ->toHaveKey('Workbench\Accounting\Enums\PaymentStatus')
+            ->toHaveKey('Workbench\App\Enums\PaymentMethod')
+            ->toHaveKey('Workbench\App\Enums\Currency');
+    });
+
+    test('has model imports from accessor model filter (latest_payment_excluded)', function () {
+        $reflection = new ReflectionClass(InvoiceResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Invoice::class);
+        $analysis = $analyzer->analyze();
+
+        expect($analysis->modelFqcns)
+            ->toHaveKey('Workbench\Accounting\Models\Invoice');
+    });
 });
 
 describe('ResourceAstAnalyzer with DealResource', function () {

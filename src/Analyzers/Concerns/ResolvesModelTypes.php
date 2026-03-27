@@ -171,6 +171,54 @@ trait ResolvesModelTypes
     }
 
     /**
+     * If $propName is an accessor attribute whose getter returns exactly one Eloquent Model
+     * subclass, return its FQCN. Used by analyzeRelationFilter() as a fallback when the
+     * property is not a database relation.
+     *
+     * Returns null when:
+     * - The attribute is not an accessor.
+     * - No Model subclass is found in the return type.
+     * - Two or more Model subclasses are found (ambiguous union, e.g. Payment|Invoice).
+     *
+     * @return class-string<Model>|null
+     */
+    protected function resolveAccessorModelFqcn(string $propName): ?string
+    {
+        if ($this->modelAttributes === null || $this->modelInstance === null || $this->modelReflection === null) {
+            return null; // @codeCoverageIgnore
+        }
+
+        $attr = $this->modelAttributes->firstWhere('name', $propName);
+
+        if ($attr === null || ($attr['cast'] !== 'attribute' && $attr['cast'] !== 'accessor')) {
+            return null; // @codeCoverageIgnore
+        }
+
+        try {
+            $accessorInfo = $this->resolveAccessorType($propName, $this->modelInstance, $this->modelReflection);
+
+            // Filter to actual Eloquent Model subclasses only.
+            // Non-model classes (enums, value objects) are excluded.
+            // Two+ matches means an ambiguous union — fall back to unknown.
+            $modelFqcns = array_values(array_filter(
+                $accessorInfo['classFqcns'],
+                fn (string $fqcn) => is_a($fqcn, Model::class, true),
+            ));
+
+            if (count($modelFqcns) !== 1) {
+                return null; // @codeCoverageIgnore
+            }
+
+            /** @var class-string<Model> $fqcn */
+            $fqcn = $modelFqcns[0];
+
+            return $fqcn;
+        } catch (\Throwable) { // @codeCoverageIgnore
+            return null; // @codeCoverageIgnore
+        }
+    }
+
+    /**
      * Build a ResourceAnalysis from all model attributes and relations when the resource
      * delegates to JsonResource::toArray() (which returns $this->resource->toArray()).
      */

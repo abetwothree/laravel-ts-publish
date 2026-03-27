@@ -44,6 +44,8 @@ declare global {
             notes: string | null;
             created_at: string | null;
             updated_at: string | null;
+            // Mutators
+            latest_payment: Payment | null;
             // Relations
             user: User;
             user_count: number;
@@ -1117,6 +1119,8 @@ declare global {
             payments?: PaymentResource[];
             payments_count?: number;
             notes?: string | null;
+            latest_payment_only: { invoice_id: number; status: PaymentStatusType; method: PaymentMethodType; currency: CurrencyType; amount: number; reference: string | null; paid_at: string | null } | null;
+            latest_payment_excluded: { id: number; created_at: string | null; updated_at: string | null; due_notice: DueAtNoticeType; invoice: Invoice } | null;
         }
         /** Exercises: multiple EnumResource::make from different namespaces (PaymentStatus, Currency from App), whenHas on PaymentMethod enum attribute, whenNotNull. */
         export interface PaymentResource {

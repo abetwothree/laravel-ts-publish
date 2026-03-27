@@ -2,6 +2,7 @@
 
 namespace Workbench\Accounting\Models;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -44,5 +45,12 @@ class Invoice extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
+    }
+
+    protected function latestPayment(): Attribute
+    {
+        return Attribute::make(
+            get: fn (): ?Payment => $this->payments()->latest()->first(),
+        );
     }
 }

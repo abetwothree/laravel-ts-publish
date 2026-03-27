@@ -112,6 +112,10 @@
                 "type": "string | null"
             },
             {
+                "name": "latest_payment",
+                "type": "Payment | null"
+            },
+            {
                 "name": "user",
                 "type": "User"
             },
@@ -3798,6 +3802,16 @@
                 "name": "notes",
                 "type": "string | null",
                 "optional": true
+            },
+            {
+                "name": "latest_payment_only",
+                "type": "{ invoice_id: number; status: PaymentStatusType; method: PaymentMethodType; currency: CurrencyType; amount: number; reference: string | null; paid_at: string | null } | null",
+                "optional": false
+            },
+            {
+                "name": "latest_payment_excluded",
+                "type": "{ id: number; created_at: string | null; updated_at: string | null; due_notice: DueAtNoticeType; invoice: Invoice } | null",
+                "optional": false
             }
         ],
         "PaymentResource": [

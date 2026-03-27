@@ -1235,8 +1235,9 @@ class ResourceAstAnalyzer
         }
 
         $relationInfo = $this->resolveModelRelationTypeInfo($propName);
+        $modelFqcn = $relationInfo['modelFqcn'] ?? $this->resolveAccessorModelFqcn($propName);
 
-        if ($relationInfo['modelFqcn'] === null) {
+        if ($modelFqcn === null) {
             return $result; // @codeCoverageIgnore
         }
 
@@ -1247,7 +1248,7 @@ class ResourceAstAnalyzer
         }
 
         $include = $methodName === 'only';
-        $filterResult = $this->resolveFilteredRelationType($relationInfo['modelFqcn'], $keys, $include);
+        $filterResult = $this->resolveFilteredRelationType($modelFqcn, $keys, $include);
         $inlineType = $filterResult['type'];
 
         if ($nullable && $inlineType !== 'unknown') {
