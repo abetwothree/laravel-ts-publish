@@ -15,6 +15,7 @@ export interface Address
     latitude?: number | null;
     longitude?: number | null;
     is_default: boolean;
+    user: { id: number; name: string };
     coordinates: GeoPoint;
     bounds: GeoBounds;
 }

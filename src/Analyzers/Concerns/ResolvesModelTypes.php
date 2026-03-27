@@ -171,7 +171,7 @@ trait ResolvesModelTypes
     }
 
     /**
-     * Build a ResourceAnalysis from all model attributes when the resource
+     * Build a ResourceAnalysis from all model attributes and relations when the resource
      * delegates to JsonResource::toArray() (which returns $this->resource->toArray()).
      */
     protected function buildModelDelegatedAnalysis(): ?ResourceAnalysis
@@ -184,6 +184,8 @@ trait ResolvesModelTypes
         $properties = [];
         /** @var ClassMapType $directEnumFqcns */
         $directEnumFqcns = [];
+        /** @var ClassMapType $modelFqcns */
+        $modelFqcns = [];
 
         foreach ($this->modelAttributes as $attr) {
             $info = $this->resolveModelAttributeTypeInfo($attr['name']);
@@ -200,9 +202,147 @@ trait ResolvesModelTypes
             }
         }
 
+        // Also include relations so they can be referenced by only()/except() filters
+        if ($this->modelRelations !== null) {
+            foreach ($this->modelRelations as $relation) {
+                $info = $this->resolveModelRelationTypeInfo($relation['name']);
+
+                if ($info['type'] !== 'unknown') {
+                    $properties[] = [
+                        'name' => $relation['name'],
+                        'type' => $info['type'],
+                        'optional' => false,
+                        'description' => '',
+                    ];
+
+                    if ($info['modelFqcn'] !== null) {
+                        $modelFqcns[$relation['name']] = $info['modelFqcn'];
+                    }
+                }
+            }
+        }
+
         return new ResourceAnalysis(
             properties: $properties,
             directEnumFqcns: $directEnumFqcns,
+            modelFqcns: $modelFqcns,
         );
+    }
+
+    /**
+     * Resolve an inline TypeScript type for a filtered subset of a related model's attributes and relations.
+     *
+     * Used when a resource accesses `$this->relation->only([...])` or `->except([...])`.
+     * Returns a string like `{ id: number; name: string }`, or `'unknown'` if no keys resolve.
+     *
+     * Note: enum FQCNs from the related model are NOT tracked — the type uses class_basename of
+     * the enum. Users who need full import tracking should use a dedicated nested resource instead.
+     *
+     * @param  class-string  $relatedModelClass
+     * @param  list<string>  $keys
+     */
+    protected function resolveFilteredRelationType(
+        string $relatedModelClass,
+        array $keys,
+        bool $include,
+    ): string {
+        try {
+            /** @var Model $relatedInstance */
+            $relatedInstance = resolve($relatedModelClass);
+            $data = resolve(ModelInspector::class)->inspect($relatedModelClass);
+            /** @var Collection<int, array{name: string, type: string|null, cast: string|null, nullable: bool}> $relatedAttributes */
+            $relatedAttributes = $data->attributes;
+            $relatedRelations = $data->relations;
+            /** @var ReflectionClass<Model> $relatedReflection */
+            $relatedReflection = new ReflectionClass($relatedModelClass);
+        } catch (\Throwable) {
+            return 'unknown';
+        }
+
+        if ($include) {
+            $resolveKeys = $keys;
+        } else {
+            $attrNames = $relatedAttributes->pluck('name')->all();
+            $relationNames = $relatedRelations->pluck('name')->all();
+            $resolveKeys = array_values(array_filter(
+                array_merge($attrNames, $relationNames),
+                fn (mixed $k) => ! in_array($k, $keys, true),
+            ));
+        }
+
+        $parts = [];
+
+        /** @var list<string> $resolveKeys */
+        foreach ($resolveKeys as $key) {
+            $attr = $relatedAttributes->firstWhere('name', $key);
+
+            if ($attr !== null) {
+                // Accessor: resolve via reflection on the related model
+                if ($attr['cast'] === 'attribute' || $attr['cast'] === 'accessor') {
+                    try {
+                        $accessorInfo = $this->resolveAccessorType($key, $relatedInstance, $relatedReflection);
+
+                        if ($accessorInfo['type'] !== 'unknown') {
+                            $type = $accessorInfo['type'];
+
+                            if ($attr['nullable'] && ! str_contains($type, 'null')) {
+                                $type .= ' | null';
+                            }
+
+                            $parts[] = $key.': '.$type;
+
+                            continue;
+                        }
+                    } catch (\Throwable) {
+                        // Fall through to cast/type resolution
+                    }
+                }
+
+                // Regular cast (enum, date, json, etc.)
+                if ($attr['cast'] !== null && $attr['cast'] !== '' && $attr['cast'] !== 'attribute' && $attr['cast'] !== 'accessor') {
+                    $tsInfo = LaravelTsPublish::phpToTypeScriptType($attr['cast']);
+                    $type = $tsInfo['type'];
+
+                    if ($attr['nullable'] && ! str_contains($type, 'null')) {
+                        $type .= ' | null';
+                    }
+
+                    $parts[] = $key.': '.$type;
+
+                    continue;
+                }
+
+                // DB column type
+                if ($attr['type'] !== null && $attr['type'] !== '') {
+                    $tsInfo = LaravelTsPublish::phpToTypeScriptType($attr['type']);
+                    $type = $tsInfo['type'];
+
+                    if ($attr['nullable'] && $type !== 'unknown') {
+                        $type .= ' | null';
+                    }
+
+                    if ($type !== 'unknown') {
+                        $parts[] = $key.': '.$type;
+                    }
+                }
+
+                continue;
+            }
+
+            // Relation
+            $relation = $relatedRelations->firstWhere('name', $key);
+
+            if ($relation !== null) {
+                $relatedName = class_basename($relation['related']);
+                $containsMany = str_contains(strtolower($relation['type']), 'many');
+                $parts[] = $key.': '.($containsMany ? $relatedName.'[]' : $relatedName);
+            }
+        }
+
+        if ($parts === []) {
+            return 'unknown';
+        }
+
+        return '{ '.implode('; ', $parts).' }';
     }
 }

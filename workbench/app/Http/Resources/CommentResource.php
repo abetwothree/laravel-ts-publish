@@ -33,6 +33,8 @@ class CommentResource extends JsonResource
             'post' => PostResource::make($this->whenLoaded('post')),
             'post_new' => new PostResource($this->whenLoaded('post')),
             'post_direct' => new PostResource($this->post),
+            'post_limited' => $this->post->only(['id', 'title']), // relation with only specific attributes
+            'post_extended' => $this->post?->except(['created_at', 'updated_at']), // relation with except specific attributes
         ];
     }
 }

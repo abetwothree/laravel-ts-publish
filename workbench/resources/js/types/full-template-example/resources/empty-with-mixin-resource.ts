@@ -1,4 +1,5 @@
 import type { MembershipLevelType, RoleType } from '../enums';
+import type { Address, Comment, DatabaseNotification, Image, Order, Post, Profile, Team } from '../models';
 
 /** Resource with no toArray override but a known model — tests implicit delegation. */
 export interface EmptyWithMixinResource
@@ -22,4 +23,13 @@ export interface EmptyWithMixinResource
     last_login_ip: string | null;
     initials: string;
     is_premium: boolean;
+    profile: Profile | null;
+    posts: Post[];
+    comments: Comment[];
+    orders: Order[];
+    addresses: Address[];
+    teams: Team[];
+    ownedTeams: Team[];
+    images: Image[];
+    notifications: DatabaseNotification[];
 }

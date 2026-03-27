@@ -1,4 +1,5 @@
 import type { CurrencyType, OrderStatusType, PaymentMethodType } from '../../enums';
+import type { OrderItem, User } from '../../models';
 
 /** Exercises return $this->except([...]) as a direct return. */
 export interface OrderExceptResource
@@ -28,4 +29,6 @@ export interface OrderExceptResource
     is_paid: boolean;
     formatted_total: string;
     search_index: unknown;
+    user: User;
+    items: OrderItem[];
 }

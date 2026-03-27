@@ -20,6 +20,7 @@ use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
@@ -346,6 +347,17 @@ class ResourceAstAnalyzer
         // $this->property
         if ($this->isThisPropertyFetch($expr)) {
             return $this->analyzeThisProperty($expr);
+        }
+
+        // $this->relation->only([...]) or $this->relation?->only([...])
+        if (($expr instanceof MethodCall || $expr instanceof NullsafeMethodCall)
+            && $expr->name instanceof Identifier
+            && in_array($expr->name->toString(), $this->supportedAttributeFilters(), true)
+            && $expr->var instanceof PropertyFetch
+            && $expr->var->var instanceof Variable
+            && $expr->var->var->name === 'this'
+        ) {
+            return $this->analyzeRelationFilter($expr);
         }
 
         return ['type' => 'unknown', 'optional' => false];
@@ -1192,6 +1204,54 @@ class ResourceAstAnalyzer
             'optional' => false,
             'resourceFqcn' => $singular,
         ];
+    }
+
+    /**
+     * Analyze `$this->relation->only([...])` or `$this->relation?->only([...])`.
+     *
+     * Resolves the relation's model class, filters it to the specified keys,
+     * and returns an inline TypeScript type like `{ id: number; name: string }`.
+     * Nullable chaining (`?->`) appends `| null` to the type.
+     *
+     * @return ValueExpressionResult
+     */
+    protected function analyzeRelationFilter(MethodCall|NullsafeMethodCall $call): array
+    {
+        $nullable = $call instanceof NullsafeMethodCall;
+        $methodName = $call->name instanceof Identifier ? $call->name->toString() : null;
+
+        if ($methodName === null) {
+            return ['type' => 'unknown', 'optional' => false]; // @codeCoverageIgnore
+        }
+
+        /** @var PropertyFetch $varExpr */
+        $varExpr = $call->var;
+        $propName = $varExpr->name instanceof Identifier ? $varExpr->name->toString() : null;
+
+        if ($propName === null) {
+            return ['type' => 'unknown', 'optional' => false]; // @codeCoverageIgnore
+        }
+
+        $relationInfo = $this->resolveModelRelationTypeInfo($propName);
+
+        if ($relationInfo['modelFqcn'] === null) {
+            return ['type' => 'unknown', 'optional' => false];
+        }
+
+        $keys = $this->extractFilterKeys($call);
+
+        if ($keys === null || $keys === []) {
+            return ['type' => 'unknown', 'optional' => false];
+        }
+
+        $include = $methodName === 'only';
+        $inlineType = $this->resolveFilteredRelationType($relationInfo['modelFqcn'], $keys, $include);
+
+        if ($nullable && $inlineType !== 'unknown') {
+            $inlineType .= ' | null';
+        }
+
+        return ['type' => $inlineType, 'optional' => false];
     }
 
     /**

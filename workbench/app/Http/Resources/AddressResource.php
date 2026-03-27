@@ -42,6 +42,7 @@ class AddressResource extends JsonResource
             'latitude' => $this->whenNotNull($this->latitude),
             'longitude' => $this->whenNotNull($this->longitude),
             'is_default' => $this->is_default,
+            'user' => $this->user->only(['id', 'name']), // relation with only specific attributes
         ];
     }
 }

@@ -1151,12 +1151,22 @@ declare global {
             last_login_ip: string | null;
             initials: string;
             is_premium: boolean;
+            profile: Profile | null;
+            posts: Post[];
+            comments: Comment[];
+            orders: Order[];
+            addresses: Address[];
+            teams: Team[];
+            ownedTeams: Team[];
+            images: Image[];
+            notifications: DatabaseNotification[];
         }
         /** Exercises ...$this->only([...]) spread with additional manual keys. */
         export interface OrderOnlyResource {
             id: number;
             status: OrderStatusType;
             total: number;
+            items: OrderItem[];
             user?: UserResource;
         }
         /** Resource spreading parent::toArray() from JsonResource base with extra keys. */
@@ -1180,6 +1190,15 @@ declare global {
             last_login_ip: string | null;
             initials: string;
             is_premium: boolean;
+            profile: Profile | null;
+            posts: Post[];
+            comments: Comment[];
+            orders: Order[];
+            addresses: Address[];
+            teams: Team[];
+            ownedTeams: Team[];
+            images: Image[];
+            notifications: DatabaseNotification[];
             full_name: unknown;
         }
         /** Exercises: multiple whenAggregated (sum/min/max), whenNotNull, when, whenCounted, two mergeWhen blocks, Resource::collection x2. */
@@ -1221,6 +1240,8 @@ declare global {
             post?: PostResource;
             post_new?: PostResource;
             post_direct: PostResource;
+            post_limited: { id: number; title: string };
+            post_extended: { id: number; title: string; content: string; user_id: number; status: StatusType; published_at: string | null; metadata: unknown[] | null; rating: number | null; category: string; options: unknown[] | null; deleted_at: string | null; category_id: number | null; visibility: VisibilityType | null; priority: PriorityType | null; word_count: number | null; reading_time_minutes: number | null; featured_image_url: string | null; is_pinned: boolean; title_display: string | null; excerpt: string | null; reading_time: string; author: User; categoryRel: Category; comments: Comment[]; tags: Tag[]; images: Image[] } | null;
         }
         /** Child resource that uses SharedExtendsInterface AND extends a parent that also uses it. SharedExtendsInterface should appear only once in the result despite being reachable via two paths. */
         export interface ChildSharedResource {
@@ -1331,6 +1352,7 @@ declare global {
             latitude?: number | null;
             longitude?: number | null;
             is_default: boolean;
+            user: { id: number; name: string };
             coordinates: GeoPoint;
             bounds: GeoBounds;
         }
@@ -1484,6 +1506,8 @@ declare global {
             product?: ProductResource;
             order?: Order;
             options?: Record<string, string | number | boolean> | null;
+            order_limited: { id: number; total: number } | null;
+            order_extended: { id: number; ulid: string; user_id: number; status: OrderStatusType; payment_method: PaymentMethodType | null; currency: CurrencyType; subtotal: number; tax: number; discount: number; total: number; shipping_address: unknown[] | null; billing_address: unknown[] | null; notes: string | null; placed_at: string | null; paid_at: string | null; shipped_at: string | null; delivered_at: string | null; cancelled_at: string | null; ip_address: string | null; user_agent: string | null; deleted_at: string | null; item_count: number; is_paid: boolean; formatted_total: string; user: User; items: OrderItem[] };
         }
         /** Represents a user loaded through a team's belongsToMany pivot. Exercises: whenPivotLoaded, whenPivotLoadedAs, whenHas on enum attributes. */
         export interface TeamMemberResource {
@@ -1524,6 +1548,8 @@ declare global {
             is_paid: boolean;
             formatted_total: string;
             search_index: unknown;
+            user: User;
+            items: OrderItem[];
         }
         /** Resource with no toArray override but a known model — tests implicit delegation. */
         export interface EmptyWithMixinResource {
@@ -1546,6 +1572,15 @@ declare global {
             last_login_ip: string | null;
             initials: string;
             is_premium: boolean;
+            profile: Profile | null;
+            posts: Post[];
+            comments: Comment[];
+            orders: Order[];
+            addresses: Address[];
+            teams: Team[];
+            ownedTeams: Team[];
+            images: Image[];
+            notifications: DatabaseNotification[];
         }
         /** Parent resource that uses SharedExtendsInterface — tests BFS dedup when child also uses the same trait. */
         export interface BaseSharedResource {
