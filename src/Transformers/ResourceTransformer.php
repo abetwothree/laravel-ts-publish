@@ -98,7 +98,7 @@ class ResourceTransformer extends CoreTransformer
     protected array $modelTsCastsImportPaths = [];
 
     /** @var list<string> TypeScript extends clauses */
-    protected array $tsExtends = [];
+    public protected(set) array $tsExtends = [];
 
     #[Override]
     public function transform(): self

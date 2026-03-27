@@ -93,7 +93,7 @@ class ModelTransformer extends CoreTransformer
     protected array $mutatorFqcns = [];
 
     /** @var array<string, list<string>> */
-    protected array $customImports = [];
+    public protected(set) array $customImports = [];
 
     /** @var array<string, array{fqcn: string, nullable: bool}> column_name => enum property info */
     protected array $enumColumnProperties = [];
@@ -102,7 +102,7 @@ class ModelTransformer extends CoreTransformer
     protected array $enumMutatorProperties = [];
 
     /** @var list<string> TypeScript extends clauses */
-    protected array $tsExtends = [];
+    public protected(set) array $tsExtends = [];
 
     #[Override]
     public function transform(): self
