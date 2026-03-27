@@ -123,6 +123,7 @@ declare global {
             updated_at: string | null;
             // Mutators
             changes: { attributes: Record<string, unknown>; old: Record<string, unknown> };
+            diff: unknown[] | Record<string, unknown>;
         }
         export interface CompositeComment {
             // Columns
@@ -606,7 +607,7 @@ declare global {
             data_from_docblock: unknown[];
             label_from_docblock: string;
             no_docblock_accessor: unknown;
-            wrong_format_docblock: unknown;
+            wrong_format_docblock: string | null;
             positive_int_accessor: number;
             numeric_string_accessor: string;
             // Relations

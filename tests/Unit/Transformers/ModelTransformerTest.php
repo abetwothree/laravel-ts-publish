@@ -1072,11 +1072,11 @@ describe('Image model @return Attribute<> docblock accessor resolution', functio
             ->and($data->mutators['no_docblock_accessor']['type'])->toBe('unknown');
     });
 
-    test('accessor with @return string docblock (not Attribute<>) resolves to unknown', function () {
+    test('accessor with @return string docblock (not Attribute<>) resolves to string | null', function () {
         $data = (new ModelTransformer(Image::class))->data();
 
         expect($data->mutators)->toHaveKey('wrong_format_docblock')
-            ->and($data->mutators['wrong_format_docblock']['type'])->toBe('unknown');
+            ->and($data->mutators['wrong_format_docblock']['type'])->toBe('string | null');
     });
 
     test('positive-int resolves to number via partial map match', function () {

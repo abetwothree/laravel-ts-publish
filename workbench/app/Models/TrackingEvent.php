@@ -37,4 +37,12 @@ class TrackingEvent extends Model
     {
         return $this->changes();
     }
+
+    /**
+     * @return Collection
+     */
+    public function getDiffAttribute()
+    {
+        return $this->changes();
+    }
 }

@@ -490,6 +490,10 @@
             {
                 "name": "changes",
                 "type": "{ attributes: Record<string, unknown>; old: Record<string, unknown> }"
+            },
+            {
+                "name": "diff",
+                "type": "unknown[] | Record<string, unknown>"
             }
         ],
         "Reaction": [
@@ -2131,7 +2135,7 @@
             },
             {
                 "name": "wrong_format_docblock",
-                "type": "unknown"
+                "type": "string | null"
             },
             {
                 "name": "positive_int_accessor",

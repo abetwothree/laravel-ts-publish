@@ -1,9 +1,9 @@
 import { type AsEnum } from '@tolki/enum';
 
-import { Status } from '../../workbench/app/enums';
+import { Status } from '../enums';
 import type { MenuSettingsType } from '@js/types/settings';
-import type { StatusType } from '../../workbench/app/enums';
-import type { User } from '../../workbench/app/models';
+import type { StatusType } from '../enums';
+import type { User } from '.';
 
 export interface Image
 {
@@ -43,7 +43,7 @@ export interface ImageMutators
     data_from_docblock: unknown[];
     label_from_docblock: string;
     no_docblock_accessor: unknown;
-    wrong_format_docblock: unknown;
+    wrong_format_docblock: string | null;
     positive_int_accessor: number;
     numeric_string_accessor: string;
 }

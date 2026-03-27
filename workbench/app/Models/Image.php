@@ -153,7 +153,7 @@ class Image extends Model
     }
 
     /**
-     * @return string
+     * @return ?string
      */
     protected function wrongFormatDocblock(): Attribute
     {

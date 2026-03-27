@@ -19,6 +19,8 @@ use ReflectionMethod;
  */
 trait ResolvesAccessorType
 {
+    use ResolvesClassNames;
+
     /**
      * Resolve the TypeScript type info for a model accessor/mutator by attribute name.
      *
@@ -93,21 +95,42 @@ trait ResolvesAccessorType
         if (preg_match('/@return\s+Attribute\s*<\s*([^,>\s]+)\s*,\s*([^>]+)\s*>/i', $docComment, $matches)) {
             $getterType = trim($matches[1]);
 
-            $parts = array_map('trim', explode('|', $getterType));
-
-            if (count($parts) === 1) {
-                return LaravelTsPublish::phpToTypeScriptType($getterType);
-            }
-
-            // Union type: convert each component and merge all metadata
-            $infos = array_map(
-                fn (string $part) => LaravelTsPublish::phpToTypeScriptType($part),
-                $parts,
-            );
-
-            return LaravelTsPublish::mergeTypeScriptInfos($infos);
+            return $this->resolveAccessorTypesFromMatches($method, $getterType);
         }
 
-        return $emptyResult;
+        // look for @return TypeName (non-Attribute) — less precise, but still better than unknown
+        if (preg_match('/@return\s+([^\s]+)/', $docComment, $matches)) {
+            $getterType = trim($matches[1]);
+
+            return $this->resolveAccessorTypesFromMatches($method, $getterType);
+        }
+
+        return $emptyResult; // @codeCoverageIgnore
+    }
+
+    /** @return TypeScriptTypeInfo */
+    protected function resolveAccessorTypesFromMatches(ReflectionMethod $method, string $getterType): array
+    {
+        $parts = array_map('trim', explode('|', $getterType));
+
+        // Resolve each part against the declaring class's use statements so that
+        // short names (after Pint reformats FQCNs) still resolve to the right class.
+        $declaringClass = $method->getDeclaringClass();
+        $parts = array_map(
+            fn (string $part) => $this->resolveDocblockType($part, $declaringClass),
+            $parts,
+        );
+
+        if (count($parts) === 1) {
+            return LaravelTsPublish::phpToTypeScriptType($parts[0]);
+        }
+
+        // Union type: convert each component and merge all metadata
+        $infos = array_map(
+            fn (string $part) => LaravelTsPublish::phpToTypeScriptType($this->resolveDocblockType($part, $declaringClass)),
+            $parts,
+        );
+
+        return LaravelTsPublish::mergeTypeScriptInfos($infos);
     }
 }
