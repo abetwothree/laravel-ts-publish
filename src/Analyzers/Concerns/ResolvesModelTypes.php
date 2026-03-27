@@ -205,7 +205,7 @@ trait ResolvesModelTypes
                 fn (string $fqcn) => is_a($fqcn, Model::class, true),
             ));
 
-            if (count($modelFqcns) !== 1) {
+            if (count($modelFqcns) === 0) {
                 return null; // @codeCoverageIgnore
             }
 
