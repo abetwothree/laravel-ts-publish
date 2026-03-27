@@ -37,11 +37,6 @@ trait ResolvesClassNames
             return substr($type, 1); // @codeCoverageIgnore
         }
 
-        // Already directly resolvable (PHP built-ins and global-namespace classes)
-        if (class_exists($type)) {
-            return $type;
-        }
-
         $fileName = $declaringClass->getFileName();
         if ($fileName !== false) {
             $useMap = $this->parseUseStatements((string) file_get_contents($fileName));
@@ -62,6 +57,11 @@ trait ResolvesClassNames
             if (class_exists($qualified)) {
                 return $qualified;
             }
+        }
+
+        // Already directly resolvable (PHP built-ins and global-namespace classes)
+        if (class_exists($type)) {
+            return $type;
         }
 
         return $type;
