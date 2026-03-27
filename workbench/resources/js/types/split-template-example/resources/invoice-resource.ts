@@ -1,7 +1,8 @@
 import { type AsEnum } from '@tolki/enum';
 
 import { InvoiceStatus } from '../enums';
-import type { User } from '../models';
+import type { CurrencyType, DueAtNoticeType, PaymentMethodType, PaymentStatusType } from '../enums';
+import type { Invoice, User } from '../models';
 import type { PaymentResource } from './';
 
 /** Exercises: when(cond, EnumResource::make) — conditional enum, cross-module whenLoaded bare (App\User), Resource::collection sibling, whenCounted, when(cond, value), mergeWhen. */
@@ -20,4 +21,6 @@ export interface InvoiceResource
     payments?: PaymentResource[];
     payments_count?: number;
     notes?: string | null;
+    latest_payment_only: { invoice_id: number; status: PaymentStatusType; method: PaymentMethodType; currency: CurrencyType; amount: number; reference: string | null; paid_at: string | null } | null;
+    latest_payment_excluded: { id: number; created_at: string | null; updated_at: string | null; due_notice: DueAtNoticeType; invoice: Invoice } | null;
 }

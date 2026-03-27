@@ -475,35 +475,14 @@ class ResourceTransformer extends CoreTransformer
                 $valueImports = $this->collectModularValueImports($this->enumPropertyFqcns());
             }
         } else {
-            $enumTypeImports = $this->collectFlatTypeImports($this->enumFqcnMap);
+            ['typeImports' => $typeImports, 'valueImports' => $valueImports] = $this->buildFlatEnumImports(
+                $this->enumFqcnMap,
+                $this->enumPropertyFqcns(),
+                $hasEnums,
+            );
 
-            if ($enumTypeImports !== []) {
-                sort($enumTypeImports);
-                $typeImports['../enums'] = $enumTypeImports;
-            }
-
-            if ($hasEnums) {
-                $enumValueImports = $this->collectFlatValueImports($this->enumPropertyFqcns());
-
-                if ($enumValueImports !== []) {
-                    sort($enumValueImports);
-                    $valueImports['../enums'] = $enumValueImports;
-                }
-            }
-
-            $resourceImports = $this->collectFlatTypeImports($this->resourceFqcnMap);
-
-            if ($resourceImports !== []) {
-                sort($resourceImports);
-                $typeImports['./'] = $resourceImports;
-            }
-
-            $modelImports = $this->collectFlatTypeImports($this->modelFqcnMap);
-
-            if ($modelImports !== []) {
-                sort($modelImports);
-                $typeImports['../models'] = $modelImports;
-            }
+            $this->addSortedImports($typeImports, './', $this->collectFlatTypeImports($this->resourceFqcnMap));
+            $this->addSortedImports($typeImports, '../models', $this->collectFlatTypeImports($this->modelFqcnMap));
         }
 
         $typeImports = $this->mergeCustomImports($typeImports, $this->customImports);

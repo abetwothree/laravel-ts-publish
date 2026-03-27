@@ -1,4 +1,6 @@
+import type { DatabaseNotification } from '../../../illuminate/notifications';
 import type { MembershipLevelType, RoleType } from '../../enums';
+import type { Address, Comment, Image, Order, Post, Profile, Team } from '../../models';
 
 /** Resource that delegates to parent with a known model — tests JsonResource base delegation. */
 export interface DelegatingWithMixinResource
@@ -22,4 +24,13 @@ export interface DelegatingWithMixinResource
     last_login_ip: string | null;
     initials: string;
     is_premium: boolean;
+    profile: Profile | null;
+    posts: Post[];
+    comments: Comment[];
+    orders: Order[];
+    addresses: Address[];
+    teams: Team[];
+    ownedTeams: Team[];
+    images: Image[];
+    notifications: DatabaseNotification[];
 }

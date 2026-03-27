@@ -361,6 +361,52 @@ describe('ResourceAstAnalyzer with InvoiceResource', function () {
 
         expect($status['optional'])->toBeTrue();
     });
+
+    test('latest_payment_only resolves inline type from accessor-returned model', function () {
+        $reflection = new ReflectionClass(InvoiceResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Invoice::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'latest_payment_only');
+
+        expect($prop['type'])
+            ->not->toBe('unknown')
+            ->toContain('invoice_id: number')
+            ->toContain('| null');
+    });
+
+    test('latest_payment_excluded resolves inline type from accessor-returned model', function () {
+        $reflection = new ReflectionClass(InvoiceResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Invoice::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'latest_payment_excluded');
+
+        expect($prop['type'])
+            ->not->toBe('unknown')
+            ->toContain('id: number')
+            ->toContain('| null');
+    });
+
+    test('has enum imports from accessor model filter (latest_payment_only)', function () {
+        $reflection = new ReflectionClass(InvoiceResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Invoice::class);
+        $analysis = $analyzer->analyze();
+
+        expect($analysis->directEnumFqcns)
+            ->toHaveKey('Workbench\Accounting\Enums\PaymentStatus')
+            ->toHaveKey('Workbench\App\Enums\PaymentMethod')
+            ->toHaveKey('Workbench\App\Enums\Currency');
+    });
+
+    test('has model imports from accessor model filter (latest_payment_excluded)', function () {
+        $reflection = new ReflectionClass(InvoiceResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Invoice::class);
+        $analysis = $analyzer->analyze();
+
+        expect($analysis->modelFqcns)
+            ->toHaveKey('Workbench\Accounting\Models\Invoice');
+    });
 });
 
 describe('ResourceAstAnalyzer with DealResource', function () {
@@ -464,6 +510,49 @@ describe('ResourceAstAnalyzer with OrderItemResource', function () {
         $order = collect($analysis->properties)->firstWhere('name', 'order');
 
         expect($order['type'])->toBe('Order');
+    });
+
+    test('test order_limited only has id, total or null', function () {
+        $reflection = new ReflectionClass(OrderItemResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, OrderItem::class);
+        $analysis = $analyzer->analyze();
+
+        $orderLimited = collect($analysis->properties)->firstWhere('name', 'order_limited');
+
+        expect($orderLimited['type'])->toBe('{ id: number; total: number } | null');
+    });
+
+    test('test order_extended does not have created_at & updated_at', function () {
+        $reflection = new ReflectionClass(OrderItemResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, OrderItem::class);
+        $analysis = $analyzer->analyze();
+
+        $orderExtended = collect($analysis->properties)->firstWhere('name', 'order_extended');
+
+        expect($orderExtended['type'])
+            ->not->toContain('created_at')
+            ->not->toContain('updated_at');
+    });
+
+    test('has enum imports from inline relation filter (order_extended)', function () {
+        $reflection = new ReflectionClass(OrderItemResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, OrderItem::class);
+        $analysis = $analyzer->analyze();
+
+        expect($analysis->directEnumFqcns)
+            ->toHaveKey('Workbench\App\Enums\OrderStatus')
+            ->toHaveKey('Workbench\App\Enums\PaymentMethod')
+            ->toHaveKey('Workbench\App\Enums\Currency');
+    });
+
+    test('has model imports from inline relation filter (order_extended)', function () {
+        $reflection = new ReflectionClass(OrderItemResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, OrderItem::class);
+        $analysis = $analyzer->analyze();
+
+        expect($analysis->modelFqcns)
+            ->toHaveKey('Workbench\App\Models\User')
+            ->toHaveKey('Workbench\App\Models\OrderItem');
     });
 });
 
