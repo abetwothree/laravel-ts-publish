@@ -64,6 +64,7 @@ class TypeScriptMap
             'smallint' => 'number',
             'year' => 'number',
             'real' => 'number',
+            'number' => 'number',
 
             // Boolean types
             'bool' => 'boolean',
@@ -107,6 +108,15 @@ class TypeScriptMap
 
             'null' => 'null',
             'mixed' => 'unknown',
+
+            // PHPStan / PHPDoc primitives
+            'never' => 'never',
+            'void' => 'void',
+            'true' => 'true',
+            'false' => 'false',
+            'numeric-string' => 'string',
+            'array-key' => 'string | number',
+            'scalar' => 'string | number | boolean',
         ];
 
         /** @var array<string, string|(callable(): string)> $merged */

@@ -4,6 +4,7 @@ use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Workbench\Accounting\Models\Invoice;
+use Workbench\App\Enums\Status;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\BaseSharedExtendableModel;
 use Workbench\App\Models\Category;
@@ -1158,5 +1159,116 @@ describe('ModelTransformer TsExtends BFS inheritance traversal', function () {
         $data = (new ModelTransformer(BaseSharedExtendableModel::class))->data();
 
         expect($data->tsExtends)->toBe(['SharedModelInterface']);
+    });
+});
+
+describe('Image model @return Attribute<> docblock accessor resolution', function () {
+    // Already-working coverage
+    test('extension resolves string|null from docblock', function () {
+        $data = (new ModelTransformer(Image::class))->data();
+
+        expect($data->mutators)->toHaveKey('extension')
+            ->and($data->mutators['extension']['type'])->toBe('string | null');
+    });
+
+    test('size resolves number from docblock', function () {
+        $data = (new ModelTransformer(Image::class))->data();
+
+        expect($data->mutators)->toHaveKey('size')
+            ->and($data->mutators['size']['type'])->toBe('number');
+    });
+
+    // Multi-part union
+    test('flexibleId resolves string|int|null union from docblock', function () {
+        $data = (new ModelTransformer(Image::class))->data();
+
+        expect($data->mutators)->toHaveKey('flexible_id')
+            ->and($data->mutators['flexible_id']['type'])->toBe('string | number | null');
+    });
+
+    // Nullable shorthand ?T
+    test('optionalLabel resolves ?string to string | null from docblock', function () {
+        $data = (new ModelTransformer(Image::class))->data();
+
+        expect($data->mutators)->toHaveKey('optional_label')
+            ->and($data->mutators['optional_label']['type'])->toBe('string | null');
+    });
+
+    // Enum FQCN
+    test('statusFromDocblock resolves enum FQCN to StatusType | null', function () {
+        $data = (new ModelTransformer(Image::class))->data();
+
+        expect($data->mutators)->toHaveKey('status_from_docblock')
+            ->and($data->mutators['status_from_docblock']['type'])->toBe('StatusType | null');
+
+        expect($data->typeImports)->toHaveKey('../enums');
+        expect($data->typeImports['../enums'])->toContain('StatusType');
+    });
+
+    // Model FQCN
+    test('uploaderFromDocblock resolves model FQCN to User | null', function () {
+        $data = (new ModelTransformer(Image::class))->data();
+
+        expect($data->mutators)->toHaveKey('uploader_from_docblock')
+            ->and($data->mutators['uploader_from_docblock']['type'])->toBe('User | null');
+
+        expect($data->typeImports)->toHaveKey('./');
+        expect($data->typeImports['./'])->toContain('User');
+    });
+
+    // #[TsType] class with import
+    test('configFromDocblock resolves #[TsType] class to MenuSettingsType with import', function () {
+        $data = (new ModelTransformer(Image::class))->data();
+
+        expect($data->mutators)->toHaveKey('config_from_docblock')
+            ->and($data->mutators['config_from_docblock']['type'])->toBe('MenuSettingsType');
+
+        expect($data->typeImports)->toHaveKey('@js/types/settings');
+        expect($data->typeImports['@js/types/settings'])->toContain('MenuSettingsType');
+    });
+
+    // Arrayable class
+    test('dataFromDocblock resolves Arrayable class to unknown[]', function () {
+        $data = (new ModelTransformer(Image::class))->data();
+
+        expect($data->mutators)->toHaveKey('data_from_docblock')
+            ->and($data->mutators['data_from_docblock']['type'])->toBe('unknown[]');
+    });
+
+    // __toString class
+    test('labelFromDocblock resolves class with __toString to string', function () {
+        $data = (new ModelTransformer(Image::class))->data();
+
+        expect($data->mutators)->toHaveKey('label_from_docblock')
+            ->and($data->mutators['label_from_docblock']['type'])->toBe('string');
+    });
+
+    // Edge cases
+    test('accessor with no docblock resolves to unknown', function () {
+        $data = (new ModelTransformer(Image::class))->data();
+
+        expect($data->mutators)->toHaveKey('no_docblock_accessor')
+            ->and($data->mutators['no_docblock_accessor']['type'])->toBe('unknown');
+    });
+
+    test('accessor with @return string docblock (not Attribute<>) resolves to string | null', function () {
+        $data = (new ModelTransformer(Image::class))->data();
+
+        expect($data->mutators)->toHaveKey('wrong_format_docblock')
+            ->and($data->mutators['wrong_format_docblock']['type'])->toBe('string | null');
+    });
+
+    test('positive-int resolves to number via partial map match', function () {
+        $data = (new ModelTransformer(Image::class))->data();
+
+        expect($data->mutators)->toHaveKey('positive_int_accessor')
+            ->and($data->mutators['positive_int_accessor']['type'])->toBe('number');
+    });
+
+    test('numeric-string resolves to string via exact map match', function () {
+        $data = (new ModelTransformer(Image::class))->data();
+
+        expect($data->mutators)->toHaveKey('numeric_string_accessor')
+            ->and($data->mutators['numeric_string_accessor']['type'])->toBe('string');
     });
 });

@@ -11,4 +11,5 @@ export interface TrackingEvent
     updated_at: string | null;
     // Mutators
     changes: { attributes: Record<string, unknown>; old: Record<string, unknown> };
+    diff: unknown[] | Record<string, unknown>;
 }
