@@ -582,28 +582,13 @@ class ModelTransformer extends CoreTransformer
                 $valueImports = $this->collectModularValueImports($this->enumPropertyFqcns());
             }
         } else {
-            $enumTypeImports = $this->collectFlatTypeImports($this->enumFqcnMap);
+            ['typeImports' => $typeImports, 'valueImports' => $valueImports] = $this->buildFlatEnumImports(
+                $this->enumFqcnMap,
+                $this->enumPropertyFqcns(),
+                $hasEnums,
+            );
 
-            if ($enumTypeImports) {
-                sort($enumTypeImports);
-                $typeImports['../enums'] = $enumTypeImports;
-            }
-
-            if ($hasEnums) {
-                $enumValueImports = $this->collectFlatValueImports($this->enumPropertyFqcns());
-
-                if ($enumValueImports) {
-                    sort($enumValueImports);
-                    $valueImports['../enums'] = $enumValueImports;
-                }
-            }
-
-            $modelImports = $this->collectFlatTypeImports($modelFqcnMap);
-
-            if ($modelImports) {
-                sort($modelImports);
-                $typeImports['./'] = $modelImports;
-            }
+            $this->addSortedImports($typeImports, './', $this->collectFlatTypeImports($modelFqcnMap));
         }
 
         $typeImports = $this->mergeCustomImports($typeImports, $this->customImports);
