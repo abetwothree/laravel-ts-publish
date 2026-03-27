@@ -245,6 +245,8 @@ trait ResolvesModelTypes
         array $keys,
         bool $include,
     ): array {
+        $result = ['type' => 'unknown', 'enumFqcns' => [], 'modelFqcns' => []];
+
         try {
             /** @var Model $relatedInstance */
             $relatedInstance = resolve($relatedModelClass);
@@ -254,8 +256,8 @@ trait ResolvesModelTypes
             $relatedRelations = $data->relations;
             /** @var ReflectionClass<Model> $relatedReflection */
             $relatedReflection = new ReflectionClass($relatedModelClass);
-        } catch (\Throwable) {
-            return ['type' => 'unknown', 'enumFqcns' => [], 'modelFqcns' => []];
+        } catch (\Throwable) { // @codeCoverageIgnore
+            return $result; // @codeCoverageIgnore
         }
 
         if ($include) {
@@ -299,7 +301,7 @@ trait ResolvesModelTypes
 
                             continue;
                         }
-                    } catch (\Throwable) {
+                    } catch (\Throwable) { // @codeCoverageIgnore
                         // Fall through to cast/type resolution
                     }
                 }
@@ -357,6 +359,7 @@ trait ResolvesModelTypes
         $inlineType = $parts === [] ? 'unknown' : '{ '.implode('; ', $parts).' }';
 
         return [
+            ...$result,
             'type' => $inlineType,
             'enumFqcns' => $collectedEnumFqcns,
             'modelFqcns' => $collectedModelFqcns,

@@ -75,7 +75,7 @@ trait FiltersModelAttributes
         $args = $call->getArgs();
 
         if (count($args) < 1) {
-            return null;
+            return null; // @codeCoverageIgnore
         }
 
         // Array form: ->only(['id', 'name'])

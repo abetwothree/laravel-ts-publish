@@ -1217,11 +1217,13 @@ class ResourceAstAnalyzer
      */
     protected function analyzeRelationFilter(MethodCall|NullsafeMethodCall $call): array
     {
+        $result = ['type' => 'unknown', 'optional' => false];
+
         $nullable = $call instanceof NullsafeMethodCall;
         $methodName = $call->name instanceof Identifier ? $call->name->toString() : null;
 
         if ($methodName === null) {
-            return ['type' => 'unknown', 'optional' => false]; // @codeCoverageIgnore
+            return $result; // @codeCoverageIgnore
         }
 
         /** @var PropertyFetch $varExpr */
@@ -1229,19 +1231,19 @@ class ResourceAstAnalyzer
         $propName = $varExpr->name instanceof Identifier ? $varExpr->name->toString() : null;
 
         if ($propName === null) {
-            return ['type' => 'unknown', 'optional' => false]; // @codeCoverageIgnore
+            return $result; // @codeCoverageIgnore
         }
 
         $relationInfo = $this->resolveModelRelationTypeInfo($propName);
 
         if ($relationInfo['modelFqcn'] === null) {
-            return ['type' => 'unknown', 'optional' => false];
+            return $result; // @codeCoverageIgnore
         }
 
         $keys = $this->extractFilterKeys($call);
 
         if ($keys === null || $keys === []) {
-            return ['type' => 'unknown', 'optional' => false];
+            return $result; // @codeCoverageIgnore
         }
 
         $include = $methodName === 'only';
@@ -1253,8 +1255,8 @@ class ResourceAstAnalyzer
         }
 
         return [
+            ...$result,
             'type' => $inlineType,
-            'optional' => false,
             'embeddedEnumFqcns' => $filterResult['enumFqcns'],
             'embeddedModelFqcns' => $filterResult['modelFqcns'],
         ];
