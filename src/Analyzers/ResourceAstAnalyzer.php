@@ -49,7 +49,7 @@ use ReflectionClass;
  * @phpstan-import-type ClassMapType from ResourceAnalysis
  * @phpstan-import-type ImportMapType from ResourceAnalysis
  *
- * @phpstan-type ValueExpressionResult = array{type: string, optional: bool, enumFqcn?: class-string, directEnumFqcn?: class-string, resourceFqcn?: class-string, modelFqcn?: class-string}
+ * @phpstan-type ValueExpressionResult = array{type: string, optional: bool, enumFqcn?: class-string, directEnumFqcn?: class-string, resourceFqcn?: class-string, modelFqcn?: class-string, embeddedEnumFqcns?: list<class-string>, embeddedModelFqcns?: list<class-string>}
  */
 class ResourceAstAnalyzer
 {
@@ -1245,13 +1245,19 @@ class ResourceAstAnalyzer
         }
 
         $include = $methodName === 'only';
-        $inlineType = $this->resolveFilteredRelationType($relationInfo['modelFqcn'], $keys, $include);
+        $filterResult = $this->resolveFilteredRelationType($relationInfo['modelFqcn'], $keys, $include);
+        $inlineType = $filterResult['type'];
 
         if ($nullable && $inlineType !== 'unknown') {
             $inlineType .= ' | null';
         }
 
-        return ['type' => $inlineType, 'optional' => false];
+        return [
+            'type' => $inlineType,
+            'optional' => false,
+            'embeddedEnumFqcns' => $filterResult['enumFqcns'],
+            'embeddedModelFqcns' => $filterResult['modelFqcns'],
+        ];
     }
 
     /**
@@ -1285,6 +1291,16 @@ class ResourceAstAnalyzer
 
         if (isset($result['modelFqcn'])) {
             $modelFqcns[$keyName] = $result['modelFqcn'];
+        }
+
+        // Embedded FQCNs from inline relation filter types (e.g. $this->post->only([...])).
+        // Using FQCN as both key and value: ResourceTransformer only reads the value, never the key.
+        foreach ($result['embeddedEnumFqcns'] ?? [] as $fqcn) {
+            $directEnumFqcns[$fqcn] = $fqcn;
+        }
+
+        foreach ($result['embeddedModelFqcns'] ?? [] as $fqcn) {
+            $modelFqcns[$fqcn] = $fqcn;
         }
     }
 }

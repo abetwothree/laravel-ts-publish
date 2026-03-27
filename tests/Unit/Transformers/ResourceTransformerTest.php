@@ -328,10 +328,14 @@ describe('ResourceTransformer imports', function () {
         expect($data->typeImports['./'])->toContain('UserResource');
     });
 
-    test('CommentResource has no enum imports', function () {
+    test('CommentResource has enum imports from inline relation filter (post_extended)', function () {
         $data = (new ResourceTransformer(CommentResource::class))->data();
 
-        expect($data->typeImports)->not->toHaveKey('../enums');
+        // post_extended = $this->post?->except(['created_at', 'updated_at']) includes enum-casted columns
+        expect($data->typeImports)->toHaveKey('../enums');
+        expect($data->typeImports['../enums'])->toContain('StatusType');
+        expect($data->typeImports['../enums'])->toContain('VisibilityType');
+        expect($data->typeImports['../enums'])->toContain('PriorityType');
         expect($data->valueImports)->toBeEmpty();
     });
 

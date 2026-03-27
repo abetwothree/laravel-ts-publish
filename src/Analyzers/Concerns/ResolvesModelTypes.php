@@ -233,19 +233,18 @@ trait ResolvesModelTypes
      * Resolve an inline TypeScript type for a filtered subset of a related model's attributes and relations.
      *
      * Used when a resource accesses `$this->relation->only([...])` or `->except([...])`.
-     * Returns a string like `{ id: number; name: string }`, or `'unknown'` if no keys resolve.
-     *
-     * Note: enum FQCNs from the related model are NOT tracked — the type uses class_basename of
-     * the enum. Users who need full import tracking should use a dedicated nested resource instead.
+     * Returns an array with the inline type string (`{ id: number; name: string }` or `'unknown'`)
+     * plus collected enum and model FQCNs so the caller can feed them into the import pipeline.
      *
      * @param  class-string  $relatedModelClass
      * @param  list<string>  $keys
+     * @return array{type: string, enumFqcns: list<class-string>, modelFqcns: list<class-string>}
      */
     protected function resolveFilteredRelationType(
         string $relatedModelClass,
         array $keys,
         bool $include,
-    ): string {
+    ): array {
         try {
             /** @var Model $relatedInstance */
             $relatedInstance = resolve($relatedModelClass);
@@ -256,7 +255,7 @@ trait ResolvesModelTypes
             /** @var ReflectionClass<Model> $relatedReflection */
             $relatedReflection = new ReflectionClass($relatedModelClass);
         } catch (\Throwable) {
-            return 'unknown';
+            return ['type' => 'unknown', 'enumFqcns' => [], 'modelFqcns' => []];
         }
 
         if ($include) {
@@ -271,6 +270,10 @@ trait ResolvesModelTypes
         }
 
         $parts = [];
+        /** @var list<class-string> $collectedEnumFqcns */
+        $collectedEnumFqcns = [];
+        /** @var list<class-string> $collectedModelFqcns */
+        $collectedModelFqcns = [];
 
         /** @var list<string> $resolveKeys */
         foreach ($resolveKeys as $key) {
@@ -290,6 +293,9 @@ trait ResolvesModelTypes
                             }
 
                             $parts[] = $key.': '.$type;
+                            /** @var list<class-string> $accessorEnumFqcns */
+                            $accessorEnumFqcns = $accessorInfo['enumFqcns'];
+                            array_push($collectedEnumFqcns, ...$accessorEnumFqcns);
 
                             continue;
                         }
@@ -308,6 +314,9 @@ trait ResolvesModelTypes
                     }
 
                     $parts[] = $key.': '.$type;
+                    /** @var list<class-string> $castEnumFqcns */
+                    $castEnumFqcns = $tsInfo['enumFqcns'];
+                    array_push($collectedEnumFqcns, ...$castEnumFqcns);
 
                     continue;
                 }
@@ -323,6 +332,9 @@ trait ResolvesModelTypes
 
                     if ($type !== 'unknown') {
                         $parts[] = $key.': '.$type;
+                        /** @var list<class-string> $colEnumFqcns */
+                        $colEnumFqcns = $tsInfo['enumFqcns'];
+                        array_push($collectedEnumFqcns, ...$colEnumFqcns);
                     }
                 }
 
@@ -336,13 +348,18 @@ trait ResolvesModelTypes
                 $relatedName = class_basename($relation['related']);
                 $containsMany = str_contains(strtolower($relation['type']), 'many');
                 $parts[] = $key.': '.($containsMany ? $relatedName.'[]' : $relatedName);
+                /** @var class-string $relatedFqcn */
+                $relatedFqcn = $relation['related'];
+                $collectedModelFqcns[] = $relatedFqcn;
             }
         }
 
-        if ($parts === []) {
-            return 'unknown';
-        }
+        $inlineType = $parts === [] ? 'unknown' : '{ '.implode('; ', $parts).' }';
 
-        return '{ '.implode('; ', $parts).' }';
+        return [
+            'type' => $inlineType,
+            'enumFqcns' => $collectedEnumFqcns,
+            'modelFqcns' => $collectedModelFqcns,
+        ];
     }
 }

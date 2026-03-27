@@ -465,6 +465,49 @@ describe('ResourceAstAnalyzer with OrderItemResource', function () {
 
         expect($order['type'])->toBe('Order');
     });
+
+    test('test order_limited only has id, total or null', function () {
+        $reflection = new ReflectionClass(OrderItemResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, OrderItem::class);
+        $analysis = $analyzer->analyze();
+
+        $orderLimited = collect($analysis->properties)->firstWhere('name', 'order_limited');
+
+        expect($orderLimited['type'])->toBe('{ id: number; total: number } | null');
+    });
+
+    test('test order_extended does not have created_at & updated_at', function () {
+        $reflection = new ReflectionClass(OrderItemResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, OrderItem::class);
+        $analysis = $analyzer->analyze();
+
+        $orderExtended = collect($analysis->properties)->firstWhere('name', 'order_extended');
+
+        expect($orderExtended['type'])
+            ->not->toContain('created_at')
+            ->not->toContain('updated_at');
+    });
+
+    test('has enum imports from inline relation filter (order_extended)', function () {
+        $reflection = new ReflectionClass(OrderItemResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, OrderItem::class);
+        $analysis = $analyzer->analyze();
+
+        expect($analysis->directEnumFqcns)
+            ->toHaveKey('Workbench\App\Enums\OrderStatus')
+            ->toHaveKey('Workbench\App\Enums\PaymentMethod')
+            ->toHaveKey('Workbench\App\Enums\Currency');
+    });
+
+    test('has model imports from inline relation filter (order_extended)', function () {
+        $reflection = new ReflectionClass(OrderItemResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, OrderItem::class);
+        $analysis = $analyzer->analyze();
+
+        expect($analysis->modelFqcns)
+            ->toHaveKey('Workbench\App\Models\User')
+            ->toHaveKey('Workbench\App\Models\OrderItem');
+    });
 });
 
 describe('ResourceAstAnalyzer with ShipmentResource', function () {

@@ -1,3 +1,5 @@
+import type { PriorityType, StatusType, VisibilityType } from '../../enums';
+import type { Category, Comment, Image, Tag, User } from '../../models';
 import type { PostResource, UserResource } from '.';
 
 export interface CommentResource
