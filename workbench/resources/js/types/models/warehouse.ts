@@ -2,10 +2,12 @@ import { type AsEnum } from '@tolki/enum';
 
 import { Status as CrmStatus, Status as WorkbenchStatus } from '../enums';
 import type { MenuSettingsType } from '@js/types/settings';
+import type { Auditable } from '@/types/audit';
+import type { HasTimestamps } from '@/types/common';
 import type { StatusType as CrmStatusType, StatusType as WorkbenchStatusType } from '../enums';
 import type { Coordinate, User as CrmUser, User as ManagerUser } from './';
 
-export interface Warehouse
+export interface Warehouse extends HasTimestamps, Pick<Auditable, "created_by" | "updated_by">
 {
     id: number;
     name: string;

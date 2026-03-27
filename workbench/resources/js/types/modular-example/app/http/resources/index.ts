@@ -1,7 +1,9 @@
 export * from './address';
 export * from './api-post-resource';
 export * from './bare-func-call-resource';
+export * from './base-shared-resource';
 export * from './category-resource';
+export * from './child-shared-resource';
 export * from './comment-resource';
 export * from './delegating-resource';
 export * from './delegating-with-mixin-resource';
@@ -26,6 +28,7 @@ export * from './post-resource';
 export * from './product-resource';
 export * from './profile-resource';
 export * from './quirky-resource';
+export * from './routable-resource';
 export * from './spread-json-base-resource';
 export * from './tag-resource';
 export * from './team-member-resource';

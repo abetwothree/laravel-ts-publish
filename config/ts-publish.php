@@ -460,4 +460,39 @@ return [
     'enum_metadata_enabled' => true,
 
     'enums_use_tolki_package' => true,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Interface Extending
+    |--------------------------------------------------------------------------
+    |
+    | Specify TypeScript interfaces that all generated model or resource
+    | interfaces should extend. These are applied globally to every
+    | published interface of the given type.
+    |
+    | Each entry can be a plain string (simple extends) or an array with
+    | 'extends', 'import', and optionally 'types' keys.
+    |
+    | For per-class extends, use the #[TsExtends] attribute instead.
+    |
+    | 'ts_extends' => [
+    |     'models' => [
+    |         'HasTimestamps',
+    |         ['extends' => 'BaseFields', 'import' => '@/types/base'],
+    |         ['extends' => 'Pick<Auditable, "created_by">', 'import' => '@/types/audit', 'types' => ['Auditable']],
+    |     ],
+    |     'resources' => [
+    |         ['extends' => 'BaseResource', 'import' => '@/types/base'],
+    |     ],
+    | ],
+    */
+
+    'ts_extends' => [
+        'models' => [
+            //
+        ],
+        'resources' => [
+            //
+        ],
+    ],
 ];

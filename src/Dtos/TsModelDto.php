@@ -28,9 +28,10 @@ use JsonSerializable;
  *    relations: RelationsList,
  *    enumColumns: EnumPropertiesList,
  *    enumMutators: EnumPropertiesList,
+ *    tsExtends: list<string>,
  * }
  *
- * @implements Arrayable<string, string|ColumnsList|RelationsList|MutatorsList|TypesImportMap|ValuesImportMap|EnumPropertiesList>
+ * @implements Arrayable<string, string|ColumnsList|RelationsList|MutatorsList|TypesImportMap|ValuesImportMap|EnumPropertiesList|list<string>>
  */
 class TsModelDto implements Arrayable, Datable, Jsonable, JsonSerializable
 {
@@ -42,6 +43,7 @@ class TsModelDto implements Arrayable, Datable, Jsonable, JsonSerializable
      * @param  ValuesImportMap  $valueImports
      * @param  EnumPropertiesList  $enumColumns
      * @param  EnumPropertiesList  $enumMutators
+     * @param  list<string>  $tsExtends
      */
     public function __construct(
         public string $modelName,
@@ -55,6 +57,7 @@ class TsModelDto implements Arrayable, Datable, Jsonable, JsonSerializable
         public array $valueImports = [],
         public array $enumColumns = [],
         public array $enumMutators = [],
+        public array $tsExtends = [],
     ) {}
 
     /** @return ModelData */
@@ -72,6 +75,7 @@ class TsModelDto implements Arrayable, Datable, Jsonable, JsonSerializable
             'valueImports' => $this->valueImports,
             'enumColumns' => $this->enumColumns,
             'enumMutators' => $this->enumMutators,
+            'tsExtends' => $this->tsExtends,
         ];
     }
 

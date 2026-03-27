@@ -272,6 +272,27 @@ declare global {
             images_count: number;
             images_exists: boolean;
         }
+        /** Child model that uses SharedExtendsTrait directly AND extends a parent that also uses it. SharedModelInterface should appear only once despite being reachable via two paths. */
+        export interface ChildSharedExtendableModel {
+            // Columns
+            id: number;
+            name: string;
+            email: string;
+            email_verified_at: string | null;
+            password: string;
+            options: string | null;
+            remember_token: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            role: string | null;
+            membership_level: string | null;
+            phone: string | null;
+            avatar: string | null;
+            bio: string | null;
+            settings: string | null;
+            last_login_at: string | null;
+            last_login_ip: string | null;
+        }
         export interface Address {
             // Columns
             id: number;
@@ -419,6 +440,48 @@ declare global {
             notifications: DatabaseNotification[];
             notifications_count: number;
             notifications_exists: boolean;
+        }
+        export interface ModelWithNestedTraitExtends {
+            // Columns
+            id: number;
+            name: string;
+            email: string;
+            email_verified_at: string | null;
+            password: string;
+            options: string | null;
+            remember_token: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            role: string | null;
+            membership_level: string | null;
+            phone: string | null;
+            avatar: string | null;
+            bio: string | null;
+            settings: string | null;
+            last_login_at: string | null;
+            last_login_ip: string | null;
+        }
+        export interface BaseExtendableModel {
+        }
+        export interface BaseSharedExtendableModel {
+            // Columns
+            id: number;
+            name: string;
+            email: string;
+            email_verified_at: string | null;
+            password: string;
+            options: string | null;
+            remember_token: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            role: string | null;
+            membership_level: string | null;
+            phone: string | null;
+            avatar: string | null;
+            bio: string | null;
+            settings: string | null;
+            last_login_at: string | null;
+            last_login_ip: string | null;
         }
         export interface TaskAssignment {
             // Columns
@@ -571,6 +634,46 @@ declare global {
             assignee: TaskOwner;
             assignee_count: number;
             assignee_exists: boolean;
+        }
+        export interface ModelWithParentExtends {
+            // Columns
+            id: number;
+            name: string;
+            email: string;
+            email_verified_at: string | null;
+            password: string;
+            options: string | null;
+            remember_token: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            role: string | null;
+            membership_level: string | null;
+            phone: string | null;
+            avatar: string | null;
+            bio: string | null;
+            settings: string | null;
+            last_login_at: string | null;
+            last_login_ip: string | null;
+        }
+        export interface ModelWithTraitExtends {
+            // Columns
+            id: number;
+            name: string;
+            email: string;
+            email_verified_at: string | null;
+            password: string;
+            options: string | null;
+            remember_token: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            role: string | null;
+            membership_level: string | null;
+            phone: string | null;
+            avatar: string | null;
+            bio: string | null;
+            settings: string | null;
+            last_login_at: string | null;
+            last_login_ip: string | null;
         }
         export interface Image {
             // Columns
@@ -1119,7 +1222,10 @@ declare global {
             post_new?: PostResource;
             post_direct: PostResource;
         }
-        /** Resource with no @mixin or TsResource — tests convention-based model guess. */
+        /** Child resource that uses SharedExtendsInterface AND extends a parent that also uses it. SharedExtendsInterface should appear only once in the result despite being reachable via two paths. */
+        export interface ChildSharedResource {
+        }
+        /** Resource with no @mixin or TsResource — tests convention-based model guess. Also tests multiple TsExtends in parent class, trait, and locally. */
         export interface WarehouseResource {
             id: number;
             name: string;
@@ -1305,6 +1411,8 @@ declare global {
             priority: PriorityType | null;
             priority_new: AsEnum<typeof Priority> | null;
         }
+        export interface RoutableResource {
+        }
         export interface TraitSpreadCoverageResource {
             id: number;
             computed: string;
@@ -1438,6 +1546,9 @@ declare global {
             last_login_ip: string | null;
             initials: string;
             is_premium: boolean;
+        }
+        /** Parent resource that uses SharedExtendsInterface — tests BFS dedup when child also uses the same trait. */
+        export interface BaseSharedResource {
         }
         /** Edge-case resource exercising unusual but valid patterns for AST analyzer guard clauses. */
         export interface QuirkyResource {

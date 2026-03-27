@@ -94,11 +94,15 @@ class TsPublishCommand extends Command
                 $this->createPublishedFilesList($runner);
             }
 
-            $enumCount = count($runner->enumGenerators);
-            $modelCount = count($runner->modelGenerators);
-            $resourceCount = count($runner->resourceGenerators);
+            if ($this->output->isVerbose()) {
+                $enumCount = count($runner->enumGenerators);
+                $modelCount = count($runner->modelGenerators);
+                $resourceCount = count($runner->resourceGenerators);
 
-            outro("{$enumCount} enums, {$modelCount} models, {$resourceCount} resources — All done");
+                outro("{$enumCount} enums, {$modelCount} models, {$resourceCount} resources — All done");
+            } else {
+                outro('All done');
+            }
         }
 
         return self::SUCCESS;

@@ -1248,6 +1248,76 @@
                 "type": "boolean"
             }
         ],
+        "ChildSharedExtendableModel": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "name",
+                "type": "string"
+            },
+            {
+                "name": "email",
+                "type": "string"
+            },
+            {
+                "name": "email_verified_at",
+                "type": "string | null"
+            },
+            {
+                "name": "password",
+                "type": "string"
+            },
+            {
+                "name": "options",
+                "type": "string | null"
+            },
+            {
+                "name": "remember_token",
+                "type": "string | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "role",
+                "type": "string | null"
+            },
+            {
+                "name": "membership_level",
+                "type": "string | null"
+            },
+            {
+                "name": "phone",
+                "type": "string | null"
+            },
+            {
+                "name": "avatar",
+                "type": "string | null"
+            },
+            {
+                "name": "bio",
+                "type": "string | null"
+            },
+            {
+                "name": "settings",
+                "type": "string | null"
+            },
+            {
+                "name": "last_login_at",
+                "type": "string | null"
+            },
+            {
+                "name": "last_login_ip",
+                "type": "string | null"
+            }
+        ],
         "Address": [
             {
                 "name": "id",
@@ -1571,6 +1641,147 @@
             },
             {
                 "name": "updated_at",
+                "type": "string | null"
+            }
+        ],
+        "ModelWithNestedTraitExtends": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "name",
+                "type": "string"
+            },
+            {
+                "name": "email",
+                "type": "string"
+            },
+            {
+                "name": "email_verified_at",
+                "type": "string | null"
+            },
+            {
+                "name": "password",
+                "type": "string"
+            },
+            {
+                "name": "options",
+                "type": "string | null"
+            },
+            {
+                "name": "remember_token",
+                "type": "string | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "role",
+                "type": "string | null"
+            },
+            {
+                "name": "membership_level",
+                "type": "string | null"
+            },
+            {
+                "name": "phone",
+                "type": "string | null"
+            },
+            {
+                "name": "avatar",
+                "type": "string | null"
+            },
+            {
+                "name": "bio",
+                "type": "string | null"
+            },
+            {
+                "name": "settings",
+                "type": "string | null"
+            },
+            {
+                "name": "last_login_at",
+                "type": "string | null"
+            },
+            {
+                "name": "last_login_ip",
+                "type": "string | null"
+            }
+        ],
+        "BaseExtendableModel": [],
+        "BaseSharedExtendableModel": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "name",
+                "type": "string"
+            },
+            {
+                "name": "email",
+                "type": "string"
+            },
+            {
+                "name": "email_verified_at",
+                "type": "string | null"
+            },
+            {
+                "name": "password",
+                "type": "string"
+            },
+            {
+                "name": "options",
+                "type": "string | null"
+            },
+            {
+                "name": "remember_token",
+                "type": "string | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "role",
+                "type": "string | null"
+            },
+            {
+                "name": "membership_level",
+                "type": "string | null"
+            },
+            {
+                "name": "phone",
+                "type": "string | null"
+            },
+            {
+                "name": "avatar",
+                "type": "string | null"
+            },
+            {
+                "name": "bio",
+                "type": "string | null"
+            },
+            {
+                "name": "settings",
+                "type": "string | null"
+            },
+            {
+                "name": "last_login_at",
+                "type": "string | null"
+            },
+            {
+                "name": "last_login_ip",
                 "type": "string | null"
             }
         ],
@@ -2018,6 +2229,146 @@
             {
                 "name": "assignee_exists",
                 "type": "boolean"
+            }
+        ],
+        "ModelWithParentExtends": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "name",
+                "type": "string"
+            },
+            {
+                "name": "email",
+                "type": "string"
+            },
+            {
+                "name": "email_verified_at",
+                "type": "string | null"
+            },
+            {
+                "name": "password",
+                "type": "string"
+            },
+            {
+                "name": "options",
+                "type": "string | null"
+            },
+            {
+                "name": "remember_token",
+                "type": "string | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "role",
+                "type": "string | null"
+            },
+            {
+                "name": "membership_level",
+                "type": "string | null"
+            },
+            {
+                "name": "phone",
+                "type": "string | null"
+            },
+            {
+                "name": "avatar",
+                "type": "string | null"
+            },
+            {
+                "name": "bio",
+                "type": "string | null"
+            },
+            {
+                "name": "settings",
+                "type": "string | null"
+            },
+            {
+                "name": "last_login_at",
+                "type": "string | null"
+            },
+            {
+                "name": "last_login_ip",
+                "type": "string | null"
+            }
+        ],
+        "ModelWithTraitExtends": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "name",
+                "type": "string"
+            },
+            {
+                "name": "email",
+                "type": "string"
+            },
+            {
+                "name": "email_verified_at",
+                "type": "string | null"
+            },
+            {
+                "name": "password",
+                "type": "string"
+            },
+            {
+                "name": "options",
+                "type": "string | null"
+            },
+            {
+                "name": "remember_token",
+                "type": "string | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "role",
+                "type": "string | null"
+            },
+            {
+                "name": "membership_level",
+                "type": "string | null"
+            },
+            {
+                "name": "phone",
+                "type": "string | null"
+            },
+            {
+                "name": "avatar",
+                "type": "string | null"
+            },
+            {
+                "name": "bio",
+                "type": "string | null"
+            },
+            {
+                "name": "settings",
+                "type": "string | null"
+            },
+            {
+                "name": "last_login_at",
+                "type": "string | null"
+            },
+            {
+                "name": "last_login_ip",
+                "type": "string | null"
             }
         ],
         "Image": [
@@ -4291,6 +4642,7 @@
                 "optional": false
             }
         ],
+        "ChildSharedResource": [],
         "WarehouseResource": [
             {
                 "name": "id",
@@ -4960,6 +5312,7 @@
                 "optional": false
             }
         ],
+        "RoutableResource": [],
         "TraitSpreadCoverageResource": [
             {
                 "name": "id",
@@ -5511,6 +5864,7 @@
                 "optional": false
             }
         ],
+        "BaseSharedResource": [],
         "QuirkyResource": [
             {
                 "name": "id",

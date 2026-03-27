@@ -23,6 +23,10 @@ Contributions are welcome and appreciated! Here's everything you need to get sta
 3. Ensure all checks pass before submitting your pull request (see below).
 4. Submit a pull request to the `main` branch.
 
+## Testing commands
+
+You can run the commands by doing this `composer ts:publish` which will run the publish command in the testbench environment.
+
 ## Available Composer Scripts
 
 | Command                | Description                                           |

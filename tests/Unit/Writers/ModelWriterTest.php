@@ -5,6 +5,7 @@ use AbeTwoThree\LaravelTsPublish\Writers\ModelWriter;
 use Illuminate\Filesystem\Filesystem;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
+use Workbench\App\Models\Warehouse;
 use Workbench\Crm\Models\Deal;
 
 test('writes model content from transformer', function () {
@@ -229,4 +230,48 @@ describe('ModelWriter Resource interface output', function () {
             ->toContain('StatusType')
             ->toContain('VisibilityType');
     });
+});
+
+test('renders extends clause from TsExtends attribute in split template', function () {
+    $writer = new ModelWriter(new Filesystem);
+    $transformer = new ModelTransformer(Warehouse::class);
+
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.model_template', 'laravel-ts-publish::model-split');
+
+    $content = $writer->write($transformer);
+
+    expect($content)
+        ->toContain('export interface Warehouse extends HasTimestamps, Pick<Auditable, "created_by" | "updated_by">')
+        ->toContain("import type { HasTimestamps } from '@/types/common'")
+        ->toContain("import type { Auditable } from '@/types/audit'");
+});
+
+test('renders extends clause from TsExtends attribute in full template', function () {
+    $writer = new ModelWriter(new Filesystem);
+    $transformer = new ModelTransformer(Warehouse::class);
+
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.model_template', 'laravel-ts-publish::model-full');
+
+    $content = $writer->write($transformer);
+
+    expect($content)
+        ->toContain('export interface Warehouse extends HasTimestamps, Pick<Auditable, "created_by" | "updated_by">')
+        ->toContain("import type { HasTimestamps } from '@/types/common'");
+});
+
+test('model without TsExtends renders plain interface', function () {
+    $writer = new ModelWriter(new Filesystem);
+    $transformer = new ModelTransformer(User::class);
+
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.model_template', 'laravel-ts-publish::model-split');
+
+    $content = $writer->write($transformer);
+
+    // User interface should not have extends (no TsExtends attribute)
+    expect($content)
+        ->not->toContain('export interface User extends')
+        ->toContain('export interface User');
 });
