@@ -230,6 +230,7 @@ declare global {
             updated_at: string | null;
             // Mutators
             changes: { attributes: Record<string, unknown>; old: Record<string, unknown> };
+            diff: unknown[] | Record<string, unknown>;
         }
         export interface CompositeComment {
             // Columns
@@ -715,6 +716,20 @@ declare global {
             is_landscape: boolean;
             /** Aspect ratio as a string (e.g. "16:9") or null if dimensions not set */
             aspect_ratio: string | null;
+            extension: string | null;
+            /** This is the size test to parse from the docblock in the test for accessor type resolution. */
+            size: number;
+            flexible_id: string | number | null;
+            optional_label: string | null;
+            status_from_docblock: StatusType | null;
+            uploader_from_docblock: User | null;
+            config_from_docblock: MenuSettingsType;
+            data_from_docblock: unknown[];
+            label_from_docblock: string;
+            no_docblock_accessor: unknown;
+            wrong_format_docblock: string | null;
+            positive_int_accessor: number;
+            numeric_string_accessor: string;
             // Relations
             /** Polymorphic parent (Product, Post, User, etc.) */
             imageable: Image;
