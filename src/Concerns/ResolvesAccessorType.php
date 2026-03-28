@@ -79,7 +79,8 @@ trait ResolvesAccessorType
     /**
      * Attempt to read from @return Attribute<string, never> or similar docblock on the accessor method.
      *
-     * The first parameter of Attribute<string, never> is the return type of the getter, and the second parameter is the accepted type for the setter (which we ignore here since we're only trying to infer the getter type).
+     * The first parameter of Attribute<string, never> is the return type of the getter,
+     * and the second parameter is the accepted type for the setter.
      *
      * @return TypeScriptTypeInfo
      */
