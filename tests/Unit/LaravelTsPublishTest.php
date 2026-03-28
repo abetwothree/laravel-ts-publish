@@ -892,6 +892,120 @@ describe('resolveClassFromFile', function () {
     });
 });
 
+describe('qualifyGlobalType', function () {
+    test('resolves import alias to fully-qualified name (Pass 1)', function () {
+        $result = $this->service->qualifyGlobalType(
+            'CrmUser | null',
+            ['crm.models' => ['User']],
+            '',
+            ['CrmUser' => 'crm.models.User'],
+        );
+
+        expect($result)->toBe('crm.models.User | null');
+    });
+
+    test('uses bare name when alias target is in the skip namespace (Pass 1)', function () {
+        // In crm.models context, crm.models.User collapses to just User
+        $result = $this->service->qualifyGlobalType(
+            'CrmUser | null',
+            ['crm.models' => ['User']],
+            'crm.models',
+            ['CrmUser' => 'crm.models.User'],
+        );
+
+        expect($result)->toBe('User | null');
+    });
+
+    test('qualifies a bare type name with its namespace prefix (Pass 2)', function () {
+        $result = $this->service->qualifyGlobalType(
+            'User | null',
+            ['app.models' => ['User', 'Post']],
+            '',
+        );
+
+        expect($result)->toBe('app.models.User | null');
+    });
+
+    test('skips qualification for types in the skip namespace (Pass 2)', function () {
+        $result = $this->service->qualifyGlobalType(
+            'User | Post',
+            ['app.models' => ['User', 'Post']],
+            'app.models',
+        );
+
+        expect($result)->toBe('User | Post');
+    });
+
+    test('matches longer names first to prevent partial replacement', function () {
+        // 'StatusType' must be matched before 'Status' to avoid replacing inside 'StatusType'
+        $result = $this->service->qualifyGlobalType(
+            'StatusType | Status',
+            ['enums' => ['Status', 'StatusType']],
+            '',
+        );
+
+        expect($result)->toBe('enums.StatusType | enums.Status');
+    });
+
+    test('does not re-qualify already-qualified types', function () {
+        // The negative lookbehind on '.' prevents a second qualification
+        $result = $this->service->qualifyGlobalType(
+            'crm.models.User | null',
+            ['app.models' => ['User']],
+            '',
+        );
+
+        expect($result)->toBe('crm.models.User | null');
+    });
+});
+
+describe('rewriteAsEnumToType', function () {
+    test('replaces AsEnum<typeof X> with the qualified type alias', function () {
+        $result = $this->service->rewriteAsEnumToType(
+            'AsEnum<typeof Status>',
+            ['Status' => 'enums.StatusType'],
+        );
+
+        expect($result)->toBe('enums.StatusType');
+    });
+
+    test('preserves surrounding null union after replacement', function () {
+        $result = $this->service->rewriteAsEnumToType(
+            'AsEnum<typeof Status> | null',
+            ['Status' => 'enums.StatusType'],
+        );
+
+        expect($result)->toBe('enums.StatusType | null');
+    });
+
+    test('replaces multiple AsEnum patterns in a single string', function () {
+        $result = $this->service->rewriteAsEnumToType(
+            'AsEnum<typeof Status> | AsEnum<typeof Priority>',
+            ['Status' => 'enums.StatusType', 'Priority' => 'enums.PriorityType'],
+        );
+
+        expect($result)->toBe('enums.StatusType | enums.PriorityType');
+    });
+
+    test('leaves unknown const aliases unchanged', function () {
+        $result = $this->service->rewriteAsEnumToType(
+            'AsEnum<typeof Unknown> | null',
+            ['Status' => 'enums.StatusType'],
+        );
+
+        expect($result)->toBe('AsEnum<typeof Unknown> | null');
+    });
+
+    test('handles extra whitespace inside typeof', function () {
+        $result = $this->service->rewriteAsEnumToType(
+            'AsEnum<typeof  Status  > | null',
+            ['Status' => 'enums.StatusType'],
+        );
+
+        expect($result)->toBe('enums.StatusType | null');
+    });
+});
+
 /**
  * A class annotated with #[TsType] for testing step 2 resolution.
  */
