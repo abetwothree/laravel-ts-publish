@@ -93,7 +93,7 @@ class ModelTransformer extends CoreTransformer
     protected array $mutatorFqcns = [];
 
     /** @var array<string, list<string>> */
-    protected array $customImports = [];
+    public protected(set) array $customImports = [];
 
     /** @var array<string, array{fqcn: string, nullable: bool}> column_name => enum property info */
     protected array $enumColumnProperties = [];
@@ -102,7 +102,7 @@ class ModelTransformer extends CoreTransformer
     protected array $enumMutatorProperties = [];
 
     /** @var list<string> TypeScript extends clauses */
-    protected array $tsExtends = [];
+    public protected(set) array $tsExtends = [];
 
     #[Override]
     public function transform(): self
@@ -597,6 +597,38 @@ class ModelTransformer extends CoreTransformer
             'typeImports' => $this->deduplicateAndSortImports($typeImports),
             'valueImports' => $this->deduplicateAndSortImports($valueImports),
         ];
+    }
+
+    /**
+     * Build a map of per-file import aliases → namespace-qualified global names.
+     *
+     * Used by GlobalsWriter to resolve aliases (e.g. `CrmUser`, `WorkbenchStatusType`) back to
+     * their correct globally-qualified names before the normal `qualifyGlobalType()` pass.
+     *
+     * @return array<string, string> alias => 'namespace.OriginalName'
+     */
+    public function globalAliasMap(): array
+    {
+        $isModular = config()->boolean('ts-publish.modular_publishing');
+        $modelsNs = config()->string('ts-publish.models_namespace');
+        $enumsNs = config()->string('ts-publish.enums_namespace');
+        $map = [];
+
+        foreach ($this->importAliases as $fqcn => $alias) {
+            if (isset($this->enumFqcnMap[$fqcn])) {
+                $ns = $isModular
+                    ? str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn))
+                    : $enumsNs;
+                $map[$alias] = $ns.'.'.$this->enumFqcnMap[$fqcn];
+            } elseif (isset($this->modelFqcnMap[$fqcn])) {
+                $ns = $isModular
+                    ? str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn))
+                    : $modelsNs;
+                $map[$alias] = $ns.'.'.$this->modelFqcnMap[$fqcn];
+            }
+        }
+
+        return $map;
     }
 
     #[Override]

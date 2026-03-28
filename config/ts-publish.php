@@ -288,12 +288,12 @@ return [
     | Generate TypeScript Global Namespace Types
     |--------------------------------------------------------------------------
     |
-    | Specifies whether to create a "global.d.ts" file with a global namespace containing all generated types.
+    | Specifies whether to create a "global.ts" file with a global namespace containing all generated types.
     */
 
     'output_globals_file' => false,
 
-    'global_filename' => 'laravel-ts-global.d.ts',
+    'global_filename' => 'laravel-ts-global.ts',
 
     /* Defaults to output_directory setting */
     'global_directory' => null,
