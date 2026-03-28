@@ -105,10 +105,6 @@ class GlobalsWriter
             $globalAliasMap = array_merge($globalAliasMap, $gen->transformer->globalAliasMap());
         }
 
-        // AsEnum<typeof X> is rewritten to plain type aliases in the globals file (because
-        // `typeof namespace.Member` is illegal in declare global {}), so AsEnum is never used.
-        $needsAsEnum = false;
-
         $viewData = [
             'enums' => $runner->enumGenerators->map(fn (EnumGenerator $g) => $g->transformer),
             'models' => $runner->modelGenerators->map(fn (ModelGenerator $g) => $g->transformer),
@@ -120,7 +116,6 @@ class GlobalsWriter
             'globalTypesByNamespace' => $globalTypesByNamespace,
             'globalAliasMap' => $globalAliasMap,
             'externalTypeImports' => $externalTypeImports,
-            'needsAsEnum' => $needsAsEnum,
         ];
 
         if ($isModular) {
