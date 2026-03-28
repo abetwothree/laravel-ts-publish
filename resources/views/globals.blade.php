@@ -1,6 +1,5 @@
 @use('AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish')
 /* eslint-disable */
-// @ts-nocheck
 // biome-ignore lint: disable
 // oxlint-disable
 // --- ---
@@ -35,7 +34,7 @@ declare global {
 @if($column['description'])
             /** {!! LaravelTsPublish::sanitizeJsDoc($column['description']) !!} */
 @endif
-            {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!! LaravelTsPublish::qualifyGlobalType($column['type'], $globalTypesByNamespace, $namespace) !!};
+            {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!! LaravelTsPublish::qualifyGlobalType($column['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
 @endforeach
 @endif
 @if (count($transformer->mutators) > 0)
@@ -44,7 +43,7 @@ declare global {
 @if($mutator['description'])
             /** {!! LaravelTsPublish::sanitizeJsDoc($mutator['description']) !!} */
 @endif
-            {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!! LaravelTsPublish::qualifyGlobalType($mutator['type'], $globalTypesByNamespace, $namespace) !!};
+            {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!! LaravelTsPublish::qualifyGlobalType($mutator['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
 @endforeach
 @endif
 @if (count($transformer->relations) > 0)
@@ -53,7 +52,7 @@ declare global {
 @if($relation['description'])
             /** {!! LaravelTsPublish::sanitizeJsDoc($relation['description']) !!} */
 @endif
-            {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!! LaravelTsPublish::qualifyGlobalType($relation['type'], $globalTypesByNamespace, $namespace) !!};
+            {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!! LaravelTsPublish::qualifyGlobalType($relation['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
             {!! LaravelTsPublish::validJsObjectKey($name.'_count') !!}: number;
             {!! LaravelTsPublish::validJsObjectKey($name.'_exists') !!}: boolean;
 @endforeach
@@ -102,7 +101,7 @@ declare global {
 @if($property['description'])
             /** {!! LaravelTsPublish::sanitizeJsDoc($property['description']) !!} */
 @endif
-            {!! LaravelTsPublish::validJsObjectKey($name) !!}{!! $property['optional'] ? '?' : '' !!}: {!! LaravelTsPublish::qualifyGlobalType($property['type'], $globalTypesByNamespace, $namespace) !!};
+            {!! LaravelTsPublish::validJsObjectKey($name) !!}{!! $property['optional'] ? '?' : '' !!}: {!! LaravelTsPublish::qualifyGlobalType(LaravelTsPublish::rewriteAsEnumToType($property['type'], $transformer->globalEnumConstMap()), $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
 @endforeach
         }
 @endforeach
@@ -124,7 +123,7 @@ declare global {
 @if($column['description'])
             /** {!! LaravelTsPublish::sanitizeJsDoc($column['description']) !!} */
 @endif
-            {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!! LaravelTsPublish::qualifyGlobalType($column['type'], $globalTypesByNamespace, $modelsNamespace) !!};
+            {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!! LaravelTsPublish::qualifyGlobalType($column['type'], $globalTypesByNamespace, $modelsNamespace, $globalAliasMap) !!};
 @endforeach
 @endif
 @if (count($transformer->mutators) > 0)
@@ -133,7 +132,7 @@ declare global {
 @if($mutator['description'])
             /** {!! LaravelTsPublish::sanitizeJsDoc($mutator['description']) !!} */
 @endif
-            {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!! LaravelTsPublish::qualifyGlobalType($mutator['type'], $globalTypesByNamespace, $modelsNamespace) !!};
+            {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!! LaravelTsPublish::qualifyGlobalType($mutator['type'], $globalTypesByNamespace, $modelsNamespace, $globalAliasMap) !!};
 @endforeach
 @endif
 @if (count($transformer->relations) > 0)
@@ -142,7 +141,7 @@ declare global {
 @if($relation['description'])
             /** {!! LaravelTsPublish::sanitizeJsDoc($relation['description']) !!} */
 @endif
-            {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!! LaravelTsPublish::qualifyGlobalType($relation['type'], $globalTypesByNamespace, $modelsNamespace) !!};
+            {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!! LaravelTsPublish::qualifyGlobalType($relation['type'], $globalTypesByNamespace, $modelsNamespace, $globalAliasMap) !!};
             {!! LaravelTsPublish::validJsObjectKey($name.'_count') !!}: number;
             {!! LaravelTsPublish::validJsObjectKey($name.'_exists') !!}: boolean;
 @endforeach
@@ -189,7 +188,7 @@ declare global {
 @if($property['description'])
             /** {!! LaravelTsPublish::sanitizeJsDoc($property['description']) !!} */
 @endif
-            {!! LaravelTsPublish::validJsObjectKey($name) !!}{!! $property['optional'] ? '?' : '' !!}: {!! LaravelTsPublish::qualifyGlobalType($property['type'], $globalTypesByNamespace, $resourcesNamespace) !!};
+            {!! LaravelTsPublish::validJsObjectKey($name) !!}{!! $property['optional'] ? '?' : '' !!}: {!! LaravelTsPublish::qualifyGlobalType(LaravelTsPublish::rewriteAsEnumToType($property['type'], $transformer->globalEnumConstMap()), $globalTypesByNamespace, $resourcesNamespace, $globalAliasMap) !!};
 @endforeach
         }
 @endforeach

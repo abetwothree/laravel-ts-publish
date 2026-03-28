@@ -599,6 +599,38 @@ class ModelTransformer extends CoreTransformer
         ];
     }
 
+    /**
+     * Build a map of per-file import aliases → namespace-qualified global names.
+     *
+     * Used by GlobalsWriter to resolve aliases (e.g. `CrmUser`, `WorkbenchStatusType`) back to
+     * their correct globally-qualified names before the normal `qualifyGlobalType()` pass.
+     *
+     * @return array<string, string> alias => 'namespace.OriginalName'
+     */
+    public function globalAliasMap(): array
+    {
+        $isModular = config()->boolean('ts-publish.modular_publishing');
+        $modelsNs = config()->string('ts-publish.models_namespace');
+        $enumsNs = config()->string('ts-publish.enums_namespace');
+        $map = [];
+
+        foreach ($this->importAliases as $fqcn => $alias) {
+            if (isset($this->enumFqcnMap[$fqcn])) {
+                $ns = $isModular
+                    ? str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn))
+                    : $enumsNs;
+                $map[$alias] = $ns.'.'.$this->enumFqcnMap[$fqcn];
+            } elseif (isset($this->modelFqcnMap[$fqcn])) {
+                $ns = $isModular
+                    ? str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn))
+                    : $modelsNs;
+                $map[$alias] = $ns.'.'.$this->modelFqcnMap[$fqcn];
+            }
+        }
+
+        return $map;
+    }
+
     #[Override]
     protected function enumProperties(): array
     {

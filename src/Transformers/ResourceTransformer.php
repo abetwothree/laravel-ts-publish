@@ -645,6 +645,83 @@ class ResourceTransformer extends CoreTransformer
         }
     }
 
+    /**
+     * Build a map of per-file enum const aliases → namespace-qualified type names.
+     *
+     * Used by the globals blade to rewrite `AsEnum<typeof ConstAlias>` to the equivalent
+     * type alias before rendering resource properties in `declare global {}`.
+     * Called per-transformer (not merged globally) because two resources may share the
+     * same unaliased const name pointing to different namespaces.
+     *
+     * @return array<string, string> constAlias => 'namespace.TypeName'
+     */
+    public function globalEnumConstMap(): array
+    {
+        $isModular = config()->boolean('ts-publish.modular_publishing');
+        $enumsNs = config()->string('ts-publish.enums_namespace');
+        $map = [];
+
+        foreach ($this->enumResourceProperties as $info) {
+            $fqcn = $info['fqcn'];
+            $constAlias = $this->constImportAliases[$fqcn] ?? $this->enumConstMap[$fqcn] ?? null;
+
+            // enumFqcnMap may have been cleared by rewriteEnumResourceTypes(); derive the type name
+            // from enumConstMap (which is never cleared) using the established XType convention.
+            $originalConstName = $this->enumConstMap[$fqcn] ?? null;
+
+            if ($constAlias === null || $originalConstName === null) {
+                continue; // @codeCoverageIgnore
+            }
+
+            $typeName = $originalConstName.'Type';
+            $ns = $isModular
+                ? str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn))
+                : $enumsNs;
+
+            $map[$constAlias] = $ns.'.'.$typeName;
+        }
+
+        return $map;
+    }
+
+    /**
+     * Build a map of per-file import aliases → namespace-qualified global names.
+     *
+     * Used by GlobalsWriter to resolve aliases back to their correct globally-qualified
+     * names before the normal `qualifyGlobalType()` pass.
+     *
+     * @return array<string, string> alias => 'namespace.OriginalName'
+     */
+    public function globalAliasMap(): array
+    {
+        $isModular = config()->boolean('ts-publish.modular_publishing');
+        $modelsNs = config()->string('ts-publish.models_namespace');
+        $enumsNs = config()->string('ts-publish.enums_namespace');
+        $resourcesNs = config()->string('ts-publish.resources_namespace', 'resources');
+        $map = [];
+
+        foreach ($this->importAliases as $fqcn => $alias) {
+            if (isset($this->enumFqcnMap[$fqcn])) {
+                $ns = $isModular
+                    ? str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn))
+                    : $enumsNs;
+                $map[$alias] = $ns.'.'.$this->enumFqcnMap[$fqcn];
+            } elseif (isset($this->resourceFqcnMap[$fqcn])) {
+                $ns = $isModular
+                    ? str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn))
+                    : $resourcesNs;
+                $map[$alias] = $ns.'.'.$this->resourceFqcnMap[$fqcn];
+            } elseif (isset($this->modelFqcnMap[$fqcn])) {
+                $ns = $isModular
+                    ? str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn))
+                    : $modelsNs;
+                $map[$alias] = $ns.'.'.$this->modelFqcnMap[$fqcn];
+            }
+        }
+
+        return $map;
+    }
+
     #[Override]
     protected function enumProperties(): array
     {

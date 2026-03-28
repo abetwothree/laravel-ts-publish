@@ -595,12 +595,29 @@ class LaravelTsPublish
      * Used when generating the globals file, where types from other namespaces must be
      * fully qualified (e.g. `PaymentStatusType` → `enums.PaymentStatusType`).
      *
+     * Pass 1 resolves per-file import aliases (e.g. `CrmUser` → `models.User`) before the
+     * normal qualification pass so that aliased names are correctly qualified in the globals file.
+     *
      * @param  string  $typeStr  The TypeScript type string to rewrite.
      * @param  array<string, list<string>>  $namespacedTypes  Map of namespace prefix → type names it owns.
      * @param  string  $skipNamespace  Skip types that already belong to this namespace (current context).
+     * @param  array<string, string>  $aliasResolution  Per-file alias → 'namespace.OriginalName' map.
      */
-    public function qualifyGlobalType(string $typeStr, array $namespacedTypes, string $skipNamespace = ''): string
+    public function qualifyGlobalType(string $typeStr, array $namespacedTypes, string $skipNamespace = '', array $aliasResolution = []): string
     {
+        // Pass 1: resolve per-file import aliases to their namespace-qualified equivalents
+        foreach ($aliasResolution as $alias => $qualified) {
+            $lastDot = strrpos($qualified, '.');
+            $targetNs = $lastDot !== false ? substr($qualified, 0, $lastDot) : '';
+            // Use bare name when the target namespace is the current (skip) namespace
+            $replacement = ($targetNs === $skipNamespace)
+                ? substr($qualified, $lastDot + 1)
+                : $qualified;
+            $pattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($alias, '/').'(?![A-Za-z0-9_$])/';
+            $typeStr = preg_replace($pattern, $replacement, $typeStr) ?? $typeStr;
+        }
+
+        // Pass 2: qualify any remaining bare type names with their namespace
         foreach ($namespacedTypes as $namespace => $typeNames) {
             if ($namespace === $skipNamespace) {
                 continue;
@@ -613,6 +630,25 @@ class LaravelTsPublish
                 $pattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($typeName, '/').'(?![A-Za-z0-9_$])/';
                 $typeStr = preg_replace($pattern, $namespace.'.'.$typeName, $typeStr) ?? $typeStr;
             }
+        }
+
+        return $typeStr;
+    }
+
+    /**
+     * Replace `AsEnum<typeof ConstAlias>` patterns with the pre-computed type alias.
+     *
+     * Used when rendering resource properties in the globals file, where `typeof namespace.Member`
+     * is illegal — namespace members are type-only (interfaces), not runtime values.
+     *
+     * @param  string  $typeStr  The TypeScript type string to rewrite.
+     * @param  array<string, string>  $constToTypeMap  constAlias => 'namespace.TypeName'
+     */
+    public function rewriteAsEnumToType(string $typeStr, array $constToTypeMap): string
+    {
+        foreach ($constToTypeMap as $constAlias => $qualifiedTypeName) {
+            $pattern = '/AsEnum<typeof\s+'.preg_quote($constAlias, '/').'\s*>/';
+            $typeStr = preg_replace($pattern, $qualifiedTypeName, $typeStr) ?? $typeStr;
         }
 
         return $typeStr;

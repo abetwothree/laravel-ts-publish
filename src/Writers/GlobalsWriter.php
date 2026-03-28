@@ -92,10 +92,22 @@ class GlobalsWriter
 
         $externalTypeImports = LaravelTsPublish::sortImportPaths($externalTypeImports);
 
-        // AsEnum import is needed when the tolki package is enabled and any resource uses enum value imports.
-        $needsAsEnum = $usesTolkiPackage && $runner->resourceGenerators->some(
-            fn (ResourceGenerator $g) => $g->transformer->valueImports !== []
-        );
+        // Build a merged alias map from all transformers so the globals template can resolve
+        // per-file import aliases (e.g. CrmUser, WorkbenchStatusType) to namespace-qualified names.
+        /** @var array<string, string> $globalAliasMap */
+        $globalAliasMap = [];
+
+        foreach ($runner->modelGenerators as $gen) {
+            $globalAliasMap = array_merge($globalAliasMap, $gen->transformer->globalAliasMap());
+        }
+
+        foreach ($runner->resourceGenerators as $gen) {
+            $globalAliasMap = array_merge($globalAliasMap, $gen->transformer->globalAliasMap());
+        }
+
+        // AsEnum<typeof X> is rewritten to plain type aliases in the globals file (because
+        // `typeof namespace.Member` is illegal in declare global {}), so AsEnum is never used.
+        $needsAsEnum = false;
 
         $viewData = [
             'enums' => $runner->enumGenerators->map(fn (EnumGenerator $g) => $g->transformer),
@@ -106,6 +118,7 @@ class GlobalsWriter
             'resourcesNamespace' => $resourcesNamespace,
             'isModular' => $isModular,
             'globalTypesByNamespace' => $globalTypesByNamespace,
+            'globalAliasMap' => $globalAliasMap,
             'externalTypeImports' => $externalTypeImports,
             'needsAsEnum' => $needsAsEnum,
         ];
