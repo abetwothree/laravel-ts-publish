@@ -2,6 +2,14 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v1.2.1 - 2026-03-28
+
+### What's Changed
+
+* Globals namespace fixes by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/15
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v1.2.0...v1.2.1
+
 ## v1.2.0 - 2026-03-27
 
 ### What's Changed
