@@ -31,7 +31,6 @@ class GlobalsWriter
         $modelsNamespace = config()->string('ts-publish.models_namespace');
         $enumsNamespace = config()->string('ts-publish.enums_namespace');
         $resourcesNamespace = config()->string('ts-publish.resources_namespace', 'resources');
-        $usesTolkiPackage = config()->boolean('ts-publish.enums_use_tolki_package');
 
         // Build a map of global namespace → type names it owns, used for cross-namespace qualification.
         // In non-modular mode: 'enums' => [...], 'models' => [...], 'resources' => [...]
