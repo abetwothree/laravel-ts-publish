@@ -83,7 +83,6 @@ class TestCase extends Orchestra
 
         config()->set([
             'database.default' => 'testing',
-            'app.key' => 'base64:yTtQNlEOB1IqYydLG9Z5pKRSxhZffdOxT1iuZIJi+eM=',
             'ts-publish.output_directory' => workbench_path('resources/js/types/'),
             'ts-publish.output_globals_file' => true,
             'ts-publish.output_json_file' => true,

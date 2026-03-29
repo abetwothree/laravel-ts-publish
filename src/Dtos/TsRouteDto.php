@@ -17,7 +17,8 @@ use JsonSerializable;
  * }
  * @phpstan-type RouteActionData = array{
  *     name: string|null,
- *     url: string,
+ *     url: string|null,
+ *     uri: non-falsy-string,
  *     domain: string|null,
  *     methods: list<string>,
  *     methodName: string,

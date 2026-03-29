@@ -60,7 +60,7 @@ test('transforms PostController index action', function () {
 
     expect($index)->not->toBeNull()
         ->and($index['name'])->toBe('posts.index')
-        ->and($index['url'])->toBe('posts')
+        ->and($index['uri'])->toBe('/posts')
         ->and($index['methods'])->toContain('get')
         ->and($index['args'])->toBe([]);
 });
@@ -70,7 +70,7 @@ test('transforms PostController show action with model binding arg', function ()
     $show = collect($transformer->actions)->firstWhere('methodName', 'show');
 
     expect($show)->not->toBeNull()
-        ->and($show['url'])->toBe('posts/{post}')
+        ->and($show['uri'])->toBe('/posts/{post}')
         ->and($show['args'])->toHaveCount(1)
         ->and($show['args'][0]['name'])->toBe('post')
         ->and($show['args'][0]['required'])->toBeTrue()
@@ -223,7 +223,7 @@ test('two routes same action deduplication keeps named route only', function () 
 
     expect($action)->not->toBeNull()
         ->and($action['name'])->toBe('multi.action')
-        ->and($action['url'])->toBe('multi-2');
+        ->and($action['uri'])->toBe('/multi-2');
 });
 
 test('two routes same action deduplication result has exactly one action', function () {

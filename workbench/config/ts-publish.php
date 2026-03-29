@@ -520,7 +520,7 @@ return [
     |
     | 'method_casing': Case style for generated JS export names ('camel', 'snake', or 'pascal').
     | 'output_path': Output directory for generated route files. Defaults to
-    |   {output_directory}/routes when null.
+    |   {output_directory} when null.
     | 'only': Pattern list — only publish routes matching any pattern (supports wildcards).
     | 'except': Pattern list — skip routes matching any pattern (supports wildcards and ! negation).
     | 'exclude_middleware': Skip routes behind any of these middleware.
@@ -528,7 +528,7 @@ return [
     */
 
     'routes' => [
-        'enabled' => false,
+        'enabled' => true,
         'method_casing' => 'camel',
         'output_path' => null,
         'only' => [],

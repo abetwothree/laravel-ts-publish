@@ -12,7 +12,12 @@ export const {!! LaravelTsPublish::validJsObjectKey($action['methodName']) !!} =
 @if($action['name'] !== null)
     name: {!! LaravelTsPublish::toJsLiteral($action['name']) !!},
 @endif
-    url: {!! LaravelTsPublish::toJsLiteral('/'.ltrim($action['url'], '/')) !!},
+@if($action['url'] !== null)
+    url: {!! LaravelTsPublish::toJsLiteral($action['url']) !!},
+@else
+    url: {!! LaravelTsPublish::toJsLiteral($action['uri']) !!},
+@endif
+    domain: {!! LaravelTsPublish::toJsLiteral($action['domain']) !!},
     methods: [{!! implode(', ', array_map(fn($m) => "'$m'", $action['methods'])) !!}] as const,
 @if(!empty($action['args']))
     args: {!! LaravelTsPublish::routeArgsToJs($action['args']) !!} as const,

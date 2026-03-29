@@ -41,9 +41,9 @@ class RouteWriter extends CoreWriter
     protected function writeRouteFile(string $filename, string $content, string $namespacePath): void
     {
         $routesOutputPath = config('ts-publish.routes.output_path');
-        $outputBase = \is_string($routesOutputPath)
+        $outputBase = is_string($routesOutputPath)
             ? $routesOutputPath
-            : config()->string('ts-publish.output_directory').'/routes';
+            : config()->string('ts-publish.output_directory');
 
         $outputPath = $outputBase.'/'.$namespacePath;
 
@@ -88,9 +88,9 @@ class RouteWriter extends CoreWriter
 
             if (config()->boolean('ts-publish.output_to_files')) {
                 $routesOutputPath = config('ts-publish.routes.output_path');
-                $outputBase = \is_string($routesOutputPath)
+                $outputBase = is_string($routesOutputPath)
                     ? $routesOutputPath
-                    : config()->string('ts-publish.output_directory').'/routes';
+                    : config()->string('ts-publish.output_directory');
 
                 $outputPath = $outputBase.'/'.$namespacePath;
                 $this->filesystem->ensureDirectoryExists($outputPath);

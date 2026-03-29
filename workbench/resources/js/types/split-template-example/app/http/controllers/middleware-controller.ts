@@ -1,0 +1,17 @@
+import { defineRoute } from '@tolki/ts/routes';
+
+export const index = defineRoute({
+    name: 'middleware.index',
+    url: '/middleware',
+    domain: null,
+    methods: ['get'] as const,
+});
+
+/**
+ * @see Workbench\App\Http\Controllers\MiddlewareController
+ */
+const MiddlewareController = {
+    index,
+};
+
+export default MiddlewareController;

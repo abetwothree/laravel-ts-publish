@@ -187,9 +187,17 @@ class RouteTransformer extends CoreTransformer
             $description = $desc !== '' ? $desc : null;
         }
 
+        $uri = '/'.ltrim($route->uri(), '/');
+
+        $url = null;
+        if (is_string($domain = $route->domain())) {
+            $url = $domain.$uri;
+        }
+
         return [
             'name' => $route->getName(),
-            'url' => $route->uri(),
+            'url' => $url,
+            'uri' => $uri,
             'domain' => $route->getDomain(),
             'methods' => array_values(array_filter(
                 array_map(fn (mixed $m): string => strtolower(is_string($m) ? $m : ''), $route->methods()),
