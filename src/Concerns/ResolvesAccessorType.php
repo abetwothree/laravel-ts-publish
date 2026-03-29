@@ -123,12 +123,12 @@ trait ResolvesAccessorType
         );
 
         if (count($parts) === 1) {
-            return LaravelTsPublish::phpToTypeScriptType($parts[0]);
+            return LaravelTsPublish::toTsType($parts[0]);
         }
 
         // Union type: convert each component and merge all metadata
         $infos = array_map(
-            fn (string $part) => LaravelTsPublish::phpToTypeScriptType($this->resolveDocblockType($part, $declaringClass)),
+            fn (string $part) => LaravelTsPublish::toTsType($this->resolveDocblockType($part, $declaringClass)),
             $parts,
         );
 

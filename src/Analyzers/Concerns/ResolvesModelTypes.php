@@ -107,7 +107,7 @@ trait ResolvesModelTypes
 
         // Regular casts (enum, date, json, etc.)
         if ($cast !== null && $cast !== '' && $cast !== 'attribute' && $cast !== 'accessor') {
-            $tsInfo = LaravelTsPublish::phpToTypeScriptType($cast);
+            $tsInfo = LaravelTsPublish::toTsType($cast);
             $type = $tsInfo['type'];
 
             if ($attr['nullable'] && ! str_contains($type, 'null')) {
@@ -125,7 +125,7 @@ trait ResolvesModelTypes
             return ['type' => 'unknown', 'enumFqcn' => null];
         }
 
-        $tsInfo = LaravelTsPublish::phpToTypeScriptType($attr['type']);
+        $tsInfo = LaravelTsPublish::toTsType($attr['type']);
         $type = $tsInfo['type'];
 
         if ($attr['nullable'] && $type !== 'unknown') {
@@ -356,7 +356,7 @@ trait ResolvesModelTypes
 
                 // Regular cast (enum, date, json, etc.)
                 if ($attr['cast'] !== null && $attr['cast'] !== '' && $attr['cast'] !== 'attribute' && $attr['cast'] !== 'accessor') {
-                    $tsInfo = LaravelTsPublish::phpToTypeScriptType($attr['cast']);
+                    $tsInfo = LaravelTsPublish::toTsType($attr['cast']);
                     $type = $tsInfo['type'];
 
                     if ($attr['nullable'] && ! str_contains($type, 'null')) {
@@ -373,7 +373,7 @@ trait ResolvesModelTypes
 
                 // DB column type
                 if ($attr['type'] !== null && $attr['type'] !== '') {
-                    $tsInfo = LaravelTsPublish::phpToTypeScriptType($attr['type']);
+                    $tsInfo = LaravelTsPublish::toTsType($attr['type']);
                     $type = $tsInfo['type'];
 
                     if ($attr['nullable'] && $type !== 'unknown') {

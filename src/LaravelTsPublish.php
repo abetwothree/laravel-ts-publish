@@ -135,7 +135,7 @@ class LaravelTsPublish
      *
      * @return TypeScriptTypeInfo
      */
-    public function phpToTypeScriptType(string $phpType): array
+    public function toTsType(string $phpType): array
     {
         $typesMap = $this->typesMap(); // keys are already lowercased
         $lower = strtolower($phpType);
@@ -143,8 +143,10 @@ class LaravelTsPublish
 
         // 0. Nullable shorthand ?T → recurse on T and append | null
         if (str_starts_with($phpType, '?')) {
-            $inner = $this->phpToTypeScriptType(substr($phpType, 1));
-            $inner['type'] .= ' | null';
+            $inner = $this->toTsType(substr($phpType, 1));
+            if (! str_contains($inner['type'], 'null')) {
+                $inner['type'] .= ' | null';
+            }
 
             return $inner;
         }
@@ -249,7 +251,7 @@ class LaravelTsPublish
         if (str_starts_with($lower, 'encrypted:')) {
             $inner = substr($lower, strlen('encrypted:'));
 
-            return $this->phpToTypeScriptType($inner);
+            return $this->toTsType($inner);
         }
 
         // 7. Partial map match (e.g. "tinyint(1)" contains "tinyint")
@@ -289,7 +291,7 @@ class LaravelTsPublish
 
         // Single named type — includes ?T shorthand (allowsNull() + getName() !== 'null')
         if ($returnType instanceof ReflectionNamedType) {
-            $result = $this->phpToTypeScriptType($returnType->getName());
+            $result = $this->toTsType($returnType->getName());
 
             if ($returnType->allowsNull() && $returnType->getName() !== 'null') {
                 $result['type'] .= ' | null';
@@ -309,7 +311,7 @@ class LaravelTsPublish
 
             foreach ($returnType->getTypes() as $type) {
                 $infos[] = $type instanceof ReflectionNamedType
-                    ? $this->phpToTypeScriptType($type->getName())
+                    ? $this->toTsType($type->getName())
                     : $this->emptyTypeScriptInfo(); // ReflectionIntersectionType inside a DNF union → unknown
             }
 

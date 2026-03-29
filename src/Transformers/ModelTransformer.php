@@ -222,9 +222,9 @@ class ModelTransformer extends CoreTransformer
                 $accessorType = $this->resolveMutatorType($name);
                 $typings = $accessorType['type'] !== 'unknown'
                     ? $accessorType
-                    : LaravelTsPublish::phpToTypeScriptType($attribute['type'] ?? '');
+                    : LaravelTsPublish::toTsType($attribute['type'] ?? '');
             } else {
-                $typings = LaravelTsPublish::phpToTypeScriptType($cast ?? $attribute['type'] ?? '');
+                $typings = LaravelTsPublish::toTsType($cast ?? $attribute['type'] ?? '');
             }
 
             $type = $typings['type'];
