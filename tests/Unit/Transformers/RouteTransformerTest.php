@@ -124,7 +124,7 @@ test('invokable controller methodName is __invoke when route is unnamed', functi
     $transformer = new RouteTransformer(InvokableController::class);
     $action = $transformer->actions[0];
 
-    expect($action['methodName'])->toBe('__invoke');
+    expect($action['methodName'])->toBe('invoke');
 });
 
 test('named invokable controller methodName uses last segment of route name', function () {

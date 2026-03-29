@@ -214,7 +214,7 @@ class RouteTransformer extends CoreTransformer
 
         // Preserve __invoke as-is; applying casing would strip the leading underscores
         if ($actionMethod === '__invoke') {
-            return '__invoke';
+            return 'invoke';
         }
 
         return LaravelTsPublish::keyCase($actionMethod, $casing);
