@@ -1,5 +1,7 @@
 export { default as CustomKeyController } from './custom-key-controller';
 export { default as CustomRouteKeyController } from './custom-route-key-controller';
+export { default as Delete } from './delete';
+export { default as DeleteController } from './delete-controller';
 export { default as EnumBoundController } from './enum-bound-controller';
 export { default as ExcludableController } from './excludable-controller';
 export { default as InvokableController } from './invokable-controller';

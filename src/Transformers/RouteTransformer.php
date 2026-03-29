@@ -208,7 +208,10 @@ class RouteTransformer extends CoreTransformer
         if ($routeName !== null) {
             $lastSegment = Str::afterLast($routeName, '.');
             if ($lastSegment !== '' && $lastSegment !== $routeName) {
-                return LaravelTsPublish::keyCase($lastSegment, $casing);
+                return LaravelTsPublish::safeJsIdentifier(
+                    LaravelTsPublish::keyCase($lastSegment, $casing),
+                    'Method'
+                );
             }
         }
 
@@ -217,7 +220,10 @@ class RouteTransformer extends CoreTransformer
             return 'invoke';
         }
 
-        return LaravelTsPublish::keyCase($actionMethod, $casing);
+        return LaravelTsPublish::safeJsIdentifier(
+            LaravelTsPublish::keyCase($actionMethod, $casing),
+            'Method'
+        );
     }
 
     /**

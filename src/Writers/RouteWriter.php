@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Writers;
 
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
@@ -78,7 +79,11 @@ class RouteWriter extends CoreWriter
         foreach ($grouped as $namespacePath => $entries) {
             $content = collect($entries)
                 ->sortBy('filename')
-                ->map(fn (array $entry) => "export { default as {$entry['controllerName']} } from './{$entry['filename']}';")
+                ->map(fn (array $entry) => sprintf(
+                    "export { default as %s } from './%s';",
+                    LaravelTsPublish::safeJsIdentifier($entry['controllerName'], 'Controller'),
+                    $entry['filename']
+                ))
                 ->implode("\n");
 
             if (config()->boolean('ts-publish.output_to_files')) {

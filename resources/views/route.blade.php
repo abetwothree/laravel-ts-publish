@@ -20,6 +20,9 @@ export const {!! LaravelTsPublish::validJsObjectKey($action['methodName']) !!} =
 });
 @endforeach
 
+@php
+$controllerName = LaravelTsPublish::safeJsIdentifier($data->controllerName, 'Controller');
+@endphp
 /**
 @if($data->description)
  * {!! LaravelTsPublish::sanitizeJsDoc($data->description) !!}
@@ -27,11 +30,11 @@ export const {!! LaravelTsPublish::validJsObjectKey($action['methodName']) !!} =
 @endif
  * @see {{ $data->fqcn }}
  */
-const {{ $data->controllerName }} = {
+const {!! $controllerName !!} = {
 @foreach ($data->actions as $action)
     {!! LaravelTsPublish::validJsObjectKey($action['methodName']) !!},
 @endforeach
 };
 @endif
 
-export default {{ $data->controllerName }};
+export default {!! $controllerName !!};

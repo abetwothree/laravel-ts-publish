@@ -44,6 +44,16 @@ class LaravelTsPublish
 {
     protected static ?Closure $callCommandWith = null;
 
+    /** @var list<string> */
+    private const RESERVED_JS_IDENTIFIERS = [
+        'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
+        'default', 'delete', 'do', 'else', 'export', 'extends', 'false',
+        'finally', 'for', 'function', 'if', 'import', 'in', 'instanceof',
+        'let', 'new', 'null', 'return', 'static', 'super', 'switch', 'this',
+        'throw', 'true', 'try', 'typeof', 'var', 'void', 'while', 'with',
+        'yield',
+    ];
+
     /**
      * Set something to do when the publish command runs, using a callback Closure
      */
@@ -331,6 +341,23 @@ class LaravelTsPublish
 
         // json_encode produces a properly escaped double-quoted string valid in JS/TS
         return (string) json_encode($key);
+    }
+
+    /**
+     * Ensure a string is safe to use as a bare JavaScript/TypeScript identifier
+     * (i.e., for `const` declarations or export aliases — NOT object property keys,
+     * where reserved words are valid in TypeScript interfaces and object literals).
+     *
+     * @param  string  $name  The proposed identifier
+     * @param  string  $suffix  Required suffix appended when $name is reserved (e.g., 'Method', 'Controller')
+     */
+    public function safeJsIdentifier(string $name, string $suffix): string
+    {
+        if (in_array($name, self::RESERVED_JS_IDENTIFIERS, true)) {
+            return $name.$suffix;
+        }
+
+        return $name;
     }
 
     /**

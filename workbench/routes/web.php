@@ -3,6 +3,8 @@
 use Illuminate\Support\Facades\Route;
 use Workbench\App\Http\Controllers\CustomKeyController;
 use Workbench\App\Http\Controllers\CustomRouteKeyController;
+use Workbench\App\Http\Controllers\Delete;
+use Workbench\App\Http\Controllers\DeleteController;
 use Workbench\App\Http\Controllers\EnumBoundController;
 use Workbench\App\Http\Controllers\ExcludableController;
 use Workbench\App\Http\Controllers\ExcludedController;
@@ -55,3 +57,7 @@ Route::middleware(TestMiddleware::class)->get('/middleware', [MiddlewareControll
 
 Route::get('/prism', [PrismController::class, 'index'])->name('prism.index');
 Route::get('/prism/nested', [NestedPrismController::class, 'nested'])->name('prism.prism.nested');
+
+Route::delete('/items/{id}', [DeleteController::class, 'delete'])->name('items.delete');
+Route::get('/items/export', [DeleteController::class, 'export'])->name('items.export');
+Route::get('/delete-items', [Delete::class, 'index'])->name('delete-items.index');

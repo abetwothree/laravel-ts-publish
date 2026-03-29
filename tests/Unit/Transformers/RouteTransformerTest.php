@@ -3,6 +3,8 @@
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
 use Workbench\App\Http\Controllers\CustomKeyController;
 use Workbench\App\Http\Controllers\CustomRouteKeyController;
+use Workbench\App\Http\Controllers\Delete;
+use Workbench\App\Http\Controllers\DeleteController;
 use Workbench\App\Http\Controllers\EnumBoundController;
 use Workbench\App\Http\Controllers\ExcludableController;
 use Workbench\App\Http\Controllers\InvokableController;
@@ -228,4 +230,21 @@ test('two routes same action deduplication result has exactly one action', funct
     $transformer = new RouteTransformer(MultiRouteController::class);
 
     expect($transformer->actions)->toHaveCount(1);
+});
+
+test('reserved keyword method names get Method suffix', function () {
+    $transformer = new RouteTransformer(DeleteController::class);
+    $methodNames = collect($transformer->actions)->pluck('methodName')->all();
+
+    expect($methodNames)->toContain('deleteMethod')
+        ->and($methodNames)->toContain('exportMethod')
+        ->and($methodNames)->not->toContain('delete')
+        ->and($methodNames)->not->toContain('export');
+});
+
+test('reserved-keyword controller name is preserved in controllerName property', function () {
+    $transformer = new RouteTransformer(Delete::class);
+
+    // controllerName stores the raw PHP class name — sanitization happens at output time
+    expect($transformer->controllerName)->toBe('Delete');
 });

@@ -6,6 +6,8 @@ use AbeTwoThree\LaravelTsPublish\Writers\RouteWriter;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Collection;
 use Workbench\App\Http\Controllers\CustomKeyController;
+use Workbench\App\Http\Controllers\Delete;
+use Workbench\App\Http\Controllers\DeleteController;
 use Workbench\App\Http\Controllers\EnumBoundController;
 use Workbench\App\Http\Controllers\InvokableController;
 use Workbench\App\Http\Controllers\NamedInvokableController;
@@ -204,4 +206,29 @@ test('prism and nested prism each get their own barrel file', function () {
         ->and($barrels)->toHaveKey('app/http/controllers/prism/prism')
         ->and($barrels['app/http/controllers/prism'])->toContain("from './prism-controller'")
         ->and($barrels['app/http/controllers/prism/prism'])->toContain("from './prism-controller'");
+});
+
+test('route writer does not emit reserved keyword as const name', function () {
+    $generator = resolve(RouteGenerator::class, ['findable' => DeleteController::class]);
+
+    expect($generator->content)
+        ->toContain('export const deleteMethod = defineRoute(')
+        ->toContain('export const exportMethod = defineRoute(')
+        ->not->toContain('export const delete ')
+        ->not->toContain('export const export ');
+});
+
+test('PascalCase controller name matching lowercase keyword is unchanged — only lowercase triggers suffix', function () {
+    $writer = resolve(RouteWriter::class);
+
+    /** @var Collection<int, RouteGenerator> $generators */
+    $generators = collect([
+        resolve(RouteGenerator::class, ['findable' => Delete::class]),
+    ]);
+
+    $barrels = $writer->writeRouteBarrels($generators);
+
+    // 'Delete' (capital D) is not a JS reserved word — safeJsIdentifier is case-sensitive
+    expect($barrels['app/http/controllers'])
+        ->toContain("export { default as Delete } from './delete'");
 });

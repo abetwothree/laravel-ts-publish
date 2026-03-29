@@ -349,6 +349,25 @@ describe('validJsObjectKey', function () {
     });
 });
 
+describe('safeJsIdentifier', function () {
+    test('appends suffix to reserved keywords', function () {
+        expect($this->service->safeJsIdentifier('delete', 'Method'))->toBe('deleteMethod')
+            ->and($this->service->safeJsIdentifier('export', 'Method'))->toBe('exportMethod')
+            ->and($this->service->safeJsIdentifier('in', 'Method'))->toBe('inMethod')
+            ->and($this->service->safeJsIdentifier('typeof', 'Method'))->toBe('typeofMethod')
+            ->and($this->service->safeJsIdentifier('delete', 'Controller'))->toBe('deleteController');
+    });
+
+    test('returns non-reserved identifiers unchanged', function () {
+        expect($this->service->safeJsIdentifier('index', 'Method'))->toBe('index')
+            ->and($this->service->safeJsIdentifier('show', 'Method'))->toBe('show');
+    });
+
+    test('is case-sensitive — PascalCase is not reserved', function () {
+        expect($this->service->safeJsIdentifier('Delete', 'Controller'))->toBe('Delete');
+    });
+});
+
 describe('toJsLiteral', function () {
     test('toJsLiteral converts null', function () {
         expect($this->service->toJsLiteral(null))->toBe('null');
