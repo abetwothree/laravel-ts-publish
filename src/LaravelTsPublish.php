@@ -717,6 +717,41 @@ class LaravelTsPublish
     }
 
     /**
+     * Serialize a list of route arg metadata objects to a JavaScript array literal.
+     *
+     * Each entry is output as an inline object with only the fields that are present,
+     * so that the generated TypeScript stays compact (no `undefined` noise).
+     *
+     * @param  list<array{name: string, required: bool, _routeKey?: string, _enumValues?: list<string|int>, where?: string}>  $args
+     */
+    public function routeArgsToJs(array $args): string
+    {
+        $entries = [];
+
+        foreach ($args as $arg) {
+            $parts = [];
+            $parts[] = "name: '".$arg['name']."'";
+            $parts[] = 'required: '.($arg['required'] ? 'true' : 'false');
+
+            if (isset($arg['_routeKey'])) {
+                $parts[] = "_routeKey: '".$arg['_routeKey']."'";
+            }
+
+            if (isset($arg['_enumValues'])) {
+                $parts[] = '_enumValues: '.$this->toJsLiteral($arg['_enumValues']);
+            }
+
+            if (isset($arg['where'])) {
+                $parts[] = "where: '".$arg['where']."'";
+            }
+
+            $entries[] = '{'.implode(', ', $parts).'}';
+        }
+
+        return '['.implode(', ', $entries).']';
+    }
+
+    /**
      * Resolve the fully-qualified class name from a PHP file path.
      *
      * Returns null if the file does not exist or does not contain a class/enum declaration.

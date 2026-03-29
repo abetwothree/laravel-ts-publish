@@ -1,10 +1,10 @@
 import { type AsEnum } from '@tolki/enum';
 
-import { Status as CrmStatus, Status as WorkbenchStatus } from '../enums';
+import { Status as AppStatus, Status as CrmStatus } from '../enums';
 import type { MenuSettingsType } from '@js/types/settings';
 import type { Auditable } from '@/types/audit';
 import type { HasTimestamps } from '@/types/common';
-import type { StatusType as CrmStatusType, StatusType as WorkbenchStatusType } from '../enums';
+import type { StatusType as AppStatusType, StatusType as CrmStatusType } from '../enums';
 import type { Coordinate, User as CrmUser, User as ManagerUser } from './';
 
 export interface Warehouse extends HasTimestamps, Pick<Auditable, "created_by" | "updated_by">
@@ -14,7 +14,7 @@ export interface Warehouse extends HasTimestamps, Pick<Auditable, "created_by" |
     /** Write-only accessor on DB column 'phone' — normalizes on set, no get */
     phone: string | null;
     coordinate_data: Coordinate | null;
-    status: WorkbenchStatusType | null;
+    status: AppStatusType | null;
     manager_id: number | null;
     primary_contact_id: number | null;
     secondary_contact_id: number | null;
@@ -24,7 +24,7 @@ export interface Warehouse extends HasTimestamps, Pick<Auditable, "created_by" |
 
 export interface WarehouseResource extends Omit<Warehouse, 'status'>
 {
-    status: AsEnum<typeof WorkbenchStatus> | null;
+    status: AsEnum<typeof AppStatus> | null;
 }
 
 export interface WarehouseMutators

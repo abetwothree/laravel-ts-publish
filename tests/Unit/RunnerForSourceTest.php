@@ -60,7 +60,7 @@ test('throws for non-existent class', function () {
 test('throws for class that is not enum or model', function () {
     $runner = new RunnerForSource(RunnerForSource::class);
     $runner->run();
-})->throws(InvalidArgumentException::class, 'not a publishable enum, model, or resource');
+})->throws(InvalidArgumentException::class, 'not a publishable enum, model, resource, or controller');
 
 test('throws for file that does not contain a class', function () {
     $runner = new RunnerForSource(workbench_path('routes/web.php'));

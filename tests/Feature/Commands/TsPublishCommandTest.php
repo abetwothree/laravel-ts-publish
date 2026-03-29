@@ -81,9 +81,13 @@ test('ts:publish writes model split template files', function () {
     config()->set('ts-publish.output_directory', $outputDir);
     config()->set('ts-publish.output_to_files', true);
     config()->set('ts-publish.modular_publishing', false);
+    config()->set('ts-publish.routes.enabled', true);
+    config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
 
     $this->artisan('ts:publish', ['--preview' => 'false'])
         ->assertSuccessful();
+
+    expect(file_exists("$outputDir/routes/app/http/controllers/post-controller.ts"))->toBeTrue();
 });
 
 test('ts:publish writes model full template files', function () {
@@ -99,9 +103,13 @@ test('ts:publish writes model full template files', function () {
     config()->set('ts-publish.output_directory', $outputDir);
     config()->set('ts-publish.output_to_files', true);
     config()->set('ts-publish.modular_publishing', false);
+    config()->set('ts-publish.routes.enabled', true);
+    config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
 
     $this->artisan('ts:publish', ['--preview' => 'false'])
         ->assertSuccessful();
+
+    expect(file_exists("$outputDir/routes/app/http/controllers/post-controller.ts"))->toBeTrue();
 });
 
 test('ts:publish writes modular files to namespace-based directories', function () {
@@ -117,9 +125,14 @@ test('ts:publish writes modular files to namespace-based directories', function 
     config()->set('ts-publish.output_to_files', true);
     config()->set('ts-publish.modular_publishing', true);
     config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+    config()->set('ts-publish.routes.enabled', true);
 
     $this->artisan('ts:publish', ['--preview' => 'false'])
         ->assertSuccessful();
+
+    // Route files should be in routes/app/http/controllers/
+    expect(file_exists("$outputDir/routes/app/http/controllers/post-controller.ts"))->toBeTrue()
+        ->and(file_exists("$outputDir/routes/app/http/controllers/index.ts"))->toBeTrue();
 
     // App models and enums should be in app/ subdirectories
     expect(file_exists("$outputDir/app/models/user.ts"))->toBeTrue()
@@ -417,4 +430,57 @@ test('ts:publish --only-resources exits when config resources disabled and non-i
 
     $this->artisan('ts:publish', ['--preview' => 'true', '--only-resources' => true, '--no-interaction' => true])
         ->assertSuccessful();
+});
+
+test('ts:publish preview shows route content', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.routes.enabled', true);
+
+    $this->artisan('ts:publish', ['--preview' => 'true'])
+        ->assertSuccessful()
+        ->expectsOutputToContain('Routes:')
+        ->expectsOutputToContain('defineRoute(');
+});
+
+test('ts:publish --only-routes shows only route content in preview', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.routes.enabled', true);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-routes' => true])
+        ->assertSuccessful()
+        ->expectsOutputToContain('Routes:')
+        ->doesntExpectOutputToContain('Enums:')
+        ->doesntExpectOutputToContain('Models:');
+});
+
+test('ts:publish --only-routes exits when config routes disabled and non-interactive', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-routes' => true, '--no-interaction' => true])
+        ->assertSuccessful();
+});
+
+test('ts:publish fails when both --only-routes and --only-enums are passed', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-routes' => true, '--only-enums' => true])
+        ->assertFailed();
+});
+
+test('ts:publish --only-routes writes only route files to disk', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-only-routes-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.routes.enabled', true);
+    config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+    $this->artisan('ts:publish', ['--preview' => 'false', '--only-routes' => true])
+        ->assertSuccessful();
+
+    expect(is_dir("$outputDir/routes"))->toBeTrue()
+        ->and(is_dir("$outputDir/models"))->toBeFalse()
+        ->and(is_dir("$outputDir/enums"))->toBeFalse();
+
+    // Cleanup
+    (new Filesystem)->deleteDirectory($outputDir);
 });

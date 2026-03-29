@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Runners;
 
+use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Collectors\Concerns\ValidatesCollectorFiles;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
+use Illuminate\Routing\Router;
 use Illuminate\Support\Collection;
 use InvalidArgumentException;
 use ReflectionClass;
@@ -31,6 +34,10 @@ class RunnerForSource extends BaseRunner
         /** @var Collection<int, ResourceGenerator> $resourceGenerators */
         $resourceGenerators = collect();
         $this->resourceGenerators = $resourceGenerators;
+
+        /** @var Collection<int, RouteGenerator> $routeGenerators */
+        $routeGenerators = collect();
+        $this->routeGenerators = $routeGenerators;
     }
 
     public function run(): void
@@ -61,8 +68,14 @@ class RunnerForSource extends BaseRunner
             }
 
             $this->generateResource($fqcn);
+        } elseif ($this->validateController($reflection)) {
+            if (! $this->shouldPublishRoutes) {
+                throw new InvalidArgumentException("Route publishing is disabled: {$fqcn}");
+            }
+
+            $this->generateRoute($fqcn);
         } else {
-            throw new InvalidArgumentException("Class is not a publishable enum, model, or resource: {$fqcn}");
+            throw new InvalidArgumentException("Class is not a publishable enum, model, resource, or controller: {$fqcn}");
         }
     }
 
@@ -112,5 +125,52 @@ class RunnerForSource extends BaseRunner
         );
 
         $this->resourceGenerators = collect([$generator]);
+    }
+
+    /**
+     * @param  ReflectionClass<object>  $reflection
+     */
+    protected function validateController(ReflectionClass $reflection): bool
+    {
+        // Must be a concrete, non-abstract class
+        if ($reflection->isAbstract() || $reflection->isInterface() || $reflection->isTrait()) {
+            return false;
+        }
+
+        // Must have at least one route registered for this controller
+        /** @var Router $router */
+        $router = app(Router::class);
+
+        $fqcn = $reflection->getName();
+
+        foreach ($router->getRoutes()->getRoutes() as $route) {
+            if ($route->getControllerClass() === $fqcn) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected function generateRoute(string $fqcn): void
+    {
+        if (! class_exists($fqcn)) {
+            throw new InvalidArgumentException("Class does not exist: {$fqcn}");
+        }
+
+        // Check for class-level TsExclude
+        $reflection = new ReflectionClass($fqcn);
+
+        if ($reflection->getAttributes(TsExclude::class) !== []) {
+            throw new InvalidArgumentException("Controller is excluded via #[TsExclude]: {$fqcn}");
+        }
+
+        /** @var RouteGenerator $generator */
+        $generator = resolve(
+            config()->string('ts-publish.route_generator_class'),
+            ['findable' => $fqcn],
+        );
+
+        $this->routeGenerators = collect([$generator]);
     }
 }

@@ -15,6 +15,7 @@ export * from './order-item';
 export * from './post';
 export * from './product';
 export * from './profile';
+export * from './slug-post';
 export * from './strict-composite-comment';
 export * from './strict-task-assignment';
 export * from './tag';

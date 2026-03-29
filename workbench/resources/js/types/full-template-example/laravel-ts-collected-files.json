@@ -70,6 +70,7 @@
     "app\/Models\/Post.php",
     "app\/Models\/Product.php",
     "app\/Models\/Profile.php",
+    "app\/Models\/SlugPost.php",
     "app\/Models\/StrictCompositeComment.php",
     "app\/Models\/StrictTaskAssignment.php",
     "app\/Models\/Tag.php",

@@ -1,7 +1,7 @@
 import { type AsEnum } from '@tolki/enum';
 
-import { Status as CrmStatus, Status as WorkbenchStatus } from '../enums';
-import type { StatusType as CrmStatusType, StatusType as WorkbenchStatusType } from '../enums';
+import { Status as AppStatus, Status as CrmStatus } from '../enums';
+import type { StatusType as AppStatusType, StatusType as CrmStatusType } from '../enums';
 import type { User as AdminUser, User as CustomerUser } from './';
 
 export interface Deal
@@ -10,7 +10,7 @@ export interface Deal
     customer_id: number;
     admin_id: number;
     title: string;
-    status: WorkbenchStatusType;
+    status: AppStatusType;
     crm_status: CrmStatusType;
     value: number;
     created_at: string | null;
@@ -19,7 +19,7 @@ export interface Deal
 
 export interface DealResource extends Omit<Deal, 'status' | 'crm_status'>
 {
-    status: AsEnum<typeof WorkbenchStatus>;
+    status: AsEnum<typeof AppStatus>;
     crm_status: AsEnum<typeof CrmStatus>;
 }
 

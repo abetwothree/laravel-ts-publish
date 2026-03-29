@@ -3,18 +3,22 @@
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ResourcesCollector;
+use AbeTwoThree\LaravelTsPublish\Collectors\RoutesCollector;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
+use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\EnumWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\JsonWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\ModelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
+use AbeTwoThree\LaravelTsPublish\Writers\RouteWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\WatcherJsonWriter;
 
 return [
@@ -47,6 +51,8 @@ return [
 
     'resource_collector_class' => ResourcesCollector::class,
 
+    'route_collector_class' => RoutesCollector::class,
+
     /*
     |--------------------------------------------------------------------------
     | File Generator Classes
@@ -65,6 +71,8 @@ return [
 
     'resource_generator_class' => ResourceGenerator::class,
 
+    'route_generator_class' => RouteGenerator::class,
+
     /*
     |--------------------------------------------------------------------------
     | File Transformer Classes
@@ -81,6 +89,8 @@ return [
     'enum_transformer_class' => EnumTransformer::class,
 
     'resource_transformer_class' => ResourceTransformer::class,
+
+    'route_transformer_class' => RouteTransformer::class,
 
     /*
     |--------------------------------------------------------------------------
@@ -102,6 +112,8 @@ return [
     'enum_writer_class' => EnumWriter::class,
 
     'resource_writer_class' => ResourceWriter::class,
+
+    'route_writer_class' => RouteWriter::class,
 
     'barrel_writer_class' => BarrelWriter::class,
 
@@ -131,6 +143,8 @@ return [
     'globals_template' => 'laravel-ts-publish::globals',
 
     'resource_template' => 'laravel-ts-publish::resource',
+
+    'route_template' => 'laravel-ts-publish::route',
 
     /*
     |--------------------------------------------------------------------------
@@ -494,5 +508,32 @@ return [
         'resources' => [
             //
         ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Route Publishing
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, TypeScript files are generated for each controller group
+    | found in the router. Each file exports a `defineRoute()` call per action.
+    |
+    | 'method_casing': Case style for generated JS export names ('camel', 'snake', or 'pascal').
+    | 'output_path': Output directory for generated route files. Defaults to
+    |   {output_directory}/routes when null.
+    | 'only': Pattern list — only publish routes matching any pattern (supports wildcards).
+    | 'except': Pattern list — skip routes matching any pattern (supports wildcards and ! negation).
+    | 'exclude_middleware': Skip routes behind any of these middleware.
+    | 'only_named': When true, only publish named routes.
+    */
+
+    'routes' => [
+        'enabled' => false,
+        'method_casing' => 'camel',
+        'output_path' => null,
+        'only' => [],
+        'except' => [],
+        'exclude_middleware' => [],
+        'only_named' => false,
     ],
 ];
