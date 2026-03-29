@@ -146,7 +146,7 @@ test('invokable controller output uses __invoke as method name when unnamed', fu
 
     expect($generator->content)
         ->toContain('export const invoke = defineRoute(')
-        ->toContain('    invoke,');
+        ->toContain("    '__invoke': invoke,");
 });
 
 test('named invokable controller output uses route name segment', function () {

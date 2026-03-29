@@ -12,7 +12,7 @@ export const invokable = defineRoute({
  * @see Workbench\App\Http\Controllers\NamedInvokableController
  */
 const NamedInvokableController = {
-    invokable,
+    '__invoke': invokable,
 };
 
 export default NamedInvokableController;

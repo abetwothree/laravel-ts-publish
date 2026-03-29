@@ -42,6 +42,8 @@ class RouteTransformer extends CoreTransformer
     /** @var array<class-string, object> Cache of instantiated models for binding resolution */
     protected static array $modelInstanceCache = [];
 
+    protected const INVOKE = '__invoke';
+
     #[Override]
     public function transform(): self
     {
@@ -141,7 +143,7 @@ class RouteTransformer extends CoreTransformer
 
             // For invokable controllers, getActionMethod() returns the FQCN rather than '__invoke'
             if (str_contains($actionMethod, '\\') || ! $this->reflectionController->hasMethod($actionMethod)) {
-                $actionMethod = '__invoke';
+                $actionMethod = self::INVOKE;
             }
 
             // Skip if the action method has #[TsExclude]
@@ -156,13 +158,13 @@ class RouteTransformer extends CoreTransformer
             if (isset($actionsByMethod[$actionMethod])) {
                 if ($routeName !== null && $actionsByMethod[$actionMethod]['name'] === null) {
                     // Replace un-named entry with named one
-                    $actionsByMethod[$actionMethod] = $this->buildAction($route, $methodName);
+                    $actionsByMethod[$actionMethod] = $this->buildAction($route, $methodName, $actionMethod);
                 }
 
                 continue;
             }
 
-            $actionsByMethod[$actionMethod] = $this->buildAction($route, $methodName);
+            $actionsByMethod[$actionMethod] = $this->buildAction($route, $methodName, $actionMethod);
         }
 
         return array_values($actionsByMethod);
@@ -173,7 +175,7 @@ class RouteTransformer extends CoreTransformer
      *
      * @return RouteActionData
      */
-    protected function buildAction(Route $route, string $methodName): array
+    protected function buildAction(Route $route, string $methodName, string $originalMethodName): array
     {
         $actionMethod = $route->getActionMethod();
         $description = null;
@@ -194,6 +196,7 @@ class RouteTransformer extends CoreTransformer
                 fn (string $m): bool => $m !== 'head',
             )),
             'methodName' => $methodName,
+            'originalMethodName' => $originalMethodName,
             'description' => $description,
             'args' => $this->resolveArgs($route),
         ];
@@ -216,7 +219,7 @@ class RouteTransformer extends CoreTransformer
         }
 
         // Preserve __invoke as-is; applying casing would strip the leading underscores
-        if ($actionMethod === '__invoke') {
+        if ($actionMethod === self::INVOKE) {
             return 'invoke';
         }
 

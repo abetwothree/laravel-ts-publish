@@ -32,7 +32,11 @@ $controllerName = LaravelTsPublish::safeJsIdentifier($data->controllerName, 'Con
  */
 const {!! $controllerName !!} = {
 @foreach ($data->actions as $action)
+@if($action['originalMethodName'] === $action['methodName'])
     {!! LaravelTsPublish::validJsObjectKey($action['methodName']) !!},
+@else
+    '{!! $action['originalMethodName'] !!}': {!! LaravelTsPublish::validJsObjectKey($action['methodName']) !!},
+@endif
 @endforeach
 };
 @endif
