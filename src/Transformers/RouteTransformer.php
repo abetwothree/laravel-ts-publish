@@ -184,6 +184,11 @@ class RouteTransformer extends CoreTransformer
      */
     protected function resolveMethodName(string $actionMethod, ?string $routeName, string $casing): string
     {
+        // __invoke always maps to 'invoke', regardless of the route name
+        if ($actionMethod === self::INVOKE) {
+            return 'invoke';
+        }
+
         // Prefer last segment of the named route name (e.g. 'posts.index' → 'index')
         if ($routeName !== null) {
             $lastSegment = Str::afterLast($routeName, '.');
@@ -193,11 +198,6 @@ class RouteTransformer extends CoreTransformer
                     'Method'
                 );
             }
-        }
-
-        // Preserve __invoke as-is; applying casing would strip the leading underscores
-        if ($actionMethod === self::INVOKE) {
-            return 'invoke';
         }
 
         return LaravelTsPublish::safeJsIdentifier(

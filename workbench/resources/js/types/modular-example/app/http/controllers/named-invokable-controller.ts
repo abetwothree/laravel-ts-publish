@@ -1,6 +1,6 @@
 import { defineRoute } from '@tolki/ts/routes';
 
-export const invokable = defineRoute({
+export const invoke = defineRoute({
     name: 'named.invokable',
     url: '/named-invokable',
     domain: null,
@@ -13,7 +13,7 @@ export const invokable = defineRoute({
  * @see Workbench\App\Http\Controllers\NamedInvokableController
  */
 const NamedInvokableController = {
-    '__invoke': invokable,
+    '__invoke': invoke,
 };
 
 export default NamedInvokableController;

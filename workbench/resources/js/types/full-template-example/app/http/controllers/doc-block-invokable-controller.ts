@@ -1,7 +1,7 @@
 import { defineRoute } from '@tolki/ts/routes';
 
 /** Performs the invokable action. */
-export const invokable = defineRoute({
+export const invoke = defineRoute({
     name: 'docblock.invokable',
     url: '/docblock-invokable',
     domain: null,
@@ -14,7 +14,7 @@ export const invokable = defineRoute({
  * @see Workbench\App\Http\Controllers\DocBlockInvokableController
  */
 const DocBlockInvokableController = {
-    '__invoke': invokable,
+    '__invoke': invoke,
 };
 
 export default DocBlockInvokableController;

@@ -7,6 +7,7 @@ export { default as EnumBoundController } from './enum-bound-controller';
 export { default as ExcludableController } from './excludable-controller';
 export { default as InvokableController } from './invokable-controller';
 export { default as InvokableModelBoundController } from './invokable-model-bound-controller';
+export { default as InvokableModelBoundPlusController } from './invokable-model-bound-plus-controller';
 export { default as MiddlewareController } from './middleware-controller';
 export { default as MultiRouteController } from './multi-route-controller';
 export { default as NamedInvokableController } from './named-invokable-controller';

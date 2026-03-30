@@ -1,6 +1,6 @@
 import { defineRoute } from '@tolki/ts/routes';
 
-export const bound = defineRoute({
+export const invoke = defineRoute({
     name: 'invokable.model.bound',
     url: '/invokable-model-bound/{post}',
     domain: null,
@@ -12,7 +12,7 @@ export const bound = defineRoute({
  * @see Workbench\App\Http\Controllers\InvokableModelBoundController
  */
 const InvokableModelBoundController = {
-    '__invoke': bound,
+    '__invoke': invoke,
 };
 
 export default InvokableModelBoundController;

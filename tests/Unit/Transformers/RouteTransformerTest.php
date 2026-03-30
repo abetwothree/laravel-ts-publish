@@ -10,6 +10,7 @@ use Workbench\App\Http\Controllers\EnumBoundController;
 use Workbench\App\Http\Controllers\ExcludableController;
 use Workbench\App\Http\Controllers\InvokableController;
 use Workbench\App\Http\Controllers\InvokableModelBoundController;
+use Workbench\App\Http\Controllers\InvokableModelBoundPlusController;
 use Workbench\App\Http\Controllers\MultiRouteController;
 use Workbench\App\Http\Controllers\NamedInvokableController;
 use Workbench\App\Http\Controllers\Nested\NestedController;
@@ -133,11 +134,11 @@ test('invokable controller methodName is __invoke when route is unnamed', functi
     expect($action['methodName'])->toBe('invoke');
 });
 
-test('named invokable controller methodName uses last segment of route name', function () {
+test('named invokable controller methodName is always invoke', function () {
     $transformer = new RouteTransformer(NamedInvokableController::class);
     $action = $transformer->actions[0];
 
-    expect($action['methodName'])->toBe('invokable')
+    expect($action['methodName'])->toBe('invoke')
         ->and($action['name'])->toBe('named.invokable');
 });
 
@@ -150,6 +151,32 @@ test('invokable controller with model-bound param preserves _routeKey binding me
         ->and($action['args'][0]['required'])->toBeTrue()
         ->and($action['args'][0])->toHaveKey('_routeKey')
         ->and($action['args'][0]['_routeKey'])->toBe('id');
+});
+
+test('mixed invokable and regular methods all collected with correct binding metadata', function () {
+    $transformer = new RouteTransformer(InvokableModelBoundPlusController::class);
+
+    expect($transformer->actions)->toHaveCount(3);
+
+    $actions = collect($transformer->actions)->keyBy('methodName');
+
+    // __invoke route → always 'invoke', route name last segment is ignored
+    expect($actions)->toHaveKey('invoke')
+        ->and($actions['invoke']['name'])->toBe('invokable.model.bound.plus')
+        ->and($actions['invoke']['args'][0])->toHaveKey('_routeKey')
+        ->and($actions['invoke']['args'][0]['_routeKey'])->toBe('id');
+
+    // regular 'extra' method
+    expect($actions)->toHaveKey('extra')
+        ->and($actions['extra']['name'])->toBe('invokable.model.bound.extra')
+        ->and($actions['extra']['args'][0])->toHaveKey('_routeKey')
+        ->and($actions['extra']['args'][0]['_routeKey'])->toBe('id');
+
+    // regular 'surprise' method
+    expect($actions)->toHaveKey('surprise')
+        ->and($actions['surprise']['name'])->toBe('invokable.model.bound.surprise')
+        ->and($actions['surprise']['args'][0])->toHaveKey('_routeKey')
+        ->and($actions['surprise']['args'][0]['_routeKey'])->toBe('id');
 });
 
 test('optional single param has required false', function () {

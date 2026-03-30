@@ -11,6 +11,7 @@ use Workbench\App\Http\Controllers\ExcludableController;
 use Workbench\App\Http\Controllers\ExcludedController;
 use Workbench\App\Http\Controllers\InvokableController;
 use Workbench\App\Http\Controllers\InvokableModelBoundController;
+use Workbench\App\Http\Controllers\InvokableModelBoundPlusController;
 use Workbench\App\Http\Controllers\MiddlewareController;
 use Workbench\App\Http\Controllers\MultiRouteController;
 use Workbench\App\Http\Controllers\NamedInvokableController;
@@ -36,6 +37,10 @@ Route::get('/excluded', [ExcludedController::class, 'index'])->name('excluded.in
 Route::get('/invokable', InvokableController::class);
 Route::get('/named-invokable', NamedInvokableController::class)->name('named.invokable');
 Route::get('/invokable-model-bound/{post}', InvokableModelBoundController::class)->name('invokable.model.bound');
+
+Route::get('/invokable-model-plus/{post}', InvokableModelBoundPlusController::class)->name('invokable.model.bound.plus');
+Route::post('/invokable-model-extra/{post}', [InvokableModelBoundPlusController::class, 'extra'])->name('invokable.model.bound.extra');
+Route::delete('/invokable-model-surprise/{post}', [InvokableModelBoundPlusController::class, 'surprise'])->name('invokable.model.bound.surprise');
 
 Route::get('/optional/{param?}', [OptionalParamController::class, 'show'])->name('optional.show');
 Route::get('/optional/{one?}/{two?}', [OptionalParamController::class, 'multi'])->name('optional.multi');
