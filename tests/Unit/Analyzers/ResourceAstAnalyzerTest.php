@@ -18,6 +18,7 @@ use Workbench\App\Http\Resources\DelegatingWithMixinResource;
 use Workbench\App\Http\Resources\EmptyResource;
 use Workbench\App\Http\Resources\EmptyWithMixinResource;
 use Workbench\App\Http\Resources\ExtendedAddressResource;
+use Workbench\App\Http\Resources\MediaTypeResource;
 use Workbench\App\Http\Resources\MiscCollection;
 use Workbench\App\Http\Resources\NonArrayReturnResource;
 use Workbench\App\Http\Resources\OrderClosureResource;
@@ -1825,5 +1826,61 @@ describe('ResourceAstAnalyzer with ApiArticleResource (abstract parent + only + 
         $id = collect($analysis->properties)->firstWhere('name', 'id');
 
         expect($id['type'])->toBe('number');
+    });
+});
+
+describe('ResourceAstAnalyzer with MediaTypeResource (model-less enum resource)', function () {
+    test('early null return guard does not prevent array analysis', function () {
+        $reflection = new ReflectionClass(MediaTypeResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection);
+        $analysis = $analyzer->analyze();
+
+        $names = array_column($analysis->properties, 'name');
+
+        expect($names)->toContain('name', 'value', 'meta');
+    });
+
+    test('wrapped resource name property resolves to string', function () {
+        $reflection = new ReflectionClass(MediaTypeResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection);
+        $analysis = $analyzer->analyze();
+
+        $name = collect($analysis->properties)->firstWhere('name', 'name');
+
+        expect($name['type'])->toBe('string');
+    });
+
+    test('wrapped resource value property resolves to string for string-backed enum', function () {
+        $reflection = new ReflectionClass(MediaTypeResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection);
+        $analysis = $analyzer->analyze();
+
+        $value = collect($analysis->properties)->firstWhere('name', 'value');
+
+        expect($value['type'])->toBe('string');
+    });
+
+    test('inline array value is analyzed as inline object type', function () {
+        $reflection = new ReflectionClass(MediaTypeResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection);
+        $analysis = $analyzer->analyze();
+
+        $meta = collect($analysis->properties)->firstWhere('name', 'meta');
+
+        expect($meta['type'])->toStartWith('{ ')->toEndWith(' }')
+            ->toContain('maxSizeMb: number')
+            ->toContain('icon: string');
+    });
+
+    test('generic this method call infers type from return annotation', function () {
+        $reflection = new ReflectionClass(MediaTypeResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection);
+        $analysis = $analyzer->analyze();
+
+        $meta = collect($analysis->properties)->firstWhere('name', 'meta');
+
+        // maxSizeMb(): int → number, icon(): string → string (verified via reflection)
+        expect($meta['type'])->toContain('maxSizeMb: number')
+            ->toContain('icon: string');
     });
 });

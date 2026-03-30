@@ -27,6 +27,7 @@
     "app\/Http\/Resources\/ExtendedAddressResource.php",
     "app\/Http\/Resources\/FqcnMixinResource.php",
     "app\/Http\/Resources\/ImageResource.php",
+    "app\/Http\/Resources\/MediaTypeResource.php",
     "app\/Http\/Resources\/MiscCollection.php",
     "app\/Http\/Resources\/NonArrayReturnResource.php",
     "app\/Http\/Resources\/OrderClosureResource.php",

@@ -1265,6 +1265,11 @@ declare global {
         /** Child resource that uses SharedExtendsInterface AND extends a parent that also uses it. SharedExtendsInterface should appear only once in the result despite being reachable via two paths. */
         export interface ChildSharedResource extends SharedInterface {
         }
+        export interface MediaTypeResource {
+            name: string;
+            value: string;
+            meta: { extensions: unknown[]; maxSizeMb: number; sizeUnit: string; icon: string };
+        }
         /** Resource with no @mixin or TsResource — tests convention-based model guess. Also tests multiple TsExtends in parent class, trait, and locally. */
         export interface WarehouseResource extends BaseResource, ExtendableInterface, Omit<Timestamps, "created_at" | "updated_at">, ResourceRoutes, Pick<Routable, "store" | "update"> {
             id: number;

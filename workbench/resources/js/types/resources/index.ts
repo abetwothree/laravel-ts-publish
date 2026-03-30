@@ -17,6 +17,7 @@ export * from './extended-address-resource';
 export * from './fqcn-mixin-resource';
 export * from './image-resource';
 export * from './invoice-resource';
+export * from './media-type-resource';
 export * from './misc-collection';
 export * from './non-array-return-resource';
 export * from './order-closure-resource';

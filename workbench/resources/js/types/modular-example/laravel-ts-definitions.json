@@ -4772,6 +4772,23 @@
             }
         ],
         "ChildSharedResource": [],
+        "MediaTypeResource": [
+            {
+                "name": "name",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "value",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "meta",
+                "type": "{ extensions: unknown[]; maxSizeMb: number; sizeUnit: string; icon: string }",
+                "optional": false
+            }
+        ],
         "WarehouseResource": [
             {
                 "name": "id",

@@ -34,6 +34,7 @@ use PhpParser\Node\Stmt\For_;
 use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\If_;
 use PhpParser\Node\Stmt\Return_;
+use PhpParser\Node\Stmt\Use_;
 use PhpParser\Node\Stmt\While_;
 use PhpParser\NodeFinder;
 use PhpParser\NodeTraverser;
@@ -86,7 +87,11 @@ class ResourceAstAnalyzer
             return $this->buildModelDelegatedAnalysis() ?? new ResourceAnalysis;
         }
 
+        // Prefer a Return_ that yields an array literal (handles guard-then-return patterns like
+        // `if ($this->resource === null) { return null; } return [...]`)
         $returnStmt = $finder->findFirst($toArrayMethod->stmts, function (Node $node): bool {
+            return $node instanceof Return_ && $node->expr instanceof Array_;
+        }) ?? $finder->findFirst($toArrayMethod->stmts, function (Node $node): bool {
             return $node instanceof Return_;
         });
 
@@ -358,6 +363,26 @@ class ResourceAstAnalyzer
             && $expr->var->var->name === 'this'
         ) {
             return $this->analyzeRelationFilter($expr);
+        }
+
+        // Inline array literal → recursively build inline object type { key: type; ... }
+        if ($expr instanceof Array_) {
+            return $this->analyzeInlineArray($expr);
+        }
+
+        // $this->anyProp->subProp — e.g. $this->resource->name / ->value on a backed enum
+        if ($expr instanceof PropertyFetch && $this->isThisPropertyFetch($expr->var)) {
+            return $this->analyzeWrappedResourceProperty($expr);
+        }
+
+        // Generic $this->method() — infer from the method's declared return type via reflection.
+        // Only reached for methods NOT already handled by the isThisMethodCall() guards above.
+        if ($expr instanceof MethodCall
+            && $expr->var instanceof Variable
+            && $expr->var->name === 'this'
+            && $expr->name instanceof Identifier
+        ) {
+            return $this->analyzeThisMethodCall($expr->name->toString());
         }
 
         return ['type' => 'unknown', 'optional' => false];
@@ -1305,5 +1330,188 @@ class ResourceAstAnalyzer
         foreach ($result['embeddedModelFqcns'] ?? [] as $fqcn) {
             $modelFqcns[$fqcn] = $fqcn;
         }
+    }
+
+    /**
+     * Analyze an inline array literal and produce an inline TypeScript object type.
+     *
+     * e.g. `['name' => $this->resource->name, 'value' => $this->maxSizeMb()]`
+     * becomes `{ name: string; value: number }`.
+     *
+     * @return ValueExpressionResult
+     */
+    protected function analyzeInlineArray(Array_ $array): array
+    {
+        $analysis = $this->analyzeReturnArray($array);
+
+        if ($analysis->properties === []) {
+            return ['type' => 'Record<string, unknown>', 'optional' => false];
+        }
+
+        $parts = array_map(function (array $prop): string {
+            $key = LaravelTsPublish::validJsObjectKey($prop['name']);
+
+            return $prop['optional']
+                ? "{$key}?: {$prop['type']}"
+                : "{$key}: {$prop['type']}";
+        }, $analysis->properties);
+
+        return ['type' => '{ '.implode('; ', $parts).' }', 'optional' => false];
+    }
+
+    /**
+     * Analyze `$this->anyProp->subProp` — a property fetch on one of `$this`'s properties.
+     *
+     * Handles PHP enum universal properties:
+     *   - `->name`  is always `string` (every PHP enum has it)
+     *   - `->value` type depends on the enum's backing type (string or int)
+     *
+     * @return ValueExpressionResult
+     */
+    protected function analyzeWrappedResourceProperty(PropertyFetch $expr): array
+    {
+        $innerProp = $expr->name instanceof Identifier ? $expr->name->toString() : null;
+
+        if ($innerProp === null) {
+            return ['type' => 'unknown', 'optional' => false];
+        }
+
+        if ($innerProp === 'name') {
+            return ['type' => 'string', 'optional' => false];
+        }
+
+        if ($innerProp === 'value') {
+            return ['type' => $this->resolveEnumValueBackingType(), 'optional' => false];
+        }
+
+        return ['type' => 'unknown', 'optional' => false];
+    }
+
+    /**
+     * Determine the TypeScript type for a backed enum's `->value` property by inspecting
+     * the `@var` docblock on the resource's `$resource` property and resolving any short
+     * class name via the file's use-statement map.
+     */
+    protected function resolveEnumValueBackingType(): string
+    {
+        $wrappedClass = $this->resolveWrappedClass();
+
+        if ($wrappedClass !== null && enum_exists($wrappedClass)) {
+            $r = new \ReflectionEnum($wrappedClass);
+            $backingType = $r->getBackingType();
+
+            if ($backingType !== null) {
+                return $backingType->getName() === 'string' ? 'string' : 'number';
+            }
+        }
+
+        return 'string | number';
+    }
+
+    /**
+     * Resolve the FQCN of the type wrapped by this resource via the `@var` docblock on
+     *
+     * the `$resource` property (e.g. `/** @var MediaType|null *\/`).
+     *
+     * Short names are resolved to FQCNs using the file's use-statement map.
+     */
+    protected function resolveWrappedClass(): ?string
+    {
+        if (! $this->resourceReflection->hasProperty('resource')) {
+            return null;
+        }
+
+        $docComment = $this->resourceReflection->getProperty('resource')->getDocComment();
+
+        if ($docComment === false || ! preg_match('/@var\s+([\w\\\\]+)/', $docComment, $m)) {
+            return null;
+        }
+
+        $shortName = $m[1];
+
+        foreach ($this->resolveUseStatements() as $alias => $fqcn) {
+            if ($alias === $shortName && (class_exists($fqcn) || enum_exists($fqcn))) {
+                return $fqcn;
+            }
+        }
+
+        if (class_exists($shortName) || enum_exists($shortName)) {
+            return $shortName;
+        }
+
+        return null;
+    }
+
+    /**
+     * Parse the use statements from the resource's source file.
+     *
+     * @return array<string, string> alias => fully-qualified class name
+     */
+    protected function resolveUseStatements(): array
+    {
+        $filePath = (string) $this->resourceReflection->getFileName();
+        $source = (string) file_get_contents($filePath);
+        $stmts = $this->parseAndResolveAst($source);
+
+        $finder = new NodeFinder;
+        /** @var array<string, string> */
+        $map = [];
+
+        foreach ($finder->find($stmts, fn (Node $n) => $n instanceof Use_) as $useNode) {
+            if (! $useNode instanceof Use_) {
+                continue; // @codeCoverageIgnore
+            }
+
+            foreach ($useNode->uses as $use) {
+                $alias = $use->alias !== null ? $use->alias->toString() : $use->name->getLast();
+                $map[$alias] = $use->name->toString();
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Analyze a generic `$this->method()` call by reflecting on the method's declared
+     * return type and mapping it to a TypeScript type.
+     *
+     * Checks the resource's own methods first, then falls back to the wrapped class
+     * (e.g. the backing enum) for calls that are delegated via `__call`.
+     *
+     * Used as a fallback for resource instance methods that are not one of Laravel's
+     * conditional helpers (`when`, `whenLoaded`, etc.).
+     *
+     * @return ValueExpressionResult
+     */
+    protected function analyzeThisMethodCall(string $methodName): array
+    {
+        // 1. Check the resource's own methods
+        if ($this->resourceReflection->hasMethod($methodName)) {
+            $tsInfo = LaravelTsPublish::methodReturnedTypes($this->resourceReflection, $methodName);
+
+            if ($tsInfo['type'] !== '' && $tsInfo['type'] !== 'unknown') {
+                return [
+                    ...$tsInfo,
+                    'optional' => false,
+                ];
+            }
+        }
+
+        // 2. Fall back to the wrapped class (e.g. backing enum) for delegated calls
+        $wrappedClass = $this->resolveWrappedClass();
+
+        if ($wrappedClass !== null && method_exists($wrappedClass, $methodName)) {
+            /** @var class-string $wrappedClass */
+            $tsInfo = LaravelTsPublish::methodReturnedTypes(new ReflectionClass($wrappedClass), $methodName);
+
+            if ($tsInfo['type'] !== '' && $tsInfo['type'] !== 'unknown') {
+                return [
+                    ...$tsInfo,
+                    'optional' => false,
+                ];
+            }
+        }
+
+        return ['type' => 'unknown', 'optional' => false]; // @codeCoverageIgnore
     }
 }

@@ -1,0 +1,41 @@
+<?php
+
+namespace Workbench\App\Http\Resources;
+
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+use Workbench\App\Enums\MediaType;
+
+class MediaTypeResource extends JsonResource
+{
+    /** @var MediaType|null */
+    public $resource;
+
+    public static $wrap = '';
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function toArray(Request $request): ?array
+    {
+        if ($this->resource === null) {
+            return null;
+        }
+
+        return [
+            'name' => $this->resource->name,
+            'value' => $this->resource->value,
+            'meta' => [
+                'extensions' => $this->extensions(),
+                'maxSizeMb' => $this->maxSizeMb(),
+                'sizeUnit' => $this->sizeUnit(),
+                'icon' => $this->icon(),
+            ],
+        ];
+    }
+
+    protected function sizeUnit(): string
+    {
+        return 'MB';
+    }
+}
