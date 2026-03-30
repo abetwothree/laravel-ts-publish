@@ -1,7 +1,4 @@
 @use('AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish')
-@if (count($data->properties) === 0)
-export {}
-@else
 @if($usesTolkiPackage && count($data->valueImports) > 0)
 import { type AsEnum } from '@tolki/enum';
 
@@ -13,7 +10,6 @@ import { {{ implode(', ', $names) }} } from '{{ $path }}';
 import type { {{ implode(', ', $types) }} } from '{{ $path }}';
 @endforeach
 
-@if (count($data->properties) > 0)
 @if($data->description)
 /** {!! LaravelTsPublish::sanitizeJsDoc($data->description) !!} */
 @endif
@@ -26,5 +22,3 @@ export interface {{ $data->resourceName }}{!! count($data->tsExtends) > 0 ? ' ex
     {!! LaravelTsPublish::validJsObjectKey($name) !!}{!! $property['optional'] ? '?' : '' !!}: {!! $property['type'] !!};
 @endforeach
 }
-@endif{{-- end if count($data->properties) > 0 --}}
-@endif{{-- end if count($data->properties) === 0 --}}
