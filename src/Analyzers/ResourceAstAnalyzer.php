@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\FiltersModelAttributes;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ResolvesModelTypes;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResourceCasts;
+use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesClassNames;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -34,13 +35,10 @@ use PhpParser\Node\Stmt\For_;
 use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\If_;
 use PhpParser\Node\Stmt\Return_;
-use PhpParser\Node\Stmt\Use_;
 use PhpParser\Node\Stmt\While_;
 use PhpParser\NodeFinder;
-use PhpParser\NodeTraverser;
-use PhpParser\NodeVisitor\NameResolver;
-use PhpParser\ParserFactory;
 use ReflectionClass;
+use ReflectionEnum;
 
 /**
  * Analyzes a JsonResource's toArray() method body to extract property names,
@@ -56,6 +54,7 @@ class ResourceAstAnalyzer
 {
     use FiltersModelAttributes;
     use InspectsAstNodes;
+    use ResolvesClassNames;
     use ResolvesModelTypes;
 
     /**
@@ -372,7 +371,13 @@ class ResourceAstAnalyzer
 
         // $this->anyProp->subProp — e.g. $this->resource->name / ->value on a backed enum
         if ($expr instanceof PropertyFetch && $this->isThisPropertyFetch($expr->var)) {
-            return $this->analyzeWrappedResourceProperty($expr);
+            $info = $this->analyzeWrappedEnumResourceProperty($expr);
+
+            if ($info['type'] === 'unknown') {
+                $info = $this->analyzeWrappedModelResourceProperty($expr);
+            }
+
+            return $info;
         }
 
         // Generic $this->method() — infer from the method's declared return type via reflection.
@@ -1148,23 +1153,6 @@ class ResourceAstAnalyzer
         return implode(' | ', array_unique($resolved));
     }
 
-    /**
-     * Parse PHP source and resolve fully qualified names via AST traversal.
-     *
-     * @return array<Node>
-     */
-    protected function parseAndResolveAst(string $source): array
-    {
-        $parser = (new ParserFactory)->createForNewestSupportedVersion();
-        /** @var list<Node\Stmt> $stmts */
-        $stmts = $parser->parse($source);
-
-        $traverser = new NodeTraverser;
-        $traverser->addVisitor(new NameResolver);
-
-        return $traverser->traverse($stmts);
-    }
-
     protected function isResourceCollection(): bool
     {
         return $this->resourceReflection->isSubclassOf(ResourceCollection::class);
@@ -1368,11 +1356,20 @@ class ResourceAstAnalyzer
      *
      * @return ValueExpressionResult
      */
-    protected function analyzeWrappedResourceProperty(PropertyFetch $expr): array
+    protected function analyzeWrappedEnumResourceProperty(PropertyFetch $expr): array
     {
         $innerProp = $expr->name instanceof Identifier ? $expr->name->toString() : null;
 
         if ($innerProp === null) {
+            return ['type' => 'unknown', 'optional' => false];
+        }
+
+        // Only apply enum-specific logic when the wrapped type is actually a PHP enum.
+        // Without this guard, model-backed resources that use $this->resource->column
+        // would silently receive 'string' instead of the correct column type or 'unknown'.
+        $wrappedClass = $this->resolveWrappedClass($this->resourceReflection);
+
+        if ($wrappedClass === null || ! enum_exists($wrappedClass)) {
             return ['type' => 'unknown', 'optional' => false];
         }
 
@@ -1388,16 +1385,52 @@ class ResourceAstAnalyzer
     }
 
     /**
+     * Analyze `$this->anyProp->subProp` where `$this->anyProp` is a wrapped model resource
+     * (i.e. has a `@var ModelType|null` docblock on `$resource`).
+     *
+     * @return ValueExpressionResult
+     */
+    protected function analyzeWrappedModelResourceProperty(PropertyFetch $expr): array
+    {
+        $innerProp = $expr->name instanceof Identifier ? $expr->name->toString() : null;
+
+        if ($innerProp === null) {
+            return ['type' => 'unknown', 'optional' => false];
+        }
+
+        $wrappedClass = $this->resolveWrappedClass($this->resourceReflection);
+
+        if ($wrappedClass === null || ! class_exists($wrappedClass)) {
+            return ['type' => 'unknown', 'optional' => false];
+        }
+
+        // Try to resolve as a model attribute (DB column, accessor, mutator)
+        $info = $this->resolveModelAttributeTypeInfo($innerProp);
+
+        if ($info['type'] !== 'unknown') {
+            $result = ['type' => $info['type'], 'optional' => false];
+
+            if ($info['enumFqcn'] !== null) {
+                $result['directEnumFqcn'] = $info['enumFqcn'];
+            }
+
+            return $result;
+        }
+
+        return ['type' => 'unknown', 'optional' => false];
+    }
+
+    /**
      * Determine the TypeScript type for a backed enum's `->value` property by inspecting
      * the `@var` docblock on the resource's `$resource` property and resolving any short
      * class name via the file's use-statement map.
      */
     protected function resolveEnumValueBackingType(): string
     {
-        $wrappedClass = $this->resolveWrappedClass();
+        $wrappedClass = $this->resolveWrappedClass($this->resourceReflection);
 
         if ($wrappedClass !== null && enum_exists($wrappedClass)) {
-            $r = new \ReflectionEnum($wrappedClass);
+            $r = new ReflectionEnum($wrappedClass);
             $backingType = $r->getBackingType();
 
             if ($backingType !== null) {
@@ -1406,69 +1439,6 @@ class ResourceAstAnalyzer
         }
 
         return 'string | number';
-    }
-
-    /**
-     * Resolve the FQCN of the type wrapped by this resource via the `@var` docblock on
-     *
-     * the `$resource` property (e.g. `/** @var MediaType|null *\/`).
-     *
-     * Short names are resolved to FQCNs using the file's use-statement map.
-     */
-    protected function resolveWrappedClass(): ?string
-    {
-        if (! $this->resourceReflection->hasProperty('resource')) {
-            return null;
-        }
-
-        $docComment = $this->resourceReflection->getProperty('resource')->getDocComment();
-
-        if ($docComment === false || ! preg_match('/@var\s+([\w\\\\]+)/', $docComment, $m)) {
-            return null;
-        }
-
-        $shortName = $m[1];
-
-        foreach ($this->resolveUseStatements() as $alias => $fqcn) {
-            if ($alias === $shortName && (class_exists($fqcn) || enum_exists($fqcn))) {
-                return $fqcn;
-            }
-        }
-
-        if (class_exists($shortName) || enum_exists($shortName)) {
-            return $shortName;
-        }
-
-        return null;
-    }
-
-    /**
-     * Parse the use statements from the resource's source file.
-     *
-     * @return array<string, string> alias => fully-qualified class name
-     */
-    protected function resolveUseStatements(): array
-    {
-        $filePath = (string) $this->resourceReflection->getFileName();
-        $source = (string) file_get_contents($filePath);
-        $stmts = $this->parseAndResolveAst($source);
-
-        $finder = new NodeFinder;
-        /** @var array<string, string> */
-        $map = [];
-
-        foreach ($finder->find($stmts, fn (Node $n) => $n instanceof Use_) as $useNode) {
-            if (! $useNode instanceof Use_) {
-                continue; // @codeCoverageIgnore
-            }
-
-            foreach ($useNode->uses as $use) {
-                $alias = $use->alias !== null ? $use->alias->toString() : $use->name->getLast();
-                $map[$alias] = $use->name->toString();
-            }
-        }
-
-        return $map;
     }
 
     /**
@@ -1498,7 +1468,7 @@ class ResourceAstAnalyzer
         }
 
         // 2. Fall back to the wrapped class (e.g. backing enum) for delegated calls
-        $wrappedClass = $this->resolveWrappedClass();
+        $wrappedClass = $this->resolveWrappedClass($this->resourceReflection);
 
         if ($wrappedClass !== null && method_exists($wrappedClass, $methodName)) {
             /** @var class-string $wrappedClass */

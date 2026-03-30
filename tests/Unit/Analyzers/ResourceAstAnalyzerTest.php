@@ -17,9 +17,11 @@ use Workbench\App\Http\Resources\DelegatingResource;
 use Workbench\App\Http\Resources\DelegatingWithMixinResource;
 use Workbench\App\Http\Resources\EmptyResource;
 use Workbench\App\Http\Resources\EmptyWithMixinResource;
+use Workbench\App\Http\Resources\EnumNullFirstResource;
 use Workbench\App\Http\Resources\ExtendedAddressResource;
 use Workbench\App\Http\Resources\MediaTypeResource;
 use Workbench\App\Http\Resources\MiscCollection;
+use Workbench\App\Http\Resources\ModelWrappedPropResource;
 use Workbench\App\Http\Resources\NonArrayReturnResource;
 use Workbench\App\Http\Resources\OrderClosureResource;
 use Workbench\App\Http\Resources\OrderCollection;
@@ -1882,5 +1884,27 @@ describe('ResourceAstAnalyzer with MediaTypeResource (model-less enum resource)'
         // maxSizeMb(): int → number, icon(): string → string (verified via reflection)
         expect($meta['type'])->toContain('maxSizeMb: number')
             ->toContain('icon: string');
+    });
+});
+
+describe('ResourceAstAnalyzer @var union docblock edge cases', function () {
+    test('null-first @var docblock resolves backing type correctly', function () {
+        $reflection = new ReflectionClass(EnumNullFirstResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection);
+        $analysis = $analyzer->analyze();
+
+        $value = collect($analysis->properties)->firstWhere('name', 'value');
+
+        expect($value['type'])->toBe('string');
+    });
+
+    test('model-backed resource using $this->resource->prop returns unknown', function () {
+        $reflection = new ReflectionClass(ModelWrappedPropResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection);
+        $analysis = $analyzer->analyze();
+
+        $name = collect($analysis->properties)->firstWhere('name', 'name');
+
+        expect($name['type'])->toBe('string');
     });
 });

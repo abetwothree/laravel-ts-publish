@@ -178,8 +178,9 @@ class ResourceTransformer extends CoreTransformer
      * Resolve the backing model class from
      * 1. #[TsResource(model:)] attribute
      * 2. @mixin docblock
-     * 3. Convention-based guess (reverse of Laravel's TransformsToResource)
-     * 4. #[UseResource] attribute scan on collected models (Laravel 12+)
+     * 3. @var docblock on $resource property (for wrapped resources with a public $resource property typed as the model)
+     * 4. Convention-based guess (reverse of Laravel's TransformsToResource)
+     * 5. #[UseResource] attribute scan on collected models (Laravel 12+)
      */
     protected function resolveModelClass(): self
     {
@@ -209,7 +210,15 @@ class ResourceTransformer extends CoreTransformer
             }
         }
 
-        // Priority 3: convention-based guess (reverse of Laravel's TransformsToResource)
+        // Priority 3: @var on $resource property (for wrapped resources)
+        $wrappedClass = $this->resolveWrappedClass($this->reflectionResource);
+        if ($wrappedClass !== null && class_exists($wrappedClass) && is_a($wrappedClass, Model::class, true)) {
+            $this->modelClass = $wrappedClass;
+
+            return $this;
+        }
+
+        // Priority 4: convention-based guess (reverse of Laravel's TransformsToResource)
         $guessed = $this->guessModelFromConvention();
 
         if ($guessed !== null) {
@@ -218,7 +227,7 @@ class ResourceTransformer extends CoreTransformer
             return $this;
         }
 
-        // Priority 4: scan models for #[UseResource] attribute pointing to this resource
+        // Priority 5: scan models for #[UseResource] attribute pointing to this resource
         $useResourceModel = $this->guessModelFromUseResourceAttribute();
 
         if ($useResourceModel !== null) {

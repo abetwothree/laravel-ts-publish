@@ -5,6 +5,13 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Concerns;
 
 use Illuminate\Support\Str;
+use PhpParser\Node;
+use PhpParser\Node\Name;
+use PhpParser\Node\Stmt\Use_;
+use PhpParser\NodeFinder;
+use PhpParser\NodeTraverser;
+use PhpParser\NodeVisitor\NameResolver;
+use PhpParser\ParserFactory;
 use ReflectionClass;
 
 /**
@@ -12,6 +19,9 @@ use ReflectionClass;
  */
 trait ResolvesClassNames
 {
+    /** @var array<class-string, array<string, string>> */
+    protected ?array $cachedUseStatements = [];
+
     /**
      * Resolve a type name from a docblock to its FQCN by consulting the declaring class's
      * `use` imports, its own namespace, and then falling back to the original name.
@@ -91,5 +101,103 @@ trait ResolvesClassNames
         }
 
         return $map;
+    }
+
+    /**
+     * Resolve the FQCN of the type wrapped by this resource via the `@var` docblock on
+     *
+     * the `$resource` property (e.g. `/** @var MediaType|null *\/`).
+     *
+     * Short names are resolved to FQCNs using the file's use-statement map.
+     */
+    protected function resolveWrappedClass(ReflectionClass $declaringClass): ?string
+    {
+        if (! $declaringClass->hasProperty('resource')) {
+            return null;
+        }
+
+        $docComment = $declaringClass->getProperty('resource')->getDocComment();
+
+        if ($docComment === false || ! preg_match('/@var\s+([^\s*]+)/', $docComment, $m)) {
+            return null;
+        }
+
+        // Split the @var value on | to handle union types in any order (e.g. null|Type or Type|null)
+        $skip = ['null', 'mixed', 'false', 'true', 'bool', 'int', 'float', 'string',
+            'array', 'object', 'void', 'iterable', 'callable', 'never', 'static', 'self'];
+        $useStatements = $this->resolveUseStatements($declaringClass);
+
+        foreach (explode('|', $m[1]) as $token) {
+            $token = trim($token);
+
+            if ($token === '' || in_array(strtolower($token), $skip, true)) {
+                continue;
+            }
+
+            foreach ($useStatements as $alias => $fqcn) {
+                if ($alias === $token && (class_exists($fqcn) || enum_exists($fqcn))) {
+                    return $fqcn;
+                }
+            }
+
+            if (class_exists($token) || enum_exists($token)) {
+                return $token;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Parse the use statements from the resource's source file.
+     *
+     * @return array<string, string> alias => fully-qualified class name
+     */
+    protected function resolveUseStatements(ReflectionClass $declaringClass): array
+    {
+        $className = $declaringClass->getName();
+        if (isset($this->cachedUseStatements[$className])) {
+            return $this->cachedUseStatements[$className];
+        }
+
+        $filePath = (string) $declaringClass->getFileName();
+        $source = (string) file_get_contents($filePath);
+        $stmts = $this->parseAndResolveAst($source);
+
+        $finder = new NodeFinder;
+        /** @var array<string, string> */
+        $map = [];
+
+        foreach ($finder->find($stmts, fn (Node $n) => $n instanceof Use_) as $useNode) {
+            if (! $useNode instanceof Use_) {
+                continue; // @codeCoverageIgnore
+            }
+
+            foreach ($useNode->uses as $use) {
+                $alias = $use->alias !== null ? $use->alias->toString() : $use->name->getLast();
+                $map[$alias] = $use->name->toString();
+            }
+        }
+
+        $this->cachedUseStatements[$className] = $map;
+
+        return $this->cachedUseStatements[$className];
+    }
+
+    /**
+     * Parse PHP source and resolve fully qualified names via AST traversal.
+     *
+     * @return array<Node>
+     */
+    protected function parseAndResolveAst(string $source): array
+    {
+        $parser = (new ParserFactory)->createForNewestSupportedVersion();
+        /** @var list<Node\Stmt> $stmts */
+        $stmts = $parser->parse($source);
+
+        $traverser = new NodeTraverser;
+        $traverser->addVisitor(new NameResolver);
+
+        return $traverser->traverse($stmts);
     }
 }
