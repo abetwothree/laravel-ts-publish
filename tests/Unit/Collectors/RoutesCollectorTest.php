@@ -110,3 +110,27 @@ test('prism and nested-prism controllers both collected', function () {
     expect($collected)->toContain(PrismController::class)
         ->and($collected)->toContain(NestedPrismController::class);
 });
+
+test('only pattern with negation excludes negated route within matching set', function () {
+    // 'posts.*' matches all post routes; '!posts.index' should exclude that one
+    config()->set('ts-publish.routes.only', ['posts.*', '!posts.index']);
+
+    $collector = resolve(RoutesCollector::class);
+    $collected = $collector->collect();
+
+    // PostController still collected because it has other routes (show, store, etc.)
+    expect($collected)->toContain(PostController::class);
+});
+
+test('negation-only only list includes all routes except negated ones', function () {
+    // A negation-only list: every route passes unless explicitly negated
+    config()->set('ts-publish.routes.only', ['!posts.*']);
+
+    $collector = resolve(RoutesCollector::class);
+    $collected = $collector->collect();
+
+    // Posts routes are negated so PostController should not be collected
+    expect($collected)->not->toContain(PostController::class)
+        // Other controllers should still be included
+        ->and($collected)->toContain(ExcludableController::class);
+});

@@ -155,8 +155,9 @@ class TsPublishCommand extends Command
             $enumCount = count($runner->enumGenerators);
             $modelCount = count($runner->modelGenerators);
             $resourceCount = count($runner->resourceGenerators);
+            $routeCount = count($runner->routeGenerators);
 
-            outro("{$enumCount} enums, {$modelCount} models, {$resourceCount} resources — All done");
+            outro("{$enumCount} enums, {$modelCount} models, {$resourceCount} resources, {$routeCount} routes — All done");
         }
 
         return self::SUCCESS;

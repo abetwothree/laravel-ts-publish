@@ -9,6 +9,7 @@ use Workbench\App\Http\Controllers\DocBlockInvokableController;
 use Workbench\App\Http\Controllers\EnumBoundController;
 use Workbench\App\Http\Controllers\ExcludableController;
 use Workbench\App\Http\Controllers\InvokableController;
+use Workbench\App\Http\Controllers\InvokableModelBoundController;
 use Workbench\App\Http\Controllers\MultiRouteController;
 use Workbench\App\Http\Controllers\NamedInvokableController;
 use Workbench\App\Http\Controllers\Nested\NestedController;
@@ -138,6 +139,17 @@ test('named invokable controller methodName uses last segment of route name', fu
 
     expect($action['methodName'])->toBe('invokable')
         ->and($action['name'])->toBe('named.invokable');
+});
+
+test('invokable controller with model-bound param preserves _routeKey binding metadata', function () {
+    $transformer = new RouteTransformer(InvokableModelBoundController::class);
+    $action = $transformer->actions[0];
+
+    expect($action['args'])->toHaveCount(1)
+        ->and($action['args'][0]['name'])->toBe('post')
+        ->and($action['args'][0]['required'])->toBeTrue()
+        ->and($action['args'][0])->toHaveKey('_routeKey')
+        ->and($action['args'][0]['_routeKey'])->toBe('id');
 });
 
 test('optional single param has required false', function () {

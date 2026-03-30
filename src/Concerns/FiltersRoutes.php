@@ -65,20 +65,36 @@ trait FiltersRoutes
      * Check whether a route name matches any of the given patterns.
      * Supports wildcards ('posts.*') and negation ('!posts.index').
      *
+     * Negations are evaluated before positives so that '!posts.index' can
+     * exclude a route that would otherwise be matched by 'posts.*'.
+     * A list composed entirely of negation patterns defaults to true for
+     * any name that is not explicitly negated.
+     *
      * @param  list<string>  $patterns
      */
     protected function matchesPatterns(string $name, array $patterns): bool
     {
+        $hasPositive = false;
+
+        // First pass: any matching negation immediately excludes the route
         foreach ($patterns as $pattern) {
-            $negated = str_starts_with($pattern, '!');
-            $actualPattern = $negated ? substr($pattern, 1) : $pattern;
-            $matches = fnmatch($actualPattern, $name);
-
-            if ($negated && $matches) {
-                return false;
+            if (str_starts_with($pattern, '!')) {
+                if (fnmatch(substr($pattern, 1), $name)) {
+                    return false;
+                }
+            } else {
+                $hasPositive = true;
             }
+        }
 
-            if (! $negated && $matches) {
+        // No positive patterns — negation-only list; name was not negated above
+        if (! $hasPositive) {
+            return true;
+        }
+
+        // Second pass: at least one positive pattern must match
+        foreach ($patterns as $pattern) {
+            if (! str_starts_with($pattern, '!') && fnmatch($pattern, $name)) {
                 return true;
             }
         }

@@ -175,7 +175,7 @@ class RouteTransformer extends CoreTransformer
             'methodName' => $methodName,
             'originalMethodName' => $originalMethodName,
             'description' => $description,
-            'args' => $this->resolveArgs($route),
+            'args' => $this->resolveArgs($route, $originalMethodName),
         ];
     }
 
@@ -211,7 +211,7 @@ class RouteTransformer extends CoreTransformer
      *
      * @return list<RouteArgData>
      */
-    protected function resolveArgs(Route $route): array
+    protected function resolveArgs(Route $route, string $actionMethod): array
     {
         /** @var list<RouteArgData> $args */
         $args = [];
@@ -222,7 +222,6 @@ class RouteTransformer extends CoreTransformer
             return $args;
         }
 
-        $actionMethod = $route->getActionMethod();
         $methodParams = [];
 
         if ($this->reflectionController->hasMethod($actionMethod)) {
