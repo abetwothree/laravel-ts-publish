@@ -1898,13 +1898,13 @@ describe('ResourceAstAnalyzer @var union docblock edge cases', function () {
         expect($value['type'])->toBe('string');
     });
 
-    test('model-backed resource using $this->resource->prop returns unknown', function () {
+    test('model-backed resource using $this->resource->prop resolves model attribute type', function () {
         $reflection = new ReflectionClass(ModelWrappedPropResource::class);
-        $analyzer = new ResourceAstAnalyzer($reflection);
+        $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
         $analysis = $analyzer->analyze();
 
-        $name = collect($analysis->properties)->firstWhere('name', 'name');
+        $title = collect($analysis->properties)->firstWhere('name', 'title');
 
-        expect($name['type'])->toBe('string');
+        expect($title['type'])->toBe('string');
     });
 });

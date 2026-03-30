@@ -109,6 +109,10 @@ trait ResolvesClassNames
      * the `$resource` property (e.g. `/** @var MediaType|null *\/`).
      *
      * Short names are resolved to FQCNs using the file's use-statement map.
+     *
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $declaringClass
      */
     protected function resolveWrappedClass(ReflectionClass $declaringClass): ?string
     {
@@ -151,6 +155,9 @@ trait ResolvesClassNames
     /**
      * Parse the use statements from the resource's source file.
      *
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $declaringClass
      * @return array<string, string> alias => fully-qualified class name
      */
     protected function resolveUseStatements(ReflectionClass $declaringClass): array
