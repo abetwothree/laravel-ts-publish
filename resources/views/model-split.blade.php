@@ -1,7 +1,4 @@
 @use('AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish')
-@if (count($data->columns) === 0 && count($data->mutators) === 0 && count($data->relations) === 0)
-export {}
-@else
 @if($usesTolkiPackage && (count($data->enumColumns) > 0 || count($data->enumMutators) > 0))
 import { type AsEnum } from '@tolki/enum';
 
@@ -13,7 +10,6 @@ import { {{ implode(', ', $names) }} } from '{{ $path }}';
 import type { {{ implode(', ', $types) }} } from '{{ $path }}';
 @endforeach
 
-@if (count($data->columns) > 0)
 @if($data->description)
 /** {!! LaravelTsPublish::sanitizeJsDoc($data->description) !!} */
 @endif
@@ -39,7 +35,6 @@ export interface {{ $data->modelName }}Resource extends {!! $hasEnumsExtends !!}
 @endforeach
 }
 @endif{{-- end $data->enumColumns --}}
-@endif{{-- end $data->columns --}}
 @if (count($data->mutators) > 0)
 
 export interface {{ $data->modelName }}Mutators
@@ -121,4 +116,3 @@ if(count($data->relations) > 0) {
 @endphp
 export interface {{ $data->modelName }}AllResource extends {{ implode(', ', $extends) }} {}
 @endif{{-- end all has enums extends --}}
-@endif{{-- end properties === 0 --}}
