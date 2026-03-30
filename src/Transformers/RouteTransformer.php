@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
+use AbeTwoThree\LaravelTsPublish\Concerns\FiltersRoutes;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsRouteDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use BackedEnum;
@@ -25,6 +26,8 @@ use ReflectionParameter;
  */
 class RouteTransformer extends CoreTransformer
 {
+    use FiltersRoutes;
+
     public protected(set) string $controllerName;
 
     public protected(set) string $filePath;
@@ -101,44 +104,11 @@ class RouteTransformer extends CoreTransformer
                 continue;
             }
 
-            // Apply the same filters as RoutesCollector
-            if ($route->isFallback) {
+            if (! $this->shouldIncludeRoute($route, $only, $except, $onlyNamed, $excludeMiddleware)) {
                 continue;
             }
 
             $routeName = $route->getName();
-
-            if ($routeName !== null && str_starts_with($routeName, 'generated::')) {
-                continue;
-            }
-
-            if ($onlyNamed && $routeName === null) {
-                continue;
-            }
-
-            if ($excludeMiddleware !== []) {
-                $excluded = false;
-
-                foreach ($route->gatherMiddleware() as $mw) {
-                    if (is_string($mw) && in_array($mw, $excludeMiddleware, true)) {
-                        $excluded = true;
-                        break;
-                    }
-                }
-
-                if ($excluded) {
-                    continue;
-                }
-            }
-
-            if ($only !== [] && ($routeName === null || ! $this->matchesPatterns($routeName, $only))) {
-                continue;
-            }
-
-            if ($except !== [] && $routeName !== null && $this->matchesPatterns($routeName, $except)) {
-                continue;
-            }
-
             $actionMethod = $route->getActionMethod();
 
             // For invokable controllers, getActionMethod() returns the FQCN rather than '__invoke'
@@ -177,12 +147,11 @@ class RouteTransformer extends CoreTransformer
      */
     protected function buildAction(Route $route, string $methodName, string $originalMethodName): array
     {
-        $actionMethod = $route->getActionMethod();
         $description = null;
 
-        if ($this->reflectionController->hasMethod($actionMethod)) {
+        if ($this->reflectionController->hasMethod($originalMethodName)) {
             $desc = LaravelTsPublish::parseDocBlockDescription(
-                $this->reflectionController->getMethod($actionMethod)->getDocComment()
+                $this->reflectionController->getMethod($originalMethodName)->getDocComment()
             );
             $description = $desc !== '' ? $desc : null;
         }
@@ -451,26 +420,12 @@ class RouteTransformer extends CoreTransformer
     }
 
     /**
-     * Check whether a route name matches any of the given patterns.
+     * Clear the static model instance cache.
      *
-     * @param  list<string>  $patterns
+     * Useful in test suites to prevent stale state between tests.
      */
-    protected function matchesPatterns(string $name, array $patterns): bool
+    public static function clearModelInstanceCache(): void
     {
-        foreach ($patterns as $pattern) {
-            $negated = str_starts_with($pattern, '!');
-            $actualPattern = $negated ? substr($pattern, 1) : $pattern;
-            $matches = fnmatch($actualPattern, $name);
-
-            if ($negated && $matches) {
-                return false;
-            }
-
-            if (! $negated && $matches) {
-                return true;
-            }
-        }
-
-        return false;
+        self::$modelInstanceCache = [];
     }
 }

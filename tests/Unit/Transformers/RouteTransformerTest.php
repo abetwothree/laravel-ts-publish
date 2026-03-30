@@ -5,6 +5,7 @@ use Workbench\App\Http\Controllers\CustomKeyController;
 use Workbench\App\Http\Controllers\CustomRouteKeyController;
 use Workbench\App\Http\Controllers\Delete;
 use Workbench\App\Http\Controllers\DeleteController;
+use Workbench\App\Http\Controllers\DocBlockInvokableController;
 use Workbench\App\Http\Controllers\EnumBoundController;
 use Workbench\App\Http\Controllers\ExcludableController;
 use Workbench\App\Http\Controllers\InvokableController;
@@ -16,6 +17,8 @@ use Workbench\App\Http\Controllers\ParameterCaseController;
 use Workbench\App\Http\Controllers\PostController;
 
 beforeEach(function () {
+    RouteTransformer::clearModelInstanceCache();
+
     config()->set('ts-publish.routes.only', []);
     config()->set('ts-publish.routes.except', []);
     config()->set('ts-publish.routes.exclude_middleware', []);
@@ -240,6 +243,13 @@ test('reserved keyword method names get Method suffix', function () {
         ->and($methodNames)->toContain('exportMethod')
         ->and($methodNames)->not->toContain('delete')
         ->and($methodNames)->not->toContain('export');
+});
+
+test('invokable controller extracts description from __invoke docblock', function () {
+    $transformer = new RouteTransformer(DocBlockInvokableController::class);
+    $action = $transformer->actions[0];
+
+    expect($action['description'])->toBe('Performs the invokable action.');
 });
 
 test('reserved-keyword controller name is preserved in controllerName property', function () {

@@ -22,6 +22,7 @@ use JsonSerializable;
  *     domain: string|null,
  *     methods: list<string>,
  *     methodName: string,
+ *     originalMethodName: string,
  *     description: string|null,
  *     args: list<RouteArgData>,
  * }

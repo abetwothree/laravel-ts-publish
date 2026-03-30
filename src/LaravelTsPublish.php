@@ -759,11 +759,11 @@ class LaravelTsPublish
 
         foreach ($args as $arg) {
             $parts = [];
-            $parts[] = "name: '".$arg['name']."'";
-            $parts[] = 'required: '.($arg['required'] ? 'true' : 'false');
+            $parts[] = 'name: '.$this->toJsLiteral($arg['name']);
+            $parts[] = 'required: '.$this->toJsLiteral($arg['required']);
 
             if (isset($arg['_routeKey'])) {
-                $parts[] = "_routeKey: '".$arg['_routeKey']."'";
+                $parts[] = '_routeKey: '.$this->toJsLiteral($arg['_routeKey']);
             }
 
             if (isset($arg['_enumValues'])) {
@@ -771,7 +771,7 @@ class LaravelTsPublish
             }
 
             if (isset($arg['where'])) {
-                $parts[] = "where: '".$arg['where']."'";
+                $parts[] = 'where: '.$this->toJsLiteral($arg['where']);
             }
 
             $entries[] = '{'.implode(', ', $parts).'}';

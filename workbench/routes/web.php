@@ -5,6 +5,7 @@ use Workbench\App\Http\Controllers\CustomKeyController;
 use Workbench\App\Http\Controllers\CustomRouteKeyController;
 use Workbench\App\Http\Controllers\Delete;
 use Workbench\App\Http\Controllers\DeleteController;
+use Workbench\App\Http\Controllers\DocBlockInvokableController;
 use Workbench\App\Http\Controllers\EnumBoundController;
 use Workbench\App\Http\Controllers\ExcludableController;
 use Workbench\App\Http\Controllers\ExcludedController;
@@ -61,3 +62,5 @@ Route::get('/prism/nested', [NestedPrismController::class, 'nested'])->name('pri
 Route::delete('/items/{id}', [DeleteController::class, 'delete'])->name('items.delete');
 Route::get('/items/export', [DeleteController::class, 'export'])->name('items.export');
 Route::get('/delete-items', [Delete::class, 'index'])->name('delete-items.index');
+
+Route::get('/docblock-invokable', DocBlockInvokableController::class)->name('docblock.invokable');

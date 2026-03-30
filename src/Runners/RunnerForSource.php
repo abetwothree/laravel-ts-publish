@@ -144,7 +144,7 @@ class RunnerForSource extends BaseRunner
         $fqcn = $reflection->getName();
 
         foreach ($router->getRoutes()->getRoutes() as $route) {
-            if ($route->getControllerClass() === $fqcn) {
+            if (ltrim((string) $route->getControllerClass(), '\\') === $fqcn) {
                 return true;
             }
         }
