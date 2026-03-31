@@ -211,7 +211,7 @@ class ResourceTransformer extends CoreTransformer
         }
 
         // Priority 3: @var on $resource property (for wrapped resources)
-        $wrappedClass = $this->resolveWrappedClass($this->reflectionResource);
+        $wrappedClass = $this->resolveClassOnProperty($this->reflectionResource);
         if ($wrappedClass !== null && class_exists($wrappedClass) && is_a($wrappedClass, Model::class, true)) {
             $this->modelClass = $wrappedClass;
 

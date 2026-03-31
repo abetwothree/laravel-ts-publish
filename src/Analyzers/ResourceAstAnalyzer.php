@@ -1399,7 +1399,7 @@ class ResourceAstAnalyzer
         // Only apply enum-specific logic when the wrapped type is actually a PHP enum.
         // Without this guard, model-backed resources that use $this->resource->column
         // would silently receive 'string' instead of the correct column type or 'unknown'.
-        $wrappedClass = $this->resolveWrappedClass($this->resourceReflection);
+        $wrappedClass = $this->resolveClassOnProperty($this->resourceReflection);
 
         if ($wrappedClass === null || ! enum_exists($wrappedClass)) {
             return $result;
@@ -1437,7 +1437,7 @@ class ResourceAstAnalyzer
             return $result;
         }
 
-        $wrappedClass = $this->resolveWrappedClass($this->resourceReflection);
+        $wrappedClass = $this->resolveClassOnProperty($this->resourceReflection);
 
         if ($wrappedClass === null || ! class_exists($wrappedClass)) {
             return $result;
@@ -1474,7 +1474,7 @@ class ResourceAstAnalyzer
             return $result;
         }
 
-        $wrappedClass = $this->resolveWrappedClass($this->resourceReflection);
+        $wrappedClass = $this->resolveClassOnProperty($this->resourceReflection);
 
         if ($wrappedClass === null || ! method_exists($wrappedClass, $methodName)) {
             return $result;
@@ -1497,7 +1497,7 @@ class ResourceAstAnalyzer
      */
     protected function resolveEnumValueBackingType(): string
     {
-        $wrappedClass = $this->resolveWrappedClass($this->resourceReflection);
+        $wrappedClass = $this->resolveClassOnProperty($this->resourceReflection);
 
         if ($wrappedClass !== null && enum_exists($wrappedClass)) {
             $r = new ReflectionEnum($wrappedClass);
@@ -1538,7 +1538,7 @@ class ResourceAstAnalyzer
         }
 
         // 2. Fall back to the wrapped class (e.g. backing enum) for delegated calls
-        $wrappedClass = $this->resolveWrappedClass($this->resourceReflection);
+        $wrappedClass = $this->resolveClassOnProperty($this->resourceReflection);
 
         if ($wrappedClass !== null && method_exists($wrappedClass, $methodName)) {
             /** @var class-string $wrappedClass */

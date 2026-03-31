@@ -267,6 +267,16 @@ class LaravelTsPublish
     }
 
     /** @return TypeScriptTypeInfo */
+    public function propertyTypes(ReflectionClass $class, string $property): array
+    {
+        if (! $class->hasProperty($property)) {
+            return $this->emptyTypeScriptInfo();
+        }
+
+        return $this->resolveReflectionType($class->getProperty($property)->getType());
+    }
+
+    /** @return TypeScriptTypeInfo */
     public function methodReturnedTypes(ReflectionClass $class, string $method): array // @phpstan-ignore missingType.generics
     {
         if (! $class->hasMethod($method)) {

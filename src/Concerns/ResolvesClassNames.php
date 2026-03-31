@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Concerns;
 
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Support\Str;
 use PhpParser\Node;
 use PhpParser\Node\Name;
@@ -113,15 +114,24 @@ trait ResolvesClassNames
      * @template T of object
      *
      * @param  ReflectionClass<T>  $declaringClass
+     * @param  string  $property  The property name to inspect (default: 'resource')
+     * @return class-string|null
      */
-    protected function resolveWrappedClass(ReflectionClass $declaringClass): ?string
+    protected function resolveClassOnProperty(ReflectionClass $declaringClass, string $property = 'resource'): ?string
     {
-        if (! $declaringClass->hasProperty('resource')) {
+        if (! $declaringClass->hasProperty($property)) {
             return null;
         }
 
-        $docComment = $declaringClass->getProperty('resource')->getDocComment();
+        // Check the property type from reflection
+        // E.g. for `public MediaType $resource`, this would return `MediaType::class`
+        $info = LaravelTsPublish::propertyTypes($declaringClass, $property);
+        if (count($info['classes']) > 0) {
+            return $info['classes'][0];
+        }
 
+        // If the property doesn't have a native type declaration, check for a @var annotation in the docblock
+        $docComment = $declaringClass->getProperty($property)->getDocComment();
         if ($docComment === false || ! preg_match('/@var\s+([^\s*]+)/', $docComment, $m)) {
             return null;
         }
