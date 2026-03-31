@@ -287,9 +287,11 @@ class ResourceAstAnalyzer
      */
     protected function analyzeValueExpression(Expr $expr): array
     {
+        $result = $this->unknownResult();
+
         // First-class callables (e.g. $this->when(...)) have no args — bail early
         if ($expr instanceof MethodCall && $expr->isFirstClassCallable()) {
-            return ['type' => 'unknown', 'optional' => false]; // @codeCoverageIgnore
+            return $result; // @codeCoverageIgnore
         }
 
         // Closures / arrow functions — resolve the return expression and recurse
@@ -380,6 +382,14 @@ class ResourceAstAnalyzer
             return $info;
         }
 
+        // $this->anyProp->method() — e.g. $this->resource->extensions() on a backed enum or model
+        if ($expr instanceof MethodCall
+            && $this->isThisPropertyFetch($expr->var)
+            && $expr->name instanceof Identifier
+        ) {
+            return $this->analyzeWrappedResourceMethodCall($expr);
+        }
+
         // Generic $this->method() — infer from the method's declared return type via reflection.
         // Only reached for methods NOT already handled by the isThisMethodCall() guards above.
         if ($expr instanceof MethodCall
@@ -390,7 +400,7 @@ class ResourceAstAnalyzer
             return $this->analyzeThisMethodCall($expr->name->toString());
         }
 
-        return ['type' => 'unknown', 'optional' => false];
+        return $result;
     }
 
     /**
@@ -400,6 +410,7 @@ class ResourceAstAnalyzer
      */
     protected function analyzeWhen(MethodCall $call): array
     {
+        $result = $this->unknownResult();
         $args = $call->getArgs();
 
         if (count($args) >= 2) {
@@ -412,7 +423,7 @@ class ResourceAstAnalyzer
             return $inner;
         }
 
-        return ['type' => 'unknown', 'optional' => true];
+        return [...$result, 'optional' => true]; // @codeCoverageIgnore
     }
 
     /**
@@ -422,6 +433,7 @@ class ResourceAstAnalyzer
      */
     protected function analyzeWhenHas(MethodCall $call): array
     {
+        $result = $this->unknownResult();
         $args = $call->getArgs();
 
         if (count($args) >= 1 && $args[0]->value instanceof String_) {
@@ -436,7 +448,7 @@ class ResourceAstAnalyzer
             return $result;
         }
 
-        return ['type' => 'unknown', 'optional' => true]; // @codeCoverageIgnore
+        return [...$result, 'optional' => true]; // @codeCoverageIgnore
     }
 
     /**
@@ -446,6 +458,7 @@ class ResourceAstAnalyzer
      */
     protected function analyzeWhenNotNull(MethodCall $call): array
     {
+        $result = $this->unknownResult();
         $args = $call->getArgs();
 
         if (count($args) >= 1) {
@@ -455,7 +468,7 @@ class ResourceAstAnalyzer
             return $inner;
         }
 
-        return ['type' => 'unknown', 'optional' => true]; // @codeCoverageIgnore
+        return [...$result, 'optional' => true]; // @codeCoverageIgnore
     }
 
     /**
@@ -465,6 +478,7 @@ class ResourceAstAnalyzer
      */
     protected function analyzeWhenLoaded(MethodCall $call): array
     {
+        $result = $this->unknownResult();
         $args = $call->getArgs();
 
         // $this->whenLoaded('relation', value) — use value for type
@@ -488,7 +502,7 @@ class ResourceAstAnalyzer
             return $result;
         }
 
-        return ['type' => 'unknown', 'optional' => true]; // @codeCoverageIgnore
+        return [...$result, 'optional' => true]; // @codeCoverageIgnore
     }
 
     /**
@@ -550,11 +564,12 @@ class ResourceAstAnalyzer
      */
     protected function analyzeStaticCall(StaticCall $call): array
     {
+        $result = $this->unknownResult();
         $className = $this->resolveStaticCallClassName($call);
         $methodName = $call->name instanceof Identifier ? $call->name->toString() : null;
 
         if ($className === null || $methodName === null) {
-            return ['type' => 'unknown', 'optional' => false]; // @codeCoverageIgnore
+            return $result; // @codeCoverageIgnore
         }
 
         // EnumResource::make($this->prop)
@@ -569,6 +584,7 @@ class ResourceAstAnalyzer
 
             /** @var class-string $className */
             return [
+                ...$result,
                 'type' => $resourceName,
                 'optional' => $optional,
                 'resourceFqcn' => $className,
@@ -582,13 +598,14 @@ class ResourceAstAnalyzer
 
             /** @var class-string $className */
             return [
+                ...$result,
                 'type' => $resourceName.'[]',
                 'optional' => $optional,
                 'resourceFqcn' => $className,
             ];
         }
 
-        return ['type' => 'unknown', 'optional' => false];
+        return $result;
     }
 
     /**
@@ -598,8 +615,10 @@ class ResourceAstAnalyzer
      */
     protected function analyzeNewResource(New_ $expr): array
     {
+        $result = $this->unknownResult();
+
         if (! $expr->class instanceof Name) {
-            return ['type' => 'unknown', 'optional' => false]; // @codeCoverageIgnore
+            return $result; // @codeCoverageIgnore
         }
 
         $className = $expr->class->toString();
@@ -609,15 +628,14 @@ class ResourceAstAnalyzer
             $args = $expr->getArgs();
 
             if (count($args) >= 1) {
-                return $this->resolveEnumFromPropertyArg($args[0]->value)
-                    ?? ['type' => 'unknown', 'optional' => false];
+                return $this->resolveEnumFromPropertyArg($args[0]->value) ?? $result;
             }
 
-            return ['type' => 'unknown', 'optional' => false];
+            return $result;
         }
 
         if (! $this->isResourceClass($className)) {
-            return ['type' => 'unknown', 'optional' => false]; // @codeCoverageIgnore
+            return $result; // @codeCoverageIgnore
         }
 
         $resourceName = class_basename($className);
@@ -625,6 +643,7 @@ class ResourceAstAnalyzer
 
         /** @var class-string $className */
         return [
+            ...$result,
             'type' => $resourceName,
             'optional' => $optional,
             'resourceFqcn' => $className,
@@ -638,18 +657,19 @@ class ResourceAstAnalyzer
      */
     protected function analyzeEnumResourceMake(StaticCall $call): array
     {
+        $result = $this->unknownResult();
+
         if ($call->isFirstClassCallable()) {
-            return ['type' => 'unknown', 'optional' => false];
+            return $result;
         }
 
         $args = $call->getArgs();
 
         if (count($args) < 1) {
-            return ['type' => 'unknown', 'optional' => false];
+            return $result;
         }
 
-        return $this->resolveEnumFromPropertyArg($args[0]->value)
-            ?? ['type' => 'unknown', 'optional' => false];
+        return $this->resolveEnumFromPropertyArg($args[0]->value) ?? $result;
     }
 
     /**
@@ -659,6 +679,8 @@ class ResourceAstAnalyzer
      */
     protected function resolveEnumFromPropertyArg(Expr $argExpr): ?array
     {
+        $result = $this->unknownResult();
+
         if (! $this->isThisPropertyFetch($argExpr)) {
             return null;
         }
@@ -677,8 +699,8 @@ class ResourceAstAnalyzer
         }
 
         return [
+            ...$result,
             'type' => $info['type'],
-            'optional' => false,
             'enumFqcn' => $info['enumFqcn'],
         ];
     }
@@ -694,11 +716,13 @@ class ResourceAstAnalyzer
      */
     protected function analyzeThisProperty(Expr $expr): array
     {
+        $result = $this->unknownResult();
+
         /** @var PropertyFetch $expr */
         $propName = $expr->name instanceof Identifier ? $expr->name->toString() : null;
 
         if ($propName === null) {
-            return ['type' => 'unknown', 'optional' => false]; // @codeCoverageIgnore
+            return $result; // @codeCoverageIgnore
         }
 
         // 0. Handle $this->collection in ResourceCollection subclasses
@@ -710,7 +734,10 @@ class ResourceAstAnalyzer
         $info = $this->resolveModelAttributeTypeInfo($propName);
 
         if ($info['type'] !== 'unknown') {
-            $result = ['type' => $info['type'], 'optional' => false];
+            $result = [
+                ...$result,
+                'type' => $info['type'],
+            ];
 
             if ($info['enumFqcn'] !== null) {
                 $result['directEnumFqcn'] = $info['enumFqcn'];
@@ -723,7 +750,10 @@ class ResourceAstAnalyzer
         $relationInfo = $this->resolveModelRelationTypeInfo($propName);
 
         if ($relationInfo['type'] !== 'unknown') {
-            $result = ['type' => $relationInfo['type'], 'optional' => false];
+            $result = [
+                ...$result,
+                'type' => $relationInfo['type'],
+            ];
 
             if ($relationInfo['modelFqcn'] !== null) {
                 $result['modelFqcn'] = $relationInfo['modelFqcn'];
@@ -732,7 +762,7 @@ class ResourceAstAnalyzer
             return $result;
         }
 
-        return ['type' => 'unknown', 'optional' => false];
+        return $result;
     }
 
     /**
@@ -1206,15 +1236,16 @@ class ResourceAstAnalyzer
      */
     protected function analyzeCollectionProperty(): array
     {
+        $result = $this->unknownResult();
         $singular = $this->resolveSingularResourceClass();
 
         if ($singular === null) {
-            return ['type' => 'unknown', 'optional' => false];
+            return $result;
         }
 
         return [
+            ...$result,
             'type' => class_basename($singular).'[]',
-            'optional' => false,
             'resourceFqcn' => $singular,
         ];
     }
@@ -1230,7 +1261,7 @@ class ResourceAstAnalyzer
      */
     protected function analyzeRelationFilter(MethodCall|NullsafeMethodCall $call): array
     {
-        $result = ['type' => 'unknown', 'optional' => false];
+        $result = $this->unknownResult();
 
         $nullable = $call instanceof NullsafeMethodCall;
         $methodName = $call->name instanceof Identifier ? $call->name->toString() : null;
@@ -1358,10 +1389,11 @@ class ResourceAstAnalyzer
      */
     protected function analyzeWrappedEnumResourceProperty(PropertyFetch $expr): array
     {
+        $result = $this->unknownResult();
         $innerProp = $expr->name instanceof Identifier ? $expr->name->toString() : null;
 
         if ($innerProp === null) {
-            return ['type' => 'unknown', 'optional' => false];
+            return $result;
         }
 
         // Only apply enum-specific logic when the wrapped type is actually a PHP enum.
@@ -1370,18 +1402,24 @@ class ResourceAstAnalyzer
         $wrappedClass = $this->resolveWrappedClass($this->resourceReflection);
 
         if ($wrappedClass === null || ! enum_exists($wrappedClass)) {
-            return ['type' => 'unknown', 'optional' => false];
+            return $result;
         }
 
         if ($innerProp === 'name') {
-            return ['type' => 'string', 'optional' => false];
+            return [
+                ...$result,
+                'type' => 'string',
+            ];
         }
 
         if ($innerProp === 'value') {
-            return ['type' => $this->resolveEnumValueBackingType(), 'optional' => false];
+            return [
+                ...$result,
+                'type' => $this->resolveEnumValueBackingType(),
+            ];
         }
 
-        return ['type' => 'unknown', 'optional' => false];
+        return $result;
     }
 
     /**
@@ -1392,16 +1430,17 @@ class ResourceAstAnalyzer
      */
     protected function analyzeWrappedModelResourceProperty(PropertyFetch $expr): array
     {
+        $result = $this->unknownResult();
         $innerProp = $expr->name instanceof Identifier ? $expr->name->toString() : null;
 
         if ($innerProp === null) {
-            return ['type' => 'unknown', 'optional' => false];
+            return $result;
         }
 
         $wrappedClass = $this->resolveWrappedClass($this->resourceReflection);
 
         if ($wrappedClass === null || ! class_exists($wrappedClass)) {
-            return ['type' => 'unknown', 'optional' => false];
+            return $result;
         }
 
         // Try to resolve as a model attribute (DB column, accessor, mutator)
@@ -1417,7 +1456,38 @@ class ResourceAstAnalyzer
             return $result;
         }
 
-        return ['type' => 'unknown', 'optional' => false];
+        return $result;
+    }
+
+    /**
+     * Analyze `$this->anyProp->method()` by resolving the method on the wrapped class
+     * (e.g. `$this->resource->extensions()` on an enum-backed resource).
+     *
+     * @return ValueExpressionResult
+     */
+    protected function analyzeWrappedResourceMethodCall(MethodCall $expr): array
+    {
+        $result = $this->unknownResult();
+        $methodName = $expr->name instanceof Identifier ? $expr->name->toString() : null;
+
+        if ($methodName === null) {
+            return $result;
+        }
+
+        $wrappedClass = $this->resolveWrappedClass($this->resourceReflection);
+
+        if ($wrappedClass === null || ! method_exists($wrappedClass, $methodName)) {
+            return $result;
+        }
+
+        /** @var class-string $wrappedClass */
+        $tsInfo = LaravelTsPublish::methodReturnedTypes(new ReflectionClass($wrappedClass), $methodName);
+
+        if ($tsInfo['type'] !== '' && $tsInfo['type'] !== 'unknown') {
+            return [...$tsInfo, 'optional' => false];
+        }
+
+        return $result;
     }
 
     /**
@@ -1482,6 +1552,16 @@ class ResourceAstAnalyzer
             }
         }
 
-        return ['type' => 'unknown', 'optional' => false]; // @codeCoverageIgnore
+        return $this->unknownResult(); // @codeCoverageIgnore
+    }
+
+    /**
+     * Fallback result for expressions that can't be analyzed or have no type information.
+     *
+     * @return ValueExpressionResult
+     */
+    protected function unknownResult(): array
+    {
+        return ['type' => 'unknown', 'optional' => false];
     }
 }

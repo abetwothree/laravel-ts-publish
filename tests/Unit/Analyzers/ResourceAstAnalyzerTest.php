@@ -1870,6 +1870,7 @@ describe('ResourceAstAnalyzer with MediaTypeResource (model-less enum resource)'
         $meta = collect($analysis->properties)->firstWhere('name', 'meta');
 
         expect($meta['type'])->toStartWith('{ ')->toEndWith(' }')
+            ->toContain('extensions: unknown[]')
             ->toContain('maxSizeMb: number')
             ->toContain('icon: string');
     });
@@ -1884,6 +1885,17 @@ describe('ResourceAstAnalyzer with MediaTypeResource (model-less enum resource)'
         // maxSizeMb(): int → number, icon(): string → string (verified via reflection)
         expect($meta['type'])->toContain('maxSizeMb: number')
             ->toContain('icon: string');
+    });
+
+    test('$this->resource->method() resolves return type from wrapped class', function () {
+        $reflection = new ReflectionClass(MediaTypeResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection);
+        $analysis = $analyzer->analyze();
+
+        $meta = collect($analysis->properties)->firstWhere('name', 'meta');
+
+        // extensions() returns array on MediaType enum → unknown[]
+        expect($meta['type'])->toContain('extensions: unknown[]');
     });
 });
 
