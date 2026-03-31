@@ -1227,6 +1227,10 @@ declare global {
             reactions_count?: number;
             reactions_avg?: number;
         }
+        /** Resource for testing that $this->resource->prop on a model-backed resource returns unknown. */
+        export interface ModelWrappedPropResource {
+            title: string;
+        }
         /** Resource that delegates to parent with a known model — tests JsonResource base delegation. */
         export interface DelegatingWithMixinResource {
             id: number;
@@ -1399,6 +1403,10 @@ declare global {
         export interface EventLogResource {
             id: number;
             description: string | null;
+        }
+        /** Resource for testing @var null|Type docblock ordering (null-first convention). */
+        export interface EnumNullFirstResource {
+            value: string;
         }
         /** Fixture resource exercising variable-return trait method spreads. */
         export interface VarReturnSpreadResource {

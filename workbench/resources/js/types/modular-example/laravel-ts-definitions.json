@@ -4270,6 +4270,13 @@
                 "optional": true
             }
         ],
+        "ModelWrappedPropResource": [
+            {
+                "name": "title",
+                "type": "string",
+                "optional": false
+            }
+        ],
         "DelegatingWithMixinResource": [
             {
                 "name": "id",
@@ -4911,6 +4918,13 @@
             {
                 "name": "description",
                 "type": "string | null",
+                "optional": false
+            }
+        ],
+        "EnumNullFirstResource": [
+            {
+                "name": "value",
+                "type": "string",
                 "optional": false
             }
         ],

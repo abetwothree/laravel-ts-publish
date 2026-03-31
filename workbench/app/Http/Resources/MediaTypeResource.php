@@ -26,7 +26,7 @@ class MediaTypeResource extends JsonResource
             'name' => $this->resource->name,
             'value' => $this->resource->value,
             'meta' => [
-                'extensions' => $this->extensions(),
+                'extensions' => $this->resource->extensions(),
                 'maxSizeMb' => $this->maxSizeMb(),
                 'sizeUnit' => $this->sizeUnit(),
                 'icon' => $this->icon(),
