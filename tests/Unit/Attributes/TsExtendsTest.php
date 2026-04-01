@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExtends;
 
 test('TsExtends accepts simple extends clause', function () {

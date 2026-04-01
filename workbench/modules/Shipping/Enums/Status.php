@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Workbench\Shipping\Enums;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnum;

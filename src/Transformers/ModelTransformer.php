@@ -29,6 +29,7 @@ use ReflectionClass;
  * @phpstan-import-type TypesImportMap from TsModelDto
  * @phpstan-import-type ValuesImportMap from TsModelDto
  * @phpstan-import-type MutatorsList from TsModelDto
+ * @phpstan-import-type AppendsList from TsModelDto
  * @phpstan-import-type RelationsList from TsModelDto
  * @phpstan-import-type AttributeInfo from ModelInfo
  * @phpstan-import-type RelationInfo from ModelInfo
@@ -72,6 +73,9 @@ class ModelTransformer extends CoreTransformer
     /** @var MutatorsList */
     public protected(set) array $mutators = [];
 
+    /** @var AppendsList */
+    public protected(set) array $appends = [];
+
     /** @var RelationsList */
     public protected(set) array $relations = [];
 
@@ -92,6 +96,9 @@ class ModelTransformer extends CoreTransformer
     /** @var array<string, list<string>> mutator_name => list of FQCNs (enum or model) referenced by that mutator */
     protected array $mutatorFqcns = [];
 
+    /** @var array<string, list<string>> append_name => list of FQCNs (enum or model) referenced by that append */
+    protected array $appendsFqcns = [];
+
     /** @var array<string, list<string>> */
     public protected(set) array $customImports = [];
 
@@ -100,6 +107,12 @@ class ModelTransformer extends CoreTransformer
 
     /** @var array<string, array{fqcn: string, nullable: bool}> mutator_name => enum property info */
     protected array $enumMutatorProperties = [];
+
+    /** @var array<string, array{fqcn: string, nullable: bool}> append_name => enum property info */
+    protected array $enumAppendsProperties = [];
+
+    /** @var list<string> Attribute names from model's array */
+    protected array $appendedAttributes = [];
 
     /** @var list<string> TypeScript extends clauses */
     public protected(set) array $tsExtends = [];
@@ -134,11 +147,13 @@ class ModelTransformer extends CoreTransformer
             filename: $this->filename(),
             columns: $this->columns,
             mutators: $this->mutators,
+            appends: $this->appends,
             relations: $this->relations,
             typeImports: $imports['typeImports'],
             valueImports: $imports['valueImports'],
             enumColumns: $hasEnums ? $this->buildEnumColumns() : [],
             enumMutators: $hasEnums ? $this->buildEnumMutators() : [],
+            enumAppends: $hasEnums ? $this->buildEnumAppends() : [],
             tsExtends: $this->tsExtends,
         );
     }
@@ -155,6 +170,9 @@ class ModelTransformer extends CoreTransformer
         $modelInstance = resolve($this->findable);
         $this->modelInstance = $modelInstance;
         $this->dbColumns = $this->modelInstance->getConnection()->getSchemaBuilder()->getColumnListing($this->modelInstance->getTable());
+        /** @var list<string> $appends */
+        $appends = array_values($this->modelInstance->getAppends());
+        $this->appendedAttributes = $appends;
         $this->modelInspect = resolve(ModelInspector::class)->inspect($this->findable);
         /** @var Collection<int, AttributeInfo> $attributes */
         $attributes = $this->modelInspect->attributes;
@@ -275,32 +293,60 @@ class ModelTransformer extends CoreTransformer
                 continue;
             }
 
+            // Determine whether this mutator is an appended attribute
+            $isAppended = in_array($name, $this->appendedAttributes, true);
+
             // #[TsCasts] override takes priority
             if (isset($this->tsTypeOverrides[$name])) {
-                $this->mutators[$name] = ['type' => $this->tsTypeOverrides[$name], 'description' => ''];
+                if ($isAppended) {
+                    $this->appends[$name] = ['type' => $this->tsTypeOverrides[$name], 'description' => ''];
+                } else {
+                    $this->mutators[$name] = ['type' => $this->tsTypeOverrides[$name], 'description' => ''];
+                }
 
                 continue;
             }
 
             $resolved = $this->resolveMutatorType($name);
-            $this->mutators[$name] = ['type' => $resolved['type'], 'description' => $this->resolveAccessorDescription($name)];
+
+            if ($isAppended) {
+                $this->appends[$name] = ['type' => $resolved['type'], 'description' => $this->resolveAccessorDescription($name)];
+            } else {
+                $this->mutators[$name] = ['type' => $resolved['type'], 'description' => $this->resolveAccessorDescription($name)];
+            }
 
             foreach ($resolved['enumFqcns'] as $i => $fqcn) {
                 $this->enumFqcnMap[$fqcn] = $resolved['enumTypes'][$i];
                 $this->enumConstMap[$fqcn] = $resolved['enums'][$i];
-                $this->mutatorFqcns[$name][] = $fqcn;
+
+                if ($isAppended) {
+                    $this->appendsFqcns[$name][] = $fqcn;
+                } else {
+                    $this->mutatorFqcns[$name][] = $fqcn;
+                }
             }
 
             if ($resolved['enumFqcns'] !== []) {
-                $this->enumMutatorProperties[$name] = [
+                $enumInfo = [
                     'fqcn' => $resolved['enumFqcns'][0],
                     'nullable' => str_contains($resolved['type'], 'null'),
                 ];
+
+                if ($isAppended) {
+                    $this->enumAppendsProperties[$name] = $enumInfo;
+                } else {
+                    $this->enumMutatorProperties[$name] = $enumInfo;
+                }
             }
 
             foreach ($resolved['classFqcns'] as $i => $fqcn) {
                 $this->modelFqcnMap[$fqcn] = $resolved['classes'][$i];
-                $this->mutatorFqcns[$name][] = $fqcn;
+
+                if ($isAppended) {
+                    $this->appendsFqcns[$name][] = $fqcn;
+                } else {
+                    $this->mutatorFqcns[$name][] = $fqcn;
+                }
             }
 
             foreach ($resolved['customImports'] as $path => $importTypes) {
@@ -548,7 +594,14 @@ class ModelTransformer extends CoreTransformer
                 if (! in_array($fqcn, $this->mutatorFqcns[$key] ?? [])) {
                     continue;
                 }
-                $this->mutators[$key]['type'] = preg_replace($pattern, $alias, $entry['type']) ?? $entry['type'];
+                $this->mutators[$key]['type'] = preg_replace($pattern, $alias, $entry['type']) ?? $entry['type']; // @codeCoverageIgnore
+            }
+
+            foreach ($this->appends as $key => $entry) {
+                if (! in_array($fqcn, $this->appendsFqcns[$key] ?? [])) {
+                    continue;
+                }
+                $this->appends[$key]['type'] = preg_replace($pattern, $alias, $entry['type']) ?? $entry['type'];
             }
         }
     }
@@ -634,7 +687,7 @@ class ModelTransformer extends CoreTransformer
     #[Override]
     protected function enumProperties(): array
     {
-        return array_merge($this->enumColumnProperties, $this->enumMutatorProperties);
+        return array_merge($this->enumColumnProperties, $this->enumMutatorProperties, $this->enumAppendsProperties);
     }
 
     /**
@@ -662,6 +715,25 @@ class ModelTransformer extends CoreTransformer
         $result = [];
 
         foreach ($this->enumMutatorProperties as $name => $info) {
+            $result[$name] = [
+                'constName' => $this->constImportAliases[$info['fqcn']] ?? $this->enumConstMap[$info['fqcn']],
+                'nullable' => $info['nullable'],
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Build the enum appends properties for the Tolki package variant.
+     *
+     * @return array<string, array{constName: string, nullable: bool}>
+     */
+    protected function buildEnumAppends(): array
+    {
+        $result = [];
+
+        foreach ($this->enumAppendsProperties as $name => $info) {
             $result[$name] = [
                 'constName' => $this->constImportAliases[$info['fqcn']] ?? $this->enumConstMap[$info['fqcn']],
                 'nullable' => $info['nullable'],

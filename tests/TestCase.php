@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace AbeTwoThree\LaravelTsPublish\Tests;
 
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublishServiceProvider;
@@ -11,6 +13,9 @@ use Illuminate\Notifications\DatabaseNotification;
 use Orchestra\Testbench\Attributes\WithEnv;
 use Orchestra\Testbench\Concerns\WithWorkbench;
 use Orchestra\Testbench\TestCase as Orchestra;
+
+use function Orchestra\Testbench\workbench_path;
+
 use ReflectionClass;
 use Symfony\Component\Finder\Finder;
 use Symfony\Component\Finder\SplFileInfo;
@@ -19,8 +24,6 @@ use Workbench\Accounting\Enums\PaymentStatus;
 use Workbench\Accounting\Models\Invoice;
 use Workbench\Shipping\Enums\Status;
 use Workbench\Shipping\Models\Shipment;
-
-use function Orchestra\Testbench\workbench_path;
 
 #[WithEnv('DB_CONNECTION', 'testing')]
 class TestCase extends Orchestra

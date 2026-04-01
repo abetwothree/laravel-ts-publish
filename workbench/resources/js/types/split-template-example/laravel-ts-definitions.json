@@ -2153,12 +2153,12 @@
                 "type": "Coordinate"
             },
             {
-                "name": "menu_config",
-                "type": "MenuSettingsType | null"
-            },
-            {
                 "name": "current_crm_status",
                 "type": "CrmStatusType | null"
+            },
+            {
+                "name": "menu_config",
+                "type": "MenuSettingsType | null"
             },
             {
                 "name": "manager",
@@ -4843,6 +4843,38 @@
                 "optional": false
             }
         ],
+        "AddressMixinResource": [
+            {
+                "name": "morphValue",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "full_address",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "latitude",
+                "type": "number | null",
+                "optional": true
+            },
+            {
+                "name": "longitude",
+                "type": "number | null",
+                "optional": true
+            },
+            {
+                "name": "user",
+                "type": "User",
+                "optional": true
+            }
+        ],
         "TagResource": [
             {
                 "name": "id",
@@ -5606,6 +5638,38 @@
             {
                 "name": "settings",
                 "type": "unknown[] | null",
+                "optional": true
+            }
+        ],
+        "AddressExtendsResource": [
+            {
+                "name": "morphValue",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "full_address",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "latitude",
+                "type": "number | null",
+                "optional": true
+            },
+            {
+                "name": "longitude",
+                "type": "number | null",
+                "optional": true
+            },
+            {
+                "name": "user",
+                "type": "User",
                 "optional": true
             }
         ],
