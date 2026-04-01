@@ -17,6 +17,9 @@ use Workbench\App\Http\Resources\EmptyResource;
 use Workbench\App\Http\Resources\EmptyWithMixinResource;
 use Workbench\App\Http\Resources\EventLogResource;
 use Workbench\App\Http\Resources\FqcnMixinResource;
+use Workbench\App\Http\Resources\MediaTypeInstanceOfResource;
+use Workbench\App\Http\Resources\MediaTypeResource;
+use Workbench\App\Http\Resources\MediaTypeUnknownResource;
 use Workbench\App\Http\Resources\OrderResource;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\ProductResource;
@@ -1113,6 +1116,58 @@ describe('ResourceTransformer with InvoiceResource', function () {
         // latest_payment_excluded = $this->latest_payment?->except(...) — Invoice relation remains
         expect($data->typeImports)->toHaveKey('../models');
         expect($data->typeImports['../models'])->toContain('Invoice');
+    });
+});
+
+describe('ResourceTransformer with MediaTypeResource (model-less enum resource)', function () {
+    test('enum-backed resource produces correct interface shape', function () {
+        $data = (new ResourceTransformer(MediaTypeResource::class))->data();
+
+        expect($data->properties)->toHaveKeys(['name', 'value', 'meta']);
+        expect($data->properties['name']['type'])->toBe('string');
+        expect($data->properties['value']['type'])->toBe('string');
+        expect($data->properties['meta']['type'])
+            ->toStartWith('{ ')
+            ->toEndWith(' }')
+            ->toContain('maxSizeMb: number')
+            ->toContain('icon: string');
+    });
+
+    test('enum-backed resource has no model class', function () {
+        $data = (new ResourceTransformer(MediaTypeResource::class))->data();
+
+        expect($data->modelClass)->toBeNull();
+    });
+
+    test('enum-backed resource has no type imports', function () {
+        $data = (new ResourceTransformer(MediaTypeResource::class))->data();
+
+        expect($data->typeImports)->toBeEmpty();
+    });
+});
+
+describe('ResourceTransformer with MediaTypeInstanceOfResource (instanceof guard)', function () {
+    test('instanceof guard resolves same interface shape as @var docblock', function () {
+        $data = (new ResourceTransformer(MediaTypeInstanceOfResource::class))->data();
+
+        expect($data->properties)->toHaveKeys(['name', 'value', 'meta']);
+        expect($data->properties['name']['type'])->toBe('string');
+        expect($data->properties['value']['type'])->toBe('string');
+        expect($data->properties['meta']['type'])
+            ->toStartWith('{ ')
+            ->toEndWith(' }')
+            ->toContain('maxSizeMb: number')
+            ->toContain('icon: string');
+    });
+});
+
+describe('ResourceTransformer with MediaTypeUnknownResource (no type hints)', function () {
+    test('produces unknown types when no @var or instanceof hints exist', function () {
+        $data = (new ResourceTransformer(MediaTypeUnknownResource::class))->data();
+
+        expect($data->properties)->toHaveKeys(['name', 'value', 'meta']);
+        expect($data->properties['name']['type'])->toBe('unknown');
+        expect($data->properties['value']['type'])->toBe('unknown');
     });
 });
 

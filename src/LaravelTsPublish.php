@@ -26,7 +26,7 @@ use UnitEnum;
  *    type: string,
  *    enums: list<string>,
  *    enumTypes: list<string>,
- *    classes: list<string>,
+ *    classes: list<class-string>,
  *    customImports: array<string, list<string>>,
  *    enumFqcns: list<string>,
  *    classFqcns: list<string>,
@@ -237,6 +237,7 @@ class LaravelTsPublish
 
         // 5. Any other existing class
         if (class_exists($phpType)) {
+            /** @var class-string $name */
             $name = class_basename($phpType);
             $result['type'] = $name;
             $result['classes'] = [$name];
@@ -266,8 +267,28 @@ class LaravelTsPublish
         return $result;
     }
 
-    /** @return TypeScriptTypeInfo */
-    public function methodReturnedTypes(ReflectionClass $class, string $method): array // @phpstan-ignore missingType.generics
+    /**
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $class
+     * @return TypeScriptTypeInfo
+     */
+    public function propertyTypes(ReflectionClass $class, string $property): array
+    {
+        if (! $class->hasProperty($property)) {
+            return $this->emptyTypeScriptInfo(); // @codeCoverageIgnore
+        }
+
+        return $this->resolveReflectionType($class->getProperty($property)->getType());
+    }
+
+    /**
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $class
+     * @return TypeScriptTypeInfo
+     */
+    public function methodReturnedTypes(ReflectionClass $class, string $method): array
     {
         if (! $class->hasMethod($method)) {
             return $this->emptyTypeScriptInfo();
