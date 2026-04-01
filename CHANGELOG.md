@@ -2,6 +2,15 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v1.3.0 - 2026-04-01
+
+### What's Changed
+
+* Appends attributes to model & resource @extends doc tag by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/17
+* Model-less resource support by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/18
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v1.2.1...v1.3.0
+
 ## v1.2.1 - 2026-03-28
 
 ### What's Changed
