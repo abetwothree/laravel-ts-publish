@@ -1,7 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
+use Workbench\App\Http\Resources\AddressExtendsResource;
+use Workbench\App\Http\Resources\AddressMixinResource;
 use Workbench\App\Http\Resources\AddressResource;
 use Workbench\App\Http\Resources\Admin\Store as AdminStoreResource;
 use Workbench\App\Http\Resources\ApiPostResource;
@@ -23,6 +27,7 @@ use Workbench\App\Http\Resources\ProfileResource;
 use Workbench\App\Http\Resources\TraitSpreadCoverageResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Http\Resources\WarehouseResource;
+use Workbench\App\Models\Address;
 use Workbench\App\Models\Admin\Store as AdminStore;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Order;
@@ -1163,5 +1168,44 @@ describe('ResourceTransformer with MediaTypeUnknownResource (no type hints)', fu
         expect($data->properties)->toHaveKeys(['name', 'value', 'meta']);
         expect($data->properties['name']['type'])->toBe('unknown');
         expect($data->properties['value']['type'])->toBe('unknown');
+    });
+});
+
+describe('ResourceTransformer with AddressMixinResource and AddressExtendsResource', function () {
+    test('@mixin resolves model class from docblock', function () {
+        $data = (new ResourceTransformer(AddressMixinResource::class))->data();
+
+        expect($data->modelClass)->toBe(Address::class);
+    });
+
+    test('@extends resolves model class from docblock', function () {
+        $data = (new ResourceTransformer(AddressExtendsResource::class))->data();
+
+        expect($data->modelClass)->toBe(Address::class);
+    });
+
+    test('@mixin does not match when tag appears in description text', function () {
+        $data = (new ResourceTransformer(AddressMixinResource::class))->data();
+
+        // The description contains "@mixin" in prose but the regex should only match "* @mixin"
+        expect($data->description)->toContain('@mixin');
+        expect($data->modelClass)->toBe(Address::class);
+    });
+
+    test('@extends does not match when tag appears in description text', function () {
+        $data = (new ResourceTransformer(AddressExtendsResource::class))->data();
+
+        // The description contains "@extends" in prose but the regex should only match "* @extends"
+        expect($data->description)->toContain('@extends');
+        expect($data->modelClass)->toBe(Address::class);
+    });
+
+    test('both resources produce identical properties, imports, & value imports', function () {
+        $mixinData = (new ResourceTransformer(AddressMixinResource::class))->data();
+        $extendsData = (new ResourceTransformer(AddressExtendsResource::class))->data();
+
+        expect($mixinData->properties)->toBe($extendsData->properties);
+        expect($mixinData->typeImports)->toBe($extendsData->typeImports);
+        expect($mixinData->valueImports)->toBe($extendsData->valueImports);
     });
 });

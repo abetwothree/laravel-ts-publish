@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Illuminate\Filesystem\Filesystem;
 
 use function Orchestra\Testbench\workbench_path;

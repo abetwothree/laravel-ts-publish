@@ -432,9 +432,9 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
             // Mutators
-            full_address: string | null;
             /** Whether coordinates are available */
             has_coordinates: boolean;
+            full_address: string | null;
             // Relations
             user: User;
             user_count: number;
@@ -740,10 +740,10 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
             // Mutators
-            /** Non-column accessor returning a plain class (Coordinate) */
-            location: Coordinate;
             /** Non-column accessor returning a TsType class (MenuSettings) with custom import */
             menu_config: MenuSettingsType | null;
+            /** Non-column accessor returning a plain class (Coordinate) */
+            location: Coordinate;
             /** Non-column accessor returning CRM Status enum — creates name conflict with column 'status' */
             current_crm_status: enums.StatusType | null;
             // Relations
@@ -1382,6 +1382,15 @@ declare global {
             meta: { label?: unknown };
             empty: Record<string, unknown>;
         }
+        /** Exercises: reading model from @mixin ModelClass in docblock Do not change, it needs to match the AddressExtendsResource exactly */
+        export interface AddressMixinResource {
+            morphValue: string;
+            id: number;
+            full_address: string | null;
+            latitude?: number | null;
+            longitude?: number | null;
+            user?: models.User;
+        }
         /** Exercises: whenCounted on two polymorphic relations. */
         export interface TagResource {
             id: number;
@@ -1609,6 +1618,15 @@ declare global {
             members?: TeamMemberResource[];
             members_count?: number;
             settings?: unknown[] | null;
+        }
+        /** Exercises: reading model from @extends ParentClass<Model> in docblock Do not change, it needs to match the AddressMixinResource exactly */
+        export interface AddressExtendsResource {
+            morphValue: string;
+            id: number;
+            full_address: string | null;
+            latitude?: number | null;
+            longitude?: number | null;
+            user?: models.User;
         }
         export interface MiscCollection {
             data: unknown;

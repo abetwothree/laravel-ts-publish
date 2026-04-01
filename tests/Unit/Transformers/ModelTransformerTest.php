@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -135,16 +137,17 @@ describe('ModelTransformer with Address model that has class-level TsCasts', fun
 
         expect($data->mutators)
             ->toHaveKey('has_coordinates')
+            ->not->toHaveKey('full_address')
             ->and($data->mutators['has_coordinates']['type'])->toBe('boolean');
     });
 
-    test('transforms Address model mutator with TsCasts override', function () {
+    test('transforms Address model appends with TsCasts override', function () {
         $data = (new ModelTransformer(Address::class))->data();
 
-        // full_address mutator has a TsCasts override from the class-level attribute
-        expect($data->mutators)
+        // full_address is in $appends so it goes to appends, not mutators
+        expect($data->appends)
             ->toHaveKey('full_address')
-            ->and($data->mutators['full_address']['type'])->toBe('string | null');
+            ->and($data->appends['full_address']['type'])->toBe('string | null');
     });
 });
 
@@ -725,11 +728,11 @@ describe('ModelTransformer with Warehouse model', function () {
             ->and($data->columns['coordinate_data']['type'])->toBe('Coordinate | null');
     });
 
-    test('mutator returning a plain class tracks classFqcns', function () {
+    test('appended attribute returning a plain class tracks classFqcns', function () {
         $data = (new ModelTransformer(Warehouse::class))->data();
 
-        expect($data->mutators)->toHaveKey('location')
-            ->and($data->mutators['location']['type'])->toBe('Coordinate');
+        expect($data->appends)->toHaveKey('location')
+            ->and($data->appends['location']['type'])->toBe('Coordinate');
     });
 
     test('mutator returning a TsType class includes customImports', function () {
@@ -741,15 +744,15 @@ describe('ModelTransformer with Warehouse model', function () {
         expect($data->typeImports)->toHaveKey('@js/types/settings');
     });
 
-    test('aliases conflicting enum types on mutators and rewrites types', function () {
+    test('aliases conflicting enum types on appends and rewrites types', function () {
         config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
 
         $data = (new ModelTransformer(Warehouse::class))->data();
 
         // Column status uses App\Enums\Status → aliased to AppStatusType
         expect($data->columns['status']['type'])->toBe('AppStatusType | null');
-        // Mutator current_crm_status uses Crm\Enums\Status → aliased to CrmStatusType
-        expect($data->mutators['current_crm_status']['type'])->toBe('CrmStatusType | null');
+        // Appended current_crm_status uses Crm\Enums\Status → aliased to CrmStatusType
+        expect($data->appends['current_crm_status']['type'])->toBe('CrmStatusType | null');
     });
 
     test('uses computeNamespacePrefix for model referenced by 2+ relations', function () {

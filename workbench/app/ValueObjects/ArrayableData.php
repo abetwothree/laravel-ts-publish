@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Workbench\App\ValueObjects;
 
 use Illuminate\Contracts\Support\Arrayable;

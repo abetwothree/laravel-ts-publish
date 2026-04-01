@@ -177,7 +177,7 @@ class ResourceTransformer extends CoreTransformer
     /**
      * Resolve the backing model class from
      * 1. #[TsResource(model:)] attribute
-     * 2. @mixin docblock
+     * 2. @mixin docblock or @extends SomeParentClass<Model>
      * 3. $resource class type or @var docblock on $resource property (for resources with a typed $resource )
      * 4. Convention-based guess (reverse of Laravel's TransformsToResource)
      * 5. #[UseResource] attribute scan on collected models (Laravel 12+)
@@ -197,13 +197,20 @@ class ResourceTransformer extends CoreTransformer
             }
         }
 
-        // Priority 2: @mixin in docblock
+        // Priority 2: @mixin in docblock or @extends SomeParentClass<Model>
+        // Make sure @mixin or @extends follow "* " comment line pattern to avoid false positives from inline mentions in descriptions
         $docComment = $this->reflectionResource->getDocComment();
+        if ($docComment !== false) {
+            $resolved = null;
+            if (preg_match('/(?<=\* )@mixin\s+([\w\\\\]+)/', $docComment, $matches)) {
+                $resolved = $this->resolveDocblockType($matches[1], $this->reflectionResource);
+            }
 
-        if ($docComment !== false && preg_match('/@mixin\s+([\w\\\\]+)/', $docComment, $matches)) {
-            $resolved = $this->resolveDocblockType($matches[1], $this->reflectionResource);
+            if (preg_match('/(?<=\* )@extends\s+([\w\\\\]+)<([\w\\\\]+)>/', $docComment, $matches)) {
+                $resolved = $this->resolveDocblockType($matches[2], $this->reflectionResource);
+            }
 
-            if (class_exists($resolved) && is_a($resolved, Model::class, true)) {
+            if ($resolved !== null && class_exists($resolved) && is_a($resolved, Model::class, true)) {
                 $this->modelClass = $resolved;
 
                 return $this;

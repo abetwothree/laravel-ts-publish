@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use AbeTwoThree\LaravelTsPublish\Dtos\TsModelDto;
 
 describe('TsModelDto', function () {
@@ -15,6 +17,9 @@ describe('TsModelDto', function () {
             ],
             mutators: [
                 'initials' => ['type' => 'string', 'description' => ''],
+            ],
+            appends: [
+                'full_name' => ['type' => 'string', 'description' => ''],
             ],
             relations: [
                 'posts' => ['type' => 'Post[]', 'description' => ''],
@@ -43,11 +48,13 @@ describe('TsModelDto', function () {
             ->toHaveKey('filename', 'user')
             ->and($array['columns'])->toHaveCount(2)
             ->and($array['mutators'])->toHaveKey('initials')
+            ->and($array['appends'])->toHaveKey('full_name')
             ->and($array['relations'])->toHaveKey('posts')
             ->and($array['typeImports'])->toHaveKey('../enums')
             ->and($array['valueImports'])->toHaveKey('../enums')
             ->and($array['enumColumns'])->toHaveKey('status')
-            ->and($array['enumMutators'])->toBeEmpty();
+            ->and($array['enumMutators'])->toBeEmpty()
+            ->and($array['enumAppends'])->toBeEmpty();
     });
 
     test('toJson returns valid JSON string', function () {
