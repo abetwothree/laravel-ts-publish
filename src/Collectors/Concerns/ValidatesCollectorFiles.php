@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace AbeTwoThree\LaravelTsPublish\Collectors\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\EnumResource;

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use AbeTwoThree\LaravelTsPublish\Writers\WatcherJsonWriter;
 use Illuminate\Filesystem\Filesystem;
 
@@ -76,6 +78,7 @@ test('watcher json excludes enums when publish_enums config is false', function 
     config()->set('ts-publish.output_to_files', false);
     config()->set('ts-publish.publish_enums', false);
     config()->set('ts-publish.publish_models', true);
+    config()->set('ts-publish.publish_resources', false);
 
     $writer = new WatcherJsonWriter(new Filesystem);
     $content = $writer->write();
@@ -92,6 +95,7 @@ test('watcher json excludes models when publish_models config is false', functio
     config()->set('ts-publish.output_to_files', false);
     config()->set('ts-publish.publish_enums', true);
     config()->set('ts-publish.publish_models', false);
+    config()->set('ts-publish.publish_resources', false);
 
     $writer = new WatcherJsonWriter(new Filesystem);
     $content = $writer->write();

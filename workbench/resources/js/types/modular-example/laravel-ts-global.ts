@@ -325,9 +325,9 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
             // Mutators
-            full_address: string | null;
             /** Whether coordinates are available */
             has_coordinates: boolean;
+            full_address: string | null;
             // Relations
             user: crm.models.User;
             user_count: number;
@@ -620,10 +620,10 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
             // Mutators
-            /** Non-column accessor returning a plain class (Coordinate) */
-            location: Coordinate;
             /** Non-column accessor returning a TsType class (MenuSettings) with custom import */
             menu_config: MenuSettingsType | null;
+            /** Non-column accessor returning a plain class (Coordinate) */
+            location: Coordinate;
             /** Non-column accessor returning CRM Status enum — creates name conflict with column 'status' */
             current_crm_status: crm.enums.StatusType | null;
             // Relations
@@ -1170,6 +1170,10 @@ declare global {
         }
     }
     export namespace app.http.resources {
+        /** Resource for testing that $this->resource->prop on a model-backed resource resolves to the model attribute type. */
+        export interface ModelWrappedPropResource {
+            title: string;
+        }
         /** Resource that delegates to parent with a known model — tests JsonResource base delegation. */
         export interface DelegatingWithMixinResource {
             id: number;
@@ -1288,6 +1292,11 @@ declare global {
         /** Child resource that uses SharedExtendsInterface AND extends a parent that also uses it. SharedExtendsInterface should appear only once in the result despite being reachable via two paths. */
         export interface ChildSharedResource extends SharedInterface {
         }
+        export interface MediaTypeResource {
+            name: string;
+            value: string;
+            meta: { extensions: unknown[]; maxSizeMb: number; sizeUnit: string; icon: string };
+        }
         /** Resource with no @mixin or TsResource — tests convention-based model guess. Also tests multiple TsExtends in parent class, trait, and locally. */
         export interface WarehouseResource extends BaseResource, ExtendableInterface, Omit<Timestamps, "created_at" | "updated_at">, ResourceRoutes, Pick<Routable, "store" | "update"> {
             id: number;
@@ -1304,6 +1313,22 @@ declare global {
             social_links?: { twitter?: string; github?: string; linkedin?: string; website?: string };
             timezone?: string;
             locale?: string;
+        }
+        /** Resource using a positive instanceof guard (not negated). Also includes inline arrays with optional keys and an empty inline array to exercise additional coverage paths. */
+        export interface MediaTypePositiveInstanceOfResource {
+            name: string;
+            value: string;
+            meta: { label?: unknown };
+            empty: Record<string, unknown>;
+        }
+        /** Exercises: reading model from @mixin ModelClass in docblock Do not change, it needs to match the AddressExtendsResource exactly */
+        export interface AddressMixinResource {
+            morphValue: string;
+            id: number;
+            full_address: string | null;
+            latitude?: number | null;
+            longitude?: number | null;
+            user?: crm.models.User;
         }
         /** Exercises: whenCounted on two polymorphic relations. */
         export interface TagResource {
@@ -1333,6 +1358,10 @@ declare global {
         export interface EventLogResource {
             id: number;
             description: string | null;
+        }
+        /** Resource for testing @var null|Type docblock ordering (null-first convention). */
+        export interface EnumNullFirstResource {
+            value: string;
         }
         /** Fixture resource exercising variable-return trait method spreads. */
         export interface VarReturnSpreadResource {
@@ -1413,6 +1442,11 @@ declare global {
             width?: number | null;
             height?: number | null;
         }
+        export interface MediaTypeUnknownResource {
+            name: unknown;
+            value: unknown;
+            meta: { extensions: unknown; maxSizeMb: unknown; sizeUnit: string; icon: unknown };
+        }
         /** Exercises: self-referencing Resource::make and Resource::collection, when conditional, whenCounted, cross-resource PostResource::collection. */
         export interface CategoryResource {
             id: number;
@@ -1462,6 +1496,12 @@ declare global {
         }
         /** Edge-case resource for $this->only() / $this->except() guard clause coverage. No @mixin — so buildModelDelegatedAnalysis() returns null. */
         export interface OrderFilterEdgeResource {
+        }
+        /** Resource wrapping a unit enum (no backing type) to test the ->value fallback. Also accesses an unknown property to test the unknown enum property path. */
+        export interface UnitEnumResource {
+            name: string;
+            value: string | number;
+            custom: unknown;
         }
         export interface ApiPostResource {
             morphValue: string;
@@ -1518,6 +1558,15 @@ declare global {
             members_count?: number;
             settings?: unknown[] | null;
         }
+        /** Exercises: reading model from @extends ParentClass<Model> in docblock Do not change, it needs to match the AddressMixinResource exactly */
+        export interface AddressExtendsResource {
+            morphValue: string;
+            id: number;
+            full_address: string | null;
+            latitude?: number | null;
+            longitude?: number | null;
+            user?: crm.models.User;
+        }
         export interface MiscCollection {
             data: unknown;
         }
@@ -1550,6 +1599,11 @@ declare global {
             options?: Record<string, string | number | boolean> | null;
             order_limited: { id: number; total: number } | null;
             order_extended: { id: number; ulid: string; user_id: number; status: app.enums.OrderStatusType; payment_method: app.enums.PaymentMethodType | null; currency: app.enums.CurrencyType; subtotal: number; tax: number; discount: number; total: number; shipping_address: unknown[] | null; billing_address: unknown[] | null; notes: string | null; placed_at: string | null; paid_at: string | null; shipped_at: string | null; delivered_at: string | null; cancelled_at: string | null; ip_address: string | null; user_agent: string | null; deleted_at: string | null; item_count: number; is_paid: boolean; formatted_total: string; user: crm.models.User; items: app.models.OrderItem[] };
+        }
+        export interface MediaTypeInstanceOfResource {
+            name: string;
+            value: string;
+            meta: { extensions: unknown[]; maxSizeMb: number; sizeUnit: string; icon: string };
         }
         /** Represents a user loaded through a team's belongsToMany pivot. Exercises: whenPivotLoaded, whenPivotLoadedAs, whenHas on enum attributes. */
         export interface TeamMemberResource {

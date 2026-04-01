@@ -33,13 +33,19 @@ declare global {
             {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!! LaravelTsPublish::qualifyGlobalType($column['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
 @endforeach
 @endif
-@if (count($transformer->mutators) > 0)
+@if (count($transformer->mutators) > 0 || count($transformer->appends) > 0)
             // Mutators
 @foreach($transformer->mutators as $name => $mutator)
 @if($mutator['description'])
             /** {!! LaravelTsPublish::sanitizeJsDoc($mutator['description']) !!} */
 @endif
             {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!! LaravelTsPublish::qualifyGlobalType($mutator['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
+@endforeach
+@foreach($transformer->appends as $name => $append)
+@if($append['description'])
+            /** {!! LaravelTsPublish::sanitizeJsDoc($append['description']) !!} */
+@endif
+            {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!! LaravelTsPublish::qualifyGlobalType($append['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
 @endforeach
 @endif
 @if (count($transformer->relations) > 0)
@@ -122,13 +128,19 @@ declare global {
             {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!! LaravelTsPublish::qualifyGlobalType($column['type'], $globalTypesByNamespace, $modelsNamespace, $globalAliasMap) !!};
 @endforeach
 @endif
-@if (count($transformer->mutators) > 0)
+@if (count($transformer->mutators) > 0 || count($transformer->appends) > 0)
             // Mutators
 @foreach($transformer->mutators as $name => $mutator)
 @if($mutator['description'])
             /** {!! LaravelTsPublish::sanitizeJsDoc($mutator['description']) !!} */
 @endif
             {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!! LaravelTsPublish::qualifyGlobalType($mutator['type'], $globalTypesByNamespace, $modelsNamespace, $globalAliasMap) !!};
+@endforeach
+@foreach($transformer->appends as $name => $append)
+@if($append['description'])
+            /** {!! LaravelTsPublish::sanitizeJsDoc($append['description']) !!} */
+@endif
+            {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!! LaravelTsPublish::qualifyGlobalType($append['type'], $globalTypesByNamespace, $modelsNamespace, $globalAliasMap) !!};
 @endforeach
 @endif
 @if (count($transformer->relations) > 0)

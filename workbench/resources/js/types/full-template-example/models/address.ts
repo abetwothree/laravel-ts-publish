@@ -18,9 +18,9 @@ export interface Address
     created_at: string | null;
     updated_at: string | null;
     // Mutators
-    full_address: string | null;
     /** Whether coordinates are available */
     has_coordinates: boolean;
+    full_address: string | null;
     // Relations
     user: User;
     // Counts

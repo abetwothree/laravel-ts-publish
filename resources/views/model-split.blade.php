@@ -1,8 +1,5 @@
 @use('AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish')
-@if (count($data->columns) === 0 && count($data->mutators) === 0 && count($data->relations) === 0)
-export {}
-@else
-@if($usesTolkiPackage && (count($data->enumColumns) > 0 || count($data->enumMutators) > 0))
+@if($usesTolkiPackage && (count($data->enumColumns) > 0 || count($data->enumMutators) > 0 || count($data->enumAppends) > 0))
 import { type AsEnum } from '@tolki/enum';
 
 @endif{{-- end tolki package --}}
@@ -13,7 +10,6 @@ import { {{ implode(', ', $names) }} } from '{{ $path }}';
 import type { {{ implode(', ', $types) }} } from '{{ $path }}';
 @endforeach
 
-@if (count($data->columns) > 0)
 @if($data->description)
 /** {!! LaravelTsPublish::sanitizeJsDoc($data->description) !!} */
 @endif
@@ -25,11 +21,17 @@ export interface {{ $data->modelName }}{!! count($data->tsExtends) > 0 ? ' exten
 @endif
     {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $column['type'] !!};
 @endforeach
+@foreach ($data->appends as $name => $append)
+@if($append['description'])
+    /** {!! LaravelTsPublish::sanitizeJsDoc($append['description']) !!} */
+@endif
+    {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $append['type'] !!};
+@endforeach
 }
-@if($usesTolkiPackage && count($data->enumColumns) > 0)
+@if($usesTolkiPackage && (count($data->enumColumns) > 0 || count($data->enumAppends) > 0))
 
 @php
-$colKeys = implode(' | ', array_map(fn($k) => "'" . $k . "'", array_keys($data->enumColumns)));
+$colKeys = implode(' | ', array_map(fn($k) => "'" . $k . "'", array_merge(array_keys($data->enumColumns), array_keys($data->enumAppends))));
 $hasEnumsExtends = 'Omit<' . $data->modelName . ', ' . $colKeys . '>';
 @endphp
 export interface {{ $data->modelName }}Resource extends {!! $hasEnumsExtends !!}
@@ -37,9 +39,11 @@ export interface {{ $data->modelName }}Resource extends {!! $hasEnumsExtends !!}
 @foreach ($data->enumColumns as $name => $enum)
     {!! LaravelTsPublish::validJsObjectKey($name) !!}: AsEnum<typeof {!! $enum['constName'] !!}>{!! $enum['nullable'] ? ' | null' : '' !!};
 @endforeach
+@foreach ($data->enumAppends as $name => $enum)
+    {!! LaravelTsPublish::validJsObjectKey($name) !!}: AsEnum<typeof {!! $enum['constName'] !!}>{!! $enum['nullable'] ? ' | null' : '' !!};
+@endforeach
 }
 @endif{{-- end $data->enumColumns --}}
-@endif{{-- end $data->columns --}}
 @if (count($data->mutators) > 0)
 
 export interface {{ $data->modelName }}Mutators
@@ -86,12 +90,12 @@ export interface {{ $data->modelName }}Relations
 @endforeach
 }
 @endif{{-- end $data->relations --}}
-@if(count($data->mutators) > 0 || count($data->relations) > 0)
+@if(count($data->mutators) > 0 || count($data->relations) > 0 || count($data->appends) > 0)
 
 @php
 $extends = [];
 
-if(count($data->columns) > 0) {
+if(count($data->columns) > 0 || count($data->appends) > 0) {
     $extends[] = $data->modelName;
 }
 
@@ -105,10 +109,10 @@ if(count($data->relations) > 0) {
 @endphp
 export interface {{ $data->modelName }}All extends {{ implode(', ', $extends) }} {}
 @endif{{-- end all extends --}}
-@if($usesTolkiPackage && (count($data->enumColumns) > 0 || count($data->enumMutators) > 0))
+@if($usesTolkiPackage && (count($data->enumColumns) > 0 || count($data->enumMutators) > 0 || count($data->enumAppends) > 0))
 
 @php
-$extends = count($data->enumColumns) > 0 ? [$data->modelName.'Resource'] : [$data->modelName];
+$extends = (count($data->enumColumns) > 0 || count($data->enumAppends) > 0) ? [$data->modelName.'Resource'] : [$data->modelName];
 
 if(count($data->mutators) > 0) {
     $mutators =  $data->modelName.'Mutators';
@@ -121,4 +125,3 @@ if(count($data->relations) > 0) {
 @endphp
 export interface {{ $data->modelName }}AllResource extends {{ implode(', ', $extends) }} {}
 @endif{{-- end all has enums extends --}}
-@endif{{-- end properties === 0 --}}

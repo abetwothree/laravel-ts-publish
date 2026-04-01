@@ -1,7 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
+use Workbench\App\Http\Resources\AddressExtendsResource;
+use Workbench\App\Http\Resources\AddressMixinResource;
 use Workbench\App\Http\Resources\AddressResource;
 use Workbench\App\Http\Resources\Admin\Store as AdminStoreResource;
 use Workbench\App\Http\Resources\ApiPostResource;
@@ -13,6 +17,9 @@ use Workbench\App\Http\Resources\EmptyResource;
 use Workbench\App\Http\Resources\EmptyWithMixinResource;
 use Workbench\App\Http\Resources\EventLogResource;
 use Workbench\App\Http\Resources\FqcnMixinResource;
+use Workbench\App\Http\Resources\MediaTypeInstanceOfResource;
+use Workbench\App\Http\Resources\MediaTypeResource;
+use Workbench\App\Http\Resources\MediaTypeUnknownResource;
 use Workbench\App\Http\Resources\OrderResource;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\ProductResource;
@@ -20,6 +27,7 @@ use Workbench\App\Http\Resources\ProfileResource;
 use Workbench\App\Http\Resources\TraitSpreadCoverageResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Http\Resources\WarehouseResource;
+use Workbench\App\Models\Address;
 use Workbench\App\Models\Admin\Store as AdminStore;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Order;
@@ -1108,5 +1116,96 @@ describe('ResourceTransformer with InvoiceResource', function () {
         // latest_payment_excluded = $this->latest_payment?->except(...) — Invoice relation remains
         expect($data->typeImports)->toHaveKey('../models');
         expect($data->typeImports['../models'])->toContain('Invoice');
+    });
+});
+
+describe('ResourceTransformer with MediaTypeResource (model-less enum resource)', function () {
+    test('enum-backed resource produces correct interface shape', function () {
+        $data = (new ResourceTransformer(MediaTypeResource::class))->data();
+
+        expect($data->properties)->toHaveKeys(['name', 'value', 'meta']);
+        expect($data->properties['name']['type'])->toBe('string');
+        expect($data->properties['value']['type'])->toBe('string');
+        expect($data->properties['meta']['type'])
+            ->toStartWith('{ ')
+            ->toEndWith(' }')
+            ->toContain('maxSizeMb: number')
+            ->toContain('icon: string');
+    });
+
+    test('enum-backed resource has no model class', function () {
+        $data = (new ResourceTransformer(MediaTypeResource::class))->data();
+
+        expect($data->modelClass)->toBeNull();
+    });
+
+    test('enum-backed resource has no type imports', function () {
+        $data = (new ResourceTransformer(MediaTypeResource::class))->data();
+
+        expect($data->typeImports)->toBeEmpty();
+    });
+});
+
+describe('ResourceTransformer with MediaTypeInstanceOfResource (instanceof guard)', function () {
+    test('instanceof guard resolves same interface shape as @var docblock', function () {
+        $data = (new ResourceTransformer(MediaTypeInstanceOfResource::class))->data();
+
+        expect($data->properties)->toHaveKeys(['name', 'value', 'meta']);
+        expect($data->properties['name']['type'])->toBe('string');
+        expect($data->properties['value']['type'])->toBe('string');
+        expect($data->properties['meta']['type'])
+            ->toStartWith('{ ')
+            ->toEndWith(' }')
+            ->toContain('maxSizeMb: number')
+            ->toContain('icon: string');
+    });
+});
+
+describe('ResourceTransformer with MediaTypeUnknownResource (no type hints)', function () {
+    test('produces unknown types when no @var or instanceof hints exist', function () {
+        $data = (new ResourceTransformer(MediaTypeUnknownResource::class))->data();
+
+        expect($data->properties)->toHaveKeys(['name', 'value', 'meta']);
+        expect($data->properties['name']['type'])->toBe('unknown');
+        expect($data->properties['value']['type'])->toBe('unknown');
+    });
+});
+
+describe('ResourceTransformer with AddressMixinResource and AddressExtendsResource', function () {
+    test('@mixin resolves model class from docblock', function () {
+        $data = (new ResourceTransformer(AddressMixinResource::class))->data();
+
+        expect($data->modelClass)->toBe(Address::class);
+    });
+
+    test('@extends resolves model class from docblock', function () {
+        $data = (new ResourceTransformer(AddressExtendsResource::class))->data();
+
+        expect($data->modelClass)->toBe(Address::class);
+    });
+
+    test('@mixin does not match when tag appears in description text', function () {
+        $data = (new ResourceTransformer(AddressMixinResource::class))->data();
+
+        // The description contains "@mixin" in prose but the regex should only match "* @mixin"
+        expect($data->description)->toContain('@mixin');
+        expect($data->modelClass)->toBe(Address::class);
+    });
+
+    test('@extends does not match when tag appears in description text', function () {
+        $data = (new ResourceTransformer(AddressExtendsResource::class))->data();
+
+        // The description contains "@extends" in prose but the regex should only match "* @extends"
+        expect($data->description)->toContain('@extends');
+        expect($data->modelClass)->toBe(Address::class);
+    });
+
+    test('both resources produce identical properties, imports, & value imports', function () {
+        $mixinData = (new ResourceTransformer(AddressMixinResource::class))->data();
+        $extendsData = (new ResourceTransformer(AddressExtendsResource::class))->data();
+
+        expect($mixinData->properties)->toBe($extendsData->properties);
+        expect($mixinData->typeImports)->toBe($extendsData->typeImports);
+        expect($mixinData->valueImports)->toBe($extendsData->valueImports);
     });
 });

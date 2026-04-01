@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Workbench\Accounting\Models;
 
 use Illuminate\Database\Eloquent\Casts\Attribute;

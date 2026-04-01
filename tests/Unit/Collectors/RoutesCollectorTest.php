@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use AbeTwoThree\LaravelTsPublish\Collectors\RoutesCollector;
 use Workbench\App\Http\Controllers\ExcludableController;
 use Workbench\App\Http\Controllers\ExcludedController;

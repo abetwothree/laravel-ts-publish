@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Workbench\Blog\Models;
 
 use Illuminate\Database\Eloquent\Model;

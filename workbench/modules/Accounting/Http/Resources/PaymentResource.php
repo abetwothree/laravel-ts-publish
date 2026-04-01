@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Workbench\Accounting\Http\Resources;
 
 use AbeTwoThree\LaravelTsPublish\EnumResource;

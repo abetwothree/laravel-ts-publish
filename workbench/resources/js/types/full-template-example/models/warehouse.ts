@@ -22,10 +22,10 @@ export interface Warehouse extends HasTimestamps, Pick<Auditable, "created_by" |
     created_at: string | null;
     updated_at: string | null;
     // Mutators
-    /** Non-column accessor returning a plain class (Coordinate) */
-    location: Coordinate;
     /** Non-column accessor returning a TsType class (MenuSettings) with custom import */
     menu_config: MenuSettingsType | null;
+    /** Non-column accessor returning a plain class (Coordinate) */
+    location: Coordinate;
     /** Non-column accessor returning CRM Status enum — creates name conflict with column 'status' */
     current_crm_status: CrmStatusType | null;
     // Relations

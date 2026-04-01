@@ -74,6 +74,11 @@ class JsonWriter
                 'type' => $entry['type'],
             ], $transformer->mutators, array_keys($transformer->mutators));
 
+            $appends = array_map(fn ($entry, $col) => [
+                'name' => $col,
+                'type' => $entry['type'],
+            ], $transformer->appends, array_keys($transformer->appends));
+
             $relations = array_map(fn ($entry, $col) => [
                 'name' => $col,
                 'type' => $entry['type'],
@@ -91,6 +96,7 @@ class JsonWriter
 
             $data[$transformer->modelName] = [
                 ...$columns,
+                ...$appends,
                 ...$mutators,
                 ...$relations,
                 ...$relationCounts,

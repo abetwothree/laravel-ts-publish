@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Collection;

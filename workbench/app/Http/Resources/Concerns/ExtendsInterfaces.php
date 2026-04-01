@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Workbench\App\Http\Resources\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExtends;

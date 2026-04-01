@@ -1,8 +1,5 @@
 @use('AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish')
-@if (count($data->columns) === 0 && count($data->mutators) === 0 && count($data->relations) === 0)
-export {}
-@else
-@if($usesTolkiPackage && (count($data->enumColumns) > 0 || count($data->enumMutators) > 0))
+@if($usesTolkiPackage && count($data->valueImports) > 0)
 import { type AsEnum } from '@tolki/enum';
 
 @endif{{-- end tolki package --}}
@@ -13,7 +10,6 @@ import { {{ implode(', ', $names) }} } from '{{ $path }}';
 import type { {{ implode(', ', $types) }} } from '{{ $path }}';
 @endforeach
 
-@if (count($data->columns) > 0 || count($data->mutators) > 0 || count($data->relations) > 0)
 @if($data->description)
 /** {!! LaravelTsPublish::sanitizeJsDoc($data->description) !!} */
 @endif
@@ -28,13 +24,19 @@ export interface {{ $data->modelName }}{!! count($data->tsExtends) > 0 ? ' exten
     {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $column['type'] !!};
 @endforeach
 @endif
-@if (count($data->mutators) > 0)
+@if (count($data->mutators) > 0 || count($data->appends) > 0)
     // Mutators
 @foreach ($data->mutators as $name => $mutator)
 @if($mutator['description'])
     /** {!! LaravelTsPublish::sanitizeJsDoc($mutator['description']) !!} */
 @endif
     {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $mutator['type'] !!};
+@endforeach
+@foreach ($data->appends as $name => $append)
+@if($append['description'])
+    /** {!! LaravelTsPublish::sanitizeJsDoc($append['description']) !!} */
+@endif
+    {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $append['type'] !!};
 @endforeach
 @endif
 @if (count($data->relations) > 0)
@@ -55,11 +57,10 @@ export interface {{ $data->modelName }}{!! count($data->tsExtends) > 0 ? ' exten
 @endforeach
 @endif
 }
-@endif
-@if (count($data->enumColumns) > 0 || count($data->enumMutators) > 0)
+@if (count($data->enumColumns) > 0 || count($data->enumMutators) > 0 || count($data->enumAppends) > 0)
 
 @php
-$allEnumKeys = array_merge(array_keys($data->enumColumns), array_keys($data->enumMutators));
+$allEnumKeys = array_merge(array_keys($data->enumColumns), array_keys($data->enumMutators), array_keys($data->enumAppends));
 $omitKeys = implode(' | ', array_map(fn($k) => "'" . $k . "'", $allEnumKeys));
 @endphp
 export interface {{ $data->modelName }}Resource extends Omit<{{ $data->modelName }}, {!! $omitKeys !!}>
@@ -70,6 +71,8 @@ export interface {{ $data->modelName }}Resource extends Omit<{{ $data->modelName
 @foreach ($data->enumMutators as $name => $enum)
     {!! LaravelTsPublish::validJsObjectKey($name) !!}: AsEnum<typeof {!! $enum['constName'] !!}>{!! $enum['nullable'] ? ' | null' : '' !!};
 @endforeach
+@foreach ($data->enumAppends as $name => $enum)
+    {!! LaravelTsPublish::validJsObjectKey($name) !!}: AsEnum<typeof {!! $enum['constName'] !!}>{!! $enum['nullable'] ? ' | null' : '' !!};
+@endforeach
 }
 @endif
-@endif{{-- end properties === 0 --}}

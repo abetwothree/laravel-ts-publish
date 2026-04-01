@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use AbeTwoThree\LaravelTsPublish\Listeners\PostMigrateRunner;
 use Illuminate\Console\Events\CommandFinished;
 use Illuminate\Contracts\Console\Kernel as Artisan;

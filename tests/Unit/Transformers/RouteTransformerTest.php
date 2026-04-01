@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
 use Workbench\App\Http\Controllers\CustomKeyController;
 use Workbench\App\Http\Controllers\CustomRouteKeyController;
