@@ -5245,6 +5245,23 @@
                 "optional": true
             }
         ],
+        "MediaTypeUnknownResource": [
+            {
+                "name": "name",
+                "type": "unknown",
+                "optional": false
+            },
+            {
+                "name": "value",
+                "type": "unknown",
+                "optional": false
+            },
+            {
+                "name": "meta",
+                "type": "{ extensions: unknown; maxSizeMb: unknown; sizeUnit: string; icon: unknown }",
+                "optional": false
+            }
+        ],
         "CategoryResource": [
             {
                 "name": "id",
@@ -5765,6 +5782,23 @@
             {
                 "name": "order_extended",
                 "type": "{ id: number; ulid: string; user_id: number; status: OrderStatusType; payment_method: PaymentMethodType | null; currency: CurrencyType; subtotal: number; tax: number; discount: number; total: number; shipping_address: unknown[] | null; billing_address: unknown[] | null; notes: string | null; placed_at: string | null; paid_at: string | null; shipped_at: string | null; delivered_at: string | null; cancelled_at: string | null; ip_address: string | null; user_agent: string | null; deleted_at: string | null; item_count: number; is_paid: boolean; formatted_total: string; user: User; items: OrderItem[] }",
+                "optional": false
+            }
+        ],
+        "MediaTypeInstanceOfResource": [
+            {
+                "name": "name",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "value",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "meta",
+                "type": "{ extensions: unknown[]; maxSizeMb: number; sizeUnit: string; icon: string }",
                 "optional": false
             }
         ],

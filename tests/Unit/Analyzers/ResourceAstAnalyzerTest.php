@@ -19,7 +19,9 @@ use Workbench\App\Http\Resources\EmptyResource;
 use Workbench\App\Http\Resources\EmptyWithMixinResource;
 use Workbench\App\Http\Resources\EnumNullFirstResource;
 use Workbench\App\Http\Resources\ExtendedAddressResource;
+use Workbench\App\Http\Resources\MediaTypeInstanceOfResource;
 use Workbench\App\Http\Resources\MediaTypeResource;
+use Workbench\App\Http\Resources\MediaTypeUnknownResource;
 use Workbench\App\Http\Resources\MiscCollection;
 use Workbench\App\Http\Resources\ModelWrappedPropResource;
 use Workbench\App\Http\Resources\NonArrayReturnResource;
@@ -1918,5 +1920,64 @@ describe('ResourceAstAnalyzer @var union docblock edge cases', function () {
         $title = collect($analysis->properties)->firstWhere('name', 'title');
 
         expect($title['type'])->toBe('string');
+    });
+});
+
+describe('ResourceAstAnalyzer with MediaTypeInstanceOfResource (instanceof guard clause)', function () {
+    test('instanceof guard clause does not prevent array analysis', function () {
+        $reflection = new ReflectionClass(MediaTypeInstanceOfResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection);
+        $analysis = $analyzer->analyze();
+
+        $names = array_column($analysis->properties, 'name');
+
+        expect($names)->toContain('name', 'value', 'meta');
+    });
+
+    test('wrapped resource name property resolves to string via instanceof hint', function () {
+        $reflection = new ReflectionClass(MediaTypeInstanceOfResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection);
+        $analysis = $analyzer->analyze();
+
+        $name = collect($analysis->properties)->firstWhere('name', 'name');
+
+        expect($name['type'])->toBe('string');
+    });
+
+    test('wrapped resource value property resolves to string for string-backed enum via instanceof hint', function () {
+        $reflection = new ReflectionClass(MediaTypeInstanceOfResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection);
+        $analysis = $analyzer->analyze();
+
+        $value = collect($analysis->properties)->firstWhere('name', 'value');
+
+        expect($value['type'])->toBe('string');
+    });
+
+    test('inline array includes resolved method types via instanceof hint', function () {
+        $reflection = new ReflectionClass(MediaTypeInstanceOfResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection);
+        $analysis = $analyzer->analyze();
+
+        $meta = collect($analysis->properties)->firstWhere('name', 'meta');
+
+        expect($meta['type'])->toStartWith('{ ')->toEndWith(' }')
+            ->toContain('extensions: unknown[]')
+            ->toContain('maxSizeMb: number')
+            ->toContain('icon: string');
+    });
+});
+
+describe('ResourceAstAnalyzer with MediaTypeUnknownResource (no type hints)', function () {
+    test('produces unknown types when no @var or instanceof hints exist', function () {
+        $reflection = new ReflectionClass(MediaTypeUnknownResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection);
+        $analysis = $analyzer->analyze();
+
+        $name = collect($analysis->properties)->firstWhere('name', 'name');
+        $value = collect($analysis->properties)->firstWhere('name', 'value');
+
+        expect($name['type'])->toBe('unknown');
+        expect($value['type'])->toBe('unknown');
     });
 });

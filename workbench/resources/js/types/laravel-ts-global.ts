@@ -1487,6 +1487,11 @@ declare global {
             width?: number | null;
             height?: number | null;
         }
+        export interface MediaTypeUnknownResource {
+            name: unknown;
+            value: unknown;
+            meta: { extensions: unknown; maxSizeMb: unknown; sizeUnit: string; icon: unknown };
+        }
         /** Exercises: self-referencing Resource::make and Resource::collection, when conditional, whenCounted, cross-resource PostResource::collection. */
         export interface CategoryResource {
             id: number;
@@ -1624,6 +1629,11 @@ declare global {
             options?: Record<string, string | number | boolean> | null;
             order_limited: { id: number; total: number } | null;
             order_extended: { id: number; ulid: string; user_id: number; status: enums.OrderStatusType; payment_method: enums.PaymentMethodType | null; currency: enums.CurrencyType; subtotal: number; tax: number; discount: number; total: number; shipping_address: unknown[] | null; billing_address: unknown[] | null; notes: string | null; placed_at: string | null; paid_at: string | null; shipped_at: string | null; delivered_at: string | null; cancelled_at: string | null; ip_address: string | null; user_agent: string | null; deleted_at: string | null; item_count: number; is_paid: boolean; formatted_total: string; user: models.User; items: models.OrderItem[] };
+        }
+        export interface MediaTypeInstanceOfResource {
+            name: string;
+            value: string;
+            meta: { extensions: unknown[]; maxSizeMb: number; sizeUnit: string; icon: string };
         }
         /** Represents a user loaded through a team's belongsToMany pivot. Exercises: whenPivotLoaded, whenPivotLoadedAs, whenHas on enum attributes. */
         export interface TeamMemberResource {

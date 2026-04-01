@@ -18,7 +18,9 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\Assign;
+use PhpParser\Node\Expr\BooleanNot;
 use PhpParser\Node\Expr\FuncCall;
+use PhpParser\Node\Expr\Instanceof_;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\NullsafeMethodCall;
@@ -58,6 +60,14 @@ class ResourceAstAnalyzer
     use ResolvesModelTypes;
 
     /**
+     * Wrapped class discovered from an `instanceof` guard clause in toArray().
+     * Used as a fallback when resolveClassOnProperty() returns null.
+     *
+     * @var class-string|null
+     */
+    protected ?string $instanceOfWrappedClass = null;
+
+    /**
      * @param  ReflectionClass<JsonResource>  $resourceReflection
      * @param  class-string<Model>|null  $modelClass
      */
@@ -86,13 +96,16 @@ class ResourceAstAnalyzer
             return $this->buildModelDelegatedAnalysis() ?? new ResourceAnalysis;
         }
 
-        // Prefer a Return_ that yields an array literal (handles guard-then-return patterns like
-        // `if ($this->resource === null) { return null; } return [...]`)
-        $returnStmt = $finder->findFirst($toArrayMethod->stmts, function (Node $node): bool {
-            return $node instanceof Return_ && $node->expr instanceof Array_;
-        }) ?? $finder->findFirst($toArrayMethod->stmts, function (Node $node): bool {
-            return $node instanceof Return_;
-        });
+        // Extract instanceof type hint from guard clauses before selecting the return statement.
+        // e.g. `if (!$this->resource instanceof MediaType) { return []; }`
+        $this->instanceOfWrappedClass = $this->resolveInstanceOfType($toArrayMethod, $finder);
+
+        // Prefer a Return_ that yields a non-empty array literal (handles guard-then-return
+        // patterns like `if (!$this->resource instanceof X) { return []; } return [...]`)
+        $returnStmt = $this->findBestArrayReturn($toArrayMethod->stmts, $finder)
+            ?? $finder->findFirst($toArrayMethod->stmts, function (Node $node): bool {
+                return $node instanceof Return_;
+            });
 
         if (! $returnStmt instanceof Return_ || ! $returnStmt->expr instanceof Array_) {
             if ($returnStmt instanceof Return_ && $returnStmt->expr !== null && $this->isParentToArrayCall($returnStmt->expr)) {
@@ -1399,7 +1412,7 @@ class ResourceAstAnalyzer
         // Only apply enum-specific logic when the wrapped type is actually a PHP enum.
         // Without this guard, model-backed resources that use $this->resource->column
         // would silently receive 'string' instead of the correct column type or 'unknown'.
-        $wrappedClass = $this->resolveClassOnProperty($this->resourceReflection);
+        $wrappedClass = $this->resolveWrappedClass();
 
         if ($wrappedClass === null || ! enum_exists($wrappedClass)) {
             return $result;
@@ -1437,7 +1450,7 @@ class ResourceAstAnalyzer
             return $result;
         }
 
-        $wrappedClass = $this->resolveClassOnProperty($this->resourceReflection);
+        $wrappedClass = $this->resolveWrappedClass();
 
         if ($wrappedClass === null || ! class_exists($wrappedClass)) {
             return $result;
@@ -1474,7 +1487,7 @@ class ResourceAstAnalyzer
             return $result;
         }
 
-        $wrappedClass = $this->resolveClassOnProperty($this->resourceReflection);
+        $wrappedClass = $this->resolveWrappedClass();
 
         if ($wrappedClass === null || ! method_exists($wrappedClass, $methodName)) {
             return $result;
@@ -1497,7 +1510,7 @@ class ResourceAstAnalyzer
      */
     protected function resolveEnumValueBackingType(): string
     {
-        $wrappedClass = $this->resolveClassOnProperty($this->resourceReflection);
+        $wrappedClass = $this->resolveWrappedClass();
 
         if ($wrappedClass !== null && enum_exists($wrappedClass)) {
             $r = new ReflectionEnum($wrappedClass);
@@ -1538,7 +1551,7 @@ class ResourceAstAnalyzer
         }
 
         // 2. Fall back to the wrapped class (e.g. backing enum) for delegated calls
-        $wrappedClass = $this->resolveClassOnProperty($this->resourceReflection);
+        $wrappedClass = $this->resolveWrappedClass();
 
         if ($wrappedClass !== null && method_exists($wrappedClass, $methodName)) {
             /** @var class-string $wrappedClass */
@@ -1553,6 +1566,117 @@ class ResourceAstAnalyzer
         }
 
         return $this->unknownResult(); // @codeCoverageIgnore
+    }
+
+    /**
+     * Find the best Return_ statement that yields an Array_ literal.
+     *
+     * Prefers the return with the most array items (non-empty over empty).
+     * This handles guard-then-return patterns like:
+     *   if (!$this->resource instanceof X) { return []; }
+     *   return ['name' => ..., 'value' => ...];
+     *
+     * @param  array<Node\Stmt>  $stmts
+     */
+    protected function findBestArrayReturn(array $stmts, NodeFinder $finder): ?Return_
+    {
+        /** @var list<Return_> $candidates */
+        $candidates = $finder->find($stmts, function (Node $node): bool {
+            return $node instanceof Return_ && $node->expr instanceof Array_;
+        });
+
+        if ($candidates === []) {
+            return null;
+        }
+
+        // Pick the return with the most array items
+        $best = $candidates[0];
+        $bestCount = count($best->expr instanceof Array_ ? $best->expr->items : []);
+
+        foreach ($candidates as $candidate) {
+            $count = count($candidate->expr instanceof Array_ ? $candidate->expr->items : []);
+
+            if ($count > $bestCount) {
+                $best = $candidate;
+                $bestCount = $count;
+            }
+        }
+
+        return $best;
+    }
+
+    /**
+     * Extract an instanceof type hint from guard clauses in toArray().
+     *
+     * Supports patterns like:
+     *   if (!$this->resource instanceof ClassName) { return []; }
+     *
+     * Falls back to resolving the short class name via the file's use-statement map.
+     *
+     * @return class-string|null
+     */
+    protected function resolveInstanceOfType(ClassMethod $method, NodeFinder $finder): ?string
+    {
+        /** @var list<If_> $ifNodes */
+        $ifNodes = $finder->find($method->stmts ?? [], function (Node $node): bool {
+            return $node instanceof If_;
+        });
+
+        foreach ($ifNodes as $ifNode) {
+            $cond = $ifNode->cond;
+
+            // Match: if (!$this->resource instanceof ClassName)
+            if ($cond instanceof BooleanNot && $cond->expr instanceof Instanceof_) {
+                $instanceOf = $cond->expr;
+            } elseif ($cond instanceof Instanceof_) {
+                // Match: if ($this->resource instanceof ClassName) — positive guard
+                $instanceOf = $cond;
+            } else {
+                continue;
+            }
+
+            // Verify it's checking $this->resource
+            if (! ($instanceOf->expr instanceof PropertyFetch
+                && $instanceOf->expr->var instanceof Variable
+                && $instanceOf->expr->var->name === 'this'
+                && $instanceOf->expr->name instanceof Identifier
+                && $instanceOf->expr->name->toString() === 'resource')) {
+                continue;
+            }
+
+            if (! $instanceOf->class instanceof Name) {
+                continue;
+            }
+
+            $shortName = $instanceOf->class->toString();
+
+            // Resolve the short name to a FQCN via use statements
+            $useStatements = $this->resolveUseStatements($this->resourceReflection);
+
+            foreach ($useStatements as $alias => $fqcn) {
+                if ($alias === $shortName && (class_exists($fqcn) || enum_exists($fqcn))) {
+                    return $fqcn;
+                }
+            }
+
+            // Try the resolved name directly (FQCN used inline)
+            if (class_exists($shortName) || enum_exists($shortName)) {
+                return $shortName;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolve the wrapped class for this resource, checking resolveClassOnProperty() first,
+     * then falling back to the instanceof guard clause type hint.
+     *
+     * @return class-string|null
+     */
+    protected function resolveWrappedClass(): ?string
+    {
+        return $this->resolveClassOnProperty($this->resourceReflection) ?? $this->instanceOfWrappedClass;
     }
 
     /**
