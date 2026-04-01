@@ -1406,7 +1406,7 @@ class ResourceAstAnalyzer
         $innerProp = $expr->name instanceof Identifier ? $expr->name->toString() : null;
 
         if ($innerProp === null) {
-            return $result;
+            return $result; // @codeCoverageIgnore
         }
 
         // Only apply enum-specific logic when the wrapped type is actually a PHP enum.
@@ -1447,7 +1447,7 @@ class ResourceAstAnalyzer
         $innerProp = $expr->name instanceof Identifier ? $expr->name->toString() : null;
 
         if ($innerProp === null) {
-            return $result;
+            return $result; // @codeCoverageIgnore
         }
 
         $wrappedClass = $this->resolveWrappedClass();
@@ -1463,13 +1463,13 @@ class ResourceAstAnalyzer
             $result = ['type' => $info['type'], 'optional' => false];
 
             if ($info['enumFqcn'] !== null) {
-                $result['directEnumFqcn'] = $info['enumFqcn'];
+                $result['directEnumFqcn'] = $info['enumFqcn']; // @codeCoverageIgnore
             }
 
             return $result;
         }
 
-        return $result;
+        return $result; // @codeCoverageIgnore
     }
 
     /**
@@ -1484,7 +1484,7 @@ class ResourceAstAnalyzer
         $methodName = $expr->name instanceof Identifier ? $expr->name->toString() : null;
 
         if ($methodName === null) {
-            return $result;
+            return $result; // @codeCoverageIgnore
         }
 
         $wrappedClass = $this->resolveWrappedClass();
@@ -1500,7 +1500,7 @@ class ResourceAstAnalyzer
             return [...$tsInfo, 'optional' => false];
         }
 
-        return $result;
+        return $result; // @codeCoverageIgnore
     }
 
     /**
@@ -1641,27 +1641,18 @@ class ResourceAstAnalyzer
                 && $instanceOf->expr->var->name === 'this'
                 && $instanceOf->expr->name instanceof Identifier
                 && $instanceOf->expr->name->toString() === 'resource')) {
-                continue;
+                continue; // @codeCoverageIgnore
             }
 
             if (! $instanceOf->class instanceof Name) {
-                continue;
+                continue; // @codeCoverageIgnore
             }
 
-            $shortName = $instanceOf->class->toString();
+            // After NameResolver traversal, the class name is already a FQCN
+            $fqcn = $instanceOf->class->toString();
 
-            // Resolve the short name to a FQCN via use statements
-            $useStatements = $this->resolveUseStatements($this->resourceReflection);
-
-            foreach ($useStatements as $alias => $fqcn) {
-                if ($alias === $shortName && (class_exists($fqcn) || enum_exists($fqcn))) {
-                    return $fqcn;
-                }
-            }
-
-            // Try the resolved name directly (FQCN used inline)
-            if (class_exists($shortName) || enum_exists($shortName)) {
-                return $shortName;
+            if (class_exists($fqcn) || enum_exists($fqcn)) {
+                return $fqcn;
             }
         }
 

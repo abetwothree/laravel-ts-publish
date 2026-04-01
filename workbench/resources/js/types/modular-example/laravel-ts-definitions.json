@@ -4867,6 +4867,28 @@
                 "optional": false
             }
         ],
+        "MediaTypePositiveInstanceOfResource": [
+            {
+                "name": "name",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "value",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "meta",
+                "type": "{ label?: unknown }",
+                "optional": false
+            },
+            {
+                "name": "empty",
+                "type": "Record<string, unknown>",
+                "optional": false
+            }
+        ],
         "TagResource": [
             {
                 "name": "id",
@@ -5442,6 +5464,23 @@
             }
         ],
         "OrderFilterEdgeResource": [],
+        "UnitEnumResource": [
+            {
+                "name": "name",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "value",
+                "type": "string | number",
+                "optional": false
+            },
+            {
+                "name": "custom",
+                "type": "unknown",
+                "optional": false
+            }
+        ],
         "ApiPostResource": [
             {
                 "name": "morphValue",

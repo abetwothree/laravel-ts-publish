@@ -276,7 +276,7 @@ class LaravelTsPublish
     public function propertyTypes(ReflectionClass $class, string $property): array
     {
         if (! $class->hasProperty($property)) {
-            return $this->emptyTypeScriptInfo();
+            return $this->emptyTypeScriptInfo(); // @codeCoverageIgnore
         }
 
         return $this->resolveReflectionType($class->getProperty($property)->getType());

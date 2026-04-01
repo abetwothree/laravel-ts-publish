@@ -1375,6 +1375,13 @@ declare global {
             id: number;
             name: string;
         }
+        /** Resource using a positive instanceof guard (not negated). Also includes inline arrays with optional keys and an empty inline array to exercise additional coverage paths. */
+        export interface MediaTypePositiveInstanceOfResource {
+            name: string;
+            value: string;
+            meta: { label?: unknown };
+            empty: Record<string, unknown>;
+        }
         /** Exercises: whenCounted on two polymorphic relations. */
         export interface TagResource {
             id: number;
@@ -1541,6 +1548,12 @@ declare global {
         }
         /** Edge-case resource for $this->only() / $this->except() guard clause coverage. No @mixin — so buildModelDelegatedAnalysis() returns null. */
         export interface OrderFilterEdgeResource {
+        }
+        /** Resource wrapping a unit enum (no backing type) to test the ->value fallback. Also accesses an unknown property to test the unknown enum property path. */
+        export interface UnitEnumResource {
+            name: string;
+            value: string | number;
+            custom: unknown;
         }
         export interface ApiPostResource {
             morphValue: string;

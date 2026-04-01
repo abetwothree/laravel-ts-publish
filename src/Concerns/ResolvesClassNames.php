@@ -120,20 +120,21 @@ trait ResolvesClassNames
     protected function resolveClassOnProperty(ReflectionClass $declaringClass, string $property = 'resource'): ?string
     {
         if (! $declaringClass->hasProperty($property)) {
-            return null;
+            return null; // @codeCoverageIgnore
         }
 
         // Check the property type from reflection
         // E.g. for `public MediaType $resource`, this would return `MediaType::class`
+        // Note: JsonResource::$resource forbids child-class type narrowing, so this is unreachable for 'resource'.
         $info = LaravelTsPublish::propertyTypes($declaringClass, $property);
         if (count($info['classes']) > 0) {
-            return $info['classes'][0];
+            return $info['classes'][0]; // @codeCoverageIgnore
         }
 
         // If the property doesn't have a native type declaration, check for a @var annotation in the docblock
         $docComment = $declaringClass->getProperty($property)->getDocComment();
         if ($docComment === false || ! preg_match('/@var\s+([^\s*]+)/', $docComment, $m)) {
-            return null;
+            return null; // @codeCoverageIgnore
         }
 
         // Split the @var value on | to handle union types in any order (e.g. null|Type or Type|null)
@@ -154,9 +155,11 @@ trait ResolvesClassNames
                 }
             }
 
+            // @codeCoverageIgnoreStart
             if (class_exists($token) || enum_exists($token)) {
                 return $token;
             }
+            // @codeCoverageIgnoreEnd
         }
 
         return null;

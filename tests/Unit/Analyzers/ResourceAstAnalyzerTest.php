@@ -20,6 +20,7 @@ use Workbench\App\Http\Resources\EmptyWithMixinResource;
 use Workbench\App\Http\Resources\EnumNullFirstResource;
 use Workbench\App\Http\Resources\ExtendedAddressResource;
 use Workbench\App\Http\Resources\MediaTypeInstanceOfResource;
+use Workbench\App\Http\Resources\MediaTypePositiveInstanceOfResource;
 use Workbench\App\Http\Resources\MediaTypeResource;
 use Workbench\App\Http\Resources\MediaTypeUnknownResource;
 use Workbench\App\Http\Resources\MiscCollection;
@@ -42,6 +43,7 @@ use Workbench\App\Http\Resources\TagResource;
 use Workbench\App\Http\Resources\TeamMemberResource;
 use Workbench\App\Http\Resources\TeamResource;
 use Workbench\App\Http\Resources\TraitSpreadCoverageResource;
+use Workbench\App\Http\Resources\UnitEnumResource;
 use Workbench\App\Http\Resources\UserCollection;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Http\Resources\VarReturnSpreadResource;
@@ -1979,5 +1981,83 @@ describe('ResourceAstAnalyzer with MediaTypeUnknownResource (no type hints)', fu
 
         expect($name['type'])->toBe('unknown');
         expect($value['type'])->toBe('unknown');
+    });
+});
+
+describe('ResourceAstAnalyzer with MediaTypePositiveInstanceOfResource (positive instanceof guard)', function () {
+    test('positive instanceof guard resolves enum type for properties', function () {
+        $reflection = new ReflectionClass(MediaTypePositiveInstanceOfResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection);
+        $analysis = $analyzer->analyze();
+
+        $name = collect($analysis->properties)->firstWhere('name', 'name');
+        $value = collect($analysis->properties)->firstWhere('name', 'value');
+
+        expect($name['type'])->toBe('string');
+        expect($value['type'])->toBe('string');
+    });
+
+    test('empty inline array resolves to Record<string, unknown>', function () {
+        $reflection = new ReflectionClass(MediaTypePositiveInstanceOfResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection);
+        $analysis = $analyzer->analyze();
+
+        $empty = collect($analysis->properties)->firstWhere('name', 'empty');
+
+        expect($empty['type'])->toBe('Record<string, unknown>');
+    });
+
+    test('inline array with optional key marks it as optional', function () {
+        $reflection = new ReflectionClass(MediaTypePositiveInstanceOfResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection);
+        $analysis = $analyzer->analyze();
+
+        $meta = collect($analysis->properties)->firstWhere('name', 'meta');
+
+        expect($meta['type'])->toContain('label?:');
+    });
+});
+
+describe('ResourceAstAnalyzer with UnitEnumResource (unit enum wrapping)', function () {
+    test('unit enum name resolves to string', function () {
+        $reflection = new ReflectionClass(UnitEnumResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection);
+        $analysis = $analyzer->analyze();
+
+        $name = collect($analysis->properties)->firstWhere('name', 'name');
+
+        expect($name['type'])->toBe('string');
+    });
+
+    test('unit enum value falls back to string | number', function () {
+        $reflection = new ReflectionClass(UnitEnumResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection);
+        $analysis = $analyzer->analyze();
+
+        $value = collect($analysis->properties)->firstWhere('name', 'value');
+
+        expect($value['type'])->toBe('string | number');
+    });
+
+    test('unknown enum property resolves to unknown', function () {
+        $reflection = new ReflectionClass(UnitEnumResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection);
+        $analysis = $analyzer->analyze();
+
+        $custom = collect($analysis->properties)->firstWhere('name', 'custom');
+
+        expect($custom['type'])->toBe('unknown');
+    });
+});
+
+describe('ResourceAstAnalyzer with ModelWrappedPropResource (model $this->resource->prop)', function () {
+    test('model property accessed through $this->resource-> resolves correctly', function () {
+        $reflection = new ReflectionClass(ModelWrappedPropResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $analysis = $analyzer->analyze();
+
+        $title = collect($analysis->properties)->firstWhere('name', 'title');
+
+        expect($title['type'])->toBe('string');
     });
 });
