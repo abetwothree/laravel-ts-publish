@@ -105,9 +105,9 @@ trait ResolvesClassNames
     }
 
     /**
-     * Resolve the FQCN of the type wrapped by this resource via the `@var` docblock on
+     * Resolve the FQCN of the type either declared on a property via native type hints or via a @var annotation in the docblock.
      *
-     * the `$resource` property (e.g. `/** @var MediaType|null *\/`).
+     * Defaults to the `$resource` property (e.g. `/** @var MediaType|null *\/`).
      *
      * Short names are resolved to FQCNs using the file's use-statement map.
      *
