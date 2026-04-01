@@ -18,3 +18,14 @@
 /UPGRADING.md       export-ignore
 /phpstan.neon.dist  export-ignore
 /phpstan-baseline.neon  export-ignore
+/assets             export-ignore
+/.claude            export-ignore
+/.vscode            export-ignore
+rector.php          export-ignore
+package.json        export-ignore
+package-lock.json   export-ignore
+pint.json           export-ignore
+CHANGELOG.md        export-ignore
+CONTRIBUTING.md     export-ignore
+README.md           export-ignore
+WORKFLOW.md         export-ignore
