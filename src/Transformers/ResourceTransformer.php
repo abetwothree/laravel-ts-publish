@@ -178,7 +178,7 @@ class ResourceTransformer extends CoreTransformer
      * Resolve the backing model class from
      * 1. #[TsResource(model:)] attribute
      * 2. @mixin docblock
-     * 3. @var docblock on $resource property (for wrapped resources with a public $resource property typed as the model)
+     * 3. $resource class type or @var docblock on $resource property (for resources with a typed $resource )
      * 4. Convention-based guess (reverse of Laravel's TransformsToResource)
      * 5. #[UseResource] attribute scan on collected models (Laravel 12+)
      */

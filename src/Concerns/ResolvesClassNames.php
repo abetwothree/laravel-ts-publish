@@ -20,7 +20,7 @@ use ReflectionClass;
  */
 trait ResolvesClassNames
 {
-    /** @var array<class-string, array<string, string>> */
+    /** @var array<class-string, array<string, class-string>> */
     protected ?array $cachedUseStatements = [];
 
     /**
@@ -168,7 +168,7 @@ trait ResolvesClassNames
      * @template T of object
      *
      * @param  ReflectionClass<T>  $declaringClass
-     * @return array<string, string> alias => fully-qualified class name
+     * @return array<string, class-string> alias => fully-qualified class name
      */
     protected function resolveUseStatements(ReflectionClass $declaringClass): array
     {
@@ -182,7 +182,7 @@ trait ResolvesClassNames
         $stmts = $this->parseAndResolveAst($source);
 
         $finder = new NodeFinder;
-        /** @var array<string, string> */
+        /** @var array<string, class-string> */
         $map = [];
 
         foreach ($finder->find($stmts, fn (Node $n) => $n instanceof Use_) as $useNode) {
@@ -192,7 +192,9 @@ trait ResolvesClassNames
 
             foreach ($useNode->uses as $use) {
                 $alias = $use->alias !== null ? $use->alias->toString() : $use->name->getLast();
-                $map[$alias] = $use->name->toString();
+                /** @var class-string $class */
+                $class = $use->name->toString();
+                $map[$alias] = $class;
             }
         }
 
