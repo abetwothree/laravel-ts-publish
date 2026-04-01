@@ -214,8 +214,11 @@ trait ResolvesClassNames
     protected function parseAndResolveAst(string $source): array
     {
         $parser = (new ParserFactory)->createForNewestSupportedVersion();
-        /** @var list<Node\Stmt> $stmts */
         $stmts = $parser->parse($source);
+
+        if ($stmts === null) {
+            return []; // @codeCoverageIgnore
+        }
 
         $traverser = new NodeTraverser;
         $traverser->addVisitor(new NameResolver);

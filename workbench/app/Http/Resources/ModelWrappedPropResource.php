@@ -9,7 +9,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Models\Post;
 
 /**
- * Resource for testing that $this->resource->prop on a model-backed resource returns unknown.
+ * Resource for testing that $this->resource->prop on a model-backed resource resolves to the model attribute type.
  */
 class ModelWrappedPropResource extends JsonResource
 {

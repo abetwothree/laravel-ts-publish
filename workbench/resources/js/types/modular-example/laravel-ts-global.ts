@@ -1147,7 +1147,7 @@ declare global {
         }
     }
     export namespace app.http.resources {
-        /** Resource for testing that $this->resource->prop on a model-backed resource returns unknown. */
+        /** Resource for testing that $this->resource->prop on a model-backed resource resolves to the model attribute type. */
         export interface ModelWrappedPropResource {
             title: string;
         }

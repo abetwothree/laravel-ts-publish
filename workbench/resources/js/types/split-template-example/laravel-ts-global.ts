@@ -1227,7 +1227,7 @@ declare global {
             reactions_count?: number;
             reactions_avg?: number;
         }
-        /** Resource for testing that $this->resource->prop on a model-backed resource returns unknown. */
+        /** Resource for testing that $this->resource->prop on a model-backed resource resolves to the model attribute type. */
         export interface ModelWrappedPropResource {
             title: string;
         }
