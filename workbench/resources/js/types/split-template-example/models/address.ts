@@ -16,11 +16,11 @@ export interface Address
     is_default: boolean;
     created_at: string | null;
     updated_at: string | null;
+    full_address: string | null;
 }
 
 export interface AddressMutators
 {
-    full_address: string | null;
     /** Whether coordinates are available */
     has_coordinates: boolean;
 }

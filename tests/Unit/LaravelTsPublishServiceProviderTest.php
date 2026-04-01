@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublishServiceProvider;
 use AbeTwoThree\LaravelTsPublish\Listeners\PostMigrateRunner;
 use Illuminate\Database\Events\MigrationsEnded;

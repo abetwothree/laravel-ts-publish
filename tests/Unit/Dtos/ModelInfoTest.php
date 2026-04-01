@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo;
 
 describe('ModelInfo', function () {

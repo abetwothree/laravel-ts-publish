@@ -11,6 +11,8 @@
     "app\/Enums\/Season.php",
     "app\/Enums\/Status.php",
     "app\/Enums\/Visibility.php",
+    "app\/Http\/Resources\/AddressExtendsResource.php",
+    "app\/Http\/Resources\/AddressMixinResource.php",
     "app\/Http\/Resources\/AddressResource.php",
     "app\/Http\/Resources\/Admin\/Store.php",
     "app\/Http\/Resources\/ApiPostResource.php",

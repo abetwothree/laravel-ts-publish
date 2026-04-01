@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace AbeTwoThree\LaravelTsPublish\Dtos;
 
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;

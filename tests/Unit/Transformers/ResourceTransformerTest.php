@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
 use Workbench\App\Http\Resources\AddressResource;

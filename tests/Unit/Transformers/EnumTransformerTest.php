@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
 use Workbench\App\Enums\Color;
 use Workbench\App\Enums\Currency;

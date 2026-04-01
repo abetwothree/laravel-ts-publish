@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Workbench\App\Enums;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCase;

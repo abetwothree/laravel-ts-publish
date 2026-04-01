@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Workbench\App\Models;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExtends;
@@ -24,6 +26,12 @@ class Warehouse extends Model
         'manager_id',
         'primary_contact_id',
         'secondary_contact_id',
+    ];
+
+    /** @var list<string> */
+    protected $appends = [
+        'location',
+        'current_crm_status',
     ];
 
     protected function casts(): array

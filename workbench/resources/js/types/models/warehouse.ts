@@ -20,26 +20,22 @@ export interface Warehouse extends HasTimestamps, Pick<Auditable, "created_by" |
     secondary_contact_id: number | null;
     created_at: string | null;
     updated_at: string | null;
-}
-
-export interface WarehouseResource extends Omit<Warehouse, 'status'>
-{
-    status: AsEnum<typeof WorkbenchStatus> | null;
-}
-
-export interface WarehouseMutators
-{
     /** Non-column accessor returning a plain class (Coordinate) */
     location: Coordinate;
-    /** Non-column accessor returning a TsType class (MenuSettings) with custom import */
-    menu_config: MenuSettingsType | null;
     /** Non-column accessor returning CRM Status enum — creates name conflict with column 'status' */
     current_crm_status: CrmStatusType | null;
 }
 
-export interface WarehouseMutatorsResource extends Omit<WarehouseMutators, 'current_crm_status'>
+export interface WarehouseResource extends Omit<Warehouse, 'status' | 'current_crm_status'>
 {
+    status: AsEnum<typeof WorkbenchStatus> | null;
     current_crm_status: AsEnum<typeof CrmStatus> | null;
+}
+
+export interface WarehouseMutators
+{
+    /** Non-column accessor returning a TsType class (MenuSettings) with custom import */
+    menu_config: MenuSettingsType | null;
 }
 
 export interface WarehouseRelations
@@ -60,4 +56,4 @@ export interface WarehouseRelations
 
 export interface WarehouseAll extends Warehouse, WarehouseMutators, WarehouseRelations {}
 
-export interface WarehouseAllResource extends WarehouseResource, WarehouseMutatorsResource, WarehouseRelations {}
+export interface WarehouseAllResource extends WarehouseResource, WarehouseMutators, WarehouseRelations {}

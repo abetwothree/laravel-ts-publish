@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Workbench\App\Models;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
@@ -26,6 +28,10 @@ class Address extends Model
         'latitude',
         'longitude',
         'is_default',
+    ];
+
+    protected $appends = [
+        'full_address',
     ];
 
     protected function casts(): array

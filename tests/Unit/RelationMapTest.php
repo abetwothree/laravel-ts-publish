@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use AbeTwoThree\LaravelTsPublish\RelationMap;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;

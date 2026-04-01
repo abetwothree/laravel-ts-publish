@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Workbench\Shipping\Http\Resources;
 
 use Illuminate\Http\Request;

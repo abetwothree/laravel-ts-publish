@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnumStaticMethod;
 
 test('TsEnumStaticMethod has empty defaults', function () {

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use Illuminate\Filesystem\Filesystem;

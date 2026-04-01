@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use AbeTwoThree\LaravelTsPublish\TypeScriptMap;
 use Illuminate\Support\Collection;
 

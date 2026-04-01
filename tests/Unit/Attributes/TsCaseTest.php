@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCase;
 
 test('TsCase accepts name, value, and description', function () {

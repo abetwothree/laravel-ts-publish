@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
@@ -16,13 +18,14 @@ use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Support\Collection;
+
+use function Orchestra\Testbench\workbench_path;
+
 use Workbench\App\Casts\MenuSettings;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Models\User;
 use Workbench\Shipping\Enums\Status as ShippingStatus;
-
-use function Orchestra\Testbench\workbench_path;
 
 beforeEach(function () {
     $this->service = new LaravelTsPublish;
