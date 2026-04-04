@@ -717,7 +717,7 @@ This package can also convert your Laravel Eloquent models to TypeScript declara
 By default, this package purposely breaks the model into three separate interfaces for the properties, mutators, and relations to give you more flexibility on which properties you need to use in a concrete situation on your frontend projects. It also generates a fourth interface that extends all three interfaces for when you do want to use all the properties, mutators, and relations together, see below.
 
 > [!NOTE]
-> Any mutator added to the $appends property on the model will be included in model properties interface in the split template since those are always included when the model is serialized to JSON.
+> Any mutator added to the `$appends` property on the model will be included in the model properties interface in the split template since those are always included when the model is serialized to JSON.
 
 If that's still not ideal for your situation, you can change the template used to generate the model types. This package comes with two templates for generating model types:
 
