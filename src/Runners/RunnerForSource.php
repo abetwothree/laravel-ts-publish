@@ -11,7 +11,6 @@ use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
-use Illuminate\Routing\Router;
 use Illuminate\Support\Collection;
 use InvalidArgumentException;
 use ReflectionClass;
@@ -125,31 +124,6 @@ class RunnerForSource extends BaseRunner
         );
 
         $this->resourceGenerators = collect([$generator]);
-    }
-
-    /**
-     * @param  ReflectionClass<object>  $reflection
-     */
-    protected function validateController(ReflectionClass $reflection): bool
-    {
-        // Must be a concrete, non-abstract class
-        if ($reflection->isAbstract() || $reflection->isInterface() || $reflection->isTrait()) {
-            return false;
-        }
-
-        // Must have at least one route registered for this controller
-        /** @var Router $router */
-        $router = app(Router::class);
-
-        $fqcn = $reflection->getName();
-
-        foreach ($router->getRoutes()->getRoutes() as $route) {
-            if (ltrim((string) $route->getControllerClass(), '\\') === $fqcn) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     protected function generateRoute(string $fqcn): void

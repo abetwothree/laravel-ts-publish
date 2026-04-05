@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Collectors;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
+use AbeTwoThree\LaravelTsPublish\Collectors\Concerns\ValidatesCollectorFiles;
 use AbeTwoThree\LaravelTsPublish\Concerns\FiltersRoutes;
 use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
@@ -14,6 +15,7 @@ use ReflectionClass;
 class RoutesCollector
 {
     use FiltersRoutes;
+    use ValidatesCollectorFiles;
 
     public function __construct(
         protected Router $router,
@@ -52,7 +54,6 @@ class RoutesCollector
 
     /**
      * Determine whether a controller class should be included.
-     * Checks for #[TsExclude] on the controller class.
      *
      * @param  class-string  $class
      */
@@ -64,6 +65,6 @@ class RoutesCollector
 
         $reflection = new ReflectionClass($class);
 
-        return $reflection->getAttributes(TsExclude::class) === [];
+        return $this->validateController($reflection);
     }
 }
