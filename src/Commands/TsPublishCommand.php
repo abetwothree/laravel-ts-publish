@@ -31,7 +31,8 @@ class TsPublishCommand extends Command
         {--only-enums : Only publish enums (ignoring models, resources, and routes)}
         {--only-models : Only publish models (ignoring enums, resources, and routes)}
         {--only-resources : Only publish resources (ignoring enums, models, and routes)}
-        {--only-routes : Only publish routes (ignoring enums, models, and resources)}';
+        {--only-routes : Only publish routes (ignoring enums, models, and resources)}
+        {--only-functional : Only publish functional content like routes & enums}';
 
     protected $description = 'Publish All TypeScript files from enums, models, resources, and routes';
 
@@ -53,6 +54,16 @@ class TsPublishCommand extends Command
 
     protected function validateOnlyOptions(): int
     {
+        $onlyFunctional = (bool) $this->option('only-functional');
+
+        if ($onlyFunctional) {
+            if (! $this->output->isQuiet()) {
+                info('The --only-functional flag is set. This will publish only functional content like enums & routes. All other --only-* flags will be ignored.');
+            }
+
+            return self::SUCCESS;
+        }
+
         $onlyEnums = (bool) $this->option('only-enums');
         $onlyModels = (bool) $this->option('only-models');
         $onlyResources = (bool) $this->option('only-resources');
@@ -178,11 +189,33 @@ class TsPublishCommand extends Command
         $onlyModels = (bool) $this->option('only-models');
         $onlyResources = (bool) $this->option('only-resources');
         $onlyRoutes = (bool) $this->option('only-routes');
+        $onlyFunctional = (bool) $this->option('only-functional');
 
         $shouldPublishEnums = $configEnums;
-        $shouldPublishModels = $configModels;
-        $shouldPublishResources = $configResources;
         $shouldPublishRoutes = $configRoutes;
+        $shouldPublishModels = $onlyFunctional ? false : $configModels;
+        $shouldPublishResources = $onlyFunctional ? false : $configResources;
+
+        if ($onlyFunctional) {
+            $responseSettings = [
+                $shouldPublishEnums,
+                $shouldPublishModels,
+                $shouldPublishResources,
+                $shouldPublishRoutes,
+            ];
+
+            $enabledFlags = array_filter($responseSettings, fn (bool $v) => $v === true);
+
+            if (count($enabledFlags) === 0) {
+                if (! $this->output->isQuiet()) {
+                    warning('All functional options are disabled in config. Nothing to publish.');
+                }
+
+                return null;
+            }
+
+            return $responseSettings;
+        }
 
         if ($onlyEnums) {
             $shouldPublishModels = false;
@@ -248,7 +281,12 @@ class TsPublishCommand extends Command
             return null;
         }
 
-        return [$shouldPublishEnums, $shouldPublishModels, $shouldPublishResources, $shouldPublishRoutes];
+        return [
+            $shouldPublishEnums,
+            $shouldPublishModels,
+            $shouldPublishResources,
+            $shouldPublishRoutes,
+        ];
     }
 
     protected function promptConfigOverride(string $type): bool
