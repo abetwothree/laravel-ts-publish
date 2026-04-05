@@ -8,6 +8,7 @@ use Workbench\App\Http\Controllers\CustomRouteKeyController;
 use Workbench\App\Http\Controllers\Delete;
 use Workbench\App\Http\Controllers\DeleteController;
 use Workbench\App\Http\Controllers\DocBlockInvokableController;
+use Workbench\App\Http\Controllers\DomainController;
 use Workbench\App\Http\Controllers\EnumBoundController;
 use Workbench\App\Http\Controllers\ExcludableController;
 use Workbench\App\Http\Controllers\ExcludedController;
@@ -21,8 +22,10 @@ use Workbench\App\Http\Controllers\Nested\NestedController;
 use Workbench\App\Http\Controllers\OptionalParamController;
 use Workbench\App\Http\Controllers\ParameterCaseController;
 use Workbench\App\Http\Controllers\PostController;
+use Workbench\App\Http\Controllers\PrimaryKeyController;
 use Workbench\App\Http\Controllers\Prism\Prism\PrismController as NestedPrismController;
 use Workbench\App\Http\Controllers\Prism\PrismController;
+use Workbench\App\Http\Controllers\TypedParamController;
 use Workbench\App\Http\Middleware\TestMiddleware;
 
 Route::get('/posts', [PostController::class, 'index'])->name('posts.index');
@@ -73,3 +76,12 @@ Route::get('/items/export', [DeleteController::class, 'export'])->name('items.ex
 Route::get('/delete-items', [Delete::class, 'index'])->name('delete-items.index');
 
 Route::get('/docblock-invokable', DocBlockInvokableController::class)->name('docblock.invokable');
+
+Route::get('/typed/{id}', [TypedParamController::class, 'showInt'])->where('id', '[0-9]+')->name('typed.show-int');
+Route::get('/typed/role/{role}', [TypedParamController::class, 'showRole'])->name('typed.show-role');
+
+Route::get('/pk-test/{uuidPost}', [PrimaryKeyController::class, 'show'])->name('pk.show');
+
+Route::domain('api.example.com')->group(function () {
+    Route::get('/domain', [DomainController::class, 'index'])->name('domain.index');
+});
