@@ -3,7 +3,6 @@ import { defineRoute } from '@tolki/ts/routes';
 export const camel = defineRoute({
     name: 'params.camel',
     url: '/params/{camelCase}/camel',
-    domain: null,
     methods: ['get'] as const,
     args: [{name: 'camelCase', required: true}] as const,
 });
@@ -11,7 +10,6 @@ export const camel = defineRoute({
 export const snake = defineRoute({
     name: 'params.snake',
     url: '/params/{snake_case}/snake',
-    domain: null,
     methods: ['get'] as const,
     args: [{name: 'snake_case', required: true}] as const,
 });
@@ -19,7 +17,6 @@ export const snake = defineRoute({
 export const screaming = defineRoute({
     name: 'params.screaming',
     url: '/params/{SCREAMING_SNAKE}/screaming',
-    domain: null,
     methods: ['get'] as const,
     args: [{name: 'SCREAMING_SNAKE', required: true}] as const,
 });

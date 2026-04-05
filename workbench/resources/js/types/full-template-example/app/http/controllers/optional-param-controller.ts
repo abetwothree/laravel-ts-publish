@@ -3,7 +3,6 @@ import { defineRoute } from '@tolki/ts/routes';
 export const show = defineRoute({
     name: 'optional.show',
     url: '/optional/{param?}',
-    domain: null,
     methods: ['get'] as const,
     args: [{name: 'param', required: false}] as const,
 });
@@ -11,7 +10,6 @@ export const show = defineRoute({
 export const multi = defineRoute({
     name: 'optional.multi',
     url: '/optional/{one?}/{two?}',
-    domain: null,
     methods: ['get'] as const,
     args: [{name: 'one', required: false}, {name: 'two', required: false}] as const,
 });

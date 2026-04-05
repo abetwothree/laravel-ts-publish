@@ -2,7 +2,6 @@ import { defineRoute } from '@tolki/ts/routes';
 
 export const invoke = defineRoute({
     url: '/invokable',
-    domain: null,
     methods: ['get'] as const,
 });
 

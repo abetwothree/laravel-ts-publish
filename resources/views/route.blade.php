@@ -17,7 +17,9 @@ export const {!! LaravelTsPublish::validJsObjectKey($action['methodName']) !!} =
 @else
     url: {!! LaravelTsPublish::toJsLiteral($action['uri']) !!},
 @endif
+@if($action['domain'] !== null)
     domain: {!! LaravelTsPublish::toJsLiteral($action['domain']) !!},
+@endif
     methods: [{!! implode(', ', array_map(fn($m) => "'$m'", $action['methods'])) !!}] as const,
 @if(!empty($action['args']))
     args: {!! LaravelTsPublish::routeArgsToJs($action['args']) !!} as const,

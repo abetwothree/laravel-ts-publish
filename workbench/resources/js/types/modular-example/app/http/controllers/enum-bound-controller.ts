@@ -3,7 +3,6 @@ import { defineRoute } from '@tolki/ts/routes';
 export const byStatus = defineRoute({
     name: 'posts.byStatus',
     url: '/posts/status/{status}',
-    domain: null,
     methods: ['get'] as const,
     args: [{name: 'status', required: true, _enumValues: [0, 1]}] as const,
 });

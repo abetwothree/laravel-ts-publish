@@ -3,7 +3,6 @@ import { defineRoute } from '@tolki/ts/routes';
 export const index = defineRoute({
     name: 'prism.index',
     url: '/prism',
-    domain: null,
     methods: ['get'] as const,
 });
 
