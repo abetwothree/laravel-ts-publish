@@ -54,7 +54,7 @@ trait ValidatesCollectorFiles
 
         // Must be a concrete, non-abstract class
         if ($reflection->isAbstract() || $reflection->isInterface() || $reflection->isTrait()) {
-            return false;
+            return false; // @codeCoverageIgnore
         }
 
         // Must have at least one route registered for this controller

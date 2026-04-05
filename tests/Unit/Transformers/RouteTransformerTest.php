@@ -8,6 +8,7 @@ use Workbench\App\Http\Controllers\CustomRouteKeyController;
 use Workbench\App\Http\Controllers\Delete;
 use Workbench\App\Http\Controllers\DeleteController;
 use Workbench\App\Http\Controllers\DocBlockInvokableController;
+use Workbench\App\Http\Controllers\DomainController;
 use Workbench\App\Http\Controllers\EnumBoundController;
 use Workbench\App\Http\Controllers\ExcludableController;
 use Workbench\App\Http\Controllers\InvokableController;
@@ -19,6 +20,8 @@ use Workbench\App\Http\Controllers\Nested\NestedController;
 use Workbench\App\Http\Controllers\OptionalParamController;
 use Workbench\App\Http\Controllers\ParameterCaseController;
 use Workbench\App\Http\Controllers\PostController;
+use Workbench\App\Http\Controllers\PrimaryKeyController;
+use Workbench\App\Http\Controllers\TypedParamController;
 
 beforeEach(function () {
     RouteTransformer::clearModelInstanceCache();
@@ -298,4 +301,58 @@ test('reserved-keyword controller name is preserved in controllerName property',
 
     // controllerName stores the raw PHP class name — sanitization happens at output time
     expect($transformer->controllerName)->toBe('Delete');
+});
+
+test('route filtering skips actions that do not pass shouldIncludeRoute', function () {
+    config()->set('ts-publish.routes.only', ['posts.index']);
+
+    $transformer = new RouteTransformer(PostController::class);
+
+    expect($transformer->actions)->toHaveCount(1)
+        ->and($transformer->actions[0]['methodName'])->toBe('index');
+});
+
+test('domain route includes url with domain prefix', function () {
+    $transformer = new RouteTransformer(DomainController::class);
+    $action = $transformer->actions[0];
+
+    expect($action['url'])->toContain('api.example.com')
+        ->and($action['domain'])->toBe('api.example.com');
+});
+
+test('builtin int type-hinted param does not emit _routeKey or _enumValues', function () {
+    $transformer = new RouteTransformer(TypedParamController::class);
+    $action = collect($transformer->actions)->firstWhere('methodName', 'showInt');
+
+    expect($action['args'])->toHaveCount(1)
+        ->and($action['args'][0]['name'])->toBe('id')
+        ->and($action['args'][0])->not->toHaveKey('_routeKey')
+        ->and($action['args'][0])->not->toHaveKey('_enumValues');
+});
+
+test('non-backed enum type-hinted param does not emit _enumValues', function () {
+    $transformer = new RouteTransformer(TypedParamController::class);
+    $action = collect($transformer->actions)->firstWhere('methodName', 'showRole');
+
+    expect($action['args'])->toHaveCount(1)
+        ->and($action['args'][0]['name'])->toBe('role')
+        ->and($action['args'][0])->not->toHaveKey('_routeKey')
+        ->and($action['args'][0])->not->toHaveKey('_enumValues');
+});
+
+test('where constraint on route param emits where metadata', function () {
+    $transformer = new RouteTransformer(TypedParamController::class);
+    $action = collect($transformer->actions)->firstWhere('methodName', 'showInt');
+
+    expect($action['args'][0])->toHaveKey('where')
+        ->and($action['args'][0]['where'])->toBe('[0-9]+');
+});
+
+test('model with overridden $primaryKey emits correct _routeKey', function () {
+    $transformer = new RouteTransformer(PrimaryKeyController::class);
+    $show = collect($transformer->actions)->firstWhere('methodName', 'show');
+
+    expect($show['args'])->toHaveCount(1)
+        ->and($show['args'][0])->toHaveKey('_routeKey')
+        ->and($show['args'][0]['_routeKey'])->toBe('uuid');
 });

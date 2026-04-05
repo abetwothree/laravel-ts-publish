@@ -459,6 +459,7 @@ test('ts:publish --only-routes shows only route content in preview', function ()
 
 test('ts:publish --only-routes exits when config routes disabled and non-interactive', function () {
     config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.routes.enabled', false);
 
     $this->artisan('ts:publish', ['--preview' => 'true', '--only-routes' => true, '--no-interaction' => true])
         ->assertSuccessful();
@@ -487,4 +488,46 @@ test('ts:publish --only-routes writes only route files to disk', function () {
 
     // Cleanup
     (new Filesystem)->deleteDirectory($outputDir);
+});
+
+test('ts:publish --only-functional publishes only enums and routes', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.routes.enabled', true);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-functional' => true])
+        ->assertSuccessful()
+        ->expectsOutputToContain('only functional content')
+        ->expectsOutputToContain('Enums:')
+        ->expectsOutputToContain('Routes:')
+        ->doesntExpectOutputToContain('Models:')
+        ->doesntExpectOutputToContain('Resources:');
+});
+
+test('ts:publish --only-functional warns when all functional options disabled', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.publish_enums', false);
+    config()->set('ts-publish.routes.enabled', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-functional' => true])
+        ->assertSuccessful()
+        ->expectsOutputToContain('All functional options are disabled');
+});
+
+test('ts:publish --only-functional ignores other --only flags', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.routes.enabled', true);
+
+    // --only-enums should be ignored when --only-functional is set
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-functional' => true, '--only-enums' => true])
+        ->assertSuccessful()
+        ->expectsOutputToContain('only functional content');
+});
+
+test('ts:publish --only-routes overrides when user confirms interactively', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.routes.enabled', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-routes' => true])
+        ->expectsConfirmation('Config has routes publishing disabled. Override and publish routes anyway?', 'yes')
+        ->assertSuccessful();
 });

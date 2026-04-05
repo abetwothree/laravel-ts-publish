@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Collectors\RoutesCollector;
+use Illuminate\Routing\Router;
 use Workbench\App\Http\Controllers\ExcludableController;
 use Workbench\App\Http\Controllers\ExcludedController;
 use Workbench\App\Http\Controllers\MiddlewareController;
@@ -135,4 +136,31 @@ test('negation-only only list includes all routes except negated ones', function
     expect($collected)->not->toContain(PostController::class)
         // Other controllers should still be included
         ->and($collected)->toContain(ExcludableController::class);
+});
+
+test('filters out routes with generated:: name prefix', function () {
+    /** @var Router $router */
+    $router = app(Router::class);
+
+    // Register a route with 'generated::' prefix to simulate cache artifact
+    $router->get('/generated-cache-test', [PostController::class, 'index'])->name('generated::cache-test');
+
+    $collector = resolve(RoutesCollector::class);
+    $collected = $collector->collect();
+
+    // PostController is still collected via its normal non-fallback routes
+    expect($collected)->toContain(PostController::class);
+});
+
+test('filters out fallback routes', function () {
+    /** @var Router $router */
+    $router = app(Router::class);
+
+    $router->fallback([PostController::class, 'index']);
+
+    $collector = resolve(RoutesCollector::class);
+    $collected = $collector->collect();
+
+    // PostController is still collected via its normal routes (fallback one is excluded)
+    expect($collected)->toContain(PostController::class);
 });

@@ -18,6 +18,7 @@ use Workbench\App\Http\Controllers\OptionalParamController;
 use Workbench\App\Http\Controllers\PostController;
 use Workbench\App\Http\Controllers\Prism\Prism\PrismController as NestedPrismController;
 use Workbench\App\Http\Controllers\Prism\PrismController;
+use Workbench\App\Http\Controllers\TypedParamController;
 
 beforeEach(function () {
     config()->set('ts-publish.output_to_files', false);
@@ -233,4 +234,31 @@ test('PascalCase controller name matching lowercase keyword is unchanged — onl
     // 'Delete' (capital D) is not a JS reserved word — safeJsIdentifier is case-sensitive
     expect($barrels['app/http/controllers'])
         ->toContain("export { default as Delete } from './delete'");
+});
+
+test('route barrel writer writes barrel files to disk when output_to_files enabled', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-barrel-write-'.uniqid();
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.routes.output_path', $outputDir.'/routes');
+
+    $writer = resolve(RouteWriter::class);
+
+    /** @var Collection<int, RouteGenerator> $generators */
+    $generators = collect([
+        resolve(RouteGenerator::class, ['findable' => PostController::class]),
+    ]);
+
+    $barrels = $writer->writeRouteBarrels($generators);
+
+    expect(file_exists("$outputDir/routes/app/http/controllers/index.ts"))->toBeTrue()
+        ->and($barrels)->toHaveKey('app/http/controllers');
+
+    // Cleanup
+    (new Filesystem)->deleteDirectory($outputDir);
+});
+
+test('route writer includes where constraint in output', function () {
+    $generator = resolve(RouteGenerator::class, ['findable' => TypedParamController::class]);
+
+    expect($generator->content)->toContain("where: '[0-9]+'");
 });

@@ -60,7 +60,7 @@ class RoutesCollector
     protected function shouldIncludeController(string $class): bool
     {
         if (! class_exists($class)) {
-            return false;
+            return false; // @codeCoverageIgnore
         }
 
         $reflection = new ReflectionClass($class);

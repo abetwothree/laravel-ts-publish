@@ -3,6 +3,7 @@ export { default as CustomRouteKeyController } from './custom-route-key-controll
 export { default as Delete } from './delete';
 export { default as DeleteController } from './delete-controller';
 export { default as DocBlockInvokableController } from './doc-block-invokable-controller';
+export { default as DomainController } from './domain-controller';
 export { default as EnumBoundController } from './enum-bound-controller';
 export { default as ExcludableController } from './excludable-controller';
 export { default as InvokableController } from './invokable-controller';
@@ -14,3 +15,5 @@ export { default as NamedInvokableController } from './named-invokable-controlle
 export { default as OptionalParamController } from './optional-param-controller';
 export { default as ParameterCaseController } from './parameter-case-controller';
 export { default as PostController } from './post-controller';
+export { default as PrimaryKeyController } from './primary-key-controller';
+export { default as TypedParamController } from './typed-param-controller';

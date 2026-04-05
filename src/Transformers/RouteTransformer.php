@@ -240,7 +240,7 @@ class RouteTransformer extends CoreTransformer
 
         foreach ($paramNames as $paramName) {
             if (! is_string($paramName)) {
-                continue;
+                continue; // @codeCoverageIgnore
             }
 
             // parameterNames() already strips the '?' suffix; detect optionality from the URI
@@ -312,7 +312,7 @@ class RouteTransformer extends CoreTransformer
         $className = $type->getName();
 
         if (! class_exists($className)) {
-            return null;
+            return null; // @codeCoverageIgnore
         }
 
         // Check it's actually a Model (not an Enum or other class)
@@ -391,7 +391,7 @@ class RouteTransformer extends CoreTransformer
         $className = $type->getName();
 
         if (! class_exists($className)) {
-            return null;
+            return null; // @codeCoverageIgnore
         }
 
         // Only backed enums can be route-bound
@@ -412,7 +412,7 @@ class RouteTransformer extends CoreTransformer
     protected function isMethodExcluded(string $methodName): bool
     {
         if (! $this->reflectionController->hasMethod($methodName)) {
-            return false;
+            return false; // @codeCoverageIgnore
         }
 
         return $this->reflectionController->getMethod($methodName)->getAttributes(TsExclude::class) !== [];

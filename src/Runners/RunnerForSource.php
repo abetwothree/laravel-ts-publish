@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Runners;
 
-use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Collectors\Concerns\ValidatesCollectorFiles;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
@@ -126,19 +125,16 @@ class RunnerForSource extends BaseRunner
         $this->resourceGenerators = collect([$generator]);
     }
 
+    /**
+     * Generate a route from a controller FQCN.
+     *
+     * Class existence and TsExclude are already validated by run() → validateController(),
+     * so no redundant checks are needed here.
+     *
+     * @param  class-string  $fqcn  The fully qualified class name of the controller.
+     */
     protected function generateRoute(string $fqcn): void
     {
-        if (! class_exists($fqcn)) {
-            throw new InvalidArgumentException("Class does not exist: {$fqcn}");
-        }
-
-        // Check for class-level TsExclude
-        $reflection = new ReflectionClass($fqcn);
-
-        if ($reflection->getAttributes(TsExclude::class) !== []) {
-            throw new InvalidArgumentException("Controller is excluded via #[TsExclude]: {$fqcn}");
-        }
-
         /** @var RouteGenerator $generator */
         $generator = resolve(
             config()->string('ts-publish.route_generator_class'),

@@ -418,6 +418,18 @@ describe('toJsLiteral', function () {
     });
 });
 
+describe('routeArgsToJs', function () {
+    test('routeArgsToJs includes where constraint in output', function () {
+        $args = [
+            ['name' => 'id', 'required' => true, 'where' => '[0-9]+'],
+        ];
+
+        $result = $this->service->routeArgsToJs($args);
+
+        expect($result)->toContain("where: '[0-9]+'");
+    });
+});
+
 describe('extractImportableTypes', function () {
     test('extractImportableTypes returns custom type names', function () {
         expect($this->service->extractImportableTypes('ProductMetadata'))
