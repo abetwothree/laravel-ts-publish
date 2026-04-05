@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Writers;
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ResourcesCollector;
+use AbeTwoThree\LaravelTsPublish\Collectors\RoutesCollector;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use BackedEnum;
 use Illuminate\Database\Eloquent\Model;
@@ -31,6 +32,7 @@ class WatcherJsonWriter
             ...$this->collectEnumPaths(),
             ...$this->collectModelPaths(),
             ...$this->collectResourcePaths(),
+            ...$this->collectRoutePaths(),
         ];
 
         sort($paths, SORT_STRING);
@@ -108,6 +110,29 @@ class WatcherJsonWriter
 
         /** @var ResourcesCollector $collector */
         $collector = resolve(config()->string('ts-publish.resource_collector_class'));
+
+        return array_values(
+            $collector->collect()
+                ->map(function (string $fqcn): string {
+                    $reflection = new ReflectionClass($fqcn);
+
+                    return LaravelTsPublish::resolveRelativePath((string) $reflection->getFileName());
+                })
+                ->all()
+        );
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function collectRoutePaths(): array
+    {
+        if (! config()->boolean('ts-publish.routes.enabled')) {
+            return [];
+        }
+
+        /** @var RoutesCollector $collector */
+        $collector = resolve(config()->string('ts-publish.route_collector_class'));
 
         return array_values(
             $collector->collect()
