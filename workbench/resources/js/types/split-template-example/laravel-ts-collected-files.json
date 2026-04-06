@@ -115,6 +115,7 @@
     "modules\/Accounting\/Enums\/DueAtNotice.php",
     "modules\/Accounting\/Enums\/InvoiceStatus.php",
     "modules\/Accounting\/Enums\/PaymentStatus.php",
+    "modules\/Accounting\/Http\/Controllers\/TwoFactorController.php",
     "modules\/Accounting\/Http\/Resources\/InvoiceResource.php",
     "modules\/Accounting\/Http\/Resources\/PaymentResource.php",
     "modules\/Accounting\/Models\/Invoice.php",

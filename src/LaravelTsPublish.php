@@ -54,6 +54,12 @@ class LaravelTsPublish
         'yield',
     ];
 
+    /** @var list<string> */
+    public const array TS_PRIMITIVES = [
+        'string', 'number', 'boolean', 'bigint', 'symbol',
+        'null', 'undefined', 'object', 'unknown', 'any', 'never', 'void',
+    ];
+
     /**
      * Set something to do when the publish command runs, using a callback Closure
      */
@@ -369,6 +375,8 @@ class LaravelTsPublish
      * (i.e., for `const` declarations or export aliases — NOT object property keys,
      * where reserved words are valid in TypeScript interfaces and object literals).
      *
+     * Guards against reserved JS/TS keywords (e.g. 'delete' → 'deleteMethod').
+     *
      * @param  string  $name  The proposed identifier
      * @param  string  $suffix  Required suffix appended when $name is reserved (e.g., 'Method', 'Controller')
      */
@@ -440,12 +448,6 @@ class LaravelTsPublish
 
         return 'null';
     }
-
-    /** @var list<string> */
-    public const array TS_PRIMITIVES = [
-        'string', 'number', 'boolean', 'bigint', 'symbol',
-        'null', 'undefined', 'object', 'unknown', 'any', 'never', 'void',
-    ];
 
     /**
      * Extract importable type identifiers from a TypeScript type string,

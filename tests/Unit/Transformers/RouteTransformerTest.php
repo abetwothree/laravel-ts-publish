@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
+use Workbench\Accounting\Http\Controllers\TwoFactorController;
 use Workbench\App\Http\Controllers\CustomKeyController;
 use Workbench\App\Http\Controllers\CustomRouteKeyController;
 use Workbench\App\Http\Controllers\Delete;
@@ -355,4 +356,13 @@ test('model with overridden $primaryKey emits correct _routeKey', function () {
     expect($show['args'])->toHaveCount(1)
         ->and($show['args'][0])->toHaveKey('_routeKey')
         ->and($show['args'][0]['_routeKey'])->toBe('uuid');
+});
+
+test('digit-leading route name segment is prefixed with underscore', function () {
+    $transformer = new RouteTransformer(TwoFactorController::class);
+    $setup = collect($transformer->actions)->firstWhere('originalMethodName', 'setup');
+    $verify = collect($transformer->actions)->firstWhere('originalMethodName', 'verify');
+
+    expect($setup['methodName'])->toBe('_2faSetup')
+        ->and($verify['methodName'])->toBe('_2faVerify');
 });

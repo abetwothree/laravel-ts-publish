@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
+use Workbench\Accounting\Http\Controllers\TwoFactorController;
 use Workbench\App\Http\Controllers\CustomKeyController;
 use Workbench\App\Http\Controllers\CustomRouteKeyController;
 use Workbench\App\Http\Controllers\Delete;
@@ -85,3 +86,6 @@ Route::get('/pk-test/{uuidPost}', [PrimaryKeyController::class, 'show'])->name('
 Route::domain('api.example.com')->group(function () {
     Route::get('/domain', [DomainController::class, 'index'])->name('domain.index');
 });
+
+Route::get('/accounting/2fa/setup', [TwoFactorController::class, 'setup'])->name('accounting.2fa-setup');
+Route::post('/accounting/2fa/verify', [TwoFactorController::class, 'verify'])->name('accounting.2fa-verify');

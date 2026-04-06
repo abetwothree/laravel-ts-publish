@@ -46,6 +46,6 @@ const {!! $controllerName !!} = {
 @endif
 @endforeach
 };
-@endif
 
 export default {!! $controllerName !!};
+@endif

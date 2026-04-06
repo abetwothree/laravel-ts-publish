@@ -181,6 +181,10 @@ class RouteTransformer extends CoreTransformer
 
     /**
      * Resolve the JavaScript export name for a route action.
+     *
+     * Route name segments (e.g. 'auth.2fa' → '2fa') can start with a digit,
+     * which is invalid for JS/TS identifiers used in `export const`. Those are
+     * prefixed with an underscore (e.g. '2fa' → '_2fa').
      */
     protected function resolveMethodName(string $actionMethod, ?string $routeName, string $casing): string
     {
@@ -193,9 +197,11 @@ class RouteTransformer extends CoreTransformer
         if ($routeName !== null) {
             $lastSegment = Str::afterLast($routeName, '.');
             if ($lastSegment !== '' && $lastSegment !== $routeName) {
-                return LaravelTsPublish::safeJsIdentifier(
-                    LaravelTsPublish::keyCase($lastSegment, $casing),
-                    'Method'
+                return $this->ensureValidIdentifier(
+                    LaravelTsPublish::safeJsIdentifier(
+                        LaravelTsPublish::keyCase($lastSegment, $casing),
+                        'Method'
+                    )
                 );
             }
         }
@@ -204,6 +210,22 @@ class RouteTransformer extends CoreTransformer
             LaravelTsPublish::keyCase($actionMethod, $casing),
             'Method'
         );
+    }
+
+    /**
+     * Ensure a resolved method name is a valid JS/TS identifier.
+     *
+     * Route name segments can start with a digit (e.g. '2fa'), which passes
+     * through keyCase and safeJsIdentifier unchanged but is invalid as a bare
+     * identifier in `export const` declarations. Prefix with underscore.
+     */
+    protected function ensureValidIdentifier(string $name): string
+    {
+        if ($name !== '' && ctype_digit($name[0])) {
+            return '_'.$name;
+        }
+
+        return $name;
     }
 
     /**
