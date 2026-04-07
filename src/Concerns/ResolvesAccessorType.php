@@ -39,7 +39,6 @@ trait ResolvesAccessorType
         // Must invoke via reflection because the method is protected
         if ($reflectionModel->hasMethod($newStyle)) {
             $method = $reflectionModel->getMethod($newStyle);
-            $method->setAccessible(true);
 
             $attrInstance = $method->invoke($modelInstance);
 
