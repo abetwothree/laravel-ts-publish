@@ -10,7 +10,7 @@
 
 This is an extremely flexible package that allows you to transform Laravel PHP models, enums, API resources, and other cast classes into TypeScript declaration types.
 
-Enums are treated as functional objects with support for PHP-like enum functions and the the inclusion of your custom methods.
+Enums are treated as functional objects with support for PHP-like enum functions and the inclusion of your custom methods in your enums.
 
 Every Laravel application is different, and this package aims to provide the tools to tailor TypeScript types to your specific needs while providing powerful backend & frontend tooling to keep your frontend types in sync with your backend PHP code.
 
