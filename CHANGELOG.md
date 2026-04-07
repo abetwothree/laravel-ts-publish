@@ -2,6 +2,12 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v1.3.1 - 2026-04-07
+
+Remove `no-op` reflection method
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v1.3.0...v1.3.1
+
 ## v1.3.0 - 2026-04-01
 
 ### What's Changed
