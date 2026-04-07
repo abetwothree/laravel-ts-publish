@@ -94,8 +94,8 @@ class RouteTransformer extends CoreTransformer
 
         $only = array_values(array_filter(config()->array('ts-publish.routes.only', []), 'is_string'));
         $except = array_values(array_filter(config()->array('ts-publish.routes.except', []), 'is_string'));
-        $onlyNamed = config()->boolean('ts-publish.routes.only_named', false);
         $excludeMiddleware = array_values(array_filter(config()->array('ts-publish.routes.exclude_middleware', []), 'is_string'));
+        $onlyNamed = config()->boolean('ts-publish.routes.only_named', false);
         $methodCasing = config()->string('ts-publish.routes.method_casing', 'camel');
 
         foreach ($router->getRoutes()->getRoutes() as $route) {
