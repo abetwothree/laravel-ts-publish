@@ -378,6 +378,15 @@ class RouteTransformer extends CoreTransformer
             }
         }
 
+        // Check if getKeyName is overridden (getRouteKeyName delegates to getKeyName)
+        if ($reflection->hasMethod('getKeyName')) {
+            $method = $reflection->getMethod('getKeyName');
+
+            if ($method->getDeclaringClass()->getName() !== Model::class) {
+                return true;
+            }
+        }
+
         // Check if $primaryKey property is overridden
         if ($reflection->hasProperty('primaryKey')) {
             $prop = $reflection->getProperty('primaryKey');

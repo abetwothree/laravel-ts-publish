@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Workbench\Accounting\Http\Controllers\TwoFactorController;
 use Workbench\App\Http\Controllers\CustomKeyController;
+use Workbench\App\Http\Controllers\CustomKeyNameController;
 use Workbench\App\Http\Controllers\CustomRouteKeyController;
 use Workbench\App\Http\Controllers\Delete;
 use Workbench\App\Http\Controllers\DeleteController;
@@ -82,6 +83,8 @@ Route::get('/typed/{id}', [TypedParamController::class, 'showInt'])->where('id',
 Route::get('/typed/role/{role}', [TypedParamController::class, 'showRole'])->name('typed.show-role');
 
 Route::get('/pk-test/{uuidPost}', [PrimaryKeyController::class, 'show'])->name('pk.show');
+
+Route::get('/key-name-test/{customKeyPost}', [CustomKeyNameController::class, 'show'])->name('key-name.show');
 
 Route::domain('api.example.com')->group(function () {
     Route::get('/domain', [DomainController::class, 'index'])->name('domain.index');

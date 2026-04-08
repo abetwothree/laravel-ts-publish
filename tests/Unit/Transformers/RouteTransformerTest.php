@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
 use Workbench\Accounting\Http\Controllers\TwoFactorController;
 use Workbench\App\Http\Controllers\CustomKeyController;
+use Workbench\App\Http\Controllers\CustomKeyNameController;
 use Workbench\App\Http\Controllers\CustomRouteKeyController;
 use Workbench\App\Http\Controllers\Delete;
 use Workbench\App\Http\Controllers\DeleteController;
@@ -356,6 +357,15 @@ test('model with overridden $primaryKey emits correct _routeKey', function () {
     expect($show['args'])->toHaveCount(1)
         ->and($show['args'][0])->toHaveKey('_routeKey')
         ->and($show['args'][0]['_routeKey'])->toBe('uuid');
+});
+
+test('model with overridden getKeyName emits correct _routeKey', function () {
+    $transformer = new RouteTransformer(CustomKeyNameController::class);
+    $show = collect($transformer->actions)->firstWhere('methodName', 'show');
+
+    expect($show['args'])->toHaveCount(1)
+        ->and($show['args'][0])->toHaveKey('_routeKey')
+        ->and($show['args'][0]['_routeKey'])->toBe('custom_key');
 });
 
 test('digit-leading route name segment is prefixed with underscore', function () {
