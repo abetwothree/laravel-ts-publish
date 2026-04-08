@@ -73,12 +73,6 @@ test('ts:publish returns success exit code', function () {
 test('ts:publish writes model split template files', function () {
     $outputDir = workbench_path('resources/js/types/split-template-example');
 
-    // Cleanup before test
-    $filesystem = new Filesystem;
-    if ($filesystem->exists($outputDir)) {
-        // $filesystem->deleteDirectory($outputDir);
-    }
-
     config()->set('ts-publish.model_template', 'laravel-ts-publish::model-split');
     config()->set('ts-publish.output_directory', $outputDir);
     config()->set('ts-publish.output_to_files', true);
