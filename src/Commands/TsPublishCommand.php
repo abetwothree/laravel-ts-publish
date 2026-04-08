@@ -27,7 +27,7 @@ class TsPublishCommand extends Command
 {
     protected $signature = 'ts:publish
         {--preview=false : Output generated TypeScript declarations to the console instead of writing to files}
-        {--source= : FQCN or file path of a specific enum or model to republish}
+        {--source= : FQCN or file path of a specific supported class to republish}
         {--only-enums : Only publish enums (ignoring models, resources, and routes)}
         {--only-models : Only publish models (ignoring enums, resources, and routes)}
         {--only-resources : Only publish resources (ignoring enums, models, and routes)}
