@@ -1,4 +1,5 @@
 export { default as CustomKeyController } from './custom-key-controller';
+export { default as CustomKeyNameController } from './custom-key-name-controller';
 export { default as CustomRouteKeyController } from './custom-route-key-controller';
 export { default as Delete } from './delete';
 export { default as DeleteController } from './delete-controller';

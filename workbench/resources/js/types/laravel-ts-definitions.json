@@ -838,6 +838,88 @@
                 "type": "boolean"
             }
         ],
+        "CustomKeyPost": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "title",
+                "type": "string"
+            },
+            {
+                "name": "content",
+                "type": "string"
+            },
+            {
+                "name": "user_id",
+                "type": "number"
+            },
+            {
+                "name": "status",
+                "type": "number"
+            },
+            {
+                "name": "published_at",
+                "type": "string | null"
+            },
+            {
+                "name": "metadata",
+                "type": "unknown | null"
+            },
+            {
+                "name": "rating",
+                "type": "number | null"
+            },
+            {
+                "name": "category",
+                "type": "string"
+            },
+            {
+                "name": "options",
+                "type": "string | null"
+            },
+            {
+                "name": "deleted_at",
+                "type": "string | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "category_id",
+                "type": "number | null"
+            },
+            {
+                "name": "visibility",
+                "type": "string | null"
+            },
+            {
+                "name": "priority",
+                "type": "number | null"
+            },
+            {
+                "name": "word_count",
+                "type": "number | null"
+            },
+            {
+                "name": "reading_time_minutes",
+                "type": "number | null"
+            },
+            {
+                "name": "featured_image_url",
+                "type": "string | null"
+            },
+            {
+                "name": "is_pinned",
+                "type": "number"
+            }
+        ],
         "Product": [
             {
                 "name": "id",
