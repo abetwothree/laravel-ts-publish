@@ -89,7 +89,7 @@ test('ts:publish writes model split template files', function () {
 test('ts:publish writes model full template files', function () {
     $outputDir = workbench_path('resources/js/types/full-template-example');
 
-    // Cleanup before test
+    // TODO: create tests to implement clean setup of examples
     $filesystem = new Filesystem;
     if ($filesystem->exists($outputDir)) {
         // $filesystem->deleteDirectory($outputDir);
