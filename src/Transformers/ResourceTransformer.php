@@ -389,7 +389,7 @@ class ResourceTransformer extends CoreTransformer
 
         // Populate enum tracking maps from EnumResource::make() properties
         foreach ($analysis->enumResources as $propName => $fqcn) {
-            $tsInfo = LaravelTsPublish::phpToTypeScriptType($fqcn);
+            $tsInfo = LaravelTsPublish::toTsType($fqcn);
             $this->enumFqcnMap[$fqcn] = $tsInfo['enumTypes'][0] ?? class_basename($fqcn).'Type';
             $this->enumConstMap[$fqcn] = $tsInfo['enums'][0] ?? class_basename($fqcn);
             $nullable = str_contains($this->properties[$propName]['type'] ?? '', 'null');
@@ -400,7 +400,7 @@ class ResourceTransformer extends CoreTransformer
         // Populate enum tracking maps from direct $this->prop enum access
         foreach ($analysis->directEnumFqcns as $propName => $fqcn) {
             if (! isset($this->enumFqcnMap[$fqcn])) {
-                $tsInfo = LaravelTsPublish::phpToTypeScriptType($fqcn);
+                $tsInfo = LaravelTsPublish::toTsType($fqcn);
                 $this->enumFqcnMap[$fqcn] = $tsInfo['enumTypes'][0] ?? class_basename($fqcn).'Type';
                 $this->enumConstMap[$fqcn] = $tsInfo['enums'][0] ?? class_basename($fqcn);
             }

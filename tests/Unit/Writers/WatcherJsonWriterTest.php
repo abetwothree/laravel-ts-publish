@@ -79,6 +79,7 @@ test('watcher json excludes enums when publish_enums config is false', function 
     config()->set('ts-publish.publish_enums', false);
     config()->set('ts-publish.publish_models', true);
     config()->set('ts-publish.publish_resources', false);
+    config()->set('ts-publish.routes.enabled', false);
 
     $writer = new WatcherJsonWriter(new Filesystem);
     $content = $writer->write();
@@ -96,6 +97,7 @@ test('watcher json excludes models when publish_models config is false', functio
     config()->set('ts-publish.publish_enums', true);
     config()->set('ts-publish.publish_models', false);
     config()->set('ts-publish.publish_resources', false);
+    config()->set('ts-publish.routes.enabled', false);
 
     $writer = new WatcherJsonWriter(new Filesystem);
     $content = $writer->write();
@@ -105,6 +107,23 @@ test('watcher json excludes models when publish_models config is false', functio
 
     expect($paths->contains(fn ($p) => str_contains($p, 'Enum')))->toBeTrue()
         ->and($paths->contains(fn ($p) => str_contains($p, 'Model')))->toBeFalse();
+});
+
+test('watcher json includes controllers when routes.enabled config is true', function () {
+    config()->set('ts-publish.output_collected_files_json', true);
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.publish_enums', false);
+    config()->set('ts-publish.publish_models', false);
+    config()->set('ts-publish.publish_resources', false);
+    config()->set('ts-publish.routes.enabled', true);
+
+    $writer = new WatcherJsonWriter(new Filesystem);
+    $content = $writer->write();
+
+    $decoded = json_decode($content, true);
+    $paths = collect($decoded);
+
+    expect($paths->contains(fn ($p) => str_contains($p, 'Controller')))->toBeTrue();
 });
 
 test('watcher json includes resource paths when publish_resources is enabled', function () {

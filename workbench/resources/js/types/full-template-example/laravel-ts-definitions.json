@@ -345,7 +345,7 @@
             },
             {
                 "name": "status",
-                "type": "WorkbenchStatusType"
+                "type": "AppStatusType"
             },
             {
                 "name": "crm_status",
@@ -836,6 +836,88 @@
             {
                 "name": "commentable_exists",
                 "type": "boolean"
+            }
+        ],
+        "CustomKeyPost": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "title",
+                "type": "string"
+            },
+            {
+                "name": "content",
+                "type": "string"
+            },
+            {
+                "name": "user_id",
+                "type": "number"
+            },
+            {
+                "name": "status",
+                "type": "number"
+            },
+            {
+                "name": "published_at",
+                "type": "string | null"
+            },
+            {
+                "name": "metadata",
+                "type": "unknown | null"
+            },
+            {
+                "name": "rating",
+                "type": "number | null"
+            },
+            {
+                "name": "category",
+                "type": "string"
+            },
+            {
+                "name": "options",
+                "type": "string | null"
+            },
+            {
+                "name": "deleted_at",
+                "type": "string | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "category_id",
+                "type": "number | null"
+            },
+            {
+                "name": "visibility",
+                "type": "string | null"
+            },
+            {
+                "name": "priority",
+                "type": "number | null"
+            },
+            {
+                "name": "word_count",
+                "type": "number | null"
+            },
+            {
+                "name": "reading_time_minutes",
+                "type": "number | null"
+            },
+            {
+                "name": "featured_image_url",
+                "type": "string | null"
+            },
+            {
+                "name": "is_pinned",
+                "type": "number"
             }
         ],
         "Product": [
@@ -1979,6 +2061,88 @@
                 "type": "boolean"
             }
         ],
+        "UuidPost": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "title",
+                "type": "string"
+            },
+            {
+                "name": "content",
+                "type": "string"
+            },
+            {
+                "name": "user_id",
+                "type": "number"
+            },
+            {
+                "name": "status",
+                "type": "number"
+            },
+            {
+                "name": "published_at",
+                "type": "string | null"
+            },
+            {
+                "name": "metadata",
+                "type": "unknown | null"
+            },
+            {
+                "name": "rating",
+                "type": "number | null"
+            },
+            {
+                "name": "category",
+                "type": "string"
+            },
+            {
+                "name": "options",
+                "type": "string | null"
+            },
+            {
+                "name": "deleted_at",
+                "type": "string | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "category_id",
+                "type": "number | null"
+            },
+            {
+                "name": "visibility",
+                "type": "string | null"
+            },
+            {
+                "name": "priority",
+                "type": "number | null"
+            },
+            {
+                "name": "word_count",
+                "type": "number | null"
+            },
+            {
+                "name": "reading_time_minutes",
+                "type": "number | null"
+            },
+            {
+                "name": "featured_image_url",
+                "type": "string | null"
+            },
+            {
+                "name": "is_pinned",
+                "type": "number"
+            }
+        ],
         "Profile": [
             {
                 "name": "id",
@@ -2126,7 +2290,7 @@
             },
             {
                 "name": "status",
-                "type": "WorkbenchStatusType | null"
+                "type": "AppStatusType | null"
             },
             {
                 "name": "manager_id",
@@ -2373,6 +2537,88 @@
             {
                 "name": "last_login_ip",
                 "type": "string | null"
+            }
+        ],
+        "SlugPost": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "title",
+                "type": "string"
+            },
+            {
+                "name": "content",
+                "type": "string"
+            },
+            {
+                "name": "user_id",
+                "type": "number"
+            },
+            {
+                "name": "status",
+                "type": "number"
+            },
+            {
+                "name": "published_at",
+                "type": "string | null"
+            },
+            {
+                "name": "metadata",
+                "type": "unknown | null"
+            },
+            {
+                "name": "rating",
+                "type": "number | null"
+            },
+            {
+                "name": "category",
+                "type": "string"
+            },
+            {
+                "name": "options",
+                "type": "string | null"
+            },
+            {
+                "name": "deleted_at",
+                "type": "string | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "category_id",
+                "type": "number | null"
+            },
+            {
+                "name": "visibility",
+                "type": "string | null"
+            },
+            {
+                "name": "priority",
+                "type": "number | null"
+            },
+            {
+                "name": "word_count",
+                "type": "number | null"
+            },
+            {
+                "name": "reading_time_minutes",
+                "type": "number | null"
+            },
+            {
+                "name": "featured_image_url",
+                "type": "string | null"
+            },
+            {
+                "name": "is_pinned",
+                "type": "number"
             }
         ],
         "Image": [
@@ -3921,12 +4167,12 @@
             },
             {
                 "name": "status",
-                "type": "WorkbenchStatusType",
+                "type": "AppStatusType",
                 "optional": false
             },
             {
                 "name": "status_enum",
-                "type": "AsEnum<typeof WorkbenchStatus>",
+                "type": "AsEnum<typeof AppStatus>",
                 "optional": false
             },
             {
@@ -3946,7 +4192,7 @@
             },
             {
                 "name": "admin",
-                "type": "WorkbenchUser",
+                "type": "AppUser",
                 "optional": true
             },
             {
@@ -3956,7 +4202,7 @@
             },
             {
                 "name": "admin_resource",
-                "type": "WorkbenchUserResource",
+                "type": "AppUserResource",
                 "optional": true
             },
             {

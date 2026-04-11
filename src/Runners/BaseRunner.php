@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Runners;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
 use Illuminate\Support\Collection;
@@ -47,11 +48,21 @@ abstract class BaseRunner
 
     public protected(set) string $watcherJsonContent = '';
 
+    /** @var Collection<int, RouteGenerator> */
+    public protected(set) Collection $routeGenerators;
+
+    public protected(set) string $routeBarrelContent = '';
+
+    /** @var array<string, string> Barrel contents keyed by namespace path */
+    public protected(set) array $routeModularBarrels = [];
+
     public bool $shouldPublishEnums = true;
 
     public bool $shouldPublishModels = true;
 
     public bool $shouldPublishResources = true;
+
+    public bool $shouldPublishRoutes = true;
 
     abstract public function run(): void;
 }

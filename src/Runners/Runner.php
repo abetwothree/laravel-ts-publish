@@ -7,12 +7,15 @@ namespace AbeTwoThree\LaravelTsPublish\Runners;
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ResourcesCollector;
+use AbeTwoThree\LaravelTsPublish\Collectors\RoutesCollector;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\JsonWriter;
+use AbeTwoThree\LaravelTsPublish\Writers\RouteWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\WatcherJsonWriter;
 use Illuminate\Support\Collection;
 
@@ -27,6 +30,7 @@ class Runner extends BaseRunner
         $this->generateEnums();
         $this->generateModels();
         $this->generateResources();
+        $this->generateRoutes();
 
         $this->generateGlobals();
         $this->generateJson();
@@ -151,6 +155,42 @@ class Runner extends BaseRunner
                 config()->string('ts-publish.resources_namespace', 'resources')
             );
         }
+    }
+
+    protected function generateRoutes(): void
+    {
+        /** @var Collection<int, RouteGenerator> $empty */
+        $empty = collect();
+
+        if (! $this->shouldPublishRoutes || ! config()->boolean('ts-publish.routes.enabled')) {
+            $this->routeGenerators = $empty;
+
+            return;
+        }
+
+        /** @var RoutesCollector $collector */
+        $collector = resolve(config()->string('ts-publish.route_collector_class'));
+
+        /** @var Collection<int, RouteGenerator> $routeGenerators */
+        $routeGenerators = collect();
+
+        foreach ($collector->collect() as $controllerClass) {
+            /** @var RouteGenerator $generator */
+            $generator = resolve(
+                config()->string('ts-publish.route_generator_class'),
+                ['findable' => $controllerClass],
+            );
+
+            $routeGenerators->push($generator);
+        }
+
+        $this->routeGenerators = $routeGenerators;
+
+        /** @var RouteWriter $routeWriter */
+        $routeWriter = resolve(config()->string('ts-publish.route_writer_class'));
+
+        $this->routeModularBarrels = $routeWriter->writeRouteBarrels($this->routeGenerators);
+        $this->routeBarrelContent = implode("\n\n", $this->routeModularBarrels);
     }
 
     protected function generateGlobals(): void

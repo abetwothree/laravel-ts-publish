@@ -44,6 +44,22 @@ class LaravelTsPublish
 {
     protected static ?Closure $callCommandWith = null;
 
+    /** @var list<string> */
+    private const RESERVED_JS_IDENTIFIERS = [
+        'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
+        'default', 'delete', 'do', 'else', 'export', 'extends', 'false',
+        'finally', 'for', 'function', 'if', 'import', 'in', 'instanceof',
+        'let', 'new', 'null', 'return', 'static', 'super', 'switch', 'this',
+        'throw', 'true', 'try', 'typeof', 'var', 'void', 'while', 'with',
+        'yield',
+    ];
+
+    /** @var list<string> */
+    public const array TS_PRIMITIVES = [
+        'string', 'number', 'boolean', 'bigint', 'symbol',
+        'null', 'undefined', 'object', 'unknown', 'any', 'never', 'void',
+    ];
+
     /**
      * Set something to do when the publish command runs, using a callback Closure
      */
@@ -135,7 +151,7 @@ class LaravelTsPublish
      *
      * @return TypeScriptTypeInfo
      */
-    public function phpToTypeScriptType(string $phpType): array
+    public function toTsType(string $phpType): array
     {
         $typesMap = $this->typesMap(); // keys are already lowercased
         $lower = strtolower($phpType);
@@ -143,8 +159,10 @@ class LaravelTsPublish
 
         // 0. Nullable shorthand ?T → recurse on T and append | null
         if (str_starts_with($phpType, '?')) {
-            $inner = $this->phpToTypeScriptType(substr($phpType, 1));
-            $inner['type'] .= ' | null';
+            $inner = $this->toTsType(substr($phpType, 1));
+            if (! str_contains($inner['type'], 'null')) {
+                $inner['type'] .= ' | null';
+            }
 
             return $inner;
         }
@@ -250,7 +268,7 @@ class LaravelTsPublish
         if (str_starts_with($lower, 'encrypted:')) {
             $inner = substr($lower, strlen('encrypted:'));
 
-            return $this->phpToTypeScriptType($inner);
+            return $this->toTsType($inner);
         }
 
         // 7. Partial map match (e.g. "tinyint(1)" contains "tinyint")
@@ -310,7 +328,7 @@ class LaravelTsPublish
 
         // Single named type — includes ?T shorthand (allowsNull() + getName() !== 'null')
         if ($returnType instanceof ReflectionNamedType) {
-            $result = $this->phpToTypeScriptType($returnType->getName());
+            $result = $this->toTsType($returnType->getName());
 
             if ($returnType->allowsNull() && $returnType->getName() !== 'null') {
                 $result['type'] .= ' | null';
@@ -330,7 +348,7 @@ class LaravelTsPublish
 
             foreach ($returnType->getTypes() as $type) {
                 $infos[] = $type instanceof ReflectionNamedType
-                    ? $this->phpToTypeScriptType($type->getName())
+                    ? $this->toTsType($type->getName())
                     : $this->emptyTypeScriptInfo(); // ReflectionIntersectionType inside a DNF union → unknown
             }
 
@@ -350,6 +368,25 @@ class LaravelTsPublish
 
         // json_encode produces a properly escaped double-quoted string valid in JS/TS
         return (string) json_encode($key);
+    }
+
+    /**
+     * Ensure a string is safe to use as a bare JavaScript/TypeScript identifier
+     * (i.e., for `const` declarations or export aliases — NOT object property keys,
+     * where reserved words are valid in TypeScript interfaces and object literals).
+     *
+     * Guards against reserved JS/TS keywords (e.g. 'delete' → 'deleteMethod').
+     *
+     * @param  string  $name  The proposed identifier
+     * @param  string  $suffix  Required suffix appended when $name is reserved (e.g., 'Method', 'Controller')
+     */
+    public function safeJsIdentifier(string $name, string $suffix): string
+    {
+        if (in_array($name, self::RESERVED_JS_IDENTIFIERS, true)) {
+            return $name.$suffix;
+        }
+
+        return $name;
     }
 
     /**
@@ -411,12 +448,6 @@ class LaravelTsPublish
 
         return 'null';
     }
-
-    /** @var list<string> */
-    public const array TS_PRIMITIVES = [
-        'string', 'number', 'boolean', 'bigint', 'symbol',
-        'null', 'undefined', 'object', 'unknown', 'any', 'never', 'void',
-    ];
 
     /**
      * Extract importable type identifiers from a TypeScript type string,
@@ -735,6 +766,41 @@ class LaravelTsPublish
         }
 
         return implode(' ', $description);
+    }
+
+    /**
+     * Serialize a list of route arg metadata objects to a JavaScript array literal.
+     *
+     * Each entry is output as an inline object with only the fields that are present,
+     * so that the generated TypeScript stays compact (no `undefined` noise).
+     *
+     * @param  list<array{name: string, required: bool, _routeKey?: string, _enumValues?: list<string|int>, where?: string}>  $args
+     */
+    public function routeArgsToJs(array $args): string
+    {
+        $entries = [];
+
+        foreach ($args as $arg) {
+            $parts = [];
+            $parts[] = 'name: '.$this->toJsLiteral($arg['name']);
+            $parts[] = 'required: '.$this->toJsLiteral($arg['required']);
+
+            if (isset($arg['_routeKey'])) {
+                $parts[] = '_routeKey: '.$this->toJsLiteral($arg['_routeKey']);
+            }
+
+            if (isset($arg['_enumValues'])) {
+                $parts[] = '_enumValues: '.$this->toJsLiteral($arg['_enumValues']);
+            }
+
+            if (isset($arg['where'])) {
+                $parts[] = 'where: '.$this->toJsLiteral($arg['where']);
+            }
+
+            $entries[] = '{'.implode(', ', $parts).'}';
+        }
+
+        return '['.implode(', ', $entries).']';
     }
 
     /**
