@@ -2,7 +2,7 @@
 @if(count($data->actions) === 0)
 export {}
 @else
-import { defineRoute } from '@tolki/ts/routes';
+import { defineRoute } from '@tolki/ts';
 @foreach ($data->actions as $action)
 
 @if($action['description'])

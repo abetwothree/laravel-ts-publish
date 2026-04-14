@@ -90,21 +90,21 @@ class TestCase extends Orchestra
             'ts-publish.output_globals_file' => true,
             'ts-publish.output_json_file' => true,
             'ts-publish.output_collected_files_json' => true,
-            'ts-publish.additional_model_directories' => [
+            'ts-publish.models.additional_directories' => [
                 DatabaseNotification::class,
                 Invoice::class,
                 Shipment::class,
                 "Workbench\Shipping\Models\FalseShipmentClass",
                 ...$modules,
             ],
-            'ts-publish.additional_enum_directories' => [
+            'ts-publish.enums.additional_directories' => [
                 InvoiceStatus::class,
                 PaymentStatus::class,
                 Status::class,
                 "Workbench\Shipping\Enums\FalseStatusClass",
                 ...$modules,
             ],
-            'ts-publish.additional_resource_directories' => $modules,
+            'ts-publish.resources.additional_directories' => $modules,
         ]);
     }
 }

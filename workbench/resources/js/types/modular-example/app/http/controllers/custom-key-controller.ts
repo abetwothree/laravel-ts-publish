@@ -1,4 +1,4 @@
-import { defineRoute } from '@tolki/ts/routes';
+import { defineRoute } from '@tolki/ts';
 
 export const show = defineRoute({
     name: 'articles.show',

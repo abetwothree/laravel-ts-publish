@@ -48,6 +48,8 @@ abstract class BaseRunner
 
     public protected(set) string $watcherJsonContent = '';
 
+    public protected(set) string $viteEnvContent = '';
+
     /** @var Collection<int, RouteGenerator> */
     public protected(set) Collection $routeGenerators;
 

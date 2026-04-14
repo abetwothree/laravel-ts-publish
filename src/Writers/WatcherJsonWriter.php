@@ -56,12 +56,12 @@ class WatcherJsonWriter
      */
     protected function collectEnumPaths(): array
     {
-        if (! config()->boolean('ts-publish.publish_enums')) {
+        if (! config()->boolean('ts-publish.enums.enabled')) {
             return [];
         }
 
         /** @var EnumsCollector $collector */
-        $collector = resolve(config()->string('ts-publish.enum_collector_class'));
+        $collector = resolve(config()->string('ts-publish.enums.collector_class'));
 
         return array_values(
             $collector->collect()
@@ -80,12 +80,12 @@ class WatcherJsonWriter
      */
     protected function collectModelPaths(): array
     {
-        if (! config()->boolean('ts-publish.publish_models')) {
+        if (! config()->boolean('ts-publish.models.enabled')) {
             return [];
         }
 
         /** @var ModelsCollector $collector */
-        $collector = resolve(config()->string('ts-publish.model_collector_class'));
+        $collector = resolve(config()->string('ts-publish.models.collector_class'));
 
         return array_values(
             $collector->collect()
@@ -104,12 +104,12 @@ class WatcherJsonWriter
      */
     protected function collectResourcePaths(): array
     {
-        if (! config()->boolean('ts-publish.publish_resources')) {
+        if (! config()->boolean('ts-publish.resources.enabled')) {
             return [];
         }
 
         /** @var ResourcesCollector $collector */
-        $collector = resolve(config()->string('ts-publish.resource_collector_class'));
+        $collector = resolve(config()->string('ts-publish.resources.collector_class'));
 
         return array_values(
             $collector->collect()
@@ -132,7 +132,7 @@ class WatcherJsonWriter
         }
 
         /** @var RoutesCollector $collector */
-        $collector = resolve(config()->string('ts-publish.route_collector_class'));
+        $collector = resolve(config()->string('ts-publish.routes.collector_class'));
 
         return array_values(
             $collector->collect()

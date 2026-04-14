@@ -96,7 +96,7 @@ class RunnerForSource extends BaseRunner
     {
         /** @var EnumGenerator $generator */
         $generator = resolve(
-            config()->string('ts-publish.enum_generator_class'),
+            config()->string('ts-publish.enums.generator_class'),
             ['findable' => $fqcn],
         );
 
@@ -107,7 +107,7 @@ class RunnerForSource extends BaseRunner
     {
         /** @var ModelGenerator $generator */
         $generator = resolve(
-            config()->string('ts-publish.model_generator_class'),
+            config()->string('ts-publish.models.generator_class'),
             ['findable' => $fqcn],
         );
 
@@ -118,7 +118,7 @@ class RunnerForSource extends BaseRunner
     {
         /** @var ResourceGenerator $generator */
         $generator = resolve(
-            config()->string('ts-publish.resource_generator_class'),
+            config()->string('ts-publish.resources.generator_class'),
             ['findable' => $fqcn],
         );
 
@@ -137,7 +137,7 @@ class RunnerForSource extends BaseRunner
     {
         /** @var RouteGenerator $generator */
         $generator = resolve(
-            config()->string('ts-publish.route_generator_class'),
+            config()->string('ts-publish.routes.generator_class'),
             ['findable' => $fqcn],
         );
 

@@ -1,4 +1,4 @@
-import { defineRoute } from '@tolki/ts/routes';
+import { defineRoute } from '@tolki/ts';
 
 /** Performs the invokable action. */
 export const invoke = defineRoute({

@@ -1,4 +1,4 @@
-import { defineRoute } from '@tolki/ts/routes';
+import { defineRoute } from '@tolki/ts';
 
 export const action = defineRoute({
     name: 'multi.action',

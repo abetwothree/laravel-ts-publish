@@ -1,4 +1,4 @@
-import { defineRoute } from '@tolki/ts/routes';
+import { defineRoute } from '@tolki/ts';
 
 /** This action is included */
 export const show = defineRoute({

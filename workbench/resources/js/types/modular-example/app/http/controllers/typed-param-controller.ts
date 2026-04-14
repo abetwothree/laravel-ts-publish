@@ -1,4 +1,4 @@
-import { defineRoute } from '@tolki/ts/routes';
+import { defineRoute } from '@tolki/ts';
 
 export const showInt = defineRoute({
     name: 'typed.show-int',

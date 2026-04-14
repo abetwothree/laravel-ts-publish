@@ -22,7 +22,7 @@ class ModelWriter extends CoreWriter
         $filename = $transformer->filename();
 
         /** @var view-string $template */
-        $template = config()->string('ts-publish.model_template');
+        $template = config()->string('ts-publish.models.template');
 
         $data = $transformer->data();
 
@@ -30,8 +30,8 @@ class ModelWriter extends CoreWriter
             $template,
             [
                 'filename' => $filename,
-                'metadataEnabled' => config()->boolean('ts-publish.enum_metadata_enabled'),
-                'usesTolkiPackage' => config()->boolean('ts-publish.enums_use_tolki_package'),
+                'metadataEnabled' => config()->boolean('ts-publish.enums.metadata_enabled'),
+                'usesTolkiPackage' => config()->boolean('ts-publish.enums.use_tolki_package'),
                 'data' => $data,
             ]
         )->render();
@@ -46,9 +46,7 @@ class ModelWriter extends CoreWriter
     protected function writeModelFile(string $filename, string $content, string $namespacePath): void
     {
         $outputBase = config()->string('ts-publish.output_directory');
-        $outputPath = config()->boolean('ts-publish.modular_publishing')
-            ? $outputBase.'/'.$namespacePath
-            : $outputBase.'/models';
+        $outputPath = $outputBase.'/'.$namespacePath;
 
         $this->filesystem->ensureDirectoryExists($outputPath);
         $this->filesystem->put("$outputPath/$filename.ts", $content);

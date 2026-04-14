@@ -60,8 +60,8 @@ test('writes watcher json file to disk when output_to_files is enabled', functio
 test('watcher json includes both enum and model paths based on config', function () {
     config()->set('ts-publish.output_collected_files_json', true);
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.publish_enums', true);
-    config()->set('ts-publish.publish_models', true);
+    config()->set('ts-publish.enums.enabled', true);
+    config()->set('ts-publish.models.enabled', true);
 
     $writer = new WatcherJsonWriter(new Filesystem);
     $content = $writer->write();
@@ -76,9 +76,9 @@ test('watcher json includes both enum and model paths based on config', function
 test('watcher json excludes enums when publish_enums config is false', function () {
     config()->set('ts-publish.output_collected_files_json', true);
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.publish_enums', false);
-    config()->set('ts-publish.publish_models', true);
-    config()->set('ts-publish.publish_resources', false);
+    config()->set('ts-publish.enums.enabled', false);
+    config()->set('ts-publish.models.enabled', true);
+    config()->set('ts-publish.resources.enabled', false);
     config()->set('ts-publish.routes.enabled', false);
 
     $writer = new WatcherJsonWriter(new Filesystem);
@@ -94,9 +94,9 @@ test('watcher json excludes enums when publish_enums config is false', function 
 test('watcher json excludes models when publish_models config is false', function () {
     config()->set('ts-publish.output_collected_files_json', true);
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.publish_enums', true);
-    config()->set('ts-publish.publish_models', false);
-    config()->set('ts-publish.publish_resources', false);
+    config()->set('ts-publish.enums.enabled', true);
+    config()->set('ts-publish.models.enabled', false);
+    config()->set('ts-publish.resources.enabled', false);
     config()->set('ts-publish.routes.enabled', false);
 
     $writer = new WatcherJsonWriter(new Filesystem);
@@ -112,9 +112,9 @@ test('watcher json excludes models when publish_models config is false', functio
 test('watcher json includes controllers when routes.enabled config is true', function () {
     config()->set('ts-publish.output_collected_files_json', true);
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.publish_enums', false);
-    config()->set('ts-publish.publish_models', false);
-    config()->set('ts-publish.publish_resources', false);
+    config()->set('ts-publish.enums.enabled', false);
+    config()->set('ts-publish.models.enabled', false);
+    config()->set('ts-publish.resources.enabled', false);
     config()->set('ts-publish.routes.enabled', true);
 
     $writer = new WatcherJsonWriter(new Filesystem);
@@ -129,7 +129,7 @@ test('watcher json includes controllers when routes.enabled config is true', fun
 test('watcher json includes resource paths when publish_resources is enabled', function () {
     config()->set('ts-publish.output_collected_files_json', true);
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.publish_resources', true);
+    config()->set('ts-publish.resources.enabled', true);
 
     $writer = new WatcherJsonWriter(new Filesystem);
     $content = $writer->write();
@@ -143,7 +143,7 @@ test('watcher json includes resource paths when publish_resources is enabled', f
 test('watcher json excludes resources when publish_resources is false', function () {
     config()->set('ts-publish.output_collected_files_json', true);
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.publish_resources', false);
+    config()->set('ts-publish.resources.enabled', false);
 
     $writer = new WatcherJsonWriter(new Filesystem);
     $content = $writer->write();

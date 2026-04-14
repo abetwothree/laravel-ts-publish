@@ -58,7 +58,7 @@ test('runner generates globals content when enabled', function () {
 
     expect($runner->globalsContent)
         ->toContain('declare global')
-        ->toContain('export namespace models');
+        ->toContain('export namespace workbench.app.models');
 });
 
 test('runner generates empty globals content when disabled', function () {
@@ -114,19 +114,18 @@ test('runner generates empty watcher json content when disabled', function () {
 
 describe('Runner modular publishing', function () {
     beforeEach(function () {
-        config()->set('ts-publish.modular_publishing', true);
         config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
 
         // Include Blog module classes in collector discovery
-        $existingModels = config()->array('ts-publish.additional_model_directories');
-        config()->set('ts-publish.additional_model_directories', [
+        $existingModels = config()->array('ts-publish.models.additional_directories');
+        config()->set('ts-publish.models.additional_directories', [
             ...$existingModels,
             Article::class,
             Reaction::class,
         ]);
 
-        $existingEnums = config()->array('ts-publish.additional_enum_directories');
-        config()->set('ts-publish.additional_enum_directories', [
+        $existingEnums = config()->array('ts-publish.enums.additional_directories');
+        config()->set('ts-publish.enums.additional_directories', [
             ...$existingEnums,
             ArticleStatus::class,
             ContentType::class,
@@ -229,8 +228,8 @@ describe('Runner conditional publishing', function () {
 
         expect($runner->globalsContent)
             ->toContain('declare global')
-            ->toContain('export namespace enums')
-            ->not->toContain('export namespace models');
+            ->toContain('export namespace workbench.app.enums')
+            ->not->toContain('export namespace workbench.app.models');
     });
 
     test('globals only contains models when enums are skipped', function () {
@@ -242,8 +241,8 @@ describe('Runner conditional publishing', function () {
 
         expect($runner->globalsContent)
             ->toContain('declare global')
-            ->toContain('export namespace models')
-            ->not->toContain('export namespace enums');
+            ->toContain('export namespace workbench.app.models')
+            ->not->toContain('export namespace workbench.app.enums');
     });
 
     test('json output only contains enums when models are skipped', function () {
@@ -282,10 +281,10 @@ describe('Runner conditional publishing', function () {
     });
 
     test('respects publish_enums config value', function () {
-        config()->set('ts-publish.publish_enums', false);
+        config()->set('ts-publish.enums.enabled', false);
 
         $runner = new Runner;
-        $runner->shouldPublishEnums = config()->boolean('ts-publish.publish_enums');
+        $runner->shouldPublishEnums = config()->boolean('ts-publish.enums.enabled');
         $runner->run();
 
         expect($runner->enumGenerators)->toBeEmpty()
@@ -293,10 +292,10 @@ describe('Runner conditional publishing', function () {
     });
 
     test('respects publish_models config value', function () {
-        config()->set('ts-publish.publish_models', false);
+        config()->set('ts-publish.models.enabled', false);
 
         $runner = new Runner;
-        $runner->shouldPublishModels = config()->boolean('ts-publish.publish_models');
+        $runner->shouldPublishModels = config()->boolean('ts-publish.models.enabled');
         $runner->run();
 
         expect($runner->modelGenerators)->toBeEmpty()

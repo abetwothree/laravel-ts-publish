@@ -91,7 +91,7 @@ test('writes single enum file to disk', function () {
     $runner = new RunnerForSource('Workbench\App\Enums\Status');
     $runner->run();
 
-    expect(file_exists("$outputDir/enums/status.ts"))->toBeTrue();
+    expect(file_exists("$outputDir/workbench/app/enums/status.ts"))->toBeTrue();
 
     // Cleanup
     (new Filesystem)->deleteDirectory($outputDir);
@@ -105,7 +105,7 @@ test('writes single model file to disk', function () {
     $runner = new RunnerForSource('Workbench\App\Models\User');
     $runner->run();
 
-    expect(file_exists("$outputDir/models/user.ts"))->toBeTrue();
+    expect(file_exists("$outputDir/workbench/app/models/user.ts"))->toBeTrue();
 
     // Cleanup
     (new Filesystem)->deleteDirectory($outputDir);

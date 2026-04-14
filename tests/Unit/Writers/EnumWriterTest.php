@@ -28,7 +28,7 @@ test('writes enum content with metadata enabled', function () {
     $transformer = new EnumTransformer(Status::class);
 
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.enum_metadata_enabled', true);
+    config()->set('ts-publish.enums.metadata_enabled', true);
 
     $content = $writer->write($transformer);
 
@@ -43,7 +43,7 @@ test('writes enum content with metadata disabled', function () {
     $transformer = new EnumTransformer(Status::class);
 
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.enum_metadata_enabled', false);
+    config()->set('ts-publish.enums.metadata_enabled', false);
 
     $content = $writer->write($transformer);
 
@@ -98,7 +98,7 @@ test('omits _methods and _static when enum has no methods or static methods', fu
     $transformer = new EnumTransformer(PaymentMethod::class);
 
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.enum_metadata_enabled', true);
+    config()->set('ts-publish.enums.metadata_enabled', true);
 
     $content = $writer->write($transformer);
 
@@ -113,7 +113,7 @@ test('includes _methods when enum has instance methods', function () {
     $transformer = new EnumTransformer(Status::class);
 
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.enum_metadata_enabled', true);
+    config()->set('ts-publish.enums.metadata_enabled', true);
 
     $content = $writer->write($transformer);
 

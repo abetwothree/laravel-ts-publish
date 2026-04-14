@@ -21,6 +21,16 @@ abstract class CoreTransformer
         $this->transform();
     }
 
+    /**
+     * Get the fully qualified class name being transformed.
+     *
+     * @return class-string<TTransformable>
+     */
+    public function fqcn(): string
+    {
+        return $this->findable;
+    }
+
     /** @return static */
     abstract public function transform(): self;
 

@@ -19,13 +19,13 @@ class RouteGenerator extends CoreGenerator
     public function generate(): string
     {
         /** @var RouteTransformer $transformer */
-        $transformer = resolve(config()->string('ts-publish.route_transformer_class'), [
+        $transformer = resolve(config()->string('ts-publish.routes.transformer_class'), [
             'findable' => $this->findable,
         ]);
         $this->transformer = $transformer;
 
         /** @var RouteWriter $writer */
-        $writer = resolve(config()->string('ts-publish.route_writer_class'));
+        $writer = resolve(config()->string('ts-publish.routes.writer_class'));
 
         return $this->content = $writer->write($this->transformer);
     }

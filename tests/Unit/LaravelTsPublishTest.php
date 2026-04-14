@@ -848,14 +848,14 @@ describe('callCommandUsing and callCommandWith', function () {
 
     test('callCommandWith can modify config values', function () {
         LaravelTsPublish::callCommandUsing(function () {
-            config()->set('ts-publish.additional_model_directories', ['modules/Blog/Models']);
+            config()->set('ts-publish.models.additional_directories', ['modules/Blog/Models']);
         });
 
-        expect(config('ts-publish.additional_model_directories'))->not->toBe(['modules/Blog/Models']);
+        expect(config('ts-publish.models.additional_directories'))->not->toBe(['modules/Blog/Models']);
 
         $this->service->callCommandWith();
 
-        expect(config('ts-publish.additional_model_directories'))->toBe(['modules/Blog/Models']);
+        expect(config('ts-publish.models.additional_directories'))->toBe(['modules/Blog/Models']);
     });
 
     test('later callCommandUsing replaces the previous closure', function () {

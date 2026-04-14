@@ -25,7 +25,7 @@ class RouteWriter extends CoreWriter
         $filename = $transformer->filename();
 
         /** @var view-string $template */
-        $template = config()->string('ts-publish.route_template');
+        $template = config()->string('ts-publish.routes.template');
 
         $data = $transformer->data();
 

@@ -18,6 +18,7 @@ use JsonSerializable;
  * @phpstan-type ResourceData = array{
  *     resourceName: string,
  *     description: string,
+ *     fqcn: string,
  *     filePath: string,
  *     filename: string,
  *     properties: PropertiesList,
@@ -41,6 +42,7 @@ class TsResourceDto implements Arrayable, Datable, Jsonable, JsonSerializable
     public function __construct(
         public string $resourceName,
         public string $description,
+        public string $fqcn,
         public string $filePath,
         public string $filename,
         public array $properties,
@@ -56,6 +58,7 @@ class TsResourceDto implements Arrayable, Datable, Jsonable, JsonSerializable
         return [
             'resourceName' => $this->resourceName,
             'description' => $this->description,
+            'fqcn' => $this->fqcn,
             'filePath' => $this->filePath,
             'filename' => $this->filename,
             'properties' => $this->properties,

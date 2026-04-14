@@ -181,9 +181,9 @@ class TsPublishCommand extends Command
      */
     protected function resolvePublishFlags(): ?array
     {
-        $configEnums = config()->boolean('ts-publish.publish_enums');
-        $configModels = config()->boolean('ts-publish.publish_models');
-        $configResources = config()->boolean('ts-publish.publish_resources');
+        $configEnums = config()->boolean('ts-publish.enums.enabled');
+        $configModels = config()->boolean('ts-publish.models.enabled');
+        $configResources = config()->boolean('ts-publish.resources.enabled');
         $configRoutes = config()->boolean('ts-publish.routes.enabled');
         $onlyEnums = (bool) $this->option('only-enums');
         $onlyModels = (bool) $this->option('only-models');
@@ -402,6 +402,15 @@ class TsPublishCommand extends Command
                 $this->line($content);
             }
         }
+
+        if (! empty($runner->viteEnvContent)) {
+            $viteEnvFilename = config()->string('ts-publish.vite_env.filename', 'vite-env.d.ts');
+            $this->newLine();
+            $this->comment('Vite Env:');
+            $this->newLine();
+            $this->comment("  {$viteEnvFilename}");
+            $this->line($runner->viteEnvContent);
+        }
     }
 
     protected function createPublishedFilesList(Runner|RunnerForSource $runner): void
@@ -546,9 +555,10 @@ class TsPublishCommand extends Command
                 : ($runner->modelBarrelContent ? [['Barrel', 'models/index.ts']] : [])),
             ...($runner->resourceModularBarrels
                 ? array_map(fn (string $path) => ['Barrel', "{$path}/index.ts"], array_keys($runner->resourceModularBarrels))
-                : ($runner->resourceBarrelContent ? [['Barrel', config()->string('ts-publish.resources_namespace', 'resources').'/index.ts']] : [])),
+                : ($runner->resourceBarrelContent ? [['Barrel', config()->string('ts-publish.resources.namespace', 'resources').'/index.ts']] : [])),
             ...array_map(fn (string $path) => ['Route Barrel', "{$path}/index.ts"], array_keys($runner->routeModularBarrels)),
             $runner->globalsContent ? ['Globals', config()->string('ts-publish.global_filename')] : null,
+            $runner->viteEnvContent ? ['Vite Env', config()->string('ts-publish.vite_env.filename', 'vite-env.d.ts')] : null,
             $runner->jsonContent ? ['JSON', config()->string('ts-publish.json_filename')] : null,
         ]);
     }

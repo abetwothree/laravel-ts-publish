@@ -143,6 +143,7 @@ class ModelTransformer extends CoreTransformer
         return new TsModelDto(
             modelName: $this->modelName,
             description: $this->description,
+            fqcn: $this->fqcn(),
             filePath: $this->filePath,
             filename: $this->filename(),
             columns: $this->columns,
@@ -363,13 +364,13 @@ class ModelTransformer extends CoreTransformer
         $allRelations = $this->modelInspect->relations;
 
         /** @var list<string> $includedModels */
-        $includedModels = array_values(array_filter(config()->array('ts-publish.included_models', []), 'is_string'));
+        $includedModels = array_values(array_filter(config()->array('ts-publish.models.included', []), 'is_string'));
 
         /** @var list<string> $excludedModels */
-        $excludedModels = array_values(array_filter(config()->array('ts-publish.excluded_models', []), 'is_string'));
+        $excludedModels = array_values(array_filter(config()->array('ts-publish.models.excluded', []), 'is_string'));
 
-        $case = config()->string('ts-publish.relationship_case');
-        $nullableRelations = config()->boolean('ts-publish.nullable_relations');
+        $case = config()->string('ts-publish.models.relationship_case');
+        $nullableRelations = config()->boolean('ts-publish.models.nullable_relations');
 
         $relations = $allRelations
             ->when(
@@ -554,7 +555,7 @@ class ModelTransformer extends CoreTransformer
             foreach ($this->modelFqcnRelations[$fqcn] ?? [] as $relationMethod) {
                 $relationKey = LaravelTsPublish::keyCase(
                     $relationMethod,
-                    config()->string('ts-publish.relationship_case'),
+                    config()->string('ts-publish.models.relationship_case'),
                 );
 
                 $relationNameToAlias[$relationKey] = $alias;
@@ -615,7 +616,6 @@ class ModelTransformer extends CoreTransformer
     {
         $typeImports = [];
         $valueImports = [];
-        $isModular = config()->boolean('ts-publish.modular_publishing');
         $hasEnums = $this->shouldGenerateHasEnums();
 
         // Filter out self-references from model FQCN map
@@ -625,23 +625,13 @@ class ModelTransformer extends CoreTransformer
             ARRAY_FILTER_USE_BOTH,
         );
 
-        if ($isModular) {
-            $typeImports = [
-                ...$this->collectModularTypeImports($this->enumFqcnMap),
-                ...$this->collectModularTypeImports($modelFqcnMap),
-            ];
+        $typeImports = [
+            ...$this->collectModularTypeImports($this->enumFqcnMap),
+            ...$this->collectModularTypeImports($modelFqcnMap),
+        ];
 
-            if ($hasEnums) {
-                $valueImports = $this->collectModularValueImports($this->enumPropertyFqcns());
-            }
-        } else {
-            ['typeImports' => $typeImports, 'valueImports' => $valueImports] = $this->buildFlatEnumImports(
-                $this->enumFqcnMap,
-                $this->enumPropertyFqcns(),
-                $hasEnums,
-            );
-
-            $this->addSortedImports($typeImports, './', $this->collectFlatTypeImports($modelFqcnMap));
+        if ($hasEnums) {
+            $valueImports = $this->collectModularValueImports($this->enumPropertyFqcns());
         }
 
         $typeImports = $this->mergeCustomImports($typeImports, $this->customImports);
@@ -662,21 +652,14 @@ class ModelTransformer extends CoreTransformer
      */
     public function globalAliasMap(): array
     {
-        $isModular = config()->boolean('ts-publish.modular_publishing');
-        $modelsNs = config()->string('ts-publish.models_namespace');
-        $enumsNs = config()->string('ts-publish.enums_namespace');
         $map = [];
 
         foreach ($this->importAliases as $fqcn => $alias) {
             if (isset($this->enumFqcnMap[$fqcn])) {
-                $ns = $isModular
-                    ? str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn))
-                    : $enumsNs;
+                $ns = str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn));
                 $map[$alias] = $ns.'.'.$this->enumFqcnMap[$fqcn];
             } elseif (isset($this->modelFqcnMap[$fqcn])) {
-                $ns = $isModular
-                    ? str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn))
-                    : $modelsNs;
+                $ns = str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn));
                 $map[$alias] = $ns.'.'.$this->modelFqcnMap[$fqcn];
             }
         }

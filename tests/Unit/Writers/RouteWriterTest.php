@@ -35,7 +35,7 @@ test('route writer generates TypeScript content with defineRoute import', functi
     $generator = resolve(RouteGenerator::class, ['findable' => PostController::class]);
 
     expect($generator->content)
-        ->toContain("import { defineRoute } from '@tolki/ts/routes'");
+        ->toContain("import { defineRoute } from '@tolki/ts'");
 });
 
 test('route writer generates export const for each action', function () {
