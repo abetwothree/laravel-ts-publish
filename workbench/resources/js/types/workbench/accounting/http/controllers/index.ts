@@ -1,1 +1,0 @@
-export { default as TwoFactorController } from './two-factor-controller';
