@@ -145,16 +145,10 @@ class ModelAttributeResolver
      */
     public function resolveMethodReturnType(string $modelFqcn, string $methodName): array
     {
-        $empty = LaravelTsPublish::emptyTypeScriptInfo();
-
-        if (! method_exists($modelFqcn, $methodName)) {
-            return $empty;
-        }
-
         /** @var ReflectionClass<Model> $reflection */
         $reflection = new ReflectionClass($modelFqcn);
 
-        return LaravelTsPublish::methodReturnedTypes($reflection, $methodName);
+        return LaravelTsPublish::methodOrDocblockReturnTypes($reflection, $methodName);
     }
 
     /**
