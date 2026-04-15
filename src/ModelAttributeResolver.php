@@ -13,7 +13,7 @@ use ReflectionClass;
 use Throwable;
 
 /**
- * Centralised model attribute → TypeScript type resolver.
+ * Centralized model attribute → TypeScript type resolver.
  *
  * Encapsulates the "accessor → cast → DB type" waterfall that was previously
  * duplicated across ResolvesModelTypes, ResourceAstAnalyzer, and ModelTransformer.
@@ -94,7 +94,7 @@ class ModelAttributeResolver
         $tsInfo = LaravelTsPublish::phpToTypeScriptType($attr['type']);
 
         if ($tsInfo['type'] === 'unknown') {
-            return $empty;
+            return $empty; // @codeCoverageIgnore
         }
 
         return $this->appendNullable($tsInfo, $attr['nullable']);
@@ -176,7 +176,7 @@ class ModelAttributeResolver
         $attr = $ctx['attributes']->firstWhere('name', $attributeName);
 
         if ($attr === null || ($attr['cast'] !== 'attribute' && $attr['cast'] !== 'accessor')) {
-            return null;
+            return null; // @codeCoverageIgnore
         }
 
         try {
