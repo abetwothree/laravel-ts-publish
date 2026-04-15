@@ -45,6 +45,7 @@ use Workbench\App\Http\Resources\QuirkyResource;
 use Workbench\App\Http\Resources\SpreadJsonBaseResource;
 use Workbench\App\Http\Resources\SpreadWithClosureResource;
 use Workbench\App\Http\Resources\SpreadWithGuardClauseClosureResource;
+use Workbench\App\Http\Resources\SpreadWithGuardDoubleClosureReturnResource;
 use Workbench\App\Http\Resources\TagResource;
 use Workbench\App\Http\Resources\TeamMemberResource;
 use Workbench\App\Http\Resources\TeamResource;
@@ -2251,6 +2252,65 @@ describe('ResourceAstAnalyzer with SpreadWithGuardClauseClosureResource (Bug 1 +
     test('enum FQCNs from inside inline object are propagated to directEnumFqcns', function () {
         // $user->role is cast to Role::class — the FQCN should appear in directEnumFqcns
         // even though it's inside the nested inline object for the customer property
+        expect($this->analysis->directEnumFqcns)->toContain(Role::class);
+    });
+});
+
+describe('ResourceAstAnalyzer with SpreadWithGuardDoubleClosureReturnResource (union return types)', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(SpreadWithGuardDoubleClosureReturnResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, Order::class))->analyze();
+    });
+
+    test('customer closure produces a union of two object shapes plus null', function () {
+        $customer = collect($this->analysis->properties)->firstWhere('name', 'customer');
+
+        expect($customer)->not->toBeNull()
+            ->and($customer['type'])->toContain('|')
+            ->and($customer['type'])->toEndWith('| null');
+    });
+
+    test('first object shape contains the premium-path keys', function () {
+        $customer = collect($this->analysis->properties)->firstWhere('name', 'customer');
+
+        // The premium path has 'initials' but NOT 'name_titled' or 'morph'
+        expect($customer['type'])->toContain('initials');
+    });
+
+    test('second object shape contains the default-path keys', function () {
+        $customer = collect($this->analysis->properties)->firstWhere('name', 'customer');
+
+        // The default path has 'name_titled' and 'morph' but NOT 'initials'
+        expect($customer['type'])->toContain('name_titled')
+            ->and($customer['type'])->toContain('morph');
+    });
+
+    test('both shapes share common keys with resolved types', function () {
+        $customer = collect($this->analysis->properties)->firstWhere('name', 'customer');
+
+        // Both branches include name, email, phone, avatar, role, is_premium
+        expect($customer['type'])->toContain('name: string')
+            ->and($customer['type'])->toContain('email: string')
+            ->and($customer['type'])->toContain('is_premium: boolean');
+    });
+
+    test('customer is marked as optional from whenLoaded', function () {
+        $customer = collect($this->analysis->properties)->firstWhere('name', 'customer');
+
+        expect($customer)->not->toBeNull()
+            ->and($customer['optional'])->toBeTrue();
+    });
+
+    test('model attributes from parent::toArray spread are still present', function () {
+        $names = array_column($this->analysis->properties, 'name');
+
+        expect($names)->toContain('id')
+            ->and($names)->toContain('total')
+            ->and($names)->toContain('customer');
+    });
+
+    test('enum FQCNs from both union branches are propagated', function () {
+        // role is cast to Role::class and appears in both branches
         expect($this->analysis->directEnumFqcns)->toContain(Role::class);
     });
 });

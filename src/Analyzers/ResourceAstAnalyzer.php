@@ -20,6 +20,7 @@ use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\BooleanNot;
+use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\Instanceof_;
 use PhpParser\Node\Expr\MethodCall;
@@ -317,11 +318,15 @@ class ResourceAstAnalyzer
             return $result; // @codeCoverageIgnore
         }
 
-        // Closures / arrow functions — resolve the return expression and recurse
-        $closureReturn = $this->resolveClosureReturnExpression($expr);
+        // Closures / arrow functions — collect all return expressions and build a union type
+        $closureReturns = $this->resolveClosureReturnExpressions($expr);
 
-        if ($closureReturn !== null) {
-            return $this->analyzeValueExpression($closureReturn);
+        if ($closureReturns !== []) {
+            if (count($closureReturns) === 1) {
+                return $this->analyzeValueExpression($closureReturns[0]);
+            }
+
+            return $this->analyzeClosureUnion($closureReturns);
         }
 
         // $this->when(condition, value) or $this->when(condition, value, default)
@@ -1871,6 +1876,88 @@ class ResourceAstAnalyzer
     protected function resolveWrappedClass(): ?string
     {
         return $this->resolveClassOnProperty($this->resourceReflection) ?? $this->instanceOfWrappedClass;
+    }
+
+    /**
+     * Merge multiple closure return expressions into a single ValueExpressionResult
+     * with a union type. Each return branch is analyzed independently and their types
+     * are joined with ` | `.
+     *
+     * Null returns (guard clauses) contribute `null` to the union instead of a full object shape.
+     * Duplicate type strings are removed.
+     *
+     * Import metadata (enum/model FQCNs) is collected from all branches.
+     *
+     * @param  list<Expr>  $returns
+     * @return ValueExpressionResult
+     */
+    protected function analyzeClosureUnion(array $returns): array
+    {
+        /** @var list<string> $types */
+        $types = [];
+        /** @var list<class-string> $embeddedEnumFqcns */
+        $embeddedEnumFqcns = [];
+        /** @var list<class-string> $embeddedModelFqcns */
+        $embeddedModelFqcns = [];
+        $hasNull = false;
+
+        foreach ($returns as $returnExpr) {
+            // Null literal → contributes `null` to the union
+            if ($returnExpr instanceof ConstFetch
+                && $returnExpr->name->toLowerString() === 'null') {
+                $hasNull = true;
+
+                continue;
+            }
+
+            $inner = $this->analyzeValueExpression($returnExpr);
+
+            if ($inner['type'] === 'unknown') {
+                continue;
+            }
+
+            // Collect the type string
+            $types[] = $inner['type'];
+
+            // Merge import metadata
+            if (isset($inner['directEnumFqcn'])) {
+                $embeddedEnumFqcns[] = $inner['directEnumFqcn'];
+            }
+
+            if (isset($inner['embeddedEnumFqcns'])) {
+                array_push($embeddedEnumFqcns, ...$inner['embeddedEnumFqcns']);
+            }
+
+            if (isset($inner['embeddedModelFqcns'])) {
+                array_push($embeddedModelFqcns, ...$inner['embeddedModelFqcns']);
+            }
+        }
+
+        if ($hasNull) {
+            $types[] = 'null';
+        }
+
+        // Deduplicate types while preserving order
+        $types = array_values(array_unique($types));
+
+        if ($types === []) {
+            return $this->unknownResult();
+        }
+
+        $result = ['type' => implode(' | ', $types), 'optional' => false];
+
+        $embeddedEnumFqcns = array_values(array_unique($embeddedEnumFqcns));
+        $embeddedModelFqcns = array_values(array_unique($embeddedModelFqcns));
+
+        if ($embeddedEnumFqcns !== []) {
+            $result['embeddedEnumFqcns'] = $embeddedEnumFqcns;
+        }
+
+        if ($embeddedModelFqcns !== []) {
+            $result['embeddedModelFqcns'] = $embeddedModelFqcns;
+        }
+
+        return $result;
     }
 
     /**
