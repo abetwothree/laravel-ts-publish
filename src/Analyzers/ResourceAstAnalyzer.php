@@ -52,7 +52,16 @@ use ReflectionEnum;
  * @phpstan-import-type ClassMapType from ResourceAnalysis
  * @phpstan-import-type ImportMapType from ResourceAnalysis
  *
- * @phpstan-type ValueExpressionResult = array{type: string, optional: bool, enumFqcn?: class-string, directEnumFqcn?: class-string, resourceFqcn?: class-string, modelFqcn?: class-string, embeddedEnumFqcns?: list<class-string>, embeddedModelFqcns?: list<class-string>}
+ * @phpstan-type ValueExpressionResult = array{
+ *      type: string,
+ *      optional: bool,
+ *      enumFqcn?: class-string,
+ *      directEnumFqcn?: class-string,
+ *      resourceFqcn?: class-string,
+ *      modelFqcn?: class-string,
+ *      embeddedEnumFqcns?: list<class-string>,
+ *      embeddedModelFqcns?: list<class-string>
+ * }
  */
 class ResourceAstAnalyzer
 {
