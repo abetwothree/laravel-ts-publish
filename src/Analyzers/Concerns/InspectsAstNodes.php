@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Analyzers\Concerns;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\MethodCall;
@@ -141,7 +142,9 @@ trait InspectsAstNodes
      * Resolve the return expression from a closure or arrow function.
      *
      * - ArrowFunction: returns the expression body directly.
-     * - Closure: returns the expression from the first Return_ statement.
+     * - Closure: prefers the first Return_ with a non-null Array_ expression
+     *   (skipping guard-clause returns like `return null;` or `return [];`).
+     *   Falls back to the first Return_ with any non-null expression.
      */
     protected function resolveClosureReturnExpression(Expr $expr): ?Expr
     {
@@ -150,11 +153,22 @@ trait InspectsAstNodes
         }
 
         if ($expr instanceof ClosureExpr) {
+            $firstReturn = null;
+
             foreach ($expr->stmts as $stmt) {
-                if ($stmt instanceof Return_ && $stmt->expr !== null) {
+                if (! $stmt instanceof Return_ || $stmt->expr === null) {
+                    continue;
+                }
+
+                // Prefer a return with a non-empty Array_ (the "real" data path)
+                if ($stmt->expr instanceof Array_ && count($stmt->expr->items) > 0) {
                     return $stmt->expr;
                 }
+
+                $firstReturn ??= $stmt->expr;
             }
+
+            return $firstReturn;
         }
 
         return null;

@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ResolvesModelTypes;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResourceCasts;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesClassNames;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
@@ -66,6 +67,15 @@ class ResourceAstAnalyzer
      * @var class-string|null
      */
     protected ?string $instanceOfWrappedClass = null;
+
+    /**
+     * Related model class temporarily set when analyzing a whenLoaded closure.
+     * Enables type resolution for `$variable->property`, `$variable->method()`,
+     * and `$variable::staticMethod()` expressions within the closure body.
+     *
+     * @var class-string<Model>|null
+     */
+    protected ?string $closureRelationModelClass = null;
 
     /**
      * @param  ReflectionClass<JsonResource>  $resourceReflection
@@ -353,6 +363,18 @@ class ResourceAstAnalyzer
             return ['type' => 'unknown', 'optional' => true];
         }
 
+        // $variable::staticMethod() — resolve against the related model in a whenLoaded closure context
+        // Must come before the general StaticCall handler which only handles class-name static calls.
+        if ($this->closureRelationModelClass !== null
+            && $expr instanceof StaticCall
+            && $expr->class instanceof Variable
+            && is_string($expr->class->name)
+            && $expr->class->name !== 'this'
+            && $expr->name instanceof Identifier
+        ) {
+            return $this->analyzeRelatedModelMethodCall($expr->name->toString());
+        }
+
         // EnumResource::make($this->prop) or SomeResource::make/collection()
         if ($expr instanceof StaticCall) {
             return $this->analyzeStaticCall($expr);
@@ -392,6 +414,13 @@ class ResourceAstAnalyzer
                 $info = $this->analyzeWrappedModelResourceProperty($expr);
             }
 
+            // When inside a whenLoaded closure and the wrapped-class resolution returned unknown,
+            // try resolving the inner property against the related model (e.g. $this->user->name
+            // where 'user' is the loaded relation).
+            if ($info['type'] === 'unknown' && $this->closureRelationModelClass !== null && $expr->name instanceof Identifier) {
+                $info = $this->analyzeRelatedModelProperty($expr->name->toString());
+            }
+
             return $info;
         }
 
@@ -400,7 +429,15 @@ class ResourceAstAnalyzer
             && $this->isThisPropertyFetch($expr->var)
             && $expr->name instanceof Identifier
         ) {
-            return $this->analyzeWrappedResourceMethodCall($expr);
+            $info = $this->analyzeWrappedResourceMethodCall($expr);
+
+            // When inside a whenLoaded closure and the wrapped-class resolution returned unknown,
+            // try resolving the method against the related model (e.g. $this->user->nameTitled()).
+            if ($info['type'] === 'unknown' && $this->closureRelationModelClass !== null) {
+                $info = $this->analyzeRelatedModelMethodCall($expr->name->toString());
+            }
+
+            return $info;
         }
 
         // Generic $this->method() — infer from the method's declared return type via reflection.
@@ -411,6 +448,28 @@ class ResourceAstAnalyzer
             && $expr->name instanceof Identifier
         ) {
             return $this->analyzeThisMethodCall($expr->name->toString());
+        }
+
+        // $variable->property — resolve against the related model in a whenLoaded closure context
+        if ($this->closureRelationModelClass !== null
+            && $expr instanceof PropertyFetch
+            && $expr->var instanceof Variable
+            && is_string($expr->var->name)
+            && $expr->var->name !== 'this'
+            && $expr->name instanceof Identifier
+        ) {
+            return $this->analyzeRelatedModelProperty($expr->name->toString());
+        }
+
+        // $variable->method() — resolve against the related model in a whenLoaded closure context
+        if ($this->closureRelationModelClass !== null
+            && $expr instanceof MethodCall
+            && $expr->var instanceof Variable
+            && is_string($expr->var->name)
+            && $expr->var->name !== 'this'
+            && $expr->name instanceof Identifier
+        ) {
+            return $this->analyzeRelatedModelMethodCall($expr->name->toString());
         }
 
         return $result;
@@ -496,8 +555,22 @@ class ResourceAstAnalyzer
 
         // $this->whenLoaded('relation', value) — use value for type
         if (count($args) >= 2) {
+            // Resolve the related model from the relation name so property/method
+            // accesses on local variables inside the closure can be typed.
+            $previousRelationModel = $this->closureRelationModelClass;
+
+            if ($args[0]->value instanceof String_) {
+                $info = $this->resolveModelRelationTypeInfo($args[0]->value->value);
+
+                if (($info['modelFqcn'] ?? null) !== null) {
+                    $this->closureRelationModelClass = $info['modelFqcn'];
+                }
+            }
+
             $inner = $this->analyzeValueExpression($args[1]->value);
             $inner['optional'] = true;
+
+            $this->closureRelationModelClass = $previousRelationModel;
 
             return $inner;
         }
@@ -1388,7 +1461,39 @@ class ResourceAstAnalyzer
                 : "{$key}: {$prop['type']}";
         }, $analysis->properties);
 
-        return ['type' => '{ '.implode('; ', $parts).' }', 'optional' => false];
+        $result = ['type' => '{ '.implode('; ', $parts).' }', 'optional' => false];
+
+        // Propagate import metadata from the inner analysis so that enum, model,
+        // and resource FQCNs referenced inside the inline object reach the outer
+        // ResourceAnalysis and generate the correct import statements.
+        $embeddedEnumFqcns = array_values(array_unique([
+            ...array_values($analysis->directEnumFqcns),
+            ...array_values($analysis->enumResources),
+        ]));
+
+        $embeddedModelFqcns = array_values(array_unique(
+            array_values($analysis->modelFqcns),
+        ));
+
+        if ($embeddedEnumFqcns !== []) {
+            $result['embeddedEnumFqcns'] = $embeddedEnumFqcns;
+        }
+
+        if ($embeddedModelFqcns !== []) {
+            $result['embeddedModelFqcns'] = $embeddedModelFqcns;
+        }
+
+        // Nested resources (e.g. SomeResource::make() inside the inline array)
+        // are tracked separately — forward them as embedded model FQCNs so the
+        // outer analysis includes the resource import.
+        if ($analysis->nestedResources !== []) {
+            $result['embeddedModelFqcns'] = array_values(array_unique([
+                ...($result['embeddedModelFqcns'] ?? []),
+                ...array_values($analysis->nestedResources),
+            ]));
+        }
+
+        return $result;
     }
 
     /**
@@ -1504,6 +1609,60 @@ class ResourceAstAnalyzer
     }
 
     /**
+     * Resolve a property access on a related model within a whenLoaded closure.
+     *
+     * Uses the same resolution chain as model attributes: accessor → cast → DB column type.
+     *
+     * @return ValueExpressionResult
+     */
+    protected function analyzeRelatedModelProperty(string $propertyName): array
+    {
+        if ($this->closureRelationModelClass === null) {
+            return $this->unknownResult(); // @codeCoverageIgnore
+        }
+
+        $tsInfo = resolve(ModelAttributeResolver::class)->resolveAttribute($this->closureRelationModelClass, $propertyName);
+
+        if ($tsInfo['type'] === 'unknown') {
+            return $this->unknownResult();
+        }
+
+        $info = ['type' => $tsInfo['type'], 'optional' => false];
+
+        /** @var class-string|null $enumFqcn */
+        $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
+
+        if ($enumFqcn !== null) {
+            $info['directEnumFqcn'] = $enumFqcn;
+        }
+
+        return $info;
+    }
+
+    /**
+     * Resolve a method call (instance or static) on a related model within a whenLoaded closure.
+     *
+     * Uses `LaravelTsPublish::methodReturnedTypes()` to resolve from the method's
+     * declared return type hint.
+     *
+     * @return ValueExpressionResult
+     */
+    protected function analyzeRelatedModelMethodCall(string $methodName): array
+    {
+        if ($this->closureRelationModelClass === null) {
+            return $this->unknownResult();
+        }
+
+        $tsInfo = resolve(ModelAttributeResolver::class)->resolveMethodReturnType($this->closureRelationModelClass, $methodName);
+
+        if ($tsInfo['type'] !== '' && $tsInfo['type'] !== 'unknown') {
+            return [...$tsInfo, 'optional' => false];
+        }
+
+        return $this->unknownResult();
+    }
+
+    /**
      * Determine the TypeScript type for a backed enum's `->value` property by inspecting
      * the `@var` docblock on the resource's `$resource` property and resolving any short
      * class name via the file's use-statement map.
@@ -1572,6 +1731,10 @@ class ResourceAstAnalyzer
      * Find the best Return_ statement that yields an Array_ literal.
      *
      * Prefers the return with the most array items (non-empty over empty).
+     * Only considers Return_ statements at the direct statement level —
+     * returns nested inside closures, arrow functions, or anonymous classes
+     * are excluded to avoid selecting inner scope returns.
+     *
      * This handles guard-then-return patterns like:
      *   if (!$this->resource instanceof X) { return []; }
      *   return ['name' => ..., 'value' => ...];
@@ -1581,9 +1744,9 @@ class ResourceAstAnalyzer
     protected function findBestArrayReturn(array $stmts, NodeFinder $finder): ?Return_
     {
         /** @var list<Return_> $candidates */
-        $candidates = $finder->find($stmts, function (Node $node): bool {
-            return $node instanceof Return_ && $node->expr instanceof Array_;
-        });
+        $candidates = [];
+
+        $this->collectDirectReturns($stmts, $candidates);
 
         if ($candidates === []) {
             return null;
@@ -1603,6 +1766,46 @@ class ResourceAstAnalyzer
         }
 
         return $best;
+    }
+
+    /**
+     * Recursively collect Return_ statements with Array_ expressions from
+     * the given statements, descending into control-flow structures (if, foreach, etc.)
+     * but NOT into closures, arrow functions, or anonymous classes.
+     *
+     * @param  array<Node\Stmt|Node>  $stmts
+     * @param  list<Return_>  $candidates
+     */
+    protected function collectDirectReturns(array $stmts, array &$candidates): void
+    {
+        foreach ($stmts as $stmt) {
+            if ($stmt instanceof Return_ && $stmt->expr instanceof Array_) {
+                $candidates[] = $stmt;
+
+                continue;
+            }
+
+            // Descend into control-flow blocks (if/elseif/else, foreach, for, while, do-while)
+            if ($stmt instanceof If_) {
+                $this->collectDirectReturns($stmt->stmts, $candidates);
+
+                foreach ($stmt->elseifs as $elseif) {
+                    $this->collectDirectReturns($elseif->stmts, $candidates);
+                }
+
+                if ($stmt->else !== null) {
+                    $this->collectDirectReturns($stmt->else->stmts, $candidates);
+                }
+
+                continue;
+            }
+
+            if ($stmt instanceof Foreach_ || $stmt instanceof For_ || $stmt instanceof While_ || $stmt instanceof Do_) {
+                $this->collectDirectReturns($stmt->stmts, $candidates);
+            }
+
+            // Do NOT descend into closures, arrow functions, or anonymous classes
+        }
     }
 
     /**
