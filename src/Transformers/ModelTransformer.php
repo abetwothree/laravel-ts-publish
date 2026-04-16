@@ -222,6 +222,8 @@ class ModelTransformer extends CoreTransformer
 
         $attributes = $allAttributes->filter(fn (array $attr) => in_array($attr['name'], $this->dbColumns));
 
+        $resolver = resolve(ModelAttributeResolver::class);
+
         foreach ($attributes as $attribute) {
             $name = $attribute['name'];
 
@@ -235,16 +237,15 @@ class ModelTransformer extends CoreTransformer
             $cast = $attribute['cast'];
 
             // Resolve type through the centralised accessor → cast → DB type waterfall
-            $typings = resolve(ModelAttributeResolver::class)->resolveAttribute($this->findable, $name);
+            $typings = $resolver->resolveAttribute($this->findable, $name);
 
             // When the resolver returns unknown, fall back to the raw input so that
             // downstream enum/class metadata still propagates when available.
             if ($typings['type'] === 'unknown') {
-                if ($cast === 'attribute' || $cast === 'accessor') {
-                    $typings = LaravelTsPublish::phpToTypeScriptType($attribute['type'] ?? '');
-                } else {
-                    $typings = LaravelTsPublish::phpToTypeScriptType($cast ?? $attribute['type'] ?? '');
-                }
+                $typings = match ($cast) {
+                    'attribute', 'accessor' => LaravelTsPublish::phpToTypeScriptType($attribute['type'] ?? ''),
+                    default => LaravelTsPublish::phpToTypeScriptType($cast ?? $attribute['type'] ?? ''),
+                };
             }
 
             $type = $typings['type'];

@@ -14,7 +14,7 @@ test('models collector works correctly', function () {
 
     expect($models)
         ->toBeInstanceOf(Collection::class)
-        ->toHaveCount(36)
+        ->toHaveCount(37)
         ->toContain('Workbench\App\Models\TrackingEvent');
 });
 
