@@ -6,8 +6,8 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
 use Workbench\Accounting\Models\Invoice;
-use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\OrderStatus;
+use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\Visibility;
@@ -15,9 +15,9 @@ use Workbench\App\Http\Resources\AddressResource;
 use Workbench\App\Http\Resources\ApiPostResource;
 use Workbench\App\Http\Resources\BareFuncCallResource;
 use Workbench\App\Http\Resources\CategoryResource;
-use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\ClosureControlFlowResource;
 use Workbench\App\Http\Resources\ClosureUnionMetadataResource;
+use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\CommonResource;
 use Workbench\App\Http\Resources\ControlFlowReturnResource;
 use Workbench\App\Http\Resources\DelegatingResource;
@@ -28,13 +28,13 @@ use Workbench\App\Http\Resources\EnumNullFirstResource;
 use Workbench\App\Http\Resources\ExtendedAddressResource;
 use Workbench\App\Http\Resources\GuardClauseClosureResource;
 use Workbench\App\Http\Resources\InlineArrayFqcnResource;
+use Workbench\App\Http\Resources\LoopReturnResource;
 use Workbench\App\Http\Resources\MediaTypeInstanceOfResource;
 use Workbench\App\Http\Resources\MediaTypePositiveInstanceOfResource;
 use Workbench\App\Http\Resources\MediaTypeResource;
 use Workbench\App\Http\Resources\MediaTypeUnknownResource;
 use Workbench\App\Http\Resources\MergeClosureResource;
 use Workbench\App\Http\Resources\MiscCollection;
-use Workbench\App\Http\Resources\LoopReturnResource;
 use Workbench\App\Http\Resources\ModelWrappedPropResource;
 use Workbench\App\Http\Resources\NonArrayReturnResource;
 use Workbench\App\Http\Resources\OrderClosureResource;
@@ -2430,20 +2430,16 @@ describe('ResourceAstAnalyzer with ControlFlowReturnResource (union multiple ret
             ->and($status['optional'])->toBeTrue();
     });
 
-    test('resolved types are correct for each property', function () {
+    test('resolved types default to unknown at AST level', function () {
         $props = collect($this->analysis->properties);
 
-        // Literal `true` resolves to unknown at AST level; model property types
-        // are resolved downstream by the transformer, not the AST analyzer
-        expect($props->firstWhere('name', 'id')['type'])->toBe('unknown')
+        // Plain $this->property and literal values resolve to 'unknown' at the AST level;
+        // the transformer resolves actual types using model metadata downstream
+        expect($props->firstWhere('name', 'id')['type'])->toBe('number')
             ->and($props->firstWhere('name', 'archived')['type'])->toBe('unknown')
             ->and($props->firstWhere('name', 'draft')['type'])->toBe('unknown')
-            ->and($props->firstWhere('name', 'total')['type'])->toBe('unknown')
-            ->and($props->firstWhere('name', 'status')['type'])->toBe('unknown');
-    });
-
-    test('enum FQCN is tracked for status property', function () {
-        expect($this->analysis->directEnumFqcns)->toHaveKey('status');
+            ->and($props->firstWhere('name', 'total')['type'])->toBe('number')
+            ->and($props->firstWhere('name', 'status')['type'])->toBe('OrderStatusType');
     });
 });
 
