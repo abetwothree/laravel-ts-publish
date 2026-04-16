@@ -1,0 +1,1 @@
+export { default as NestedController } from './nested-controller';
