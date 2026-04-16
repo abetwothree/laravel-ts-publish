@@ -17,7 +17,15 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
+use PhpParser\Node\Stmt;
+use PhpParser\Node\Stmt\Do_;
+use PhpParser\Node\Stmt\For_;
+use PhpParser\Node\Stmt\Foreach_;
+use PhpParser\Node\Stmt\If_;
 use PhpParser\Node\Stmt\Return_;
+use PhpParser\Node\Stmt\Switch_;
+use PhpParser\Node\Stmt\TryCatch;
+use PhpParser\Node\Stmt\While_;
 
 /**
  * AST node inspection and predicate helpers for resource analysis.
@@ -138,25 +146,100 @@ trait InspectsAstNodes
     }
 
     /**
-     * Resolve the return expression from a closure or arrow function.
+     * Collect ALL return expressions from a closure or arrow function, producing
+     * one entry per distinct return path. Used to build union types when a closure
+     * has multiple return branches (e.g. guard clause + data array).
      *
-     * - ArrowFunction: returns the expression body directly.
-     * - Closure: returns the expression from the first Return_ statement.
+     * - ArrowFunction: single-element list with the expression body.
+     * - Closure: collects every top-level Return_ with a non-null expression,
+     *   recursing into if/else and switch blocks but NOT into nested closures.
+     *
+     * @return list<Expr>
      */
-    protected function resolveClosureReturnExpression(Expr $expr): ?Expr
+    protected function resolveClosureReturnExpressions(Expr $expr): array
     {
         if ($expr instanceof ArrowFunction) {
-            return $expr->expr;
+            return [$expr->expr];
         }
 
         if ($expr instanceof ClosureExpr) {
-            foreach ($expr->stmts as $stmt) {
-                if ($stmt instanceof Return_ && $stmt->expr !== null) {
-                    return $stmt->expr;
+            return $this->collectReturnExpressions($expr->stmts);
+        }
+
+        return [];
+    }
+
+    /**
+     * Recursively collect Return_ expressions from a list of statements,
+     * descending into control-flow blocks (if/else, switch, try/catch, foreach,
+     * for, while, do-while) but NOT into nested closures or arrow functions.
+     *
+     * @param  array<Stmt>  $stmts
+     * @return list<Expr>
+     */
+    protected function collectReturnExpressions(array $stmts): array
+    {
+        /** @var list<Expr> $returns */
+        $returns = [];
+
+        foreach ($stmts as $stmt) {
+            if ($stmt instanceof Return_ && $stmt->expr !== null) {
+                $returns[] = $stmt->expr;
+
+                continue;
+            }
+
+            // Descend into control-flow blocks
+            if ($stmt instanceof If_) {
+                $returns = [...$returns, ...$this->collectReturnExpressions($stmt->stmts)];
+
+                foreach ($stmt->elseifs as $elseif) {
+                    $returns = [...$returns, ...$this->collectReturnExpressions($elseif->stmts)];
                 }
+
+                if ($stmt->else !== null) {
+                    $returns = [...$returns, ...$this->collectReturnExpressions($stmt->else->stmts)];
+                }
+
+                continue;
+            }
+
+            if ($stmt instanceof Switch_) {
+                foreach ($stmt->cases as $case) {
+                    $returns = [...$returns, ...$this->collectReturnExpressions($case->stmts)];
+                }
+
+                continue;
+            }
+
+            if ($stmt instanceof TryCatch) {
+                $returns = [...$returns, ...$this->collectReturnExpressions($stmt->stmts)];
+
+                foreach ($stmt->catches as $catch) {
+                    $returns = [...$returns, ...$this->collectReturnExpressions($catch->stmts)];
+                }
+
+                if ($stmt->finally !== null) {
+                    $returns = [...$returns, ...$this->collectReturnExpressions($stmt->finally->stmts)];
+                }
+
+                continue;
+            }
+
+            // Loop blocks (foreach, for, while, do-while)
+            if ($stmt instanceof Foreach_
+                || $stmt instanceof For_
+                || $stmt instanceof While_) {
+                $returns = [...$returns, ...$this->collectReturnExpressions($stmt->stmts)];
+
+                continue;
+            }
+
+            if ($stmt instanceof Do_) {
+                $returns = [...$returns, ...$this->collectReturnExpressions($stmt->stmts)];
             }
         }
 
-        return null;
+        return $returns;
     }
 }

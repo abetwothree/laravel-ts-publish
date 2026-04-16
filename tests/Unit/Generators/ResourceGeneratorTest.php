@@ -5,8 +5,12 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Workbench\App\Http\Resources\CommentResource;
+use Workbench\App\Http\Resources\GuardClauseClosureResource;
 use Workbench\App\Http\Resources\OrderResource;
 use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Http\Resources\SpreadWithClosureResource;
+use Workbench\App\Http\Resources\SpreadWithGuardClauseClosureResource;
+use Workbench\App\Http\Resources\SpreadWithGuardDoubleClosureReturnResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\Blog\Http\Resources\ApiArticleResource;
 
@@ -123,6 +127,79 @@ test('filename delegates to transformer', function () {
     $generator = resolve(ResourceGenerator::class, ['findable' => PostResource::class]);
 
     expect($generator->filename())->toBe('post-resource');
+});
+
+test('generates GuardClauseClosureResource with guard clause producing union with null', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.enums_use_tolki_package', false);
+
+    $generator = resolve(ResourceGenerator::class, ['findable' => GuardClauseClosureResource::class]);
+
+    expect($generator->content)
+        ->toContain('export interface GuardClauseClosureResource')
+        ->toContain('id: number')
+        ->toContain('total: number')
+        ->toContain('buyer?: { name: string; email: string } | null');
+});
+
+test('generates SpreadWithClosureResource with parent spread and closure whenLoaded', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.enums_use_tolki_package', false);
+
+    $generator = resolve(ResourceGenerator::class, ['findable' => SpreadWithClosureResource::class]);
+
+    expect($generator->content)
+        ->toContain("import type { MembershipLevelType, RoleType } from '../enums'")
+        ->toContain('export interface SpreadWithClosureResource')
+        // parent::toArray() spread model attributes
+        ->toContain('id: number')
+        ->toContain('name: string')
+        ->toContain('email: string')
+        ->toContain('role: RoleType | null')
+        // whenLoaded closure property
+        ->toContain('metadata?: { profile_bio: string | null');
+});
+
+test('generates SpreadWithGuardClauseClosureResource with guard clause and parent spread', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.enums_use_tolki_package', false);
+
+    $generator = resolve(ResourceGenerator::class, ['findable' => SpreadWithGuardClauseClosureResource::class]);
+
+    expect($generator->content)
+        ->toContain("import type { CurrencyType, OrderStatusType, PaymentMethodType, RoleType } from '../enums'")
+        ->toContain("import type { OrderItem, User } from '../models'")
+        ->toContain('export interface SpreadWithGuardClauseClosureResource')
+        // parent::toArray() spread model attributes
+        ->toContain('id: number')
+        ->toContain('status: OrderStatusType')
+        ->toContain('currency: CurrencyType')
+        ->toContain('user: User')
+        ->toContain('items: OrderItem[]')
+        // guard clause closure produces object shape | null
+        ->toContain('customer?: { name: string; email: string; phone: string | null; avatar: string | null; role: RoleType | null; is_premium: boolean; name_titled: string; morph: string } | null');
+});
+
+test('generates SpreadWithGuardDoubleClosureReturnResource with union of two shapes plus null', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.enums_use_tolki_package', false);
+
+    $generator = resolve(ResourceGenerator::class, ['findable' => SpreadWithGuardDoubleClosureReturnResource::class]);
+
+    expect($generator->content)
+        ->toContain("import type { CurrencyType, OrderStatusType, PaymentMethodType, RoleType } from '../enums'")
+        ->toContain("import type { OrderItem, User } from '../models'")
+        ->toContain('export interface SpreadWithGuardDoubleClosureReturnResource')
+        // parent::toArray() spread model attributes
+        ->toContain('id: number')
+        ->toContain('ulid: string')
+        ->toContain('status: OrderStatusType')
+        ->toContain('payment_method: PaymentMethodType | null')
+        ->toContain('currency: CurrencyType')
+        ->toContain('user: User')
+        ->toContain('items: OrderItem[]')
+        // Union: two distinct object shapes + null from guard clause
+        ->toContain('customer?: { name: string; initials: string; email: string; phone: string | null; avatar: string | null; role: RoleType | null; is_premium: boolean } | { name: string; email: string; phone: string | null; avatar: string | null; role: RoleType | null; is_premium: boolean; name_titled: string; morph: string } | null');
 });
 
 test('generates ApiArticleResource with parent trait spreads and enum types', function () {

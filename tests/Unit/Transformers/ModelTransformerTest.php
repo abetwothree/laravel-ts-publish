@@ -26,6 +26,7 @@ use Workbench\App\Models\StrictTaskAssignment;
 use Workbench\App\Models\Tag;
 use Workbench\App\Models\TaskAssignment;
 use Workbench\App\Models\TrackingEvent;
+use Workbench\App\Models\UntypedColumn;
 use Workbench\App\Models\User;
 use Workbench\App\Models\Warehouse;
 use Workbench\App\Relations\CompositeMorphTo;
@@ -1273,5 +1274,33 @@ describe('Image model @return Attribute<> docblock accessor resolution', functio
 
         expect($data->mutators)->toHaveKey('numeric_string_accessor')
             ->and($data->mutators['numeric_string_accessor']['type'])->toBe('string');
+    });
+});
+
+describe('ModelTransformer with UntypedColumn model (unknown-type fallback paths)', function () {
+    test('accessor on untyped column falls back via attribute match arm', function () {
+        $data = (new ModelTransformer(UntypedColumn::class))->data();
+
+        // accessor_col has Attribute accessor with no type hint on untyped column →
+        // resolver returns unknown → transformer fallback fires
+        expect($data->columns)->toHaveKey('accessor_col')
+            ->and($data->columns['accessor_col']['type'])->toBe('unknown | null');
+    });
+
+    test('untyped column with no cast falls back via default match arm', function () {
+        $data = (new ModelTransformer(UntypedColumn::class))->data();
+
+        // cast_col has no accessor and no cast on untyped column →
+        // resolver returns unknown → transformer fallback fires
+        expect($data->columns)->toHaveKey('cast_col')
+            ->and($data->columns['cast_col']['type'])->toBe('unknown | null');
+    });
+
+    test('nullable untyped column appends null to type', function () {
+        $data = (new ModelTransformer(UntypedColumn::class))->data();
+
+        // All untyped SQLite columns are nullable; the fallback returns 'unknown'
+        // which doesn't contain 'null', so the transformer appends ' | null'
+        expect($data->columns['nullable_accessor_col']['type'])->toBe('unknown | null');
     });
 });

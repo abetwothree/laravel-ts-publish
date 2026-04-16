@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Contracts\Support\Arrayable;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -280,6 +281,138 @@ describe('methodReturnedTypes', function () {
         $result = $this->service->methodReturnedTypes($reflection, 'nonExistentMethod');
 
         expect($result['type'])->toBe('unknown');
+    });
+
+    test('methodReturnedTypes does not fall back to docblock', function () {
+        $reflection = new ReflectionClass(DocblockReturnClass::class);
+        $result = $this->service->methodReturnedTypes($reflection, 'simpleString');
+
+        expect($result['type'])->toBe('unknown');
+    });
+});
+
+describe('methodOrDocblockReturnTypes', function () {
+    test('methodOrDocblockReturnTypes returns type info for a typed method', function () {
+        $reflection = new ReflectionClass(Status::class);
+        $result = $this->service->methodOrDocblockReturnTypes($reflection, 'icon');
+
+        expect($result['type'])->toBe('string');
+    });
+
+    test('methodOrDocblockReturnTypes returns empty info for a missing method', function () {
+        $reflection = new ReflectionClass(Status::class);
+        $result = $this->service->methodOrDocblockReturnTypes($reflection, 'nonExistentMethod');
+
+        expect($result['type'])->toBe('unknown');
+    });
+
+    test('methodOrDocblockReturnTypes falls back to @return docblock for simple type', function () {
+        $reflection = new ReflectionClass(DocblockReturnClass::class);
+        $result = $this->service->methodOrDocblockReturnTypes($reflection, 'simpleString');
+
+        expect($result['type'])->toBe('string');
+    });
+
+    test('methodOrDocblockReturnTypes falls back to @return docblock for union type', function () {
+        $reflection = new ReflectionClass(DocblockReturnClass::class);
+        $result = $this->service->methodOrDocblockReturnTypes($reflection, 'unionStringNull');
+
+        expect($result['type'])->toBe('string | null');
+    });
+
+    test('methodOrDocblockReturnTypes falls back to @return docblock for triple union type', function () {
+        $reflection = new ReflectionClass(DocblockReturnClass::class);
+        $result = $this->service->methodOrDocblockReturnTypes($reflection, 'tripleUnion');
+
+        expect($result['type'])->toBe('number | string | null');
+    });
+
+    test('methodOrDocblockReturnTypes returns empty info when no @return tag in docblock', function () {
+        $reflection = new ReflectionClass(DocblockReturnClass::class);
+        $result = $this->service->methodOrDocblockReturnTypes($reflection, 'noReturnTag');
+
+        expect($result['type'])->toBe('unknown');
+    });
+
+    test('methodOrDocblockReturnTypes returns empty info when no docblock at all', function () {
+        $reflection = new ReflectionClass(DocblockReturnClass::class);
+        $result = $this->service->methodOrDocblockReturnTypes($reflection, 'noDocblock');
+
+        expect($result['type'])->toBe('unknown');
+    });
+
+    test('methodOrDocblockReturnTypes handles @return ?string nullable shorthand', function () {
+        $reflection = new ReflectionClass(DocblockReturnClass::class);
+        $result = $this->service->methodOrDocblockReturnTypes($reflection, 'nullableShorthand');
+
+        expect($result['type'])->toBe('string | null');
+    });
+});
+
+describe('docblockReturnTypes', function () {
+    test('docblockReturnTypes resolves simple @return type', function () {
+        $method = new ReflectionMethod(DocblockReturnClass::class, 'simpleString');
+        $result = $this->service->docblockReturnTypes($method);
+
+        expect($result['type'])->toBe('string');
+    });
+
+    test('docblockReturnTypes resolves union @return type', function () {
+        $method = new ReflectionMethod(DocblockReturnClass::class, 'unionStringNull');
+        $result = $this->service->docblockReturnTypes($method);
+
+        expect($result['type'])->toBe('string | null');
+    });
+
+    test('docblockReturnTypes returns empty info when no docblock', function () {
+        $method = new ReflectionMethod(DocblockReturnClass::class, 'noDocblock');
+        $result = $this->service->docblockReturnTypes($method);
+
+        expect($result['type'])->toBe('unknown');
+    });
+
+    test('docblockReturnTypes returns empty info when no @return tag', function () {
+        $method = new ReflectionMethod(DocblockReturnClass::class, 'noReturnTag');
+        $result = $this->service->docblockReturnTypes($method);
+
+        expect($result['type'])->toBe('unknown');
+    });
+});
+
+describe('attributeDocblockReturnTypes', function () {
+    test('attributeDocblockReturnTypes resolves Attribute<string, never>', function () {
+        $method = new ReflectionMethod(AttributeDocblockClass::class, 'withAttributeGeneric');
+        $result = $this->service->attributeDocblockReturnTypes($method);
+
+        expect($result['type'])->toBe('string');
+    });
+
+    test('attributeDocblockReturnTypes falls back to @return for non-Attribute docblock', function () {
+        $method = new ReflectionMethod(DocblockReturnClass::class, 'simpleString');
+        $result = $this->service->attributeDocblockReturnTypes($method);
+
+        expect($result['type'])->toBe('string');
+    });
+
+    test('attributeDocblockReturnTypes returns empty info when no docblock', function () {
+        $method = new ReflectionMethod(DocblockReturnClass::class, 'noDocblock');
+        $result = $this->service->attributeDocblockReturnTypes($method);
+
+        expect($result['type'])->toBe('unknown');
+    });
+
+    test('attributeDocblockReturnTypes resolves single-line docblock', function () {
+        $method = new ReflectionMethod(AttributeDocblockClass::class, 'withAttributeSingleLine');
+        $result = $this->service->attributeDocblockReturnTypes($method);
+
+        expect($result['type'])->toBe('string');
+    });
+
+    test('attributeDocblockReturnTypes ignores @return in comment and uses actual tag', function () {
+        $method = new ReflectionMethod(AttributeDocblockClass::class, 'withAttributeAndComment');
+        $result = $this->service->attributeDocblockReturnTypes($method);
+
+        expect($result['type'])->toBe('string');
     });
 });
 
@@ -1096,5 +1229,81 @@ class StringableValueObject
     public function __toString(): string
     {
         return 'value';
+    }
+}
+
+/**
+ * Fixture class with methods that have @return docblocks but no PHP return type hints.
+ */
+class DocblockReturnClass
+{
+    /**
+     * @return string
+     */
+    public function simpleString()
+    {
+        return 'hello';
+    }
+
+    /**
+     * @return string|null
+     */
+    public function unionStringNull()
+    {
+        return null;
+    }
+
+    /**
+     * @return int|string|null
+     */
+    public function tripleUnion()
+    {
+        return 42;
+    }
+
+    /** No @return tag here. */
+    public function noReturnTag()
+    {
+        return 'hello';
+    }
+
+    public function noDocblock()
+    {
+        return 'hello';
+    }
+
+    /**
+     * @return ?string
+     */
+    public function nullableShorthand()
+    {
+        return null;
+    }
+}
+
+class AttributeDocblockClass
+{
+    /**
+     * @return Attribute<string, never>
+     */
+    public function withAttributeGeneric()
+    {
+        return null;
+    }
+
+    /** @return Attribute<string, never> */
+    public function withAttributeSingleLine()
+    {
+        return '';
+    }
+
+    /**
+     * The @return Attribute<number, never> doc block should be string.
+     *
+     * @return Attribute<string, never>
+     */
+    public function withAttributeAndComment()
+    {
+        return '';
     }
 }
