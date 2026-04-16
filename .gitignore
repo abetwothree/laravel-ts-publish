@@ -31,7 +31,11 @@ phpstan.neon
 /coverage
 coverage.xml
 workbench/database/database.sqlite
+workbench/bootstrap/cache
 workbench/resources/js/types/data
 clover.xml
 AGENTS.md
 CLAUDE.md
+
+# AI
+.claude

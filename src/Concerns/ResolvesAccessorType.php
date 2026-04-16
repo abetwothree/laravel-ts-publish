@@ -9,7 +9,6 @@ use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use ReflectionClass;
-use ReflectionMethod;
 
 /**
  * Resolves the TypeScript type of a model accessor or mutator by name,
@@ -48,12 +47,13 @@ trait ResolvesAccessorType
                     $getter = $attrInstance->get;
 
                     $getterReturn = LaravelTsPublish::closureReturnedTypes($getter);
+
                     if ($getterReturn['type'] !== 'unknown') {
                         return $getterReturn;
                     }
 
-                    // read from doc blocks */
-                    return $this->resolveAccessorTypeFromMethodDocBlock($method);
+                    // read from doc blocks — tries Attribute<Get, Set> first, then @return
+                    return LaravelTsPublish::attributeDocblockReturnTypes($method);
                 }
 
                 // write-only mutator (set only, no get) — not readable on the model shape
@@ -63,74 +63,13 @@ trait ResolvesAccessorType
 
         // Old-style: public function getTitleDisplayAttribute($value): string
         if ($reflectionModel->hasMethod($oldStyle)) {
-            $getterReturn = LaravelTsPublish::methodReturnedTypes($reflectionModel, $oldStyle);
+            $getterReturn = LaravelTsPublish::methodOrDocblockReturnTypes($reflectionModel, $oldStyle);
+
             if ($getterReturn['type'] !== 'unknown') {
                 return $getterReturn;
             }
-
-            // read from doc blocks */
-            return $this->resolveAccessorTypeFromMethodDocBlock($reflectionModel->getMethod($oldStyle));
         }
 
         return $result;
-    }
-
-    /**
-     * Attempt to read from @return Attribute<string, never> or similar docblock on the accessor method.
-     *
-     * The first parameter of Attribute<string, never> is the return type of the getter,
-     * and the second parameter is the accepted type for the setter.
-     *
-     * @return TypeScriptTypeInfo
-     */
-    protected function resolveAccessorTypeFromMethodDocBlock(ReflectionMethod $method): array
-    {
-        $emptyResult = LaravelTsPublish::emptyTypeScriptInfo();
-        $docComment = $method->getDocComment();
-        if ($docComment === false) {
-            return $emptyResult;
-        }
-
-        // Look for @return Attribute<GetterType, SetterType>
-        if (preg_match('/@return\s+Attribute\s*<\s*([^,>\s]+)\s*,\s*([^>]+)\s*>/i', $docComment, $matches)) {
-            $getterType = trim($matches[1]);
-
-            return $this->resolveAccessorTypesFromMatches($method, $getterType);
-        }
-
-        // look for @return TypeName (non-Attribute) — less precise, but still better than unknown
-        if (preg_match('/@return\s+([^\s]+)/', $docComment, $matches)) {
-            $getterType = trim($matches[1]);
-
-            return $this->resolveAccessorTypesFromMatches($method, $getterType);
-        }
-
-        return $emptyResult; // @codeCoverageIgnore
-    }
-
-    /** @return TypeScriptTypeInfo */
-    protected function resolveAccessorTypesFromMatches(ReflectionMethod $method, string $getterType): array
-    {
-        $parts = array_map('trim', explode('|', $getterType));
-
-        // Resolve each part against the declaring class's use statements so that
-        // short names (after Pint reformats FQCNs) still resolve to the right class.
-        $declaringClass = $method->getDeclaringClass();
-        $parts = array_map(
-            fn (string $part) => $this->resolveDocblockType($part, $declaringClass),
-            $parts,
-        );
-
-        if (count($parts) === 1) {
-            return LaravelTsPublish::toTsType($parts[0]);
-        }
-
-        // Union type: convert each component and merge all metadata
-        $infos = array_map(
-            fn (string $part) => LaravelTsPublish::toTsType($this->resolveDocblockType($part, $declaringClass)),
-            $parts,
-        );
-
-        return LaravelTsPublish::mergeTypeScriptInfos($infos);
     }
 }

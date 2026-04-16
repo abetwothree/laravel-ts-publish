@@ -6,25 +6,35 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
 use Workbench\Accounting\Models\Invoice;
+use Workbench\App\Enums\OrderStatus;
 use Workbench\App\Enums\Priority;
+use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Resources\AddressResource;
 use Workbench\App\Http\Resources\ApiPostResource;
 use Workbench\App\Http\Resources\BareFuncCallResource;
 use Workbench\App\Http\Resources\CategoryResource;
+use Workbench\App\Http\Resources\ClosureControlFlowResource;
+use Workbench\App\Http\Resources\ClosureUnionMetadataResource;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\CommonResource;
+use Workbench\App\Http\Resources\ControlFlowReturnResource;
 use Workbench\App\Http\Resources\DelegatingResource;
 use Workbench\App\Http\Resources\DelegatingWithMixinResource;
 use Workbench\App\Http\Resources\EmptyResource;
 use Workbench\App\Http\Resources\EmptyWithMixinResource;
 use Workbench\App\Http\Resources\EnumNullFirstResource;
 use Workbench\App\Http\Resources\ExtendedAddressResource;
+use Workbench\App\Http\Resources\GuardClauseClosureResource;
+use Workbench\App\Http\Resources\InlineArrayFqcnResource;
+use Workbench\App\Http\Resources\LoopReturnResource;
 use Workbench\App\Http\Resources\MediaTypeInstanceOfResource;
 use Workbench\App\Http\Resources\MediaTypePositiveInstanceOfResource;
 use Workbench\App\Http\Resources\MediaTypeResource;
 use Workbench\App\Http\Resources\MediaTypeUnknownResource;
+use Workbench\App\Http\Resources\MergeClosureResource;
+use Workbench\App\Http\Resources\MergeMultiBranchClosureResource;
 use Workbench\App\Http\Resources\MiscCollection;
 use Workbench\App\Http\Resources\ModelWrappedPropResource;
 use Workbench\App\Http\Resources\NonArrayReturnResource;
@@ -41,6 +51,9 @@ use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\QuirkyResource;
 use Workbench\App\Http\Resources\SpreadJsonBaseResource;
+use Workbench\App\Http\Resources\SpreadWithClosureResource;
+use Workbench\App\Http\Resources\SpreadWithGuardClauseClosureResource;
+use Workbench\App\Http\Resources\SpreadWithGuardDoubleClosureReturnResource;
 use Workbench\App\Http\Resources\TagResource;
 use Workbench\App\Http\Resources\TeamMemberResource;
 use Workbench\App\Http\Resources\TeamResource;
@@ -2061,5 +2074,494 @@ describe('ResourceAstAnalyzer with ModelWrappedPropResource (model $this->resour
         $title = collect($analysis->properties)->firstWhere('name', 'title');
 
         expect($title['type'])->toBe('string');
+    });
+});
+
+describe('ResourceAstAnalyzer with SpreadWithClosureResource (Bug 1: findBestArrayReturn scope boundary)', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(SpreadWithClosureResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, User::class))->analyze();
+    });
+
+    test('selects the outer toArray return, not the nested closure return', function () {
+        $names = array_column($this->analysis->properties, 'name');
+
+        // The closure's inner properties should NOT appear as top-level properties
+        expect($names)->not->toContain('profile_bio')
+            ->and($names)->not->toContain('profile_avatar')
+            ->and($names)->not->toContain('profile_theme')
+            ->and($names)->not->toContain('profile_locale');
+    });
+
+    test('includes model attributes from ...parent::toArray() spread', function () {
+        $names = array_column($this->analysis->properties, 'name');
+
+        expect($names)->toContain('id')
+            ->and($names)->toContain('name')
+            ->and($names)->toContain('email');
+    });
+
+    test('includes the whenLoaded key as an optional property', function () {
+        $metadata = collect($this->analysis->properties)->firstWhere('name', 'metadata');
+
+        expect($metadata)->not->toBeNull()
+            ->and($metadata['optional'])->toBeTrue();
+    });
+
+    test('whenLoaded closure resolves to an inline object type', function () {
+        $metadata = collect($this->analysis->properties)->firstWhere('name', 'metadata');
+
+        expect($metadata)->not->toBeNull()
+            ->and($metadata['type'])->toContain('profile_bio')
+            ->and($metadata['type'])->toContain('profile_avatar')
+            ->and($metadata['type'])->toContain('profile_theme')
+            ->and($metadata['type'])->toContain('profile_locale');
+    });
+
+    test('model attributes appear before the whenLoaded key', function () {
+        $names = array_column($this->analysis->properties, 'name');
+        $idIndex = array_search('id', $names, true);
+        $metadataIndex = array_search('metadata', $names, true);
+
+        expect($idIndex)->toBeLessThan($metadataIndex);
+    });
+});
+
+describe('ResourceAstAnalyzer with GuardClauseClosureResource (Bug 2: resolveClosureReturnExpression guard clause)', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(GuardClauseClosureResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, Order::class))->analyze();
+    });
+
+    test('resolves closure past guard clause to the data array, not null', function () {
+        $buyer = collect($this->analysis->properties)->firstWhere('name', 'buyer');
+
+        expect($buyer)->not->toBeNull()
+            ->and($buyer['type'])->not->toBe('null')
+            ->and($buyer['type'])->toContain('name')
+            ->and($buyer['type'])->toContain('email');
+    });
+
+    test('resolves chained $this->relation->property types against the related model', function () {
+        $buyer = collect($this->analysis->properties)->firstWhere('name', 'buyer');
+
+        // $this->user->name is an accessor on User with return type string
+        expect($buyer['type'])->toContain('name: string')
+            // $this->user->email is a column on User (string)
+            ->and($buyer['type'])->toContain('email: string');
+    });
+
+    test('whenLoaded with guard-clause closure is optional', function () {
+        $buyer = collect($this->analysis->properties)->firstWhere('name', 'buyer');
+
+        expect($buyer)->not->toBeNull()
+            ->and($buyer['optional'])->toBeTrue();
+    });
+
+    test('explicit properties are still extracted alongside the closure key', function () {
+        $names = array_column($this->analysis->properties, 'name');
+
+        expect($names)->toContain('id')
+            ->and($names)->toContain('total')
+            ->and($names)->toContain('buyer');
+    });
+});
+
+describe('ResourceAstAnalyzer with SpreadWithGuardClauseClosureResource (Bug 1 + Bug 2 combined)', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(SpreadWithGuardClauseClosureResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, Order::class))->analyze();
+    });
+
+    test('selects the outer toArray return, not the nested closure return', function () {
+        $names = array_column($this->analysis->properties, 'name');
+
+        // The closure's inner properties should NOT be top-level
+        expect($names)->not->toContain('phone')
+            ->and($names)->not->toContain('avatar')
+            ->and($names)->not->toContain('role');
+    });
+
+    test('includes model attributes from ...parent::toArray() spread', function () {
+        $names = array_column($this->analysis->properties, 'name');
+
+        expect($names)->toContain('id')
+            ->and($names)->toContain('total');
+    });
+
+    test('includes the customer whenLoaded key as an optional property', function () {
+        $customer = collect($this->analysis->properties)->firstWhere('name', 'customer');
+
+        expect($customer)->not->toBeNull()
+            ->and($customer['optional'])->toBeTrue();
+    });
+
+    test('customer closure resolves past guard clause to inline object shape', function () {
+        $customer = collect($this->analysis->properties)->firstWhere('name', 'customer');
+
+        expect($customer)->not->toBeNull()
+            ->and($customer['type'])->not->toBe('null')
+            ->and($customer['type'])->toContain('name')
+            ->and($customer['type'])->toContain('email')
+            ->and($customer['type'])->toContain('phone')
+            ->and($customer['type'])->toContain('avatar')
+            ->and($customer['type'])->toContain('role');
+    });
+
+    test('resolves $variable->property types against the related model', function () {
+        $customer = collect($this->analysis->properties)->firstWhere('name', 'customer');
+
+        // $user->name — accessor on User with string return type
+        expect($customer['type'])->toContain('name: string')
+            // $user->email — string column on User
+            ->and($customer['type'])->toContain('email: string')
+            // $user->phone — nullable string column on User
+            ->and($customer['type'])->toContain('phone: string | null')
+            // $user->avatar — nullable string column on User
+            ->and($customer['type'])->toContain('avatar: string | null');
+    });
+
+    test('resolves $variable->accessor against the related model', function () {
+        $customer = collect($this->analysis->properties)->firstWhere('name', 'customer');
+
+        // $user->is_premium — accessor on User with bool return type
+        expect($customer['type'])->toContain('is_premium: boolean');
+    });
+
+    test('resolves $variable enum-cast property against the related model', function () {
+        $customer = collect($this->analysis->properties)->firstWhere('name', 'customer');
+
+        // $user->role — cast to Role enum on User, nullable
+        expect($customer['type'])->toContain('role: RoleType | null');
+    });
+
+    test('resolves $variable->method() return type against the related model', function () {
+        $customer = collect($this->analysis->properties)->firstWhere('name', 'customer');
+
+        // $user->nameTitled() — instance method on User with : string return type
+        expect($customer['type'])->toContain('name_titled: string');
+    });
+
+    test('resolves $variable::staticMethod() return type against the related model', function () {
+        $customer = collect($this->analysis->properties)->firstWhere('name', 'customer');
+
+        // $user::morphValue() — static method on User with : string return type
+        expect($customer['type'])->toContain('morph: string');
+    });
+
+    test('model attributes appear before the customer whenLoaded key', function () {
+        $names = array_column($this->analysis->properties, 'name');
+        $idIndex = array_search('id', $names, true);
+        $customerIndex = array_search('customer', $names, true);
+
+        expect($idIndex)->toBeLessThan($customerIndex);
+    });
+
+    test('enum FQCNs from inside inline object are propagated to directEnumFqcns', function () {
+        // $user->role is cast to Role::class — the FQCN should appear in directEnumFqcns
+        // even though it's inside the nested inline object for the customer property
+        expect($this->analysis->directEnumFqcns)->toContain(Role::class);
+    });
+});
+
+describe('ResourceAstAnalyzer with SpreadWithGuardDoubleClosureReturnResource (union return types)', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(SpreadWithGuardDoubleClosureReturnResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, Order::class))->analyze();
+    });
+
+    test('customer closure produces a union of two object shapes plus null', function () {
+        $customer = collect($this->analysis->properties)->firstWhere('name', 'customer');
+
+        expect($customer)->not->toBeNull()
+            ->and($customer['type'])->toContain('|')
+            ->and($customer['type'])->toEndWith('| null');
+    });
+
+    test('first object shape contains the premium-path keys', function () {
+        $customer = collect($this->analysis->properties)->firstWhere('name', 'customer');
+
+        // The premium path has 'initials' but NOT 'name_titled' or 'morph'
+        expect($customer['type'])->toContain('initials');
+    });
+
+    test('second object shape contains the default-path keys', function () {
+        $customer = collect($this->analysis->properties)->firstWhere('name', 'customer');
+
+        // The default path has 'name_titled' and 'morph' but NOT 'initials'
+        expect($customer['type'])->toContain('name_titled')
+            ->and($customer['type'])->toContain('morph');
+    });
+
+    test('both shapes share common keys with resolved types', function () {
+        $customer = collect($this->analysis->properties)->firstWhere('name', 'customer');
+
+        // Both branches include name, email, phone, avatar, role, is_premium
+        expect($customer['type'])->toContain('name: string')
+            ->and($customer['type'])->toContain('email: string')
+            ->and($customer['type'])->toContain('is_premium: boolean');
+    });
+
+    test('customer is marked as optional from whenLoaded', function () {
+        $customer = collect($this->analysis->properties)->firstWhere('name', 'customer');
+
+        expect($customer)->not->toBeNull()
+            ->and($customer['optional'])->toBeTrue();
+    });
+
+    test('model attributes from parent::toArray spread are still present', function () {
+        $names = array_column($this->analysis->properties, 'name');
+
+        expect($names)->toContain('id')
+            ->and($names)->toContain('total')
+            ->and($names)->toContain('customer');
+    });
+
+    test('enum FQCNs from both union branches are propagated', function () {
+        // role is cast to Role::class and appears in both branches
+        expect($this->analysis->directEnumFqcns)->toContain(Role::class);
+    });
+});
+
+describe('ResourceAstAnalyzer with ClosureControlFlowResource (collectReturnExpressions control flow)', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(ClosureControlFlowResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, Order::class))->analyze();
+    });
+
+    test('resolves closure with if/elseif/else branches into union type', function () {
+        $buyerInfo = collect($this->analysis->properties)->firstWhere('name', 'buyer_info');
+
+        expect($buyerInfo)->not->toBeNull()
+            ->and($buyerInfo['type'])->toContain('role')
+            ->and($buyerInfo['type'])->toContain('name');
+    });
+
+    test('resolves closure with switch cases into union type', function () {
+        $statusLabel = collect($this->analysis->properties)->firstWhere('name', 'status_label');
+
+        expect($statusLabel)->not->toBeNull()
+            ->and($statusLabel['type'])->toContain('label');
+    });
+
+    test('resolves closure with try/catch into union type', function () {
+        $safeTotal = collect($this->analysis->properties)->firstWhere('name', 'safe_total');
+
+        expect($safeTotal)->not->toBeNull()
+            ->and($safeTotal['type'])->toContain('amount');
+    });
+
+    test('resolves closure with foreach loop', function () {
+        $tags = collect($this->analysis->properties)->firstWhere('name', 'tags');
+
+        expect($tags)->not->toBeNull()
+            ->and($tags['type'])->toContain('first_item');
+    });
+
+    test('resolves closure with do-while loop', function () {
+        $retryResult = collect($this->analysis->properties)->firstWhere('name', 'retry_result');
+
+        expect($retryResult)->not->toBeNull()
+            ->and($retryResult['type'])->toContain('attempted');
+    });
+
+    test('all top-level properties are present', function () {
+        $names = array_column($this->analysis->properties, 'name');
+
+        expect($names)->toContain('id')
+            ->and($names)->toContain('buyer_info')
+            ->and($names)->toContain('status_label')
+            ->and($names)->toContain('safe_total')
+            ->and($names)->toContain('tags')
+            ->and($names)->toContain('retry_result');
+    });
+});
+
+describe('ResourceAstAnalyzer with MergeClosureResource (resolveClosureReturnExpression with Closure)', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(MergeClosureResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, Order::class))->analyze();
+    });
+
+    test('merge with closure resolves to the data array, not the guard clause', function () {
+        $names = array_column($this->analysis->properties, 'name');
+
+        expect($names)->toContain('user_name')
+            ->and($names)->toContain('user_email');
+    });
+
+    test('explicit properties alongside merge closure are present', function () {
+        $names = array_column($this->analysis->properties, 'name');
+
+        expect($names)->toContain('id');
+    });
+});
+
+describe('ResourceAstAnalyzer with ControlFlowReturnResource (union multiple return branches)', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(ControlFlowReturnResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, Order::class))->analyze();
+    });
+
+    test('includes properties from all if/elseif/else branches', function () {
+        $names = array_column($this->analysis->properties, 'name');
+
+        expect($names)->toContain('id')
+            ->and($names)->toContain('archived')
+            ->and($names)->toContain('draft')
+            ->and($names)->toContain('total')
+            ->and($names)->toContain('status');
+    });
+
+    test('property in all branches is required', function () {
+        $id = collect($this->analysis->properties)->firstWhere('name', 'id');
+
+        expect($id['optional'])->toBeFalse();
+    });
+
+    test('properties in only some branches are optional', function () {
+        $archived = collect($this->analysis->properties)->firstWhere('name', 'archived');
+        $draft = collect($this->analysis->properties)->firstWhere('name', 'draft');
+        $total = collect($this->analysis->properties)->firstWhere('name', 'total');
+        $status = collect($this->analysis->properties)->firstWhere('name', 'status');
+
+        expect($archived['optional'])->toBeTrue()
+            ->and($draft['optional'])->toBeTrue()
+            ->and($total['optional'])->toBeTrue()
+            ->and($status['optional'])->toBeTrue();
+    });
+
+    test('resolved types default to unknown at AST level', function () {
+        $props = collect($this->analysis->properties);
+
+        // Plain $this->property and literal values resolve to 'unknown' at the AST level;
+        // the transformer resolves actual types using model metadata downstream
+        expect($props->firstWhere('name', 'id')['type'])->toBe('number')
+            ->and($props->firstWhere('name', 'archived')['type'])->toBe('unknown')
+            ->and($props->firstWhere('name', 'draft')['type'])->toBe('unknown')
+            ->and($props->firstWhere('name', 'total')['type'])->toBe('number')
+            ->and($props->firstWhere('name', 'status')['type'])->toBe('OrderStatusType');
+    });
+});
+
+describe('ResourceAstAnalyzer with LoopReturnResource (collectDirectReturns loop)', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(LoopReturnResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, Order::class))->analyze();
+    });
+
+    test('collects return arrays from inside loop bodies and unions with fallback', function () {
+        $names = array_column($this->analysis->properties, 'name');
+
+        expect($names)->toContain('id')
+            ->and($names)->toContain('first_item_name')
+            ->and($names)->toContain('total');
+    });
+
+    test('branch-specific properties from loop are optional', function () {
+        $firstName = collect($this->analysis->properties)->firstWhere('name', 'first_item_name');
+        $total = collect($this->analysis->properties)->firstWhere('name', 'total');
+
+        expect($firstName['optional'])->toBeTrue()
+            ->and($total['optional'])->toBeTrue();
+    });
+
+    test('property in all branches from loop is required', function () {
+        $id = collect($this->analysis->properties)->firstWhere('name', 'id');
+
+        expect($id['optional'])->toBeFalse();
+    });
+
+    test('resolved types are correct for each property', function () {
+        $props = collect($this->analysis->properties);
+
+        expect($props->firstWhere('name', 'id')['type'])->toBe('number')
+            ->and($props->firstWhere('name', 'first_item_name')['type'])->toBe('unknown')
+            ->and($props->firstWhere('name', 'total')['type'])->toBe('number');
+    });
+});
+
+describe('ResourceAstAnalyzer with ClosureUnionMetadataResource (closure union FQCNs)', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(ClosureUnionMetadataResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, Order::class))->analyze();
+    });
+
+    test('enum FQCNs from closure union branches are propagated', function () {
+        expect($this->analysis->directEnumFqcns)->toContain(OrderStatus::class);
+    });
+
+    test('resource FQCNs from closure union branches are propagated', function () {
+        expect(array_values($this->analysis->nestedResources))
+            ->toContain(TagResource::class);
+    });
+
+    test('related model method call inside whenLoaded closure resolves type', function () {
+        $userTitled = collect($this->analysis->properties)->firstWhere('name', 'user_titled');
+
+        expect($userTitled)->not->toBeNull()
+            ->and($userTitled['type'])->toBe('string');
+    });
+
+    test('all top-level properties are present', function () {
+        $names = array_column($this->analysis->properties, 'name');
+
+        expect($names)->toContain('id')
+            ->and($names)->toContain('status_or_null')
+            ->and($names)->toContain('nested_or_null')
+            ->and($names)->toContain('user_titled')
+            ->and($names)->toContain('detail_or_null')
+            ->and($names)->toContain('items_or_null');
+    });
+});
+
+describe('ResourceAstAnalyzer with InlineArrayFqcnResource (inline array embedded FQCNs)', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(InlineArrayFqcnResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, Order::class))->analyze();
+    });
+
+    test('resource FQCNs from inline arrays in closures are propagated', function () {
+        expect(array_values($this->analysis->nestedResources))
+            ->toContain(AddressResource::class);
+    });
+
+    test('payload property is present and optional', function () {
+        $payload = collect($this->analysis->properties)->firstWhere('name', 'payload');
+
+        expect($payload)->not->toBeNull()
+            ->and($payload['optional'])->toBeTrue();
+    });
+});
+
+describe('ResourceAstAnalyzer with MergeMultiBranchClosureResource (multi-return merge closure)', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(MergeMultiBranchClosureResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, Order::class))->analyze();
+    });
+
+    test('includes properties from all merge closure branches', function () {
+        $names = array_column($this->analysis->properties, 'name');
+
+        expect($names)->toContain('id')
+            ->and($names)->toContain('archived_at')
+            ->and($names)->toContain('total')
+            ->and($names)->toContain('currency');
+    });
+
+    test('merge closure branch-specific properties are optional', function () {
+        $archivedAt = collect($this->analysis->properties)->firstWhere('name', 'archived_at');
+        $total = collect($this->analysis->properties)->firstWhere('name', 'total');
+        $currency = collect($this->analysis->properties)->firstWhere('name', 'currency');
+
+        expect($archivedAt['optional'])->toBeTrue()
+            ->and($total['optional'])->toBeTrue()
+            ->and($currency['optional'])->toBeTrue();
+    });
+
+    test('explicit property outside merge closure is required', function () {
+        $id = collect($this->analysis->properties)->firstWhere('name', 'id');
+
+        expect($id['optional'])->toBeFalse();
     });
 });
