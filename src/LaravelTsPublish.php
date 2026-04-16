@@ -16,6 +16,7 @@ use Illuminate\Support\Str;
 use ReflectionClass;
 use ReflectionFunction;
 use ReflectionIntersectionType;
+use ReflectionMethod;
 use ReflectionNamedType;
 use ReflectionType;
 use ReflectionUnionType;
@@ -315,6 +316,31 @@ class LaravelTsPublish
         return $this->resolveReflectionType($class->getMethod($method)->getReturnType());
     }
 
+    /**
+     * Like `methodReturnedTypes`, but falls back to the `@return` docblock
+     * when the method has no signature return type.
+     *
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $class
+     * @return TypeScriptTypeInfo
+     */
+    public function methodOrDocblockReturnTypes(ReflectionClass $class, string $method): array
+    {
+        if (! $class->hasMethod($method)) {
+            return $this->emptyTypeScriptInfo();
+        }
+
+        $reflectionMethod = $class->getMethod($method);
+        $returnType = $reflectionMethod->getReturnType();
+
+        if ($returnType !== null) {
+            return $this->resolveReflectionType($returnType);
+        }
+
+        return $this->docblockReturnTypes($reflectionMethod);
+    }
+
     /** @return TypeScriptTypeInfo */
     public function closureReturnedTypes(Closure $closure): array
     {
@@ -356,6 +382,191 @@ class LaravelTsPublish
         }
 
         return $result;
+    }
+
+    /**
+     * Parse the `@return` docblock of a method and resolve each type part
+     * through phpToTypeScriptType, resolving short class names via the
+     * declaring file's use statements.
+     *
+     * @return TypeScriptTypeInfo
+     */
+    public function docblockReturnTypes(ReflectionMethod $method): array
+    {
+        $docComment = $method->getDocComment();
+
+        if ($docComment === false) {
+            return $this->emptyTypeScriptInfo();
+        }
+
+        // Match @return that follows "* " to avoid grabbing from inline comments
+        if (! preg_match('/(?<=\* )@return\s+([^\s*]+)/', $docComment, $matches)) {
+            return $this->emptyTypeScriptInfo();
+        }
+
+        $returnTypeString = $matches[1];
+        $parts = explode('|', $returnTypeString);
+
+        // Build a use-map from the declaring file for short name resolution
+        $declaringClass = $method->getDeclaringClass();
+        $useMap = $this->parseFileUseStatements($declaringClass);
+        $namespace = $declaringClass->getNamespaceName();
+
+        $infos = [];
+
+        foreach ($parts as $part) {
+            $part = trim($part);
+
+            if ($part === '') {
+                continue; // @codeCoverageIgnore
+            }
+
+            $resolved = $this->resolveDocblockTypeName($part, $useMap, $namespace);
+            $infos[] = $this->phpToTypeScriptType($resolved);
+        }
+
+        if ($infos === []) {
+            return $this->emptyTypeScriptInfo(); // @codeCoverageIgnore
+        }
+
+        if (count($infos) === 1) {
+            return $infos[0];
+        }
+
+        return $this->mergeTypeScriptInfos($infos);
+    }
+
+    /**
+     * Parse `@return Attribute<GetterType, SetterType>` from a method's docblock
+     * and resolve the getter type.
+     *
+     * Falls back to `docblockReturnTypes()` when no `Attribute<…>` pattern is found.
+     *
+     * @return TypeScriptTypeInfo
+     */
+    public function attributeDocblockReturnTypes(ReflectionMethod $method): array
+    {
+        $docComment = $method->getDocComment();
+
+        if ($docComment === false) {
+            return $this->emptyTypeScriptInfo();
+        }
+
+        // Look for @return Attribute<GetterType, SetterType>
+        // Use lookbehind for "* " to avoid matching @return in inline comments
+        if (preg_match('/(?<=\* )@return\s+Attribute\s*<\s*([^,>\s]+)\s*,\s*([^>]+)\s*>/i', $docComment, $matches)) {
+            $getterType = trim($matches[1]);
+
+            return $this->resolveDocblockTypeString($method, $getterType);
+        }
+
+        // No Attribute<…> pattern — fall back to generic @return parsing
+        return $this->docblockReturnTypes($method);
+    }
+
+    /**
+     * Resolve a docblock type string (potentially a union like `string|null`)
+     * through use-statement resolution and phpToTypeScriptType.
+     *
+     * @return TypeScriptTypeInfo
+     */
+    protected function resolveDocblockTypeString(ReflectionMethod $method, string $typeString): array
+    {
+        $parts = array_map('trim', explode('|', $typeString));
+
+        $declaringClass = $method->getDeclaringClass();
+        $useMap = $this->parseFileUseStatements($declaringClass);
+        $namespace = $declaringClass->getNamespaceName();
+
+        $parts = array_map(
+            fn (string $part) => $this->resolveDocblockTypeName($part, $useMap, $namespace),
+            $parts,
+        );
+
+        if (count($parts) === 1) {
+            return $this->phpToTypeScriptType($parts[0]);
+        }
+
+        $infos = array_map(
+            fn (string $part) => $this->phpToTypeScriptType($part),
+            $parts,
+        );
+
+        return $this->mergeTypeScriptInfos($infos);
+    }
+
+    /**
+     * Resolve a docblock type name to a FQCN using the file's use statements and namespace.
+     *
+     * @param  array<string, string>  $useMap
+     */
+    public function resolveDocblockTypeName(string $type, array $useMap, string $namespace): string
+    {
+        // Nullable shorthand ?T → resolve T and re-prepend ?
+        if (str_starts_with($type, '?')) {
+            return '?'.$this->resolveDocblockTypeName(substr($type, 1), $useMap, $namespace);
+        }
+
+        // Fully qualified
+        if (str_starts_with($type, '\\')) {
+            return substr($type, 1); // @codeCoverageIgnore
+        }
+
+        // Check use-map for the root segment
+        $root = Str::before($type, '\\');
+
+        if (isset($useMap[$root])) {
+            $rest = Str::after($type, '\\');
+
+            return $rest !== $type ? $useMap[$root].'\\'.$rest : $useMap[$root];
+        }
+
+        // Try the declaring class's namespace
+        if ($namespace !== '') { // @codeCoverageIgnoreStart
+            $qualified = $namespace.'\\'.$type;
+
+            if (class_exists($qualified) || enum_exists($qualified)) {
+                return $qualified;
+            }
+        } // @codeCoverageIgnoreEnd
+
+        return $type;
+    }
+
+    /**
+     * Parse use statements from a class's source file into a short-name → FQCN map.
+     *
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $class
+     * @return array<string, string>
+     */
+    public function parseFileUseStatements(ReflectionClass $class): array
+    {
+        $fileName = $class->getFileName();
+
+        if ($fileName === false) {
+            return []; // @codeCoverageIgnore
+        }
+
+        $source = (string) file_get_contents($fileName);
+        $map = [];
+
+        preg_match_all(
+            '/^use\s+([\w\\\\]+)(?:\s+as\s+(\w+))?\s*;/m',
+            $source,
+            $matches,
+            PREG_SET_ORDER,
+        );
+
+        foreach ($matches as $match) {
+            $fqcn = $match[1];
+            $alias = $match[2] ?? '';
+            $short = $alias !== '' ? $alias : class_basename($fqcn);
+            $map[$short] = $fqcn;
+        }
+
+        return $map;
     }
 
     public function validJsObjectKey(string $key): string

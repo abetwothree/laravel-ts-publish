@@ -2,6 +2,14 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v1.4.0 - 2026-04-16
+
+### What's Changed
+
+* Ast handle closure data return by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/21
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v1.3.1...v1.4.0
+
 ## v1.3.1 - 2026-04-07
 
 Remove `no-op` reflection method

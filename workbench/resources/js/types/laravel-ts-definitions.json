@@ -796,6 +796,24 @@
                 "type": "boolean"
             }
         ],
+        "UntypedColumn": [
+            {
+                "name": "id",
+                "type": "number | null"
+            },
+            {
+                "name": "accessor_col",
+                "type": "unknown | null"
+            },
+            {
+                "name": "cast_col",
+                "type": "unknown | null"
+            },
+            {
+                "name": "nullable_accessor_col",
+                "type": "unknown | null"
+            }
+        ],
         "CompositeComment": [
             {
                 "name": "id",
@@ -5020,7 +5038,7 @@
             },
             {
                 "name": "post_extended",
-                "type": "{ id: number; title: string; content: string; user_id: number; status: StatusType; published_at: string | null; metadata: unknown[] | null; rating: number | null; category: string; options: unknown[] | null; deleted_at: string | null; category_id: number | null; visibility: VisibilityType | null; priority: PriorityType | null; word_count: number | null; reading_time_minutes: number | null; featured_image_url: string | null; is_pinned: boolean; title_display: string | null; excerpt: string | null; reading_time: string; author: User; categoryRel: Category; comments: Comment[]; tags: Tag[]; images: Image[] } | null",
+                "type": "{ id: number; title: string; content: string; user_id: number; status: StatusType; published_at: string | null; metadata: unknown[] | null; rating: number | null; category: string; options: unknown[] | null; deleted_at: string | null; category_id: number | null; visibility: VisibilityType | null; priority: PriorityType | null; word_count: number | null; reading_time_minutes: number | null; featured_image_url: string | null; is_pinned: boolean; title_display: string | null; excerpt: string | null; reading_time: string; author: User; categoryRel: Category | null; comments: Comment[]; tags: Tag[]; images: Image[] } | null",
                 "optional": false
             }
         ],
@@ -5052,6 +5070,18 @@
                 "name": "name",
                 "type": "string",
                 "optional": false
+            }
+        ],
+        "InlineArrayFqcnResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "payload",
+                "type": "{ address: AddressResource; items_loaded?: OrderItem[] } | null",
+                "optional": true
             }
         ],
         "ProfileResource": [
@@ -5111,6 +5141,33 @@
                 "name": "name",
                 "type": "string",
                 "optional": false
+            }
+        ],
+        "ControlFlowReturnResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "archived",
+                "type": "unknown",
+                "optional": true
+            },
+            {
+                "name": "draft",
+                "type": "unknown",
+                "optional": true
+            },
+            {
+                "name": "total",
+                "type": "number",
+                "optional": true
+            },
+            {
+                "name": "status",
+                "type": "OrderStatusType",
+                "optional": true
             }
         ],
         "MediaTypePositiveInstanceOfResource": [
@@ -5419,6 +5476,23 @@
                 "optional": false
             }
         ],
+        "LoopReturnResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "first_item_name",
+                "type": "unknown",
+                "optional": true
+            },
+            {
+                "name": "total",
+                "type": "number",
+                "optional": true
+            }
+        ],
         "Address": [
             {
                 "name": "morphValue",
@@ -5506,6 +5580,153 @@
                 "name": "total",
                 "type": "number",
                 "optional": false
+            }
+        ],
+        "SpreadWithClosureResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "name",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "email",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "email_verified_at",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "password",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "options",
+                "type": "Record<string, unknown> | null",
+                "optional": false
+            },
+            {
+                "name": "remember_token",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "created_at",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "role",
+                "type": "RoleType | null",
+                "optional": false
+            },
+            {
+                "name": "membership_level",
+                "type": "MembershipLevelType | null",
+                "optional": false
+            },
+            {
+                "name": "phone",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "avatar",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "bio",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "settings",
+                "type": "{ theme: \"light\" | \"dark\"; notifications: boolean; locale: string } | null",
+                "optional": false
+            },
+            {
+                "name": "last_login_at",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "last_login_ip",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "initials",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "is_premium",
+                "type": "boolean",
+                "optional": false
+            },
+            {
+                "name": "profile",
+                "type": "Profile | null",
+                "optional": false
+            },
+            {
+                "name": "posts",
+                "type": "Post[]",
+                "optional": false
+            },
+            {
+                "name": "comments",
+                "type": "Comment[]",
+                "optional": false
+            },
+            {
+                "name": "orders",
+                "type": "Order[]",
+                "optional": false
+            },
+            {
+                "name": "addresses",
+                "type": "Address[]",
+                "optional": false
+            },
+            {
+                "name": "teams",
+                "type": "Team[]",
+                "optional": false
+            },
+            {
+                "name": "ownedTeams",
+                "type": "Team[]",
+                "optional": false
+            },
+            {
+                "name": "images",
+                "type": "Image[]",
+                "optional": false
+            },
+            {
+                "name": "notifications",
+                "type": "DatabaseNotification[]",
+                "optional": false
+            },
+            {
+                "name": "metadata",
+                "type": "{ profile_bio: string | null; profile_avatar: unknown; profile_theme: unknown; profile_locale: string }",
+                "optional": true
             }
         ],
         "ImageResource": [
@@ -6065,6 +6286,28 @@
                 "optional": true
             }
         ],
+        "MergeMultiBranchClosureResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "archived_at",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "total",
+                "type": "number",
+                "optional": true
+            },
+            {
+                "name": "currency",
+                "type": "CurrencyType",
+                "optional": true
+            }
+        ],
         "UserCollection": [
             {
                 "name": "data",
@@ -6075,6 +6318,23 @@
                 "name": "has_admin",
                 "type": "unknown",
                 "optional": false
+            }
+        ],
+        "GuardClauseClosureResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "total",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "buyer",
+                "type": "{ name: string; email: string } | null",
+                "optional": true
             }
         ],
         "OrderItemResource": [
@@ -6131,6 +6391,23 @@
             {
                 "name": "order_extended",
                 "type": "{ id: number; ulid: string; user_id: number; status: OrderStatusType; payment_method: PaymentMethodType | null; currency: CurrencyType; subtotal: number; tax: number; discount: number; total: number; shipping_address: unknown[] | null; billing_address: unknown[] | null; notes: string | null; placed_at: string | null; paid_at: string | null; shipped_at: string | null; delivered_at: string | null; cancelled_at: string | null; ip_address: string | null; user_agent: string | null; deleted_at: string | null; item_count: number; is_paid: boolean; formatted_total: string; user: User; items: OrderItem[] }",
+                "optional": false
+            }
+        ],
+        "MergeClosureResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "user_name",
+                "type": "unknown",
+                "optional": false
+            },
+            {
+                "name": "user_email",
+                "type": "unknown",
                 "optional": false
             }
         ],
@@ -6195,6 +6472,38 @@
             {
                 "name": "subscription_role",
                 "type": "unknown",
+                "optional": true
+            }
+        ],
+        "ClosureUnionMetadataResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "status_or_null",
+                "type": "OrderStatusType | null",
+                "optional": true
+            },
+            {
+                "name": "nested_or_null",
+                "type": "TagResource | null",
+                "optional": true
+            },
+            {
+                "name": "user_titled",
+                "type": "string",
+                "optional": true
+            },
+            {
+                "name": "detail_or_null",
+                "type": "{ tag: TagResource; name: string } | null",
+                "optional": true
+            },
+            {
+                "name": "items_or_null",
+                "type": "OrderItem[] | null",
                 "optional": true
             }
         ],
@@ -6477,6 +6786,158 @@
                 "optional": false
             }
         ],
+        "SpreadWithGuardClauseClosureResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "ulid",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "user_id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "status",
+                "type": "OrderStatusType",
+                "optional": false
+            },
+            {
+                "name": "payment_method",
+                "type": "PaymentMethodType | null",
+                "optional": false
+            },
+            {
+                "name": "currency",
+                "type": "CurrencyType",
+                "optional": false
+            },
+            {
+                "name": "subtotal",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "tax",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "discount",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "total",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "shipping_address",
+                "type": "{ line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string }",
+                "optional": false
+            },
+            {
+                "name": "billing_address",
+                "type": "{ line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string }",
+                "optional": false
+            },
+            {
+                "name": "notes",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "placed_at",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "paid_at",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "shipped_at",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "delivered_at",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "cancelled_at",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "ip_address",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "user_agent",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "created_at",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "deleted_at",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "item_count",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "is_paid",
+                "type": "boolean",
+                "optional": false
+            },
+            {
+                "name": "formatted_total",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "search_index",
+                "type": "unknown",
+                "optional": false
+            },
+            {
+                "name": "user",
+                "type": "User",
+                "optional": false
+            },
+            {
+                "name": "items",
+                "type": "OrderItem[]",
+                "optional": false
+            },
+            {
+                "name": "customer",
+                "type": "{ name: string; email: string; phone: string | null; avatar: string | null; role: RoleType | null; is_premium: boolean; name_titled: string; morph: string } | null",
+                "optional": true
+            }
+        ],
         "BaseSharedResource": [],
         "QuirkyResource": [
             {
@@ -6594,6 +7055,190 @@
             {
                 "name": "order_items",
                 "type": "OrderItem[]",
+                "optional": true
+            }
+        ],
+        "ClosureControlFlowResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "buyer_info",
+                "type": "{ role: unknown; name: string }",
+                "optional": true
+            },
+            {
+                "name": "status_label",
+                "type": "{ label: unknown }",
+                "optional": true
+            },
+            {
+                "name": "safe_total",
+                "type": "{ amount: number } | { amount: unknown }",
+                "optional": true
+            },
+            {
+                "name": "tags",
+                "type": "{ first_item: string } | { first_item: unknown }",
+                "optional": true
+            },
+            {
+                "name": "retry_result",
+                "type": "{ attempted: unknown }",
+                "optional": true
+            }
+        ],
+        "SpreadWithGuardDoubleClosureReturnResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "ulid",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "user_id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "status",
+                "type": "OrderStatusType",
+                "optional": false
+            },
+            {
+                "name": "payment_method",
+                "type": "PaymentMethodType | null",
+                "optional": false
+            },
+            {
+                "name": "currency",
+                "type": "CurrencyType",
+                "optional": false
+            },
+            {
+                "name": "subtotal",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "tax",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "discount",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "total",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "shipping_address",
+                "type": "{ line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string }",
+                "optional": false
+            },
+            {
+                "name": "billing_address",
+                "type": "{ line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string }",
+                "optional": false
+            },
+            {
+                "name": "notes",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "placed_at",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "paid_at",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "shipped_at",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "delivered_at",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "cancelled_at",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "ip_address",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "user_agent",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "created_at",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "deleted_at",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "item_count",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "is_paid",
+                "type": "boolean",
+                "optional": false
+            },
+            {
+                "name": "formatted_total",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "search_index",
+                "type": "unknown",
+                "optional": false
+            },
+            {
+                "name": "user",
+                "type": "User",
+                "optional": false
+            },
+            {
+                "name": "items",
+                "type": "OrderItem[]",
+                "optional": false
+            },
+            {
+                "name": "customer",
+                "type": "{ name: string; initials: string; email: string; phone: string | null; avatar: string | null; role: RoleType | null; is_premium: boolean } | { name: string; email: string; phone: string | null; avatar: string | null; role: RoleType | null; is_premium: boolean; name_titled: string; morph: string } | null",
                 "optional": true
             }
         ]

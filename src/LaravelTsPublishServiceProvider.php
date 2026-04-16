@@ -15,6 +15,12 @@ use Spatie\LaravelPackageTools\PackageServiceProvider;
 
 class LaravelTsPublishServiceProvider extends PackageServiceProvider
 {
+    #[Override]
+    public function packageRegistered(): void
+    {
+        $this->app->singleton(ModelAttributeResolver::class);
+    }
+
     public function configurePackage(Package $package): void
     {
         /*

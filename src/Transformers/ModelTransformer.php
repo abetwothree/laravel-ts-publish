@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesAccessorType;
 use AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsModelDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\ModelInspector;
 use AbeTwoThree\LaravelTsPublish\RelationNullable;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
@@ -221,6 +222,8 @@ class ModelTransformer extends CoreTransformer
 
         $attributes = $allAttributes->filter(fn (array $attr) => in_array($attr['name'], $this->dbColumns));
 
+        $resolver = resolve(ModelAttributeResolver::class);
+
         foreach ($attributes as $attribute) {
             $name = $attribute['name'];
 
@@ -233,16 +236,16 @@ class ModelTransformer extends CoreTransformer
 
             $cast = $attribute['cast'];
 
-            // When a DB column has an Attribute accessor or old-style mutator,
-            // resolve the type from the accessor's get closure / method return type
-            // and fall back to the DB column type if no getter exists.
-            if ($cast === 'attribute' || $cast === 'accessor') {
-                $accessorType = $this->resolveMutatorType($name);
-                $typings = $accessorType['type'] !== 'unknown'
-                    ? $accessorType
-                    : LaravelTsPublish::toTsType($attribute['type'] ?? '');
-            } else {
-                $typings = LaravelTsPublish::toTsType($cast ?? $attribute['type'] ?? '');
+            // Resolve type through the centralised accessor → cast → DB type waterfall
+            $typings = $resolver->resolveAttribute($this->findable, $name);
+
+            // When the resolver returns unknown, fall back to the raw input so that
+            // downstream enum/class metadata still propagates when available.
+            if ($typings['type'] === 'unknown') {
+                $typings = match ($cast) {
+                    'attribute', 'accessor' => LaravelTsPublish::toTsType($attribute['type'] ?? ''),
+                    default => LaravelTsPublish::toTsType($cast ?? $attribute['type'] ?? ''),
+                };
             }
 
             $type = $typings['type'];

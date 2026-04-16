@@ -24,6 +24,7 @@ export * from './task-assignment';
 export * from './task-owner';
 export * from './team';
 export * from './tracking-event';
+export * from './untyped-column';
 export * from './user';
 export * from './uuid-post';
 export * from './warehouse';
