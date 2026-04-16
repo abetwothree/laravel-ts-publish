@@ -149,7 +149,7 @@ test('generates SpreadWithClosureResource with parent spread and closure whenLoa
     $generator = resolve(ResourceGenerator::class, ['findable' => SpreadWithClosureResource::class]);
 
     expect($generator->content)
-        ->toContain("import type { MembershipLevelType, RoleType } from '../enums'")
+        ->toContain("import type { MembershipLevelType, RoleType } from '../../enums'")
         ->toContain('export interface SpreadWithClosureResource')
         // parent::toArray() spread model attributes
         ->toContain('id: number')
@@ -167,8 +167,8 @@ test('generates SpreadWithGuardClauseClosureResource with guard clause and paren
     $generator = resolve(ResourceGenerator::class, ['findable' => SpreadWithGuardClauseClosureResource::class]);
 
     expect($generator->content)
-        ->toContain("import type { CurrencyType, OrderStatusType, PaymentMethodType, RoleType } from '../enums'")
-        ->toContain("import type { OrderItem, User } from '../models'")
+        ->toContain("import type { CurrencyType, OrderStatusType, PaymentMethodType, RoleType } from '../../enums'")
+        ->toContain("import type { OrderItem, User } from '../../models'")
         ->toContain('export interface SpreadWithGuardClauseClosureResource')
         // parent::toArray() spread model attributes
         ->toContain('id: number')
@@ -187,8 +187,8 @@ test('generates SpreadWithGuardDoubleClosureReturnResource with union of two sha
     $generator = resolve(ResourceGenerator::class, ['findable' => SpreadWithGuardDoubleClosureReturnResource::class]);
 
     expect($generator->content)
-        ->toContain("import type { CurrencyType, OrderStatusType, PaymentMethodType, RoleType } from '../enums'")
-        ->toContain("import type { OrderItem, User } from '../models'")
+        ->toContain("import type { CurrencyType, OrderStatusType, PaymentMethodType, RoleType } from '../../enums'")
+        ->toContain("import type { OrderItem, User } from '../../models'")
         ->toContain('export interface SpreadWithGuardDoubleClosureReturnResource')
         // parent::toArray() spread model attributes
         ->toContain('id: number')
