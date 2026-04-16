@@ -15,6 +15,7 @@ use Workbench\App\Http\Resources\ApiPostResource;
 use Workbench\App\Http\Resources\BareFuncCallResource;
 use Workbench\App\Http\Resources\CategoryResource;
 use Workbench\App\Http\Resources\CommentResource;
+use Workbench\App\Http\Resources\ClosureControlFlowResource;
 use Workbench\App\Http\Resources\CommonResource;
 use Workbench\App\Http\Resources\DelegatingResource;
 use Workbench\App\Http\Resources\DelegatingWithMixinResource;
@@ -27,6 +28,7 @@ use Workbench\App\Http\Resources\MediaTypeInstanceOfResource;
 use Workbench\App\Http\Resources\MediaTypePositiveInstanceOfResource;
 use Workbench\App\Http\Resources\MediaTypeResource;
 use Workbench\App\Http\Resources\MediaTypeUnknownResource;
+use Workbench\App\Http\Resources\MergeClosureResource;
 use Workbench\App\Http\Resources\MiscCollection;
 use Workbench\App\Http\Resources\ModelWrappedPropResource;
 use Workbench\App\Http\Resources\NonArrayReturnResource;
@@ -2312,5 +2314,79 @@ describe('ResourceAstAnalyzer with SpreadWithGuardDoubleClosureReturnResource (u
     test('enum FQCNs from both union branches are propagated', function () {
         // role is cast to Role::class and appears in both branches
         expect($this->analysis->directEnumFqcns)->toContain(Role::class);
+    });
+});
+
+describe('ResourceAstAnalyzer with ClosureControlFlowResource (collectReturnExpressions control flow)', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(ClosureControlFlowResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, Order::class))->analyze();
+    });
+
+    test('resolves closure with if/elseif/else branches into union type', function () {
+        $buyerInfo = collect($this->analysis->properties)->firstWhere('name', 'buyer_info');
+
+        expect($buyerInfo)->not->toBeNull()
+            ->and($buyerInfo['type'])->toContain('role')
+            ->and($buyerInfo['type'])->toContain('name');
+    });
+
+    test('resolves closure with switch cases into union type', function () {
+        $statusLabel = collect($this->analysis->properties)->firstWhere('name', 'status_label');
+
+        expect($statusLabel)->not->toBeNull()
+            ->and($statusLabel['type'])->toContain('label');
+    });
+
+    test('resolves closure with try/catch into union type', function () {
+        $safeTotal = collect($this->analysis->properties)->firstWhere('name', 'safe_total');
+
+        expect($safeTotal)->not->toBeNull()
+            ->and($safeTotal['type'])->toContain('amount');
+    });
+
+    test('resolves closure with foreach loop', function () {
+        $tags = collect($this->analysis->properties)->firstWhere('name', 'tags');
+
+        expect($tags)->not->toBeNull()
+            ->and($tags['type'])->toContain('first_item');
+    });
+
+    test('resolves closure with do-while loop', function () {
+        $retryResult = collect($this->analysis->properties)->firstWhere('name', 'retry_result');
+
+        expect($retryResult)->not->toBeNull()
+            ->and($retryResult['type'])->toContain('attempted');
+    });
+
+    test('all top-level properties are present', function () {
+        $names = array_column($this->analysis->properties, 'name');
+
+        expect($names)->toContain('id')
+            ->and($names)->toContain('buyer_info')
+            ->and($names)->toContain('status_label')
+            ->and($names)->toContain('safe_total')
+            ->and($names)->toContain('tags')
+            ->and($names)->toContain('retry_result');
+    });
+});
+
+describe('ResourceAstAnalyzer with MergeClosureResource (resolveClosureReturnExpression with Closure)', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(MergeClosureResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, Order::class))->analyze();
+    });
+
+    test('merge with closure resolves to the data array, not the guard clause', function () {
+        $names = array_column($this->analysis->properties, 'name');
+
+        expect($names)->toContain('user_name')
+            ->and($names)->toContain('user_email');
+    });
+
+    test('explicit properties alongside merge closure are present', function () {
+        $names = array_column($this->analysis->properties, 'name');
+
+        expect($names)->toContain('id');
     });
 });

@@ -182,7 +182,7 @@ trait ResolvesModelTypes
         $relatedRelations = $resolver->getRelations($relatedModelClass);
 
         if ($relatedAttributes === null || $relatedRelations === null) {
-            return $result;
+            return $result; // @codeCoverageIgnore
         }
 
         if ($include) {

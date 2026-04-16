@@ -181,7 +181,7 @@ class ModelAttributeResolver
                 fn (string $fqcn) => is_a($fqcn, Model::class, true),
             ));
 
-            if (count($modelFqcns) === 0) {
+            if (count($modelFqcns) !== 1) {
                 return null;
             }
 

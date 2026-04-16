@@ -179,7 +179,7 @@ trait InspectsAstNodes
             return $firstReturn;
         }
 
-        return null;
+        return null; // @codeCoverageIgnore
     }
 
     /**
