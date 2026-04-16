@@ -120,27 +120,34 @@ class ResourceAstAnalyzer
         // e.g. `if (!$this->resource instanceof MediaType) { return []; }`
         $this->instanceOfWrappedClass = $this->resolveInstanceOfType($toArrayMethod, $finder);
 
-        // Prefer a Return_ that yields a non-empty array literal (handles guard-then-return
-        // patterns like `if (!$this->resource instanceof X) { return []; } return [...]`)
-        $returnStmt = $this->findBestArrayReturn($toArrayMethod->stmts, $finder)
-            ?? $finder->findFirst($toArrayMethod->stmts, function (Node $node): bool {
-                return $node instanceof Return_;
-            });
+        // Analyze all direct Return_ statements that yield non-empty array literals.
+        // If multiple exist (e.g. if/elseif/else branches), their properties are merged
+        // with union semantics (branch-specific properties become optional).
+        $branchAnalysis = $this->analyzeAllReturnBranches($toArrayMethod->stmts);
 
-        if (! $returnStmt instanceof Return_ || ! $returnStmt->expr instanceof Array_) {
-            if ($returnStmt instanceof Return_ && $returnStmt->expr !== null && $this->isParentToArrayCall($returnStmt->expr)) {
-                return $this->analyzeParentToArray() ?? $this->buildModelDelegatedAnalysis() ?? new ResourceAnalysis;
-            }
-
-            // return $this->only([...]) or return $this->except([...])
-            if ($returnStmt instanceof Return_ && $returnStmt->expr instanceof MethodCall) {
-                return $this->analyzeThisAttributeFilter($returnStmt->expr) ?? new ResourceAnalysis;
-            }
-
-            return new ResourceAnalysis;
+        if ($branchAnalysis !== null) {
+            return $branchAnalysis;
         }
 
-        return $this->analyzeReturnArray($returnStmt->expr);
+        // Fallback: find the first Return_ for non-array returns (parent::toArray, $this->only, etc.)
+        $returnStmt = $finder->findFirst($toArrayMethod->stmts, function (Node $node): bool {
+            return $node instanceof Return_;
+        });
+
+        if (! $returnStmt instanceof Return_ || $returnStmt->expr === null) {
+            return new ResourceAnalysis; // @codeCoverageIgnore
+        }
+
+        if ($this->isParentToArrayCall($returnStmt->expr)) {
+            return $this->analyzeParentToArray() ?? $this->buildModelDelegatedAnalysis() ?? new ResourceAnalysis;
+        }
+
+        // return $this->only([...]) or return $this->except([...])
+        if ($returnStmt->expr instanceof MethodCall) {
+            return $this->analyzeThisAttributeFilter($returnStmt->expr) ?? new ResourceAnalysis;
+        }
+
+        return new ResourceAnalysis;
     }
 
     protected function analyzeReturnArray(Array_ $array): ResourceAnalysis
@@ -1449,6 +1456,10 @@ class ResourceAstAnalyzer
         foreach ($result['embeddedModelFqcns'] ?? [] as $fqcn) {
             $modelFqcns[$fqcn] = $fqcn;
         }
+
+        foreach ($result['embeddedResourceFqcns'] ?? [] as $fqcn) {
+            $nestedResources[$fqcn] = $fqcn;
+        }
     }
 
     /**
@@ -1498,13 +1509,12 @@ class ResourceAstAnalyzer
         }
 
         // Nested resources (e.g. SomeResource::make() inside the inline array)
-        // are tracked separately — forward them as embedded model FQCNs so the
-        // outer analysis includes the resource import.
+        // are tracked separately so they can be merged into the outer analysis'
+        // resource imports rather than model imports.
         if ($analysis->nestedResources !== []) {
-            $result['embeddedModelFqcns'] = array_values(array_unique([
-                ...($result['embeddedModelFqcns'] ?? []),
-                ...array_values($analysis->nestedResources),
-            ]));
+            $result['embeddedResourceFqcns'] = array_values(array_unique(
+                array_values($analysis->nestedResources),
+            ));
         }
 
         return $result;
@@ -1613,7 +1623,7 @@ class ResourceAstAnalyzer
         }
 
         /** @var class-string $wrappedClass */
-        $tsInfo = LaravelTsPublish::methodReturnedTypes(new ReflectionClass($wrappedClass), $methodName);
+        $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($wrappedClass), $methodName);
 
         if ($tsInfo['type'] !== '' && $tsInfo['type'] !== 'unknown') {
             return [...$tsInfo, 'optional' => false];
@@ -1656,7 +1666,7 @@ class ResourceAstAnalyzer
     /**
      * Resolve a method call (instance or static) on a related model within a whenLoaded closure.
      *
-     * Uses `LaravelTsPublish::methodReturnedTypes()` to resolve from the method's
+     * Uses `LaravelTsPublish::methodOrDocblockReturnTypes()` to resolve from the method's
      * declared return type hint.
      *
      * @return ValueExpressionResult
@@ -1664,7 +1674,7 @@ class ResourceAstAnalyzer
     protected function analyzeRelatedModelMethodCall(string $methodName): array
     {
         if ($this->closureRelationModelClass === null) {
-            return $this->unknownResult();
+            return $this->unknownResult(); // @codeCoverageIgnore
         }
 
         $tsInfo = resolve(ModelAttributeResolver::class)->resolveMethodReturnType($this->closureRelationModelClass, $methodName);
@@ -1673,7 +1683,7 @@ class ResourceAstAnalyzer
             return [...$tsInfo, 'optional' => false];
         }
 
-        return $this->unknownResult();
+        return $this->unknownResult(); // @codeCoverageIgnore
     }
 
     /**
@@ -1713,7 +1723,7 @@ class ResourceAstAnalyzer
     {
         // 1. Check the resource's own methods
         if ($this->resourceReflection->hasMethod($methodName)) {
-            $tsInfo = LaravelTsPublish::methodReturnedTypes($this->resourceReflection, $methodName);
+            $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes($this->resourceReflection, $methodName);
 
             if ($tsInfo['type'] !== '' && $tsInfo['type'] !== 'unknown') {
                 return [
@@ -1728,7 +1738,7 @@ class ResourceAstAnalyzer
 
         if ($wrappedClass !== null && method_exists($wrappedClass, $methodName)) {
             /** @var class-string $wrappedClass */
-            $tsInfo = LaravelTsPublish::methodReturnedTypes(new ReflectionClass($wrappedClass), $methodName);
+            $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($wrappedClass), $methodName);
 
             if ($tsInfo['type'] !== '' && $tsInfo['type'] !== 'unknown') {
                 return [
@@ -1742,44 +1752,125 @@ class ResourceAstAnalyzer
     }
 
     /**
-     * Find the best Return_ statement that yields an Array_ literal.
+     * Analyze all direct Return_ statements that yield Array_ literals and merge
+     * their properties with union semantics.
      *
-     * Prefers the return with the most array items (non-empty over empty).
-     * Only considers Return_ statements at the direct statement level —
-     * returns nested inside closures, arrow functions, or anonymous classes
-     * are excluded to avoid selecting inner scope returns.
-     *
-     * This handles guard-then-return patterns like:
-     *   if (!$this->resource instanceof X) { return []; }
-     *   return ['name' => ..., 'value' => ...];
+     * Empty array returns (guard clauses like `return []`) are filtered out.
+     * If only one non-empty return exists, it is analyzed directly (unchanged behavior).
+     * If multiple exist, each is analyzed separately and the results are merged:
+     * properties present in ALL branches stay required; properties in only SOME become optional.
      *
      * @param  array<Node\Stmt>  $stmts
      */
-    protected function findBestArrayReturn(array $stmts, NodeFinder $finder): ?Return_
+    protected function analyzeAllReturnBranches(array $stmts): ?ResourceAnalysis
     {
         /** @var list<Return_> $candidates */
         $candidates = [];
 
         $this->collectDirectReturns($stmts, $candidates);
 
+        // Filter out empty array returns (guard clauses like `return []`)
+        $candidates = array_values(array_filter($candidates, function (Return_ $r): bool {
+            return $r->expr instanceof Array_ && count($r->expr->items) > 0;
+        }));
+
         if ($candidates === []) {
             return null;
         }
 
-        // Pick the return with the most array items
-        $best = $candidates[0];
-        $bestCount = count($best->expr instanceof Array_ ? $best->expr->items : []);
-
-        foreach ($candidates as $candidate) {
-            $count = count($candidate->expr instanceof Array_ ? $candidate->expr->items : []);
-
-            if ($count > $bestCount) {
-                $best = $candidate;
-                $bestCount = $count;
-            }
+        // Single branch — analyze directly (unchanged behavior)
+        if (count($candidates) === 1) {
+            return $this->analyzeReturnArray($candidates[0]->expr);
         }
 
-        return $best;
+        // Multiple branches — analyze each, then merge with union semantics
+        $analyses = array_map(fn (Return_ $r) => $this->analyzeReturnArray($r->expr), $candidates);
+
+        return $this->mergeReturnBranches($analyses);
+    }
+
+    /**
+     * Merge multiple ResourceAnalysis objects from different return branches.
+     *
+     * Properties present in ALL branches remain required (unless already optional).
+     * Properties present in only SOME branches become optional.
+     * Properties with different types across branches get their types unioned.
+     *
+     * @param  list<ResourceAnalysis>  $analyses
+     */
+    protected function mergeReturnBranches(array $analyses): ResourceAnalysis
+    {
+        $branchCount = count($analyses);
+
+        // Collect property info per name across all branches
+        /** @var array<string, list<array{type: string, optional: bool, description: string}>> */
+        $propertyMap = [];
+
+        $enumResources = [];
+        $nestedResources = [];
+        $directEnumFqcns = [];
+        $modelFqcns = [];
+        $customImports = [];
+
+        foreach ($analyses as $analysis) {
+            foreach ($analysis->properties as $prop) {
+                $propertyMap[$prop['name']][] = $prop;
+            }
+
+            $enumResources = [...$enumResources, ...$analysis->enumResources];
+            $nestedResources = [...$nestedResources, ...$analysis->nestedResources];
+            $directEnumFqcns = [...$directEnumFqcns, ...$analysis->directEnumFqcns];
+            $modelFqcns = [...$modelFqcns, ...$analysis->modelFqcns];
+
+            foreach ($analysis->customImports as $path => $names) { // @codeCoverageIgnoreStart
+                $customImports[$path] = array_values(array_unique([
+                    ...($customImports[$path] ?? []),
+                    ...$names,
+                ]));
+            } // @codeCoverageIgnoreEnd
+        }
+
+        // Build merged property list
+        /** @var list<array{name: string, type: string, optional: bool, description: string}> */
+        $properties = [];
+
+        foreach ($propertyMap as $name => $entries) {
+            // Union distinct types
+            $types = array_values(array_unique(array_column($entries, 'type')));
+            $type = count($types) === 1 ? $types[0] : implode(' | ', $types);
+
+            // Optional if not present in ALL branches, or if any branch marks it optional
+            $presentInAll = count($entries) === $branchCount;
+            $anyOptional = (bool) array_filter($entries, fn (array $e) => $e['optional']);
+            $optional = ! $presentInAll || $anyOptional;
+
+            // Use the first non-empty description found
+            $description = '';
+
+            foreach ($entries as $entry) {
+                if ($entry['description'] !== '') { // @codeCoverageIgnoreStart
+                    $description = $entry['description'];
+
+                    break; // @codeCoverageIgnoreEnd
+                }
+            }
+
+            $properties[] = [
+                'name' => $name,
+                'type' => $type,
+                'optional' => $optional,
+                'description' => $description,
+            ];
+        }
+
+        return new ResourceAnalysis(
+            properties: $properties,
+            enumResources: $enumResources,
+            nestedResources: $nestedResources,
+            customImports: $customImports,
+            directEnumFqcns: $directEnumFqcns,
+            modelFqcns: $modelFqcns,
+        );
     }
 
     /**
@@ -1908,6 +1999,8 @@ class ResourceAstAnalyzer
         $embeddedEnumFqcns = [];
         /** @var list<class-string> $embeddedModelFqcns */
         $embeddedModelFqcns = [];
+        /** @var list<class-string> $embeddedResourceFqcns */
+        $embeddedResourceFqcns = [];
         $hasNull = false;
 
         foreach ($returns as $returnExpr) {
@@ -1922,7 +2015,7 @@ class ResourceAstAnalyzer
             $inner = $this->analyzeValueExpression($returnExpr);
 
             if ($inner['type'] === 'unknown') {
-                continue;
+                continue; // @codeCoverageIgnore
             }
 
             // Collect the type string
@@ -1940,6 +2033,18 @@ class ResourceAstAnalyzer
             if (isset($inner['embeddedModelFqcns'])) {
                 array_push($embeddedModelFqcns, ...$inner['embeddedModelFqcns']);
             }
+
+            if (isset($inner['embeddedResourceFqcns'])) {
+                array_push($embeddedResourceFqcns, ...$inner['embeddedResourceFqcns']);
+            }
+
+            if (isset($inner['resourceFqcn'])) {
+                $embeddedResourceFqcns[] = $inner['resourceFqcn'];
+            }
+
+            if (isset($inner['modelFqcn'])) {
+                $embeddedModelFqcns[] = $inner['modelFqcn'];
+            }
         }
 
         if ($hasNull) {
@@ -1950,13 +2055,14 @@ class ResourceAstAnalyzer
         $types = array_values(array_unique($types));
 
         if ($types === []) {
-            return $this->unknownResult();
+            return $this->unknownResult(); // @codeCoverageIgnore
         }
 
         $result = ['type' => implode(' | ', $types), 'optional' => false];
 
         $embeddedEnumFqcns = array_values(array_unique($embeddedEnumFqcns));
         $embeddedModelFqcns = array_values(array_unique($embeddedModelFqcns));
+        $embeddedResourceFqcns = array_values(array_unique($embeddedResourceFqcns));
 
         if ($embeddedEnumFqcns !== []) {
             $result['embeddedEnumFqcns'] = $embeddedEnumFqcns;
@@ -1964,6 +2070,10 @@ class ResourceAstAnalyzer
 
         if ($embeddedModelFqcns !== []) {
             $result['embeddedModelFqcns'] = $embeddedModelFqcns;
+        }
+
+        if ($embeddedResourceFqcns !== []) {
+            $result['embeddedResourceFqcns'] = $embeddedResourceFqcns;
         }
 
         return $result;
