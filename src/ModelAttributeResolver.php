@@ -128,7 +128,7 @@ class ModelAttributeResolver
         }
 
         $type = $relatedModel;
-        $nullableRelations = config()->boolean('ts-publish.nullable_relations');
+        $nullableRelations = config()->boolean('ts-publish.models.nullable_relations');
 
         if ($nullableRelations && $ctx['relationNullable']->isNullable($relation)) {
             $type .= ' | null';
