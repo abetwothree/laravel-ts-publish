@@ -649,6 +649,7 @@ class ResourceAstAnalyzer
 
     /**
      * Resolve an expression that's either an Array_ literal or a closure returning an Array_ into properties.
+     * Handles multi-return closures (e.g. guard clause + data branch) by merging all branches.
      */
     protected function resolveArrayOrClosureToProperties(Expr $expr, bool $optional): ResourceAnalysis
     {
@@ -656,13 +657,24 @@ class ResourceAstAnalyzer
             return $this->extractPropertiesFromArray($expr, $optional);
         }
 
-        $resolved = $this->resolveClosureReturnExpression($expr);
+        $returnExprs = $this->resolveClosureReturnExpressions($expr);
 
-        if ($resolved instanceof Array_) {
-            return $this->extractPropertiesFromArray($resolved, $optional);
+        // Filter to non-empty Array_ expressions (skip guard clause `return []`)
+        /** @var list<Array_> $arrays */
+        $arrays = array_values(array_filter($returnExprs, fn (Expr $e) => $e instanceof Array_ && count($e->items) > 0));
+
+        if ($arrays === []) {
+            return new ResourceAnalysis;
         }
 
-        return new ResourceAnalysis; // @codeCoverageIgnore
+        if (count($arrays) === 1) {
+            return $this->extractPropertiesFromArray($arrays[0], $optional);
+        }
+
+        // Multiple array branches — merge with union semantics
+        $analyses = array_map(fn (Array_ $a) => $this->extractPropertiesFromArray($a, $optional), $arrays);
+
+        return $this->mergeReturnBranches($analyses);
     }
 
     /**
@@ -2031,6 +2043,10 @@ class ResourceAstAnalyzer
             $types[] = $inner['type'];
 
             // Merge import metadata
+            if (isset($inner['enumFqcn'])) { // @codeCoverageIgnoreStart
+                $embeddedEnumFqcns[] = $inner['enumFqcn'];
+            } // @codeCoverageIgnoreEnd
+
             if (isset($inner['directEnumFqcn'])) {
                 $embeddedEnumFqcns[] = $inner['directEnumFqcn'];
             }

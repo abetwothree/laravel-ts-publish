@@ -34,6 +34,7 @@ use Workbench\App\Http\Resources\MediaTypePositiveInstanceOfResource;
 use Workbench\App\Http\Resources\MediaTypeResource;
 use Workbench\App\Http\Resources\MediaTypeUnknownResource;
 use Workbench\App\Http\Resources\MergeClosureResource;
+use Workbench\App\Http\Resources\MergeMultiBranchClosureResource;
 use Workbench\App\Http\Resources\MiscCollection;
 use Workbench\App\Http\Resources\ModelWrappedPropResource;
 use Workbench\App\Http\Resources\NonArrayReturnResource;
@@ -2530,5 +2531,37 @@ describe('ResourceAstAnalyzer with InlineArrayFqcnResource (inline array embedde
 
         expect($payload)->not->toBeNull()
             ->and($payload['optional'])->toBeTrue();
+    });
+});
+
+describe('ResourceAstAnalyzer with MergeMultiBranchClosureResource (multi-return merge closure)', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(MergeMultiBranchClosureResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, Order::class))->analyze();
+    });
+
+    test('includes properties from all merge closure branches', function () {
+        $names = array_column($this->analysis->properties, 'name');
+
+        expect($names)->toContain('id')
+            ->and($names)->toContain('archived_at')
+            ->and($names)->toContain('total')
+            ->and($names)->toContain('currency');
+    });
+
+    test('merge closure branch-specific properties are optional', function () {
+        $archivedAt = collect($this->analysis->properties)->firstWhere('name', 'archived_at');
+        $total = collect($this->analysis->properties)->firstWhere('name', 'total');
+        $currency = collect($this->analysis->properties)->firstWhere('name', 'currency');
+
+        expect($archivedAt['optional'])->toBeTrue()
+            ->and($total['optional'])->toBeTrue()
+            ->and($currency['optional'])->toBeTrue();
+    });
+
+    test('explicit property outside merge closure is required', function () {
+        $id = collect($this->analysis->properties)->firstWhere('name', 'id');
+
+        expect($id['optional'])->toBeFalse();
     });
 });
