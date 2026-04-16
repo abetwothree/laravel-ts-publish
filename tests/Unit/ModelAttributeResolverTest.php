@@ -40,6 +40,14 @@ test('resolveMethodReturnType returns empty info for non-existent method', funct
     expect($result)->toBe(LaravelTsPublish::emptyTypeScriptInfo());
 });
 
+test('resolveMethodReturnType returns empty info for non-existent class', function () {
+    $resolver = resolve(ModelAttributeResolver::class);
+
+    $result = $resolver->resolveMethodReturnType('App\\Models\\NonExistent', 'nonExistentMethod');
+
+    expect($result)->toBe(LaravelTsPublish::emptyTypeScriptInfo());
+});
+
 test('resolveAccessorModelFqcn returns null for non-existent model class', function () {
     $resolver = resolve(ModelAttributeResolver::class);
 

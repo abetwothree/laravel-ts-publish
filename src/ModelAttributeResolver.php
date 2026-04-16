@@ -145,10 +145,14 @@ class ModelAttributeResolver
      */
     public function resolveMethodReturnType(string $modelFqcn, string $methodName): array
     {
-        /** @var ReflectionClass<Model> $reflection */
-        $reflection = new ReflectionClass($modelFqcn);
+        try {
+            /** @var ReflectionClass<Model> $reflection */
+            $reflection = new ReflectionClass($modelFqcn);
 
-        return LaravelTsPublish::methodOrDocblockReturnTypes($reflection, $methodName);
+            return LaravelTsPublish::methodOrDocblockReturnTypes($reflection, $methodName);
+        } catch (Throwable) {
+            return LaravelTsPublish::emptyTypeScriptInfo();
+        }
     }
 
     /**
