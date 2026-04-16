@@ -140,6 +140,16 @@ declare global {
             changes: { attributes: Record<string, unknown>; old: Record<string, unknown> };
             diff: unknown[] | Record<string, unknown>;
         }
+        /** Exercises the ModelTransformer unknown-type fallback paths using untyped SQLite columns. */
+        export interface UntypedColumn {
+            // Columns
+            id: number | null;
+            /** Accessor with no return type on the getter closure — resolves to unknown, exercises the 'attribute'/'accessor' match arm */
+            accessor_col: unknown | null;
+            cast_col: unknown | null;
+            /** Accessor with no return type on an untyped nullable column — exercises the nullable fallback (appends ' | null'). */
+            nullable_accessor_col: unknown | null;
+        }
         export interface CompositeComment {
             // Columns
             id: number;
@@ -1264,7 +1274,7 @@ declare global {
             post_new?: PostResource;
             post_direct: PostResource;
             post_limited: { id: number; title: string };
-            post_extended: { id: number; title: string; content: string; user_id: number; status: crm.enums.StatusType; published_at: string | null; metadata: unknown[] | null; rating: number | null; category: string; options: unknown[] | null; deleted_at: string | null; category_id: number | null; visibility: app.enums.VisibilityType | null; priority: app.enums.PriorityType | null; word_count: number | null; reading_time_minutes: number | null; featured_image_url: string | null; is_pinned: boolean; title_display: string | null; excerpt: string | null; reading_time: string; author: crm.models.User; categoryRel: app.models.Category; comments: app.models.Comment[]; tags: app.models.Tag[]; images: app.models.Image[] } | null;
+            post_extended: { id: number; title: string; content: string; user_id: number; status: crm.enums.StatusType; published_at: string | null; metadata: unknown[] | null; rating: number | null; category: string; options: unknown[] | null; deleted_at: string | null; category_id: number | null; visibility: app.enums.VisibilityType | null; priority: app.enums.PriorityType | null; word_count: number | null; reading_time_minutes: number | null; featured_image_url: string | null; is_pinned: boolean; title_display: string | null; excerpt: string | null; reading_time: string; author: crm.models.User; categoryRel: app.models.Category | null; comments: app.models.Comment[]; tags: app.models.Tag[]; images: app.models.Image[] } | null;
         }
         /** Child resource that uses SharedExtendsInterface AND extends a parent that also uses it. SharedExtendsInterface should appear only once in the result despite being reachable via two paths. */
         export interface ChildSharedResource extends SharedInterface {
@@ -1279,6 +1289,11 @@ declare global {
             id: number;
             name: string;
         }
+        /** Exercises analyzeInlineArray embeddedModelFqcns and embeddedResourceFqcns (lines 1501, 1508-1510) by returning inline arrays that contain whenLoaded() (model FQCN) and SomeResource::make() (resource FQCN) inside a closure union. */
+        export interface InlineArrayFqcnResource {
+            id: number;
+            payload?: { address: AddressResource; items_loaded?: app.models.OrderItem[] } | null;
+        }
         /** Exercises: multiple whenHas on different column types, multiple whenNotNull. */
         export interface ProfileResource {
             id: number;
@@ -1290,6 +1305,14 @@ declare global {
             social_links?: { twitter?: string; github?: string; linkedin?: string; website?: string };
             timezone?: string;
             locale?: string;
+        }
+        /** Exercises collectDirectReturns elseif, else, and loop branches in the main toArray() body (not inside closures). */
+        export interface ControlFlowReturnResource {
+            id: number;
+            archived?: unknown;
+            draft?: unknown;
+            total?: number;
+            status?: app.enums.OrderStatusType;
         }
         /** Resource using a positive instanceof guard (not negated). Also includes inline arrays with optional keys and an empty inline array to exercise additional coverage paths. */
         export interface MediaTypePositiveInstanceOfResource {
@@ -1386,6 +1409,12 @@ declare global {
             currency_label: app.enums.CurrencyType;
             total_display: number;
         }
+        /** Exercises collectDirectReturns loop branch in toArray(). */
+        export interface LoopReturnResource {
+            id: number;
+            first_item_name?: unknown;
+            total?: number;
+        }
         /** Mailing address resource */
         export interface Address {
             morphValue: string;
@@ -1408,6 +1437,38 @@ declare global {
         export interface FqcnMixinResource {
             id: number;
             total: number;
+        }
+        /** Exercises the bug where findBestArrayReturn() selects a nested closure's return array (more items) over the actual toArray() return (fewer items due to ...parent::toArray() spread counting as one). The outer toArray() return has 2 items: ...parent::toArray() + 'metadata'. The closure inside whenLoaded has 4 items, so the old recursive finder would pick the closure's array, flattening it as top-level properties and losing the parent spread + metadata key entirely. */
+        export interface SpreadWithClosureResource {
+            id: number;
+            name: string;
+            email: string;
+            email_verified_at: string | null;
+            password: string;
+            options: Record<string, unknown> | null;
+            remember_token: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            role: app.enums.RoleType | null;
+            membership_level: app.enums.MembershipLevelType | null;
+            phone: string | null;
+            avatar: string | null;
+            bio: string | null;
+            settings: { theme: "light" | "dark"; notifications: boolean; locale: string } | null;
+            last_login_at: string | null;
+            last_login_ip: string | null;
+            initials: string;
+            is_premium: boolean;
+            profile: app.models.Profile | null;
+            posts: app.models.Post[];
+            comments: app.models.Comment[];
+            orders: app.models.Order[];
+            addresses: app.models.Address[];
+            teams: app.models.Team[];
+            ownedTeams: app.models.Team[];
+            images: app.models.Image[];
+            notifications: illuminate.notifications.DatabaseNotification[];
+            metadata?: { profile_bio: string | null; profile_avatar: unknown; profile_theme: unknown; profile_locale: string };
         }
         /** Exercises: whenNotNull on multiple nullable columns. */
         export interface ImageResource {
@@ -1559,9 +1620,22 @@ declare global {
             shipped_at?: string | null;
             delivered_at?: string | null;
         }
+        /** Exercises resolveArrayOrClosureToProperties with a multi-return closure passed to merge(). The closure has multiple branches returning different array shapes, which should be merged with union semantics. */
+        export interface MergeMultiBranchClosureResource {
+            id: number;
+            archived_at?: string | null;
+            total?: number;
+            currency?: app.enums.CurrencyType;
+        }
         export interface UserCollection {
             data: crm.http.resources.UserResource[];
             has_admin: unknown;
+        }
+        /** Exercises the bug where resolveClosureReturnExpression() picks the first Return_ statement in a closure — which is the guard-clause `return null` instead of the actual data array. The closure has: if (! $this->user) { return null; }  ← guard clause (first return) return [ 'name' => ..., 'email' => ... ];  ← actual data (should be picked) */
+        export interface GuardClauseClosureResource {
+            id: number;
+            total: number;
+            buyer?: { name: string; email: string } | null;
         }
         /** Exercises: whenLoaded with Resource::make, whenLoaded bare (1-arg form), whenNotNull on nullable JSON column. */
         export interface OrderItemResource {
@@ -1576,6 +1650,12 @@ declare global {
             options?: Record<string, string | number | boolean> | null;
             order_limited: { id: number; total: number } | null;
             order_extended: { id: number; ulid: string; user_id: number; status: app.enums.OrderStatusType; payment_method: app.enums.PaymentMethodType | null; currency: app.enums.CurrencyType; subtotal: number; tax: number; discount: number; total: number; shipping_address: unknown[] | null; billing_address: unknown[] | null; notes: string | null; placed_at: string | null; paid_at: string | null; shipped_at: string | null; delivered_at: string | null; cancelled_at: string | null; ip_address: string | null; user_agent: string | null; deleted_at: string | null; item_count: number; is_paid: boolean; formatted_total: string; user: crm.models.User; items: app.models.OrderItem[] };
+        }
+        /** Exercises resolveClosureReturnExpression with a Closure passed to merge(). The closure has a guard clause followed by the real array return. */
+        export interface MergeClosureResource {
+            id: number;
+            user_name: unknown;
+            user_email: unknown;
         }
         export interface MediaTypeInstanceOfResource {
             name: string;
@@ -1593,6 +1673,15 @@ declare global {
             team_role?: unknown;
             joined_at?: unknown;
             subscription_role?: unknown;
+        }
+        /** Exercises analyzeClosureUnion metadata propagation (enum, model, resource FQCNs) and analyzeRelatedModelMethodCall fallback (line 451). */
+        export interface ClosureUnionMetadataResource {
+            id: number;
+            status_or_null?: app.enums.OrderStatusType | null;
+            nested_or_null?: TagResource | null;
+            user_titled?: string;
+            detail_or_null?: { tag: TagResource; name: string } | null;
+            items_or_null?: app.models.OrderItem[] | null;
         }
         /** Exercises return $this->except([...]) as a direct return. */
         export interface OrderExceptResource {
@@ -1655,6 +1744,39 @@ declare global {
             images: app.models.Image[];
             notifications: illuminate.notifications.DatabaseNotification[];
         }
+        /** Exercises both bugs simultaneously — the exact pattern from the original ProcessProcessablesResource that triggered the issue: Bug 1: ...parent::toArray() spread (2 items in outer return) + a whenLoaded closure with more items (5), causing findBestArrayReturn() to pick the wrong return statement. Bug 2: The closure has a guard clause (`return null;`) before the data array, causing resolveClosureReturnExpression() to pick null instead of the data shape. */
+        export interface SpreadWithGuardClauseClosureResource {
+            id: number;
+            ulid: string;
+            user_id: number;
+            status: app.enums.OrderStatusType;
+            payment_method: app.enums.PaymentMethodType | null;
+            currency: app.enums.CurrencyType;
+            subtotal: number;
+            tax: number;
+            discount: number;
+            total: number;
+            shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
+            billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
+            notes: string | null;
+            placed_at: string | null;
+            paid_at: string | null;
+            shipped_at: string | null;
+            delivered_at: string | null;
+            cancelled_at: string | null;
+            ip_address: string | null;
+            user_agent: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            deleted_at: string | null;
+            item_count: number;
+            is_paid: boolean;
+            formatted_total: string;
+            search_index: unknown;
+            user: crm.models.User;
+            items: app.models.OrderItem[];
+            customer?: { name: string; email: string; phone: string | null; avatar: string | null; role: app.enums.RoleType | null; is_premium: boolean; name_titled: string; morph: string } | null;
+        }
         /** Parent resource that uses SharedExtendsInterface — tests BFS dedup when child also uses the same trait. */
         export interface BaseSharedResource extends SharedInterface {
         }
@@ -1686,6 +1808,47 @@ declare global {
             payment_currency?: app.enums.CurrencyType;
             shipping_user?: crm.http.resources.UserResource;
             order_items?: app.models.OrderItem[];
+        }
+        /** Exercises closure control-flow paths in collectReturnExpressions: elseif, else, switch, try/catch/finally, foreach, and do-while. */
+        export interface ClosureControlFlowResource {
+            id: number;
+            buyer_info?: { role: unknown; name: string };
+            status_label?: { label: unknown };
+            safe_total?: { amount: number } | { amount: unknown };
+            tags?: { first_item: string } | { first_item: unknown };
+            retry_result?: { attempted: unknown };
+        }
+        export interface SpreadWithGuardDoubleClosureReturnResource {
+            id: number;
+            ulid: string;
+            user_id: number;
+            status: app.enums.OrderStatusType;
+            payment_method: app.enums.PaymentMethodType | null;
+            currency: app.enums.CurrencyType;
+            subtotal: number;
+            tax: number;
+            discount: number;
+            total: number;
+            shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
+            billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
+            notes: string | null;
+            placed_at: string | null;
+            paid_at: string | null;
+            shipped_at: string | null;
+            delivered_at: string | null;
+            cancelled_at: string | null;
+            ip_address: string | null;
+            user_agent: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            deleted_at: string | null;
+            item_count: number;
+            is_paid: boolean;
+            formatted_total: string;
+            search_index: unknown;
+            user: crm.models.User;
+            items: app.models.OrderItem[];
+            customer?: { name: string; initials: string; email: string; phone: string | null; avatar: string | null; role: app.enums.RoleType | null; is_premium: boolean } | { name: string; email: string; phone: string | null; avatar: string | null; role: app.enums.RoleType | null; is_premium: boolean; name_titled: string; morph: string } | null;
         }
     }
     export namespace app.http.resources.admin {
