@@ -60,7 +60,8 @@ use ReflectionEnum;
  *      resourceFqcn?: class-string,
  *      modelFqcn?: class-string,
  *      embeddedEnumFqcns?: list<class-string>,
- *      embeddedModelFqcns?: list<class-string>
+ *      embeddedModelFqcns?: list<class-string>,
+ *      embeddedResourceFqcns?: list<class-string>
  * }
  */
 class ResourceAstAnalyzer
@@ -1780,11 +1781,19 @@ class ResourceAstAnalyzer
 
         // Single branch — analyze directly (unchanged behavior)
         if (count($candidates) === 1) {
-            return $this->analyzeReturnArray($candidates[0]->expr);
+            /** @var Array_ $expr */
+            $expr = $candidates[0]->expr;
+
+            return $this->analyzeReturnArray($expr);
         }
 
         // Multiple branches — analyze each, then merge with union semantics
-        $analyses = array_map(fn (Return_ $r) => $this->analyzeReturnArray($r->expr), $candidates);
+        $analyses = array_map(function (Return_ $r) {
+            /** @var Array_ $expr */
+            $expr = $r->expr;
+
+            return $this->analyzeReturnArray($expr);
+        }, $candidates);
 
         return $this->mergeReturnBranches($analyses);
     }
