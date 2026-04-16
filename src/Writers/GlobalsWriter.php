@@ -26,10 +26,6 @@ class GlobalsWriter
         /** @var view-string $template */
         $template = config()->string('ts-publish.globals_template');
 
-        $modelsNamespace = config()->string('ts-publish.models.namespace');
-        $enumsNamespace = config()->string('ts-publish.enums.namespace');
-        $resourcesNamespace = config()->string('ts-publish.resources.namespace', 'resources');
-
         // Build a map of global namespace → type names it owns, used for cross-namespace qualification.
         // Each key is a dot-separated namespace path, e.g. 'app.enums' => [...], 'app.models' => [...].
         /** @var array<string, list<string>> $globalTypesByNamespace */
@@ -102,13 +98,6 @@ class GlobalsWriter
         }
 
         $viewData = [
-            'enums' => $runner->enumGenerators->map(fn (EnumGenerator $g) => $g->transformer),
-            'models' => $runner->modelGenerators->map(fn (ModelGenerator $g) => $g->transformer),
-            'resources' => $runner->resourceGenerators->map(fn (ResourceGenerator $g) => $g->transformer),
-            'modelsNamespace' => $modelsNamespace,
-            'enumsNamespace' => $enumsNamespace,
-            'resourcesNamespace' => $resourcesNamespace,
-            'isModular' => true,
             'globalTypesByNamespace' => $globalTypesByNamespace,
             'globalAliasMap' => $globalAliasMap,
             'externalTypeImports' => $externalTypeImports,

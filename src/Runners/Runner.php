@@ -188,6 +188,9 @@ class Runner extends BaseRunner
         $this->jsonContent = $jsonWriter->write($this);
     }
 
+    /**
+     * Generate the vite-env.d.ts declaration file for VITE_-prefixed environment variables.
+     */
     protected function generateViteEnv(): void
     {
         /** @var ViteEnvWriter $writer */

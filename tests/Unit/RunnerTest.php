@@ -36,18 +36,28 @@ test('runner generates enum barrel content', function () {
     $runner = new Runner;
     $runner->run();
 
+    expect($runner->enumModularBarrels)->toBeArray()
+        ->toHaveKey('workbench/app/enums')
+        ->and($runner->enumModularBarrels['workbench/app/enums'])
+        ->toContain("export * from './status'");
+
     expect($runner->enumBarrelContent)
         ->toBeString()
-        ->toContain("export * from './status'");
+        ->not->toBeEmpty();
 });
 
 test('runner generates model barrel content', function () {
     $runner = new Runner;
     $runner->run();
 
+    expect($runner->modelModularBarrels)->toBeArray()
+        ->toHaveKey('workbench/app/models')
+        ->and($runner->modelModularBarrels['workbench/app/models'])
+        ->toContain("export * from './user'");
+
     expect($runner->modelBarrelContent)
         ->toBeString()
-        ->toContain("export * from './user'");
+        ->not->toBeEmpty();
 });
 
 test('runner generates globals content when enabled', function () {

@@ -320,7 +320,7 @@ return [
     | that augments Vite's ImportMetaEnv interface.
     |
     | All variables are typed as string (Vite always provides strings at runtime).
-    | Source defaults to .env.example rather than .env since .env is typically gitignored.
+    | Source defaults to .env first, then falls back to .env.example if .env doesn't exist.
     */
 
     'vite_env' => [

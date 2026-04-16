@@ -25,6 +25,8 @@ test('returns empty string when source file does not exist', function () {
 });
 
 test('prefers .env over .env.example when no source file configured', function () {
+    $originalBasePath = base_path();
+
     $tmpDir = sys_get_temp_dir().'/laravel-ts-publish-vite-env-priority-'.uniqid();
     mkdir($tmpDir, 0755, true);
     file_put_contents("$tmpDir/.env", "VITE_FROM_ENV=yes\n");
@@ -47,9 +49,12 @@ test('prefers .env over .env.example when no source file configured', function (
 
     // Cleanup
     (new Filesystem)->deleteDirectory($tmpDir);
+    app()->setBasePath($originalBasePath);
 });
 
 test('falls back to .env.example when .env does not exist', function () {
+    $originalBasePath = base_path();
+
     $tmpDir = sys_get_temp_dir().'/laravel-ts-publish-vite-env-fallback-'.uniqid();
     mkdir($tmpDir, 0755, true);
     // Only create .env.example, no .env
@@ -70,6 +75,7 @@ test('falls back to .env.example when .env does not exist', function () {
 
     // Cleanup
     (new Filesystem)->deleteDirectory($tmpDir);
+    app()->setBasePath($originalBasePath);
 });
 
 test('extracts VITE_ variables from env file', function () {

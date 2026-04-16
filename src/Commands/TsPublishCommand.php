@@ -547,15 +547,9 @@ class TsPublishCommand extends Command
     protected function collectExtras(Runner|RunnerForSource $runner): array
     {
         return array_filter([
-            ...($runner->enumModularBarrels
-                ? array_map(fn (string $path) => ['Barrel', "{$path}/index.ts"], array_keys($runner->enumModularBarrels))
-                : ($runner->enumBarrelContent ? [['Barrel', 'enums/index.ts']] : [])),
-            ...($runner->modelModularBarrels
-                ? array_map(fn (string $path) => ['Barrel', "{$path}/index.ts"], array_keys($runner->modelModularBarrels))
-                : ($runner->modelBarrelContent ? [['Barrel', 'models/index.ts']] : [])),
-            ...($runner->resourceModularBarrels
-                ? array_map(fn (string $path) => ['Barrel', "{$path}/index.ts"], array_keys($runner->resourceModularBarrels))
-                : ($runner->resourceBarrelContent ? [['Barrel', config()->string('ts-publish.resources.namespace', 'resources').'/index.ts']] : [])),
+            ...array_map(fn (string $path) => ['Barrel', "{$path}/index.ts"], array_keys($runner->enumModularBarrels)),
+            ...array_map(fn (string $path) => ['Barrel', "{$path}/index.ts"], array_keys($runner->modelModularBarrels)),
+            ...array_map(fn (string $path) => ['Barrel', "{$path}/index.ts"], array_keys($runner->resourceModularBarrels)),
             ...array_map(fn (string $path) => ['Route Barrel', "{$path}/index.ts"], array_keys($runner->routeModularBarrels)),
             $runner->globalsContent ? ['Globals', config()->string('ts-publish.global_filename')] : null,
             $runner->viteEnvContent ? ['Vite Env', config()->string('ts-publish.vite_env.filename', 'vite-env.d.ts')] : null,
