@@ -386,7 +386,7 @@ class LaravelTsPublish
 
     /**
      * Parse the `@return` docblock of a method and resolve each type part
-     * through phpToTypeScriptType, resolving short class names via the
+     * through toTsType, resolving short class names via the
      * declaring file's use statements.
      *
      * @return TypeScriptTypeInfo
@@ -422,7 +422,7 @@ class LaravelTsPublish
             }
 
             $resolved = $this->resolveDocblockTypeName($part, $useMap, $namespace);
-            $infos[] = $this->phpToTypeScriptType($resolved);
+            $infos[] = $this->toTsType($resolved);
         }
 
         if ($infos === []) {
@@ -466,7 +466,7 @@ class LaravelTsPublish
 
     /**
      * Resolve a docblock type string (potentially a union like `string|null`)
-     * through use-statement resolution and phpToTypeScriptType.
+     * through use-statement resolution and toTsType.
      *
      * @return TypeScriptTypeInfo
      */
@@ -484,11 +484,11 @@ class LaravelTsPublish
         );
 
         if (count($parts) === 1) {
-            return $this->phpToTypeScriptType($parts[0]);
+            return $this->toTsType($parts[0]);
         }
 
         $infos = array_map(
-            fn (string $part) => $this->phpToTypeScriptType($part),
+            fn (string $part) => $this->toTsType($part),
             $parts,
         );
 

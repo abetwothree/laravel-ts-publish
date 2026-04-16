@@ -81,7 +81,7 @@ class ModelAttributeResolver
 
         // 2. Regular cast (enum, date, json, etc.)
         if ($cast !== null && $cast !== '' && $cast !== 'attribute' && $cast !== 'accessor') {
-            $tsInfo = LaravelTsPublish::phpToTypeScriptType($cast);
+            $tsInfo = LaravelTsPublish::toTsType($cast);
 
             return $this->appendNullable($tsInfo, $attr['nullable']);
         }
@@ -91,7 +91,7 @@ class ModelAttributeResolver
             return $empty;
         }
 
-        $tsInfo = LaravelTsPublish::phpToTypeScriptType($attr['type']);
+        $tsInfo = LaravelTsPublish::toTsType($attr['type']);
 
         if ($tsInfo['type'] === 'unknown') {
             return $empty; // @codeCoverageIgnore
