@@ -8,7 +8,7 @@ use AbeTwoThree\LaravelTsPublish\LaravelTsPublishServiceProvider;
 use AbeTwoThree\LaravelTsPublish\RelationMap;
 use AbeTwoThree\LaravelTsPublish\TypeScriptMap;
 use Illuminate\Database\Eloquent\Factories\Factory;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Notifications\DatabaseNotification;
 use Orchestra\Testbench\Attributes\WithEnv;
 use Orchestra\Testbench\Concerns\WithWorkbench;
@@ -28,7 +28,7 @@ use Workbench\Shipping\Models\Shipment;
 #[WithEnv('DB_CONNECTION', 'testing')]
 class TestCase extends Orchestra
 {
-    use RefreshDatabase;
+    use LazilyRefreshDatabase;
     use WithWorkbench;
 
     private static bool $configSynced = false;
