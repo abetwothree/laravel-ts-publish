@@ -122,7 +122,7 @@ test('runner generates empty watcher json content when disabled', function () {
     expect($runner->watcherJsonContent)->toBe('');
 });
 
-describe('Runner modular publishing', function () {
+describe('Runner namespaced output', function () {
     beforeEach(function () {
         config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
 

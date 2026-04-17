@@ -17,7 +17,7 @@ export interface DatabaseNotificationRelations
 {
     // Relations
     /** Get the notifiable entity that the notification belongs to. */
-    notifiable: DatabaseNotification;
+    notifiable: unknown;
     // Counts
     notifiable_count: number;
     // Exists

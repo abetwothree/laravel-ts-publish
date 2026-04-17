@@ -392,12 +392,18 @@ class ModelTransformer extends CoreTransformer
                 continue;
             }
 
+            $isMorphTo = $relation['type'] === 'MorphTo'
+                || (str_ends_with($relation['type'], 'MorphTo') && ! str_ends_with($relation['type'], 'MorphToMany'));
             $relatedBasename = class_basename($relation['related']);
             $containsMany = str_contains(strtolower($relation['type']), 'many');
 
-            $relationType = $containsMany
-                ? $relatedBasename.'[]'
-                : $relatedBasename;
+            if ($isMorphTo) {
+                $relationType = 'unknown';
+            } elseif ($containsMany) {
+                $relationType = $relatedBasename.'[]';
+            } else {
+                $relationType = $relatedBasename;
+            }
 
             if ($nullableRelations && $this->relationNullable->isNullable($relation)) {
                 $relationType .= ' | null';
@@ -413,8 +419,11 @@ class ModelTransformer extends CoreTransformer
             }
 
             $this->relations[$relationName] = ['type' => $relationType, 'description' => $description];
-            $this->modelFqcnMap[$relation['related']] = $relatedBasename;
-            $this->modelFqcnRelations[$relation['related']][] = $relation['name'];
+
+            if (! $isMorphTo) {
+                $this->modelFqcnMap[$relation['related']] = $relatedBasename;
+                $this->modelFqcnRelations[$relation['related']][] = $relation['name'];
+            }
         }
 
         return $this;

@@ -35,7 +35,7 @@ declare global {
             updated_at: string | null;
             // Relations
             /** Get the notifiable entity that the notification belongs to. */
-            notifiable: DatabaseNotification;
+            notifiable: unknown;
             notifiable_count: number;
             notifiable_exists: boolean;
         }
@@ -178,7 +178,7 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
             // Relations
-            commentable: CompositeComment | null;
+            commentable: unknown | null;
             commentable_count: number;
             commentable_exists: boolean;
         }
@@ -676,7 +676,7 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
             // Relations
-            commentable: StrictCompositeComment | null;
+            commentable: unknown | null;
             commentable_count: number;
             commentable_exists: boolean;
         }
@@ -827,7 +827,7 @@ declare global {
             numeric_string_accessor: string;
             // Relations
             /** Polymorphic parent (Product, Post, User, etc.) */
-            imageable: Image;
+            imageable: unknown;
             imageable_count: number;
             imageable_exists: boolean;
         }

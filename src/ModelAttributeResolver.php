@@ -120,6 +120,20 @@ class ModelAttributeResolver
             return ['type' => 'unknown', 'modelFqcn' => null];
         }
 
+        $isMorphTo = $relation['type'] === 'MorphTo'
+            || (str_ends_with($relation['type'], 'MorphTo') && ! str_ends_with($relation['type'], 'MorphToMany'));
+
+        if ($isMorphTo) {
+            $type = 'unknown';
+            $nullableRelations = config()->boolean('ts-publish.models.nullable_relations');
+
+            if ($nullableRelations && $ctx['relationNullable']->isNullable($relation)) {
+                $type .= ' | null';
+            }
+
+            return ['type' => $type, 'modelFqcn' => null];
+        }
+
         $relatedModel = class_basename($relation['related']);
         $containsMany = str_contains(strtolower($relation['type']), 'many');
 

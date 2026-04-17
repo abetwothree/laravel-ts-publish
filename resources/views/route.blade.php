@@ -42,7 +42,7 @@ const {!! $controllerName !!} = {
 @if($action['originalMethodName'] === $action['methodName'])
     {!! LaravelTsPublish::validJsObjectKey($action['methodName']) !!},
 @else
-    '{!! $action['originalMethodName'] !!}': {!! LaravelTsPublish::validJsObjectKey($action['methodName']) !!},
+    {!! LaravelTsPublish::toJsLiteral($action['originalMethodName']) !!}: {!! LaravelTsPublish::validJsObjectKey($action['methodName']) !!},
 @endif
 @endforeach
 };

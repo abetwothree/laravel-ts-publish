@@ -12,7 +12,7 @@ export interface StrictCompositeComment
     created_at: string | null;
     updated_at: string | null;
     // Relations
-    commentable: StrictCompositeComment | null;
+    commentable: unknown | null;
     // Counts
     commentable_count: number;
     // Exists

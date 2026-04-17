@@ -845,7 +845,7 @@
             },
             {
                 "name": "commentable",
-                "type": "CompositeComment | null"
+                "type": "unknown | null"
             },
             {
                 "name": "commentable_count",
@@ -2278,7 +2278,7 @@
             },
             {
                 "name": "commentable",
-                "type": "StrictCompositeComment | null"
+                "type": "unknown | null"
             },
             {
                 "name": "commentable_count",
@@ -2766,7 +2766,7 @@
             },
             {
                 "name": "imageable",
-                "type": "Image"
+                "type": "unknown"
             },
             {
                 "name": "imageable_count",
@@ -2812,7 +2812,7 @@
             },
             {
                 "name": "notifiable",
-                "type": "DatabaseNotification"
+                "type": "unknown"
             },
             {
                 "name": "notifiable_count",

@@ -820,7 +820,8 @@ describe('ModelTransformer nullable relations', function () {
         $data = (new ModelTransformer(Image::class))->data();
 
         // Image uses morphs('imageable') — NOT NULL columns
-        expect($data->relations['imageable']['type'])->toBe('Image');
+        // MorphTo is always typed as 'unknown' since the related model is polymorphic
+        expect($data->relations['imageable']['type'])->toBe('unknown');
     });
 
     test('HasOne is always nullable', function () {
@@ -926,7 +927,8 @@ describe('ModelTransformer composite morph foreign keys', function () {
 
         // CompositeComment.commentable uses composite FK ['commentable_id_1', 'commentable_id_2']
         // commentable_id_2 is nullable, so the relation should be nullable
-        expect($data->relations['commentable']['type'])->toBe('CompositeComment | null');
+        // MorphTo is typed as 'unknown' since the related model is polymorphic
+        expect($data->relations['commentable']['type'])->toBe('unknown | null');
     });
 
     test('MorphTo with composite FK is not nullable when all columns are non-nullable', function () {
@@ -938,7 +940,8 @@ describe('ModelTransformer composite morph foreign keys', function () {
 
         // StrictCompositeComment.commentable uses composite FK ['commentable_id_1', 'commentable_id_2']
         // All FK columns and commentable_type are NOT NULL
-        expect($data->relations['commentable']['type'])->toBe('StrictCompositeComment');
+        // MorphTo is typed as 'unknown' since the related model is polymorphic
+        expect($data->relations['commentable']['type'])->toBe('unknown');
     });
 });
 

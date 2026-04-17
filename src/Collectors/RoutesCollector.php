@@ -54,6 +54,10 @@ class RoutesCollector
     /**
      * Determine whether a controller class should be included.
      *
+     * Since collect() already filters controllers from actual routes, we skip the
+     * redundant route-iteration in validateController() and only check exclusion
+     * attributes and concrete class constraints.
+     *
      * @param  class-string  $class
      */
     protected function shouldIncludeController(string $class): bool
@@ -64,6 +68,10 @@ class RoutesCollector
 
         $reflection = new ReflectionClass($class);
 
-        return $this->validateController($reflection);
+        if ($this->excluded($reflection)) {
+            return false;
+        }
+
+        return ! $reflection->isAbstract() && ! $reflection->isInterface() && ! $reflection->isTrait();
     }
 }

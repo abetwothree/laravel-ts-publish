@@ -49,7 +49,7 @@ export interface Image
     numeric_string_accessor: string;
     // Relations
     /** Polymorphic parent (Product, Post, User, etc.) */
-    imageable: Image;
+    imageable: unknown;
     // Counts
     imageable_count: number;
     // Exists

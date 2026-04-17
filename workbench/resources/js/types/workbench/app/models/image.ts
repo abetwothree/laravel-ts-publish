@@ -60,7 +60,7 @@ export interface ImageRelations
 {
     // Relations
     /** Polymorphic parent (Product, Post, User, etc.) */
-    imageable: Image;
+    imageable: unknown;
     // Counts
     imageable_count: number;
     // Exists

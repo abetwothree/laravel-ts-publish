@@ -15,7 +15,7 @@ export interface CompositeComment
 export interface CompositeCommentRelations
 {
     // Relations
-    commentable: CompositeComment | null;
+    commentable: unknown | null;
     // Counts
     commentable_count: number;
     // Exists
