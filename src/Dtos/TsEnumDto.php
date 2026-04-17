@@ -32,7 +32,7 @@ use JsonSerializable;
  *
  * @implements Arrayable<string, string|CasesList|MethodsList|StaticMethodsList|CaseKindsList|CaseTypesList|bool>
  */
-class TsEnumDto implements Arrayable, Datable, Jsonable, JsonSerializable
+final readonly class TsEnumDto implements Arrayable, Datable, Jsonable, JsonSerializable
 {
     /**
      * @param  CasesList  $cases

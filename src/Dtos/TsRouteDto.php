@@ -38,7 +38,7 @@ use JsonSerializable;
  *
  * @implements Arrayable<string, mixed>
  */
-class TsRouteDto implements Arrayable, Datable, Jsonable, JsonSerializable
+final readonly class TsRouteDto implements Arrayable, Datable, Jsonable, JsonSerializable
 {
     /**
      * @param  list<RouteActionData>  $actions

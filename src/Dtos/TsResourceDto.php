@@ -30,7 +30,7 @@ use JsonSerializable;
  *
  * @implements Arrayable<string, string|PropertiesList|TypesImportMap|ValuesImportMap|list<string>|null>
  */
-class TsResourceDto implements Arrayable, Datable, Jsonable, JsonSerializable
+final readonly class TsResourceDto implements Arrayable, Datable, Jsonable, JsonSerializable
 {
     /**
      * @param  PropertiesList  $properties

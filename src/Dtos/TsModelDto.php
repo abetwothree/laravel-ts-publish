@@ -39,7 +39,7 @@ use JsonSerializable;
  *
  * @implements Arrayable<string, string|ColumnsList|RelationsList|MutatorsList|AppendsList|TypesImportMap|ValuesImportMap|EnumPropertiesList|list<string>>
  */
-class TsModelDto implements Arrayable, Datable, Jsonable, JsonSerializable
+final readonly class TsModelDto implements Arrayable, Datable, Jsonable, JsonSerializable
 {
     /**
      * @param  ColumnsList  $columns
