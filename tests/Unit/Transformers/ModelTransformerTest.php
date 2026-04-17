@@ -32,6 +32,7 @@ use Workbench\App\Models\User;
 use Workbench\App\Models\Warehouse;
 use Workbench\App\Relations\CompositeMorphTo;
 use Workbench\Crm\Models\Deal;
+use Workbench\Crm\Models\User as CrmUser;
 
 describe('ModelTransformer with User model', function () {
     test('transforms User model name and filePath', function () {
@@ -519,6 +520,32 @@ describe('ModelTransformer import alias resolution for duplicate names', functio
         // Accounting\Enums\InvoiceStatus → strip 'Workbench\', skip 'Enums' → 'Accounting'
         expect($method->invoke($transformer, 'Workbench\\Accounting\\Enums\\InvoiceStatus'))->toBe('Accounting');
     });
+
+    test('falls back to namespace-based alias when relation-based aliases collide', function () {
+        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+        // Both App\User and Crm\User have morphMany(Image, 'imageable')
+        // → both get modelFqcnRelations[FQCN] = ['imageable'] → Str::studly('imageable').'User' = 'ImageableUser'
+        // → collision detected → fallback to namespace-based: AppUser, CrmUser
+        resolve(ModelAttributeResolver::class)->buildMorphTargetMap([
+            User::class,
+            CrmUser::class,
+            Post::class,
+            Product::class,
+            Image::class,
+        ]);
+
+        $data = (new ModelTransformer(Image::class))->data();
+
+        // The MorphTo union should use distinct namespace-based aliases
+        expect($data->relations['imageable']['type'])->toBe('Post | Product | AppUser | CrmUser');
+
+        // Imports should use namespace-based aliases, not duplicate ImageableUser
+        $allImports = array_merge(...array_values($data->typeImports));
+        expect($allImports)->toContain('User as AppUser')
+            ->and($allImports)->toContain('User as CrmUser')
+            ->and($allImports)->not->toContain('User as ImageableUser');
+    });
 });
 
 describe('ModelTransformer doc block descriptions', function () {
@@ -856,6 +883,41 @@ describe('ModelTransformer nullable relations', function () {
         $data = (new ModelTransformer(Image::class))->data();
 
         expect($data->relations['imageable']['type'])->toBe('unknown');
+    });
+
+    test('MorphTo is not dropped when models.included is set', function () {
+        resolve(ModelAttributeResolver::class)->buildMorphTargetMap([
+            User::class,
+            Post::class,
+            Product::class,
+            Image::class,
+        ]);
+
+        // Only include Post and Image — but MorphTo should still appear
+        config()->set('ts-publish.models.included', [Post::class, Image::class]);
+
+        $data = (new ModelTransformer(Image::class))->data();
+
+        // MorphTo relation is present, and only the included target appears in the union
+        expect($data->relations)->toHaveKey('imageable')
+            ->and($data->relations['imageable']['type'])->toBe('Post');
+    });
+
+    test('MorphTo targets are filtered by models.excluded', function () {
+        resolve(ModelAttributeResolver::class)->buildMorphTargetMap([
+            User::class,
+            Post::class,
+            Product::class,
+            Image::class,
+        ]);
+
+        // Exclude Product from the morph union
+        config()->set('ts-publish.models.excluded', [Product::class]);
+
+        $data = (new ModelTransformer(Image::class))->data();
+
+        // Product should not appear in the union
+        expect($data->relations['imageable']['type'])->toBe('Post | User');
     });
 
     test('HasOne is always nullable', function () {
