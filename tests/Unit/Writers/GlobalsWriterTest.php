@@ -139,9 +139,11 @@ test('globals content resolves aliased types to namespace-qualified names', func
         ->not->toContain('WorkbenchStatusType')
         ->not->toContain('CrmStatusType');
 
-    // Cross-namespace relations must be fully qualified with their source namespace
+    // Cross-namespace relations must be fully qualified with their source namespace.
+    // manager points to App\Models\User — same namespace as Warehouse → stays bare.
+    // primary_contact and secondary_contact point to Crm\Models\User → qualified.
     expect($content)
-        ->toContain('manager: crm.models.User | null')
+        ->toContain('manager: User | null')
         ->toContain('primary_contact: crm.models.User | null')
         ->toContain('secondary_contact: crm.models.User | null');
 
@@ -149,4 +151,10 @@ test('globals content resolves aliased types to namespace-qualified names', func
     expect($content)
         ->toContain('status: app.enums.StatusType | null')
         ->toContain('current_crm_status: crm.enums.StatusType | null');
+
+    // MorphTo union with same-basename models must not produce duplicate qualified names.
+    // Image is in app.models, so app.models.User stays bare; crm.models.User is qualified.
+    expect($content)
+        ->toContain('imageable: Post | Product | User | crm.models.User')
+        ->not->toContain('imageable: Post | Product | crm.models.User | crm.models.User');
 });

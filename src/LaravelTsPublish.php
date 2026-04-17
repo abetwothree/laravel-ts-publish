@@ -880,7 +880,12 @@ class LaravelTsPublish
             $typeStr = preg_replace($pattern, $replacement, $typeStr) ?? $typeStr;
         }
 
-        // Pass 2: qualify any remaining bare type names with their namespace
+        // Pass 2: qualify any remaining bare type names with their namespace.
+        // Skip names that also exist in the skip namespace — those bare references
+        // belong to the current context and must not be re-qualified with another namespace.
+        /** @var list<string> $skipTypeNames */
+        $skipTypeNames = $namespacedTypes[$skipNamespace] ?? [];
+
         foreach ($namespacedTypes as $namespace => $typeNames) {
             if ($namespace === $skipNamespace) {
                 continue;
@@ -890,6 +895,10 @@ class LaravelTsPublish
             usort($typeNames, fn (string $a, string $b): int => strlen($b) - strlen($a));
 
             foreach ($typeNames as $typeName) {
+                if (in_array($typeName, $skipTypeNames, true)) {
+                    continue;
+                }
+
                 $pattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($typeName, '/').'(?![A-Za-z0-9_$])/';
                 $typeStr = preg_replace($pattern, $namespace.'.'.$typeName, $typeStr) ?? $typeStr;
             }
