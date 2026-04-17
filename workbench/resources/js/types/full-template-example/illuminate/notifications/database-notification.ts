@@ -1,3 +1,5 @@
+import type { User } from '../../app/models';
+
 /**
  * @see Illuminate\Notifications\DatabaseNotification
  */
@@ -14,7 +16,7 @@ export interface DatabaseNotification
     updated_at: string | null;
     // Relations
     /** Get the notifiable entity that the notification belongs to. */
-    notifiable: unknown;
+    notifiable: User;
     // Counts
     notifiable_count: number;
     // Exists

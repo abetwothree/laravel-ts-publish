@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -817,10 +818,43 @@ describe('ModelTransformer nullable relations', function () {
     });
 
     test('MorphTo with non-nullable morph columns is not nullable', function () {
+        resolve(ModelAttributeResolver::class)->buildMorphTargetMap([
+            User::class,
+            Post::class,
+            Product::class,
+            Image::class,
+        ]);
+
         $data = (new ModelTransformer(Image::class))->data();
 
         // Image uses morphs('imageable') — NOT NULL columns
-        // MorphTo is always typed as 'unknown' since the related model is polymorphic
+        // MorphTo targets resolved via inverse MorphMany scanning: Post, Product, User
+        expect($data->relations['imageable']['type'])->toBe('Post | Product | User');
+    });
+
+    test('MorphTo with resolved targets includes target models in import map', function () {
+        resolve(ModelAttributeResolver::class)->buildMorphTargetMap([
+            User::class,
+            Post::class,
+            Product::class,
+            Image::class,
+        ]);
+
+        $data = (new ModelTransformer(Image::class))->data();
+
+        // Each morph target should appear in the type imports (flattened values)
+        $importedTypes = array_merge(...array_values($data->typeImports));
+
+        expect($importedTypes)
+            ->toContain('Post')
+            ->toContain('Product')
+            ->toContain('User');
+    });
+
+    test('MorphTo without resolved targets falls back to unknown', function () {
+        // No buildMorphTargetMap() call — morph map is empty
+        $data = (new ModelTransformer(Image::class))->data();
+
         expect($data->relations['imageable']['type'])->toBe('unknown');
     });
 

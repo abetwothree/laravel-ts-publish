@@ -35,7 +35,7 @@ declare global {
             updated_at: string | null;
             // Relations
             /** Get the notifiable entity that the notification belongs to. */
-            notifiable: unknown;
+            notifiable: workbench.crm.models.User;
             notifiable_count: number;
             notifiable_exists: boolean;
         }
@@ -827,7 +827,7 @@ declare global {
             numeric_string_accessor: string;
             // Relations
             /** Polymorphic parent (Product, Post, User, etc.) */
-            imageable: unknown;
+            imageable: Post | Product | workbench.crm.models.User;
             imageable_count: number;
             imageable_exists: boolean;
         }

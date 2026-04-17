@@ -2766,7 +2766,7 @@
             },
             {
                 "name": "imageable",
-                "type": "unknown"
+                "type": "Post | Product | User"
             },
             {
                 "name": "imageable_count",
@@ -2812,7 +2812,7 @@
             },
             {
                 "name": "notifiable",
-                "type": "unknown"
+                "type": "User"
             },
             {
                 "name": "notifiable_count",

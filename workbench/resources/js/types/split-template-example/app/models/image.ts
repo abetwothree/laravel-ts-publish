@@ -3,7 +3,7 @@ import { type AsEnum } from '@tolki/ts';
 import { Status } from '../enums';
 import type { MenuSettingsType } from '@js/types/settings';
 import type { StatusType } from '../enums';
-import type { User } from '.';
+import type { Post, Product, User } from '.';
 
 /**
  * @see Workbench\App\Models\Image
@@ -60,7 +60,7 @@ export interface ImageRelations
 {
     // Relations
     /** Polymorphic parent (Product, Post, User, etc.) */
-    imageable: unknown;
+    imageable: Post | Product | User;
     // Counts
     imageable_count: number;
     // Exists

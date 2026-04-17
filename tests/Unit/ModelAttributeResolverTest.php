@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use Workbench\App\Models\CompositeComment;
+use Workbench\App\Models\Image;
 use Workbench\App\Models\Order;
+use Workbench\App\Models\Post;
+use Workbench\App\Models\Product;
 use Workbench\App\Models\User;
 
 test('resolveAttribute returns empty info for non-existent model class', function () {
@@ -102,4 +106,84 @@ test('getReflection returns null for non-existent model class', function () {
     $resolver = resolve(ModelAttributeResolver::class);
 
     expect($resolver->getReflection('App\\Models\\NonExistent'))->toBeNull();
+});
+
+test('buildMorphTargetMap builds map from MorphMany inverse relations', function () {
+    $resolver = resolve(ModelAttributeResolver::class);
+
+    $resolver->buildMorphTargetMap([
+        User::class,
+        Post::class,
+        Product::class,
+        Image::class,
+    ]);
+
+    // User, Post, and Product all have morphMany(Image::class, 'imageable')
+    $targets = $resolver->getMorphToTargets(Image::class);
+
+    expect($targets)->toBe([Post::class, Product::class, User::class]);
+});
+
+test('getMorphToTargets returns empty array when no inverse relations exist', function () {
+    $resolver = resolve(ModelAttributeResolver::class);
+
+    $resolver->buildMorphTargetMap([
+        User::class,
+        Post::class,
+        Image::class,
+    ]);
+
+    // CompositeComment has no inverse MorphOne/MorphMany relations in the scanned models
+    expect($resolver->getMorphToTargets(CompositeComment::class))->toBe([]);
+});
+
+test('getMorphToTargets returns empty array when map is not built', function () {
+    $resolver = resolve(ModelAttributeResolver::class);
+
+    // No buildMorphTargetMap() call — default empty map
+    expect($resolver->getMorphToTargets(Image::class))->toBe([]);
+});
+
+test('buildMorphTargetMap skips non-existent model classes', function () {
+    $resolver = resolve(ModelAttributeResolver::class);
+
+    // Should not throw, just skip the non-existent class
+    $resolver->buildMorphTargetMap([
+        'App\\Models\\NonExistent',
+        User::class,
+        Image::class,
+    ]);
+
+    $targets = $resolver->getMorphToTargets(Image::class);
+
+    expect($targets)->toBe([User::class]);
+});
+
+test('resolveRelation returns union type for MorphTo when targets exist', function () {
+    $resolver = resolve(ModelAttributeResolver::class);
+
+    $resolver->buildMorphTargetMap([
+        User::class,
+        Post::class,
+        Product::class,
+        Image::class,
+    ]);
+
+    $result = $resolver->resolveRelation(Image::class, 'imageable');
+
+    expect($result['type'])->toBe('Post | Product | User')
+        ->and($result['modelFqcn'])->toBeNull();
+});
+
+test('resolveRelation returns unknown for MorphTo when no targets exist', function () {
+    $resolver = resolve(ModelAttributeResolver::class);
+
+    // Build map with only Image — no inverse relations for CompositeComment
+    $resolver->buildMorphTargetMap([Image::class]);
+
+    $result = $resolver->resolveRelation(CompositeComment::class, 'commentable');
+
+    // CompositeComment has nullable FK columns, so it gets ' | null' appended
+    expect($result['type'])->toBe('unknown | null')
+        ->and($result['modelFqcn'])->toBeNull();
 });

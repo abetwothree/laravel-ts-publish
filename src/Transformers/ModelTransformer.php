@@ -398,7 +398,21 @@ class ModelTransformer extends CoreTransformer
             $containsMany = str_contains(strtolower($relation['type']), 'many');
 
             if ($isMorphTo) {
-                $relationType = 'unknown';
+                /** @var ModelAttributeResolver $resolver */
+                $resolver = resolve(ModelAttributeResolver::class);
+                $morphTargets = $resolver->getMorphToTargets($this->findable);
+
+                if ($morphTargets !== []) {
+                    $relationType = implode(' | ', array_map(class_basename(...), $morphTargets));
+
+                    foreach ($morphTargets as $targetFqcn) {
+                        $targetBasename = class_basename($targetFqcn);
+                        $this->modelFqcnMap[$targetFqcn] = $targetBasename;
+                        $this->modelFqcnRelations[$targetFqcn][] = $relation['name'];
+                    }
+                } else {
+                    $relationType = 'unknown';
+                }
             } elseif ($containsMany) {
                 $relationType = $relatedBasename.'[]';
             } else {

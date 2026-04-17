@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\JsonWriter;
@@ -84,10 +85,17 @@ class Runner extends BaseRunner
         /** @var ModelsCollector $collector */
         $collector = resolve(config()->string('ts-publish.models.collector_class'));
 
+        /** @var list<class-string> $modelClasses */
+        $modelClasses = $collector->collect()->all();
+
+        // Pre-scan all models to build the morph target map so that MorphTo
+        // relations can be resolved to precise union types.
+        resolve(ModelAttributeResolver::class)->buildMorphTargetMap($modelClasses);
+
         /** @var Collection<int, ModelGenerator> $modelGenerators */
         $modelGenerators = collect();
 
-        foreach ($collector->collect() as $modelClass) {
+        foreach ($modelClasses as $modelClass) {
             /** @var ModelGenerator $generator */
             $generator = resolve(
                 config()->string('ts-publish.models.generator_class'),

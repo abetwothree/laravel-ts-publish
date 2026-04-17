@@ -43,6 +43,16 @@ class ModelAttributeResolver
     protected array $contexts = [];
 
     /**
+     * Map from a morphable child model FQCN to the sorted list of parent
+     * model FQCNs that declare a MorphOne/MorphMany pointing at it.
+     *
+     * Built once via buildMorphTargetMap() before model processing begins.
+     *
+     * @var array<class-string, list<class-string>>
+     */
+    protected array $morphTargetMap = [];
+
+    /**
      * Resolve the full TypeScriptTypeInfo for a model attribute through the
      * accessor → cast → DB type waterfall.
      *
@@ -124,7 +134,14 @@ class ModelAttributeResolver
             || (str_ends_with($relation['type'], 'MorphTo') && ! str_ends_with($relation['type'], 'MorphToMany'));
 
         if ($isMorphTo) {
-            $type = 'unknown';
+            $targets = $this->getMorphToTargets($modelFqcn);
+
+            if ($targets !== []) {
+                $type = implode(' | ', array_map(class_basename(...), $targets));
+            } else {
+                $type = 'unknown';
+            }
+
             $nullableRelations = config()->boolean('ts-publish.models.nullable_relations');
 
             if ($nullableRelations && $ctx['relationNullable']->isNullable($relation)) {
@@ -253,6 +270,65 @@ class ModelAttributeResolver
     public function getReflection(string $modelFqcn): ?ReflectionClass
     {
         return $this->resolveContext($modelFqcn)['reflection'] ?? null;
+    }
+
+    /**
+     * Scan all configured models' relations to build the morph target map.
+     *
+     * For each model that declares a MorphOne or MorphMany relation, the
+     * related (child) model is recorded as being morphable by the declaring
+     * (parent) model.  The resulting map lets getMorphToTargets() resolve
+     * MorphTo relations to precise union types instead of `unknown`.
+     *
+     * @param  list<class-string>  $modelFqcns  All model FQCNs that will be processed.
+     */
+    public function buildMorphTargetMap(array $modelFqcns): void
+    {
+        /** @var array<class-string, list<class-string>> $map */
+        $map = [];
+
+        foreach ($modelFqcns as $parentFqcn) {
+            $ctx = $this->resolveContext($parentFqcn);
+
+            if ($ctx === null) {
+                continue;
+            }
+
+            foreach ($ctx['relations'] as $relation) {
+                if ($relation['type'] !== 'MorphOne' && $relation['type'] !== 'MorphMany') {
+                    continue;
+                }
+
+                $childFqcn = $relation['related'];
+
+                if (! isset($map[$childFqcn])) {
+                    $map[$childFqcn] = [];
+                }
+
+                if (! in_array($parentFqcn, $map[$childFqcn], true)) {
+                    $map[$childFqcn][] = $parentFqcn;
+                }
+            }
+        }
+
+        // Sort each target list alphabetically for deterministic output.
+        foreach ($map as $childFqcn => $parents) {
+            sort($parents);
+            $map[$childFqcn] = $parents;
+        }
+
+        $this->morphTargetMap = $map;
+    }
+
+    /**
+     * Return the list of parent model FQCNs that morphTo the given child model.
+     *
+     * @param  class-string  $childModelFqcn
+     * @return list<class-string>
+     */
+    public function getMorphToTargets(string $childModelFqcn): array
+    {
+        return $this->morphTargetMap[$childModelFqcn] ?? [];
     }
 
     /**
