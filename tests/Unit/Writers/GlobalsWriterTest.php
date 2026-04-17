@@ -7,7 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
 use Illuminate\Filesystem\Filesystem;
 
 test('writes globals content when enabled', function () {
-    config()->set('ts-publish.output_globals_file', true);
+    config()->set('ts-publish.globals.enabled', true);
     config()->set('ts-publish.output_to_files', false);
 
     $runner = resolve(Runner::class);
@@ -23,7 +23,7 @@ test('writes globals content when enabled', function () {
 });
 
 test('returns empty string when globals output is disabled', function () {
-    config()->set('ts-publish.output_globals_file', false);
+    config()->set('ts-publish.globals.enabled', false);
     config()->set('ts-publish.output_to_files', false);
 
     $runner = resolve(Runner::class);
@@ -36,7 +36,7 @@ test('returns empty string when globals output is disabled', function () {
 });
 
 test('writes globals file to disk when output_to_files is enabled', function () {
-    config()->set('ts-publish.output_globals_file', true);
+    config()->set('ts-publish.globals.enabled', true);
 
     $filesystem = Mockery::mock(Filesystem::class);
     $filesystem->shouldReceive('ensureDirectoryExists')->once();
@@ -55,7 +55,7 @@ test('writes globals file to disk when output_to_files is enabled', function () 
 });
 
 test('globals content contains model interfaces', function () {
-    config()->set('ts-publish.output_globals_file', true);
+    config()->set('ts-publish.globals.enabled', true);
     config()->set('ts-publish.output_to_files', false);
 
     $runner = resolve(Runner::class);
@@ -71,7 +71,7 @@ test('globals content contains model interfaces', function () {
 });
 
 test('globals content contains enum interfaces', function () {
-    config()->set('ts-publish.output_globals_file', true);
+    config()->set('ts-publish.globals.enabled', true);
     config()->set('ts-publish.output_to_files', false);
 
     $runner = resolve(Runner::class);
@@ -87,7 +87,7 @@ test('globals content contains enum interfaces', function () {
 });
 
 test('globals content does not contain AsEnum<typeof ...> (typeof namespace member is illegal in declare global)', function () {
-    config()->set('ts-publish.output_globals_file', true);
+    config()->set('ts-publish.globals.enabled', true);
     config()->set('ts-publish.output_to_files', false);
 
     $runner = resolve(Runner::class);
@@ -104,7 +104,7 @@ test('globals content does not contain AsEnum<typeof ...> (typeof namespace memb
 });
 
 test('globals content does not contain AsEnum<typeof ...> with namespace_strip_prefix', function () {
-    config()->set('ts-publish.output_globals_file', true);
+    config()->set('ts-publish.globals.enabled', true);
     config()->set('ts-publish.output_to_files', false);
     config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
 
@@ -122,7 +122,7 @@ test('globals content does not contain AsEnum<typeof ...> with namespace_strip_p
 });
 
 test('globals content resolves aliased types to namespace-qualified names', function () {
-    config()->set('ts-publish.output_globals_file', true);
+    config()->set('ts-publish.globals.enabled', true);
     config()->set('ts-publish.output_to_files', false);
     config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
 

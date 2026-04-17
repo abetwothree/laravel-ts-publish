@@ -182,7 +182,7 @@ class Runner extends BaseRunner
     protected function generateGlobals(): void
     {
         /** @var GlobalsWriter $globalsWriter */
-        $globalsWriter = resolve(config()->string('ts-publish.globals_writer_class'));
+        $globalsWriter = resolve(config()->string('ts-publish.globals.writer_class'));
         $this->globalsWriter = $globalsWriter;
 
         $this->globalsContent = $globalsWriter->write($this);
@@ -191,7 +191,7 @@ class Runner extends BaseRunner
     protected function generateJson(): void
     {
         /** @var JsonWriter $jsonWriter */
-        $jsonWriter = resolve(config()->string('ts-publish.json_writer_class'));
+        $jsonWriter = resolve(config()->string('ts-publish.json.writer_class'));
 
         $this->jsonContent = $jsonWriter->write($this);
     }
@@ -210,7 +210,7 @@ class Runner extends BaseRunner
     protected function generateWatcherJson(): void
     {
         /** @var WatcherJsonWriter $jsonWriter */
-        $jsonWriter = resolve(config()->string('ts-publish.watcher_json_writer_class'));
+        $jsonWriter = resolve(config()->string('ts-publish.watcher.writer_class'));
 
         $this->watcherJsonContent = $jsonWriter->write();
     }

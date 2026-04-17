@@ -87,9 +87,9 @@ class TestCase extends Orchestra
         config()->set([
             'database.default' => 'testing',
             'ts-publish.output_directory' => workbench_path('resources/js/types/'),
-            'ts-publish.output_globals_file' => true,
-            'ts-publish.output_json_file' => true,
-            'ts-publish.output_collected_files_json' => true,
+            'ts-publish.globals.enabled' => true,
+            'ts-publish.json.enabled' => true,
+            'ts-publish.watcher.enabled' => true,
             'ts-publish.models.additional_directories' => [
                 DatabaseNotification::class,
                 Invoice::class,

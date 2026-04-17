@@ -24,7 +24,7 @@ class WatcherJsonWriter
 
     public function write(): string
     {
-        if (! config()->boolean('ts-publish.output_collected_files_json')) {
+        if (! config()->boolean('ts-publish.watcher.enabled')) {
             return '';
         }
 
@@ -40,9 +40,9 @@ class WatcherJsonWriter
         $content = (string) json_encode($paths, JSON_PRETTY_PRINT);
 
         if (config()->boolean('ts-publish.output_to_files')) {
-            $watcherDir = config('ts-publish.collected_files_json_output_directory');
+            $watcherDir = config('ts-publish.watcher.output_directory');
             $outputPath = is_string($watcherDir) ? $watcherDir : config()->string('ts-publish.output_directory');
-            $filename = config()->string('ts-publish.collected_files_json_filename');
+            $filename = config()->string('ts-publish.watcher.filename');
 
             $this->filesystem->ensureDirectoryExists($outputPath);
             $this->filesystem->put("$outputPath/$filename", $content);

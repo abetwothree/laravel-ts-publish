@@ -551,9 +551,9 @@ class TsPublishCommand extends Command
             ...array_map(fn (string $path) => ['Barrel', "{$path}/index.ts"], array_keys($runner->modelModularBarrels)),
             ...array_map(fn (string $path) => ['Barrel', "{$path}/index.ts"], array_keys($runner->resourceModularBarrels)),
             ...array_map(fn (string $path) => ['Route Barrel', "{$path}/index.ts"], array_keys($runner->routeModularBarrels)),
-            $runner->globalsContent ? ['Globals', config()->string('ts-publish.global_filename')] : null,
+            $runner->globalsContent ? ['Globals', config()->string('ts-publish.globals.filename')] : null,
             $runner->viteEnvContent ? ['Vite Env', config()->string('ts-publish.vite_env.filename', 'vite-env.d.ts')] : null,
-            $runner->jsonContent ? ['JSON', config()->string('ts-publish.json_filename')] : null,
+            $runner->jsonContent ? ['JSON', config()->string('ts-publish.json.filename')] : null,
         ]);
     }
 }

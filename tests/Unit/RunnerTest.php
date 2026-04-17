@@ -61,7 +61,7 @@ test('runner generates model barrel content', function () {
 });
 
 test('runner generates globals content when enabled', function () {
-    config()->set('ts-publish.output_globals_file', true);
+    config()->set('ts-publish.globals.enabled', true);
 
     $runner = new Runner;
     $runner->run();
@@ -72,7 +72,7 @@ test('runner generates globals content when enabled', function () {
 });
 
 test('runner generates empty globals content when disabled', function () {
-    config()->set('ts-publish.output_globals_file', false);
+    config()->set('ts-publish.globals.enabled', false);
 
     $runner = new Runner;
     $runner->run();
@@ -81,7 +81,7 @@ test('runner generates empty globals content when disabled', function () {
 });
 
 test('runner generates json content when enabled', function () {
-    config()->set('ts-publish.output_json_file', true);
+    config()->set('ts-publish.json.enabled', true);
 
     $runner = new Runner;
     $runner->run();
@@ -93,7 +93,7 @@ test('runner generates json content when enabled', function () {
 });
 
 test('runner generates empty json content when disabled', function () {
-    config()->set('ts-publish.output_json_file', false);
+    config()->set('ts-publish.json.enabled', false);
 
     $runner = new Runner;
     $runner->run();
@@ -102,7 +102,7 @@ test('runner generates empty json content when disabled', function () {
 });
 
 test('runner generates watcher json content when enabled', function () {
-    config()->set('ts-publish.output_collected_files_json', true);
+    config()->set('ts-publish.watcher.enabled', true);
 
     $runner = new Runner;
     $runner->run();
@@ -114,7 +114,7 @@ test('runner generates watcher json content when enabled', function () {
 });
 
 test('runner generates empty watcher json content when disabled', function () {
-    config()->set('ts-publish.output_collected_files_json', false);
+    config()->set('ts-publish.watcher.enabled', false);
 
     $runner = new Runner;
     $runner->run();
@@ -182,7 +182,7 @@ describe('Runner namespaced output', function () {
     });
 
     test('runner generates modular globals when enabled', function () {
-        config()->set('ts-publish.output_globals_file', true);
+        config()->set('ts-publish.globals.enabled', true);
 
         $runner = new Runner;
         $runner->run();
@@ -230,7 +230,7 @@ describe('Runner conditional publishing', function () {
     });
 
     test('globals only contains enums when models are skipped', function () {
-        config()->set('ts-publish.output_globals_file', true);
+        config()->set('ts-publish.globals.enabled', true);
 
         $runner = new Runner;
         $runner->shouldPublishModels = false;
@@ -243,7 +243,7 @@ describe('Runner conditional publishing', function () {
     });
 
     test('globals only contains models when enums are skipped', function () {
-        config()->set('ts-publish.output_globals_file', true);
+        config()->set('ts-publish.globals.enabled', true);
 
         $runner = new Runner;
         $runner->shouldPublishEnums = false;
@@ -256,7 +256,7 @@ describe('Runner conditional publishing', function () {
     });
 
     test('json output only contains enums when models are skipped', function () {
-        config()->set('ts-publish.output_json_file', true);
+        config()->set('ts-publish.json.enabled', true);
 
         $runner = new Runner;
         $runner->shouldPublishModels = false;
@@ -271,7 +271,7 @@ describe('Runner conditional publishing', function () {
     });
 
     test('watcher json includes all config-enabled file paths regardless of runner publish flags', function () {
-        config()->set('ts-publish.output_collected_files_json', true);
+        config()->set('ts-publish.watcher.enabled', true);
 
         $runner = new Runner;
         $runner->shouldPublishModels = false;

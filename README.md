@@ -1267,22 +1267,28 @@ This package provides several output formats that can be enabled independently:
 | Config Key                    | Default | Description                                                                 |
 |-------------------------------|---------|-----------------------------------------------------------------------------|
 | `output_to_files`             | `true`  | Write individual `.ts` files with barrel `index.ts` exports                 |
-| `output_globals_file`         | `false` | Generate a `global.d.ts` file with a global TypeScript namespace            |
-| `output_json_file`            | `false` | Output all generated definitions as a JSON file                             |
-| `output_collected_files_json` | `true`  | Output a JSON list of collected PHP file paths (useful for file watchers)   |
+| `globals.enabled`             | `false` | Generate a `global.d.ts` file with a global TypeScript namespace            |
+| `json.enabled`                | `false` | Output all generated definitions as a JSON file                             |
+| `watcher.enabled`             | `true`  | Output a JSON list of collected PHP file paths (useful for file watchers)   |
 
-When `output_globals_file` is enabled, a global declaration file is created that makes all your types available without explicit imports:
+When `globals.enabled` is enabled, a global declaration file is created that makes all your types available without explicit imports:
 
 ```php
 // config/ts-publish.php
 
-'output_globals_file' => true,
-'global_filename' => 'laravel-ts-global.d.ts',
-'models_namespace' => 'models',
-'enums_namespace' => 'enums',
+'globals' => [
+    'enabled' => true,
+    'filename' => 'laravel-ts-global.d.ts',
+],
+'models' => [
+    'namespace' => 'models',
+],
+'enums' => [
+    'namespace' => 'enums',
+],
 ```
 
-The JSON output from `output_collected_files_json` is designed to work with build tools and file watchers (like the [@tolki/enum Vite plugin](#enum-metadata-vite-plugin)) that need to know which PHP source files were collected so they can trigger a re-publish when those files change.
+The JSON output from `watcher.enabled` is designed to work with build tools and file watchers (like the [@tolki/enum Vite plugin](#enum-metadata-vite-plugin)) that need to know which PHP source files were collected so they can trigger a re-publish when those files change.
 
 ## API Resources
 
@@ -2546,9 +2552,9 @@ This package uses a **Collector → Generator → Transformer → Writer → Tem
 | Writer         | `enum_writer_class`         | `EnumWriter`           | Writes TypeScript enum files            |
 | Writer         | `resource_writer_class`     | `ResourceWriter`       | Writes TypeScript resource files        |
 | Writer         | `barrel_writer_class`       | `BarrelWriter`         | Writes barrel `index.ts` files          |
-| Writer         | `globals_writer_class`      | `GlobalsWriter`        | Writes global declaration file          |
-| Writer         | `json_writer_class`         | `JsonWriter`           | Writes JSON definitions file            |
-| Writer         | `watcher_json_writer_class` | `WatcherJsonWriter`    | Writes collected files JSON for watchers|
+| Writer         | `globals.writer_class`      | `GlobalsWriter`        | Writes global declaration file          |
+| Writer         | `json.writer_class`         | `JsonWriter`           | Writes JSON definitions file            |
+| Writer         | `watcher.writer_class`      | `WatcherJsonWriter`    | Writes collected files JSON for watchers|
 | Template       | `model_template`            | `model-split`          | Blade template for model output         |
 | Template       | `enum_template`             | `enum`                 | Blade template for enum output          |
 | Template       | `resource_template`         | `resource`             | Blade template for resource output      |
@@ -2653,22 +2659,22 @@ Below is a quick reference of all available configuration options:
 | `auto_include_enum_static_methods`    | `bool`     | `false`                              | Include all public static enum methods without attributes        |
 | `enum_metadata_enabled`               | `bool`     | `true`                               | Include `_cases`, `_methods`, `_static` metadata on enums        |
 | `enums_use_tolki_package`             | `bool`     | `true`                               | Wrap enums in `defineEnum()` from `@tolki/enum`                  |
-| `output_globals_file`                 | `bool`     | `false`                              | Generate a `global.d.ts` namespace file                          |
-| `global_directory`                    | `?string`  | null                                 | Directory for the global declaration file                        |
-| `global_filename`                     | `string`   | `laravel-ts-global.d.ts`             | Filename for the global declaration file                         |
+| `globals.enabled`                     | `bool`     | `false`                              | Generate a `global.d.ts` namespace file                          |
+| `globals.output_directory`            | `?string`  | null                                 | Directory for the global declaration file                        |
+| `globals.filename`                    | `string`   | `laravel-ts-global.d.ts`             | Filename for the global declaration file                         |
 | `models_namespace`                    | `string`   | `'models'`                           | Namespace label used in the global declaration file              |
 | `enums_namespace`                     | `string`   | `'enums'`                            | Namespace label used in the global declaration file              |
 | `resources_namespace`                 | `string`   | `'resources'`                        | Namespace label used in the global declaration file              |
-| `output_json_file`                    | `bool`     | `false`                              | Output all definitions as a JSON file                            |
-| `json_filename`                       | `string`   | `laravel-ts-definitions.json`        | Filename for the JSON output                                     |
-| `json_output_directory`               | `?string`  | null                                 | Directory for the JSON output                                    |
-| `output_collected_files_json`         | `bool`     | `true`                               | Output collected PHP file paths as JSON (for file watchers)      |
-| `collected_files_json_filename`       | `string`   | `laravel-ts-collected-files.json`    | Filename for the collected files JSON                            |
-| `collected_files_json_output_directory` | `?string`| null                                 | Directory for the collected files JSON                           |
+| `json.enabled`                        | `bool`     | `false`                              | Output all definitions as a JSON file                            |
+| `json.filename`                       | `string`   | `laravel-ts-definitions.json`        | Filename for the JSON output                                     |
+| `json.output_directory`               | `?string`  | null                                 | Directory for the JSON output                                    |
+| `watcher.enabled`                     | `bool`     | `true`                               | Output collected PHP file paths as JSON (for file watchers)      |
+| `watcher.filename`                    | `string`   | `laravel-ts-collected-files.json`    | Filename for the collected files JSON                            |
+| `watcher.output_directory`            | `?string`  | null                                 | Directory for the collected files JSON                           |
 | `model_template`                      | `string`   | `laravel-ts-publish::model-split`    | Blade template for model TypeScript output                       |
 | `enum_template`                       | `string`   | `laravel-ts-publish::enum`           | Blade template for enum TypeScript output                        |
 | `resource_template`                   | `string`   | `laravel-ts-publish::resource`       | Blade template for resource TypeScript output                    |
-| `globals_template`                    | `string`   | `laravel-ts-publish::globals`        | Blade template for global declaration output                     |
+| `globals.template`                    | `string`   | `laravel-ts-publish::globals`        | Blade template for global declaration output                     |
 | `included_models`                     | `array`    | `[]`                                 | Only publish these models (empty = all)                          |
 | `excluded_models`                     | `array`    | `[]`                                 | Exclude these models from publishing                             |
 | `additional_model_directories`        | `array`    | `[]`                                 | Extra directories to search for models                           |

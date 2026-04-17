@@ -143,21 +143,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Output files collected list in a JSON file
+    | Vite Watcher JSON
     |--------------------------------------------------------------------------
     |
     | Specifies whether to create a JSON file containing the list of collected models and enums file paths.
     | This is useful for npm processes to watch for changes in the collected files and trigger the publish command on change.
     */
 
-    'output_collected_files_json' => true,
-
-    'watcher_json_writer_class' => WatcherJsonWriter::class,
-
-    'collected_files_json_filename' => 'laravel-ts-collected-files.json',
-
-    /* Defaults to output_directory setting */
-    'collected_files_json_output_directory' => null,
+    'watcher' => [
+        'enabled' => true,
+        'writer_class' => WatcherJsonWriter::class,
+        'filename' => 'laravel-ts-collected-files.json',
+        /* Defaults to output_directory setting */
+        'output_directory' => null,
+    ],
 
     /*
     |--------------------------------------------------------------------------
@@ -275,40 +274,37 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Generate TypeScript Global Namespace Types
+    | Globals Declaration Types
     |--------------------------------------------------------------------------
     |
     | Specifies whether to create a "global.ts" file with a global namespace containing all generated types.
     */
 
-    'output_globals_file' => false,
-
-    'globals_writer_class' => GlobalsWriter::class,
-
-    'global_filename' => 'laravel-ts-global.ts',
-
-    /* Defaults to output_directory setting */
-    'global_directory' => null,
-
-    'globals_template' => 'laravel-ts-publish::globals',
+    'globals' => [
+        'enabled' => false,
+        'writer_class' => GlobalsWriter::class,
+        'filename' => 'laravel-ts-global.ts',
+        /* Defaults to output_directory setting */
+        'output_directory' => null,
+        'template' => 'laravel-ts-publish::globals',
+    ],
 
     /*
     |--------------------------------------------------------------------------
-    | Output the Results in a JSON File
+    | JSON Output
     |--------------------------------------------------------------------------
     |
     | Specifies whether to output the generated TypeScript definitions in a JSON file.
     | This can be in addition to or instead of outputting to .d.ts files, depending on the "output_to_files" option.
     */
 
-    'output_json_file' => false,
-
-    'json_writer_class' => JsonWriter::class,
-
-    'json_filename' => 'laravel-ts-definitions.json',
-
-    /* Defaults to output_directory setting */
-    'json_output_directory' => null,
+    'json' => [
+        'enabled' => false,
+        'writer_class' => JsonWriter::class,
+        'filename' => 'laravel-ts-definitions.json',
+        /* Defaults to output_directory setting */
+        'output_directory' => null,
+    ],
 
     /*
     |--------------------------------------------------------------------------

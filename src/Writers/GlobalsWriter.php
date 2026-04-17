@@ -19,12 +19,12 @@ class GlobalsWriter
 
     public function write(Runner $runner): string
     {
-        if (! config()->boolean('ts-publish.output_globals_file')) {
+        if (! config()->boolean('ts-publish.globals.enabled')) {
             return '';
         }
 
         /** @var view-string $template */
-        $template = config()->string('ts-publish.globals_template');
+        $template = config()->string('ts-publish.globals.template');
 
         // Build a map of global namespace → type names it owns, used for cross-namespace qualification.
         // Each key is a dot-separated namespace path, e.g. 'app.enums' => [...], 'app.models' => [...].
@@ -121,9 +121,9 @@ class GlobalsWriter
         $content = view($template, $viewData)->render();
 
         if (config()->boolean('ts-publish.output_to_files')) {
-            $globalDir = config('ts-publish.global_directory');
+            $globalDir = config('ts-publish.globals.output_directory');
             $outputPath = is_string($globalDir) ? $globalDir : config()->string('ts-publish.output_directory');
-            $filename = config()->string('ts-publish.global_filename');
+            $filename = config()->string('ts-publish.globals.filename');
 
             $this->filesystem->ensureDirectoryExists($outputPath);
             $this->filesystem->put("$outputPath/$filename", $content);
