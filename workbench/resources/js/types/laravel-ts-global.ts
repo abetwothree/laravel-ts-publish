@@ -106,11 +106,11 @@ declare global {
             member_count: number;
             // Relations
             /** The user who owns this team */
-            owner: workbench.crm.models.User;
+            owner: User;
             owner_count: number;
             owner_exists: boolean;
             /** Members of the team (pivot includes role and joined_at) */
-            members: workbench.crm.models.User[];
+            members: User[];
             members_count: number;
             members_exists: boolean;
         }
@@ -283,7 +283,7 @@ declare global {
             /** Write-only mutator (no getter) for a non-DB column */
             search_index: unknown;
             // Relations
-            user: workbench.crm.models.User;
+            user: User;
             user_count: number;
             user_exists: boolean;
             items: OrderItem[];
@@ -320,7 +320,7 @@ declare global {
             /** Estimated reading time formatted */
             reading_time: string;
             // Relations
-            author: workbench.crm.models.User;
+            author: User;
             author_count: number;
             author_exists: boolean;
             category_rel: Category | null;
@@ -380,7 +380,7 @@ declare global {
             has_coordinates: boolean;
             full_address: string | null;
             // Relations
-            user: workbench.crm.models.User;
+            user: User;
             user_count: number;
             user_exists: boolean;
         }
@@ -489,7 +489,7 @@ declare global {
             orders: Order[];
             orders_count: number;
             orders_exists: boolean;
-            addresses: workbench.app.http.resources.Address[];
+            addresses: Address[];
             addresses_count: number;
             addresses_exists: boolean;
             teams: Team[];
@@ -609,7 +609,7 @@ declare global {
             post: Post;
             post_count: number;
             post_exists: boolean;
-            user: workbench.crm.models.User;
+            user: User;
             user_count: number;
             user_exists: boolean;
         }
@@ -662,7 +662,7 @@ declare global {
             /** Old-style mutator for avatar URL capitalization */
             formatted_bio: string;
             // Relations
-            user: workbench.crm.models.User;
+            user: User;
             user_count: number;
             user_exists: boolean;
         }
@@ -701,7 +701,7 @@ declare global {
             /** Non-column accessor returning CRM Status enum — creates name conflict with column 'status' */
             current_crm_status: workbench.crm.enums.StatusType | null;
             // Relations
-            manager: workbench.crm.models.User | null;
+            manager: User | null;
             manager_count: number;
             manager_exists: boolean;
             primary_contact: workbench.crm.models.User | null;
@@ -817,7 +817,7 @@ declare global {
             flexible_id: string | number | null;
             optional_label: string | null;
             status_from_docblock: workbench.crm.enums.StatusType | null;
-            uploader_from_docblock: workbench.crm.models.User | null;
+            uploader_from_docblock: User | null;
             config_from_docblock: MenuSettingsType;
             data_from_docblock: unknown[];
             label_from_docblock: string;
@@ -827,7 +827,7 @@ declare global {
             numeric_string_accessor: string;
             // Relations
             /** Polymorphic parent (Product, Post, User, etc.) */
-            imageable: Post | Product | workbench.crm.models.User;
+            imageable: Post | Product | User | workbench.crm.models.User;
             imageable_count: number;
             imageable_exists: boolean;
         }
@@ -900,6 +900,10 @@ declare global {
             status: workbench.crm.enums.StatusType;
             created_at: string | null;
             updated_at: string | null;
+            // Relations
+            images: workbench.app.models.Image[];
+            images_count: number;
+            images_exists: boolean;
         }
         export interface Deal {
             // Columns
@@ -914,7 +918,7 @@ declare global {
             updated_at: string | null;
             // Relations
             /** The CRM customer this deal belongs to. */
-            customer: workbench.app.models.User;
+            customer: User;
             customer_count: number;
             customer_exists: boolean;
             /** The system admin/user managing this deal. */
@@ -941,7 +945,7 @@ declare global {
             order: workbench.app.models.Order;
             order_count: number;
             order_exists: boolean;
-            tracking_events: workbench.app.models.TrackingEvent[];
+            tracking_events: TrackingEvent[];
             tracking_events_count: number;
             tracking_events_exists: boolean;
         }
@@ -1255,7 +1259,7 @@ declare global {
             posts: workbench.app.models.Post[];
             comments: workbench.app.models.Comment[];
             orders: workbench.app.models.Order[];
-            addresses: workbench.app.models.Address[];
+            addresses: Address[];
             teams: workbench.app.models.Team[];
             ownedTeams: workbench.app.models.Team[];
             images: workbench.app.models.Image[];
@@ -1269,7 +1273,7 @@ declare global {
             notes: string | null;
             item_count: number;
             items: workbench.app.models.OrderItem[];
-            user?: workbench.crm.http.resources.UserResource;
+            user?: UserResource;
         }
         /** Resource spreading parent::toArray() from JsonResource base with extra keys. */
         export interface SpreadJsonBaseResource {
@@ -1296,7 +1300,7 @@ declare global {
             posts: workbench.app.models.Post[];
             comments: workbench.app.models.Comment[];
             orders: workbench.app.models.Order[];
-            addresses: workbench.app.models.Address[];
+            addresses: Address[];
             teams: workbench.app.models.Team[];
             ownedTeams: workbench.app.models.Team[];
             images: workbench.app.models.Image[];
@@ -1336,9 +1340,9 @@ declare global {
             is_flagged: boolean;
             flagged_at?: string | null;
             metadata: Record<string, unknown>;
-            author?: workbench.crm.http.resources.UserResource;
-            author_new?: workbench.crm.http.resources.UserResource;
-            author_direct: workbench.crm.http.resources.UserResource;
+            author?: UserResource;
+            author_new?: UserResource;
+            author_direct: UserResource;
             post?: PostResource;
             post_new?: PostResource;
             post_direct: PostResource;
@@ -1470,7 +1474,7 @@ declare global {
         export interface OrderClosureResource {
             id: number;
             status_arrow?: workbench.app.enums.OrderStatusType;
-            user_arrow?: workbench.crm.http.resources.UserResource;
+            user_arrow?: UserResource;
             items_arrow?: OrderItemResource[];
             notes_closure?: string | null;
             shipped_at?: string | null;
@@ -1532,7 +1536,7 @@ declare global {
             posts: workbench.app.models.Post[];
             comments: workbench.app.models.Comment[];
             orders: workbench.app.models.Order[];
-            addresses: workbench.app.models.Address[];
+            addresses: Address[];
             teams: workbench.app.models.Team[];
             ownedTeams: workbench.app.models.Team[];
             images: workbench.app.models.Image[];
@@ -1660,7 +1664,7 @@ declare global {
             slug: string;
             description?: string | null;
             is_active: boolean;
-            owner?: workbench.crm.http.resources.UserResource;
+            owner?: UserResource;
             members?: TeamMemberResource[];
             members_count?: number;
             settings?: unknown[] | null;
@@ -1697,7 +1701,7 @@ declare global {
             currency?: workbench.app.enums.CurrencyType;
         }
         export interface UserCollection {
-            data: workbench.crm.http.resources.UserResource[];
+            data: UserResource[];
             has_admin: unknown;
         }
         /** Exercises the bug where resolveClosureReturnExpression() picks the first Return_ statement in a closure — which is the guard-clause `return null` instead of the actual data array. The closure has: if (! $this->user) { return null; }  ← guard clause (first return) return [ 'name' => ..., 'email' => ... ];  ← actual data (should be picked) */
@@ -1807,7 +1811,7 @@ declare global {
             posts: workbench.app.models.Post[];
             comments: workbench.app.models.Comment[];
             orders: workbench.app.models.Order[];
-            addresses: workbench.app.models.Address[];
+            addresses: Address[];
             teams: workbench.app.models.Team[];
             ownedTeams: workbench.app.models.Team[];
             images: workbench.app.models.Image[];
@@ -1857,8 +1861,8 @@ declare global {
             dynamic?: unknown;
             normal_merge_key?: number;
             formatted: unknown;
-            plain_user: workbench.crm.http.resources.UserResource;
-            empty_user: workbench.crm.http.resources.UserResource;
+            plain_user: UserResource;
+            empty_user: UserResource;
             empty_enum: unknown;
             fcc_enum: unknown;
             not_enum: unknown;
@@ -1872,10 +1876,10 @@ declare global {
         export interface OrderDetailResource {
             id: number;
             status: workbench.app.enums.OrderStatusType;
-            user?: workbench.crm.http.resources.UserResource;
+            user?: UserResource;
             payment_status?: workbench.app.enums.OrderStatusType;
             payment_currency?: workbench.app.enums.CurrencyType;
-            shipping_user?: workbench.crm.http.resources.UserResource;
+            shipping_user?: UserResource;
             order_items?: workbench.app.models.OrderItem[];
         }
         /** Exercises closure control-flow paths in collectReturnExpressions: elseif, else, switch, try/catch/finally, foreach, and do-while. */
@@ -1995,7 +1999,7 @@ declare global {
             crm_enum: workbench.crm.enums.StatusType;
             customer?: workbench.crm.models.User;
             admin?: workbench.app.models.User;
-            customer_resource?: workbench.app.http.resources.UserResource;
+            customer_resource?: UserResource;
             admin_resource?: workbench.app.http.resources.UserResource;
             closed_at?: string | null;
         }

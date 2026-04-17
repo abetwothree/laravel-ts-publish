@@ -2,8 +2,9 @@ import { type AsEnum } from '@tolki/ts';
 
 import { Status } from '../enums';
 import type { MenuSettingsType } from '@js/types/settings';
+import type { User as CrmUser } from '../../crm/models';
 import type { StatusType } from '../enums';
-import type { Post, Product, User } from '.';
+import type { Post, Product, User as WorkbenchUser } from '.';
 
 /**
  * @see Workbench\App\Models\Image
@@ -41,7 +42,7 @@ export interface ImageMutators
     flexible_id: string | number | null;
     optional_label: string | null;
     status_from_docblock: StatusType | null;
-    uploader_from_docblock: User | null;
+    uploader_from_docblock: WorkbenchUser | null;
     config_from_docblock: MenuSettingsType;
     data_from_docblock: unknown[];
     label_from_docblock: string;
@@ -60,7 +61,7 @@ export interface ImageRelations
 {
     // Relations
     /** Polymorphic parent (Product, Post, User, etc.) */
-    imageable: Post | Product | User;
+    imageable: Post | Product | WorkbenchUser | CrmUser;
     // Counts
     imageable_count: number;
     // Exists

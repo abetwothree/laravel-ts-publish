@@ -2734,7 +2734,7 @@
             },
             {
                 "name": "uploader_from_docblock",
-                "type": "User | null"
+                "type": "AppUser | null"
             },
             {
                 "name": "config_from_docblock",
@@ -2766,7 +2766,7 @@
             },
             {
                 "name": "imageable",
-                "type": "Post | Product | User"
+                "type": "Post | Product | AppUser | CrmUser"
             },
             {
                 "name": "imageable_count",
