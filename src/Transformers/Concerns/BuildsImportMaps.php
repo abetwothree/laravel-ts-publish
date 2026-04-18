@@ -86,18 +86,4 @@ trait BuildsImportMaps
 
         return LaravelTsPublish::sortImportPaths($imports);
     }
-
-    /**
-     * Sort $items and add to $imports under $path if non-empty.
-     *
-     * @param  TypesImportMap  $imports
-     * @param  list<string>  $items
-     */
-    protected function addSortedImports(array &$imports, string $path, array $items): void
-    {
-        if ($items !== []) {
-            sort($items);
-            $imports[$path] = $items;
-        }
-    }
 }

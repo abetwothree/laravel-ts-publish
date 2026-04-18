@@ -91,6 +91,9 @@ VITE_PUSHER_APP_KEY="${PUSHER_APP_KEY}"
 # A comment
 DB_CONNECTION=mysql
 VITE_APP_URL=http://localhost
+
+# Setting with no = sign should be ignored
+VITE_INVALID_SETTING
 ENV);
 
     config()->set('ts-publish.vite_env.enabled', true);
