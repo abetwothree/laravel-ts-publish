@@ -736,7 +736,7 @@ describe('ResourceAstAnalyzer edge cases', function () {
     });
 
     test('resolves singular relation without null when nullable_relations is false', function () {
-        config()->set('ts-publish.nullable_relations', false);
+        config()->set('ts-publish.models.nullable_relations', false);
 
         $reflection = new ReflectionClass(UserResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection, User::class);

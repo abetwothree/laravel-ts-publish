@@ -181,9 +181,9 @@ class TsPublishCommand extends Command
      */
     protected function resolvePublishFlags(): ?array
     {
-        $configEnums = config()->boolean('ts-publish.publish_enums');
-        $configModels = config()->boolean('ts-publish.publish_models');
-        $configResources = config()->boolean('ts-publish.publish_resources');
+        $configEnums = config()->boolean('ts-publish.enums.enabled');
+        $configModels = config()->boolean('ts-publish.models.enabled');
+        $configResources = config()->boolean('ts-publish.resources.enabled');
         $configRoutes = config()->boolean('ts-publish.routes.enabled');
         $onlyEnums = (bool) $this->option('only-enums');
         $onlyModels = (bool) $this->option('only-models');
@@ -312,20 +312,13 @@ class TsPublishCommand extends Command
             }
         }
 
-        if (! empty($runner->enumBarrelContent)) {
+        if (count($runner->enumModularBarrels) > 0) {
             $this->newLine();
-            if (count($runner->enumModularBarrels) > 0) {
-                $this->comment('Enum Barrel Files:');
-                foreach ($runner->enumModularBarrels as $namespacePath => $content) {
-                    $this->newLine();
-                    $this->comment("  {$namespacePath}/index.ts");
-                    $this->line($content);
-                }
-            } else {
-                $this->comment('Enum Barrel File:');
+            $this->comment('Enum Barrel Files:');
+            foreach ($runner->enumModularBarrels as $namespacePath => $content) {
                 $this->newLine();
-                $this->comment('  index.ts');
-                $this->line($runner->enumBarrelContent);
+                $this->comment("  {$namespacePath}/index.ts");
+                $this->line($content);
             }
         }
 
@@ -339,20 +332,13 @@ class TsPublishCommand extends Command
             }
         }
 
-        if (! empty($runner->modelBarrelContent)) {
+        if (count($runner->modelModularBarrels) > 0) {
             $this->newLine();
-            if (count($runner->modelModularBarrels) > 0) {
-                $this->comment('Model Barrel Files:');
-                foreach ($runner->modelModularBarrels as $namespacePath => $content) {
-                    $this->newLine();
-                    $this->comment("  {$namespacePath}/index.ts");
-                    $this->line($content);
-                }
-            } else {
-                $this->comment('Model Barrel File:');
+            $this->comment('Model Barrel Files:');
+            foreach ($runner->modelModularBarrels as $namespacePath => $content) {
                 $this->newLine();
-                $this->comment('  index.ts');
-                $this->line($runner->modelBarrelContent);
+                $this->comment("  {$namespacePath}/index.ts");
+                $this->line($content);
             }
         }
 
@@ -366,20 +352,13 @@ class TsPublishCommand extends Command
             }
         }
 
-        if (! empty($runner->resourceBarrelContent)) {
+        if (count($runner->resourceModularBarrels) > 0) {
             $this->newLine();
-            if (count($runner->resourceModularBarrels) > 0) {
-                $this->comment('Resource Barrel Files:');
-                foreach ($runner->resourceModularBarrels as $namespacePath => $content) {
-                    $this->newLine();
-                    $this->comment("  {$namespacePath}/index.ts");
-                    $this->line($content);
-                }
-            } else {
-                $this->comment('Resource Barrel File:');
+            $this->comment('Resource Barrel Files:');
+            foreach ($runner->resourceModularBarrels as $namespacePath => $content) {
                 $this->newLine();
-                $this->comment('  index.ts');
-                $this->line($runner->resourceBarrelContent);
+                $this->comment("  {$namespacePath}/index.ts");
+                $this->line($content);
             }
         }
 
@@ -393,7 +372,7 @@ class TsPublishCommand extends Command
             }
         }
 
-        if (! empty($runner->routeBarrelContent)) {
+        if (count($runner->routeModularBarrels) > 0) {
             $this->newLine();
             $this->comment('Route Barrel Files:');
             foreach ($runner->routeModularBarrels as $namespacePath => $content) {
@@ -401,6 +380,15 @@ class TsPublishCommand extends Command
                 $this->comment("  {$namespacePath}/index.ts");
                 $this->line($content);
             }
+        }
+
+        if (! empty($runner->viteEnvContent)) {
+            $viteEnvFilename = config()->string('ts-publish.vite_env.filename', 'vite-env.d.ts');
+            $this->newLine();
+            $this->comment('Vite Env:');
+            $this->newLine();
+            $this->comment("  {$viteEnvFilename}");
+            $this->line($runner->viteEnvContent);
         }
     }
 
@@ -538,18 +526,13 @@ class TsPublishCommand extends Command
     protected function collectExtras(Runner|RunnerForSource $runner): array
     {
         return array_filter([
-            ...($runner->enumModularBarrels
-                ? array_map(fn (string $path) => ['Barrel', "{$path}/index.ts"], array_keys($runner->enumModularBarrels))
-                : ($runner->enumBarrelContent ? [['Barrel', 'enums/index.ts']] : [])),
-            ...($runner->modelModularBarrels
-                ? array_map(fn (string $path) => ['Barrel', "{$path}/index.ts"], array_keys($runner->modelModularBarrels))
-                : ($runner->modelBarrelContent ? [['Barrel', 'models/index.ts']] : [])),
-            ...($runner->resourceModularBarrels
-                ? array_map(fn (string $path) => ['Barrel', "{$path}/index.ts"], array_keys($runner->resourceModularBarrels))
-                : ($runner->resourceBarrelContent ? [['Barrel', config()->string('ts-publish.resources_namespace', 'resources').'/index.ts']] : [])),
+            ...array_map(fn (string $path) => ['Barrel', "{$path}/index.ts"], array_keys($runner->enumModularBarrels)),
+            ...array_map(fn (string $path) => ['Barrel', "{$path}/index.ts"], array_keys($runner->modelModularBarrels)),
+            ...array_map(fn (string $path) => ['Barrel', "{$path}/index.ts"], array_keys($runner->resourceModularBarrels)),
             ...array_map(fn (string $path) => ['Route Barrel', "{$path}/index.ts"], array_keys($runner->routeModularBarrels)),
-            $runner->globalsContent ? ['Globals', config()->string('ts-publish.global_filename')] : null,
-            $runner->jsonContent ? ['JSON', config()->string('ts-publish.json_filename')] : null,
+            $runner->globalsContent ? ['Globals', config()->string('ts-publish.globals.filename')] : null,
+            $runner->viteEnvContent ? ['Vite Env', config()->string('ts-publish.vite_env.filename', 'vite-env.d.ts')] : null,
+            $runner->jsonContent ? ['JSON', config()->string('ts-publish.json.filename')] : null,
         ]);
     }
 }

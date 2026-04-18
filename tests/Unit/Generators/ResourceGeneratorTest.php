@@ -20,8 +20,8 @@ test('generates PostResource typescript content', function () {
     $generator = resolve(ResourceGenerator::class, ['findable' => PostResource::class]);
 
     expect($generator->content)
-        ->toContain("import { type AsEnum } from '@tolki/enum'")
-        ->toContain("import { Priority, Status, Visibility } from '../enums'")
+        ->toContain("import { type AsEnum } from '@tolki/ts'")
+        ->toContain("import { Priority, Status, Visibility } from '../../enums'")
         ->toContain('export interface PostResource')
         ->toContain('id: number')
         ->toContain('title: string')
@@ -36,19 +36,19 @@ test('generates PostResource typescript content', function () {
 
 test('generates PostResource with type imports when tolki disabled', function () {
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.enums_use_tolki_package', false);
+    config()->set('ts-publish.enums.use_tolki_package', false);
 
     $generator = resolve(ResourceGenerator::class, ['findable' => PostResource::class]);
 
     expect($generator->content)
-        ->toContain("import type { PriorityType, StatusType, VisibilityType } from '../enums'")
+        ->toContain("import type { PriorityType, StatusType, VisibilityType } from '../../enums'")
         ->toContain('status: StatusType')
         ->toContain('status_new: StatusType')
         ->toContain('visibility: VisibilityType | null')
         ->toContain('visibility_new: VisibilityType | null')
         ->toContain('priority: PriorityType | null')
         ->toContain('priority_new: PriorityType | null')
-        ->not->toContain('@tolki/enum');
+        ->not->toContain('@tolki/ts');
 });
 
 test('generates UserResource with optional properties', function () {
@@ -57,9 +57,9 @@ test('generates UserResource with optional properties', function () {
     $generator = resolve(ResourceGenerator::class, ['findable' => UserResource::class]);
 
     expect($generator->content)
-        ->toContain("import { type AsEnum } from '@tolki/enum'")
-        ->toContain("import { Role } from '../enums'")
-        ->toContain("import type { PostResource } from './'")
+        ->toContain("import { type AsEnum } from '@tolki/ts'")
+        ->toContain("import { Role } from '../../enums'")
+        ->toContain("import type { PostResource } from '.'")
         ->toContain('export interface UserResource')
         ->toContain('id: number')
         ->toContain('name: string')
@@ -77,13 +77,13 @@ test('generates CommentResource with TsResourceCasts overrides', function () {
     $generator = resolve(ResourceGenerator::class, ['findable' => CommentResource::class]);
 
     expect($generator->content)
-        ->toContain("import type { PostResource, UserResource } from './'")
+        ->toContain("import type { PostResource, UserResource } from '.'")
         ->toContain('export interface CommentResource')
         ->toContain('metadata: Record<string, unknown>')
         ->toContain('flagged_at?: string | null')
         ->toContain('author?: UserResource')
         ->toContain('post?: PostResource')
-        ->not->toContain('@tolki/enum');
+        ->not->toContain('@tolki/ts');
 });
 
 test('generates OrderResource with conditional methods', function () {
@@ -92,8 +92,8 @@ test('generates OrderResource with conditional methods', function () {
     $generator = resolve(ResourceGenerator::class, ['findable' => OrderResource::class]);
 
     expect($generator->content)
-        ->toContain("import { type AsEnum } from '@tolki/enum'")
-        ->toContain("import { Currency, OrderStatus } from '../enums'")
+        ->toContain("import { type AsEnum } from '@tolki/ts'")
+        ->toContain("import { Currency, OrderStatus } from '../../enums'")
         ->toContain('export interface OrderResource')
         ->toContain('status: AsEnum<typeof OrderStatus>')
         ->toContain('currency: AsEnum<typeof Currency>')
@@ -149,7 +149,7 @@ test('generates SpreadWithClosureResource with parent spread and closure whenLoa
     $generator = resolve(ResourceGenerator::class, ['findable' => SpreadWithClosureResource::class]);
 
     expect($generator->content)
-        ->toContain("import type { MembershipLevelType, RoleType } from '../enums'")
+        ->toContain("import type { MembershipLevelType, RoleType } from '../../enums'")
         ->toContain('export interface SpreadWithClosureResource')
         // parent::toArray() spread model attributes
         ->toContain('id: number')
@@ -167,8 +167,8 @@ test('generates SpreadWithGuardClauseClosureResource with guard clause and paren
     $generator = resolve(ResourceGenerator::class, ['findable' => SpreadWithGuardClauseClosureResource::class]);
 
     expect($generator->content)
-        ->toContain("import type { CurrencyType, OrderStatusType, PaymentMethodType, RoleType } from '../enums'")
-        ->toContain("import type { OrderItem, User } from '../models'")
+        ->toContain("import type { CurrencyType, OrderStatusType, PaymentMethodType, RoleType } from '../../enums'")
+        ->toContain("import type { OrderItem, User } from '../../models'")
         ->toContain('export interface SpreadWithGuardClauseClosureResource')
         // parent::toArray() spread model attributes
         ->toContain('id: number')
@@ -187,8 +187,8 @@ test('generates SpreadWithGuardDoubleClosureReturnResource with union of two sha
     $generator = resolve(ResourceGenerator::class, ['findable' => SpreadWithGuardDoubleClosureReturnResource::class]);
 
     expect($generator->content)
-        ->toContain("import type { CurrencyType, OrderStatusType, PaymentMethodType, RoleType } from '../enums'")
-        ->toContain("import type { OrderItem, User } from '../models'")
+        ->toContain("import type { CurrencyType, OrderStatusType, PaymentMethodType, RoleType } from '../../enums'")
+        ->toContain("import type { OrderItem, User } from '../../models'")
         ->toContain('export interface SpreadWithGuardDoubleClosureReturnResource')
         // parent::toArray() spread model attributes
         ->toContain('id: number')
@@ -204,7 +204,6 @@ test('generates SpreadWithGuardDoubleClosureReturnResource with union of two sha
 
 test('generates ApiArticleResource with parent trait spreads and enum types', function () {
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.modular_publishing', true);
     config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
 
     $generator = resolve(ResourceGenerator::class, ['findable' => ApiArticleResource::class]);

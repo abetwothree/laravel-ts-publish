@@ -27,19 +27,13 @@ abstract class BaseRunner
     /** @var Collection<int, ResourceGenerator> */
     public protected(set) Collection $resourceGenerators;
 
-    public protected(set) string $enumBarrelContent = '';
-
-    public protected(set) string $modelBarrelContent = '';
-
-    /** @var array<string, string> Barrel contents keyed by namespace path (modular mode only) */
+    /** @var array<string, string> Barrel contents keyed by namespace path */
     public protected(set) array $enumModularBarrels = [];
 
-    /** @var array<string, string> Barrel contents keyed by namespace path (modular mode only) */
+    /** @var array<string, string> Barrel contents keyed by namespace path */
     public protected(set) array $modelModularBarrels = [];
 
-    public protected(set) string $resourceBarrelContent = '';
-
-    /** @var array<string, string> Barrel contents keyed by namespace path (modular mode only) */
+    /** @var array<string, string> Barrel contents keyed by namespace path */
     public protected(set) array $resourceModularBarrels = [];
 
     public protected(set) string $globalsContent = '';
@@ -48,10 +42,10 @@ abstract class BaseRunner
 
     public protected(set) string $watcherJsonContent = '';
 
+    public protected(set) string $viteEnvContent = '';
+
     /** @var Collection<int, RouteGenerator> */
     public protected(set) Collection $routeGenerators;
-
-    public protected(set) string $routeBarrelContent = '';
 
     /** @var array<string, string> Barrel contents keyed by namespace path */
     public protected(set) array $routeModularBarrels = [];

@@ -27,9 +27,9 @@ class EnumsCollector extends CoreCollector
     protected function finderSettings(): array
     {
         return [
-            'included' => $this->sanitizeAllowSetting(config()->array('ts-publish.included_enums')),
-            'excluded' => $this->sanitizeAllowSetting(config()->array('ts-publish.excluded_enums')),
-            'additional_directories' => $this->sanitizeAllowSetting(config()->array('ts-publish.additional_enum_directories')),
+            'included' => $this->sanitizeAllowSetting(config()->array('ts-publish.enums.included')),
+            'excluded' => $this->sanitizeAllowSetting(config()->array('ts-publish.enums.excluded')),
+            'additional_directories' => $this->sanitizeAllowSetting(config()->array('ts-publish.enums.additional_directories')),
         ];
     }
 }

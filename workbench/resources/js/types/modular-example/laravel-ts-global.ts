@@ -88,11 +88,11 @@ declare global {
             member_count: number;
             // Relations
             /** The user who owns this team */
-            owner: crm.models.User;
+            owner: User;
             owner_count: number;
             owner_exists: boolean;
             /** Members of the team (pivot includes role and joined_at) */
-            members: crm.models.User[];
+            members: User[];
             members_count: number;
             members_exists: boolean;
         }
@@ -160,7 +160,7 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
             // Relations
-            commentable: CompositeComment | null;
+            commentable: unknown | null;
             commentable_count: number;
             commentable_exists: boolean;
         }
@@ -265,7 +265,7 @@ declare global {
             /** Write-only mutator (no getter) for a non-DB column */
             search_index: unknown;
             // Relations
-            user: crm.models.User;
+            user: User;
             user_count: number;
             user_exists: boolean;
             items: OrderItem[];
@@ -302,7 +302,7 @@ declare global {
             /** Estimated reading time formatted */
             reading_time: string;
             // Relations
-            author: crm.models.User;
+            author: User;
             author_count: number;
             author_exists: boolean;
             category_rel: Category | null;
@@ -362,7 +362,7 @@ declare global {
             has_coordinates: boolean;
             full_address: string | null;
             // Relations
-            user: crm.models.User;
+            user: User;
             user_count: number;
             user_exists: boolean;
         }
@@ -471,7 +471,7 @@ declare global {
             orders: Order[];
             orders_count: number;
             orders_exists: boolean;
-            addresses: app.http.resources.Address[];
+            addresses: Address[];
             addresses_count: number;
             addresses_exists: boolean;
             teams: Team[];
@@ -591,7 +591,7 @@ declare global {
             post: Post;
             post_count: number;
             post_exists: boolean;
-            user: crm.models.User;
+            user: User;
             user_count: number;
             user_exists: boolean;
         }
@@ -644,7 +644,7 @@ declare global {
             /** Old-style mutator for avatar URL capitalization */
             formatted_bio: string;
             // Relations
-            user: crm.models.User;
+            user: User;
             user_count: number;
             user_exists: boolean;
         }
@@ -658,7 +658,7 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
             // Relations
-            commentable: StrictCompositeComment | null;
+            commentable: unknown | null;
             commentable_count: number;
             commentable_exists: boolean;
         }
@@ -683,7 +683,7 @@ declare global {
             /** Non-column accessor returning CRM Status enum — creates name conflict with column 'status' */
             current_crm_status: crm.enums.StatusType | null;
             // Relations
-            manager: crm.models.User | null;
+            manager: User | null;
             manager_count: number;
             manager_exists: boolean;
             primary_contact: crm.models.User | null;
@@ -799,7 +799,7 @@ declare global {
             flexible_id: string | number | null;
             optional_label: string | null;
             status_from_docblock: crm.enums.StatusType | null;
-            uploader_from_docblock: crm.models.User | null;
+            uploader_from_docblock: User | null;
             config_from_docblock: MenuSettingsType;
             data_from_docblock: unknown[];
             label_from_docblock: string;
@@ -809,7 +809,7 @@ declare global {
             numeric_string_accessor: string;
             // Relations
             /** Polymorphic parent (Product, Post, User, etc.) */
-            imageable: Image;
+            imageable: Post | Product | User | crm.models.User;
             imageable_count: number;
             imageable_exists: boolean;
         }
@@ -882,6 +882,10 @@ declare global {
             status: crm.enums.StatusType;
             created_at: string | null;
             updated_at: string | null;
+            // Relations
+            images: app.models.Image[];
+            images_count: number;
+            images_exists: boolean;
         }
         export interface Deal {
             // Columns
@@ -896,7 +900,7 @@ declare global {
             updated_at: string | null;
             // Relations
             /** The CRM customer this deal belongs to. */
-            customer: app.models.User;
+            customer: User;
             customer_count: number;
             customer_exists: boolean;
             /** The system admin/user managing this deal. */
@@ -918,7 +922,7 @@ declare global {
             updated_at: string | null;
             // Relations
             /** Get the notifiable entity that the notification belongs to. */
-            notifiable: DatabaseNotification;
+            notifiable: crm.models.User;
             notifiable_count: number;
             notifiable_exists: boolean;
         }
@@ -941,7 +945,7 @@ declare global {
             order: app.models.Order;
             order_count: number;
             order_exists: boolean;
-            tracking_events: app.models.TrackingEvent[];
+            tracking_events: TrackingEvent[];
             tracking_events_count: number;
             tracking_events_exists: boolean;
         }
@@ -1255,7 +1259,7 @@ declare global {
             posts: app.models.Post[];
             comments: app.models.Comment[];
             orders: app.models.Order[];
-            addresses: app.models.Address[];
+            addresses: Address[];
             teams: app.models.Team[];
             ownedTeams: app.models.Team[];
             images: app.models.Image[];
@@ -1269,7 +1273,7 @@ declare global {
             notes: string | null;
             item_count: number;
             items: app.models.OrderItem[];
-            user?: crm.http.resources.UserResource;
+            user?: UserResource;
         }
         /** Resource spreading parent::toArray() from JsonResource base with extra keys. */
         export interface SpreadJsonBaseResource {
@@ -1296,7 +1300,7 @@ declare global {
             posts: app.models.Post[];
             comments: app.models.Comment[];
             orders: app.models.Order[];
-            addresses: app.models.Address[];
+            addresses: Address[];
             teams: app.models.Team[];
             ownedTeams: app.models.Team[];
             images: app.models.Image[];
@@ -1336,9 +1340,9 @@ declare global {
             is_flagged: boolean;
             flagged_at?: string | null;
             metadata: Record<string, unknown>;
-            author?: crm.http.resources.UserResource;
-            author_new?: crm.http.resources.UserResource;
-            author_direct: crm.http.resources.UserResource;
+            author?: UserResource;
+            author_new?: UserResource;
+            author_direct: UserResource;
             post?: PostResource;
             post_new?: PostResource;
             post_direct: PostResource;
@@ -1470,7 +1474,7 @@ declare global {
         export interface OrderClosureResource {
             id: number;
             status_arrow?: app.enums.OrderStatusType;
-            user_arrow?: crm.http.resources.UserResource;
+            user_arrow?: UserResource;
             items_arrow?: OrderItemResource[];
             notes_closure?: string | null;
             shipped_at?: string | null;
@@ -1532,7 +1536,7 @@ declare global {
             posts: app.models.Post[];
             comments: app.models.Comment[];
             orders: app.models.Order[];
-            addresses: app.models.Address[];
+            addresses: Address[];
             teams: app.models.Team[];
             ownedTeams: app.models.Team[];
             images: app.models.Image[];
@@ -1662,7 +1666,7 @@ declare global {
             slug: string;
             description?: string | null;
             is_active: boolean;
-            owner?: crm.http.resources.UserResource;
+            owner?: UserResource;
             members?: TeamMemberResource[];
             members_count?: number;
             settings?: unknown[] | null;
@@ -1699,7 +1703,7 @@ declare global {
             currency?: app.enums.CurrencyType;
         }
         export interface UserCollection {
-            data: crm.http.resources.UserResource[];
+            data: UserResource[];
             has_admin: unknown;
         }
         /** Exercises the bug where resolveClosureReturnExpression() picks the first Return_ statement in a closure — which is the guard-clause `return null` instead of the actual data array. The closure has: if (! $this->user) { return null; }  ← guard clause (first return) return [ 'name' => ..., 'email' => ... ];  ← actual data (should be picked) */
@@ -1809,7 +1813,7 @@ declare global {
             posts: app.models.Post[];
             comments: app.models.Comment[];
             orders: app.models.Order[];
-            addresses: app.models.Address[];
+            addresses: Address[];
             teams: app.models.Team[];
             ownedTeams: app.models.Team[];
             images: app.models.Image[];
@@ -1859,8 +1863,8 @@ declare global {
             dynamic?: unknown;
             normal_merge_key?: number;
             formatted: unknown;
-            plain_user: crm.http.resources.UserResource;
-            empty_user: crm.http.resources.UserResource;
+            plain_user: UserResource;
+            empty_user: UserResource;
             empty_enum: unknown;
             fcc_enum: unknown;
             not_enum: unknown;
@@ -1874,10 +1878,10 @@ declare global {
         export interface OrderDetailResource {
             id: number;
             status: app.enums.OrderStatusType;
-            user?: crm.http.resources.UserResource;
+            user?: UserResource;
             payment_status?: app.enums.OrderStatusType;
             payment_currency?: app.enums.CurrencyType;
-            shipping_user?: crm.http.resources.UserResource;
+            shipping_user?: UserResource;
             order_items?: app.models.OrderItem[];
         }
         /** Exercises closure control-flow paths in collectReturnExpressions: elseif, else, switch, try/catch/finally, foreach, and do-while. */
@@ -1997,7 +2001,7 @@ declare global {
             crm_enum: crm.enums.StatusType;
             customer?: crm.models.User;
             admin?: app.models.User;
-            customer_resource?: app.http.resources.UserResource;
+            customer_resource?: UserResource;
             admin_resource?: app.http.resources.UserResource;
             closed_at?: string | null;
         }

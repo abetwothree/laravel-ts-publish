@@ -981,14 +981,14 @@ describe('callCommandUsing and callCommandWith', function () {
 
     test('callCommandWith can modify config values', function () {
         LaravelTsPublish::callCommandUsing(function () {
-            config()->set('ts-publish.additional_model_directories', ['modules/Blog/Models']);
+            config()->set('ts-publish.models.additional_directories', ['modules/Blog/Models']);
         });
 
-        expect(config('ts-publish.additional_model_directories'))->not->toBe(['modules/Blog/Models']);
+        expect(config('ts-publish.models.additional_directories'))->not->toBe(['modules/Blog/Models']);
 
         $this->service->callCommandWith();
 
-        expect(config('ts-publish.additional_model_directories'))->toBe(['modules/Blog/Models']);
+        expect(config('ts-publish.models.additional_directories'))->toBe(['modules/Blog/Models']);
     });
 
     test('later callCommandUsing replaces the previous closure', function () {
@@ -1123,6 +1123,19 @@ describe('qualifyGlobalType', function () {
         );
 
         expect($result)->toBe('crm.models.User | null');
+    });
+
+    test('does not re-qualify bare names that belong to the skip namespace', function () {
+        // Image is in app.models — after Pass 1, AppUser becomes bare 'User'
+        // Pass 2 must NOT re-qualify that bare User with crm.models
+        $result = $this->service->qualifyGlobalType(
+            'Post | Product | AppUser | CrmUser',
+            ['app.models' => ['User', 'Post', 'Product'], 'crm.models' => ['User']],
+            'app.models',
+            ['AppUser' => 'app.models.User', 'CrmUser' => 'crm.models.User'],
+        );
+
+        expect($result)->toBe('Post | Product | User | crm.models.User');
     });
 });
 

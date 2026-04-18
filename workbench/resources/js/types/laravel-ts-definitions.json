@@ -845,7 +845,7 @@
             },
             {
                 "name": "commentable",
-                "type": "CompositeComment | null"
+                "type": "unknown | null"
             },
             {
                 "name": "commentable_count",
@@ -2278,7 +2278,7 @@
             },
             {
                 "name": "commentable",
-                "type": "StrictCompositeComment | null"
+                "type": "unknown | null"
             },
             {
                 "name": "commentable_count",
@@ -2734,7 +2734,7 @@
             },
             {
                 "name": "uploader_from_docblock",
-                "type": "User | null"
+                "type": "WorkbenchUser | null"
             },
             {
                 "name": "config_from_docblock",
@@ -2766,7 +2766,7 @@
             },
             {
                 "name": "imageable",
-                "type": "Image"
+                "type": "Post | Product | WorkbenchUser | CrmUser"
             },
             {
                 "name": "imageable_count",
@@ -2812,7 +2812,7 @@
             },
             {
                 "name": "notifiable",
-                "type": "DatabaseNotification"
+                "type": "User"
             },
             {
                 "name": "notifiable_count",

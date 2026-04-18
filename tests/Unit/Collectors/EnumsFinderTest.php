@@ -33,7 +33,7 @@ test('enums collector skips non-loadable classes from scanned directories', func
         "<?php\n\nnamespace NonAutoloadable\\Fake;\n\nenum BrokenEnum: string\n{\n    case A = 'a';\n}\n"
     );
 
-    config()->set('ts-publish.additional_enum_directories', [$tempDir]);
+    config()->set('ts-publish.enums.additional_directories', [$tempDir]);
 
     try {
         $enums = resolve(EnumsCollector::class)->collect();
@@ -45,7 +45,7 @@ test('enums collector skips non-loadable classes from scanned directories', func
 });
 
 test('enums collector includes only classes from a directory', function () {
-    config()->set('ts-publish.included_enums', [
+    config()->set('ts-publish.enums.included', [
         workbench_path('modules/Accounting/Enums'),
     ]);
 
@@ -58,7 +58,7 @@ test('enums collector includes only classes from a directory', function () {
 });
 
 test('enums collector includes a mix of class names and directories', function () {
-    config()->set('ts-publish.included_enums', [
+    config()->set('ts-publish.enums.included', [
         'Workbench\App\Enums\Status',
         workbench_path('modules/Accounting/Enums'),
     ]);
@@ -73,7 +73,7 @@ test('enums collector includes a mix of class names and directories', function (
 });
 
 test('enums collector excludes classes from a directory', function () {
-    config()->set('ts-publish.excluded_enums', [
+    config()->set('ts-publish.enums.excluded', [
         workbench_path('app/Enums'),
     ]);
 
@@ -88,10 +88,10 @@ test('enums collector excludes classes from a directory', function () {
 });
 
 test('enums collector excludes a mix of class names and directories', function () {
-    config()->set('ts-publish.additional_enum_directories', [
+    config()->set('ts-publish.enums.additional_directories', [
         workbench_path('modules/Accounting/Enums'),
     ]);
-    config()->set('ts-publish.excluded_enums', [
+    config()->set('ts-publish.enums.excluded', [
         'Workbench\App\Enums\Status',
         workbench_path('modules/Accounting/Enums'),
     ]);

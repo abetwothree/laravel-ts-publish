@@ -23,7 +23,7 @@ trait TracksEnumImports
      */
     protected function shouldGenerateHasEnums(): bool
     {
-        return config()->boolean('ts-publish.enums_use_tolki_package')
+        return config()->boolean('ts-publish.enums.use_tolki_package')
             && $this->enumProperties() !== [];
     }
 

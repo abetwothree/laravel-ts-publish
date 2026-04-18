@@ -21,13 +21,13 @@ class EnumGenerator extends CoreGenerator
     public function generate(): string
     {
         /** @var EnumTransformer $transformer */
-        $transformer = resolve(config()->string('ts-publish.enum_transformer_class'), [
+        $transformer = resolve(config()->string('ts-publish.enums.transformer_class'), [
             'findable' => $this->findable,
         ]);
         $this->transformer = $transformer;
 
         /** @var EnumWriter $writer */
-        $writer = resolve(config()->string('ts-publish.enum_writer_class'));
+        $writer = resolve(config()->string('ts-publish.enums.writer_class'));
 
         return $this->content = $writer->write($this->transformer);
     }

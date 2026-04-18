@@ -84,7 +84,7 @@ describe('ResourceTransformer with PostResource', function () {
     });
 
     test('resolves EnumResource::make() to enum type with tolki disabled', function () {
-        config()->set('ts-publish.enums_use_tolki_package', false);
+        config()->set('ts-publish.enums.use_tolki_package', false);
 
         $data = (new ResourceTransformer(PostResource::class))->data();
 
@@ -94,7 +94,7 @@ describe('ResourceTransformer with PostResource', function () {
     });
 
     test('resolves new EnumResource() to enum type with tolki disabled', function () {
-        config()->set('ts-publish.enums_use_tolki_package', false);
+        config()->set('ts-publish.enums.use_tolki_package', false);
 
         $data = (new ResourceTransformer(PostResource::class))->data();
 
@@ -180,7 +180,7 @@ describe('ResourceTransformer with UserResource', function () {
     });
 
     test('resolves EnumResource::make() to enum type with tolki disabled', function () {
-        config()->set('ts-publish.enums_use_tolki_package', false);
+        config()->set('ts-publish.enums.use_tolki_package', false);
 
         $data = (new ResourceTransformer(UserResource::class))->data();
 
@@ -241,7 +241,7 @@ describe('ResourceTransformer with OrderResource', function () {
     });
 
     test('resolves EnumResource::make() for Order enums with tolki disabled', function () {
-        config()->set('ts-publish.enums_use_tolki_package', false);
+        config()->set('ts-publish.enums.use_tolki_package', false);
 
         $data = (new ResourceTransformer(OrderResource::class))->data();
 
@@ -290,84 +290,84 @@ describe('ResourceTransformer imports', function () {
     test('PostResource has value imports for enum consts with tolki', function () {
         $data = (new ResourceTransformer(PostResource::class))->data();
 
-        expect($data->valueImports)->toHaveKey('../enums');
-        expect($data->valueImports['../enums'])->toContain('Priority');
-        expect($data->valueImports['../enums'])->toContain('Status');
-        expect($data->valueImports['../enums'])->toContain('Visibility');
+        expect($data->valueImports)->toHaveKey('../../enums');
+        expect($data->valueImports['../../enums'])->toContain('Priority');
+        expect($data->valueImports['../../enums'])->toContain('Status');
+        expect($data->valueImports['../../enums'])->toContain('Visibility');
     });
 
     test('PostResource has no type imports for enums with tolki', function () {
         $data = (new ResourceTransformer(PostResource::class))->data();
 
         // Enum FQCNs are removed from type imports when tolki rewrites them to AsEnum
-        expect($data->typeImports)->not->toHaveKey('../enums');
+        expect($data->typeImports)->not->toHaveKey('../../enums');
     });
 
     test('PostResource has type imports for enums with tolki disabled', function () {
-        config()->set('ts-publish.enums_use_tolki_package', false);
+        config()->set('ts-publish.enums.use_tolki_package', false);
 
         $data = (new ResourceTransformer(PostResource::class))->data();
 
-        expect($data->typeImports)->toHaveKey('../enums');
-        expect($data->typeImports['../enums'])->toContain('PriorityType');
-        expect($data->typeImports['../enums'])->toContain('StatusType');
-        expect($data->typeImports['../enums'])->toContain('VisibilityType');
+        expect($data->typeImports)->toHaveKey('../../enums');
+        expect($data->typeImports['../../enums'])->toContain('PriorityType');
+        expect($data->typeImports['../../enums'])->toContain('StatusType');
+        expect($data->typeImports['../../enums'])->toContain('VisibilityType');
         expect($data->valueImports)->toBeEmpty();
     });
 
     test('UserResource has type imports for nested resource', function () {
         $data = (new ResourceTransformer(UserResource::class))->data();
 
-        expect($data->typeImports)->toHaveKey('./');
-        expect($data->typeImports['./'])->toContain('PostResource');
+        expect($data->typeImports)->toHaveKey('.');
+        expect($data->typeImports['.'])->toContain('PostResource');
     });
 
     test('UserResource has value imports for enum const', function () {
         $data = (new ResourceTransformer(UserResource::class))->data();
 
-        expect($data->valueImports)->toHaveKey('../enums');
-        expect($data->valueImports['../enums'])->toContain('Role');
+        expect($data->valueImports)->toHaveKey('../../enums');
+        expect($data->valueImports['../../enums'])->toContain('Role');
     });
 
     test('CommentResource has type imports for nested resources', function () {
         $data = (new ResourceTransformer(CommentResource::class))->data();
 
-        expect($data->typeImports)->toHaveKey('./');
-        expect($data->typeImports['./'])->toContain('PostResource');
-        expect($data->typeImports['./'])->toContain('UserResource');
+        expect($data->typeImports)->toHaveKey('.');
+        expect($data->typeImports['.'])->toContain('PostResource');
+        expect($data->typeImports['.'])->toContain('UserResource');
     });
 
     test('CommentResource has enum imports from inline relation filter (post_extended)', function () {
         $data = (new ResourceTransformer(CommentResource::class))->data();
 
         // post_extended = $this->post?->except(['created_at', 'updated_at']) includes enum-casted columns
-        expect($data->typeImports)->toHaveKey('../enums');
-        expect($data->typeImports['../enums'])->toContain('StatusType');
-        expect($data->typeImports['../enums'])->toContain('VisibilityType');
-        expect($data->typeImports['../enums'])->toContain('PriorityType');
+        expect($data->typeImports)->toHaveKey('../../enums');
+        expect($data->typeImports['../../enums'])->toContain('StatusType');
+        expect($data->typeImports['../../enums'])->toContain('VisibilityType');
+        expect($data->typeImports['../../enums'])->toContain('PriorityType');
         expect($data->valueImports)->toBeEmpty();
     });
 
     test('OrderResource has value imports for enum consts', function () {
         $data = (new ResourceTransformer(OrderResource::class))->data();
 
-        expect($data->valueImports)->toHaveKey('../enums');
-        expect($data->valueImports['../enums'])->toContain('Currency');
-        expect($data->valueImports['../enums'])->toContain('OrderStatus');
+        expect($data->valueImports)->toHaveKey('../../enums');
+        expect($data->valueImports['../../enums'])->toContain('Currency');
+        expect($data->valueImports['../../enums'])->toContain('OrderStatus');
     });
 
     test('OrderResource has type imports for related model', function () {
         $data = (new ResourceTransformer(OrderResource::class))->data();
 
-        expect($data->typeImports)->toHaveKey('../models');
-        expect($data->typeImports['../models'])->toContain('OrderItem');
+        expect($data->typeImports)->toHaveKey('../../models');
+        expect($data->typeImports['../../models'])->toContain('OrderItem');
     });
 
     test('UserResource has type imports for related model', function () {
         $data = (new ResourceTransformer(UserResource::class))->data();
 
-        expect($data->typeImports)->toHaveKey('../models');
-        expect($data->typeImports['../models'])->toContain('Profile');
+        expect($data->typeImports)->toHaveKey('../../models');
+        expect($data->typeImports['../../models'])->toContain('Profile');
     });
 });
 
@@ -396,7 +396,6 @@ describe('ResourceTransformer with AddressResource', function () {
 
 describe('ResourceTransformer modular imports', function () {
     test('PostResource has modular enum value imports with tolki', function () {
-        config()->set('ts-publish.modular_publishing', true);
         config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
 
         $data = (new ResourceTransformer(PostResource::class))->data();
@@ -414,9 +413,8 @@ describe('ResourceTransformer modular imports', function () {
     });
 
     test('PostResource has modular enum type imports with tolki disabled', function () {
-        config()->set('ts-publish.modular_publishing', true);
         config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
-        config()->set('ts-publish.enums_use_tolki_package', false);
+        config()->set('ts-publish.enums.use_tolki_package', false);
 
         $data = (new ResourceTransformer(PostResource::class))->data();
 
@@ -432,7 +430,6 @@ describe('ResourceTransformer modular imports', function () {
     });
 
     test('UserResource has modular resource imports', function () {
-        config()->set('ts-publish.modular_publishing', true);
         config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
 
         $data = (new ResourceTransformer(UserResource::class))->data();
@@ -449,7 +446,6 @@ describe('ResourceTransformer modular imports', function () {
     });
 
     test('UserResource has modular model imports', function () {
-        config()->set('ts-publish.modular_publishing', true);
         config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
 
         $data = (new ResourceTransformer(UserResource::class))->data();
@@ -614,7 +610,7 @@ describe('ResourceTransformer self-referencing resources', function () {
 
 describe('ResourceTransformer with parent::toArray spread', function () {
     test('ApiPostResource includes parent PostResource properties', function () {
-        config()->set('ts-publish.enums_use_tolki_package', false);
+        config()->set('ts-publish.enums.use_tolki_package', false);
 
         $data = (new ResourceTransformer(ApiPostResource::class))->data();
 
@@ -630,7 +626,7 @@ describe('ResourceTransformer with parent::toArray spread', function () {
     });
 
     test('ApiPostResource parent properties have correct types', function () {
-        config()->set('ts-publish.enums_use_tolki_package', false);
+        config()->set('ts-publish.enums.use_tolki_package', false);
 
         $data = (new ResourceTransformer(ApiPostResource::class))->data();
 
@@ -640,7 +636,7 @@ describe('ResourceTransformer with parent::toArray spread', function () {
     });
 
     test('child properties override parent properties with same key', function () {
-        config()->set('ts-publish.enums_use_tolki_package', false);
+        config()->set('ts-publish.enums.use_tolki_package', false);
 
         $data = (new ResourceTransformer(ApiPostResource::class))->data();
 
@@ -651,7 +647,7 @@ describe('ResourceTransformer with parent::toArray spread', function () {
     });
 
     test('non-overridden _new enum resource properties flow through from parent', function () {
-        config()->set('ts-publish.enums_use_tolki_package', false);
+        config()->set('ts-publish.enums.use_tolki_package', false);
 
         $data = (new ResourceTransformer(ApiPostResource::class))->data();
 
@@ -662,7 +658,7 @@ describe('ResourceTransformer with parent::toArray spread', function () {
     });
 
     test('ApiPostResource has enum type imports from parent', function () {
-        config()->set('ts-publish.enums_use_tolki_package', false);
+        config()->set('ts-publish.enums.use_tolki_package', false);
 
         $data = (new ResourceTransformer(ApiPostResource::class))->data();
 
@@ -806,9 +802,8 @@ describe('ResourceTransformer UseResource attribute model guess', function () {
 
 describe('ResourceTransformer import collision deconfliction', function () {
     test('aliases colliding enum types and model types in modular mode', function () {
-        config()->set('ts-publish.modular_publishing', true);
         config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
-        config()->set('ts-publish.enums_use_tolki_package', false);
+        config()->set('ts-publish.enums.use_tolki_package', false);
 
         $data = (new ResourceTransformer(DealResource::class))->data();
 
@@ -837,33 +832,9 @@ describe('ResourceTransformer import collision deconfliction', function () {
         expect($data->properties['admin_resource']['type'])->toBe('AppUserResource');
     });
 
-    test('aliases colliding types in non-modular mode without data loss', function () {
-        config()->set('ts-publish.modular_publishing', false);
-        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
-        config()->set('ts-publish.enums_use_tolki_package', false);
-
-        $data = (new ResourceTransformer(DealResource::class))->data();
-
-        // Both StatusType entries should appear (not collapsed by array_unique)
-        $enumImports = $data->typeImports['../enums'] ?? [];
-        expect($enumImports)->toContain('StatusType as AppStatusType')
-            ->toContain('StatusType as CrmStatusType');
-
-        // Both User entries should appear
-        $modelImports = $data->typeImports['../models'] ?? [];
-        expect($modelImports)->toContain('User as AppUser')
-            ->toContain('User as CrmUser');
-
-        // Both UserResource entries should appear
-        $resourceImports = $data->typeImports['./'] ?? [];
-        expect($resourceImports)->toContain('UserResource as AppUserResource')
-            ->toContain('UserResource as CrmUserResource');
-    });
-
     test('aliases enum type imports, value imports, and property types with tolki enabled', function () {
-        config()->set('ts-publish.modular_publishing', true);
         config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
-        config()->set('ts-publish.enums_use_tolki_package', true);
+        config()->set('ts-publish.enums.use_tolki_package', true);
 
         $data = (new ResourceTransformer(DealResource::class))->data();
 
@@ -921,7 +892,7 @@ describe('ResourceTransformer with ApiArticleResource (abstract parent + trait s
     });
 
     test('resolves enum types with tolki disabled', function () {
-        config()->set('ts-publish.enums_use_tolki_package', false);
+        config()->set('ts-publish.enums.use_tolki_package', false);
 
         $data = (new ResourceTransformer(ApiArticleResource::class))->data();
 
@@ -1104,18 +1075,20 @@ describe('ResourceTransformer with InvoiceResource', function () {
         $data = (new ResourceTransformer(InvoiceResource::class))->data();
 
         // latest_payment_only = $this->latest_payment?->only(...) — accessor returns ?Payment
-        expect($data->typeImports)->toHaveKey('../enums');
-        expect($data->typeImports['../enums'])->toContain('PaymentStatusType');
-        expect($data->typeImports['../enums'])->toContain('PaymentMethodType');
-        expect($data->typeImports['../enums'])->toContain('CurrencyType');
+        // PaymentStatus is in accounting/enums, PaymentMethod + Currency are in app/enums
+        expect($data->typeImports)->toHaveKey('../../enums');
+        expect($data->typeImports['../../enums'])->toContain('PaymentStatusType');
+        expect($data->typeImports)->toHaveKey('../../../app/enums');
+        expect($data->typeImports['../../../app/enums'])->toContain('PaymentMethodType');
+        expect($data->typeImports['../../../app/enums'])->toContain('CurrencyType');
     });
 
     test('has model imports from accessor model filter', function () {
         $data = (new ResourceTransformer(InvoiceResource::class))->data();
 
         // latest_payment_excluded = $this->latest_payment?->except(...) — Invoice relation remains
-        expect($data->typeImports)->toHaveKey('../models');
-        expect($data->typeImports['../models'])->toContain('Invoice');
+        expect($data->typeImports)->toHaveKey('../../models');
+        expect($data->typeImports['../../models'])->toContain('Invoice');
     });
 });
 

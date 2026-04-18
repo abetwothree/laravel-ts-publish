@@ -22,22 +22,21 @@ import type { Timestamps } from '@/types/util';
 
 /* prettier-ignore */
 declare global {
-    // Models
-    export namespace models {
+    export namespace accounting.models {
         export interface Payment {
             // Columns
             id: number;
             invoice_id: number;
-            status: enums.PaymentStatusType;
-            method: enums.PaymentMethodType;
-            currency: enums.CurrencyType;
+            status: accounting.enums.PaymentStatusType;
+            method: app.enums.PaymentMethodType;
+            currency: app.enums.CurrencyType;
             amount: number;
             reference: string | null;
             paid_at: string | null;
             created_at: string | null;
             updated_at: string | null;
             // Mutators
-            due_notice: enums.DueAtNoticeType;
+            due_notice: accounting.enums.DueAtNoticeType;
             // Relations
             invoice: Invoice;
             invoice_count: number;
@@ -48,7 +47,7 @@ declare global {
             id: number;
             user_id: number;
             number: string;
-            status: enums.InvoiceStatusType;
+            status: accounting.enums.InvoiceStatusType;
             subtotal: number;
             tax: number;
             total: number;
@@ -61,121 +60,15 @@ declare global {
             // Mutators
             latest_payment: Payment | null;
             // Relations
-            user: User;
+            user: crm.models.User;
             user_count: number;
             user_exists: boolean;
             payments: Payment[];
             payments_count: number;
             payments_exists: boolean;
         }
-        export interface User {
-            // Columns
-            id: number;
-            name: string;
-            email: string;
-            company: string | null;
-            status: enums.StatusType;
-            created_at: string | null;
-            updated_at: string | null;
-        }
-        export interface Deal {
-            // Columns
-            id: number;
-            customer_id: number;
-            admin_id: number;
-            title: string;
-            status: enums.StatusType;
-            crm_status: enums.StatusType;
-            value: number;
-            created_at: string | null;
-            updated_at: string | null;
-            // Relations
-            /** The CRM customer this deal belongs to. */
-            customer: User;
-            customer_count: number;
-            customer_exists: boolean;
-            /** The system admin/user managing this deal. */
-            admin: User;
-            admin_count: number;
-            admin_exists: boolean;
-        }
-        export interface Shipment {
-            // Columns
-            id: number;
-            order_id: number;
-            tracking_number: string | null;
-            carrier: enums.CarrierType;
-            status: enums.ShipmentStatusType;
-            weight_grams: number | null;
-            estimated_delivery_at: string | null;
-            shipped_at: string | null;
-            delivered_at: string | null;
-            created_at: string | null;
-            updated_at: string | null;
-            // Relations
-            order: Order;
-            order_count: number;
-            order_exists: boolean;
-            tracking_events: TrackingEvent[];
-            tracking_events_count: number;
-            tracking_events_exists: boolean;
-        }
-        export interface TrackingEvent {
-            // Columns
-            id: number;
-            shipment_id: number;
-            status: string;
-            location: string | null;
-            description: string | null;
-            occurred_at: string;
-            created_at: string | null;
-            updated_at: string | null;
-            // Relations
-            shipment: Shipment;
-            shipment_count: number;
-            shipment_exists: boolean;
-        }
-        export interface Reaction {
-            // Columns
-            id: number;
-            article_id: number;
-            user_id: number;
-            emoji: string;
-            created_at: string | null;
-            updated_at: string | null;
-            // Relations
-            article: Article;
-            article_count: number;
-            article_exists: boolean;
-            user: User;
-            user_count: number;
-            user_exists: boolean;
-        }
-        export interface Article {
-            // Columns
-            id: number;
-            user_id: number;
-            title: string;
-            slug: string;
-            excerpt: string | null;
-            body: string;
-            status: enums.ArticleStatusType;
-            content_type: enums.ContentTypeType;
-            featured_image: string | null;
-            meta_description: string | null;
-            is_featured: boolean;
-            published_at: string | null;
-            created_at: string | null;
-            updated_at: string | null;
-            deleted_at: string | null;
-            // Relations
-            author: User;
-            author_count: number;
-            author_exists: boolean;
-            reactions: Reaction[];
-            reactions_count: number;
-            reactions_exists: boolean;
-        }
+    }
+    export namespace app.models {
         export interface Team {
             // Columns
             id: number;
@@ -267,7 +160,7 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
             // Relations
-            commentable: CompositeComment | null;
+            commentable: unknown | null;
             commentable_count: number;
             commentable_exists: boolean;
         }
@@ -341,9 +234,9 @@ declare global {
             id: number;
             ulid: string;
             user_id: number;
-            status: enums.OrderStatusType;
-            payment_method: enums.PaymentMethodType | null;
-            currency: enums.CurrencyType;
+            status: app.enums.OrderStatusType;
+            payment_method: app.enums.PaymentMethodType | null;
+            currency: app.enums.CurrencyType;
             subtotal: number;
             tax: number;
             discount: number;
@@ -385,7 +278,7 @@ declare global {
             title: string;
             content: string;
             user_id: number;
-            status: enums.StatusType;
+            status: crm.enums.StatusType;
             published_at: string | null;
             metadata: Record<string, {title: string, content: string}>;
             rating: number | null;
@@ -395,8 +288,8 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
             category_id: number | null;
-            visibility: enums.VisibilityType | null;
-            priority: enums.PriorityType | null;
+            visibility: app.enums.VisibilityType | null;
+            priority: app.enums.PriorityType | null;
             word_count: number | null;
             reading_time_minutes: number | null;
             featured_image_url: string | null;
@@ -539,19 +432,6 @@ declare global {
             product_count: number;
             product_exists: boolean;
         }
-        export interface Store {
-            // Columns
-            id: number;
-            name: string;
-            phone: string | null;
-            coordinate_data: string | null;
-            status: string | null;
-            manager_id: number | null;
-            primary_contact_id: number | null;
-            secondary_contact_id: number | null;
-            created_at: string | null;
-            updated_at: string | null;
-        }
         /** Application user account */
         export interface User {
             // Columns
@@ -565,8 +445,8 @@ declare global {
             remember_token: string | null;
             created_at: string | null;
             updated_at: string | null;
-            role: enums.RoleType | null;
-            membership_level: enums.MembershipLevelType | null;
+            role: app.enums.RoleType | null;
+            membership_level: app.enums.MembershipLevelType | null;
             phone: string | null;
             avatar: string | null;
             bio: string | null;
@@ -591,7 +471,7 @@ declare global {
             orders: Order[];
             orders_count: number;
             orders_exists: boolean;
-            addresses: resources.Address[];
+            addresses: Address[];
             addresses_count: number;
             addresses_exists: boolean;
             teams: Team[];
@@ -605,7 +485,7 @@ declare global {
             images_count: number;
             images_exists: boolean;
             /** Get the entity's notifications. */
-            notifications: DatabaseNotification[];
+            notifications: illuminate.notifications.DatabaseNotification[];
             notifications_count: number;
             notifications_exists: boolean;
         }
@@ -778,7 +658,7 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
             // Relations
-            commentable: StrictCompositeComment | null;
+            commentable: unknown | null;
             commentable_count: number;
             commentable_exists: boolean;
         }
@@ -789,7 +669,7 @@ declare global {
             /** Write-only accessor on DB column 'phone' — normalizes on set, no get */
             phone: string | null;
             coordinate_data: Coordinate | null;
-            status: enums.StatusType | null;
+            status: app.enums.StatusType | null;
             manager_id: number | null;
             primary_contact_id: number | null;
             secondary_contact_id: number | null;
@@ -801,15 +681,15 @@ declare global {
             /** Non-column accessor returning a plain class (Coordinate) */
             location: Coordinate;
             /** Non-column accessor returning CRM Status enum — creates name conflict with column 'status' */
-            current_crm_status: enums.StatusType | null;
+            current_crm_status: crm.enums.StatusType | null;
             // Relations
             manager: User | null;
             manager_count: number;
             manager_exists: boolean;
-            primary_contact: User | null;
+            primary_contact: crm.models.User | null;
             primary_contact_count: number;
             primary_contact_exists: boolean;
-            secondary_contact: User | null;
+            secondary_contact: crm.models.User | null;
             secondary_contact_count: number;
             secondary_contact_exists: boolean;
         }
@@ -918,7 +798,7 @@ declare global {
             size: number;
             flexible_id: string | number | null;
             optional_label: string | null;
-            status_from_docblock: enums.StatusType | null;
+            status_from_docblock: crm.enums.StatusType | null;
             uploader_from_docblock: User | null;
             config_from_docblock: MenuSettingsType;
             data_from_docblock: unknown[];
@@ -929,10 +809,107 @@ declare global {
             numeric_string_accessor: string;
             // Relations
             /** Polymorphic parent (Product, Post, User, etc.) */
-            imageable: Image;
+            imageable: Post | Product | User | crm.models.User;
             imageable_count: number;
             imageable_exists: boolean;
         }
+    }
+    export namespace app.models.admin {
+        export interface Store {
+            // Columns
+            id: number;
+            name: string;
+            phone: string | null;
+            coordinate_data: string | null;
+            status: string | null;
+            manager_id: number | null;
+            primary_contact_id: number | null;
+            secondary_contact_id: number | null;
+            created_at: string | null;
+            updated_at: string | null;
+        }
+    }
+    export namespace blog.models {
+        export interface Reaction {
+            // Columns
+            id: number;
+            article_id: number;
+            user_id: number;
+            emoji: string;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            article: Article;
+            article_count: number;
+            article_exists: boolean;
+            user: crm.models.User;
+            user_count: number;
+            user_exists: boolean;
+        }
+        export interface Article {
+            // Columns
+            id: number;
+            user_id: number;
+            title: string;
+            slug: string;
+            excerpt: string | null;
+            body: string;
+            status: blog.enums.ArticleStatusType;
+            content_type: blog.enums.ContentTypeType;
+            featured_image: string | null;
+            meta_description: string | null;
+            is_featured: boolean;
+            published_at: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            deleted_at: string | null;
+            // Relations
+            author: crm.models.User;
+            author_count: number;
+            author_exists: boolean;
+            reactions: Reaction[];
+            reactions_count: number;
+            reactions_exists: boolean;
+        }
+    }
+    export namespace crm.models {
+        export interface User {
+            // Columns
+            id: number;
+            name: string;
+            email: string;
+            company: string | null;
+            status: crm.enums.StatusType;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            images: app.models.Image[];
+            images_count: number;
+            images_exists: boolean;
+        }
+        export interface Deal {
+            // Columns
+            id: number;
+            customer_id: number;
+            admin_id: number;
+            title: string;
+            status: app.enums.StatusType;
+            crm_status: crm.enums.StatusType;
+            value: number;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            /** The CRM customer this deal belongs to. */
+            customer: User;
+            customer_count: number;
+            customer_exists: boolean;
+            /** The system admin/user managing this deal. */
+            admin: app.models.User;
+            admin_count: number;
+            admin_exists: boolean;
+        }
+    }
+    export namespace illuminate.notifications {
         export interface DatabaseNotification {
             // Columns
             id: string;
@@ -945,13 +922,50 @@ declare global {
             updated_at: string | null;
             // Relations
             /** Get the notifiable entity that the notification belongs to. */
-            notifiable: DatabaseNotification;
+            notifiable: crm.models.User;
             notifiable_count: number;
             notifiable_exists: boolean;
         }
     }
-    // Enums
-    export namespace enums {
+    export namespace shipping.models {
+        export interface Shipment {
+            // Columns
+            id: number;
+            order_id: number;
+            tracking_number: string | null;
+            carrier: shipping.enums.CarrierType;
+            status: shipping.enums.ShipmentStatusType;
+            weight_grams: number | null;
+            estimated_delivery_at: string | null;
+            shipped_at: string | null;
+            delivered_at: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            order: app.models.Order;
+            order_count: number;
+            order_exists: boolean;
+            tracking_events: TrackingEvent[];
+            tracking_events_count: number;
+            tracking_events_exists: boolean;
+        }
+        export interface TrackingEvent {
+            // Columns
+            id: number;
+            shipment_id: number;
+            status: string;
+            location: string | null;
+            description: string | null;
+            occurred_at: string;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            shipment: Shipment;
+            shipment_count: number;
+            shipment_exists: boolean;
+        }
+    }
+    export namespace accounting.enums {
         export interface DueAtNotice
         {
             ComingUp: 'Payment due date is coming up',
@@ -982,60 +996,8 @@ declare global {
         }
         export type PaymentStatusType = 'pending' | 'completed' | 'failed' | 'refunded';
         export type PaymentStatusKind = 'Pending' | 'Completed' | 'Failed' | 'Refunded';
-
-        export interface Status
-        {
-            Lead: 'lead',
-            Prospect: 'prospect',
-            Active: 'active',
-            Churned: 'churned',
-        }
-        export type StatusType = 'lead' | 'prospect' | 'active' | 'churned';
-        export type StatusKind = 'Lead' | 'Prospect' | 'Active' | 'Churned';
-
-        export interface Carrier
-        {
-            Ups: 'ups',
-            FedEx: 'fedex',
-            Usps: 'usps',
-            Dhl: 'dhl',
-        }
-        export type CarrierType = 'ups' | 'fedex' | 'usps' | 'dhl';
-        export type CarrierKind = 'Ups' | 'FedEx' | 'Usps' | 'Dhl';
-
-        export interface ShipmentStatus
-        {
-            Pending: 'pending',
-            LabelCreated: 'label_created',
-            PickedUp: 'picked_up',
-            InTransit: 'in_transit',
-            OutForDelivery: 'out_for_delivery',
-            Delivered: 'delivered',
-            Returned: 'returned',
-        }
-        export type ShipmentStatusType = 'pending' | 'label_created' | 'picked_up' | 'in_transit' | 'out_for_delivery' | 'delivered' | 'returned';
-        export type ShipmentStatusKind = 'Pending' | 'LabelCreated' | 'PickedUp' | 'InTransit' | 'OutForDelivery' | 'Delivered' | 'Returned';
-
-        export interface ContentType
-        {
-            Post: 'post',
-            Tutorial: 'tutorial',
-            Review: 'review',
-            News: 'news',
-        }
-        export type ContentTypeType = 'post' | 'tutorial' | 'review' | 'news';
-        export type ContentTypeKind = 'Post' | 'Tutorial' | 'Review' | 'News';
-
-        export interface ArticleStatus
-        {
-            Draft: 'draft',
-            InReview: 'in_review',
-            Published: 'published',
-            Archived: 'archived',
-        }
-        export type ArticleStatusType = 'draft' | 'in_review' | 'published' | 'archived';
-        export type ArticleStatusKind = 'Draft' | 'InReview' | 'Published' | 'Archived';
-
+    }
+    export namespace app.enums {
         /** String-backed enum with no attributes at all — tests the simplest backed enum path. */
         export interface PaymentMethod
         {
@@ -1181,131 +1143,93 @@ declare global {
         export type CurrencyType = 'USD' | 'EUR' | 'GBP' | 'JPY' | 'CAD';
         export type CurrencyKind = 'Usd' | 'Eur' | 'Gbp' | 'Jpy' | 'Cad';
     }
-    // Resources
-    export namespace resources {
+    export namespace blog.enums {
+        export interface ContentType
+        {
+            Post: 'post',
+            Tutorial: 'tutorial',
+            Review: 'review',
+            News: 'news',
+        }
+        export type ContentTypeType = 'post' | 'tutorial' | 'review' | 'news';
+        export type ContentTypeKind = 'Post' | 'Tutorial' | 'Review' | 'News';
+
+        export interface ArticleStatus
+        {
+            Draft: 'draft',
+            InReview: 'in_review',
+            Published: 'published',
+            Archived: 'archived',
+        }
+        export type ArticleStatusType = 'draft' | 'in_review' | 'published' | 'archived';
+        export type ArticleStatusKind = 'Draft' | 'InReview' | 'Published' | 'Archived';
+    }
+    export namespace crm.enums {
+        export interface Status
+        {
+            Lead: 'lead',
+            Prospect: 'prospect',
+            Active: 'active',
+            Churned: 'churned',
+        }
+        export type StatusType = 'lead' | 'prospect' | 'active' | 'churned';
+        export type StatusKind = 'Lead' | 'Prospect' | 'Active' | 'Churned';
+    }
+    export namespace shipping.enums {
+        export interface Carrier
+        {
+            Ups: 'ups',
+            FedEx: 'fedex',
+            Usps: 'usps',
+            Dhl: 'dhl',
+        }
+        export type CarrierType = 'ups' | 'fedex' | 'usps' | 'dhl';
+        export type CarrierKind = 'Ups' | 'FedEx' | 'Usps' | 'Dhl';
+
+        export interface ShipmentStatus
+        {
+            Pending: 'pending',
+            LabelCreated: 'label_created',
+            PickedUp: 'picked_up',
+            InTransit: 'in_transit',
+            OutForDelivery: 'out_for_delivery',
+            Delivered: 'delivered',
+            Returned: 'returned',
+        }
+        export type ShipmentStatusType = 'pending' | 'label_created' | 'picked_up' | 'in_transit' | 'out_for_delivery' | 'delivered' | 'returned';
+        export type ShipmentStatusKind = 'Pending' | 'LabelCreated' | 'PickedUp' | 'InTransit' | 'OutForDelivery' | 'Delivered' | 'Returned';
+    }
+    export namespace accounting.http.resources {
         /** Exercises: when(cond, EnumResource::make) — conditional enum, cross-module whenLoaded bare (App\User), Resource::collection sibling, whenCounted, when(cond, value), mergeWhen. */
         export interface InvoiceResource {
             id: number;
             number: string;
-            status?: enums.InvoiceStatusType;
+            status?: accounting.enums.InvoiceStatusType;
             subtotal: number;
             tax: number;
             total: number;
             due_at: string | null;
             issued_at?: string | null;
             paid_at?: string | null;
-            user?: models.User;
+            user?: crm.models.User;
             payments?: PaymentResource[];
             payments_count?: number;
             notes?: string | null;
-            latest_payment_only: { invoice_id: number; status: enums.PaymentStatusType; method: enums.PaymentMethodType; currency: enums.CurrencyType; amount: number; reference: string | null; paid_at: string | null } | null;
-            latest_payment_excluded: { id: number; created_at: string | null; updated_at: string | null; due_notice: enums.DueAtNoticeType; invoice: models.Invoice } | null;
+            latest_payment_only: { invoice_id: number; status: accounting.enums.PaymentStatusType; method: app.enums.PaymentMethodType; currency: app.enums.CurrencyType; amount: number; reference: string | null; paid_at: string | null } | null;
+            latest_payment_excluded: { id: number; created_at: string | null; updated_at: string | null; due_notice: accounting.enums.DueAtNoticeType; invoice: accounting.models.Invoice } | null;
         }
         /** Exercises: multiple EnumResource::make from different namespaces (PaymentStatus, Currency from App), whenHas on PaymentMethod enum attribute, whenNotNull. */
         export interface PaymentResource {
             id: number;
-            status: enums.PaymentStatusType;
-            currency: enums.CurrencyType;
+            status: accounting.enums.PaymentStatusType;
+            currency: app.enums.CurrencyType;
             amount: number;
-            method?: enums.PaymentMethodType;
+            method?: app.enums.PaymentMethodType;
             reference?: string | null;
             paid_at?: string | null;
         }
-        export interface UserResource {
-            id: number;
-            name: string;
-            email: string;
-            company: string | null;
-            status: enums.StatusType;
-        }
-        /** Exercises: dual enum conflict — $this->status (App\Enums\Status direct access) vs EnumResource::make($this->crm_status) (Crm\Enums\Status), whenLoaded bare with two different User models (Crm\User + App\User), when conditional, resource wrapping with colliding resource names, dual EnumResource::make. */
-        export interface DealResource {
-            id: number;
-            title: string;
-            value: number;
-            status: enums.StatusType;
-            status_enum: enums.StatusType;
-            crm_status: enums.StatusType;
-            crm_enum: enums.StatusType;
-            customer?: models.User;
-            admin?: models.User;
-            customer_resource?: UserResource;
-            admin_resource?: UserResource;
-            closed_at?: string | null;
-        }
-        /** Exercises: direct enum property access ($this->status), whenLoaded bare on same-module relation (Shipment). */
-        export interface TrackingEventResource {
-            id: number;
-            status: string;
-            location: string | null;
-            description: string | null;
-            occurred_at: string;
-            shipment?: models.Shipment;
-        }
-        /** Exercises: EnumResource::make on two enums (Carrier, Status), when, whenNotNull, whenLoaded bare cross-module (App\Order), Resource::collection, whenCounted, whenAggregated, mergeWhen with complex expression. */
-        export interface ShipmentResource {
-            id: number;
-            tracking_number: string | null;
-            carrier: enums.CarrierType;
-            status: enums.ShipmentStatusType;
-            weight_grams: number | null;
-            estimated_delivery_at?: string | null;
-            shipped_at?: string | null;
-            delivered_at?: string | null;
-            order?: models.Order;
-            tracking_events?: TrackingEventResource[];
-            tracking_events_count?: number;
-            events_total?: number;
-            transit_time?: unknown;
-        }
-        export interface ApiArticleResource {
-            morphValue: string;
-            id: number;
-            computed: string;
-            date_val: string;
-            custom_val: CustomObject;
-            plain: unknown;
-            basic: unknown;
-            firstName: string;
-            lastName: string;
-            isActive: boolean;
-            location: GeoPoint;
-            flag?: string | null;
-            extra: Record<string, unknown>;
-            title: string;
-            slug: string;
-            excerpt: string | null;
-            body: string;
-            status: enums.ArticleStatusType;
-            content_type: enums.ContentTypeType;
-            is_featured: boolean;
-            author?: models.User;
-        }
-        /** Exercises: multiple whenLoaded bare — both same-module (Article) and cross-module (App\User) model type resolution. */
-        export interface ReactionResource {
-            id: number;
-            emoji: string;
-            article?: models.Article;
-            user?: models.User;
-        }
-        /** Exercises: multiple EnumResource::make, when(cond, Resource::collection), whenLoaded bare (cross-module App\User as author), whenNotNull, whenCounted, whenAggregated, when conditional with direct property. */
-        export interface ArticleResource {
-            id: number;
-            title: string;
-            slug: string;
-            excerpt?: string | null;
-            body: string;
-            status: enums.ArticleStatusType;
-            content_type: enums.ContentTypeType;
-            is_featured: boolean;
-            featured_image?: string | null;
-            meta_description?: string | null;
-            published_at?: string | null;
-            author?: models.User;
-            reactions?: ReactionResource[];
-            reactions_count?: number;
-            reactions_avg?: number;
-        }
+    }
+    export namespace app.http.resources {
         /** Resource for testing that $this->resource->prop on a model-backed resource resolves to the model attribute type. */
         export interface ModelWrappedPropResource {
             title: string;
@@ -1321,8 +1245,8 @@ declare global {
             remember_token: string | null;
             created_at: string | null;
             updated_at: string | null;
-            role: enums.RoleType | null;
-            membership_level: enums.MembershipLevelType | null;
+            role: app.enums.RoleType | null;
+            membership_level: app.enums.MembershipLevelType | null;
             phone: string | null;
             avatar: string | null;
             bio: string | null;
@@ -1331,24 +1255,24 @@ declare global {
             last_login_ip: string | null;
             initials: string;
             is_premium: boolean;
-            profile: models.Profile | null;
-            posts: models.Post[];
-            comments: models.Comment[];
-            orders: models.Order[];
-            addresses: models.Address[];
-            teams: models.Team[];
-            ownedTeams: models.Team[];
-            images: models.Image[];
-            notifications: models.DatabaseNotification[];
+            profile: app.models.Profile | null;
+            posts: app.models.Post[];
+            comments: app.models.Comment[];
+            orders: app.models.Order[];
+            addresses: Address[];
+            teams: app.models.Team[];
+            ownedTeams: app.models.Team[];
+            images: app.models.Image[];
+            notifications: illuminate.notifications.DatabaseNotification[];
         }
         /** Exercises ...$this->only([...]) spread with additional manual keys. */
         export interface OrderOnlyResource {
             id: number;
-            status: enums.OrderStatusType;
+            status: app.enums.OrderStatusType;
             total: number;
             notes: string | null;
             item_count: number;
-            items: models.OrderItem[];
+            items: app.models.OrderItem[];
             user?: UserResource;
         }
         /** Resource spreading parent::toArray() from JsonResource base with extra keys. */
@@ -1362,8 +1286,8 @@ declare global {
             remember_token: string | null;
             created_at: string | null;
             updated_at: string | null;
-            role: enums.RoleType | null;
-            membership_level: enums.MembershipLevelType | null;
+            role: app.enums.RoleType | null;
+            membership_level: app.enums.MembershipLevelType | null;
             phone: string | null;
             avatar: string | null;
             bio: string | null;
@@ -1372,15 +1296,15 @@ declare global {
             last_login_ip: string | null;
             initials: string;
             is_premium: boolean;
-            profile: models.Profile | null;
-            posts: models.Post[];
-            comments: models.Comment[];
-            orders: models.Order[];
-            addresses: models.Address[];
-            teams: models.Team[];
-            ownedTeams: models.Team[];
-            images: models.Image[];
-            notifications: models.DatabaseNotification[];
+            profile: app.models.Profile | null;
+            posts: app.models.Post[];
+            comments: app.models.Comment[];
+            orders: app.models.Order[];
+            addresses: Address[];
+            teams: app.models.Team[];
+            ownedTeams: app.models.Team[];
+            images: app.models.Image[];
+            notifications: illuminate.notifications.DatabaseNotification[];
             full_name: unknown;
         }
         /** Exercises: multiple whenAggregated (sum/min/max), whenNotNull, when, whenCounted, two mergeWhen blocks, Resource::collection x2. */
@@ -1423,7 +1347,7 @@ declare global {
             post_new?: PostResource;
             post_direct: PostResource;
             post_limited: { id: number; title: string };
-            post_extended: { id: number; title: string; content: string; user_id: number; status: enums.StatusType; published_at: string | null; metadata: unknown[] | null; rating: number | null; category: string; options: unknown[] | null; deleted_at: string | null; category_id: number | null; visibility: enums.VisibilityType | null; priority: enums.PriorityType | null; word_count: number | null; reading_time_minutes: number | null; featured_image_url: string | null; is_pinned: boolean; title_display: string | null; excerpt: string | null; reading_time: string; author: models.User; categoryRel: models.Category | null; comments: models.Comment[]; tags: models.Tag[]; images: models.Image[] } | null;
+            post_extended: { id: number; title: string; content: string; user_id: number; status: crm.enums.StatusType; published_at: string | null; metadata: unknown[] | null; rating: number | null; category: string; options: unknown[] | null; deleted_at: string | null; category_id: number | null; visibility: app.enums.VisibilityType | null; priority: app.enums.PriorityType | null; word_count: number | null; reading_time_minutes: number | null; featured_image_url: string | null; is_pinned: boolean; title_display: string | null; excerpt: string | null; reading_time: string; author: crm.models.User; categoryRel: app.models.Category | null; comments: app.models.Comment[]; tags: app.models.Tag[]; images: app.models.Image[] } | null;
         }
         /** Child resource that uses SharedExtendsInterface AND extends a parent that also uses it. SharedExtendsInterface should appear only once in the result despite being reachable via two paths. */
         export interface ChildSharedResource extends SharedInterface {
@@ -1441,7 +1365,7 @@ declare global {
         /** Exercises analyzeInlineArray embeddedModelFqcns and embeddedResourceFqcns (lines 1501, 1508-1510) by returning inline arrays that contain whenLoaded() (model FQCN) and SomeResource::make() (resource FQCN) inside a closure union. */
         export interface InlineArrayFqcnResource {
             id: number;
-            payload?: { address: AddressResource; items_loaded?: models.OrderItem[] } | null;
+            payload?: { address: AddressResource; items_loaded?: app.models.OrderItem[] } | null;
         }
         /** Exercises: multiple whenHas on different column types, multiple whenNotNull. */
         export interface ProfileResource {
@@ -1455,17 +1379,13 @@ declare global {
             timezone?: string;
             locale?: string;
         }
-        export interface Store {
-            id: number;
-            name: string;
-        }
         /** Exercises collectDirectReturns elseif, else, and loop branches in the main toArray() body (not inside closures). */
         export interface ControlFlowReturnResource {
             id: number;
             archived?: unknown;
             draft?: unknown;
             total?: number;
-            status?: enums.OrderStatusType;
+            status?: app.enums.OrderStatusType;
         }
         /** Resource using a positive instanceof guard (not negated). Also includes inline arrays with optional keys and an empty inline array to exercise additional coverage paths. */
         export interface MediaTypePositiveInstanceOfResource {
@@ -1481,7 +1401,7 @@ declare global {
             full_address: string | null;
             latitude?: number | null;
             longitude?: number | null;
-            user?: models.User;
+            user?: crm.models.User;
         }
         /** Exercises: whenCounted on two polymorphic relations. */
         export interface TagResource {
@@ -1499,8 +1419,8 @@ declare global {
             id: number;
             name: string;
             email: string;
-            role: enums.RoleType | null;
-            profile?: models.Profile | null;
+            role: app.enums.RoleType | null;
+            profile?: app.models.Profile | null;
             posts?: PostResource[];
             phone?: string | null;
             avatar?: string | null;
@@ -1553,13 +1473,13 @@ declare global {
         /** Exercises closure / arrow function patterns in value expressions and merge methods. */
         export interface OrderClosureResource {
             id: number;
-            status_arrow?: enums.OrderStatusType;
+            status_arrow?: app.enums.OrderStatusType;
             user_arrow?: UserResource;
             items_arrow?: OrderItemResource[];
             notes_closure?: string | null;
             shipped_at?: string | null;
             tracking?: string | null;
-            currency_label: enums.CurrencyType;
+            currency_label: app.enums.CurrencyType;
             total_display: number;
         }
         /** Exercises collectDirectReturns loop branch in toArray(). */
@@ -1602,8 +1522,8 @@ declare global {
             remember_token: string | null;
             created_at: string | null;
             updated_at: string | null;
-            role: enums.RoleType | null;
-            membership_level: enums.MembershipLevelType | null;
+            role: app.enums.RoleType | null;
+            membership_level: app.enums.MembershipLevelType | null;
             phone: string | null;
             avatar: string | null;
             bio: string | null;
@@ -1612,15 +1532,15 @@ declare global {
             last_login_ip: string | null;
             initials: string;
             is_premium: boolean;
-            profile: models.Profile | null;
-            posts: models.Post[];
-            comments: models.Comment[];
-            orders: models.Order[];
-            addresses: models.Address[];
-            teams: models.Team[];
-            ownedTeams: models.Team[];
-            images: models.Image[];
-            notifications: models.DatabaseNotification[];
+            profile: app.models.Profile | null;
+            posts: app.models.Post[];
+            comments: app.models.Comment[];
+            orders: app.models.Order[];
+            addresses: Address[];
+            teams: app.models.Team[];
+            ownedTeams: app.models.Team[];
+            images: app.models.Image[];
+            notifications: illuminate.notifications.DatabaseNotification[];
             metadata?: { profile_bio: string | null; profile_avatar: unknown; profile_theme: unknown; profile_locale: string };
         }
         /** Exercises: whenNotNull on multiple nullable columns. */
@@ -1679,8 +1599,8 @@ declare global {
             is_paid: boolean;
             item_count: number;
             formatted_total: string;
-            user: models.User;
-            status: enums.OrderStatusType;
+            user: crm.models.User;
+            status: app.enums.OrderStatusType;
             total: number;
             notes: string | null;
             search_index: unknown;
@@ -1699,13 +1619,13 @@ declare global {
             id: number;
             title: string;
             content: string;
-            status: enums.StatusType;
-            status_new: enums.StatusType;
-            visibility: enums.VisibilityType | null;
-            visibility_new: enums.VisibilityType | null;
-            priority: enums.PriorityType | null;
-            priority_new: enums.PriorityType | null;
-            comments: { id: number; content: string; user: models.User }[];
+            status: crm.enums.StatusType;
+            status_new: app.enums.StatusType;
+            visibility: app.enums.VisibilityType | null;
+            visibility_new: app.enums.VisibilityType | null;
+            priority: app.enums.PriorityType | null;
+            priority_new: app.enums.PriorityType | null;
+            comments: { id: number; content: string; user: crm.models.User }[];
         }
         export interface RoutableResource extends ResourceRoutes, Pick<Routable, "store" | "update"> {
         }
@@ -1728,13 +1648,13 @@ declare global {
             id: number;
             title: string;
             content: string;
-            status: enums.StatusType;
-            status_new: enums.StatusType;
-            visibility: enums.VisibilityType | null;
-            visibility_new: enums.VisibilityType | null;
-            priority: enums.PriorityType | null;
-            priority_new: enums.PriorityType | null;
-            comments: { id: number; content: string; user: models.User }[];
+            status: app.enums.StatusType;
+            status_new: app.enums.StatusType;
+            visibility: app.enums.VisibilityType | null;
+            visibility_new: app.enums.VisibilityType | null;
+            priority: app.enums.PriorityType | null;
+            priority_new: app.enums.PriorityType | null;
+            comments: { id: number; content: string; user: crm.models.User }[];
         }
         /** Resource that delegates to parent — tests non-array return guard. */
         export interface DelegatingResource {
@@ -1758,17 +1678,17 @@ declare global {
             full_address: string | null;
             latitude?: number | null;
             longitude?: number | null;
-            user?: models.User;
+            user?: crm.models.User;
         }
         export interface MiscCollection {
             data: unknown;
         }
         export interface OrderResource {
             id: number;
-            status: enums.OrderStatusType;
+            status: app.enums.OrderStatusType;
             total: number;
-            currency: enums.CurrencyType;
-            items?: models.OrderItem[];
+            currency: app.enums.CurrencyType;
+            items?: app.models.OrderItem[];
             items_count?: number;
             total_avg?: number;
             paid_at?: string | null;
@@ -1780,7 +1700,7 @@ declare global {
             id: number;
             archived_at?: string | null;
             total?: number;
-            currency?: enums.CurrencyType;
+            currency?: app.enums.CurrencyType;
         }
         export interface UserCollection {
             data: UserResource[];
@@ -1801,10 +1721,10 @@ declare global {
             unit_price: number;
             total_price: number;
             product?: ProductResource;
-            order?: models.Order;
+            order?: app.models.Order;
             options?: Record<string, string | number | boolean> | null;
             order_limited: { id: number; total: number } | null;
-            order_extended: { id: number; ulid: string; user_id: number; status: enums.OrderStatusType; payment_method: enums.PaymentMethodType | null; currency: enums.CurrencyType; subtotal: number; tax: number; discount: number; total: number; shipping_address: unknown[] | null; billing_address: unknown[] | null; notes: string | null; placed_at: string | null; paid_at: string | null; shipped_at: string | null; delivered_at: string | null; cancelled_at: string | null; ip_address: string | null; user_agent: string | null; deleted_at: string | null; item_count: number; is_paid: boolean; formatted_total: string; user: models.User; items: models.OrderItem[] };
+            order_extended: { id: number; ulid: string; user_id: number; status: app.enums.OrderStatusType; payment_method: app.enums.PaymentMethodType | null; currency: app.enums.CurrencyType; subtotal: number; tax: number; discount: number; total: number; shipping_address: unknown[] | null; billing_address: unknown[] | null; notes: string | null; placed_at: string | null; paid_at: string | null; shipped_at: string | null; delivered_at: string | null; cancelled_at: string | null; ip_address: string | null; user_agent: string | null; deleted_at: string | null; item_count: number; is_paid: boolean; formatted_total: string; user: crm.models.User; items: app.models.OrderItem[] };
         }
         /** Exercises resolveClosureReturnExpression with a Closure passed to merge(). The closure has a guard clause followed by the real array return. */
         export interface MergeClosureResource {
@@ -1822,8 +1742,8 @@ declare global {
             id: number;
             name: string;
             email: string;
-            role?: enums.RoleType | null;
-            membership_level?: enums.MembershipLevelType | null;
+            role?: app.enums.RoleType | null;
+            membership_level?: app.enums.MembershipLevelType | null;
             avatar?: string | null;
             team_role?: unknown;
             joined_at?: unknown;
@@ -1832,20 +1752,20 @@ declare global {
         /** Exercises analyzeClosureUnion metadata propagation (enum, model, resource FQCNs) and analyzeRelatedModelMethodCall fallback (line 451). */
         export interface ClosureUnionMetadataResource {
             id: number;
-            status_or_null?: enums.OrderStatusType | null;
+            status_or_null?: app.enums.OrderStatusType | null;
             nested_or_null?: TagResource | null;
             user_titled?: string;
             detail_or_null?: { tag: TagResource; name: string } | null;
-            items_or_null?: models.OrderItem[] | null;
+            items_or_null?: app.models.OrderItem[] | null;
         }
         /** Exercises return $this->except([...]) as a direct return. */
         export interface OrderExceptResource {
             id: number;
             ulid: string;
             user_id: number;
-            status: enums.OrderStatusType;
-            payment_method: enums.PaymentMethodType | null;
-            currency: enums.CurrencyType;
+            status: app.enums.OrderStatusType;
+            payment_method: app.enums.PaymentMethodType | null;
+            currency: app.enums.CurrencyType;
             subtotal: number;
             tax: number;
             discount: number;
@@ -1865,8 +1785,8 @@ declare global {
             is_paid: boolean;
             formatted_total: string;
             search_index: unknown;
-            user: models.User;
-            items: models.OrderItem[];
+            user: crm.models.User;
+            items: app.models.OrderItem[];
         }
         /** Resource with no toArray override but a known model — tests implicit delegation. */
         export interface EmptyWithMixinResource {
@@ -1879,8 +1799,8 @@ declare global {
             remember_token: string | null;
             created_at: string | null;
             updated_at: string | null;
-            role: enums.RoleType | null;
-            membership_level: enums.MembershipLevelType | null;
+            role: app.enums.RoleType | null;
+            membership_level: app.enums.MembershipLevelType | null;
             phone: string | null;
             avatar: string | null;
             bio: string | null;
@@ -1889,24 +1809,24 @@ declare global {
             last_login_ip: string | null;
             initials: string;
             is_premium: boolean;
-            profile: models.Profile | null;
-            posts: models.Post[];
-            comments: models.Comment[];
-            orders: models.Order[];
-            addresses: models.Address[];
-            teams: models.Team[];
-            ownedTeams: models.Team[];
-            images: models.Image[];
-            notifications: models.DatabaseNotification[];
+            profile: app.models.Profile | null;
+            posts: app.models.Post[];
+            comments: app.models.Comment[];
+            orders: app.models.Order[];
+            addresses: Address[];
+            teams: app.models.Team[];
+            ownedTeams: app.models.Team[];
+            images: app.models.Image[];
+            notifications: illuminate.notifications.DatabaseNotification[];
         }
         /** Exercises both bugs simultaneously — the exact pattern from the original ProcessProcessablesResource that triggered the issue: Bug 1: ...parent::toArray() spread (2 items in outer return) + a whenLoaded closure with more items (5), causing findBestArrayReturn() to pick the wrong return statement. Bug 2: The closure has a guard clause (`return null;`) before the data array, causing resolveClosureReturnExpression() to pick null instead of the data shape. */
         export interface SpreadWithGuardClauseClosureResource {
             id: number;
             ulid: string;
             user_id: number;
-            status: enums.OrderStatusType;
-            payment_method: enums.PaymentMethodType | null;
-            currency: enums.CurrencyType;
+            status: app.enums.OrderStatusType;
+            payment_method: app.enums.PaymentMethodType | null;
+            currency: app.enums.CurrencyType;
             subtotal: number;
             tax: number;
             discount: number;
@@ -1928,9 +1848,9 @@ declare global {
             is_paid: boolean;
             formatted_total: string;
             search_index: unknown;
-            user: models.User;
-            items: models.OrderItem[];
-            customer?: { name: string; email: string; phone: string | null; avatar: string | null; role: enums.RoleType | null; is_premium: boolean; name_titled: string; morph: string } | null;
+            user: crm.models.User;
+            items: app.models.OrderItem[];
+            customer?: { name: string; email: string; phone: string | null; avatar: string | null; role: app.enums.RoleType | null; is_premium: boolean; name_titled: string; morph: string } | null;
         }
         /** Parent resource that uses SharedExtendsInterface — tests BFS dedup when child also uses the same trait. */
         export interface BaseSharedResource extends SharedInterface {
@@ -1957,12 +1877,12 @@ declare global {
         /** Exercises advanced merge patterns: mergeWhen with EnumResource::make, mergeWhen with Resource::make, whenLoaded with value arg. */
         export interface OrderDetailResource {
             id: number;
-            status: enums.OrderStatusType;
+            status: app.enums.OrderStatusType;
             user?: UserResource;
-            payment_status?: enums.OrderStatusType;
-            payment_currency?: enums.CurrencyType;
+            payment_status?: app.enums.OrderStatusType;
+            payment_currency?: app.enums.CurrencyType;
             shipping_user?: UserResource;
-            order_items?: models.OrderItem[];
+            order_items?: app.models.OrderItem[];
         }
         /** Exercises closure control-flow paths in collectReturnExpressions: elseif, else, switch, try/catch/finally, foreach, and do-while. */
         export interface ClosureControlFlowResource {
@@ -1977,9 +1897,9 @@ declare global {
             id: number;
             ulid: string;
             user_id: number;
-            status: enums.OrderStatusType;
-            payment_method: enums.PaymentMethodType | null;
-            currency: enums.CurrencyType;
+            status: app.enums.OrderStatusType;
+            payment_method: app.enums.PaymentMethodType | null;
+            currency: app.enums.CurrencyType;
             subtotal: number;
             tax: number;
             discount: number;
@@ -2001,9 +1921,116 @@ declare global {
             is_paid: boolean;
             formatted_total: string;
             search_index: unknown;
-            user: models.User;
-            items: models.OrderItem[];
-            customer?: { name: string; initials: string; email: string; phone: string | null; avatar: string | null; role: enums.RoleType | null; is_premium: boolean } | { name: string; email: string; phone: string | null; avatar: string | null; role: enums.RoleType | null; is_premium: boolean; name_titled: string; morph: string } | null;
+            user: crm.models.User;
+            items: app.models.OrderItem[];
+            customer?: { name: string; initials: string; email: string; phone: string | null; avatar: string | null; role: app.enums.RoleType | null; is_premium: boolean } | { name: string; email: string; phone: string | null; avatar: string | null; role: app.enums.RoleType | null; is_premium: boolean; name_titled: string; morph: string } | null;
+        }
+    }
+    export namespace app.http.resources.admin {
+        export interface Store {
+            id: number;
+            name: string;
+        }
+    }
+    export namespace blog.http.resources {
+        export interface ApiArticleResource {
+            morphValue: string;
+            id: number;
+            computed: string;
+            date_val: string;
+            custom_val: CustomObject;
+            plain: unknown;
+            basic: unknown;
+            firstName: string;
+            lastName: string;
+            isActive: boolean;
+            location: GeoPoint;
+            flag?: string | null;
+            extra: Record<string, unknown>;
+            title: string;
+            slug: string;
+            excerpt: string | null;
+            body: string;
+            status: blog.enums.ArticleStatusType;
+            content_type: blog.enums.ContentTypeType;
+            is_featured: boolean;
+            author?: crm.models.User;
+        }
+        /** Exercises: multiple whenLoaded bare — both same-module (Article) and cross-module (App\User) model type resolution. */
+        export interface ReactionResource {
+            id: number;
+            emoji: string;
+            article?: blog.models.Article;
+            user?: crm.models.User;
+        }
+        /** Exercises: multiple EnumResource::make, when(cond, Resource::collection), whenLoaded bare (cross-module App\User as author), whenNotNull, whenCounted, whenAggregated, when conditional with direct property. */
+        export interface ArticleResource {
+            id: number;
+            title: string;
+            slug: string;
+            excerpt?: string | null;
+            body: string;
+            status: blog.enums.ArticleStatusType;
+            content_type: blog.enums.ContentTypeType;
+            is_featured: boolean;
+            featured_image?: string | null;
+            meta_description?: string | null;
+            published_at?: string | null;
+            author?: crm.models.User;
+            reactions?: ReactionResource[];
+            reactions_count?: number;
+            reactions_avg?: number;
+        }
+    }
+    export namespace crm.http.resources {
+        export interface UserResource {
+            id: number;
+            name: string;
+            email: string;
+            company: string | null;
+            status: crm.enums.StatusType;
+        }
+        /** Exercises: dual enum conflict — $this->status (App\Enums\Status direct access) vs EnumResource::make($this->crm_status) (Crm\Enums\Status), whenLoaded bare with two different User models (Crm\User + App\User), when conditional, resource wrapping with colliding resource names, dual EnumResource::make. */
+        export interface DealResource {
+            id: number;
+            title: string;
+            value: number;
+            status: app.enums.StatusType;
+            status_enum: app.enums.StatusType;
+            crm_status: crm.enums.StatusType;
+            crm_enum: crm.enums.StatusType;
+            customer?: crm.models.User;
+            admin?: app.models.User;
+            customer_resource?: UserResource;
+            admin_resource?: app.http.resources.UserResource;
+            closed_at?: string | null;
+        }
+    }
+    export namespace shipping.http.resources {
+        /** Exercises: direct enum property access ($this->status), whenLoaded bare on same-module relation (Shipment). */
+        export interface TrackingEventResource {
+            id: number;
+            status: string;
+            location: string | null;
+            description: string | null;
+            occurred_at: string;
+            shipment?: shipping.models.Shipment;
+        }
+        /** Exercises: EnumResource::make on two enums (Carrier, Status), when, whenNotNull, whenLoaded bare cross-module (App\Order), Resource::collection, whenCounted, whenAggregated, mergeWhen with complex expression. */
+        export interface ShipmentResource {
+            id: number;
+            tracking_number: string | null;
+            carrier: shipping.enums.CarrierType;
+            status: shipping.enums.ShipmentStatusType;
+            weight_grams: number | null;
+            estimated_delivery_at?: string | null;
+            shipped_at?: string | null;
+            delivered_at?: string | null;
+            order?: app.models.Order;
+            tracking_events?: TrackingEventResource[];
+            tracking_events_count?: number;
+            events_total?: number;
+            transit_time?: unknown;
         }
     }
 }

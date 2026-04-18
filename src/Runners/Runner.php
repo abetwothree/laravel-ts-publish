@@ -12,10 +12,12 @@ use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\JsonWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\RouteWriter;
+use AbeTwoThree\LaravelTsPublish\Writers\ViteEnvWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\WatcherJsonWriter;
 use Illuminate\Support\Collection;
 
@@ -33,6 +35,7 @@ class Runner extends BaseRunner
         $this->generateRoutes();
 
         $this->generateGlobals();
+        $this->generateViteEnv();
         $this->generateJson();
         $this->generateWatcherJson();
     }
@@ -48,7 +51,7 @@ class Runner extends BaseRunner
         }
 
         /** @var EnumsCollector $collector */
-        $collector = resolve(config()->string('ts-publish.enum_collector_class'));
+        $collector = resolve(config()->string('ts-publish.enums.collector_class'));
 
         /** @var Collection<int, EnumGenerator> $enumGenerators */
         $enumGenerators = collect();
@@ -56,7 +59,7 @@ class Runner extends BaseRunner
         foreach ($collector->collect() as $enumClass) {
             /** @var EnumGenerator $generator */
             $generator = resolve(
-                config()->string('ts-publish.enum_generator_class'),
+                config()->string('ts-publish.enums.generator_class'),
                 ['findable' => $enumClass],
             );
 
@@ -65,16 +68,7 @@ class Runner extends BaseRunner
 
         $this->enumGenerators = $enumGenerators;
 
-        if (config()->boolean('ts-publish.modular_publishing')) {
-            $this->enumModularBarrels = $this->barrelWriter->writeModular($this->enumGenerators);
-            $this->enumBarrelContent = implode("\n\n", $this->enumModularBarrels);
-        } else {
-            $this->enumBarrelContent = $this->barrelWriter->write(
-                $this->enumGenerators,
-                'index',
-                'enums'
-            );
-        }
+        $this->enumModularBarrels = $this->barrelWriter->writeModular($this->enumGenerators);
     }
 
     protected function generateModels(): void
@@ -88,15 +82,22 @@ class Runner extends BaseRunner
         }
 
         /** @var ModelsCollector $collector */
-        $collector = resolve(config()->string('ts-publish.model_collector_class'));
+        $collector = resolve(config()->string('ts-publish.models.collector_class'));
+
+        /** @var list<class-string> $modelClasses */
+        $modelClasses = $collector->collect()->all();
+
+        // Pre-scan all models to build the morph target map so that MorphTo
+        // relations can be resolved to precise union types.
+        resolve(ModelAttributeResolver::class)->buildMorphTargetMap($modelClasses);
 
         /** @var Collection<int, ModelGenerator> $modelGenerators */
         $modelGenerators = collect();
 
-        foreach ($collector->collect() as $modelClass) {
+        foreach ($modelClasses as $modelClass) {
             /** @var ModelGenerator $generator */
             $generator = resolve(
-                config()->string('ts-publish.model_generator_class'),
+                config()->string('ts-publish.models.generator_class'),
                 ['findable' => $modelClass],
             );
 
@@ -105,16 +106,7 @@ class Runner extends BaseRunner
 
         $this->modelGenerators = $modelGenerators;
 
-        if (config()->boolean('ts-publish.modular_publishing')) {
-            $this->modelModularBarrels = $this->barrelWriter->writeModular($this->modelGenerators);
-            $this->modelBarrelContent = implode("\n\n", $this->modelModularBarrels);
-        } else {
-            $this->modelBarrelContent = $this->barrelWriter->write(
-                $this->modelGenerators,
-                'index',
-                'models'
-            );
-        }
+        $this->modelModularBarrels = $this->barrelWriter->writeModular($this->modelGenerators);
     }
 
     protected function generateResources(): void
@@ -128,7 +120,7 @@ class Runner extends BaseRunner
         }
 
         /** @var ResourcesCollector $collector */
-        $collector = resolve(config()->string('ts-publish.resource_collector_class'));
+        $collector = resolve(config()->string('ts-publish.resources.collector_class'));
 
         /** @var Collection<int, ResourceGenerator> $resourceGenerators */
         $resourceGenerators = collect();
@@ -136,7 +128,7 @@ class Runner extends BaseRunner
         foreach ($collector->collect() as $resourceClass) {
             /** @var ResourceGenerator $generator */
             $generator = resolve(
-                config()->string('ts-publish.resource_generator_class'),
+                config()->string('ts-publish.resources.generator_class'),
                 ['findable' => $resourceClass],
             );
 
@@ -145,16 +137,7 @@ class Runner extends BaseRunner
 
         $this->resourceGenerators = $resourceGenerators;
 
-        if (config()->boolean('ts-publish.modular_publishing')) {
-            $this->resourceModularBarrels = $this->barrelWriter->writeModular($this->resourceGenerators);
-            $this->resourceBarrelContent = implode("\n\n", $this->resourceModularBarrels);
-        } else {
-            $this->resourceBarrelContent = $this->barrelWriter->write(
-                $this->resourceGenerators,
-                'index',
-                config()->string('ts-publish.resources_namespace', 'resources')
-            );
-        }
+        $this->resourceModularBarrels = $this->barrelWriter->writeModular($this->resourceGenerators);
     }
 
     protected function generateRoutes(): void
@@ -169,7 +152,7 @@ class Runner extends BaseRunner
         }
 
         /** @var RoutesCollector $collector */
-        $collector = resolve(config()->string('ts-publish.route_collector_class'));
+        $collector = resolve(config()->string('ts-publish.routes.collector_class'));
 
         /** @var Collection<int, RouteGenerator> $routeGenerators */
         $routeGenerators = collect();
@@ -177,7 +160,7 @@ class Runner extends BaseRunner
         foreach ($collector->collect() as $controllerClass) {
             /** @var RouteGenerator $generator */
             $generator = resolve(
-                config()->string('ts-publish.route_generator_class'),
+                config()->string('ts-publish.routes.generator_class'),
                 ['findable' => $controllerClass],
             );
 
@@ -187,16 +170,15 @@ class Runner extends BaseRunner
         $this->routeGenerators = $routeGenerators;
 
         /** @var RouteWriter $routeWriter */
-        $routeWriter = resolve(config()->string('ts-publish.route_writer_class'));
+        $routeWriter = resolve(config()->string('ts-publish.routes.writer_class'));
 
         $this->routeModularBarrels = $routeWriter->writeRouteBarrels($this->routeGenerators);
-        $this->routeBarrelContent = implode("\n\n", $this->routeModularBarrels);
     }
 
     protected function generateGlobals(): void
     {
         /** @var GlobalsWriter $globalsWriter */
-        $globalsWriter = resolve(config()->string('ts-publish.globals_writer_class'));
+        $globalsWriter = resolve(config()->string('ts-publish.globals.writer_class'));
         $this->globalsWriter = $globalsWriter;
 
         $this->globalsContent = $globalsWriter->write($this);
@@ -205,15 +187,26 @@ class Runner extends BaseRunner
     protected function generateJson(): void
     {
         /** @var JsonWriter $jsonWriter */
-        $jsonWriter = resolve(config()->string('ts-publish.json_writer_class'));
+        $jsonWriter = resolve(config()->string('ts-publish.json.writer_class'));
 
         $this->jsonContent = $jsonWriter->write($this);
+    }
+
+    /**
+     * Generate the vite-env.d.ts declaration file for VITE_-prefixed environment variables.
+     */
+    protected function generateViteEnv(): void
+    {
+        /** @var ViteEnvWriter $writer */
+        $writer = resolve(ViteEnvWriter::class);
+
+        $this->viteEnvContent = $writer->write();
     }
 
     protected function generateWatcherJson(): void
     {
         /** @var WatcherJsonWriter $jsonWriter */
-        $jsonWriter = resolve(config()->string('ts-publish.watcher_json_writer_class'));
+        $jsonWriter = resolve(config()->string('ts-publish.watcher.writer_class'));
 
         $this->watcherJsonContent = $jsonWriter->write();
     }

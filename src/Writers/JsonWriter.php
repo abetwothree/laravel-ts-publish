@@ -26,16 +26,16 @@ class JsonWriter
 
     public function write(Runner $runner): string
     {
-        if (! config()->boolean('ts-publish.output_json_file')) {
+        if (! config()->boolean('ts-publish.json.enabled')) {
             return '';
         }
 
         $content = $this->createJsonContent($runner);
 
         if (config()->boolean('ts-publish.output_to_files')) {
-            $jsonDir = config('ts-publish.json_output_directory');
+            $jsonDir = config('ts-publish.json.output_directory');
             $outputPath = is_string($jsonDir) ? $jsonDir : config()->string('ts-publish.output_directory');
-            $filename = config()->string('ts-publish.json_filename');
+            $filename = config()->string('ts-publish.json.filename');
 
             $this->filesystem->ensureDirectoryExists($outputPath);
             $this->filesystem->put("$outputPath/$filename", $content);

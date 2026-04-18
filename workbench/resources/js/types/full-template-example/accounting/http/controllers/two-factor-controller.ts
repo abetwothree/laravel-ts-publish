@@ -1,4 +1,4 @@
-import { defineRoute } from '@tolki/ts/routes';
+import { defineRoute } from '@tolki/ts';
 
 /** Set up 2FA for the current user. */
 export const _2faSetup = defineRoute({

@@ -74,9 +74,7 @@ test('barrel and globals content remain empty', function () {
     $runner = new RunnerForSource('Workbench\App\Enums\Status');
     $runner->run();
 
-    expect($runner->enumBarrelContent)->toBe('')
-        ->and($runner->modelBarrelContent)->toBe('')
-        ->and($runner->enumModularBarrels)->toBe([])
+    expect($runner->enumModularBarrels)->toBe([])
         ->and($runner->modelModularBarrels)->toBe([])
         ->and($runner->globalsContent)->toBe('')
         ->and($runner->jsonContent)->toBe('')
@@ -91,7 +89,7 @@ test('writes single enum file to disk', function () {
     $runner = new RunnerForSource('Workbench\App\Enums\Status');
     $runner->run();
 
-    expect(file_exists("$outputDir/enums/status.ts"))->toBeTrue();
+    expect(file_exists("$outputDir/workbench/app/enums/status.ts"))->toBeTrue();
 
     // Cleanup
     (new Filesystem)->deleteDirectory($outputDir);
@@ -105,7 +103,7 @@ test('writes single model file to disk', function () {
     $runner = new RunnerForSource('Workbench\App\Models\User');
     $runner->run();
 
-    expect(file_exists("$outputDir/models/user.ts"))->toBeTrue();
+    expect(file_exists("$outputDir/workbench/app/models/user.ts"))->toBeTrue();
 
     // Cleanup
     (new Filesystem)->deleteDirectory($outputDir);
