@@ -1,6 +1,7 @@
 import { type AsEnum } from '@tolki/enum';
 
 import { Priority, Status, Visibility } from '../../enums';
+import type { User } from '../../models';
 
 export interface PostResource
 {
@@ -14,4 +15,5 @@ export interface PostResource
     visibility_new: AsEnum<typeof Visibility> | null;
     priority: AsEnum<typeof Priority> | null;
     priority_new: AsEnum<typeof Priority> | null;
+    comments: { id: number; content: string; user: User }[];
 }

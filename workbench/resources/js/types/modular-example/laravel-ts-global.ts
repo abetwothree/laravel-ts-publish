@@ -1552,6 +1552,7 @@ declare global {
             visibility_new: app.enums.VisibilityType | null;
             priority: app.enums.PriorityType | null;
             priority_new: app.enums.PriorityType | null;
+            comments: { id: number; content: string; user: crm.models.User }[];
         }
         export interface RoutableResource extends ResourceRoutes, Pick<Routable, "store" | "update"> {
         }
@@ -1580,6 +1581,7 @@ declare global {
             visibility_new: app.enums.VisibilityType | null;
             priority: app.enums.PriorityType | null;
             priority_new: app.enums.PriorityType | null;
+            comments: { id: number; content: string; user: crm.models.User }[];
         }
         /** Resource that delegates to parent — tests non-array return guard. */
         export interface DelegatingResource {
