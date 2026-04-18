@@ -1625,6 +1625,7 @@ declare global {
             visibility_new: workbench.app.enums.VisibilityType | null;
             priority: workbench.app.enums.PriorityType | null;
             priority_new: workbench.app.enums.PriorityType | null;
+            comments: { id: number; content: string; user: workbench.crm.models.User }[];
         }
         export interface RoutableResource extends ResourceRoutes, Pick<Routable, "store" | "update"> {
         }
@@ -1653,6 +1654,7 @@ declare global {
             visibility_new: workbench.app.enums.VisibilityType | null;
             priority: workbench.app.enums.PriorityType | null;
             priority_new: workbench.app.enums.PriorityType | null;
+            comments: { id: number; content: string; user: workbench.crm.models.User }[];
         }
         /** Resource that delegates to parent — tests non-array return guard. */
         export interface DelegatingResource {
