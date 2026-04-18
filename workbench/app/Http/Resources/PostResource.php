@@ -35,6 +35,7 @@ class PostResource extends JsonResource
             'visibility_new' => new EnumResource($this->visibility),
             'priority' => EnumResource::make($this->priority),
             'priority_new' => new EnumResource($this->priority),
+            'comments' => $this->comments->only('id', 'content', 'user'),
         ];
     }
 }
