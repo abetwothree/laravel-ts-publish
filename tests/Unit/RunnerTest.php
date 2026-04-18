@@ -40,10 +40,6 @@ test('runner generates enum barrel content', function () {
         ->toHaveKey('workbench/app/enums')
         ->and($runner->enumModularBarrels['workbench/app/enums'])
         ->toContain("export * from './status'");
-
-    expect($runner->enumBarrelContent)
-        ->toBeString()
-        ->not->toBeEmpty();
 });
 
 test('runner generates model barrel content', function () {
@@ -54,10 +50,6 @@ test('runner generates model barrel content', function () {
         ->toHaveKey('workbench/app/models')
         ->and($runner->modelModularBarrels['workbench/app/models'])
         ->toContain("export * from './user'");
-
-    expect($runner->modelBarrelContent)
-        ->toBeString()
-        ->not->toBeEmpty();
 });
 
 test('runner generates globals content when enabled', function () {
@@ -173,12 +165,12 @@ describe('Runner namespaced output', function () {
             ->and($runner->modelModularBarrels['accounting/models'])->toContain("export * from './invoice'");
     });
 
-    test('runner generates combined barrel content for modular mode', function () {
+    test('runner generates combined modular barrels', function () {
         $runner = new Runner;
         $runner->run();
 
-        expect($runner->enumBarrelContent)->toBeString()->not->toBeEmpty();
-        expect($runner->modelBarrelContent)->toBeString()->not->toBeEmpty();
+        expect($runner->enumModularBarrels)->toBeArray()->not->toBeEmpty();
+        expect($runner->modelModularBarrels)->toBeArray()->not->toBeEmpty();
     });
 
     test('runner generates modular globals when enabled', function () {
@@ -203,7 +195,7 @@ describe('Runner conditional publishing', function () {
         $runner->run();
 
         expect($runner->enumGenerators)->toBeEmpty()
-            ->and($runner->enumBarrelContent)->toBe('')
+            ->and($runner->enumModularBarrels)->toBe([])
             ->and($runner->modelGenerators)->not->toBeEmpty();
     });
 
@@ -213,7 +205,7 @@ describe('Runner conditional publishing', function () {
         $runner->run();
 
         expect($runner->modelGenerators)->toBeEmpty()
-            ->and($runner->modelBarrelContent)->toBe('')
+            ->and($runner->modelModularBarrels)->toBe([])
             ->and($runner->enumGenerators)->not->toBeEmpty();
     });
 
@@ -225,8 +217,8 @@ describe('Runner conditional publishing', function () {
 
         expect($runner->enumGenerators)->toBeEmpty()
             ->and($runner->modelGenerators)->toBeEmpty()
-            ->and($runner->enumBarrelContent)->toBe('')
-            ->and($runner->modelBarrelContent)->toBe('');
+            ->and($runner->enumModularBarrels)->toBe([])
+            ->and($runner->modelModularBarrels)->toBe([]);
     });
 
     test('globals only contains enums when models are skipped', function () {

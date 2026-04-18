@@ -115,8 +115,10 @@ test('route barrel writer generates correct barrel content', function () {
     $runner = resolve(Runner::class);
     $runner->run();
 
-    expect($runner->routeModularBarrels)->toBeArray();
-    expect($runner->routeBarrelContent)->toContain("export { default as PostController } from './post-controller'");
+    expect($runner->routeModularBarrels)->toBeArray()->not->toBeEmpty();
+
+    $allBarrelContent = implode("\n\n", $runner->routeModularBarrels);
+    expect($allBarrelContent)->toContain("export { default as PostController } from './post-controller'");
 });
 
 test('runner generates route generators when routes enabled', function () {

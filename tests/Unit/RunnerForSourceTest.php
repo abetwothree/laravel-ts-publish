@@ -74,9 +74,7 @@ test('barrel and globals content remain empty', function () {
     $runner = new RunnerForSource('Workbench\App\Enums\Status');
     $runner->run();
 
-    expect($runner->enumBarrelContent)->toBe('')
-        ->and($runner->modelBarrelContent)->toBe('')
-        ->and($runner->enumModularBarrels)->toBe([])
+    expect($runner->enumModularBarrels)->toBe([])
         ->and($runner->modelModularBarrels)->toBe([])
         ->and($runner->globalsContent)->toBe('')
         ->and($runner->jsonContent)->toBe('')

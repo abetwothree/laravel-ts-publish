@@ -69,7 +69,6 @@ class Runner extends BaseRunner
         $this->enumGenerators = $enumGenerators;
 
         $this->enumModularBarrels = $this->barrelWriter->writeModular($this->enumGenerators);
-        $this->enumBarrelContent = implode("\n\n", $this->enumModularBarrels);
     }
 
     protected function generateModels(): void
@@ -108,7 +107,6 @@ class Runner extends BaseRunner
         $this->modelGenerators = $modelGenerators;
 
         $this->modelModularBarrels = $this->barrelWriter->writeModular($this->modelGenerators);
-        $this->modelBarrelContent = implode("\n\n", $this->modelModularBarrels);
     }
 
     protected function generateResources(): void
@@ -140,7 +138,6 @@ class Runner extends BaseRunner
         $this->resourceGenerators = $resourceGenerators;
 
         $this->resourceModularBarrels = $this->barrelWriter->writeModular($this->resourceGenerators);
-        $this->resourceBarrelContent = implode("\n\n", $this->resourceModularBarrels);
     }
 
     protected function generateRoutes(): void
@@ -176,7 +173,6 @@ class Runner extends BaseRunner
         $routeWriter = resolve(config()->string('ts-publish.routes.writer_class'));
 
         $this->routeModularBarrels = $routeWriter->writeRouteBarrels($this->routeGenerators);
-        $this->routeBarrelContent = implode("\n\n", $this->routeModularBarrels);
     }
 
     protected function generateGlobals(): void

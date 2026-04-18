@@ -312,20 +312,13 @@ class TsPublishCommand extends Command
             }
         }
 
-        if (! empty($runner->enumBarrelContent)) {
+        if (count($runner->enumModularBarrels) > 0) {
             $this->newLine();
-            if (count($runner->enumModularBarrels) > 0) {
-                $this->comment('Enum Barrel Files:');
-                foreach ($runner->enumModularBarrels as $namespacePath => $content) {
-                    $this->newLine();
-                    $this->comment("  {$namespacePath}/index.ts");
-                    $this->line($content);
-                }
-            } else {
-                $this->comment('Enum Barrel File:');
+            $this->comment('Enum Barrel Files:');
+            foreach ($runner->enumModularBarrels as $namespacePath => $content) {
                 $this->newLine();
-                $this->comment('  index.ts');
-                $this->line($runner->enumBarrelContent);
+                $this->comment("  {$namespacePath}/index.ts");
+                $this->line($content);
             }
         }
 
@@ -339,20 +332,13 @@ class TsPublishCommand extends Command
             }
         }
 
-        if (! empty($runner->modelBarrelContent)) {
+        if (count($runner->modelModularBarrels) > 0) {
             $this->newLine();
-            if (count($runner->modelModularBarrels) > 0) {
-                $this->comment('Model Barrel Files:');
-                foreach ($runner->modelModularBarrels as $namespacePath => $content) {
-                    $this->newLine();
-                    $this->comment("  {$namespacePath}/index.ts");
-                    $this->line($content);
-                }
-            } else {
-                $this->comment('Model Barrel File:');
+            $this->comment('Model Barrel Files:');
+            foreach ($runner->modelModularBarrels as $namespacePath => $content) {
                 $this->newLine();
-                $this->comment('  index.ts');
-                $this->line($runner->modelBarrelContent);
+                $this->comment("  {$namespacePath}/index.ts");
+                $this->line($content);
             }
         }
 
@@ -366,20 +352,13 @@ class TsPublishCommand extends Command
             }
         }
 
-        if (! empty($runner->resourceBarrelContent)) {
+        if (count($runner->resourceModularBarrels) > 0) {
             $this->newLine();
-            if (count($runner->resourceModularBarrels) > 0) {
-                $this->comment('Resource Barrel Files:');
-                foreach ($runner->resourceModularBarrels as $namespacePath => $content) {
-                    $this->newLine();
-                    $this->comment("  {$namespacePath}/index.ts");
-                    $this->line($content);
-                }
-            } else {
-                $this->comment('Resource Barrel File:');
+            $this->comment('Resource Barrel Files:');
+            foreach ($runner->resourceModularBarrels as $namespacePath => $content) {
                 $this->newLine();
-                $this->comment('  index.ts');
-                $this->line($runner->resourceBarrelContent);
+                $this->comment("  {$namespacePath}/index.ts");
+                $this->line($content);
             }
         }
 
@@ -393,7 +372,7 @@ class TsPublishCommand extends Command
             }
         }
 
-        if (! empty($runner->routeBarrelContent)) {
+        if (count($runner->routeModularBarrels) > 0) {
             $this->newLine();
             $this->comment('Route Barrel Files:');
             foreach ($runner->routeModularBarrels as $namespacePath => $content) {
