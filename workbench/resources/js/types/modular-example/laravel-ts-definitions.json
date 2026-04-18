@@ -5784,6 +5784,11 @@
                 "name": "priority_new",
                 "type": "AsEnum<typeof Priority> | null",
                 "optional": false
+            },
+            {
+                "name": "comments",
+                "type": "{ id: number; content: string; user: User }[]",
+                "optional": false
             }
         ],
         "RoutableResource": [],
@@ -5898,6 +5903,11 @@
             {
                 "name": "priority_new",
                 "type": "AsEnum<typeof Priority> | null",
+                "optional": false
+            },
+            {
+                "name": "comments",
+                "type": "{ id: number; content: string; user: User }[]",
                 "optional": false
             }
         ],
