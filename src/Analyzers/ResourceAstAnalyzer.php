@@ -1415,6 +1415,11 @@ class ResourceAstAnalyzer
         $filterResult = $this->resolveFilteredRelationType($modelFqcn, $keys, $include);
         $inlineType = $filterResult['type'];
 
+        // Wrap in array suffix when the relation is a *-many type (HasMany, BelongsToMany, etc.)
+        if (str_ends_with($relationInfo['type'], '[]') && $inlineType !== 'unknown') {
+            $inlineType .= '[]';
+        }
+
         if ($nullable && $inlineType !== 'unknown') {
             $inlineType .= ' | null';
         }

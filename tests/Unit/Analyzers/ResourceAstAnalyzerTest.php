@@ -109,6 +109,29 @@ describe('ResourceAstAnalyzer with PostResource', function () {
             ->toHaveKey('priority')
             ->toHaveKey('priority_new');
     });
+
+    test('hasMany relation with only() produces array type with [] suffix', function () {
+        $reflection = new ReflectionClass(PostResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $analysis = $analyzer->analyze();
+
+        $comments = collect($analysis->properties)->firstWhere('name', 'comments');
+
+        expect($comments)->not->toBeNull()
+            ->and($comments['type'])->toEndWith('[]');
+    });
+
+    test('hasMany relation with only() includes relation keys in inline type', function () {
+        $reflection = new ReflectionClass(PostResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $analysis = $analyzer->analyze();
+
+        $comments = collect($analysis->properties)->firstWhere('name', 'comments');
+
+        expect($comments['type'])->toContain('id: number')
+            ->and($comments['type'])->toContain('content: string')
+            ->and($comments['type'])->toContain('user: User');
+    });
 });
 
 describe('ResourceAstAnalyzer with UserResource', function () {
