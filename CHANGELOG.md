@@ -2,6 +2,14 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v1.4.1 - 2026-04-18
+
+### What's Changed
+
+* Many relationships fix for only & except on resources by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/25
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v1.4.0...v1.4.1
+
 ## v1.4.0 - 2026-04-16
 
 ### What's Changed
