@@ -284,12 +284,15 @@ return [
     | Requires inertiajs/inertia-laravel:^3 to be installed.
     |
     | 'component_casing': Case style for generated component map keys ('camel', 'snake', or 'pascal').
+    | 'inertia_middleware_path': Optional path to scan for Inertia middleware. Defaults to app/ if not set or invalid.
+    | 'augmentation_filename': Filename for the generated module augmentation file. Defaults to inertia-config.d.ts.
     | 'output_path': Directory for the declaration file. Defaults to routes output_path.
     */
 
     'inertia' => [
         'enabled' => false,
         'component_casing' => 'camel',
+        'inertia_middleware_path' => null,
         'augmentation_filename' => 'inertia-config.d.ts',
         'output_path' => null,
     ],

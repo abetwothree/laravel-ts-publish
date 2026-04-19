@@ -44,6 +44,8 @@ abstract class BaseRunner
 
     public protected(set) string $viteEnvContent = '';
 
+    public protected(set) string $inertiaConfigContent = '';
+
     /** @var Collection<int, RouteGenerator> */
     public protected(set) Collection $routeGenerators;
 

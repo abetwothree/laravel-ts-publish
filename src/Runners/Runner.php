@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Runners;
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ResourcesCollector;
@@ -15,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
+use AbeTwoThree\LaravelTsPublish\Writers\InertiaConfigWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\JsonWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\RouteWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\ViteEnvWriter;
@@ -32,6 +34,7 @@ class Runner extends BaseRunner
         $this->generateEnums();
         $this->generateModels();
         $this->generateResources();
+        $this->generateInertiaConfig();
         $this->generateRoutes();
 
         $this->generateGlobals();
@@ -138,6 +141,39 @@ class Runner extends BaseRunner
         $this->resourceGenerators = $resourceGenerators;
 
         $this->resourceModularBarrels = $this->barrelWriter->writeModular($this->resourceGenerators);
+    }
+
+    /**
+     * Generate the inertia module augmentation file.
+     *
+     * Runs before route generation so Inertia.SharedData is defined
+     * before page types reference it.
+     */
+    protected function generateInertiaConfig(): void
+    {
+        if (! config()->boolean('ts-publish.inertia.enabled')) {
+            return;
+        }
+
+        $middlewarePath = config()->get('ts-publish.inertia.inertia_middleware_path');
+        if(! is_string($middlewarePath) || ! is_dir($middlewarePath)) {
+            $middlewarePath = app_path();
+        }
+
+        /** @var InertiaSharedDataAnalyzer $analyzer */
+        $analyzer = resolve(InertiaSharedDataAnalyzer::class);
+        $analyzer->setAppPaths($middlewarePath);
+
+        $sharedData = $analyzer->convert();
+
+        if ($sharedData === null) {
+            return;
+        }
+
+        /** @var InertiaConfigWriter $writer */
+        $writer = resolve(InertiaConfigWriter::class);
+
+        $this->inertiaConfigContent = $writer->write($sharedData);
     }
 
     protected function generateRoutes(): void
