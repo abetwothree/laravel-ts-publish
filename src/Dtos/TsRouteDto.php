@@ -27,6 +27,8 @@ use JsonSerializable;
  *     originalMethodName: string,
  *     description: string|null,
  *     args: list<RouteArgData>,
+ *     component?: string|array<string, string>,
+ *     pageType?: string,
  * }
  * @phpstan-type RouteData = array{
  *     controllerName: string,
