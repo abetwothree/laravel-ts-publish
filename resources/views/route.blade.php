@@ -24,6 +24,13 @@ export const {!! LaravelTsPublish::validJsObjectKey($action['methodName']) !!} =
 @if(!empty($action['args']))
     args: {!! LaravelTsPublish::routeArgsToJs($action['args']) !!} as const,
 @endif
+@if(isset($action['component']))
+@if(is_array($action['component']))
+    component: {!! LaravelTsPublish::toJsLiteral($action['component']) !!} as const,
+@else
+    component: {!! LaravelTsPublish::toJsLiteral($action['component']) !!},
+@endif
+@endif
 });
 @endforeach
 
