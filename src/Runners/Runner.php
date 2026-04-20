@@ -156,7 +156,7 @@ class Runner extends BaseRunner
         }
 
         $middlewarePath = config()->get('ts-publish.inertia.inertia_middleware_path');
-        if(! is_string($middlewarePath) || ! is_dir($middlewarePath)) {
+        if (! is_string($middlewarePath) || ! is_dir($middlewarePath)) {
             $middlewarePath = app_path();
         }
 
@@ -164,7 +164,7 @@ class Runner extends BaseRunner
         $analyzer = resolve(InertiaSharedDataAnalyzer::class);
         $analyzer->setAppPaths($middlewarePath);
 
-        $sharedData = $analyzer->convert();
+        $sharedData = $analyzer->analyze();
 
         if ($sharedData === null) {
             return;
