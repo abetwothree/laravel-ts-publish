@@ -377,6 +377,172 @@ describe('docblockReturnTypes', function () {
 
         expect($result['type'])->toBe('unknown');
     });
+
+    test('docblockReturnTypes handles multiline @return array shape', function () {
+        $method = new ReflectionMethod(DocblockReturnClass::class, 'multilineArrayShape');
+        $result = $this->service->docblockReturnTypes($method);
+
+        // docblockReturnTypes passes the whole type through toTsType() which
+        // partial-matches 'array' to unknown[] — use parseDocblockReturnArrayShape
+        // for per-key type resolution instead
+        expect($result['type'])->toBe('unknown[]');
+    });
+
+    test('docblockReturnTypes handles single-line @return array shape', function () {
+        $method = new ReflectionMethod(DocblockReturnClass::class, 'singleLineArrayShape');
+        $result = $this->service->docblockReturnTypes($method);
+
+        expect($result['type'])->toBe('unknown[]');
+    });
+});
+
+describe('extractReturnTypeFromDocblock', function () {
+    test('extracts simple @return type', function () {
+        $doc = <<<'DOC'
+        /**
+         * @return string
+         */
+        DOC;
+
+        expect($this->service->extractReturnTypeFromDocblock($doc))->toBe('string');
+    });
+
+    test('extracts union @return type', function () {
+        $doc = <<<'DOC'
+        /**
+         * @return string|null
+         */
+        DOC;
+
+        expect($this->service->extractReturnTypeFromDocblock($doc))->toBe('string|null');
+    });
+
+    test('extracts multiline array shape', function () {
+        $doc = <<<'DOC'
+        /**
+         * @return array{
+         *     name: string,
+         *     age: int
+         * }
+         */
+        DOC;
+
+        $result = $this->service->extractReturnTypeFromDocblock($doc);
+        expect($result)->toContain('array{')
+            ->and($result)->toContain('name: string')
+            ->and($result)->toContain('age: int');
+    });
+
+    test('extracts deeply nested multiline array shape', function () {
+        $doc = <<<'DOC'
+        /**
+         * @return array{
+         *      auth: array{
+         *          user: array{
+         *              id: int,
+         *              name: string
+         *          }|null
+         *      },
+         *      appName: string
+         *  }
+         */
+        DOC;
+
+        $result = $this->service->extractReturnTypeFromDocblock($doc);
+        expect($result)->toContain('array{')
+            ->and($result)->toContain('auth:')
+            ->and($result)->toContain('id: int');
+    });
+
+    test('returns null when no @return tag', function () {
+        $doc = <<<'DOC'
+        /**
+         * Just a description.
+         */
+        DOC;
+
+        expect($this->service->extractReturnTypeFromDocblock($doc))->toBeNull();
+    });
+});
+
+describe('splitPhpDocUnionType', function () {
+    test('splits simple union', function () {
+        expect($this->service->splitPhpDocUnionType('string|null'))
+            ->toBe(['string', 'null']);
+    });
+
+    test('returns single entry for non-union', function () {
+        expect($this->service->splitPhpDocUnionType('string'))
+            ->toBe(['string']);
+    });
+
+    test('respects nested braces in union', function () {
+        $type = 'array{name: string|null}|null';
+        $result = $this->service->splitPhpDocUnionType($type);
+
+        expect($result)->toBe(['array{name: string|null}', 'null']);
+    });
+});
+
+describe('parseDocblockReturnArrayShape', function () {
+    test('parses multiline @return array shape into key-type map', function () {
+        $method = new ReflectionMethod(DocblockReturnClass::class, 'multilineArrayShape');
+        $result = $this->service->parseDocblockReturnArrayShape($method);
+
+        expect($result)->toHaveKeys(['auth', 'flash', 'appName'])
+            ->and($result['appName'])->toBe('string')
+            ->and($result['flash'])->toBe('{ success: string | null, error: string | null }')
+            ->and($result['auth'])->toBe('{ user: { id: number, name: string, email: string } | null }');
+    });
+
+    test('parses single-line @return array shape', function () {
+        $method = new ReflectionMethod(DocblockReturnClass::class, 'singleLineArrayShape');
+        $result = $this->service->parseDocblockReturnArrayShape($method);
+
+        expect($result)->toBe(['name' => 'string', 'age' => 'number']);
+    });
+
+    test('returns empty array for non-array-shape @return', function () {
+        $method = new ReflectionMethod(DocblockReturnClass::class, 'simpleString');
+        $result = $this->service->parseDocblockReturnArrayShape($method);
+
+        expect($result)->toBe([]);
+    });
+
+    test('returns empty array when no docblock', function () {
+        $method = new ReflectionMethod(DocblockReturnClass::class, 'noDocblock');
+        $result = $this->service->parseDocblockReturnArrayShape($method);
+
+        expect($result)->toBe([]);
+    });
+});
+
+describe('resolvePhpDocTypeToTs', function () {
+    test('resolves simple PHP types', function () {
+        expect($this->service->resolvePhpDocTypeToTs('string', [], ''))
+            ->toBe('string')
+            ->and($this->service->resolvePhpDocTypeToTs('int', [], ''))
+            ->toBe('number')
+            ->and($this->service->resolvePhpDocTypeToTs('bool', [], ''))
+            ->toBe('boolean');
+    });
+
+    test('resolves nullable union types', function () {
+        expect($this->service->resolvePhpDocTypeToTs('string|null', [], ''))
+            ->toBe('string | null');
+    });
+
+    test('resolves nested array shape', function () {
+        $result = $this->service->resolvePhpDocTypeToTs('array{name: string, age: int}', [], '');
+
+        expect($result)->toBe('{ name: string, age: number }');
+    });
+
+    test('resolves array shape with nullable inner type', function () {
+        $result = $this->service->resolvePhpDocTypeToTs('array{user: string|null}', [], '');
+
+        expect($result)->toBe('{ user: string | null }');
+    });
 });
 
 describe('attributeDocblockReturnTypes', function () {
@@ -1322,6 +1488,35 @@ class DocblockReturnClass
     public function nullableShorthand()
     {
         return null;
+    }
+
+    /**
+     * @return array{
+     *      auth: array{
+     *          user: array{
+     *              id: int,
+     *              name: string,
+     *              email: string
+     *          }|null
+     *      },
+     *      flash: array{
+     *          success: string|null,
+     *          error: string|null
+     *      },
+     *      appName: string
+     *  }
+     */
+    public function multilineArrayShape(): array
+    {
+        return [];
+    }
+
+    /**
+     * @return array{name: string, age: int}
+     */
+    public function singleLineArrayShape(): array
+    {
+        return [];
     }
 }
 

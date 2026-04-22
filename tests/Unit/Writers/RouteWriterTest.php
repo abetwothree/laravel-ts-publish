@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Writers\RouteWriter;
@@ -11,6 +12,7 @@ use Workbench\App\Http\Controllers\CustomKeyController;
 use Workbench\App\Http\Controllers\Delete;
 use Workbench\App\Http\Controllers\DeleteController;
 use Workbench\App\Http\Controllers\EnumBoundController;
+use Workbench\App\Http\Controllers\InertiaController;
 use Workbench\App\Http\Controllers\InvokableController;
 use Workbench\App\Http\Controllers\NamedInvokableController;
 use Workbench\App\Http\Controllers\Nested\NestedController;
@@ -35,7 +37,30 @@ test('route writer generates TypeScript content with defineRoute import', functi
     $generator = resolve(RouteGenerator::class, ['findable' => PostController::class]);
 
     expect($generator->content)
-        ->toContain("import { defineRoute } from '@tolki/ts'");
+        ->toContain("import { defineRoute } from '@tolki/ts'")
+        ->not->toContain('RouteQueryOptions');
+});
+
+test('route writer does not import RouteQueryOptions for inertia components', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@dashboard')) {
+                return ['component' => 'Dashboard', 'pageType' => null];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $generator = resolve(RouteGenerator::class, ['findable' => InertiaController::class]);
+
+    expect($generator->content)
+        ->toContain("import { defineRoute } from '@tolki/ts'")
+        ->not->toContain('RouteQueryOptions');
 });
 
 test('route writer generates export const for each action', function () {
@@ -263,4 +288,97 @@ test('route writer includes where constraint in output', function () {
     $generator = resolve(RouteGenerator::class, ['findable' => TypedParamController::class]);
 
     expect($generator->content)->toContain("where: '[0-9]+'");
+});
+
+// ─── Inertia route output ─────────────────────────────────────────
+
+test('route output includes .component for single inertia component', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@dashboard')) {
+                return [
+                    'component' => 'Dashboard',
+                    'pageType' => 'Inertia.SharedData & { stats: { users: number } }',
+                ];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $generator = resolve(RouteGenerator::class, ['findable' => InertiaController::class]);
+
+    expect($generator->content)
+        ->toContain("component: 'Dashboard',")
+        ->not->toContain('dashboard.component')
+        ->not->toContain('dashboard.withComponent');
+});
+
+test('route output includes .component map for conditional inertia components', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@conditional')) {
+                return [
+                    'component' => ['Conditional/Authenticated', 'Conditional/Guest'],
+                    'pageType' => 'Inertia.SharedData & { user: unknown } | Inertia.SharedData & { message: string }',
+                ];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $generator = resolve(RouteGenerator::class, ['findable' => InertiaController::class]);
+
+    expect($generator->content)
+        ->toContain("authenticated: 'Conditional/Authenticated'")
+        ->toContain("guest: 'Conditional/Guest'")
+        ->toContain('as const,')
+        ->not->toContain('conditional.component')
+        ->not->toContain('conditional.withComponent');
+});
+
+test('route output uses component_casing config for component map keys', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+    config()->set('ts-publish.inertia.component_casing', 'snake');
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@conditional')) {
+                return [
+                    'component' => ['Conditional/CustomerLogin', 'Conditional/NotFoundPortal'],
+                    'pageType' => 'Inertia.SharedData',
+                ];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $generator = resolve(RouteGenerator::class, ['findable' => InertiaController::class]);
+
+    expect($generator->content)
+        ->toContain("customer_login: 'Conditional/CustomerLogin'")
+        ->toContain("not_found_portal: 'Conditional/NotFoundPortal'");
+});
+
+test('route output does not include component when inertia is disabled', function () {
+    config()->set('ts-publish.inertia.enabled', false);
+
+    $generator = resolve(RouteGenerator::class, ['findable' => InertiaController::class]);
+
+    expect($generator->content)
+        ->not->toContain('component:')
+        ->not->toContain('.component')
+        ->not->toContain('.withComponent');
 });

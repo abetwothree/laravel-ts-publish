@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
 use Workbench\Accounting\Http\Controllers\TwoFactorController;
 use Workbench\App\Http\Controllers\CustomKeyController;
@@ -13,6 +14,7 @@ use Workbench\App\Http\Controllers\DocBlockInvokableController;
 use Workbench\App\Http\Controllers\DomainController;
 use Workbench\App\Http\Controllers\EnumBoundController;
 use Workbench\App\Http\Controllers\ExcludableController;
+use Workbench\App\Http\Controllers\InertiaController;
 use Workbench\App\Http\Controllers\InvokableController;
 use Workbench\App\Http\Controllers\InvokableModelBoundController;
 use Workbench\App\Http\Controllers\InvokableModelBoundPlusController;
@@ -375,4 +377,61 @@ test('digit-leading route name segment is prefixed with underscore', function ()
 
     expect($setup['methodName'])->toBe('_2faSetup')
         ->and($verify['methodName'])->toBe('_2faVerify');
+});
+
+// ─── Inertia integration ──────────────────────────────────────────
+
+test('inertia actions do not include component or pageType when inertia is disabled', function () {
+    config()->set('ts-publish.inertia.enabled', false);
+
+    $transformer = new RouteTransformer(InertiaController::class);
+    $dashboard = collect($transformer->actions)->firstWhere('methodName', 'dashboard');
+
+    expect($dashboard)->not->toBeNull()
+        ->and($dashboard)->not->toHaveKey('component')
+        ->and($dashboard)->not->toHaveKey('pageType');
+});
+
+test('inertia actions include component and pageType when inertia is enabled', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@dashboard')) {
+                return [
+                    'component' => 'Dashboard',
+                    'pageType' => 'Inertia.SharedData & { stats: { users: number, posts: number, views: number } }',
+                ];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $transformer = new RouteTransformer(InertiaController::class);
+    $dashboard = collect($transformer->actions)->firstWhere('methodName', 'dashboard');
+
+    expect($dashboard)->not->toBeNull()
+        ->and($dashboard)->toHaveKey('component')
+        ->and($dashboard['component'])->toBe('Dashboard')
+        ->and($dashboard)->toHaveKey('pageType')
+        ->and($dashboard['pageType'])->toContain('Inertia.SharedData');
+});
+
+test('non-inertia actions do not get component or pageType even when inertia is enabled', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')->andReturn(null);
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $transformer = new RouteTransformer(PostController::class);
+    $index = collect($transformer->actions)->firstWhere('methodName', 'index');
+
+    expect($index)->not->toBeNull()
+        ->and($index)->not->toHaveKey('component')
+        ->and($index)->not->toHaveKey('pageType');
 });
