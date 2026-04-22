@@ -19,7 +19,7 @@
         "php": "^8.4",
         "composer/class-map-generator": "^1.7",
         "illuminate/contracts": "^13.0||^12.0",
-        "laravel/ranger": "^0.1.0",
+        "laravel/ranger": "^0.1.6",
         "nikic/php-parser": "^5.0",
         "spatie/laravel-package-tools": "^1.16"
     },
