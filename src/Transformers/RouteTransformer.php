@@ -497,7 +497,7 @@ class RouteTransformer extends CoreTransformer
         }
 
         $casing = config()->string('ts-publish.inertia.component_casing', 'camel');
-        $paths = array_values($component);
+        $paths = $component;
         $keyMap = $this->computeUniqueComponentKeys($paths, $casing);
         $normalized = [];
 
