@@ -20,6 +20,7 @@
     "app\/Http\/Controllers\/DomainController.php",
     "app\/Http\/Controllers\/EnumBoundController.php",
     "app\/Http\/Controllers\/ExcludableController.php",
+    "app\/Http\/Controllers\/InertiaController.php",
     "app\/Http\/Controllers\/InvokableController.php",
     "app\/Http\/Controllers\/InvokableModelBoundController.php",
     "app\/Http\/Controllers\/InvokableModelBoundPlusController.php",

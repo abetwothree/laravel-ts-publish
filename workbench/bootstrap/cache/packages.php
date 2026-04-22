@@ -1,9 +1,30 @@
 <?php return array (
+  'inertiajs/inertia-laravel' => 
+  array (
+    'providers' => 
+    array (
+      0 => 'Inertia\\ServiceProvider',
+    ),
+  ),
   'laravel/pail' => 
   array (
     'providers' => 
     array (
       0 => 'Laravel\\Pail\\PailServiceProvider',
+    ),
+  ),
+  'laravel/ranger' => 
+  array (
+    'providers' => 
+    array (
+      0 => 'Laravel\\Ranger\\RangerServiceProvider',
+    ),
+  ),
+  'laravel/surveyor' => 
+  array (
+    'providers' => 
+    array (
+      0 => 'Laravel\\Surveyor\\SurveyorServiceProvider',
     ),
   ),
   'laravel/tinker' => 
@@ -53,6 +74,13 @@
     'providers' => 
     array (
       0 => 'Pest\\Laravel\\PestServiceProvider',
+    ),
+  ),
+  'spatie/php-structure-discoverer' => 
+  array (
+    'providers' => 
+    array (
+      0 => 'Spatie\\StructureDiscoverer\\StructureDiscovererServiceProvider',
     ),
   ),
 );
