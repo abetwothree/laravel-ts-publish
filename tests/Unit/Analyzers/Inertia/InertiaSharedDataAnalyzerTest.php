@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithImportPaths;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMethodOverridesClass;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMethodTsCasts;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithoutShareMethod;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithTsCastsAndDocblock;
 use Laravel\Ranger\Collectors\InertiaSharedData as InertiaSharedDataCollector;
 use Laravel\Ranger\Components\InertiaSharedData as SharedDataComponent;
@@ -349,4 +350,66 @@ test('TsCasts overrides win over docblock for same key', function () {
     expect($result)->not->toBeNull()
         ->and($result['sharedPageProps'])->toBe('{ auth: { user: { id: number, name: string, email: string } | null }, flash: FlashMessages, appName: string }')
         ->and($result['importStatements'])->toBe([]);
+});
+
+// ─── parseDocblockFromMiddleware edge cases ───────────────────────
+
+test('parseDocblockFromMiddleware returns empty array when middleware has no share method', function () {
+    // MiddlewareWithoutShareMethod exists as a class but has no share() method.
+    // This covers the `if (! $reflection->hasMethod('share')) { return []; }` branch.
+    $data = new ArrayType([
+        'appName' => new StringType,
+    ]);
+
+    $component = new SharedDataComponent($data, false);
+
+    ['analyzer' => $analyzer, 'collector' => $collector] = createAnalyzerWithMockedCollector(MiddlewareWithoutShareMethod::class);
+    $collector->shouldReceive('collect')->andReturn(collect([$component]));
+
+    $result = $analyzer->analyze();
+
+    // No docblock overrides — Surveyor infers the type directly.
+    expect($result)->not->toBeNull()
+        ->and($result['sharedPageProps'])->toBe('{ appName: string }')
+        ->and($result['importStatements'])->toBe([]);
+});
+
+// ─── buildTypeStringWithOverrides raw-value branches ─────────────
+
+test('buildTypeStringWithOverrides renders plain PHP array prop values as nested object type', function () {
+    // A plain PHP array (not a Type instance) as a prop value exercises the
+    // `is_array($value)` branch → SurveyorTypeMapper::objectToTypeString().
+    $data = new ArrayType([
+        'meta' => ['page' => 1, 'total' => 100],
+    ]);
+
+    $component = new SharedDataComponent($data, false);
+
+    $mock = Mockery::mock(InertiaSharedDataCollector::class);
+    $mock->shouldReceive('collect')->andReturn(collect([$component]));
+
+    $analyzer = new InertiaSharedDataAnalyzer($mock);
+    $result = $analyzer->analyze();
+
+    expect($result)->not->toBeNull()
+        ->and($result['sharedPageProps'])->toBe('{ meta: { page: unknown, total: unknown } }');
+});
+
+test('buildTypeStringWithOverrides marks non-Type non-array prop values as unknown', function () {
+    // A plain scalar (not a Type or array) as a prop value exercises the
+    // `else { $tsType = \'unknown\'; }` branch.
+    $data = new ArrayType([
+        'version' => '1.0.0',
+    ]);
+
+    $component = new SharedDataComponent($data, false);
+
+    $mock = Mockery::mock(InertiaSharedDataCollector::class);
+    $mock->shouldReceive('collect')->andReturn(collect([$component]));
+
+    $analyzer = new InertiaSharedDataAnalyzer($mock);
+    $result = $analyzer->analyze();
+
+    expect($result)->not->toBeNull()
+        ->and($result['sharedPageProps'])->toBe('{ version: unknown }');
 });

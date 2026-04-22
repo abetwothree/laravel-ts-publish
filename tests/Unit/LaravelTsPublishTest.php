@@ -571,6 +571,26 @@ describe('resolvePhpDocTypeToTs', function () {
 
         expect($result)->toBe('{ user: string | null }');
     });
+
+    test('returns Record<string, unknown> for empty array shape', function () {
+        // Covers the `return 'Record<string, unknown>'` fallback when
+        // parseArrayShapeToTsTypes returns [] for an empty array{}.
+        $result = $this->service->resolvePhpDocTypeToTs('array{}', [], '');
+
+        expect($result)->toBe('Record<string, unknown>');
+    });
+});
+
+describe('parseArrayShapeToTsTypes', function () {
+    test('returns empty array when shape does not start with array{', function () {
+        // Covers the guard `! str_starts_with($shape, 'array{') || ! str_ends_with($shape, '}')` branch.
+        expect($this->service->parseArrayShapeToTsTypes('string', [], ''))->toBe([]);
+    });
+
+    test('returns empty array for empty array shape array{}', function () {
+        // Covers the `if ($inner === '') { return []; }` branch.
+        expect($this->service->parseArrayShapeToTsTypes('array{}', [], ''))->toBe([]);
+    });
 });
 
 describe('attributeDocblockReturnTypes', function () {

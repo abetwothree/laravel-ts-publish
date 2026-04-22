@@ -155,4 +155,26 @@ describe('resolve', function () {
             "import type { SharedData as FlashSharedData } from '@types/flash.d.ts';",
         ]);
     });
+
+    test('falls back to max-depth prefix when paths are identical after extension stripping at every depth', function () {
+        // '@types/auth.ts' and '@types/auth.d.ts' both resolve to 'auth' at depth 1
+        // and 'TypesAuth' at depth 2 (max depth), so the for-loop never returns early
+        // and the fallback block builds the prefix map using maxDepth.
+        $resolver = new TsCastsImportResolver;
+
+        $result = $resolver->resolve([
+            'primary' => 'AuthData',
+            'secondary' => 'AuthData',
+        ], [
+            'primary' => '@types/auth.ts',
+            'secondary' => '@types/auth.d.ts',
+        ]);
+
+        // Both paths resolve to '@typesAuth' as prefix at max depth (Str::studly preserves '@'),
+        // so the alias for both ends up as '@typesAuthAuthData'.
+        expect($result['overrides'])->toBe([
+            'primary' => '@typesAuthAuthData',
+            'secondary' => '@typesAuthAuthData',
+        ])->and($result['importStatements'])->toHaveCount(2);
+    });
 });

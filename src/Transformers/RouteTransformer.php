@@ -552,37 +552,13 @@ class RouteTransformer extends CoreTransformer
             }
         }
 
-        // Fallback: all segments (distinct paths will still produce distinct keys)
+        // All depths exhausted: fall back to the full path as the key
         $keys = [];
 
         foreach ($paths as $path) {
-            $tail = $split($path);
-            $keys[$path] = LaravelTsPublish::keyCase(implode(' ', $tail), $casing);
+            $keys[$path] = LaravelTsPublish::keyCase($path, $casing);
         }
 
         return $keys;
-    }
-
-    /**
-     * Extract the short name from a component path.
-     *
-     * Takes the last segment after `/`, `\`, or `.` separators.
-     * For example, `'Settings/General'` → `'General'`.
-     */
-    protected function extractShortName(string $component): string
-    {
-        if (Str::contains($component, '/')) {
-            return Str::afterLast($component, '/');
-        }
-
-        if (Str::contains($component, '\\')) {
-            return Str::afterLast($component, '\\');
-        }
-
-        if (Str::contains($component, '.')) {
-            return Str::afterLast($component, '.');
-        }
-
-        return $component;
     }
 }

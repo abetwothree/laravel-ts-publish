@@ -564,10 +564,6 @@ class LaravelTsPublish
         $start = (int) $match[0][1] + strlen((string) $match[0][0]);
         $rest = trim(substr($content, $start));
 
-        if ($rest === '') {
-            return null;
-        }
-
         // If the type starts with array{, use brace matching to capture the full shape
         if (str_starts_with($rest, 'array{')) {
             $depth = 0;
@@ -603,11 +599,9 @@ class LaravelTsPublish
         }
 
         // Otherwise, capture until whitespace (single-line type)
-        if (preg_match('/^(\S+)/', $rest, $typeMatch)) {
-            return $typeMatch[1];
-        }
+        preg_match('/^(\S+)/', $rest, $typeMatch);
 
-        return null;
+        return $typeMatch[1] ?? null;
     }
 
     /**

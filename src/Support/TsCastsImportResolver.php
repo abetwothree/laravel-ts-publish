@@ -100,13 +100,7 @@ class TsCastsImportResolver
         $resolvedOverrides = $overrides;
 
         foreach ($entries as $entry) {
-            $resolved = $resolvedByPair[$entry['pairKey']] ?? null;
-
-            if ($resolved === null) {
-                continue;
-            }
-
-            $resolvedOverrides[$entry['prop']] = $resolved['local'];
+            $resolvedOverrides[$entry['prop']] = $resolvedByPair[$entry['pairKey']]['local'];
         }
 
         /** @var list<string> $importStatements */
