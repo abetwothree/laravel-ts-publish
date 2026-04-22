@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Workbench\App\Providers;
 
-use Illuminate\Foundation\Http\Kernel;
+use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Support\ServiceProvider;
 use Workbench\App\Http\Middleware\HandleInertiaRequests;
 

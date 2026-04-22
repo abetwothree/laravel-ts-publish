@@ -588,11 +588,14 @@ class LaravelTsPublish
             }
 
             if ($end > 0) {
-                // Capture any trailing union (e.g. array{...}|null)
+                // Capture any trailing union, allowing spaces around `|` (e.g. `array{...} | null`)
                 $after = substr($rest, $end);
+                $afterTrimmed = ltrim($after);
 
-                if (preg_match('/^(\|[^\s@]+)+/', $after, $trailingMatch)) {
-                    return $this->normalizeDocblockWhitespace(substr($rest, 0, $end).$trailingMatch[0]);
+                if (preg_match('/^(\s*\|\s*[^\s|@]+)+/', $afterTrimmed, $trailingMatch)) {
+                    $trailingNormalized = (string) preg_replace('/\s*\|\s*/', '|', $trailingMatch[0]);
+
+                    return $this->normalizeDocblockWhitespace(substr($rest, 0, $end).$trailingNormalized);
                 }
 
                 return $this->normalizeDocblockWhitespace(substr($rest, 0, $end));

@@ -463,6 +463,34 @@ describe('extractReturnTypeFromDocblock', function () {
 
         expect($this->service->extractReturnTypeFromDocblock($doc))->toBeNull();
     });
+
+    test('extracts array shape with spaced trailing union (array{...} | null)', function () {
+        $doc = <<<'DOC'
+        /**
+         * @return array{name: string, age: int} | null
+         */
+        DOC;
+
+        $result = $this->service->extractReturnTypeFromDocblock($doc);
+        expect($result)->toBe('array{name: string, age: int}|null');
+    });
+
+    test('extracts multiline array shape with spaced trailing union', function () {
+        $doc = <<<'DOC'
+        /**
+         * @return array{
+         *     name: string,
+         *     age: int
+         * } | null
+         */
+        DOC;
+
+        $result = $this->service->extractReturnTypeFromDocblock($doc);
+        expect($result)->toContain('array{')
+            ->and($result)->toContain('name: string')
+            ->and($result)->toContain('age: int')
+            ->and($result)->toContain('|null');
+    });
 });
 
 describe('splitPhpDocUnionType', function () {

@@ -282,6 +282,9 @@ return [
     | module augmentation file for @inertiajs/core.
     |
     | Requires inertiajs/inertia-laravel:^3 to be installed.
+    | Static analysis also relies on laravel/ranger (and its transitive dependencies
+    | laravel/surveyor and spatie/php-structure-discoverer), which is already
+    | declared as a package dependency.
     |
     | 'component_casing': Case style for generated component map keys ('camel', 'snake', or 'pascal').
     | 'inertia_middleware_path': Optional path to scan for Inertia middleware. Defaults to app/ if not set or invalid.
