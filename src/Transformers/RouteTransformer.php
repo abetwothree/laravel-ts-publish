@@ -516,7 +516,7 @@ class RouteTransformer extends CoreTransformer
      * is incremented until all keys in the group are distinct.
      *
      * @param  list<string>  $paths
-     * @return array<string, string>  path => key
+     * @return array<string, string> path => key
      */
     private function computeUniqueComponentKeys(array $paths, string $casing): array
     {
