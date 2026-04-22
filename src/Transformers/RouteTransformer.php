@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Concerns\FiltersRoutes;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsRouteDto;
@@ -45,6 +46,8 @@ class RouteTransformer extends CoreTransformer
     /** @var array<class-string, object> Cache of instantiated models for binding resolution */
     protected static array $modelInstanceCache = [];
 
+    protected ?InertiaPageAnalyzer $inertiaPageAnalyzer = null;
+
     protected const INVOKE = '__invoke';
 
     #[Override]
@@ -55,6 +58,10 @@ class RouteTransformer extends CoreTransformer
         $this->filePath = (string) $this->reflectionController->getFileName();
         $this->namespacePath = LaravelTsPublish::namespaceToPath($this->findable);
         $this->description = LaravelTsPublish::parseDocBlockDescription($this->reflectionController->getDocComment());
+
+        if (config()->boolean('ts-publish.inertia.enabled')) {
+            $this->inertiaPageAnalyzer = resolve(InertiaPageAnalyzer::class);
+        }
 
         $this->actions = $this->collectActions();
 
@@ -163,7 +170,7 @@ class RouteTransformer extends CoreTransformer
             $url = $domain.$uri;
         }
 
-        return [
+        $action = [
             'name' => $route->getName(),
             'url' => $url,
             'uri' => $uri,
@@ -177,6 +184,20 @@ class RouteTransformer extends CoreTransformer
             'description' => $description,
             'args' => $this->resolveArgs($route, $originalMethodName),
         ];
+
+        if ($this->inertiaPageAnalyzer !== null) {
+            $controllerClass = ltrim((string) $route->getControllerClass(), '\\');
+            $uses = $controllerClass.'@'.$route->getActionMethod();
+
+            $inertiaData = $this->inertiaPageAnalyzer->analyze(['uses' => $uses]);
+
+            if ($inertiaData !== null) {
+                $action['component'] = $this->normalizeComponent($inertiaData['component']);
+                $action['pageType'] = $inertiaData['pageType'];
+            }
+        }
+
+        return $action;
     }
 
     /**
@@ -457,5 +478,56 @@ class RouteTransformer extends CoreTransformer
     public static function clearModelInstanceCache(): void
     {
         self::$modelInstanceCache = [];
+    }
+
+    /**
+     * Normalize Inertia component data for the route action.
+     *
+     * Single components remain as-is (a plain string). Multi-component
+     * arrays are converted to an associative array keyed by the short
+     * component name (last segment, transformed by component_casing config).
+     *
+     * @param  string|list<string>  $component
+     * @return string|array<string, string>
+     */
+    protected function normalizeComponent(string|array $component): string|array
+    {
+        if (is_string($component)) {
+            return $component;
+        }
+
+        $casing = config()->string('ts-publish.inertia.component_casing', 'camel');
+        $normalized = [];
+
+        foreach ($component as $path) {
+            $short = $this->extractShortName($path);
+            $key = LaravelTsPublish::keyCase($short, $casing);
+            $normalized[$key] = $path;
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * Extract the short name from a component path.
+     *
+     * Takes the last segment after `/`, `\`, or `.` separators.
+     * For example, `'Settings/General'` → `'General'`.
+     */
+    protected function extractShortName(string $component): string
+    {
+        if (Str::contains($component, '/')) {
+            return Str::afterLast($component, '/');
+        }
+
+        if (Str::contains($component, '\\')) {
+            return Str::afterLast($component, '\\');
+        }
+
+        if (Str::contains($component, '.')) {
+            return Str::afterLast($component, '.');
+        }
+
+        return $component;
     }
 }
