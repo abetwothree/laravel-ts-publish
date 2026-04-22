@@ -207,6 +207,18 @@ test('converts ArrayShapeType with unknown key to Record with string key', funct
     expect(SurveyorTypeMapper::convert($type))->toBe('Record<string, string>');
 });
 
+test('converts nullable ArrayShapeType with number key to include null suffix', function () {
+    $type = (new Types\ArrayShapeType(new Types\IntType, new Types\StringType))->nullable();
+
+    expect(SurveyorTypeMapper::convert($type))->toBe('string[] | null');
+});
+
+test('converts nullable ArrayShapeType with string key to include null suffix', function () {
+    $type = (new Types\ArrayShapeType(new Types\StringType, new Types\IntType))->nullable();
+
+    expect(SurveyorTypeMapper::convert($type))->toBe('Record<string, number> | null');
+});
+
 // ─── convert() CallableType ───────────────────────────────────────
 
 test('converts CallableType to its return type', function () {

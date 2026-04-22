@@ -435,3 +435,59 @@ test('non-inertia actions do not get component or pageType even when inertia is 
         ->and($index)->not->toHaveKey('component')
         ->and($index)->not->toHaveKey('pageType');
 });
+
+test('normalizeComponent returns unique keys when component basenames collide', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@dashboard')) {
+                return [
+                    'component' => ['Admin/Dashboard', 'User/Dashboard'],
+                    'pageType' => null,
+                ];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $transformer = new RouteTransformer(InertiaController::class);
+    $dashboard = collect($transformer->actions)->firstWhere('methodName', 'dashboard');
+
+    expect($dashboard)->not->toBeNull()
+        ->and($dashboard['component'])->toBeArray()
+        ->and($dashboard['component'])->toHaveKeys(['adminDashboard', 'userDashboard'])
+        ->and($dashboard['component']['adminDashboard'])->toBe('Admin/Dashboard')
+        ->and($dashboard['component']['userDashboard'])->toBe('User/Dashboard');
+});
+
+test('normalizeComponent returns plain key when component basenames are distinct', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@dashboard')) {
+                return [
+                    'component' => ['Admin/Overview', 'User/Dashboard'],
+                    'pageType' => null,
+                ];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $transformer = new RouteTransformer(InertiaController::class);
+    $dashboard = collect($transformer->actions)->firstWhere('methodName', 'dashboard');
+
+    expect($dashboard)->not->toBeNull()
+        ->and($dashboard['component'])->toBeArray()
+        ->and($dashboard['component'])->toHaveKeys(['overview', 'dashboard'])
+        ->and($dashboard['component']['overview'])->toBe('Admin/Overview')
+        ->and($dashboard['component']['dashboard'])->toBe('User/Dashboard');
+});

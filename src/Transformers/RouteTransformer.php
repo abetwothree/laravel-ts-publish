@@ -187,7 +187,7 @@ class RouteTransformer extends CoreTransformer
 
         if ($this->inertiaPageAnalyzer !== null) {
             $controllerClass = ltrim((string) $route->getControllerClass(), '\\');
-            $uses = $controllerClass.'@'.$route->getActionMethod();
+            $uses = $controllerClass.'@'.$originalMethodName;
 
             $inertiaData = $this->inertiaPageAnalyzer->analyze(['uses' => $uses]);
 
@@ -497,15 +497,70 @@ class RouteTransformer extends CoreTransformer
         }
 
         $casing = config()->string('ts-publish.inertia.component_casing', 'camel');
+        $paths = array_values($component);
+        $keyMap = $this->computeUniqueComponentKeys($paths, $casing);
         $normalized = [];
 
-        foreach ($component as $path) {
-            $short = $this->extractShortName($path);
-            $key = LaravelTsPublish::keyCase($short, $casing);
-            $normalized[$key] = $path;
+        foreach ($paths as $path) {
+            $normalized[$keyMap[$path]] = $path;
         }
 
         return $normalized;
+    }
+
+    /**
+     * Compute unique casing keys for each component path.
+     *
+     * Uses depth=1 (last segment) first. When two paths share the same short name
+     * (e.g. Admin/Dashboard and User/Dashboard both yield "dashboard"), the depth
+     * is incremented until all keys in the group are distinct.
+     *
+     * @param  list<string>  $paths
+     * @return array<string, string>  path => key
+     */
+    private function computeUniqueComponentKeys(array $paths, string $casing): array
+    {
+        $split = function (string $path): array {
+            if (str_contains($path, '/')) {
+                return array_values(array_filter(explode('/', $path), fn (string $s) => $s !== ''));
+            }
+
+            if (str_contains($path, '\\')) {
+                return array_values(array_filter(explode('\\', $path), fn (string $s) => $s !== ''));
+            }
+
+            if (str_contains($path, '.')) {
+                return array_values(array_filter(explode('.', $path), fn (string $s) => $s !== ''));
+            }
+
+            return [$path];
+        };
+
+        $segmentCounts = array_map(fn (string $p) => count($split($p)), $paths);
+        $maxDepth = max(1, ...$segmentCounts);
+
+        for ($depth = 1; $depth <= $maxDepth; $depth++) {
+            $keys = [];
+
+            foreach ($paths as $path) {
+                $tail = array_slice($split($path), -$depth);
+                $keys[$path] = LaravelTsPublish::keyCase(implode(' ', $tail), $casing);
+            }
+
+            if (count(array_unique(array_values($keys))) === count($paths)) {
+                return $keys;
+            }
+        }
+
+        // Fallback: all segments (distinct paths will still produce distinct keys)
+        $keys = [];
+
+        foreach ($paths as $path) {
+            $tail = $split($path);
+            $keys[$path] = LaravelTsPublish::keyCase(implode(' ', $tail), $casing);
+        }
+
+        return $keys;
     }
 
     /**

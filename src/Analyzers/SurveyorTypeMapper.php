@@ -112,14 +112,14 @@ class SurveyorTypeMapper
         $valueType = self::convert($type->valueType);
 
         if ($keyType === 'number') {
-            return "{$valueType}[]";
+            return self::decorate("{$valueType}[]", $type);
         }
 
         if ($keyType === 'unknown') {
             $keyType = 'string';
         }
 
-        return "Record<{$keyType}, {$valueType}>";
+        return self::decorate("Record<{$keyType}, {$valueType}>", $type);
     }
 
     /**

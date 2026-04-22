@@ -115,4 +115,44 @@ describe('resolve', function () {
             'appName' => 'string',
         ])->and($result['importStatements'])->toBe([]);
     });
+
+    test('uses more path segments when conflicting types share the same basename', function () {
+        $resolver = new TsCastsImportResolver;
+
+        $result = $resolver->resolve([
+            'user' => 'UserType',
+            'profile' => 'UserType',
+        ], [
+            'user' => '@types/models/user',
+            'profile' => '@js/types/user',
+        ]);
+
+        expect($result['overrides'])->toBe([
+            'user' => 'ModelsUserUserType',
+            'profile' => 'TypesUserUserType',
+        ])->and($result['importStatements'])->toBe([
+            "import type { UserType as ModelsUserUserType } from '@types/models/user';",
+            "import type { UserType as TypesUserUserType } from '@js/types/user';",
+        ]);
+    });
+
+    test('strips all extensions including .d.ts when deriving alias prefix', function () {
+        $resolver = new TsCastsImportResolver;
+
+        $result = $resolver->resolve([
+            'auth' => 'SharedData',
+            'flash' => 'SharedData',
+        ], [
+            'auth' => '@types/auth.d.ts',
+            'flash' => '@types/flash.d.ts',
+        ]);
+
+        expect($result['overrides'])->toBe([
+            'auth' => 'AuthSharedData',
+            'flash' => 'FlashSharedData',
+        ])->and($result['importStatements'])->toBe([
+            "import type { SharedData as AuthSharedData } from '@types/auth.d.ts';",
+            "import type { SharedData as FlashSharedData } from '@types/flash.d.ts';",
+        ]);
+    });
 });

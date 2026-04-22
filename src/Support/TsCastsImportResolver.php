@@ -59,6 +59,17 @@ class TsCastsImportResolver
             }
         }
 
+        // Pre-compute unique prefixes per type so that paths sharing the same basename
+        // get more trailing segments until all prefixes in the conflict group are distinct.
+        /** @var array<string, array<string, string>> $prefixMap type => (path => prefix) */
+        $prefixMap = [];
+
+        foreach ($pathsByType as $type => $paths) {
+            if (count($paths) > 1) {
+                $prefixMap[$type] = $this->computeUniquePrefixes(array_keys($paths));
+            }
+        }
+
         /** @var array<string, array{local: string, importName: string, path: string}> $resolvedByPair */
         $resolvedByPair = [];
 
@@ -77,7 +88,7 @@ class TsCastsImportResolver
                 continue;
             }
 
-            $prefix = $this->computePathPrefix($path);
+            $prefix = $prefixMap[$type][$path] ?? $this->computePathPrefixAtDepth($path, 1);
             $alias = $prefix.$type;
             $resolvedByPair[$pairKey] = [
                 'local' => $alias,
@@ -112,17 +123,64 @@ class TsCastsImportResolver
     }
 
     /**
-     * Derive a StudlyCase prefix from the last path segment.
+     * Derive StudlyCase prefixes that are unique across a set of conflicting import paths.
      *
-     * For example, `@js/types/user-profile` → `UserProfile`.
+     * Incrementally uses more trailing path segments until every path in the group
+     * maps to a distinct prefix, preventing duplicate alias identifiers in TypeScript.
+     *
+     * @param  list<string>  $paths
+     * @return array<string, string> path => prefix
      */
-    private function computePathPrefix(string $path): string
+    private function computeUniquePrefixes(array $paths): array
     {
-        $segment = basename($path);
+        $segmentCounts = array_map(
+            fn (string $path) => count(array_filter(explode('/', $path), fn (string $s) => $s !== '')),
+            $paths
+        );
 
-        // Strip any file extension (e.g. .ts, .js, .d.ts)
-        $segment = (string) preg_replace('/\.[^.]+$/', '', $segment);
+        $maxDepth = max(1, ...$segmentCounts);
 
-        return Str::studly($segment);
+        for ($depth = 1; $depth <= $maxDepth; $depth++) {
+            $prefixes = [];
+
+            foreach ($paths as $path) {
+                $prefixes[$path] = $this->computePathPrefixAtDepth($path, $depth);
+            }
+
+            if (count(array_unique(array_values($prefixes))) === count($paths)) {
+                return $prefixes;
+            }
+        }
+
+        // Fallback: use all segments (distinct paths will produce distinct prefixes)
+        $prefixes = [];
+
+        foreach ($paths as $path) {
+            $prefixes[$path] = $this->computePathPrefixAtDepth($path, $maxDepth);
+        }
+
+        return $prefixes;
+    }
+
+    /**
+     * Derive a StudlyCase prefix from the last $depth segments of $path, stripping all extensions.
+     *
+     * Strips composite extensions (e.g. `.d.ts`, `.ts`, `.js`) from the final segment
+     * before converting to StudlyCase.
+     *
+     * For example: depth=1, `@js/types/user-profile` → `UserProfile`
+     * For example: depth=2, `@js/types/user-profile` → `TypesUserProfile`
+     */
+    private function computePathPrefixAtDepth(string $path, int $depth): string
+    {
+        $segments = array_values(array_filter(explode('/', $path), fn (string $s) => $s !== ''));
+        $segments = array_slice($segments, -$depth);
+
+        // Strip all extensions from the last segment (handles .d.ts, .ts, .js, etc.)
+        $last = (string) array_pop($segments);
+        $last = (string) preg_replace('/(\.[^.]+)+$/', '', $last);
+        $segments[] = $last;
+
+        return Str::studly(implode(' ', $segments));
     }
 }
