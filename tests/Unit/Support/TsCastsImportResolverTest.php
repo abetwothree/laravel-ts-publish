@@ -156,10 +156,11 @@ describe('resolve', function () {
         ]);
     });
 
-    test('falls back to max-depth prefix when paths are identical after extension stripping at every depth', function () {
+    test('falls back to numeric suffix when paths are identical after extension stripping at every depth', function () {
         // '@types/auth.ts' and '@types/auth.d.ts' both resolve to 'auth' at depth 1
-        // and 'TypesAuth' at depth 2 (max depth), so the for-loop never returns early
-        // and the fallback block builds the prefix map using maxDepth.
+        // and 'TypesAuth' at depth 2 (max depth), so the for-loop never returns early.
+        // The numeric-suffix fallback then produces 'TypesAuth1' and 'TypesAuth2'
+        // to guarantee unique, valid TypeScript identifiers.
         $resolver = new TsCastsImportResolver;
 
         $result = $resolver->resolve([
@@ -170,11 +171,12 @@ describe('resolve', function () {
             'secondary' => '@types/auth.d.ts',
         ]);
 
-        // Both paths resolve to '@typesAuth' as prefix at max depth (Str::studly preserves '@'),
-        // so the alias for both ends up as '@typesAuthAuthData'.
         expect($result['overrides'])->toBe([
-            'primary' => '@typesAuthAuthData',
-            'secondary' => '@typesAuthAuthData',
-        ])->and($result['importStatements'])->toHaveCount(2);
+            'primary' => 'TypesAuth1AuthData',
+            'secondary' => 'TypesAuth2AuthData',
+        ])->and($result['importStatements'])->toBe([
+            "import type { AuthData as TypesAuth1AuthData } from '@types/auth.ts';",
+            "import type { AuthData as TypesAuth2AuthData } from '@types/auth.d.ts';",
+        ]);
     });
 });

@@ -46,7 +46,7 @@ class InertiaSharedDataAnalyzer
     /**
      * Collect and convert Inertia shared data from HandleInertiaRequests middleware.
      *
-     * @return SharedDataResult|null Null when no middleware is discovered.
+     * @return SharedDataResult|null Null when no shared data components are collected.
      */
     public function analyze(): ?array
     {

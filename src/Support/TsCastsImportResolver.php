@@ -153,6 +153,23 @@ class TsCastsImportResolver
             $prefixes[$path] = $this->computePathPrefixAtDepth($path, $maxDepth);
         }
 
+        // Last resort: append a 1-based numeric suffix to guarantee uniqueness when
+        // two paths still collide after sanitization at max depth (e.g. '@types/auth.ts'
+        // and '@types/auth.d.ts' both reduce to 'TypesAuth').
+        $grouped = [];
+
+        foreach ($prefixes as $path => $prefix) {
+            $grouped[$prefix][] = $path;
+        }
+
+        foreach ($grouped as $prefix => $groupPaths) {
+            if (count($groupPaths) > 1) {
+                foreach ($groupPaths as $i => $path) {
+                    $prefixes[$path] = $prefix.($i + 1);
+                }
+            }
+        }
+
         return $prefixes;
     }
 
@@ -160,7 +177,8 @@ class TsCastsImportResolver
      * Derive a StudlyCase prefix from the last $depth segments of $path, stripping all extensions.
      *
      * Strips composite extensions (e.g. `.d.ts`, `.ts`, `.js`) from the final segment
-     * before converting to StudlyCase.
+     * before converting to StudlyCase. Non-identifier characters (such as `@` in path
+     * aliases like `@js`) are removed so the result is always a valid TypeScript identifier.
      *
      * For example: depth=1, `@js/types/user-profile` → `UserProfile`
      * For example: depth=2, `@js/types/user-profile` → `TypesUserProfile`
@@ -174,6 +192,17 @@ class TsCastsImportResolver
         $last = (string) array_pop($segments);
         $last = (string) preg_replace('/(\.[^.]+)+$/', '', $last);
         $segments[] = $last;
+
+        // Remove characters that would produce invalid TypeScript identifiers (e.g. '@' in '@js').
+        // Hyphens and underscores are kept because Str::studly uses them as word separators.
+        $segments = array_values(array_filter(
+            array_map(fn (string $s) => (string) preg_replace('/[^A-Za-z0-9_-]/', '', $s), $segments),
+            fn (string $s) => $s !== ''
+        ));
+
+        if ($segments === []) {
+            return 'Unknown';
+        }
 
         return Str::studly(implode(' ', $segments));
     }
