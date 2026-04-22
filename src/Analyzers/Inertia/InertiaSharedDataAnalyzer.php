@@ -109,7 +109,7 @@ class InertiaSharedDataAnalyzer
 
         return [
             'sharedPageProps' => $propsType,
-            'withAllErrors' => $component->withAllErrors,
+            'withAllErrors' => property_exists($component, 'withAllErrors') ? $component->withAllErrors : false,
             'importStatements' => $resolvedTsCasts['importStatements'],
         ];
     }
