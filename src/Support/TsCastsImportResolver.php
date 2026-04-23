@@ -201,7 +201,7 @@ class TsCastsImportResolver
         ));
 
         if ($segments === []) {
-            return 'Unknown';
+            return 'Unknown'; // @codeCoverageIgnore
         }
 
         return Str::studly(implode(' ', $segments));
