@@ -22,6 +22,7 @@
     "app\/Http\/Controllers\/ExcludableController.php",
     "app\/Http\/Controllers\/InertiaController.php",
     "app\/Http\/Controllers\/InvokableController.php",
+    "app\/Http\/Controllers\/InvokableInertiaController.php",
     "app\/Http\/Controllers\/InvokableModelBoundController.php",
     "app\/Http\/Controllers\/InvokableModelBoundPlusController.php",
     "app\/Http\/Controllers\/MiddlewareController.php",
