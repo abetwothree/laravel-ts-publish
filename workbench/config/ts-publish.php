@@ -274,6 +274,34 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Inertia Page Types
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, generates TypeScript page-prop types for each Inertia
+    | component detected via laravel/ranger static analysis, and a TypeScript Declaration
+    | module augmentation file for @inertiajs/core.
+    |
+    | Requires inertiajs/inertia-laravel:^3 to be installed.
+    | Static analysis also relies on laravel/ranger (and its transitive dependencies
+    | laravel/surveyor and spatie/php-structure-discoverer), which is already
+    | declared as a package dependency.
+    |
+    | 'component_casing': Case style for generated component map keys ('camel', 'snake', or 'pascal').
+    | 'inertia_middleware_path': Optional path to scan for Inertia middleware. Defaults to app/ if not set or invalid.
+    | 'augmentation_filename': Filename for the generated module augmentation file. Defaults to inertia-config.d.ts.
+    | 'output_path': Directory for the declaration file. Defaults to routes output_path.
+    */
+
+    'inertia' => [
+        'enabled' => false,
+        'component_casing' => 'camel',
+        'inertia_middleware_path' => null,
+        'augmentation_filename' => 'inertia-config.d.ts',
+        'output_path' => null,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Globals Declaration Types
     |--------------------------------------------------------------------------
     |

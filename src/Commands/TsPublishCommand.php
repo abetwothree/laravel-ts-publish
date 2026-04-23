@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Runners\RunnerForSource;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
@@ -390,6 +391,16 @@ class TsPublishCommand extends Command
             $this->comment("  {$viteEnvFilename}");
             $this->line($runner->viteEnvContent);
         }
+
+        if (! empty($runner->inertiaConfigContent)) {
+            $configFilename = Config::string('ts-publish.inertia.augmentation_filename');
+
+            $this->newLine();
+            $this->comment('Inertia Config:');
+            $this->newLine();
+            $this->comment("  {$configFilename}");
+            $this->line($runner->inertiaConfigContent);
+        }
     }
 
     protected function createPublishedFilesList(Runner|RunnerForSource $runner): void
@@ -530,9 +541,10 @@ class TsPublishCommand extends Command
             ...array_map(fn (string $path) => ['Barrel', "{$path}/index.ts"], array_keys($runner->modelModularBarrels)),
             ...array_map(fn (string $path) => ['Barrel', "{$path}/index.ts"], array_keys($runner->resourceModularBarrels)),
             ...array_map(fn (string $path) => ['Route Barrel', "{$path}/index.ts"], array_keys($runner->routeModularBarrels)),
-            $runner->globalsContent ? ['Globals', config()->string('ts-publish.globals.filename')] : null,
-            $runner->viteEnvContent ? ['Vite Env', config()->string('ts-publish.vite_env.filename', 'vite-env.d.ts')] : null,
-            $runner->jsonContent ? ['JSON', config()->string('ts-publish.json.filename')] : null,
+            $runner->globalsContent ? ['Globals', Config::string('ts-publish.globals.filename')] : null,
+            $runner->viteEnvContent ? ['Vite Env', Config::string('ts-publish.vite_env.filename', 'vite-env.d.ts')] : null,
+            $runner->inertiaConfigContent ? ['Inertia Config', Config::string('ts-publish.inertia.augmentation_filename')] : null,
+            $runner->jsonContent ? ['JSON', Config::string('ts-publish.json.filename')] : null,
         ]);
     }
 }

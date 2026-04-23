@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Workbench\App\Providers;
 
+use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Support\ServiceProvider;
+use Workbench\App\Http\Middleware\HandleInertiaRequests;
 
 class WorkbenchServiceProvider extends ServiceProvider
 {
@@ -21,6 +23,8 @@ class WorkbenchServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        /** @var Kernel $kernel */
+        $kernel = $this->app->make(Kernel::class);
+        $kernel->appendMiddlewareToGroup('web', HandleInertiaRequests::class);
     }
 }

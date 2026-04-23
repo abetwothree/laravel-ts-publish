@@ -14,7 +14,9 @@ use Workbench\App\Http\Controllers\DomainController;
 use Workbench\App\Http\Controllers\EnumBoundController;
 use Workbench\App\Http\Controllers\ExcludableController;
 use Workbench\App\Http\Controllers\ExcludedController;
+use Workbench\App\Http\Controllers\InertiaController;
 use Workbench\App\Http\Controllers\InvokableController;
+use Workbench\App\Http\Controllers\InvokableInertiaController;
 use Workbench\App\Http\Controllers\InvokableModelBoundController;
 use Workbench\App\Http\Controllers\InvokableModelBoundPlusController;
 use Workbench\App\Http\Controllers\MiddlewareController;
@@ -92,3 +94,9 @@ Route::domain('api.example.com')->group(function () {
 
 Route::get('/accounting/2fa/setup', [TwoFactorController::class, 'setup'])->name('accounting.2fa-setup');
 Route::post('/accounting/2fa/verify', [TwoFactorController::class, 'verify'])->name('accounting.2fa-verify');
+
+Route::get('/inertia/profile', InvokableInertiaController::class)->name('inertia.profile');
+Route::get('/inertia/dashboard', [InertiaController::class, 'dashboard'])->name('inertia.dashboard');
+Route::get('/inertia/settings', [InertiaController::class, 'settings'])->name('inertia.settings');
+Route::get('/inertia/about', [InertiaController::class, 'about'])->name('inertia.about');
+Route::get('/inertia/conditional', [InertiaController::class, 'conditional'])->name('inertia.conditional');

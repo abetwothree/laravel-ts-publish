@@ -71,7 +71,7 @@ test('ts:publish returns success exit code', function () {
 });
 
 test('ts:publish writes model split template files', function () {
-    $outputDir = workbench_path('resources/js/types/split-template-example');
+    $outputDir = workbench_path('resources/js/types/data/split-template-example');
 
     config()->set('ts-publish.models.template', 'laravel-ts-publish::model-split');
     config()->set('ts-publish.output_directory', $outputDir);
@@ -86,13 +86,7 @@ test('ts:publish writes model split template files', function () {
 });
 
 test('ts:publish writes model full template files', function () {
-    $outputDir = workbench_path('resources/js/types/full-template-example');
-
-    // TODO: create tests to implement clean setup of examples
-    $filesystem = new Filesystem;
-    if ($filesystem->exists($outputDir)) {
-        // $filesystem->deleteDirectory($outputDir);
-    }
+    $outputDir = workbench_path('resources/js/types/data/full-template-example');
 
     config()->set('ts-publish.models.template', 'laravel-ts-publish::model-full');
     config()->set('ts-publish.output_directory', $outputDir);
@@ -107,13 +101,7 @@ test('ts:publish writes model full template files', function () {
 });
 
 test('ts:publish writes modular files to namespace-based directories', function () {
-    $outputDir = workbench_path('resources/js/types/modular-example');
-
-    // Cleanup before test
-    $filesystem = new Filesystem;
-    if ($filesystem->exists($outputDir)) {
-        // $filesystem->deleteDirectory($outputDir);
-    }
+    $outputDir = workbench_path('resources/js/types/data/default-example');
 
     config()->set('ts-publish.output_directory', $outputDir);
     config()->set('ts-publish.output_to_files', true);

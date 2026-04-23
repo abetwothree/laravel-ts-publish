@@ -389,6 +389,9 @@ class LaravelTsPublish
      * through toTsType, resolving short class names via the
      * declaring file's use statements.
      *
+     * Supports multiline `@return` types including `array{...}` shapes
+     * that span multiple lines in the docblock.
+     *
      * @return TypeScriptTypeInfo
      */
     public function docblockReturnTypes(ReflectionMethod $method): array
@@ -399,13 +402,13 @@ class LaravelTsPublish
             return $this->emptyTypeScriptInfo();
         }
 
-        // Match @return that follows "* " to avoid grabbing from inline comments
-        if (! preg_match('/(?<=\* )@return\s+([^\s*]+)/', $docComment, $matches)) {
+        $returnTypeString = $this->extractReturnTypeFromDocblock($docComment);
+
+        if ($returnTypeString === null) {
             return $this->emptyTypeScriptInfo();
         }
 
-        $returnTypeString = $matches[1];
-        $parts = explode('|', $returnTypeString);
+        $parts = $this->splitPhpDocUnionType($returnTypeString);
 
         // Build a use-map from the declaring file for short name resolution
         $declaringClass = $method->getDeclaringClass();
@@ -531,6 +534,266 @@ class LaravelTsPublish
         } // @codeCoverageIgnoreEnd
 
         return $type;
+    }
+
+    /**
+     * Extract the complete `@return` type string from a docblock,
+     * including multiline `array{...}` shapes with nested braces.
+     *
+     * Returns null when no `@return` tag is found.
+     */
+    public function extractReturnTypeFromDocblock(string $docComment): ?string
+    {
+        // Normalize: strip comment markers, join into a single line
+        $lines = explode("\n", $docComment);
+        $content = '';
+
+        foreach ($lines as $line) {
+            $stripped = preg_replace('#^\s*/?\*+\s?#', '', $line) ?? '';
+            $stripped = preg_replace('#\s*\*+/$#', '', $stripped);
+            $content .= ' '.$stripped;
+        }
+
+        $content = trim($content);
+
+        // Find @return tag
+        if (! preg_match('/@return\s+/', $content, $match, PREG_OFFSET_CAPTURE)) {
+            return null;
+        }
+
+        $start = (int) $match[0][1] + strlen((string) $match[0][0]);
+        $rest = trim(substr($content, $start));
+
+        // If the type starts with array{, use brace matching to capture the full shape
+        if (str_starts_with($rest, 'array{')) {
+            $depth = 0;
+            $end = 0;
+
+            for ($i = 5; $i < strlen($rest); $i++) {
+                if ($rest[$i] === '{') {
+                    $depth++;
+                } elseif ($rest[$i] === '}') {
+                    $depth--;
+
+                    if ($depth === 0) {
+                        $end = $i + 1;
+
+                        break;
+                    }
+                }
+            }
+
+            if ($end > 0) {
+                // Capture any trailing union, allowing spaces around `|` (e.g. `array{...} | null`)
+                $after = substr($rest, $end);
+                $afterTrimmed = ltrim($after);
+
+                if (preg_match('/^(\s*\|\s*[^\s|@]+)+/', $afterTrimmed, $trailingMatch)) {
+                    $trailingNormalized = (string) preg_replace('/\s*\|\s*/', '|', $trailingMatch[0]);
+
+                    return $this->normalizeDocblockWhitespace(substr($rest, 0, $end).$trailingNormalized);
+                }
+
+                return $this->normalizeDocblockWhitespace(substr($rest, 0, $end));
+            }
+        }
+
+        // Otherwise, capture until whitespace (single-line type)
+        preg_match('/^(\S+)/', $rest, $typeMatch);
+
+        return $typeMatch[1] ?? null;
+    }
+
+    /**
+     * Collapse excessive whitespace in a docblock type string to single spaces.
+     */
+    protected function normalizeDocblockWhitespace(string $type): string
+    {
+        return (string) preg_replace('/\s+/', ' ', trim($type));
+    }
+
+    /**
+     * Split a PHPDoc type string on `|` at the top level (depth 0),
+     * respecting nested `{}`, `<>`, and `()`.
+     *
+     * @return list<string>
+     */
+    public function splitPhpDocUnionType(string $type): array
+    {
+        $parts = [];
+        $depth = 0;
+        $current = '';
+
+        for ($i = 0; $i < strlen($type); $i++) {
+            $char = $type[$i];
+
+            if ($char === '{' || $char === '<' || $char === '(') {
+                $depth++;
+            } elseif ($char === '}' || $char === '>' || $char === ')') {
+                $depth--;
+            } elseif ($char === '|' && $depth === 0) {
+                $parts[] = trim($current);
+                $current = '';
+
+                continue;
+            }
+
+            $current .= $char;
+        }
+
+        if (trim($current) !== '') {
+            $parts[] = trim($current);
+        }
+
+        return $parts;
+    }
+
+    /**
+     * Parse the `@return array{...}` docblock of a method into a map of
+     * property name → TypeScript type string.
+     *
+     * Only handles top-level `array{key: type, ...}` shapes. Returns an empty
+     * array when the `@return` tag is missing or not an array shape.
+     *
+     * @return array<string, string>
+     */
+    public function parseDocblockReturnArrayShape(ReflectionMethod $method): array
+    {
+        $docComment = $method->getDocComment();
+
+        if ($docComment === false) {
+            return [];
+        }
+
+        $returnType = $this->extractReturnTypeFromDocblock($docComment);
+
+        if ($returnType === null || ! str_starts_with($returnType, 'array{')) {
+            return [];
+        }
+
+        $declaringClass = $method->getDeclaringClass();
+        $useMap = $this->parseFileUseStatements($declaringClass);
+        $namespace = $declaringClass->getNamespaceName();
+
+        return $this->parseArrayShapeToTsTypes($returnType, $useMap, $namespace);
+    }
+
+    /**
+     * Parse a PHPDoc `array{key: type, ...}` shape string into a map
+     * of property name → TypeScript type string.
+     *
+     * Handles nested `array{...}` shapes and union types recursively.
+     *
+     * @param  array<string, string>  $useMap
+     * @return array<string, string>
+     */
+    public function parseArrayShapeToTsTypes(string $shape, array $useMap, string $namespace): array
+    {
+        if (! str_starts_with($shape, 'array{') || ! str_ends_with($shape, '}')) {
+            return [];
+        }
+
+        $inner = trim(substr($shape, 6, -1));
+
+        if ($inner === '') {
+            return [];
+        }
+
+        $entries = $this->splitAtTopLevelCommas($inner);
+        $result = [];
+
+        foreach ($entries as $entry) {
+            $entry = trim($entry);
+
+            // Match 'key: type' or 'key?: type'
+            if (preg_match('/^(\w+)\??\s*:\s*(.+)$/s', $entry, $m)) {
+                $result[$m[1]] = $this->resolvePhpDocTypeToTs(trim($m[2]), $useMap, $namespace);
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Resolve a PHPDoc type string (including nested array shapes) to a TypeScript type string.
+     *
+     * @param  array<string, string>  $useMap
+     */
+    public function resolvePhpDocTypeToTs(string $phpType, array $useMap, string $namespace): string
+    {
+        $phpType = trim($phpType);
+
+        // Handle union types first (e.g. string|null, array{...}|null)
+        // so that depth-aware splitting separates "array{...}" from "|null" correctly
+        $unionParts = $this->splitPhpDocUnionType($phpType);
+
+        if (count($unionParts) > 1) {
+            $tsParts = array_map(
+                fn (string $part) => $this->resolvePhpDocTypeToTs($part, $useMap, $namespace),
+                $unionParts,
+            );
+
+            return implode(' | ', $tsParts);
+        }
+
+        // Handle array{...} shapes recursively (after union split, this is a pure shape)
+        if (str_starts_with($phpType, 'array{')) {
+            $innerTypes = $this->parseArrayShapeToTsTypes($phpType, $useMap, $namespace);
+
+            if ($innerTypes !== []) {
+                $parts = [];
+
+                foreach ($innerTypes as $key => $type) {
+                    $parts[] = $key.': '.$type;
+                }
+
+                return '{ '.implode(', ', $parts).' }';
+            }
+
+            return 'Record<string, unknown>';
+        }
+
+        // Simple type — resolve through the existing pipeline
+        $resolved = $this->resolveDocblockTypeName($phpType, $useMap, $namespace);
+        $info = $this->toTsType($resolved);
+
+        return $info['type'];
+    }
+
+    /**
+     * Split a string on commas at the top level (depth 0),
+     * respecting nested `{}`, `<>`, and `()`.
+     *
+     * @return list<string>
+     */
+    protected function splitAtTopLevelCommas(string $input): array
+    {
+        $parts = [];
+        $depth = 0;
+        $current = '';
+
+        for ($i = 0; $i < strlen($input); $i++) {
+            $char = $input[$i];
+
+            if ($char === '{' || $char === '<' || $char === '(') {
+                $depth++;
+            } elseif ($char === '}' || $char === '>' || $char === ')') {
+                $depth--;
+            } elseif ($char === ',' && $depth === 0) {
+                $parts[] = trim($current);
+                $current = '';
+
+                continue;
+            }
+
+            $current .= $char;
+        }
+
+        if (trim($current) !== '') {
+            $parts[] = trim($current);
+        }
+
+        return $parts;
     }
 
     /**

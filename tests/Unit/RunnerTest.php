@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
@@ -303,4 +305,60 @@ describe('Runner conditional publishing', function () {
         expect($runner->modelGenerators)->toBeEmpty()
             ->and($runner->enumGenerators)->not->toBeEmpty();
     });
+});
+
+// ─── Inertia config generation ────────────────────────────────────
+
+test('runner inertiaConfigContent is empty when inertia is disabled', function () {
+    config()->set('ts-publish.inertia.enabled', false);
+
+    $runner = new Runner;
+    $runner->run();
+
+    expect($runner->inertiaConfigContent)->toBe('');
+});
+
+test('runner generates inertiaConfigContent when inertia is enabled with mocked converter', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockSharedData = Mockery::mock(InertiaSharedDataAnalyzer::class);
+    $mockSharedData->shouldReceive('setAppPaths')->once();
+    $mockSharedData->shouldReceive('analyze')->andReturn([
+        'sharedPageProps' => '{ appName: string }',
+        'withAllErrors' => true,
+        'importStatements' => [],
+    ]);
+
+    $mockPageAnalyzer = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockPageAnalyzer->shouldReceive('analyze')->andReturn(null);
+
+    app()->instance(InertiaSharedDataAnalyzer::class, $mockSharedData);
+    app()->instance(InertiaPageAnalyzer::class, $mockPageAnalyzer);
+
+    $runner = new Runner;
+    $runner->run();
+
+    expect($runner->inertiaConfigContent)
+        ->toContain("declare module '@inertiajs/core'")
+        ->toContain('sharedPageProps: { appName: string }')
+        ->toContain('errorValueType: string[]');
+});
+
+test('runner inertiaConfigContent is empty when converter returns null', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockSharedData = Mockery::mock(InertiaSharedDataAnalyzer::class);
+    $mockSharedData->shouldReceive('setAppPaths')->once();
+    $mockSharedData->shouldReceive('analyze')->andReturn(null);
+
+    $mockPageAnalyzer = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockPageAnalyzer->shouldReceive('analyze')->andReturn(null);
+
+    app()->instance(InertiaSharedDataAnalyzer::class, $mockSharedData);
+    app()->instance(InertiaPageAnalyzer::class, $mockPageAnalyzer);
+
+    $runner = new Runner;
+    $runner->run();
+
+    expect($runner->inertiaConfigContent)->toBe('');
 });

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
 use Workbench\Accounting\Http\Controllers\TwoFactorController;
 use Workbench\App\Http\Controllers\CustomKeyController;
@@ -13,7 +14,9 @@ use Workbench\App\Http\Controllers\DocBlockInvokableController;
 use Workbench\App\Http\Controllers\DomainController;
 use Workbench\App\Http\Controllers\EnumBoundController;
 use Workbench\App\Http\Controllers\ExcludableController;
+use Workbench\App\Http\Controllers\InertiaController;
 use Workbench\App\Http\Controllers\InvokableController;
+use Workbench\App\Http\Controllers\InvokableInertiaController;
 use Workbench\App\Http\Controllers\InvokableModelBoundController;
 use Workbench\App\Http\Controllers\InvokableModelBoundPlusController;
 use Workbench\App\Http\Controllers\MultiRouteController;
@@ -375,4 +378,263 @@ test('digit-leading route name segment is prefixed with underscore', function ()
 
     expect($setup['methodName'])->toBe('_2faSetup')
         ->and($verify['methodName'])->toBe('_2faVerify');
+});
+
+// ─── Inertia integration ──────────────────────────────────────────
+
+test('inertia actions do not include component or pageType when inertia is disabled', function () {
+    config()->set('ts-publish.inertia.enabled', false);
+
+    $transformer = new RouteTransformer(InertiaController::class);
+    $dashboard = collect($transformer->actions)->firstWhere('methodName', 'dashboard');
+
+    expect($dashboard)->not->toBeNull()
+        ->and($dashboard)->not->toHaveKey('component')
+        ->and($dashboard)->not->toHaveKey('pageType');
+});
+
+test('inertia actions include component and pageType when inertia is enabled', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@dashboard')) {
+                return [
+                    'component' => 'Dashboard',
+                    'pageType' => 'Inertia.SharedData & { stats: { users: number, posts: number, views: number } }',
+                ];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $transformer = new RouteTransformer(InertiaController::class);
+    $dashboard = collect($transformer->actions)->firstWhere('methodName', 'dashboard');
+
+    expect($dashboard)->not->toBeNull()
+        ->and($dashboard)->toHaveKey('component')
+        ->and($dashboard['component'])->toBe('Dashboard')
+        ->and($dashboard)->toHaveKey('pageType')
+        ->and($dashboard['pageType'])->toContain('Inertia.SharedData');
+});
+
+test('non-inertia actions do not get component or pageType even when inertia is enabled', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')->andReturn(null);
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $transformer = new RouteTransformer(PostController::class);
+    $index = collect($transformer->actions)->firstWhere('methodName', 'index');
+
+    expect($index)->not->toBeNull()
+        ->and($index)->not->toHaveKey('component')
+        ->and($index)->not->toHaveKey('pageType');
+});
+
+test('normalizeComponent returns unique keys when component basenames collide', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@dashboard')) {
+                return [
+                    'component' => ['Admin/Dashboard', 'User/Dashboard'],
+                    'pageType' => null,
+                ];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $transformer = new RouteTransformer(InertiaController::class);
+    $dashboard = collect($transformer->actions)->firstWhere('methodName', 'dashboard');
+
+    expect($dashboard)->not->toBeNull()
+        ->and($dashboard['component'])->toBeArray()
+        ->and($dashboard['component'])->toHaveKeys(['adminDashboard', 'userDashboard'])
+        ->and($dashboard['component']['adminDashboard'])->toBe('Admin/Dashboard')
+        ->and($dashboard['component']['userDashboard'])->toBe('User/Dashboard');
+});
+
+test('normalizeComponent returns plain key when component basenames are distinct', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@dashboard')) {
+                return [
+                    'component' => ['Admin/Overview', 'User/Dashboard'],
+                    'pageType' => null,
+                ];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $transformer = new RouteTransformer(InertiaController::class);
+    $dashboard = collect($transformer->actions)->firstWhere('methodName', 'dashboard');
+
+    expect($dashboard)->not->toBeNull()
+        ->and($dashboard['component'])->toBeArray()
+        ->and($dashboard['component'])->toHaveKeys(['overview', 'dashboard'])
+        ->and($dashboard['component']['overview'])->toBe('Admin/Overview')
+        ->and($dashboard['component']['dashboard'])->toBe('User/Dashboard');
+});
+
+test('normalizeComponent resolves unique keys for backslash-separated component paths', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@dashboard')) {
+                return [
+                    'component' => ['Admin\\Dashboard', 'User\\Dashboard'],
+                    'pageType' => null,
+                ];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $transformer = new RouteTransformer(InertiaController::class);
+    $dashboard = collect($transformer->actions)->firstWhere('methodName', 'dashboard');
+
+    expect($dashboard)->not->toBeNull()
+        ->and($dashboard['component'])->toBeArray()
+        ->and($dashboard['component'])->toHaveKeys(['adminDashboard', 'userDashboard'])
+        ->and($dashboard['component']['adminDashboard'])->toBe('Admin\\Dashboard')
+        ->and($dashboard['component']['userDashboard'])->toBe('User\\Dashboard');
+});
+
+test('normalizeComponent resolves unique keys for dot-separated component paths', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@dashboard')) {
+                return [
+                    'component' => ['Admin.Overview', 'User.Dashboard'],
+                    'pageType' => null,
+                ];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $transformer = new RouteTransformer(InertiaController::class);
+    $dashboard = collect($transformer->actions)->firstWhere('methodName', 'dashboard');
+
+    expect($dashboard)->not->toBeNull()
+        ->and($dashboard['component'])->toBeArray()
+        ->and($dashboard['component'])->toHaveKeys(['overview', 'dashboard'])
+        ->and($dashboard['component']['overview'])->toBe('Admin.Overview')
+        ->and($dashboard['component']['dashboard'])->toBe('User.Dashboard');
+});
+
+test('normalizeComponent resolves unique keys for unseparated single-segment component paths', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@dashboard')) {
+                return [
+                    'component' => ['Overview', 'Dashboard'],
+                    'pageType' => null,
+                ];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $transformer = new RouteTransformer(InertiaController::class);
+    $dashboard = collect($transformer->actions)->firstWhere('methodName', 'dashboard');
+
+    expect($dashboard)->not->toBeNull()
+        ->and($dashboard['component'])->toBeArray()
+        ->and($dashboard['component'])->toHaveKeys(['overview', 'dashboard'])
+        ->and($dashboard['component']['overview'])->toBe('Overview')
+        ->and($dashboard['component']['dashboard'])->toBe('Dashboard');
+});
+
+test('normalizeComponent falls back to keyed path when all depths produce colliding keys', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@dashboard')) {
+                return [
+                    'component' => ['Dashboard', 'Dashboard'],
+                    'pageType' => null,
+                ];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $transformer = new RouteTransformer(InertiaController::class);
+    $dashboard = collect($transformer->actions)->firstWhere('methodName', 'dashboard');
+
+    expect($dashboard)->not->toBeNull()
+        ->and($dashboard['component'])->toBeArray()
+        ->and($dashboard['component'])->toHaveKey('dashboard')
+        ->and($dashboard['component']['dashboard'])->toBe('Dashboard');
+});
+
+test('invokable inertia controller action receives @__invoke uses string and returns component data', function () {
+    // Laravel stores invokable routes with just the FQCN (no @method). RouteTransformer
+    // normalises this to Controller@__invoke before passing to InertiaPageAnalyzer, so
+    // Ranger's analyzeRoute() can correctly explode the uses string and find __invoke.
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $capturedAction = null;
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) use (&$capturedAction) {
+            $capturedAction = $action;
+
+            return [
+                'component' => 'Profile',
+                'pageType' => 'Inertia.SharedData & { name: string }',
+            ];
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $transformer = new RouteTransformer(InvokableInertiaController::class);
+    $invoke = collect($transformer->actions)->firstWhere('methodName', 'invoke');
+
+    // The uses string passed to the analyzer must use @__invoke so that
+    // AnalyzesRoutes::analyzeRoute() can split controller from method.
+    expect($capturedAction)->not->toBeNull()
+        ->and($capturedAction['uses'])->toEndWith('@__invoke')
+        ->and($invoke)->not->toBeNull()
+        ->and($invoke)->toHaveKey('component')
+        ->and($invoke['component'])->toBe('Profile')
+        ->and($invoke)->toHaveKey('pageType')
+        ->and($invoke['pageType'])->toContain('Inertia.SharedData');
 });

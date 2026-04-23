@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Concerns\FiltersRoutes;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsRouteDto;
@@ -45,6 +46,8 @@ class RouteTransformer extends CoreTransformer
     /** @var array<class-string, object> Cache of instantiated models for binding resolution */
     protected static array $modelInstanceCache = [];
 
+    protected ?InertiaPageAnalyzer $inertiaPageAnalyzer = null;
+
     protected const INVOKE = '__invoke';
 
     #[Override]
@@ -55,6 +58,10 @@ class RouteTransformer extends CoreTransformer
         $this->filePath = (string) $this->reflectionController->getFileName();
         $this->namespacePath = LaravelTsPublish::namespaceToPath($this->findable);
         $this->description = LaravelTsPublish::parseDocBlockDescription($this->reflectionController->getDocComment());
+
+        if (config()->boolean('ts-publish.inertia.enabled')) {
+            $this->inertiaPageAnalyzer = resolve(InertiaPageAnalyzer::class);
+        }
 
         $this->actions = $this->collectActions();
 
@@ -163,7 +170,7 @@ class RouteTransformer extends CoreTransformer
             $url = $domain.$uri;
         }
 
-        return [
+        $action = [
             'name' => $route->getName(),
             'url' => $url,
             'uri' => $uri,
@@ -177,6 +184,20 @@ class RouteTransformer extends CoreTransformer
             'description' => $description,
             'args' => $this->resolveArgs($route, $originalMethodName),
         ];
+
+        if ($this->inertiaPageAnalyzer !== null) {
+            $controllerClass = ltrim((string) $route->getControllerClass(), '\\');
+            $uses = $controllerClass.'@'.$originalMethodName;
+
+            $inertiaData = $this->inertiaPageAnalyzer->analyze(['uses' => $uses]);
+
+            if ($inertiaData !== null) {
+                $action['component'] = $this->normalizeComponent($inertiaData['component']);
+                $action['pageType'] = $inertiaData['pageType'];
+            }
+        }
+
+        return $action;
     }
 
     /**
@@ -457,5 +478,87 @@ class RouteTransformer extends CoreTransformer
     public static function clearModelInstanceCache(): void
     {
         self::$modelInstanceCache = [];
+    }
+
+    /**
+     * Normalize Inertia component data for the route action.
+     *
+     * Single components remain as-is (a plain string). Multi-component
+     * arrays are converted to an associative array keyed by the short
+     * component name (last segment, transformed by component_casing config).
+     *
+     * @param  string|list<string>  $component
+     * @return string|array<string, string>
+     */
+    protected function normalizeComponent(string|array $component): string|array
+    {
+        if (is_string($component)) {
+            return $component;
+        }
+
+        $casing = config()->string('ts-publish.inertia.component_casing', 'camel');
+        $paths = $component;
+        $keyMap = $this->computeUniqueComponentKeys($paths, $casing);
+        $normalized = [];
+
+        foreach ($paths as $path) {
+            $normalized[$keyMap[$path]] = $path;
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * Compute unique casing keys for each component path.
+     *
+     * Uses depth=1 (last segment) first. When two paths share the same short name
+     * (e.g. Admin/Dashboard and User/Dashboard both yield "dashboard"), the depth
+     * is incremented until all keys in the group are distinct.
+     *
+     * @param  list<string>  $paths
+     * @return array<string, string> path => key
+     */
+    private function computeUniqueComponentKeys(array $paths, string $casing): array
+    {
+        $split = function (string $path): array {
+            if (str_contains($path, '/')) {
+                return array_values(array_filter(explode('/', $path), fn (string $s) => $s !== ''));
+            }
+
+            if (str_contains($path, '\\')) {
+                return array_values(array_filter(explode('\\', $path), fn (string $s) => $s !== ''));
+            }
+
+            if (str_contains($path, '.')) {
+                return array_values(array_filter(explode('.', $path), fn (string $s) => $s !== ''));
+            }
+
+            return [$path];
+        };
+
+        $segmentCounts = array_map(fn (string $p) => count($split($p)), $paths);
+        $maxDepth = max(1, ...$segmentCounts);
+
+        for ($depth = 1; $depth <= $maxDepth; $depth++) {
+            $keys = [];
+
+            foreach ($paths as $path) {
+                $tail = array_slice($split($path), -$depth);
+                $keys[$path] = LaravelTsPublish::keyCase(implode(' ', $tail), $casing);
+            }
+
+            if (count(array_unique(array_values($keys))) === count($paths)) {
+                return $keys;
+            }
+        }
+
+        // All depths exhausted: fall back to the full path as the key
+        $keys = [];
+
+        foreach ($paths as $path) {
+            $keys[$path] = LaravelTsPublish::keyCase($path, $casing);
+        }
+
+        return $keys;
     }
 }
