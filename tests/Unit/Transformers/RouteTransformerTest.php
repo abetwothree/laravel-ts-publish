@@ -16,6 +16,7 @@ use Workbench\App\Http\Controllers\EnumBoundController;
 use Workbench\App\Http\Controllers\ExcludableController;
 use Workbench\App\Http\Controllers\InertiaController;
 use Workbench\App\Http\Controllers\InvokableController;
+use Workbench\App\Http\Controllers\InvokableInertiaController;
 use Workbench\App\Http\Controllers\InvokableModelBoundController;
 use Workbench\App\Http\Controllers\InvokableModelBoundPlusController;
 use Workbench\App\Http\Controllers\MultiRouteController;
@@ -601,4 +602,39 @@ test('normalizeComponent falls back to keyed path when all depths produce collid
         ->and($dashboard['component'])->toBeArray()
         ->and($dashboard['component'])->toHaveKey('dashboard')
         ->and($dashboard['component']['dashboard'])->toBe('Dashboard');
+});
+
+test('invokable inertia controller action receives @__invoke uses string and returns component data', function () {
+    // Laravel stores invokable routes with just the FQCN (no @method). RouteTransformer
+    // normalises this to Controller@__invoke before passing to InertiaPageAnalyzer, so
+    // Ranger's analyzeRoute() can correctly explode the uses string and find __invoke.
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $capturedAction = null;
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) use (&$capturedAction) {
+            $capturedAction = $action;
+
+            return [
+                'component' => 'Profile',
+                'pageType' => 'Inertia.SharedData & { name: string }',
+            ];
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $transformer = new RouteTransformer(InvokableInertiaController::class);
+    $invoke = collect($transformer->actions)->firstWhere('methodName', 'invoke');
+
+    // The uses string passed to the analyzer must use @__invoke so that
+    // AnalyzesRoutes::analyzeRoute() can split controller from method.
+    expect($capturedAction)->not->toBeNull()
+        ->and($capturedAction['uses'])->toEndWith('@__invoke')
+        ->and($invoke)->not->toBeNull()
+        ->and($invoke)->toHaveKey('component')
+        ->and($invoke['component'])->toBe('Profile')
+        ->and($invoke)->toHaveKey('pageType')
+        ->and($invoke['pageType'])->toContain('Inertia.SharedData');
 });
