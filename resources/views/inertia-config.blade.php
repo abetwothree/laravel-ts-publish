@@ -4,6 +4,12 @@
 @if(count($importStatements) > 0)
 
 @endif
+declare global {
+    namespace Inertia {
+        type SharedData = {!! $sharedPageProps !!};
+    }
+}
+
 declare module '@inertiajs/core' {
     export interface InertiaConfig {
         sharedPageProps: {!! $sharedPageProps !!};
@@ -12,3 +18,5 @@ declare module '@inertiajs/core' {
 @endif
     }
 }
+
+export {};

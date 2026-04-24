@@ -1,10 +1,21 @@
 @use('AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish')
+@use('Illuminate\Support\Str')
 @if(count($data->actions) === 0)
 export {}
 @else
 import { defineRoute } from '@tolki/ts';
 @foreach ($data->actions as $action)
 
+@if(isset($action['pageType']))
+@if(is_array($action['pageType']))
+@foreach($action['pageType'] as $pageTypeKey => $pageTypeValue)
+export type {!! Str::studly($action['methodName']) . Str::studly($pageTypeKey) !!}PageProps = {!! $pageTypeValue !!};
+@endforeach
+@else
+export type {!! Str::studly($action['methodName']) !!}PageProps = {!! $action['pageType'] !!};
+@endif
+
+@endif
 @if($action['description'])
 /** {!! LaravelTsPublish::sanitizeJsDoc($action['description']) !!} */
 @endif

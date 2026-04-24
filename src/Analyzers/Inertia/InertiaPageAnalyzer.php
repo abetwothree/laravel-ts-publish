@@ -16,7 +16,7 @@ use Laravel\Ranger\Components\InertiaResponse;
  *
  * @phpstan-type InertiaPageData = array{
  *     component: string|list<string>,
- *     pageType: string,
+ *     pageType: string|list<string>|null,
  * }
  */
 class InertiaPageAnalyzer
@@ -64,6 +64,11 @@ class InertiaPageAnalyzer
     /**
      * Build the page data from one or more InertiaResponse instances.
      *
+     * For a single component, `pageType` is a plain inline type string.
+     * For multiple (conditional) components, `pageType` is a list of inline
+     * type strings parallel to the `component` list so the transformer can
+     * build a keyed map aligned with the component keys.
+     *
      * @param  list<InertiaResponse>  $responses
      * @return InertiaPageData
      */
@@ -79,13 +84,11 @@ class InertiaPageAnalyzer
             $responses,
         );
 
-        // Single component → string; multiple (conditional) → array
+        // Single component → string; multiple (conditional) → list
         $component = count($components) === 1 ? $components[0] : $components;
 
-        // Multiple types → union
-        $pageType = count($pageTypes) === 1
-            ? $pageTypes[0]
-            : implode(' | ', $pageTypes);
+        // Single type → string; multiple → list (transformer builds keyed map)
+        $pageType = count($pageTypes) === 1 ? $pageTypes[0] : $pageTypes;
 
         return [
             'component' => $component,

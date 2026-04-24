@@ -193,7 +193,9 @@ class RouteTransformer extends CoreTransformer
 
             if ($inertiaData !== null) {
                 $action['component'] = $this->normalizeComponent($inertiaData['component']);
-                $action['pageType'] = $inertiaData['pageType'];
+                if ($inertiaData['pageType'] !== null) {
+                    $action['pageType'] = $this->normalizePageType($inertiaData['component'], $inertiaData['pageType']);
+                }
             }
         }
 
@@ -503,6 +505,37 @@ class RouteTransformer extends CoreTransformer
 
         foreach ($paths as $path) {
             $normalized[$keyMap[$path]] = $path;
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * Normalize Inertia page type data aligned with normalized component keys.
+     *
+     * For a single component (string), the page type is returned as-is.
+     * For multiple (conditional) components, the page type list is converted
+     * to an associative array with the same keys used by normalizeComponent()
+     * so the blade template can emit one `export type` alias per variant.
+     *
+     * @param  string|list<string>  $component  Raw component list from the analyzer.
+     * @param  string|list<string>  $pageType  Parallel page type list from the analyzer.
+     * @return string|array<string, string>
+     */
+    protected function normalizePageType(string|array $component, string|array $pageType): string|array
+    {
+        if (is_string($component)) {
+            return is_string($pageType) ? $pageType : $pageType[0];
+        }
+
+        $casing = config()->string('ts-publish.inertia.component_casing', 'camel');
+        $paths = $component;
+        $types = is_array($pageType) ? $pageType : [$pageType];
+        $keyMap = $this->computeUniqueComponentKeys($paths, $casing);
+        $normalized = [];
+
+        foreach ($paths as $index => $path) {
+            $normalized[$keyMap[$path]] = $types[$index] ?? 'Inertia.SharedData';
         }
 
         return $normalized;
