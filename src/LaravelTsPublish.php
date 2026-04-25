@@ -29,8 +29,8 @@ use UnitEnum;
  *    enumTypes: list<string>,
  *    classes: list<class-string>,
  *    customImports: array<string, list<string>>,
- *    enumFqcns: list<string>,
- *    classFqcns: list<string>,
+ *    enumFqcns: list<class-string>,
+ *    classFqcns: list<class-string>,
  * }
  *
  * - type:          The TypeScript type string to use in the interface (e.g. 'StatusType', 'string | null')
@@ -694,11 +694,11 @@ class LaravelTsPublish
         $classFqcnToName = [];
 
         // Ordered list of class FQCNs kept in sync with $classFqcnToName (insertion order).
-        /** @var list<string> $orderedClassFqcns */
+        /** @var list<class-string> $orderedClassFqcns */
         $orderedClassFqcns = [];
 
         // Non-class type strings seen so far, used to deduplicate by string value.
-        /** @var list<string> $seenNonClassTypes */
+        /** @var list<class-string> $seenNonClassTypes */
         $seenNonClassTypes = [];
 
         foreach ($infos as $info) {

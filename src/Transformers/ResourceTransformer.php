@@ -86,16 +86,16 @@ class ResourceTransformer extends CoreTransformer
     /** @var array<string, class-string> property name => model FQCN (from bare whenLoaded) */
     protected array $propertyModelFqcns = [];
 
-    /** @var array<string, list<string>> property name => list of model FQCNs for union accessor types */
+    /** @var array<string, list<class-string>> property name => list of model FQCNs for union accessor types */
     protected array $propertyModelFqcnsList = [];
 
-    /** @var array<string, list<string>> property name => list of enum FQCNs for union enum accessor types */
+    /** @var array<string, list<class-string>> property name => list of enum FQCNs for union enum accessor types */
     protected array $propertyEnumFqcnsList = [];
 
-    /** @var array<string, list<string>> property name => enum FQCNs embedded in inline object type strings */
+    /** @var array<string, list<class-string>> property name => enum FQCNs embedded in inline object type strings */
     protected array $propertyInlineEnumFqcns = [];
 
-    /** @var array<string, list<string>> property name => model FQCNs embedded in inline object type strings */
+    /** @var array<string, list<class-string>> property name => model FQCNs embedded in inline object type strings */
     protected array $propertyInlineModelFqcns = [];
 
     /** @var array<string, class-string> property name => resource FQCN (from nested resources) */
