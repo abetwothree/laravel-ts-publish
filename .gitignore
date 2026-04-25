@@ -37,6 +37,9 @@ workbench/resources/js/types/data
 clover.xml
 AGENTS.md
 CLAUDE.md
+.DS_Store
 
 # AI
 .claude
+.agents
+skills-lock.json

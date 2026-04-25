@@ -880,6 +880,40 @@ describe('emptyTypeScriptInfo', function () {
     });
 });
 
+describe('mergeTypeScriptInfos', function () {
+    test('preserves a separate type token for each unique FQCN even when basenames are the same', function () {
+        $infoA = [...$this->service->emptyTypeScriptInfo(), 'type' => 'User', 'classes' => ['User'], 'classFqcns' => ['App\\Models\\User']];
+        $infoB = [...$this->service->emptyTypeScriptInfo(), 'type' => 'User', 'classes' => ['User'], 'classFqcns' => ['Crm\\Models\\User']];
+        $infoNull = [...$this->service->emptyTypeScriptInfo(), 'type' => 'null'];
+
+        $result = $this->service->mergeTypeScriptInfos([$infoA, $infoB, $infoNull]);
+
+        expect($result['type'])->toBe('User | User | null')
+            ->and($result['classes'])->toBe(['User', 'User'])
+            ->and($result['classFqcns'])->toBe(['App\\Models\\User', 'Crm\\Models\\User']);
+    });
+
+    test('deduplicates when the same FQCN appears twice', function () {
+        $info = [...$this->service->emptyTypeScriptInfo(), 'type' => 'User', 'classes' => ['User'], 'classFqcns' => ['App\\Models\\User']];
+
+        $result = $this->service->mergeTypeScriptInfos([$info, $info]);
+
+        expect($result['type'])->toBe('User')
+            ->and($result['classes'])->toBe(['User'])
+            ->and($result['classFqcns'])->toBe(['App\\Models\\User']);
+    });
+
+    test('deduplicates non-class type tokens by type string', function () {
+        $infoA = [...$this->service->emptyTypeScriptInfo(), 'type' => 'string'];
+        $infoB = [...$this->service->emptyTypeScriptInfo(), 'type' => 'string'];
+        $infoNull = [...$this->service->emptyTypeScriptInfo(), 'type' => 'null'];
+
+        $result = $this->service->mergeTypeScriptInfos([$infoA, $infoB, $infoNull]);
+
+        expect($result['type'])->toBe('string | null');
+    });
+});
+
 describe('namespaceToPath', function () {
     test('converts simple FQCN to kebab path', function () {
         expect($this->service->namespaceToPath('App\Models\User'))->toBe('app/models');

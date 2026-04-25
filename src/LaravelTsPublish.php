@@ -29,8 +29,8 @@ use UnitEnum;
  *    enumTypes: list<string>,
  *    classes: list<class-string>,
  *    customImports: array<string, list<string>>,
- *    enumFqcns: list<string>,
- *    classFqcns: list<string>,
+ *    enumFqcns: list<class-string>,
+ *    classFqcns: list<class-string>,
  * }
  *
  * - type:          The TypeScript type string to use in the interface (e.g. 'StatusType', 'string | null')
@@ -962,6 +962,14 @@ class LaravelTsPublish
     /**
      * Merge a list of TypeScriptTypeInfo results into one, joining type strings with ' | '.
      *
+     * Class-backed entries are deduplicated by FQCN rather than by short name.
+     * This preserves a separate type token for each distinct FQCN even when multiple
+     * FQCNs share the same class_basename(), allowing the upstream disambiguation logic
+     * in rewriteTypeReferences() to alias each one independently using limit=1 replacement.
+     *
+     * Non-class type tokens (primitives, null, enum type aliases) are deduplicated by
+     * type string as before.
+     *
      * @param  list<TypeScriptTypeInfo>  $infos
      * @return TypeScriptTypeInfo
      */
@@ -970,19 +978,46 @@ class LaravelTsPublish
         $types = [];
         $enums = [];
         $enumTypes = [];
-        $classes = [];
         /** @var array<string, list<string>> $customImports */
         $customImports = [];
         $enumFqcns = [];
-        $classFqcns = [];
+
+        // Track class-backed type tokens by FQCN to deduplicate same-FQCN entries
+        // while preserving a distinct token for each unique FQCN.
+        /** @var array<string, class-string> $classFqcnToName */
+        $classFqcnToName = [];
+
+        // Ordered list of class FQCNs kept in sync with $classFqcnToName (insertion order).
+        /** @var list<class-string> $orderedClassFqcns */
+        $orderedClassFqcns = [];
+
+        // Non-class type strings seen so far, used to deduplicate by string value.
+        /** @var list<class-string> $seenNonClassTypes */
+        $seenNonClassTypes = [];
 
         foreach ($infos as $info) {
-            $types[] = $info['type'];
+            if ($info['classFqcns'] !== []) {
+                // Class-backed type: deduplicate by FQCN so the same class appearing twice
+                // does not produce duplicate tokens, but two distinct FQCNs that both resolve
+                // to the same class_basename() each emit their own token.
+                foreach ($info['classFqcns'] as $i => $fqcn) {
+                    if (! isset($classFqcnToName[$fqcn])) {
+                        $classFqcnToName[$fqcn] = $info['classes'][$i];
+                        $orderedClassFqcns[] = $fqcn;
+                        $types[] = $info['classes'][$i];
+                    }
+                }
+            } else {
+                // Non-class type (primitive, null, enum type alias): deduplicate by type string.
+                if (! in_array($info['type'], $seenNonClassTypes, true)) {
+                    $seenNonClassTypes[] = $info['type'];
+                    $types[] = $info['type'];
+                }
+            }
+
             $enums = [...$enums, ...$info['enums']];
             $enumTypes = [...$enumTypes, ...$info['enumTypes']];
-            $classes = [...$classes, ...$info['classes']];
             $enumFqcns = [...$enumFqcns, ...$info['enumFqcns']];
-            $classFqcns = [...$classFqcns, ...$info['classFqcns']];
 
             foreach ($info['customImports'] as $path => $importTypes) {
                 $customImports[$path] = [...($customImports[$path] ?? []), ...$importTypes];
@@ -990,13 +1025,13 @@ class LaravelTsPublish
         }
 
         $result = $this->emptyTypeScriptInfo();
-        $result['type'] = implode(' | ', array_unique($types));
+        $result['type'] = implode(' | ', $types);
         $result['enums'] = array_values(array_unique($enums));
         $result['enumTypes'] = array_values(array_unique($enumTypes));
-        $result['classes'] = array_values(array_unique($classes));
+        $result['classes'] = array_values($classFqcnToName);
         $result['customImports'] = $customImports;
         $result['enumFqcns'] = array_values(array_unique($enumFqcns));
-        $result['classFqcns'] = array_values(array_unique($classFqcns));
+        $result['classFqcns'] = $orderedClassFqcns;
 
         return $result;
     }

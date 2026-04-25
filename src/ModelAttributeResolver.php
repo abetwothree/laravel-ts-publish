@@ -196,36 +196,45 @@ class ModelAttributeResolver
      */
     public function resolveAccessorModelFqcn(string $modelFqcn, string $attributeName): ?string
     {
+        $fqcns = $this->resolveAccessorModelFqcns($modelFqcn, $attributeName);
+
+        return count($fqcns) === 1 ? $fqcns[0] : null;
+    }
+
+    /**
+     * Return all Eloquent Model FQCNs that an accessor's getter may return.
+     * Used when an accessor is typed as Attribute<ModelA|ModelB, never> and a
+     * partial filter (->only / ->except) is applied to the result.
+     *
+     * @param  class-string  $modelFqcn
+     * @return list<class-string<Model>>
+     */
+    public function resolveAccessorModelFqcns(string $modelFqcn, string $attributeName): array
+    {
         $ctx = $this->resolveContext($modelFqcn);
 
         if ($ctx === null) {
-            return null;
+            return [];
         }
 
         $attr = $ctx['attributes']->firstWhere('name', $attributeName);
 
         if ($attr === null || ($attr['cast'] !== 'attribute' && $attr['cast'] !== 'accessor')) {
-            return null; // @codeCoverageIgnore
+            return []; // @codeCoverageIgnore
         }
 
         try {
             $accessorInfo = $this->resolveAccessorType($attributeName, $ctx['instance'], $ctx['reflection']);
 
-            $modelFqcns = array_values(array_filter(
+            /** @var list<class-string<Model>> $fqcns */
+            $fqcns = array_values(array_filter(
                 $accessorInfo['classFqcns'],
                 fn (string $fqcn) => is_a($fqcn, Model::class, true),
             ));
 
-            if (count($modelFqcns) !== 1) {
-                return null;
-            }
-
-            /** @var class-string<Model> $fqcn */
-            $fqcn = $modelFqcns[0];
-
-            return $fqcn;
+            return $fqcns;
         } catch (Throwable) { // @codeCoverageIgnore
-            return null; // @codeCoverageIgnore
+            return []; // @codeCoverageIgnore
         }
     }
 

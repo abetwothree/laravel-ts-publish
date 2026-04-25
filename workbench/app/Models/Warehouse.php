@@ -10,9 +10,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Workbench\App\Casts\CoordinateCast;
 use Workbench\App\Casts\MenuSettings;
+use Workbench\App\Enums\Color;
+use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
 use Workbench\App\ValueObjects\Coordinate;
 use Workbench\Crm\Enums\Status as CrmStatus;
+use Workbench\Crm\Models\User as CrmUser;
 
 #[TsExtends('HasTimestamps', import: '@/types/common')]
 #[TsExtends('Pick<Auditable, "created_by" | "updated_by">', import: '@/types/audit', types: ['Auditable'])]
@@ -39,6 +42,8 @@ class Warehouse extends Model
         return [
             'coordinate_data' => CoordinateCast::class,
             'status' => Status::class,
+            'color' => Color::class,
+            'priority' => Priority::class,
         ];
     }
 
@@ -81,11 +86,63 @@ class Warehouse extends Model
 
     public function primaryContact(): BelongsTo
     {
-        return $this->belongsTo(\Workbench\Crm\Models\User::class, 'primary_contact_id');
+        return $this->belongsTo(CrmUser::class, 'primary_contact_id');
     }
 
     public function secondaryContact(): BelongsTo
     {
-        return $this->belongsTo(\Workbench\Crm\Models\User::class, 'secondary_contact_id');
+        return $this->belongsTo(CrmUser::class, 'secondary_contact_id');
+    }
+
+    /** @return Attribute<CrmUser|User|null, never> */
+    protected function lastUserActivityBy(): Attribute
+    {
+        return Attribute::get(function () {
+            if ($this->updated_by_primary_contact_id) {
+                return $this->primaryContact;
+            } elseif ($this->updated_by_user_id) {
+                return $this->manager;
+            }
+
+            return null;
+        });
+    }
+
+    protected function lastUserActivityByTyped(): Attribute
+    {
+        return Attribute::get(function (): CrmUser|User|null {
+            return $this->last_user_activity_by;
+        });
+    }
+
+    protected function lastUserActivityByTypedShort(): Attribute
+    {
+        return Attribute::get(fn (): CrmUser|User|null => $this->last_user_activity_by);
+    }
+
+    /** @return Attribute<Status|Priority|null, never> */
+    protected function reviewPriority(): Attribute
+    {
+        return Attribute::get(function () {
+            if ($this->status !== null) {
+                return $this->status;
+            } elseif ($this->priority !== null) {
+                return $this->priority;
+            }
+
+            return null;
+        });
+    }
+
+    protected function reviewPriorityTyped(): Attribute
+    {
+        return Attribute::get(function (): Status|Priority|null {
+            return $this->review_priority;
+        });
+    }
+
+    protected function reviewPriorityTypedShort(): Attribute
+    {
+        return Attribute::get(fn (): Status|Priority|null => $this->review_priority);
     }
 }

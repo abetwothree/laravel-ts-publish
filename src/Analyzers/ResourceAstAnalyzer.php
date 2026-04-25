@@ -51,6 +51,8 @@ use ReflectionEnum;
  * @phpstan-import-type ResourcePropertyInfoList from ResourceAnalysis
  * @phpstan-import-type ClassMapType from ResourceAnalysis
  * @phpstan-import-type ImportMapType from ResourceAnalysis
+ * @phpstan-import-type InlineEnumFqcnsMap from ResourceAnalysis
+ * @phpstan-import-type InlineModelFqcnsMap from ResourceAnalysis
  *
  * @phpstan-type ValueExpressionResult = array{
  *      type: string,
@@ -165,6 +167,10 @@ class ResourceAstAnalyzer
         $modelFqcns = [];
         /** @var ImportMapType $customImports */
         $customImports = [];
+        /** @var InlineEnumFqcnsMap $inlineEnumFqcns */
+        $inlineEnumFqcns = [];
+        /** @var InlineModelFqcnsMap $inlineModelFqcns */
+        $inlineModelFqcns = [];
 
         foreach ($array->items as $item) {
             // Handle ...parent::toArray($request) spread
@@ -175,7 +181,7 @@ class ResourceAstAnalyzer
                     $this->syncAnalysisMaps(
                         $properties, $enumResources, $nestedResources,
                         $directEnumFqcns, $modelFqcns, $customImports,
-                        $parentAnalysis,
+                        $parentAnalysis, $inlineEnumFqcns, $inlineModelFqcns,
                     );
                 }
 
@@ -195,7 +201,7 @@ class ResourceAstAnalyzer
                     $this->syncAnalysisMaps(
                         $properties, $enumResources, $nestedResources,
                         $directEnumFqcns, $modelFqcns, $customImports,
-                        $filterAnalysis,
+                        $filterAnalysis, $inlineEnumFqcns, $inlineModelFqcns,
                     );
                 }
 
@@ -214,7 +220,7 @@ class ResourceAstAnalyzer
                     $this->syncAnalysisMaps(
                         $properties, $enumResources, $nestedResources,
                         $directEnumFqcns, $modelFqcns, $customImports,
-                        $spreadAnalysis,
+                        $spreadAnalysis, $inlineEnumFqcns, $inlineModelFqcns,
                     );
                 }
 
@@ -234,7 +240,7 @@ class ResourceAstAnalyzer
                         $this->syncAnalysisMaps(
                             $properties, $enumResources, $nestedResources,
                             $directEnumFqcns, $modelFqcns, $customImports,
-                            $spreadAnalysis,
+                            $spreadAnalysis, $inlineEnumFqcns, $inlineModelFqcns,
                         );
                     }
                 }
@@ -249,7 +255,7 @@ class ResourceAstAnalyzer
                 $this->syncAnalysisMaps(
                     $properties, $enumResources, $nestedResources,
                     $directEnumFqcns, $modelFqcns, $customImports,
-                    $mergeResult,
+                    $mergeResult, $inlineEnumFqcns, $inlineModelFqcns,
                 );
 
                 continue;
@@ -279,6 +285,14 @@ class ResourceAstAnalyzer
 
             $this->dispatchFqcnResults($keyName, $result, $enumResources, $directEnumFqcns, $nestedResources, $modelFqcns);
 
+            foreach ($result['embeddedEnumFqcns'] ?? [] as $fqcn) {
+                $inlineEnumFqcns[$keyName][] = $fqcn;
+            }
+
+            foreach ($result['embeddedModelFqcns'] ?? [] as $fqcn) {
+                $inlineModelFqcns[$keyName][] = $fqcn;
+            }
+
         }
 
         return new ResourceAnalysis(
@@ -287,7 +301,9 @@ class ResourceAstAnalyzer
             $nestedResources,
             customImports: $customImports,
             directEnumFqcns: $directEnumFqcns,
-            modelFqcns: $modelFqcns
+            modelFqcns: $modelFqcns,
+            inlineEnumFqcns: $inlineEnumFqcns,
+            inlineModelFqcns: $inlineModelFqcns,
         );
     }
 
@@ -300,6 +316,8 @@ class ResourceAstAnalyzer
      * @param  ClassMapType  $directEnumFqcns
      * @param  ClassMapType  $modelFqcns
      * @param  ImportMapType  $customImports
+     * @param  InlineEnumFqcnsMap  $inlineEnumFqcns
+     * @param  InlineModelFqcnsMap  $inlineModelFqcns
      */
     protected function syncAnalysisMaps(
         array &$properties,
@@ -309,6 +327,8 @@ class ResourceAstAnalyzer
         array &$modelFqcns,
         array &$customImports,
         ResourceAnalysis $source,
+        array &$inlineEnumFqcns = [],
+        array &$inlineModelFqcns = [],
     ): void {
         $properties = [...$properties, ...$source->properties];
         $enumResources = [...$enumResources, ...$source->enumResources];
@@ -318,6 +338,18 @@ class ResourceAstAnalyzer
 
         foreach ($source->customImports as $path => $types) {
             $customImports[$path] = [...($customImports[$path] ?? []), ...$types];
+        }
+
+        foreach ($source->inlineEnumFqcns as $propName => $fqcns) {
+            $inlineEnumFqcns[$propName] = array_values(array_unique(
+                [...($inlineEnumFqcns[$propName] ?? []), ...$fqcns]
+            ));
+        }
+
+        foreach ($source->inlineModelFqcns as $propName => $fqcns) {
+            $inlineModelFqcns[$propName] = array_values(array_unique(
+                [...($inlineModelFqcns[$propName] ?? []), ...$fqcns]
+            ));
         }
     }
 
@@ -900,6 +932,10 @@ class ResourceAstAnalyzer
         $directEnumFqcns = [];
         /** @var ClassMapType $modelFqcns */
         $modelFqcns = [];
+        /** @var InlineEnumFqcnsMap $inlineEnumFqcns */
+        $inlineEnumFqcns = [];
+        /** @var InlineModelFqcnsMap $inlineModelFqcns */
+        $inlineModelFqcns = [];
 
         foreach ($array->items as $item) {
             if ($item->key === null) {
@@ -922,6 +958,14 @@ class ResourceAstAnalyzer
             ];
 
             $this->dispatchFqcnResults($keyName, $result, $enumResources, $directEnumFqcns, $nestedResources, $modelFqcns);
+
+            foreach ($result['embeddedEnumFqcns'] ?? [] as $fqcn) {
+                $inlineEnumFqcns[$keyName][] = $fqcn;
+            }
+
+            foreach ($result['embeddedModelFqcns'] ?? [] as $fqcn) {
+                $inlineModelFqcns[$keyName][] = $fqcn;
+            }
         }
 
         return new ResourceAnalysis(
@@ -930,6 +974,8 @@ class ResourceAstAnalyzer
             $nestedResources,
             directEnumFqcns: $directEnumFqcns,
             modelFqcns: $modelFqcns,
+            inlineEnumFqcns: $inlineEnumFqcns,
+            inlineModelFqcns: $inlineModelFqcns,
         );
     }
 
@@ -1081,11 +1127,15 @@ class ResourceAstAnalyzer
         $modelFqcns = [];
         /** @var ImportMapType $customImports */
         $customImports = [];
+        /** @var InlineEnumFqcnsMap $inlineEnumFqcns */
+        $inlineEnumFqcns = [];
+        /** @var InlineModelFqcnsMap $inlineModelFqcns */
+        $inlineModelFqcns = [];
 
         $this->collectVariableArrayAssignments(
             $stmts, $varName, false,
             $properties, $enumResources, $nestedResources,
-            $directEnumFqcns, $modelFqcns, $customImports,
+            $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns,
         );
 
         return new ResourceAnalysis(
@@ -1095,6 +1145,8 @@ class ResourceAstAnalyzer
             customImports: $customImports,
             directEnumFqcns: $directEnumFqcns,
             modelFqcns: $modelFqcns,
+            inlineEnumFqcns: $inlineEnumFqcns,
+            inlineModelFqcns: $inlineModelFqcns,
         );
     }
 
@@ -1110,6 +1162,8 @@ class ResourceAstAnalyzer
      * @param  ClassMapType  $directEnumFqcns
      * @param  ClassMapType  $modelFqcns
      * @param  ImportMapType  $customImports
+     * @param  InlineEnumFqcnsMap  $inlineEnumFqcns
+     * @param  InlineModelFqcnsMap  $inlineModelFqcns
      */
     protected function collectVariableArrayAssignments(
         array $stmts,
@@ -1121,6 +1175,8 @@ class ResourceAstAnalyzer
         array &$directEnumFqcns,
         array &$modelFqcns,
         array &$customImports,
+        array &$inlineEnumFqcns,
+        array &$inlineModelFqcns,
     ): void {
         foreach ($stmts as $stmt) {
             if (! $stmt instanceof ExpressionStmt && ! $stmt instanceof If_
@@ -1148,7 +1204,7 @@ class ResourceAstAnalyzer
                 $this->syncAnalysisMaps(
                     $properties, $enumResources, $nestedResources,
                     $directEnumFqcns, $modelFqcns, $customImports,
-                    $baseAnalysis,
+                    $baseAnalysis, $inlineEnumFqcns, $inlineModelFqcns,
                 );
 
                 continue;
@@ -1200,6 +1256,14 @@ class ResourceAstAnalyzer
 
                 $this->dispatchFqcnResults($keyName, $result, $enumResources, $directEnumFqcns, $nestedResources, $modelFqcns);
 
+                foreach ($result['embeddedEnumFqcns'] ?? [] as $fqcn) {
+                    $inlineEnumFqcns[$keyName][] = $fqcn;
+                }
+
+                foreach ($result['embeddedModelFqcns'] ?? [] as $fqcn) {
+                    $inlineModelFqcns[$keyName][] = $fqcn;
+                }
+
                 continue;
             }
 
@@ -1208,14 +1272,14 @@ class ResourceAstAnalyzer
                 $this->collectVariableArrayAssignments(
                     $stmt->stmts, $varName, true,
                     $properties, $enumResources, $nestedResources,
-                    $directEnumFqcns, $modelFqcns, $customImports,
+                    $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns,
                 );
 
                 foreach ($stmt->elseifs as $elseif) {
                     $this->collectVariableArrayAssignments(
                         $elseif->stmts, $varName, true,
                         $properties, $enumResources, $nestedResources,
-                        $directEnumFqcns, $modelFqcns, $customImports,
+                        $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns,
                     );
                 }
 
@@ -1223,7 +1287,7 @@ class ResourceAstAnalyzer
                     $this->collectVariableArrayAssignments(
                         $stmt->else->stmts, $varName, true,
                         $properties, $enumResources, $nestedResources,
-                        $directEnumFqcns, $modelFqcns, $customImports,
+                        $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns,
                     );
                 }
             }
@@ -1234,7 +1298,7 @@ class ResourceAstAnalyzer
                 $this->collectVariableArrayAssignments(
                     $stmt->stmts, $varName, true,
                     $properties, $enumResources, $nestedResources,
-                    $directEnumFqcns, $modelFqcns, $customImports,
+                    $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns,
                 );
             }
         }
@@ -1402,7 +1466,54 @@ class ResourceAstAnalyzer
         $modelFqcn = $relationInfo['modelFqcn'] ?? $this->resolveAccessorModelFqcn($propName);
 
         if ($modelFqcn === null) {
-            return $result; // @codeCoverageIgnore
+            // Try the multi-model accessor path (e.g. Attribute<ModelA|ModelB, never>).
+            $modelFqcns = $this->resolveAccessorModelFqcns($propName);
+
+            if ($modelFqcns === []) {
+                return $result; // @codeCoverageIgnore
+            }
+
+            $keys = $this->extractFilterKeys($call);
+
+            if ($keys === null || $keys === []) {
+                return $result; // @codeCoverageIgnore
+            }
+
+            $include = $methodName === 'only';
+
+            /** @var list<string> $inlineTypes */
+            $inlineTypes = [];
+            /** @var list<class-string> $embeddedEnumFqcns */
+            $embeddedEnumFqcns = [];
+            /** @var list<class-string> $embeddedModelFqcns */
+            $embeddedModelFqcns = [];
+
+            foreach ($modelFqcns as $fqcn) {
+                $filterResult = $this->resolveFilteredRelationType($fqcn, $keys, $include);
+
+                if ($filterResult['type'] !== 'unknown' && ! in_array($filterResult['type'], $inlineTypes, true)) {
+                    $inlineTypes[] = $filterResult['type'];
+                    array_push($embeddedEnumFqcns, ...$filterResult['enumFqcns']);
+                    array_push($embeddedModelFqcns, ...$filterResult['modelFqcns']);
+                }
+            }
+
+            if ($inlineTypes === []) {
+                return $result; // @codeCoverageIgnore
+            }
+
+            $inlineType = implode(' | ', $inlineTypes);
+
+            if ($nullable) {
+                $inlineType .= ' | null';
+            }
+
+            return [
+                ...$result,
+                'type' => $inlineType,
+                'embeddedEnumFqcns' => array_values(array_unique($embeddedEnumFqcns)),
+                'embeddedModelFqcns' => array_values(array_unique($embeddedModelFqcns)),
+            ];
         }
 
         $keys = $this->extractFilterKeys($call);

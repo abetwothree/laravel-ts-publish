@@ -16,6 +16,8 @@ return new class extends Migration
             $table->string('phone')->nullable();
             $table->string('coordinate_data')->nullable();
             $table->string('status')->nullable();
+            $table->tinyInteger('color')->nullable();
+            $table->tinyInteger('priority')->nullable();
             $table->unsignedBigInteger('manager_id')->nullable();
             $table->unsignedBigInteger('primary_contact_id')->nullable();
             $table->unsignedBigInteger('secondary_contact_id')->nullable();
