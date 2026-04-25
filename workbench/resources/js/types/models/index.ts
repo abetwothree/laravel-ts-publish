@@ -21,6 +21,7 @@ export * from './post';
 export * from './product';
 export * from './profile';
 export * from './reaction';
+export * from './service-desk';
 export * from './shipment';
 export * from './store';
 export * from './strict-composite-comment';

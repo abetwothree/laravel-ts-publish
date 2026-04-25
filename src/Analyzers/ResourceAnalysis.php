@@ -20,6 +20,8 @@ use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
  * @phpstan-type ResourcePropertyInfoList = list<ResourcePropertyInfo>
  * @phpstan-type ClassMapType = array<string, class-string>
  * @phpstan-type ImportMapType = TypesImportMap
+ * @phpstan-type InlineEnumFqcnsMap = array<string, list<class-string>>
+ * @phpstan-type InlineModelFqcnsMap = array<string, list<class-string>>
  */
 class ResourceAnalysis
 {
@@ -30,6 +32,8 @@ class ResourceAnalysis
      * @param  ImportMapType  $customImports  import path => list of type names
      * @param  ClassMapType  $directEnumFqcns  property name => enum FQCN (via direct $this->prop access)
      * @param  ClassMapType  $modelFqcns  property name => model FQCN (from bare whenLoaded)
+     * @param  InlineEnumFqcnsMap  $inlineEnumFqcns  property name => list of enum FQCNs embedded in inline object type strings
+     * @param  InlineModelFqcnsMap  $inlineModelFqcns  property name => list of model FQCNs embedded in inline object type strings
      */
     public function __construct(
         public array $properties = [],
@@ -38,5 +42,7 @@ class ResourceAnalysis
         public array $customImports = [],
         public array $directEnumFqcns = [],
         public array $modelFqcns = [],
+        public array $inlineEnumFqcns = [],
+        public array $inlineModelFqcns = [],
     ) {}
 }

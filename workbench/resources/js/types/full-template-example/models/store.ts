@@ -6,6 +6,8 @@ export interface Store
     phone: string | null;
     coordinate_data: string | null;
     status: string | null;
+    color: number | null;
+    priority: number | null;
     manager_id: number | null;
     primary_contact_id: number | null;
     secondary_contact_id: number | null;
