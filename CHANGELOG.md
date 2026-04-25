@@ -2,6 +2,14 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v1.4.2 - 2026-04-25
+
+### What's Changed
+
+* Resource typing improvements by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/28
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v1.4.1...v1.4.2
+
 ## v1.4.1 - 2026-04-18
 
 ### What's Changed
