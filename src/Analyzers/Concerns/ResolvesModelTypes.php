@@ -103,6 +103,21 @@ trait ResolvesModelTypes
     }
 
     /**
+     * Return all Eloquent Model FQCNs that an accessor returns.
+     * Used by analyzeRelationFilter() when the accessor union-types multiple models.
+     *
+     * @return list<class-string<Model>>
+     */
+    protected function resolveAccessorModelFqcns(string $propName): array
+    {
+        if ($this->modelClass === null) {
+            return []; // @codeCoverageIgnore
+        }
+
+        return resolve(ModelAttributeResolver::class)->resolveAccessorModelFqcns($this->modelClass, $propName);
+    }
+
+    /**
      * Build a ResourceAnalysis from all model attributes and relations when the resource
      * delegates to JsonResource::toArray() (which returns $this->resource->toArray()).
      */

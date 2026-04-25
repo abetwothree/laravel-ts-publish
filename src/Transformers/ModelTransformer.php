@@ -590,21 +590,21 @@ class ModelTransformer extends CoreTransformer
                 if (! in_array($fqcn, $this->columnFqcns[$key] ?? [])) {
                     continue;
                 }
-                $this->columns[$key]['type'] = preg_replace($pattern, $alias, $entry['type']) ?? $entry['type'];
+                $this->columns[$key]['type'] = preg_replace($pattern, $alias, $entry['type'], 1) ?? $entry['type'];
             }
 
             foreach ($this->mutators as $key => $entry) {
                 if (! in_array($fqcn, $this->mutatorFqcns[$key] ?? [])) {
                     continue;
                 }
-                $this->mutators[$key]['type'] = preg_replace($pattern, $alias, $entry['type']) ?? $entry['type']; // @codeCoverageIgnore
+                $this->mutators[$key]['type'] = preg_replace($pattern, $alias, $entry['type'], 1) ?? $entry['type'];
             }
 
             foreach ($this->appends as $key => $entry) {
                 if (! in_array($fqcn, $this->appendsFqcns[$key] ?? [])) {
                     continue;
                 }
-                $this->appends[$key]['type'] = preg_replace($pattern, $alias, $entry['type']) ?? $entry['type'];
+                $this->appends[$key]['type'] = preg_replace($pattern, $alias, $entry['type'], 1) ?? $entry['type'];
             }
         }
     }

@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesClassNames;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsResourceDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
@@ -85,6 +86,18 @@ class ResourceTransformer extends CoreTransformer
     /** @var array<string, class-string> property name => model FQCN (from bare whenLoaded) */
     protected array $propertyModelFqcns = [];
 
+    /** @var array<string, list<string>> property name => list of model FQCNs for union accessor types */
+    protected array $propertyModelFqcnsList = [];
+
+    /** @var array<string, list<string>> property name => list of enum FQCNs for union enum accessor types */
+    protected array $propertyEnumFqcnsList = [];
+
+    /** @var array<string, list<string>> property name => enum FQCNs embedded in inline object type strings */
+    protected array $propertyInlineEnumFqcns = [];
+
+    /** @var array<string, list<string>> property name => model FQCNs embedded in inline object type strings */
+    protected array $propertyInlineModelFqcns = [];
+
     /** @var array<string, class-string> property name => resource FQCN (from nested resources) */
     protected array $propertyResourceFqcns = [];
 
@@ -110,6 +123,8 @@ class ResourceTransformer extends CoreTransformer
             ->parseTsResourceCastsOverrides()
             ->runAstAnalysis()
             ->applyOverrides()
+            ->resolveMultiClassAccessorFqcns()
+            ->resolveMultiEnumAccessorFqcns()
             ->resolveImportConflicts()
             ->rewriteEnumResourceTypes()
             ->buildResolvedImports();
@@ -421,6 +436,16 @@ class ResourceTransformer extends CoreTransformer
             $this->propertyModelFqcns[$propName] = $fqcn;
         }
 
+        // Populate inline enum FQCN map from embedded enum types in inline object type strings
+        foreach ($analysis->inlineEnumFqcns as $propName => $fqcns) {
+            $this->propertyInlineEnumFqcns[$propName] = $fqcns;
+        }
+
+        // Populate inline model FQCN map from embedded model types in inline object type strings
+        foreach ($analysis->inlineModelFqcns as $propName => $fqcns) {
+            $this->propertyInlineModelFqcns[$propName] = $fqcns;
+        }
+
         // Merge custom imports from trait method #[TsResourceCasts] attributes
         foreach ($analysis->customImports as $importPath => $types) {
             $this->customImports[$importPath] = [...($this->customImports[$importPath] ?? []), ...$types];
@@ -556,6 +581,87 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
+     * Discover model accessor properties that return a union of multiple enum classes
+     * and register their FQCNs so that resolveImportConflicts() can alias them.
+     *
+     * This supplements the single-FQCN tracking in runAstAnalysis() for accessors typed as
+     * Attribute<EnumA|EnumB, never> where both enums need imports and aliasing.
+     */
+    protected function resolveMultiEnumAccessorFqcns(): self
+    {
+        if ($this->modelClass === null) {
+            return $this;
+        }
+
+        $resolver = resolve(ModelAttributeResolver::class);
+
+        foreach (array_keys($this->properties) as $propName) {
+            // Skip properties already processed as multi-enum
+            if (isset($this->propertyEnumFqcnsList[$propName])) {
+                continue; // @codeCoverageIgnore
+            }
+
+            $tsInfo = $resolver->resolveAttribute($this->modelClass, $propName);
+
+            if (count($tsInfo['enumFqcns']) < 2) {
+                continue;
+            }
+
+            $this->propertyEnumFqcnsList[$propName] = $tsInfo['enumFqcns'];
+
+            foreach ($tsInfo['enumFqcns'] as $i => $fqcn) {
+                /** @var class-string $fqcn */
+                if (! isset($this->enumFqcnMap[$fqcn])) {
+                    $this->enumFqcnMap[$fqcn] = $tsInfo['enumTypes'][$i] ?? class_basename($fqcn).'Type';
+                    $this->enumConstMap[$fqcn] = $tsInfo['enums'][$i] ?? class_basename($fqcn);
+                }
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * Discover model accessor properties that return a union of multiple model classes
+     * and register their FQCNs so that resolveImportConflicts() can alias them.
+     *
+     * This supplements the single-FQCN tracking in runAstAnalysis() for accessors typed as
+     * Attribute<ClassA|ClassB, never> where both classes need imports and aliasing.
+     */
+    protected function resolveMultiClassAccessorFqcns(): self
+    {
+        if ($this->modelClass === null) {
+            return $this;
+        }
+
+        $resolver = resolve(ModelAttributeResolver::class);
+
+        foreach (array_keys($this->properties) as $propName) {
+            // Skip properties already fully tracked via the single-FQCN map (e.g. relations)
+            if (isset($this->propertyModelFqcns[$propName])) {
+                continue;
+            }
+
+            $tsInfo = $resolver->resolveAttribute($this->modelClass, $propName);
+
+            if ($tsInfo['classFqcns'] === []) {
+                continue;
+            }
+
+            $this->propertyModelFqcnsList[$propName] = $tsInfo['classFqcns'];
+
+            foreach ($tsInfo['classFqcns'] as $i => $fqcn) {
+                /** @var class-string $fqcn */
+                if (! isset($this->modelFqcnMap[$fqcn])) {
+                    $this->modelFqcnMap[$fqcn] = $tsInfo['classes'][$i]; // @codeCoverageIgnore
+                }
+            }
+        }
+
+        return $this;
+    }
+
+    /**
      * Detect import name collisions across all FQCN maps and assign aliases.
      */
     protected function resolveImportConflicts(): self
@@ -648,6 +754,39 @@ class ResourceTransformer extends CoreTransformer
                 }
             }
 
+            // Multi-FQCN property tracking — for union accessor types like Attribute<ClassA|ClassB, never>.
+            // Uses limit=1 so each alias pass replaces only the first remaining unaliased token,
+            // preserving duplicate base-names (e.g. 'User | User | null' → 'CrmUser | User | null'
+            // on the first pass, then 'CrmUser | WorkbenchUser | null' on the second).
+            foreach ($this->propertyModelFqcnsList as $propName => $propFqcns) {
+                if (in_array($fqcn, $propFqcns, true)) {
+                    $targetProperties[] = $propName;
+                }
+            }
+
+            // Multi-FQCN enum accessor types (e.g. Attribute<EnumA|EnumB, never>)
+            foreach ($this->propertyEnumFqcnsList as $propName => $propFqcns) {
+                if (in_array($fqcn, $propFqcns, true)) {
+                    $targetProperties[] = $propName;
+                }
+            }
+
+            // Inline embedded enum FQCNs from ->only()/->except() inline object type strings
+            foreach ($this->propertyInlineEnumFqcns as $propName => $propFqcns) {
+                if (in_array($fqcn, $propFqcns, true)) {
+                    $targetProperties[] = $propName;
+                }
+            }
+
+            // Inline embedded model FQCNs from ->only()/->except() inline object type strings
+            foreach ($this->propertyInlineModelFqcns as $propName => $propFqcns) {
+                if (in_array($fqcn, $propFqcns, true)) {
+                    $targetProperties[] = $propName;
+                }
+            }
+
+            $targetProperties = array_unique($targetProperties);
+
             foreach ($targetProperties as $propName) {
                 if (! isset($this->properties[$propName])) {
                     continue; // @codeCoverageIgnore
@@ -656,6 +795,7 @@ class ResourceTransformer extends CoreTransformer
                     $pattern,
                     $alias,
                     $this->properties[$propName]['type'],
+                    1, // Replace only first occurrence per pass to handle duplicate type tokens
                 ) ?? $this->properties[$propName]['type'];
             }
         }
