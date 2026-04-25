@@ -768,6 +768,16 @@ describe('ModelTransformer with Warehouse model', function () {
         // App\User has 1 relation (manager) → relation-based alias
         expect($data->relations['manager']['type'])->toBe('ManagerUser | null');
     });
+
+    test('accessor returning a union of two different models with the same basename produces both type tokens', function () {
+        $data = (new ModelTransformer(Warehouse::class))->data();
+
+        // lastUserActivityBy returns CrmUser|User|null where User is Workbench\App\Models\User.
+        // Workbench\Crm\Models\User is aliased CrmUser (appears in 2 relations → namespace prefix).
+        // Workbench\App\Models\User is aliased ManagerUser (already established from the manager relation).
+        expect($data->mutators)->toHaveKey('last_user_activity_by')
+            ->and($data->mutators['last_user_activity_by']['type'])->toBe('CrmUser | ManagerUser | null');
+    });
 });
 
 describe('ModelTransformer resolveMutatorType edge cases', function () {

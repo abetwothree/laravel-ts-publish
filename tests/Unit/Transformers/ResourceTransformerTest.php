@@ -24,6 +24,7 @@ use Workbench\App\Http\Resources\OrderResource;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\ProfileResource;
+use Workbench\App\Http\Resources\ServiceDeskResource;
 use Workbench\App\Http\Resources\TraitSpreadCoverageResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Http\Resources\WarehouseResource;
@@ -951,6 +952,132 @@ describe('ResourceTransformer with ApiArticleResource (abstract parent + trait s
             ->and($data->properties['slug']['type'])->toBe('string')
             ->and($data->properties['excerpt']['type'])->toBe('string | null')
             ->and($data->properties['body']['type'])->toBe('string');
+    });
+});
+
+describe('ResourceTransformer with union model accessor types', function () {
+    test('accessor returning a union of two different models produces correct aliased type', function () {
+        $data = (new ResourceTransformer(WarehouseResource::class))->data();
+
+        expect($data->properties)
+            ->toHaveKey('last_user_activity_by')
+            ->toHaveKey('last_user_activity_by_typed')
+            ->toHaveKey('last_user_activity_by_typed_short');
+
+        // lastUserActivityBy is Attribute<CrmUser|User|null, never> on the backing Warehouse model.
+        // Both classes have class_basename = 'User', so they must be aliased.
+        expect($data->properties['last_user_activity_by']['type'])
+            ->toBe('WorkbenchUser | CrmUser | null');
+        expect($data->properties['last_user_activity_by_typed']['type'])
+            ->toBe('WorkbenchUser | CrmUser | null');
+        expect($data->properties['last_user_activity_by_typed_short']['type'])
+            ->toBe('WorkbenchUser | CrmUser | null');
+    });
+
+    test('accessor returning a union of two different models generates import aliases', function () {
+        $data = (new ResourceTransformer(WarehouseResource::class))->data();
+
+        expect($data->typeImports)->toHaveKey('../models')
+            ->and($data->typeImports['../models'])->toContain('User as CrmUser')
+            ->and($data->typeImports['../models'])->toContain('User as WorkbenchUser');
+    });
+
+    test('accessor union type with ->only() filter produces inline object type', function () {
+        $data = (new ResourceTransformer(WarehouseResource::class))->data();
+
+        expect($data->properties)->toHaveKey('last_user_activity_by_partial')
+            ->and($data->properties['last_user_activity_by_partial']['type'])->toBe('{ id: number; name: string } | null');
+    });
+
+    test('accessor union type with ->except() filter produces inline object union type', function () {
+        $data = (new ResourceTransformer(WarehouseResource::class))->data();
+
+        expect($data->properties)->toHaveKey('last_user_activity_by_mostly');
+
+        $type = $data->properties['last_user_activity_by_mostly']['type'];
+
+        // The result is a union of two per-model inline objects followed by | null.
+        // CrmUser (Workbench\Crm\Models\User) has: email, company, status, created_at, updated_at — NOT id or name.
+        // The CrmStatus enum is aliased to CrmStatusType to avoid conflict with WorkbenchStatusType.
+        expect($type)
+            ->not->toBe('unknown')
+            ->toContain('{ email: string; company: string | null; status: CrmStatusType; created_at: string | null; updated_at: string | null }')
+            ->toEndWith('| null');
+    });
+
+    test('accessor returning a union of two enum types produces correct aliased type', function () {
+        $data = (new ResourceTransformer(WarehouseResource::class))->data();
+
+        expect($data->properties)
+            ->toHaveKey('review_priority')
+            ->toHaveKey('review_priority_typed')
+            ->toHaveKey('review_priority_typed_short');
+
+        // Workbench\App\Enums\Status is aliased to WorkbenchStatusType (conflicts with CrmStatus);
+        // Workbench\App\Enums\Priority has no conflict so stays as PriorityType.
+        expect($data->properties['review_priority']['type'])
+            ->toBe('WorkbenchStatusType | PriorityType | null');
+        expect($data->properties['review_priority_typed']['type'])
+            ->toBe('WorkbenchStatusType | PriorityType | null');
+        expect($data->properties['review_priority_typed_short']['type'])
+            ->toBe('WorkbenchStatusType | PriorityType | null');
+    });
+
+    test('accessor returning a union of two enum types includes both in enums import', function () {
+        $data = (new ResourceTransformer(WarehouseResource::class))->data();
+
+        $enumImports = collect($data->typeImports)
+            ->filter(fn ($types) => in_array('PriorityType', $types, true))
+            ->first();
+
+        expect($enumImports)
+            ->not->toBeNull()
+            ->toContain('PriorityType')
+            ->toContain('StatusType as WorkbenchStatusType');
+    });
+
+    test('inline object from ->except() uses aliased enum name instead of base name', function () {
+        $data = (new ResourceTransformer(WarehouseResource::class))->data();
+
+        $type = $data->properties['last_user_activity_by_mostly']['type'];
+
+        // The CrmUser inline shape has a 'status' property typed as CrmStatus enum.
+        // That StatusType should be aliased to CrmStatusType to avoid conflict with WorkbenchStatusType.
+        expect($type)->toContain('status: CrmStatusType');
+    });
+});
+
+describe('ResourceTransformer inline model FQCN collision via ->only() filter', function () {
+    test('model nested in ->only() inline object is aliased when it conflicts with another model', function () {
+        $data = (new ResourceTransformer(ServiceDeskResource::class))->data();
+
+        // ServiceDeskResource has:
+        //   'crm_agent'       => $this->crmAgent   (Workbench\Crm\Models\User → CrmUser)
+        //   'order_requester' => $this->order?->only(['user'])
+        //
+        // Order.user() is a BelongsTo to Workbench\App\Models\User.
+        // Both User classes share class_basename "User" → conflict → WorkbenchUser / CrmUser aliases.
+        //
+        // The inlineModelFqcns fix ensures the "User" token *inside* the inline object is rewritten.
+        expect($data->properties['order_requester']['type'])->toBe('{ user: WorkbenchUser } | null');
+    });
+
+    test('direct model reference alongside inline embedded model both receive aliases', function () {
+        $data = (new ResourceTransformer(ServiceDeskResource::class))->data();
+
+        // crm_agent is a nullable BelongsTo to Workbench\Crm\Models\User.
+        // FK crm_agent_id is nullable in the DB → type is CrmUser | null.
+        expect($data->properties['crm_agent']['type'])->toBe('CrmUser | null');
+    });
+
+    test('imports include aliased names for both conflicting User models', function () {
+        $data = (new ResourceTransformer(ServiceDeskResource::class))->data();
+
+        $modelImports = collect($data->typeImports)->flatten()->all();
+
+        expect($modelImports)
+            ->toContain('User as WorkbenchUser')
+            ->toContain('User as CrmUser');
     });
 });
 
