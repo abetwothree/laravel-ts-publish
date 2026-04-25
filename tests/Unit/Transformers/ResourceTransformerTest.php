@@ -948,9 +948,9 @@ describe('ResourceTransformer with union model accessor types', function () {
     test('accessor returning a union of two different models generates import aliases', function () {
         $data = (new ResourceTransformer(WarehouseResource::class))->data();
 
-        expect($data->typeImports)->toHaveKey('../models')
-            ->and($data->typeImports['../models'])->toContain('User as CrmUser')
-            ->and($data->typeImports['../models'])->toContain('User as WorkbenchUser');
+        expect($data->typeImports)
+            ->and($data->typeImports['../../../crm/models'])->toContain('User as CrmUser')
+            ->and($data->typeImports['../../models'])->toContain('User as WorkbenchUser');
     });
 
     test('accessor union type with ->only() filter produces inline object type', function () {
@@ -972,7 +972,8 @@ describe('ResourceTransformer with union model accessor types', function () {
         // The CrmStatus enum is aliased to CrmStatusType to avoid conflict with WorkbenchStatusType.
         expect($type)
             ->not->toBe('unknown')
-            ->toContain('{ email: string; company: string | null; status: CrmStatusType; created_at: string | null; updated_at: string | null }')
+            ->toContain('{ email: string; company: string | null; status: CrmStatusType; created_at: string | null; updated_at: string | null; images: Image[] }')
+            ->toContain('{ email: string; email_verified_at: string | null; password: string; options: unknown[] | null; remember_token: string | null; created_at: string | null; updated_at: string | null; role: RoleType | null; membership_level: MembershipLevelType | null; phone: string | null; avatar: string | null; bio: string | null; settings: unknown[] | null; last_login_at: string | null; last_login_ip: string | null; initials: string; is_premium: boolean; profile: Profile | null; posts: Post[]; comments: Comment[]; orders: Order[]; addresses: Address[]; teams: Team[]; ownedTeams: Team[]; images: Image[]; notifications: DatabaseNotification[] }')
             ->toEndWith('| null');
     });
 
