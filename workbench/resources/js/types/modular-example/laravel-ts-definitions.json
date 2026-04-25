@@ -1646,6 +1646,14 @@
                 "type": "string | null"
             },
             {
+                "name": "color",
+                "type": "number | null"
+            },
+            {
+                "name": "priority",
+                "type": "number | null"
+            },
+            {
                 "name": "manager_id",
                 "type": "number | null"
             },
@@ -2083,6 +2091,56 @@
                 "type": "boolean"
             }
         ],
+        "ServiceDesk": [
+            {
+                "name": "id",
+                "type": "number"
+            },
+            {
+                "name": "title",
+                "type": "string"
+            },
+            {
+                "name": "order_id",
+                "type": "number"
+            },
+            {
+                "name": "crm_agent_id",
+                "type": "number | null"
+            },
+            {
+                "name": "created_at",
+                "type": "string | null"
+            },
+            {
+                "name": "updated_at",
+                "type": "string | null"
+            },
+            {
+                "name": "order",
+                "type": "Order"
+            },
+            {
+                "name": "crm_agent",
+                "type": "User | null"
+            },
+            {
+                "name": "order_count",
+                "type": "number"
+            },
+            {
+                "name": "crm_agent_count",
+                "type": "number"
+            },
+            {
+                "name": "order_exists",
+                "type": "boolean"
+            },
+            {
+                "name": "crm_agent_exists",
+                "type": "boolean"
+            }
+        ],
         "StrictCompositeComment": [
             {
                 "name": "id",
@@ -2147,6 +2205,14 @@
                 "type": "AppStatusType | null"
             },
             {
+                "name": "color",
+                "type": "ColorType | null"
+            },
+            {
+                "name": "priority",
+                "type": "PriorityType | null"
+            },
+            {
                 "name": "manager_id",
                 "type": "number | null"
             },
@@ -2177,6 +2243,30 @@
             {
                 "name": "menu_config",
                 "type": "MenuSettingsType | null"
+            },
+            {
+                "name": "last_user_activity_by",
+                "type": "CrmUser | ManagerUser | null"
+            },
+            {
+                "name": "last_user_activity_by_typed",
+                "type": "CrmUser | ManagerUser | null"
+            },
+            {
+                "name": "last_user_activity_by_typed_short",
+                "type": "CrmUser | ManagerUser | null"
+            },
+            {
+                "name": "review_priority",
+                "type": "AppStatusType | PriorityType | null"
+            },
+            {
+                "name": "review_priority_typed",
+                "type": "AppStatusType | PriorityType | null"
+            },
+            {
+                "name": "review_priority_typed_short",
+                "type": "AppStatusType | PriorityType | null"
             },
             {
                 "name": "manager",
@@ -4797,6 +4887,28 @@
             }
         ],
         "ChildSharedResource": [],
+        "ServiceDeskResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "title",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "crm_agent",
+                "type": "CrmUser | null",
+                "optional": false
+            },
+            {
+                "name": "order_requester",
+                "type": "{ user: AppUser } | null",
+                "optional": false
+            }
+        ],
         "MediaTypeResource": [
             {
                 "name": "name",
@@ -4823,6 +4935,66 @@
             {
                 "name": "name",
                 "type": "string",
+                "optional": false
+            },
+            {
+                "name": "color",
+                "type": "ColorType | null",
+                "optional": false
+            },
+            {
+                "name": "review_priority",
+                "type": "AppStatusType | PriorityType | null",
+                "optional": false
+            },
+            {
+                "name": "review_priority_typed",
+                "type": "AppStatusType | PriorityType | null",
+                "optional": false
+            },
+            {
+                "name": "review_priority_typed_short",
+                "type": "AppStatusType | PriorityType | null",
+                "optional": false
+            },
+            {
+                "name": "manager",
+                "type": "AppUser | null",
+                "optional": false
+            },
+            {
+                "name": "primary_contact",
+                "type": "CrmUser | null",
+                "optional": false
+            },
+            {
+                "name": "secondary_contact",
+                "type": "CrmUser | null",
+                "optional": false
+            },
+            {
+                "name": "last_user_activity_by",
+                "type": "AppUser | CrmUser | null",
+                "optional": false
+            },
+            {
+                "name": "last_user_activity_by_typed",
+                "type": "AppUser | CrmUser | null",
+                "optional": false
+            },
+            {
+                "name": "last_user_activity_by_typed_short",
+                "type": "AppUser | CrmUser | null",
+                "optional": false
+            },
+            {
+                "name": "last_user_activity_by_partial",
+                "type": "{ id: number; name: string } | null",
+                "optional": false
+            },
+            {
+                "name": "last_user_activity_by_mostly",
+                "type": "{ email: string; company: string | null; status: CrmStatusType; created_at: string | null; updated_at: string | null } | { email: string; email_verified_at: string | null; password: string; options: unknown[] | null; remember_token: string | null; created_at: string | null; updated_at: string | null; role: RoleType | null; membership_level: MembershipLevelType | null; phone: string | null; avatar: string | null; bio: string | null; settings: unknown[] | null; last_login_at: string | null; last_login_ip: string | null; initials: string; is_premium: boolean; profile: Profile | null; posts: Post[]; comments: Comment[]; orders: Order[]; addresses: Address[]; teams: Team[]; ownedTeams: Team[]; images: Image[]; notifications: DatabaseNotification[] } | null",
                 "optional": false
             }
         ],

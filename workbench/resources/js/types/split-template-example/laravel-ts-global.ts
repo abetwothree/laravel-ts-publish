@@ -523,6 +523,8 @@ declare global {
             phone: string | null;
             coordinate_data: string | null;
             status: string | null;
+            color: number | null;
+            priority: number | null;
             manager_id: number | null;
             primary_contact_id: number | null;
             secondary_contact_id: number | null;
@@ -722,6 +724,25 @@ declare global {
             user_count: number;
             user_exists: boolean;
         }
+        /** A help-desk ticket linked to a customer Order and optionally assigned to a CRM agent. Exercises the inline model FQCN collision scenario: two relations to classes with the same basename (App\Models\User via order.user and Crm\Models\User via crm_agent) force import aliasing. The `order_requester` property is an inline object produced by `$this->order?->only(['user'])`, whose nested model token must be rewritten via the inlineModelFqcns tracking path. */
+        export interface ServiceDesk {
+            // Columns
+            id: number;
+            title: string;
+            order_id: number;
+            crm_agent_id: number | null;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            /** The customer order this desk ticket belongs to. */
+            order: Order;
+            order_count: number;
+            order_exists: boolean;
+            /** The CRM user assigned as the support agent (optional). */
+            crm_agent: User | null;
+            crm_agent_count: number;
+            crm_agent_exists: boolean;
+        }
         export interface StrictCompositeComment {
             // Columns
             id: number;
@@ -744,6 +765,8 @@ declare global {
             phone: string | null;
             coordinate_data: Coordinate | null;
             status: enums.StatusType | null;
+            color: enums.ColorType | null;
+            priority: enums.PriorityType | null;
             manager_id: number | null;
             primary_contact_id: number | null;
             secondary_contact_id: number | null;
@@ -752,6 +775,12 @@ declare global {
             // Mutators
             /** Non-column accessor returning a TsType class (MenuSettings) with custom import */
             menu_config: MenuSettingsType | null;
+            last_user_activity_by: User | User | null;
+            last_user_activity_by_typed: User | User | null;
+            last_user_activity_by_typed_short: User | User | null;
+            review_priority: enums.StatusType | enums.PriorityType | null;
+            review_priority_typed: enums.StatusType | enums.PriorityType | null;
+            review_priority_typed_short: enums.StatusType | enums.PriorityType | null;
             /** Non-column accessor returning a plain class (Coordinate) */
             location: Coordinate;
             /** Non-column accessor returning CRM Status enum — creates name conflict with column 'status' */
@@ -1359,6 +1388,13 @@ declare global {
         /** Child resource that uses SharedExtendsInterface AND extends a parent that also uses it. SharedExtendsInterface should appear only once in the result despite being reachable via two paths. */
         export interface ChildSharedResource extends SharedInterface {
         }
+        /** Exercises the inline model FQCN collision scenario. Two relations point to classes with the same basename: Crm\Models\User (direct, via crm_agent) and App\Models\User (embedded inside the inline object from order->only). The transformer must alias both and rewrite the token inside the inline object type string via the inlineModelFqcns tracking path. */
+        export interface ServiceDeskResource {
+            id: number;
+            title: string;
+            crm_agent: models.User | null;
+            order_requester: { user: models.User } | null;
+        }
         export interface MediaTypeResource {
             name: string;
             value: string;
@@ -1368,6 +1404,18 @@ declare global {
         export interface WarehouseResource extends BaseResource, ExtendableInterface, Omit<Timestamps, "created_at" | "updated_at">, ResourceRoutes, Pick<Routable, "store" | "update"> {
             id: number;
             name: string;
+            color: enums.ColorType | null;
+            review_priority: enums.StatusType | enums.PriorityType | null;
+            review_priority_typed: enums.StatusType | enums.PriorityType | null;
+            review_priority_typed_short: enums.StatusType | enums.PriorityType | null;
+            manager: models.User | null;
+            primary_contact: models.User | null;
+            secondary_contact: models.User | null;
+            last_user_activity_by: models.User | models.User | null;
+            last_user_activity_by_typed: models.User | models.User | null;
+            last_user_activity_by_typed_short: models.User | models.User | null;
+            last_user_activity_by_partial: { id: number; name: string } | null;
+            last_user_activity_by_mostly: { email: string; company: string | null; status: enums.StatusType; created_at: string | null; updated_at: string | null } | { email: string; email_verified_at: string | null; password: string; options: unknown[] | null; remember_token: string | null; created_at: string | null; updated_at: string | null; role: enums.RoleType | null; membership_level: enums.MembershipLevelType | null; phone: string | null; avatar: string | null; bio: string | null; settings: unknown[] | null; last_login_at: string | null; last_login_ip: string | null; initials: string; is_premium: boolean; profile: models.Profile | null; posts: models.Post[]; comments: models.Comment[]; orders: models.Order[]; addresses: models.Address[]; teams: models.Team[]; ownedTeams: models.Team[]; images: models.Image[]; notifications: models.DatabaseNotification[] } | null;
         }
         /** Exercises analyzeInlineArray embeddedModelFqcns and embeddedResourceFqcns (lines 1501, 1508-1510) by returning inline arrays that contain whenLoaded() (model FQCN) and SomeResource::make() (resource FQCN) inside a closure union. */
         export interface InlineArrayFqcnResource {

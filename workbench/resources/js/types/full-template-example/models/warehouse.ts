@@ -1,10 +1,10 @@
 import { type AsEnum } from '@tolki/enum';
 
-import { Status as CrmStatus, Status as WorkbenchStatus } from '../enums';
+import { Color, Priority, Status as CrmStatus, Status as WorkbenchStatus } from '../enums';
 import type { MenuSettingsType } from '@js/types/settings';
 import type { Auditable } from '@/types/audit';
 import type { HasTimestamps } from '@/types/common';
-import type { StatusType as CrmStatusType, StatusType as WorkbenchStatusType } from '../enums';
+import type { ColorType, PriorityType, StatusType as CrmStatusType, StatusType as WorkbenchStatusType } from '../enums';
 import type { Coordinate, User as CrmUser, User as ManagerUser } from './';
 
 export interface Warehouse extends HasTimestamps, Pick<Auditable, "created_by" | "updated_by">
@@ -16,6 +16,8 @@ export interface Warehouse extends HasTimestamps, Pick<Auditable, "created_by" |
     phone: string | null;
     coordinate_data: Coordinate | null;
     status: WorkbenchStatusType | null;
+    color: ColorType | null;
+    priority: PriorityType | null;
     manager_id: number | null;
     primary_contact_id: number | null;
     secondary_contact_id: number | null;
@@ -24,6 +26,12 @@ export interface Warehouse extends HasTimestamps, Pick<Auditable, "created_by" |
     // Mutators
     /** Non-column accessor returning a TsType class (MenuSettings) with custom import */
     menu_config: MenuSettingsType | null;
+    last_user_activity_by: CrmUser | ManagerUser | null;
+    last_user_activity_by_typed: CrmUser | ManagerUser | null;
+    last_user_activity_by_typed_short: CrmUser | ManagerUser | null;
+    review_priority: WorkbenchStatusType | PriorityType | null;
+    review_priority_typed: WorkbenchStatusType | PriorityType | null;
+    review_priority_typed_short: WorkbenchStatusType | PriorityType | null;
     /** Non-column accessor returning a plain class (Coordinate) */
     location: Coordinate;
     /** Non-column accessor returning CRM Status enum — creates name conflict with column 'status' */
@@ -42,8 +50,13 @@ export interface Warehouse extends HasTimestamps, Pick<Auditable, "created_by" |
     secondary_contact_exists: boolean;
 }
 
-export interface WarehouseResource extends Omit<Warehouse, 'status' | 'current_crm_status'>
+export interface WarehouseResource extends Omit<Warehouse, 'status' | 'color' | 'priority' | 'review_priority' | 'review_priority_typed' | 'review_priority_typed_short' | 'current_crm_status'>
 {
     status: AsEnum<typeof WorkbenchStatus> | null;
+    color: AsEnum<typeof Color> | null;
+    priority: AsEnum<typeof Priority> | null;
+    review_priority: AsEnum<typeof WorkbenchStatus> | null;
+    review_priority_typed: AsEnum<typeof WorkbenchStatus> | null;
+    review_priority_typed_short: AsEnum<typeof WorkbenchStatus> | null;
     current_crm_status: AsEnum<typeof CrmStatus> | null;
 }
