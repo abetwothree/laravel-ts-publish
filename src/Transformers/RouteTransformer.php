@@ -22,6 +22,7 @@ use ReflectionParameter;
 /**
  * @phpstan-import-type RouteActionData from TsRouteDto
  * @phpstan-import-type RouteArgData from TsRouteDto
+ * @phpstan-import-type TypesImportMap from \AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable
  *
  * @extends CoreTransformer<object>
  */
@@ -40,6 +41,12 @@ class RouteTransformer extends CoreTransformer
     /** @var list<RouteActionData> */
     public protected(set) array $actions = [];
 
+    /** @var TypesImportMap */
+    public protected(set) array $typeImports = [];
+
+    /** @var array<int, list<class-string>> Action index => FQCNs found in page type */
+    protected array $actionPageTypeFqcns = [];
+
     /** @var ReflectionClass<object> */
     protected ReflectionClass $reflectionController;
 
@@ -49,6 +56,9 @@ class RouteTransformer extends CoreTransformer
     protected ?InertiaPageAnalyzer $inertiaPageAnalyzer = null;
 
     protected const INVOKE = '__invoke';
+
+    /** Whether any actions have page types that require the annotatePageProps import. */
+    protected bool $hasPageTypes = false;
 
     #[Override]
     public function transform(): self
@@ -65,6 +75,8 @@ class RouteTransformer extends CoreTransformer
 
         $this->actions = $this->collectActions();
 
+        $this->typeImports = $this->resolvePageTypeImports();
+
         return $this;
     }
 
@@ -77,6 +89,8 @@ class RouteTransformer extends CoreTransformer
             fqcn: $this->findable,
             description: $this->description !== '' ? $this->description : null,
             actions: $this->actions,
+            typeImports: $this->typeImports,
+            hasPageTypes: $this->hasPageTypes,
         );
     }
 
@@ -183,6 +197,7 @@ class RouteTransformer extends CoreTransformer
             'originalMethodName' => $originalMethodName,
             'description' => $description,
             'args' => $this->resolveArgs($route, $originalMethodName),
+            'shouldAnnotate' => false, // set to true if Inertia page types are detected
         ];
 
         if ($this->inertiaPageAnalyzer !== null) {
@@ -193,8 +208,25 @@ class RouteTransformer extends CoreTransformer
 
             if ($inertiaData !== null) {
                 $action['component'] = $this->normalizeComponent($inertiaData['component']);
+
                 if ($inertiaData['pageType'] !== null) {
-                    $action['pageType'] = $this->normalizePageType($inertiaData['component'], $inertiaData['pageType']);
+                    $action['pageType'] = $this->normalizePageType(
+                        $inertiaData['component'],
+                        $inertiaData['pageType'],
+                    );
+
+                    $action['pageTypeAnnotation'] = $this->resolvePageTypeAnnotation(
+                        $methodName,
+                        $action['pageType'],
+                    );
+
+                    $action['shouldAnnotate'] = true;
+                    $this->hasPageTypes = true;
+                }
+
+                if ($inertiaData['classFqcns'] !== []) {
+                    $actionIndex = count($this->actionPageTypeFqcns);
+                    $this->actionPageTypeFqcns[$actionIndex] = $inertiaData['classFqcns'];
                 }
             }
         }
@@ -483,6 +515,42 @@ class RouteTransformer extends CoreTransformer
     }
 
     /**
+     * Build a TypeScript import map for all PHP classes/enums referenced in page-prop types.
+     *
+     * Collects all FQCNs gathered from Inertia page-type analysis, computes relative
+     * import paths from this controller's namespace path, and returns a deduplicated
+     * sorted map of `importPath => list<TypeName>`.
+     *
+     * @return TypesImportMap
+     */
+    private function resolvePageTypeImports(): array
+    {
+        if ($this->actionPageTypeFqcns === []) {
+            return [];
+        }
+
+        /** @var list<class-string> $allFqcns */
+        $allFqcns = array_values(array_unique(array_merge(...array_values($this->actionPageTypeFqcns))));
+
+        /** @var TypesImportMap $imports */
+        $imports = [];
+
+        foreach ($allFqcns as $fqcn) {
+            $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
+            $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
+            $imports[$importPath][] = class_basename($fqcn);
+        }
+
+        foreach ($imports as $path => $types) {
+            $unique = array_values(array_unique($types));
+            sort($unique);
+            $imports[$path] = $unique;
+        }
+
+        return LaravelTsPublish::sortImportPaths($imports);
+    }
+
+    /**
      * Normalize Inertia component data for the route action.
      *
      * Single components remain as-is (a plain string). Multi-component
@@ -542,13 +610,30 @@ class RouteTransformer extends CoreTransformer
     }
 
     /**
+     * Resolve the TypeScript type annotation for an Inertia page type, based on the method name and page type data.
+     *
+     * @param  string|array<string, string>  $pageType
+     */
+    protected function resolvePageTypeAnnotation(string $methodName, string|array $pageType): string
+    {
+        if (is_string($pageType)) {
+            return Str::studly($methodName).'PageProps';
+        }
+
+        return implode(' | ', array_map(
+            fn ($key) => Str::studly($methodName).Str::studly($key).'PageProps',
+            array_keys($pageType)
+        ));
+    }
+
+    /**
      * Compute unique casing keys for each component path.
      *
      * Uses depth=1 (last segment) first. When two paths share the same short name
      * (e.g. Admin/Dashboard and User/Dashboard both yield "dashboard"), the depth
      * is incremented until all keys in the group are distinct.
      *
-     * @param  list<string>  $paths
+     * @param  array<string>  $paths
      * @return array<string, string> path => key
      */
     private function computeUniqueComponentKeys(array $paths, string $casing): array
@@ -570,7 +655,7 @@ class RouteTransformer extends CoreTransformer
         };
 
         $segmentCounts = array_map(fn (string $p) => count($split($p)), $paths);
-        $maxDepth = max(1, ...$segmentCounts);
+        $maxDepth = max(1, ...array_values($segmentCounts));
 
         for ($depth = 1; $depth <= $maxDepth; $depth++) {
             $keys = [];

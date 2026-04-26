@@ -403,6 +403,7 @@ test('inertia actions include component and pageType when inertia is enabled', f
                 return [
                     'component' => 'Dashboard',
                     'pageType' => 'Inertia.SharedData & { stats: { users: number, posts: number, views: number } }',
+                    'classFqcns' => [],
                 ];
             }
 
@@ -447,6 +448,7 @@ test('normalizeComponent returns unique keys when component basenames collide', 
                 return [
                     'component' => ['Admin/Dashboard', 'User/Dashboard'],
                     'pageType' => null,
+                    'classFqcns' => [],
                 ];
             }
 
@@ -475,6 +477,7 @@ test('normalizeComponent returns plain key when component basenames are distinct
                 return [
                     'component' => ['Admin/Overview', 'User/Dashboard'],
                     'pageType' => null,
+                    'classFqcns' => [],
                 ];
             }
 
@@ -503,6 +506,7 @@ test('normalizeComponent resolves unique keys for backslash-separated component 
                 return [
                     'component' => ['Admin\\Dashboard', 'User\\Dashboard'],
                     'pageType' => null,
+                    'classFqcns' => [],
                 ];
             }
 
@@ -531,6 +535,7 @@ test('normalizeComponent resolves unique keys for dot-separated component paths'
                 return [
                     'component' => ['Admin.Overview', 'User.Dashboard'],
                     'pageType' => null,
+                    'classFqcns' => [],
                 ];
             }
 
@@ -559,6 +564,7 @@ test('normalizeComponent resolves unique keys for unseparated single-segment com
                 return [
                     'component' => ['Overview', 'Dashboard'],
                     'pageType' => null,
+                    'classFqcns' => [],
                 ];
             }
 
@@ -587,6 +593,7 @@ test('normalizeComponent falls back to keyed path when all depths produce collid
                 return [
                     'component' => ['Dashboard', 'Dashboard'],
                     'pageType' => null,
+                    'classFqcns' => [],
                 ];
             }
 
@@ -620,6 +627,7 @@ test('invokable inertia controller action receives @__invoke uses string and ret
             return [
                 'component' => 'Profile',
                 'pageType' => 'Inertia.SharedData & { name: string }',
+                'classFqcns' => [],
             ];
         });
 

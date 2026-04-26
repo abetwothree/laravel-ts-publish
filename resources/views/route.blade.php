@@ -3,10 +3,16 @@
 @if(count($data->actions) === 0)
 export {}
 @else
-import { defineRoute } from '@tolki/ts';
+@php
+$imports = $data->hasPageTypes ? "defineRoute, annotatePageProps" : "defineRoute";
+@endphp
+import { {!! $imports !!} } from '@tolki/ts';
+@foreach($data->typeImports as $importPath => $typeNames)
+import type { {!! implode(', ', $typeNames) !!} } from '{!! $importPath !!}';
+@endforeach
 @foreach ($data->actions as $action)
-
 @if(isset($action['pageType']))
+
 @if(is_array($action['pageType']))
 @foreach($action['pageType'] as $pageTypeKey => $pageTypeValue)
 export type {!! Str::studly($action['methodName']) . Str::studly($pageTypeKey) !!}PageProps = {!! $pageTypeValue !!};
@@ -16,10 +22,19 @@ export type {!! Str::studly($action['methodName']) !!}PageProps = {!! $action['p
 @endif
 
 @endif
+@if(!$action['shouldAnnotate'])
+
+@endif{{-- purposeful empty space if no annotation - do not remove --}}
 @if($action['description'])
-/** {!! LaravelTsPublish::sanitizeJsDoc($action['description']) !!} */
+/**
+  * {!! LaravelTsPublish::sanitizeJsDoc($action['description']) !!}
+  */
 @endif
+@if($action['shouldAnnotate'])
+export const {!! LaravelTsPublish::validJsObjectKey($action['methodName']) !!} = annotatePageProps<{!! $action['pageTypeAnnotation'] !!}>()(defineRoute({
+@else
 export const {!! LaravelTsPublish::validJsObjectKey($action['methodName']) !!} = defineRoute({
+@endif
 @if($action['name'] !== null)
     name: {!! LaravelTsPublish::toJsLiteral($action['name']) !!},
 @endif
@@ -42,7 +57,11 @@ export const {!! LaravelTsPublish::validJsObjectKey($action['methodName']) !!} =
     component: {!! LaravelTsPublish::toJsLiteral($action['component']) !!},
 @endif
 @endif
+@if($action['shouldAnnotate'])
+}));
+@else
 });
+@endif
 @endforeach
 
 @php

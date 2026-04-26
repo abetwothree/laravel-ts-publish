@@ -26,6 +26,7 @@ use Workbench\App\Http\Controllers\Nested\NestedController;
 use Workbench\App\Http\Controllers\OptionalParamController;
 use Workbench\App\Http\Controllers\ParameterCaseController;
 use Workbench\App\Http\Controllers\PostController;
+use Workbench\App\Http\Controllers\PostInertiaController;
 use Workbench\App\Http\Controllers\PrimaryKeyController;
 use Workbench\App\Http\Controllers\Prism\Prism\PrismController as NestedPrismController;
 use Workbench\App\Http\Controllers\Prism\PrismController;
@@ -100,3 +101,6 @@ Route::get('/inertia/dashboard', [InertiaController::class, 'dashboard'])->name(
 Route::get('/inertia/settings', [InertiaController::class, 'settings'])->name('inertia.settings');
 Route::get('/inertia/about', [InertiaController::class, 'about'])->name('inertia.about');
 Route::get('/inertia/conditional', [InertiaController::class, 'conditional'])->name('inertia.conditional');
+Route::get('/inertia/post/{post}', [InertiaController::class, 'post'])->name('inertia.post');
+
+Route::resource('posts-inertia', PostInertiaController::class, ['parameters' => ['posts-inertia' => 'post']]);

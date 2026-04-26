@@ -14,9 +14,11 @@ use Laravel\Ranger\Components\InertiaResponse;
  * Detects Inertia::render() calls in controller actions via Ranger's static
  * analysis and extracts component names and page-prop types.
  *
+ * @phpstan-type PageTypeResult = array{type: string, fqcns: list<class-string>}
  * @phpstan-type InertiaPageData = array{
  *     component: string|list<string>,
  *     pageType: string|list<string>|null,
+ *     classFqcns: list<class-string>,
  * }
  */
 class InertiaPageAnalyzer
@@ -79,10 +81,17 @@ class InertiaPageAnalyzer
             $responses,
         );
 
-        $pageTypes = array_map(
-            fn (InertiaResponse $r): string => $this->buildPageType($r),
+        $pageTypeResults = array_map(
+            fn (InertiaResponse $r): array => $this->buildPageType($r),
             $responses,
         );
+
+        $pageTypes = array_map(fn (array $r): string => $r['type'], $pageTypeResults);
+
+        /** @var list<class-string> $allFqcns */
+        $allFqcns = array_values(array_unique(array_merge(
+            ...array_map(fn (array $r): array => $r['fqcns'], $pageTypeResults),
+        )));
 
         // Single component → string; multiple (conditional) → list
         $component = count($components) === 1 ? $components[0] : $components;
@@ -93,30 +102,35 @@ class InertiaPageAnalyzer
         return [
             'component' => $component,
             'pageType' => $pageType,
+            'classFqcns' => $allFqcns,
         ];
     }
 
     /**
      * Build the TypeScript type string for a single InertiaResponse.
      *
-     * Transforms the component name into a fully-qualified namespace path:
-     *   "Dashboard"          → "Inertia.Pages.Dashboard"
-     *   "Settings/General"   → "Inertia.Pages.Settings.General"
-     *   "settings/two-factor" → "Inertia.Pages.Settings.TwoFactor"
+     * Returns both the rewritten type string and the list of PHP FQCNs
+     * found within it (for import resolution by the transformer).
+     *
+     * @return array{type: string, fqcns: list<class-string>}
      */
-    protected function buildPageType(InertiaResponse $response): string
+    protected function buildPageType(InertiaResponse $response): array
     {
-        $fqn = $this->componentToFqn($response->component);
-
         $sharedData = 'Inertia.SharedData';
 
         if (count($response->data) === 0) {
-            return $sharedData;
+            return ['type' => $sharedData, 'fqcns' => []];
         }
 
         $propsType = SurveyorTypeMapper::objectToTypeString($response->data);
 
-        return $sharedData.' & '.$propsType;
+        $fqcns = SurveyorTypeMapper::extractDotNotationFqcns($propsType);
+        $propsType = SurveyorTypeMapper::rewriteDotNotationToBasenames($propsType, $fqcns);
+
+        return [
+            'type' => $sharedData.' & '.$propsType,
+            'fqcns' => $fqcns,
+        ];
     }
 
     /**

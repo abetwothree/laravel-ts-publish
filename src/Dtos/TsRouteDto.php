@@ -10,6 +10,8 @@ use Illuminate\Contracts\Support\Jsonable;
 use JsonSerializable;
 
 /**
+ * @phpstan-import-type TypesImportMap from Datable
+ *
  * @phpstan-type RouteArgData = array{
  *     name: string,
  *     required: bool,
@@ -27,8 +29,10 @@ use JsonSerializable;
  *     originalMethodName: string,
  *     description: string|null,
  *     args: list<RouteArgData>,
+ *     shouldAnnotate: bool,
  *     component?: string|array<string, string>,
  *     pageType?: string|array<string, string>,
+ *     pageTypeAnnotation?: string,
  * }
  * @phpstan-type RouteData = array{
  *     controllerName: string,
@@ -36,6 +40,8 @@ use JsonSerializable;
  *     fqcn: string,
  *     description: string|null,
  *     actions: list<RouteActionData>,
+ *     typeImports: TypesImportMap,
+ *     hasPageTypes: bool,
  * }
  *
  * @implements Arrayable<string, mixed>
@@ -44,6 +50,7 @@ final readonly class TsRouteDto implements Arrayable, Datable, Jsonable, JsonSer
 {
     /**
      * @param  list<RouteActionData>  $actions
+     * @param  TypesImportMap  $typeImports
      */
     public function __construct(
         public string $controllerName,
@@ -51,6 +58,8 @@ final readonly class TsRouteDto implements Arrayable, Datable, Jsonable, JsonSer
         public string $fqcn,
         public ?string $description,
         public array $actions,
+        public array $typeImports = [],
+        public bool $hasPageTypes = false,
     ) {}
 
     /** @return RouteData */
@@ -62,6 +71,8 @@ final readonly class TsRouteDto implements Arrayable, Datable, Jsonable, JsonSer
             'fqcn' => $this->fqcn,
             'description' => $this->description,
             'actions' => $this->actions,
+            'typeImports' => $this->typeImports,
+            'hasPageTypes' => $this->hasPageTypes,
         ];
     }
 

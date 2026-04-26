@@ -6,6 +6,7 @@ namespace Workbench\App\Http\Controllers;
 
 use Inertia\Inertia;
 use Inertia\Response;
+use Workbench\App\Models\Post;
 
 class InertiaController
 {
@@ -62,6 +63,16 @@ class InertiaController
 
         return Inertia::render('Conditional/Guest', [
             'message' => 'Please log in',
+        ]);
+    }
+
+    /**
+     * Display a specific post.
+     */
+    public function post(Post $post): Response
+    {
+        return Inertia::render('PostShow', [
+            'post' => $post,
         ]);
     }
 }

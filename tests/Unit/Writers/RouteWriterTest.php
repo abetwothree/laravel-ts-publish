@@ -48,7 +48,7 @@ test('route writer does not import RouteQueryOptions for inertia components', fu
     $mockConverter->shouldReceive('analyze')
         ->andReturnUsing(function (array $action) {
             if (str_contains($action['uses'], 'InertiaController@dashboard')) {
-                return ['component' => 'Dashboard', 'pageType' => null];
+                return ['component' => 'Dashboard', 'pageType' => null, 'classFqcns' => []];
             }
 
             return null;
@@ -257,7 +257,7 @@ test('route output emits export type PageProps alias for single inertia componen
     $mockConverter->shouldReceive('analyze')
         ->andReturnUsing(function (array $action) {
             if (str_contains($action['uses'], 'InertiaController@dashboard')) {
-                return ['component' => 'Dashboard', 'pageType' => 'Inertia.SharedData & { stats: { users: number } }'];
+                return ['component' => 'Dashboard', 'pageType' => 'Inertia.SharedData & { stats: { users: number } }', 'classFqcns' => []];
             }
 
             return null;
@@ -278,7 +278,7 @@ test('route output emits export type PageProps alias before JSDoc and defineRout
     $mockConverter->shouldReceive('analyze')
         ->andReturnUsing(function (array $action) {
             if (str_contains($action['uses'], 'InertiaController@dashboard')) {
-                return ['component' => 'Dashboard', 'pageType' => 'Inertia.SharedData & { stats: { users: number } }'];
+                return ['component' => 'Dashboard', 'pageType' => 'Inertia.SharedData & { stats: { users: number } }', 'classFqcns' => []];
             }
 
             return null;
@@ -290,7 +290,7 @@ test('route output emits export type PageProps alias before JSDoc and defineRout
 
     $content = $generator->content;
     $typePos = strpos($content, 'export type DashboardPageProps');
-    $constPos = strpos($content, 'export const dashboard = defineRoute(');
+    $constPos = strpos($content, 'export const dashboard');
 
     expect($typePos)->toBeLessThan($constPos);
 });
@@ -305,6 +305,7 @@ test('route output emits per-key export type aliases for conditional inertia com
                 return [
                     'component' => ['Conditional/Authenticated', 'Conditional/Guest'],
                     'pageType' => ['Inertia.SharedData & { user: unknown }', 'Inertia.SharedData & { message: string }'],
+                    'classFqcns' => [],
                 ];
             }
 
@@ -327,7 +328,7 @@ test('route output does not emit export type alias when pageType is null', funct
     $mockConverter->shouldReceive('analyze')
         ->andReturnUsing(function (array $action) {
             if (str_contains($action['uses'], 'InertiaController@dashboard')) {
-                return ['component' => 'Dashboard', 'pageType' => null];
+                return ['component' => 'Dashboard', 'pageType' => null, 'classFqcns' => []];
             }
 
             return null;
@@ -402,6 +403,7 @@ test('route output includes .component for single inertia component', function (
                 return [
                     'component' => 'Dashboard',
                     'pageType' => 'Inertia.SharedData & { stats: { users: number } }',
+                    'classFqcns' => [],
                 ];
             }
 
@@ -428,6 +430,7 @@ test('route output includes .component map for conditional inertia components', 
                 return [
                     'component' => ['Conditional/Authenticated', 'Conditional/Guest'],
                     'pageType' => 'Inertia.SharedData & { user: unknown } | Inertia.SharedData & { message: string }',
+                    'classFqcns' => [],
                 ];
             }
 
@@ -457,6 +460,7 @@ test('route output uses component_casing config for component map keys', functio
                 return [
                     'component' => ['Conditional/CustomerLogin', 'Conditional/NotFoundPortal'],
                     'pageType' => 'Inertia.SharedData',
+                    'classFqcns' => [],
                 ];
             }
 
@@ -481,4 +485,127 @@ test('route output does not include component when inertia is disabled', functio
         ->not->toContain('component:')
         ->not->toContain('.component')
         ->not->toContain('.withComponent');
+});
+
+// ─── Phase 2: annotatePageProps annotation ─────────────────────────
+
+test('route output emits annotatePageProps annotation for single-component no-args inertia route', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@dashboard')) {
+                return ['component' => 'Dashboard', 'pageType' => 'Inertia.SharedData & { stats: { users: number } }', 'classFqcns' => []];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $generator = resolve(RouteGenerator::class, ['findable' => InertiaController::class]);
+
+    expect($generator->content)
+        ->toContain('export const dashboard = annotatePageProps<DashboardPageProps>()(defineRoute({')
+        ->toContain("import { defineRoute, annotatePageProps } from '@tolki/ts'");
+});
+
+test('route output does not emit annotatePageProps for non-inertia routes', function () {
+    $generator = resolve(RouteGenerator::class, ['findable' => PostController::class]);
+
+    expect($generator->content)->not->toContain('annotatePageProps');
+});
+
+test('route output emits annotatePageProps with union type for multi-component inertia route', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@conditional')) {
+                return [
+                    'component' => ['authenticated' => 'Conditional/Authenticated', 'guest' => 'Conditional/Guest'],
+                    'pageType' => ['authenticated' => 'Inertia.SharedData & { user: unknown }', 'guest' => 'Inertia.SharedData & { message: string }'],
+                    'classFqcns' => [],
+                ];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $generator = resolve(RouteGenerator::class, ['findable' => InertiaController::class]);
+
+    expect($generator->content)
+        ->toContain('export const conditional = annotatePageProps<ConditionalAuthenticatedPageProps | ConditionalGuestPageProps>()(defineRoute({')
+        ->toContain("import { defineRoute, annotatePageProps } from '@tolki/ts'");
+});
+
+test('route output does not emit annotatePageProps when inertia route has no pageType', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@dashboard')) {
+                return ['component' => 'Dashboard', 'pageType' => null, 'classFqcns' => []];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $generator = resolve(RouteGenerator::class, ['findable' => InertiaController::class]);
+
+    expect($generator->content)->not->toContain('annotatePageProps');
+});
+
+test('route output emits annotatePageProps for inertia route with args', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@post')) {
+                return ['component' => 'PostShow', 'pageType' => 'Inertia.SharedData & { post: Post }', 'classFqcns' => ['Workbench\App\Models\Post']];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $generator = resolve(RouteGenerator::class, ['findable' => InertiaController::class]);
+
+    expect($generator->content)
+        ->toContain('export const post = annotatePageProps<PostPageProps>()(defineRoute({')
+        ->toContain("import { defineRoute, annotatePageProps } from '@tolki/ts'");
+});
+
+test('route output emits import type for PHP model referenced in page props', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@post')) {
+                return [
+                    'component' => 'PostShow',
+                    'pageType' => 'Inertia.SharedData & { post: Post }',
+                    'classFqcns' => ['Workbench\App\Models\Post'],
+                ];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $generator = resolve(RouteGenerator::class, ['findable' => InertiaController::class]);
+
+    expect($generator->content)
+        ->toContain("import type { Post } from '../../models';");
 });

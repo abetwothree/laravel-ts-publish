@@ -207,4 +207,58 @@ class SurveyorTypeMapper
 
         return $type;
     }
+
+    /**
+     * Extract PHP FQCNs from a type string containing dot-notation class references.
+     *
+     * Matches multi-segment PascalCase dot-notation (e.g. `Workbench.App.Models.Post`)
+     * and converts them back to FQCNs (`Workbench\App\Models\Post`). Filters to only
+     * those that actually exist as a class or enum. Excludes `Inertia.*` references
+     * which are TypeScript global namespaces, not PHP classes.
+     *
+     * @return list<class-string>
+     */
+    public static function extractDotNotationFqcns(string $typeString): array
+    {
+        // Match sequences of 2+ PascalCase segments separated by dots
+        preg_match_all('/\b([A-Z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)+)\b/', $typeString, $matches);
+
+        /** @var list<class-string> $fqcns */
+        $fqcns = [];
+
+        foreach (array_unique($matches[1]) as $dotNotation) {
+            // Exclude TypeScript globals (Inertia.*)
+            if (str_starts_with($dotNotation, 'Inertia.')) {
+                continue;
+            }
+
+            $fqcn = str_replace('.', '\\', $dotNotation);
+
+            if (class_exists($fqcn) || enum_exists($fqcn)) {
+                /** @var class-string $fqcn */
+                $fqcns[] = $fqcn;
+            }
+        }
+
+        return $fqcns;
+    }
+
+    /**
+     * Rewrite dot-notation class references in a type string to their base names.
+     *
+     * For each FQCN in `$fqcns`, replaces the dot-notation form
+     * (e.g. `Workbench.App.Models.Post`) with the base name (e.g. `Post`).
+     *
+     * @param  list<class-string>  $fqcns
+     */
+    public static function rewriteDotNotationToBasenames(string $typeString, array $fqcns): string
+    {
+        foreach ($fqcns as $fqcn) {
+            $dotNotation = str_replace('\\', '.', $fqcn);
+            $basename = class_basename($fqcn);
+            $typeString = str_replace($dotNotation, $basename, $typeString);
+        }
+
+        return $typeString;
+    }
 }
