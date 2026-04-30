@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Analyzers\SurveyorTypeMapper;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Concerns\FiltersRoutes;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsRouteDto;
@@ -46,6 +47,9 @@ class RouteTransformer extends CoreTransformer
 
     /** @var array<int, list<class-string>> Action index => FQCNs found in page type */
     protected array $actionPageTypeFqcns = [];
+
+    /** @var array<int, array<string, list<string>>> Action index => external imports (e.g. @tolki/types) */
+    protected array $actionExternalImports = [];
 
     /** @var ReflectionClass<object> */
     protected ReflectionClass $reflectionController;
@@ -225,8 +229,13 @@ class RouteTransformer extends CoreTransformer
                 }
 
                 if ($inertiaData['classFqcns'] !== []) {
-                    $actionIndex = count($this->actionPageTypeFqcns);
-                    $this->actionPageTypeFqcns[$actionIndex] = $inertiaData['classFqcns'];
+                    $this->actionPageTypeFqcns[] = $inertiaData['classFqcns'];
+                }
+
+                $externalImports = $inertiaData['externalImports'] ?? [];
+
+                if ($externalImports !== []) {
+                    $this->actionExternalImports[] = $externalImports;
                 }
             }
         }
@@ -525,20 +534,40 @@ class RouteTransformer extends CoreTransformer
      */
     private function resolvePageTypeImports(): array
     {
-        if ($this->actionPageTypeFqcns === []) {
+        if ($this->actionPageTypeFqcns === [] && $this->actionExternalImports === []) {
             return [];
         }
 
         /** @var list<class-string> $allFqcns */
-        $allFqcns = array_values(array_unique(array_merge(...array_values($this->actionPageTypeFqcns))));
+        $allFqcns = $this->actionPageTypeFqcns !== []
+            ? array_values(array_unique(array_merge(...array_values($this->actionPageTypeFqcns))))
+            : [];
 
         /** @var TypesImportMap $imports */
         $imports = [];
 
         foreach ($allFqcns as $fqcn) {
+            // FQCNs in TOLKI_TYPES_MAP are imported from '@tolki/types' rather than a relative path
+            if (isset(SurveyorTypeMapper::TOLKI_TYPES_MAP[$fqcn])) {
+                $imports['@tolki/types'][] = SurveyorTypeMapper::TOLKI_TYPES_MAP[$fqcn];
+
+                continue;
+            }
+
             $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
             $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
             $imports[$importPath][] = class_basename($fqcn);
+        }
+
+        // Merge external imports collected from InertiaPageAnalyzer (e.g. ResourceCollection, TsCasts)
+        foreach ($this->actionExternalImports as $externalImports) {
+            foreach ($externalImports as $path => $types) {
+                foreach ($types as $type) {
+                    if (! in_array($type, $imports[$path] ?? [], true)) {
+                        $imports[$path][] = $type;
+                    }
+                }
+            }
         }
 
         foreach ($imports as $path => $types) {
