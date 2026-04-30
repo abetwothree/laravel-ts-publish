@@ -33,7 +33,6 @@ coverage.xml
 workbench/database/database.sqlite
 workbench/bootstrap/cache/*.php
 !workbench/bootstrap/cache/.gitkeep
-workbench/resources/js/types/data
 clover.xml
 AGENTS.md
 CLAUDE.md
