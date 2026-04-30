@@ -7,7 +7,6 @@ namespace AbeTwoThree\LaravelTsPublish\Analyzers\Inertia;
 use AbeTwoThree\LaravelTsPublish\Analyzers\SurveyorTypeMapper;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
-use Illuminate\Http\Resources\Attributes\Collects;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection as LaravelResourceCollection;
 use Illuminate\Support\Str;
@@ -508,14 +507,17 @@ class InertiaPageAnalyzer
     {
         $reflection = new ReflectionClass($collectionFqcn);
 
-        // Priority 0: #[Collects] attribute
-        $collectsAttrs = $reflection->getAttributes(Collects::class);
+        $collectsAttribute = 'Illuminate\Http\Resources\Attributes\Collects';
+        if(class_exists($collectsAttribute)){
+            // Priority 0: #[Collects] attribute
+            $collectsAttrs = $reflection->getAttributes($collectsAttribute);
 
-        if ($collectsAttrs !== []) {
-            $collectsClass = $collectsAttrs[0]->newInstance()->class;
+            if ($collectsAttrs !== []) {
+                $collectsClass = $collectsAttrs[0]->newInstance()->class;
 
-            if (class_exists($collectsClass) && is_a($collectsClass, JsonResource::class, true)) {
-                return $collectsClass;
+                if (class_exists($collectsClass) && is_a($collectsClass, JsonResource::class, true)) {
+                    return $collectsClass;
+                }
             }
         }
 

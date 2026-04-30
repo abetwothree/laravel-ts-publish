@@ -12,7 +12,6 @@ use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesClassNames;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Http\Resources\Attributes\Collects;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node;
@@ -1389,14 +1388,17 @@ class ResourceAstAnalyzer
      */
     protected function resolveSingularResourceClass(): ?string
     {
-        // Priority 1: #[Collects] attribute (Laravel 12+)
-        $collectsAttrs = $this->resourceReflection->getAttributes(Collects::class);
+        $collectsAttribute = 'Illuminate\Http\Resources\Attributes\Collects';
+        if(class_exists($collectsAttribute)){
+            // Priority 1: #[Collects] attribute (Laravel 12+)
+            $collectsAttrs = $this->resourceReflection->getAttributes($collectsAttribute);
 
-        if ($collectsAttrs !== []) {
-            $collectsClass = $collectsAttrs[0]->newInstance()->class;
+            if ($collectsAttrs !== []) {
+                $collectsClass = $collectsAttrs[0]->newInstance()->class;
 
-            if (class_exists($collectsClass) && is_a($collectsClass, JsonResource::class, true)) {
-                return $collectsClass;
+                if (class_exists($collectsClass) && is_a($collectsClass, JsonResource::class, true)) {
+                    return $collectsClass;
+                }
             }
         }
 
