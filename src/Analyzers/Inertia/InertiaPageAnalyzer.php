@@ -508,7 +508,7 @@ class InertiaPageAnalyzer
         $reflection = new ReflectionClass($collectionFqcn);
 
         $collectsAttribute = 'Illuminate\Http\Resources\Attributes\Collects';
-        if(class_exists($collectsAttribute)){
+        if (class_exists($collectsAttribute)) {
             // Priority 0: #[Collects] attribute
             $collectsAttrs = $reflection->getAttributes($collectsAttribute);
 

@@ -1389,7 +1389,7 @@ class ResourceAstAnalyzer
     protected function resolveSingularResourceClass(): ?string
     {
         $collectsAttribute = 'Illuminate\Http\Resources\Attributes\Collects';
-        if(class_exists($collectsAttribute)){
+        if (class_exists($collectsAttribute)) {
             // Priority 1: #[Collects] attribute (Laravel 12+)
             $collectsAttrs = $this->resourceReflection->getAttributes($collectsAttribute);
 
