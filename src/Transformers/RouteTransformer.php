@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Analyzers\SurveyorTypeMapper;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Concerns\FiltersRoutes;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsRouteDto;
@@ -22,6 +23,7 @@ use ReflectionParameter;
 /**
  * @phpstan-import-type RouteActionData from TsRouteDto
  * @phpstan-import-type RouteArgData from TsRouteDto
+ * @phpstan-import-type TypesImportMap from \AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable
  *
  * @extends CoreTransformer<object>
  */
@@ -40,6 +42,15 @@ class RouteTransformer extends CoreTransformer
     /** @var list<RouteActionData> */
     public protected(set) array $actions = [];
 
+    /** @var TypesImportMap */
+    public protected(set) array $typeImports = [];
+
+    /** @var array<int, list<class-string>> Action index => FQCNs found in page type */
+    protected array $actionPageTypeFqcns = [];
+
+    /** @var array<int, array<string, list<string>>> Action index => external imports (e.g. @tolki/types) */
+    protected array $actionExternalImports = [];
+
     /** @var ReflectionClass<object> */
     protected ReflectionClass $reflectionController;
 
@@ -49,6 +60,9 @@ class RouteTransformer extends CoreTransformer
     protected ?InertiaPageAnalyzer $inertiaPageAnalyzer = null;
 
     protected const INVOKE = '__invoke';
+
+    /** Whether any actions have page types that require the annotatePageProps import. */
+    protected bool $hasPageTypes = false;
 
     #[Override]
     public function transform(): self
@@ -65,6 +79,8 @@ class RouteTransformer extends CoreTransformer
 
         $this->actions = $this->collectActions();
 
+        $this->typeImports = $this->resolvePageTypeImports();
+
         return $this;
     }
 
@@ -77,6 +93,8 @@ class RouteTransformer extends CoreTransformer
             fqcn: $this->findable,
             description: $this->description !== '' ? $this->description : null,
             actions: $this->actions,
+            typeImports: $this->typeImports,
+            hasPageTypes: $this->hasPageTypes,
         );
     }
 
@@ -183,6 +201,7 @@ class RouteTransformer extends CoreTransformer
             'originalMethodName' => $originalMethodName,
             'description' => $description,
             'args' => $this->resolveArgs($route, $originalMethodName),
+            'shouldAnnotate' => false, // set to true if Inertia page types are detected
         ];
 
         if ($this->inertiaPageAnalyzer !== null) {
@@ -193,7 +212,31 @@ class RouteTransformer extends CoreTransformer
 
             if ($inertiaData !== null) {
                 $action['component'] = $this->normalizeComponent($inertiaData['component']);
-                $action['pageType'] = $inertiaData['pageType'];
+
+                if ($inertiaData['pageType'] !== null) {
+                    $action['pageType'] = $this->normalizePageType(
+                        $inertiaData['component'],
+                        $inertiaData['pageType'],
+                    );
+
+                    $action['pageTypeAnnotation'] = $this->resolvePageTypeAnnotation(
+                        $methodName,
+                        $action['pageType'],
+                    );
+
+                    $action['shouldAnnotate'] = true;
+                    $this->hasPageTypes = true;
+                }
+
+                if ($inertiaData['classFqcns'] !== []) {
+                    $this->actionPageTypeFqcns[] = $inertiaData['classFqcns'];
+                }
+
+                $externalImports = $inertiaData['externalImports'] ?? [];
+
+                if ($externalImports !== []) {
+                    $this->actionExternalImports[] = $externalImports;
+                }
             }
         }
 
@@ -481,6 +524,62 @@ class RouteTransformer extends CoreTransformer
     }
 
     /**
+     * Build a TypeScript import map for all PHP classes/enums referenced in page-prop types.
+     *
+     * Collects all FQCNs gathered from Inertia page-type analysis, computes relative
+     * import paths from this controller's namespace path, and returns a deduplicated
+     * sorted map of `importPath => list<TypeName>`.
+     *
+     * @return TypesImportMap
+     */
+    private function resolvePageTypeImports(): array
+    {
+        if ($this->actionPageTypeFqcns === [] && $this->actionExternalImports === []) {
+            return [];
+        }
+
+        /** @var list<class-string> $allFqcns */
+        $allFqcns = $this->actionPageTypeFqcns !== []
+            ? array_values(array_unique(array_merge(...array_values($this->actionPageTypeFqcns))))
+            : [];
+
+        /** @var TypesImportMap $imports */
+        $imports = [];
+
+        foreach ($allFqcns as $fqcn) {
+            // FQCNs in TOLKI_TYPES_MAP are imported from '@tolki/types' rather than a relative path
+            if (isset(SurveyorTypeMapper::TOLKI_TYPES_MAP[$fqcn])) {
+                $imports['@tolki/types'][] = SurveyorTypeMapper::TOLKI_TYPES_MAP[$fqcn];
+
+                continue;
+            }
+
+            $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
+            $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
+            $imports[$importPath][] = class_basename($fqcn);
+        }
+
+        // Merge external imports collected from InertiaPageAnalyzer (e.g. ResourceCollection, TsCasts)
+        foreach ($this->actionExternalImports as $externalImports) {
+            foreach ($externalImports as $path => $types) {
+                foreach ($types as $type) {
+                    if (! in_array($type, $imports[$path] ?? [], true)) {
+                        $imports[$path][] = $type;
+                    }
+                }
+            }
+        }
+
+        foreach ($imports as $path => $types) {
+            $unique = array_values(array_unique($types));
+            sort($unique);
+            $imports[$path] = $unique;
+        }
+
+        return LaravelTsPublish::sortImportPaths($imports);
+    }
+
+    /**
      * Normalize Inertia component data for the route action.
      *
      * Single components remain as-is (a plain string). Multi-component
@@ -509,13 +608,61 @@ class RouteTransformer extends CoreTransformer
     }
 
     /**
+     * Normalize Inertia page type data aligned with normalized component keys.
+     *
+     * For a single component (string), the page type is returned as-is.
+     * For multiple (conditional) components, the page type list is converted
+     * to an associative array with the same keys used by normalizeComponent()
+     * so the blade template can emit one `export type` alias per variant.
+     *
+     * @param  string|list<string>  $component  Raw component list from the analyzer.
+     * @param  string|list<string>  $pageType  Parallel page type list from the analyzer.
+     * @return string|array<string, string>
+     */
+    protected function normalizePageType(string|array $component, string|array $pageType): string|array
+    {
+        if (is_string($component)) {
+            return is_string($pageType) ? $pageType : $pageType[0];
+        }
+
+        $casing = config()->string('ts-publish.inertia.component_casing', 'camel');
+        $paths = $component;
+        $types = is_array($pageType) ? $pageType : [$pageType];
+        $keyMap = $this->computeUniqueComponentKeys($paths, $casing);
+        $normalized = [];
+
+        foreach ($paths as $index => $path) {
+            $normalized[$keyMap[$path]] = $types[$index] ?? 'Inertia.SharedData';
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * Resolve the TypeScript type annotation for an Inertia page type, based on the method name and page type data.
+     *
+     * @param  string|array<string, string>  $pageType
+     */
+    protected function resolvePageTypeAnnotation(string $methodName, string|array $pageType): string
+    {
+        if (is_string($pageType)) {
+            return Str::studly($methodName).'PageProps';
+        }
+
+        return implode(' | ', array_map(
+            fn ($key) => Str::studly($methodName).Str::studly($key).'PageProps',
+            array_keys($pageType)
+        ));
+    }
+
+    /**
      * Compute unique casing keys for each component path.
      *
      * Uses depth=1 (last segment) first. When two paths share the same short name
      * (e.g. Admin/Dashboard and User/Dashboard both yield "dashboard"), the depth
      * is incremented until all keys in the group are distinct.
      *
-     * @param  list<string>  $paths
+     * @param  array<string>  $paths
      * @return array<string, string> path => key
      */
     private function computeUniqueComponentKeys(array $paths, string $casing): array
@@ -537,7 +684,7 @@ class RouteTransformer extends CoreTransformer
         };
 
         $segmentCounts = array_map(fn (string $p) => count($split($p)), $paths);
-        $maxDepth = max(1, ...$segmentCounts);
+        $maxDepth = max(1, ...array_values($segmentCounts));
 
         for ($depth = 1; $depth <= $maxDepth; $depth++) {
             $keys = [];

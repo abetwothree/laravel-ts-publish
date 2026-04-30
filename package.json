@@ -12,6 +12,9 @@
   },
   "homepage": "https://github.com/abetwothree/laravel-ts-publish#readme",
   "dependencies": {
-    "@tolki/ts": "^0.0.1"
+    "@inertiajs/vue3": "^3.0.3",
+    "@tolki/ts": "^0.0.1",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.10"
   }
 }

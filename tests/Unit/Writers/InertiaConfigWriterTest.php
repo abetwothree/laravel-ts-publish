@@ -167,3 +167,61 @@ test('omits import block when importStatements is empty', function () {
         ->not->toContain('import type')
         ->toContain("declare module '@inertiajs/core'");
 });
+
+// ─── declare global / ES module output ───────────────────────────
+
+test('renders declare global namespace Inertia SharedData block', function () {
+    $writer = resolve(InertiaConfigWriter::class);
+
+    $content = $writer->write([
+        'sharedPageProps' => '{ appName: string }',
+        'withAllErrors' => false,
+        'importStatements' => [],
+    ]);
+
+    expect($content)
+        ->toContain('declare global')
+        ->toContain('namespace Inertia')
+        ->toContain('type SharedData = { appName: string }');
+});
+
+test('renders export {} at end to make file an ES module', function () {
+    $writer = resolve(InertiaConfigWriter::class);
+
+    $content = $writer->write([
+        'sharedPageProps' => '{ appName: string }',
+        'withAllErrors' => false,
+        'importStatements' => [],
+    ]);
+
+    expect($content)->toContain('export {};');
+});
+
+test('SharedData type in declare global matches sharedPageProps in declare module', function () {
+    $writer = resolve(InertiaConfigWriter::class);
+
+    $sharedType = '{ auth: { user: unknown }, appName: string }';
+
+    $content = $writer->write([
+        'sharedPageProps' => $sharedType,
+        'withAllErrors' => false,
+        'importStatements' => [],
+    ]);
+
+    expect(substr_count($content, $sharedType))->toBe(2);
+});
+
+test('declare global block appears before declare module block', function () {
+    $writer = resolve(InertiaConfigWriter::class);
+
+    $content = $writer->write([
+        'sharedPageProps' => '{ appName: string }',
+        'withAllErrors' => false,
+        'importStatements' => [],
+    ]);
+
+    $globalPos = strpos($content, 'declare global');
+    $modulePos = strpos($content, "declare module '@inertiajs/core'");
+
+    expect($globalPos)->toBeLessThan($modulePos);
+});

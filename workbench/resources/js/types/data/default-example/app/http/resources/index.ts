@@ -40,6 +40,8 @@ export * from './order-item-resource';
 export * from './order-only-resource';
 export * from './order-resource';
 export * from './order-summary-resource';
+export * from './post-collection';
+export * from './post-flat-collection';
 export * from './post-resource';
 export * from './product-resource';
 export * from './profile-resource';
