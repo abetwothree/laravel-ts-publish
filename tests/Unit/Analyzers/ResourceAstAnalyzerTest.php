@@ -47,6 +47,8 @@ use Workbench\App\Http\Resources\OrderItemResource;
 use Workbench\App\Http\Resources\OrderOnlyResource;
 use Workbench\App\Http\Resources\OrderResource;
 use Workbench\App\Http\Resources\OrderSummaryResource;
+use Workbench\App\Http\Resources\PostCollection;
+use Workbench\App\Http\Resources\PostFlatCollection;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\QuirkyResource;
@@ -2586,5 +2588,49 @@ describe('ResourceAstAnalyzer with MergeMultiBranchClosureResource (multi-return
         $id = collect($this->analysis->properties)->firstWhere('name', 'id');
 
         expect($id['optional'])->toBeFalse();
+    });
+});
+
+describe('ResourceAstAnalyzer with PostCollection (#[Collects] attribute, no toArray)', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(PostCollection::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection))->analyze();
+    });
+
+    test('produces data property with PostResource[] type', function () {
+        $data = collect($this->analysis->properties)->firstWhere('name', 'data');
+
+        expect($data)->not->toBeNull()
+            ->and($data['type'])->toBe('PostResource[]')
+            ->and($data['optional'])->toBeFalse();
+    });
+
+    test('tracks PostResource FQCN in nestedResources under data key', function () {
+        expect($this->analysis->nestedResources)
+            ->toHaveKey('data')
+            ->and($this->analysis->nestedResources['data'])->toBe(PostResource::class);
+    });
+
+    test('flatTypeAlias is null (collection wraps data in key)', function () {
+        expect($this->analysis->flatTypeAlias)->toBeNull();
+    });
+});
+
+describe('ResourceAstAnalyzer with PostFlatCollection ($wrap = null, no toArray)', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(PostFlatCollection::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection))->analyze();
+    });
+
+    test('has flatTypeAlias set to PostResource[]', function () {
+        expect($this->analysis->flatTypeAlias)->toBe('PostResource[]');
+    });
+
+    test('has flatTypeAliasFqcn pointing to PostResource', function () {
+        expect($this->analysis->flatTypeAliasFqcn)->toBe(PostResource::class);
+    });
+
+    test('has no properties (type alias skips interface shape)', function () {
+        expect($this->analysis->properties)->toBeEmpty();
     });
 });

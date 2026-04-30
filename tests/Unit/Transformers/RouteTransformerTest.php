@@ -646,3 +646,89 @@ test('invokable inertia controller action receives @__invoke uses string and ret
         ->and($invoke)->toHaveKey('pageType')
         ->and($invoke['pageType'])->toContain('Inertia.SharedData');
 });
+
+// ─── externalImports handling ─────────────────────────────────────
+
+test('resolvePageTypeImports maps TOLKI_TYPES_MAP FQCNs to @tolki/types import', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@dashboard')) {
+                return [
+                    'component' => 'Dashboard',
+                    'pageType' => 'Inertia.SharedData & { posts: LengthAwarePaginator<unknown> }',
+                    'classFqcns' => ['Illuminate\\Pagination\\LengthAwarePaginator'],
+                    'externalImports' => [],
+                ];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $transformer = new RouteTransformer(InertiaController::class);
+
+    expect($transformer->typeImports)
+        ->toHaveKey('@tolki/types')
+        ->and($transformer->typeImports['@tolki/types'])->toContain('LengthAwarePaginator');
+});
+
+test('resolvePageTypeImports merges externalImports from InertiaPageAnalyzer', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@dashboard')) {
+                return [
+                    'component' => 'Dashboard',
+                    'pageType' => 'Inertia.SharedData & { posts: PostCollection }',
+                    'classFqcns' => ['Workbench\\App\\Http\\Resources\\PostCollection'],
+                    'externalImports' => [],
+                ];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $transformer = new RouteTransformer(InertiaController::class);
+
+    expect($transformer->typeImports)
+        ->toHaveKey('../resources')
+        ->and($transformer->typeImports['../resources'])->toContain('PostCollection');
+});
+
+test('resolvePageTypeImports deduplicates @tolki/types entries from FQCNs and externalImports', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@dashboard')) {
+                return [
+                    'component' => 'Dashboard',
+                    'pageType' => 'Inertia.SharedData & { posts: LengthAwarePaginator<unknown> }',
+                    'classFqcns' => ['Illuminate\\Pagination\\LengthAwarePaginator'],
+                    // Same key also appears in externalImports - should dedup
+                    'externalImports' => ['@tolki/types' => ['LengthAwarePaginator']],
+                ];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $transformer = new RouteTransformer(InertiaController::class);
+
+    $tolkiImports = $transformer->typeImports['@tolki/types'] ?? [];
+    $dedupedCount = count(array_unique($tolkiImports));
+
+    expect($dedupedCount)->toBe(count($tolkiImports))
+        ->and($tolkiImports)->toContain('LengthAwarePaginator');
+});

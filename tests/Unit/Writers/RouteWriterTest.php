@@ -609,3 +609,110 @@ test('route output emits import type for PHP model referenced in page props', fu
     expect($generator->content)
         ->toContain("import type { Post } from '../../models';");
 });
+
+test('route output emits import type from @tolki/types for pagination types', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@dashboard')) {
+                return [
+                    'component' => 'Dashboard',
+                    'pageType' => 'Inertia.SharedData & { posts: LengthAwarePaginator<unknown> }',
+                    'classFqcns' => ['Illuminate\\Pagination\\LengthAwarePaginator'],
+                    'externalImports' => [],
+                ];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $generator = resolve(RouteGenerator::class, ['findable' => InertiaController::class]);
+
+    expect($generator->content)
+        ->toContain("import type { LengthAwarePaginator } from '@tolki/types';")
+        ->not->toContain("import type { LengthAwarePaginator } from '../");
+});
+
+test('route output emits import type from @tolki/types for Paginator contract (SimplePaginator)', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@dashboard')) {
+                return [
+                    'component' => 'Dashboard',
+                    'pageType' => 'Inertia.SharedData & { posts: SimplePaginator<unknown> }',
+                    'classFqcns' => ['Illuminate\\Contracts\\Pagination\\Paginator'],
+                    'externalImports' => [],
+                ];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $generator = resolve(RouteGenerator::class, ['findable' => InertiaController::class]);
+
+    expect($generator->content)
+        ->toContain("import type { SimplePaginator } from '@tolki/types';")
+        ->not->toContain("import type { Paginator } from '../");
+});
+
+test('route output emits import type for named ResourceCollection subclass (PostCollection)', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@dashboard')) {
+                return [
+                    'component' => 'Dashboard',
+                    'pageType' => 'Inertia.SharedData & { posts: PostCollection }',
+                    'classFqcns' => ['Workbench\\App\\Http\\Resources\\PostCollection'],
+                    'externalImports' => [],
+                ];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $generator = resolve(RouteGenerator::class, ['findable' => InertiaController::class]);
+
+    expect($generator->content)
+        ->toContain("import type { PostCollection } from '../resources';")
+        ->not->toContain('@tolki/types');
+});
+
+test('route output emits import from externalImports for TsCasts override with import key', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@dashboard')) {
+                return [
+                    'component' => 'Dashboard',
+                    'pageType' => 'Inertia.SharedData & { meta: PageMeta }',
+                    'classFqcns' => [],
+                    'externalImports' => ['@workbench/types' => ['PageMeta']],
+                ];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $generator = resolve(RouteGenerator::class, ['findable' => InertiaController::class]);
+
+    expect($generator->content)
+        ->toContain("import type { PageMeta } from '@workbench/types';");
+});
