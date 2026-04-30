@@ -7,7 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
 use Illuminate\Filesystem\Filesystem;
 
 test('writes globals content when enabled', function () {
-    config()->set('ts-publish.output_globals_file', true);
+    config()->set('ts-publish.globals.enabled', true);
     config()->set('ts-publish.output_to_files', false);
 
     $runner = resolve(Runner::class);
@@ -18,12 +18,12 @@ test('writes globals content when enabled', function () {
 
     expect($content)
         ->toContain('declare global')
-        ->toContain('export namespace models')
-        ->toContain('export namespace enums');
+        ->toContain('export namespace workbench.app.models')
+        ->toContain('export namespace workbench.app.enums');
 });
 
 test('returns empty string when globals output is disabled', function () {
-    config()->set('ts-publish.output_globals_file', false);
+    config()->set('ts-publish.globals.enabled', false);
     config()->set('ts-publish.output_to_files', false);
 
     $runner = resolve(Runner::class);
@@ -36,7 +36,7 @@ test('returns empty string when globals output is disabled', function () {
 });
 
 test('writes globals file to disk when output_to_files is enabled', function () {
-    config()->set('ts-publish.output_globals_file', true);
+    config()->set('ts-publish.globals.enabled', true);
 
     $filesystem = Mockery::mock(Filesystem::class);
     $filesystem->shouldReceive('ensureDirectoryExists')->once();
@@ -55,7 +55,7 @@ test('writes globals file to disk when output_to_files is enabled', function () 
 });
 
 test('globals content contains model interfaces', function () {
-    config()->set('ts-publish.output_globals_file', true);
+    config()->set('ts-publish.globals.enabled', true);
     config()->set('ts-publish.output_to_files', false);
 
     $runner = resolve(Runner::class);
@@ -71,7 +71,7 @@ test('globals content contains model interfaces', function () {
 });
 
 test('globals content contains enum interfaces', function () {
-    config()->set('ts-publish.output_globals_file', true);
+    config()->set('ts-publish.globals.enabled', true);
     config()->set('ts-publish.output_to_files', false);
 
     $runner = resolve(Runner::class);
@@ -87,7 +87,7 @@ test('globals content contains enum interfaces', function () {
 });
 
 test('globals content does not contain AsEnum<typeof ...> (typeof namespace member is illegal in declare global)', function () {
-    config()->set('ts-publish.output_globals_file', true);
+    config()->set('ts-publish.globals.enabled', true);
     config()->set('ts-publish.output_to_files', false);
 
     $runner = resolve(Runner::class);
@@ -103,41 +103,9 @@ test('globals content does not contain AsEnum<typeof ...> (typeof namespace memb
     expect($content)->toContain('enums.StatusType');
 });
 
-test('globals content resolves aliased types to namespace-qualified names (non-modular)', function () {
-    config()->set('ts-publish.output_globals_file', true);
+test('globals content does not contain AsEnum<typeof ...> with namespace_strip_prefix', function () {
+    config()->set('ts-publish.globals.enabled', true);
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.modular_publishing', false);
-
-    $runner = resolve(Runner::class);
-    $runner->run();
-
-    $writer = new GlobalsWriter(new Filesystem);
-    $content = $writer->write($runner);
-
-    // Aliases used in per-file imports must NOT appear literally in the globals file
-    expect($content)
-        ->not->toContain('ManagerUser')
-        ->not->toContain('CrmUser')
-        ->not->toContain('WorkbenchStatusType')
-        ->not->toContain('CrmStatusType');
-
-    // In non-modular mode all models share the 'models' namespace (the skip namespace),
-    // so all relation types resolve to bare names regardless of source namespace.
-    expect($content)
-        ->toContain('manager: User | null')
-        ->toContain('primary_contact: User | null')
-        ->toContain('secondary_contact: User | null');
-
-    // Enum column/mutator types are namespace-qualified
-    expect($content)
-        ->toContain('status: enums.StatusType | null')
-        ->toContain('current_crm_status: enums.StatusType | null');
-});
-
-test('globals content does not contain AsEnum<typeof ...> in modular mode (typeof namespace member is illegal in declare global)', function () {
-    config()->set('ts-publish.output_globals_file', true);
-    config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.modular_publishing', true);
     config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
 
     $runner = resolve(Runner::class);
@@ -153,10 +121,9 @@ test('globals content does not contain AsEnum<typeof ...> in modular mode (typeo
     expect($content)->toContain('enums.StatusType');
 });
 
-test('globals content resolves aliased types to namespace-qualified names (modular)', function () {
-    config()->set('ts-publish.output_globals_file', true);
+test('globals content resolves aliased types to namespace-qualified names', function () {
+    config()->set('ts-publish.globals.enabled', true);
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.modular_publishing', true);
     config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
 
     $runner = resolve(Runner::class);
@@ -172,9 +139,11 @@ test('globals content resolves aliased types to namespace-qualified names (modul
         ->not->toContain('WorkbenchStatusType')
         ->not->toContain('CrmStatusType');
 
-    // Cross-namespace relations must be fully qualified with their source namespace
+    // Cross-namespace relations must be fully qualified with their source namespace.
+    // manager points to App\Models\User — same namespace as Warehouse → stays bare.
+    // primary_contact and secondary_contact point to Crm\Models\User → qualified.
     expect($content)
-        ->toContain('manager: crm.models.User | null')
+        ->toContain('manager: User | null')
         ->toContain('primary_contact: crm.models.User | null')
         ->toContain('secondary_contact: crm.models.User | null');
 
@@ -182,4 +151,10 @@ test('globals content resolves aliased types to namespace-qualified names (modul
     expect($content)
         ->toContain('status: app.enums.StatusType | null')
         ->toContain('current_crm_status: crm.enums.StatusType | null');
+
+    // MorphTo union with same-basename models must not produce duplicate qualified names.
+    // Image is in app.models, so app.models.User stays bare; crm.models.User is qualified.
+    expect($content)
+        ->toContain('imageable: Post | Product | User | crm.models.User')
+        ->not->toContain('imageable: Post | Product | crm.models.User | crm.models.User');
 });

@@ -31,11 +31,12 @@ phpstan.neon
 /coverage
 coverage.xml
 workbench/database/database.sqlite
-workbench/bootstrap/cache
-workbench/resources/js/types/data
+workbench/bootstrap/cache/*.php
+!workbench/bootstrap/cache/.gitkeep
 clover.xml
 AGENTS.md
 CLAUDE.md
+.DS_Store
 
 # AI
 .claude

@@ -8,8 +8,10 @@ use AbeTwoThree\LaravelTsPublish\LaravelTsPublishServiceProvider;
 use AbeTwoThree\LaravelTsPublish\RelationMap;
 use AbeTwoThree\LaravelTsPublish\TypeScriptMap;
 use Illuminate\Database\Eloquent\Factories\Factory;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Notifications\DatabaseNotification;
+use Laravel\Ranger\RangerServiceProvider;
+use Laravel\Surveyor\SurveyorServiceProvider;
 use Orchestra\Testbench\Attributes\WithEnv;
 use Orchestra\Testbench\Concerns\WithWorkbench;
 use Orchestra\Testbench\TestCase as Orchestra;
@@ -22,13 +24,14 @@ use Symfony\Component\Finder\SplFileInfo;
 use Workbench\Accounting\Enums\InvoiceStatus;
 use Workbench\Accounting\Enums\PaymentStatus;
 use Workbench\Accounting\Models\Invoice;
+use Workbench\App\Providers\WorkbenchServiceProvider;
 use Workbench\Shipping\Enums\Status;
 use Workbench\Shipping\Models\Shipment;
 
 #[WithEnv('DB_CONNECTION', 'testing')]
 class TestCase extends Orchestra
 {
-    use RefreshDatabase;
+    use LazilyRefreshDatabase;
     use WithWorkbench;
 
     private static bool $configSynced = false;
@@ -58,6 +61,9 @@ class TestCase extends Orchestra
     {
         return [
             LaravelTsPublishServiceProvider::class,
+            RangerServiceProvider::class,
+            SurveyorServiceProvider::class,
+            WorkbenchServiceProvider::class,
         ];
     }
 
@@ -86,26 +92,27 @@ class TestCase extends Orchestra
 
         config()->set([
             'database.default' => 'testing',
-            'app.key' => 'base64:yTtQNlEOB1IqYydLG9Z5pKRSxhZffdOxT1iuZIJi+eM=',
-            'ts-publish.output_directory' => workbench_path('resources/js/types/'),
-            'ts-publish.output_globals_file' => true,
-            'ts-publish.output_json_file' => true,
-            'ts-publish.output_collected_files_json' => true,
-            'ts-publish.additional_model_directories' => [
+            'ts-publish.output_directory' => workbench_path('resources/js/types/data/testing/'),
+            'ts-publish.globals.enabled' => true,
+            'ts-publish.json.enabled' => true,
+            'ts-publish.watcher.enabled' => true,
+            'ts-publish.vite_env.enabled' => true,
+            'ts-publish.inertia.enabled' => true,
+            'ts-publish.models.additional_directories' => [
                 DatabaseNotification::class,
                 Invoice::class,
                 Shipment::class,
                 "Workbench\Shipping\Models\FalseShipmentClass",
                 ...$modules,
             ],
-            'ts-publish.additional_enum_directories' => [
+            'ts-publish.enums.additional_directories' => [
                 InvoiceStatus::class,
                 PaymentStatus::class,
                 Status::class,
                 "Workbench\Shipping\Enums\FalseStatusClass",
                 ...$modules,
             ],
-            'ts-publish.additional_resource_directories' => $modules,
+            'ts-publish.resources.additional_directories' => $modules,
         ]);
     }
 }

@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Runners;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
 use Illuminate\Support\Collection;
@@ -26,19 +27,13 @@ abstract class BaseRunner
     /** @var Collection<int, ResourceGenerator> */
     public protected(set) Collection $resourceGenerators;
 
-    public protected(set) string $enumBarrelContent = '';
-
-    public protected(set) string $modelBarrelContent = '';
-
-    /** @var array<string, string> Barrel contents keyed by namespace path (modular mode only) */
+    /** @var array<string, string> Barrel contents keyed by namespace path */
     public protected(set) array $enumModularBarrels = [];
 
-    /** @var array<string, string> Barrel contents keyed by namespace path (modular mode only) */
+    /** @var array<string, string> Barrel contents keyed by namespace path */
     public protected(set) array $modelModularBarrels = [];
 
-    public protected(set) string $resourceBarrelContent = '';
-
-    /** @var array<string, string> Barrel contents keyed by namespace path (modular mode only) */
+    /** @var array<string, string> Barrel contents keyed by namespace path */
     public protected(set) array $resourceModularBarrels = [];
 
     public protected(set) string $globalsContent = '';
@@ -47,11 +42,23 @@ abstract class BaseRunner
 
     public protected(set) string $watcherJsonContent = '';
 
+    public protected(set) string $viteEnvContent = '';
+
+    public protected(set) string $inertiaConfigContent = '';
+
+    /** @var Collection<int, RouteGenerator> */
+    public protected(set) Collection $routeGenerators;
+
+    /** @var array<string, string> Barrel contents keyed by namespace path */
+    public protected(set) array $routeModularBarrels = [];
+
     public bool $shouldPublishEnums = true;
 
     public bool $shouldPublishModels = true;
 
     public bool $shouldPublishResources = true;
+
+    public bool $shouldPublishRoutes = true;
 
     abstract public function run(): void;
 }

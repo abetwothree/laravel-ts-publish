@@ -1,0 +1,16 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Workbench\App\Http\Controllers;
+
+/**
+ * Controller-level description.
+ */
+class DocBlockInvokableController
+{
+    /**
+     * Performs the invokable action.
+     */
+    public function __invoke(): void {}
+}

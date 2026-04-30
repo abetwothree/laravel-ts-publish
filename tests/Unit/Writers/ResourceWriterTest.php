@@ -51,22 +51,7 @@ test('does not write resource file when output_to_files is disabled', function (
     $writer->write($transformer);
 });
 
-test('writes to resources subdirectory in flat mode', function () {
-    $filesystem = Mockery::mock(Filesystem::class);
-    $filesystem->shouldReceive('ensureDirectoryExists')->once()
-        ->withArgs(fn (string $path) => str_ends_with($path, '/resources'));
-    $filesystem->shouldReceive('put')->once();
-
-    $writer = new ResourceWriter($filesystem);
-    $transformer = new ResourceTransformer(PostResource::class);
-
-    config()->set('ts-publish.output_to_files', true);
-    config()->set('ts-publish.modular_publishing', false);
-
-    $writer->write($transformer);
-});
-
-test('writes to namespace-based directory in modular mode', function () {
+test('writes to namespace-based directory', function () {
     $transformer = new ResourceTransformer(PostResource::class);
 
     $filesystem = Mockery::mock(Filesystem::class);
@@ -77,7 +62,6 @@ test('writes to namespace-based directory in modular mode', function () {
     $writer = new ResourceWriter($filesystem);
 
     config()->set('ts-publish.output_to_files', true);
-    config()->set('ts-publish.modular_publishing', true);
 
     $writer->write($transformer);
 });

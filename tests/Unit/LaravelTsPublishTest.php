@@ -84,9 +84,9 @@ describe('keyCase', function () {
     });
 });
 
-describe('phpToTypeScriptType', function () {
-    test('phpToTypeScriptType resolves exact map matches', function () {
-        $result = $this->service->phpToTypeScriptType('string');
+describe('toTsType', function () {
+    test('toTsType resolves exact map matches', function () {
+        $result = $this->service->toTsType('string');
 
         expect($result['type'])->toBe('string')
             ->and($result['enums'])->toBeEmpty()
@@ -94,37 +94,37 @@ describe('phpToTypeScriptType', function () {
             ->and($result['classes'])->toBeEmpty();
     });
 
-    test('phpToTypeScriptType resolves integer to number', function () {
-        expect($this->service->phpToTypeScriptType('integer')['type'])->toBe('number');
+    test('toTsType resolves integer to number', function () {
+        expect($this->service->toTsType('integer')['type'])->toBe('number');
     });
 
-    test('phpToTypeScriptType resolves boolean', function () {
-        expect($this->service->phpToTypeScriptType('boolean')['type'])->toBe('boolean');
+    test('toTsType resolves boolean', function () {
+        expect($this->service->toTsType('boolean')['type'])->toBe('boolean');
     });
 
-    test('phpToTypeScriptType resolves class with TsType attribute', function () {
-        $result = $this->service->phpToTypeScriptType(TsTypeAnnotatedCast::class);
+    test('toTsType resolves class with TsType attribute', function () {
+        $result = $this->service->toTsType(TsTypeAnnotatedCast::class);
 
         expect($result['type'])->toBe('CustomTsType')
             ->and($result['customImports'])->toBeEmpty();
     });
 
-    test('phpToTypeScriptType resolves class with TsType array attribute including import', function () {
-        $result = $this->service->phpToTypeScriptType(TsTypeAnnotatedCastWithImport::class);
+    test('toTsType resolves class with TsType array attribute including import', function () {
+        $result = $this->service->toTsType(TsTypeAnnotatedCastWithImport::class);
 
         expect($result['type'])->toBe('ProductDimensions')
             ->and($result['customImports'])->toBe(['@js/types/product' => ['ProductDimensions']]);
     });
 
-    test('phpToTypeScriptType resolves class with TsType array attribute without import', function () {
-        $result = $this->service->phpToTypeScriptType(TsTypeAnnotatedCastWithoutImport::class);
+    test('toTsType resolves class with TsType array attribute without import', function () {
+        $result = $this->service->toTsType(TsTypeAnnotatedCastWithoutImport::class);
 
         expect($result['type'])->toBe('InlineCustomType')
             ->and($result['customImports'])->toBeEmpty();
     });
 
-    test('phpToTypeScriptType resolves enum class to Type alias', function () {
-        $result = $this->service->phpToTypeScriptType(Status::class);
+    test('toTsType resolves enum class to Type alias', function () {
+        $result = $this->service->toTsType(Status::class);
 
         expect($result['type'])->toBe('StatusType')
             ->and($result['enums'])->toBe(['Status'])
@@ -132,8 +132,8 @@ describe('phpToTypeScriptType', function () {
             ->and($result['enumFqcns'])->toBe([Status::class]);
     });
 
-    test('phpToTypeScriptType resolves unit enum class', function () {
-        $result = $this->service->phpToTypeScriptType(Role::class);
+    test('toTsType resolves unit enum class', function () {
+        $result = $this->service->toTsType(Role::class);
 
         expect($result['type'])->toBe('RoleType')
             ->and($result['enums'])->toBe(['Role'])
@@ -141,92 +141,92 @@ describe('phpToTypeScriptType', function () {
             ->and($result['enumFqcns'])->toBe([Role::class]);
     });
 
-    test('phpToTypeScriptType resolves enum with TsEnum attribute to custom name', function () {
-        $result = $this->service->phpToTypeScriptType(ShippingStatus::class);
+    test('toTsType resolves enum with TsEnum attribute to custom name', function () {
+        $result = $this->service->toTsType(ShippingStatus::class);
 
         expect($result['type'])->toBe('ShipmentStatusType')
             ->and($result['enums'])->toBe(['ShipmentStatus'])
             ->and($result['enumTypes'])->toBe(['ShipmentStatusType']);
     });
 
-    test('phpToTypeScriptType resolves enum without TsEnum to default name', function () {
-        $result = $this->service->phpToTypeScriptType(Status::class);
+    test('toTsType resolves enum without TsEnum to default name', function () {
+        $result = $this->service->toTsType(Status::class);
 
         expect($result['type'])->toBe('StatusType')
             ->and($result['enums'])->toBe(['Status'])
             ->and($result['enumTypes'])->toBe(['StatusType']);
     });
 
-    test('phpToTypeScriptType resolves CastsAttributes class via get return type', function () {
-        $result = $this->service->phpToTypeScriptType(StringReturnCast::class);
+    test('toTsType resolves CastsAttributes class via get return type', function () {
+        $result = $this->service->toTsType(StringReturnCast::class);
 
         expect($result['type'])->toBe('string');
     });
 
-    test('phpToTypeScriptType resolves CastsAttributes with unknown get return to unknown', function () {
-        $result = $this->service->phpToTypeScriptType(UnknownReturnCast::class);
+    test('toTsType resolves CastsAttributes with unknown get return to unknown', function () {
+        $result = $this->service->toTsType(UnknownReturnCast::class);
 
         expect($result['type'])->toBe('unknown');
     });
 
-    test('phpToTypeScriptType resolves any other class to its basename', function () {
-        $result = $this->service->phpToTypeScriptType(User::class);
+    test('toTsType resolves any other class to its basename', function () {
+        $result = $this->service->toTsType(User::class);
 
         expect($result['type'])->toBe('User')
             ->and($result['classes'])->toBe(['User'])
             ->and($result['classFqcns'])->toBe([User::class]);
     });
 
-    test('phpToTypeScriptType resolves Illuminate support collections to array or object shapes', function () {
-        $result = $this->service->phpToTypeScriptType(Collection::class);
+    test('toTsType resolves Illuminate support collections to array or object shapes', function () {
+        $result = $this->service->toTsType(Collection::class);
 
         expect($result['type'])->toBe('unknown[] | Record<string, unknown>')
             ->and($result['classes'])->toBeEmpty();
     });
 
-    test('phpToTypeScriptType resolves Eloquent collections to arrays', function () {
-        $result = $this->service->phpToTypeScriptType(Illuminate\Database\Eloquent\Collection::class);
+    test('toTsType resolves Eloquent collections to arrays', function () {
+        $result = $this->service->toTsType(Illuminate\Database\Eloquent\Collection::class);
 
         expect($result['type'])->toBe('Record<string, unknown>')
             ->and($result['classes'])->toBeEmpty();
     });
 
-    test('phpToTypeScriptType resolves encrypted compound casts', function () {
-        expect($this->service->phpToTypeScriptType('encrypted:array')['type'])->toBe('unknown[]');
+    test('toTsType resolves encrypted compound casts', function () {
+        expect($this->service->toTsType('encrypted:array')['type'])->toBe('unknown[]');
     });
 
-    test('phpToTypeScriptType resolves partial map matches', function () {
+    test('toTsType resolves partial map matches', function () {
         // "varchar(255)" contains "varchar" → string
-        expect($this->service->phpToTypeScriptType('varchar(255)')['type'])->toBe('string');
+        expect($this->service->toTsType('varchar(255)')['type'])->toBe('string');
     });
 
-    test('phpToTypeScriptType returns unknown for unresolvable types', function () {
-        expect($this->service->phpToTypeScriptType('some_completely_fake_type')['type'])->toBe('unknown');
+    test('toTsType returns unknown for unresolvable types', function () {
+        expect($this->service->toTsType('some_completely_fake_type')['type'])->toBe('unknown');
     });
 
     // Nullable shorthand ?T
-    test('phpToTypeScriptType resolves ?string to string | null', function () {
-        $result = $this->service->phpToTypeScriptType('?string');
+    test('toTsType resolves ?string to string | null', function () {
+        $result = $this->service->toTsType('?string');
 
         expect($result['type'])->toBe('string | null');
     });
 
-    test('phpToTypeScriptType resolves ?int to number | null', function () {
-        $result = $this->service->phpToTypeScriptType('?int');
+    test('toTsType resolves ?int to number | null', function () {
+        $result = $this->service->toTsType('?int');
 
         expect($result['type'])->toBe('number | null');
     });
 
-    test('phpToTypeScriptType resolves ?Status enum to StatusType | null', function () {
-        $result = $this->service->phpToTypeScriptType('?'.Status::class);
+    test('toTsType resolves ?Status enum to StatusType | null', function () {
+        $result = $this->service->toTsType('?'.Status::class);
 
         expect($result['type'])->toBe('StatusType | null')
             ->and($result['enumFqcns'])->toContain(Status::class);
     });
 
     // Arrayable (step 5a)
-    test('phpToTypeScriptType resolves Arrayable class to unknown[]', function () {
-        $result = $this->service->phpToTypeScriptType(ArrayableValueObject::class);
+    test('toTsType resolves Arrayable class to unknown[]', function () {
+        $result = $this->service->toTsType(ArrayableValueObject::class);
 
         expect($result['type'])->toBe('unknown[]')
             ->and($result['classes'])->toBeEmpty()
@@ -234,8 +234,8 @@ describe('phpToTypeScriptType', function () {
     });
 
     // __toString (step 5b)
-    test('phpToTypeScriptType resolves class with __toString to string', function () {
-        $result = $this->service->phpToTypeScriptType(StringableValueObject::class);
+    test('toTsType resolves class with __toString to string', function () {
+        $result = $this->service->toTsType(StringableValueObject::class);
 
         expect($result['type'])->toBe('string')
             ->and($result['classes'])->toBeEmpty()
@@ -243,28 +243,28 @@ describe('phpToTypeScriptType', function () {
     });
 
     // PHPStan primitives
-    test('phpToTypeScriptType resolves numeric-string to string via exact map', function () {
-        expect($this->service->phpToTypeScriptType('numeric-string')['type'])->toBe('string');
+    test('toTsType resolves numeric-string to string via exact map', function () {
+        expect($this->service->toTsType('numeric-string')['type'])->toBe('string');
     });
 
-    test('phpToTypeScriptType resolves positive-int to number via partial map match', function () {
-        expect($this->service->phpToTypeScriptType('positive-int')['type'])->toBe('number');
+    test('toTsType resolves positive-int to number via partial map match', function () {
+        expect($this->service->toTsType('positive-int')['type'])->toBe('number');
     });
 
-    test('phpToTypeScriptType resolves array-key to string | number', function () {
-        expect($this->service->phpToTypeScriptType('array-key')['type'])->toBe('string | number');
+    test('toTsType resolves array-key to string | number', function () {
+        expect($this->service->toTsType('array-key')['type'])->toBe('string | number');
     });
 
-    test('phpToTypeScriptType resolves scalar to string | number | boolean', function () {
-        expect($this->service->phpToTypeScriptType('scalar')['type'])->toBe('string | number | boolean');
+    test('toTsType resolves scalar to string | number | boolean', function () {
+        expect($this->service->toTsType('scalar')['type'])->toBe('string | number | boolean');
     });
 
-    test('phpToTypeScriptType resolves never to never', function () {
-        expect($this->service->phpToTypeScriptType('never')['type'])->toBe('never');
+    test('toTsType resolves never to never', function () {
+        expect($this->service->toTsType('never')['type'])->toBe('never');
     });
 
-    test('phpToTypeScriptType resolves void to void', function () {
-        expect($this->service->phpToTypeScriptType('void')['type'])->toBe('void');
+    test('toTsType resolves void to void', function () {
+        expect($this->service->toTsType('void')['type'])->toBe('void');
     });
 });
 
@@ -377,6 +377,220 @@ describe('docblockReturnTypes', function () {
 
         expect($result['type'])->toBe('unknown');
     });
+
+    test('docblockReturnTypes handles multiline @return array shape', function () {
+        $method = new ReflectionMethod(DocblockReturnClass::class, 'multilineArrayShape');
+        $result = $this->service->docblockReturnTypes($method);
+
+        // docblockReturnTypes passes the whole type through toTsType() which
+        // partial-matches 'array' to unknown[] — use parseDocblockReturnArrayShape
+        // for per-key type resolution instead
+        expect($result['type'])->toBe('unknown[]');
+    });
+
+    test('docblockReturnTypes handles single-line @return array shape', function () {
+        $method = new ReflectionMethod(DocblockReturnClass::class, 'singleLineArrayShape');
+        $result = $this->service->docblockReturnTypes($method);
+
+        expect($result['type'])->toBe('unknown[]');
+    });
+});
+
+describe('extractReturnTypeFromDocblock', function () {
+    test('extracts simple @return type', function () {
+        $doc = <<<'DOC'
+        /**
+         * @return string
+         */
+        DOC;
+
+        expect($this->service->extractReturnTypeFromDocblock($doc))->toBe('string');
+    });
+
+    test('extracts union @return type', function () {
+        $doc = <<<'DOC'
+        /**
+         * @return string|null
+         */
+        DOC;
+
+        expect($this->service->extractReturnTypeFromDocblock($doc))->toBe('string|null');
+    });
+
+    test('extracts multiline array shape', function () {
+        $doc = <<<'DOC'
+        /**
+         * @return array{
+         *     name: string,
+         *     age: int
+         * }
+         */
+        DOC;
+
+        $result = $this->service->extractReturnTypeFromDocblock($doc);
+        expect($result)->toContain('array{')
+            ->and($result)->toContain('name: string')
+            ->and($result)->toContain('age: int');
+    });
+
+    test('extracts deeply nested multiline array shape', function () {
+        $doc = <<<'DOC'
+        /**
+         * @return array{
+         *      auth: array{
+         *          user: array{
+         *              id: int,
+         *              name: string
+         *          }|null
+         *      },
+         *      appName: string
+         *  }
+         */
+        DOC;
+
+        $result = $this->service->extractReturnTypeFromDocblock($doc);
+        expect($result)->toContain('array{')
+            ->and($result)->toContain('auth:')
+            ->and($result)->toContain('id: int');
+    });
+
+    test('returns null when no @return tag', function () {
+        $doc = <<<'DOC'
+        /**
+         * Just a description.
+         */
+        DOC;
+
+        expect($this->service->extractReturnTypeFromDocblock($doc))->toBeNull();
+    });
+
+    test('extracts array shape with spaced trailing union (array{...} | null)', function () {
+        $doc = <<<'DOC'
+        /**
+         * @return array{name: string, age: int} | null
+         */
+        DOC;
+
+        $result = $this->service->extractReturnTypeFromDocblock($doc);
+        expect($result)->toBe('array{name: string, age: int}|null');
+    });
+
+    test('extracts multiline array shape with spaced trailing union', function () {
+        $doc = <<<'DOC'
+        /**
+         * @return array{
+         *     name: string,
+         *     age: int
+         * } | null
+         */
+        DOC;
+
+        $result = $this->service->extractReturnTypeFromDocblock($doc);
+        expect($result)->toContain('array{')
+            ->and($result)->toContain('name: string')
+            ->and($result)->toContain('age: int')
+            ->and($result)->toContain('|null');
+    });
+});
+
+describe('splitPhpDocUnionType', function () {
+    test('splits simple union', function () {
+        expect($this->service->splitPhpDocUnionType('string|null'))
+            ->toBe(['string', 'null']);
+    });
+
+    test('returns single entry for non-union', function () {
+        expect($this->service->splitPhpDocUnionType('string'))
+            ->toBe(['string']);
+    });
+
+    test('respects nested braces in union', function () {
+        $type = 'array{name: string|null}|null';
+        $result = $this->service->splitPhpDocUnionType($type);
+
+        expect($result)->toBe(['array{name: string|null}', 'null']);
+    });
+});
+
+describe('parseDocblockReturnArrayShape', function () {
+    test('parses multiline @return array shape into key-type map', function () {
+        $method = new ReflectionMethod(DocblockReturnClass::class, 'multilineArrayShape');
+        $result = $this->service->parseDocblockReturnArrayShape($method);
+
+        expect($result)->toHaveKeys(['auth', 'flash', 'appName'])
+            ->and($result['appName'])->toBe('string')
+            ->and($result['flash'])->toBe('{ success: string | null, error: string | null }')
+            ->and($result['auth'])->toBe('{ user: { id: number, name: string, email: string } | null }');
+    });
+
+    test('parses single-line @return array shape', function () {
+        $method = new ReflectionMethod(DocblockReturnClass::class, 'singleLineArrayShape');
+        $result = $this->service->parseDocblockReturnArrayShape($method);
+
+        expect($result)->toBe(['name' => 'string', 'age' => 'number']);
+    });
+
+    test('returns empty array for non-array-shape @return', function () {
+        $method = new ReflectionMethod(DocblockReturnClass::class, 'simpleString');
+        $result = $this->service->parseDocblockReturnArrayShape($method);
+
+        expect($result)->toBe([]);
+    });
+
+    test('returns empty array when no docblock', function () {
+        $method = new ReflectionMethod(DocblockReturnClass::class, 'noDocblock');
+        $result = $this->service->parseDocblockReturnArrayShape($method);
+
+        expect($result)->toBe([]);
+    });
+});
+
+describe('resolvePhpDocTypeToTs', function () {
+    test('resolves simple PHP types', function () {
+        expect($this->service->resolvePhpDocTypeToTs('string', [], ''))
+            ->toBe('string')
+            ->and($this->service->resolvePhpDocTypeToTs('int', [], ''))
+            ->toBe('number')
+            ->and($this->service->resolvePhpDocTypeToTs('bool', [], ''))
+            ->toBe('boolean');
+    });
+
+    test('resolves nullable union types', function () {
+        expect($this->service->resolvePhpDocTypeToTs('string|null', [], ''))
+            ->toBe('string | null');
+    });
+
+    test('resolves nested array shape', function () {
+        $result = $this->service->resolvePhpDocTypeToTs('array{name: string, age: int}', [], '');
+
+        expect($result)->toBe('{ name: string, age: number }');
+    });
+
+    test('resolves array shape with nullable inner type', function () {
+        $result = $this->service->resolvePhpDocTypeToTs('array{user: string|null}', [], '');
+
+        expect($result)->toBe('{ user: string | null }');
+    });
+
+    test('returns Record<string, unknown> for empty array shape', function () {
+        // Covers the `return 'Record<string, unknown>'` fallback when
+        // parseArrayShapeToTsTypes returns [] for an empty array{}.
+        $result = $this->service->resolvePhpDocTypeToTs('array{}', [], '');
+
+        expect($result)->toBe('Record<string, unknown>');
+    });
+});
+
+describe('parseArrayShapeToTsTypes', function () {
+    test('returns empty array when shape does not start with array{', function () {
+        // Covers the guard `! str_starts_with($shape, 'array{') || ! str_ends_with($shape, '}')` branch.
+        expect($this->service->parseArrayShapeToTsTypes('string', [], ''))->toBe([]);
+    });
+
+    test('returns empty array for empty array shape array{}', function () {
+        // Covers the `if ($inner === '') { return []; }` branch.
+        expect($this->service->parseArrayShapeToTsTypes('array{}', [], ''))->toBe([]);
+    });
 });
 
 describe('attributeDocblockReturnTypes', function () {
@@ -485,6 +699,25 @@ describe('validJsObjectKey', function () {
     });
 });
 
+describe('safeJsIdentifier', function () {
+    test('appends suffix to reserved keywords', function () {
+        expect($this->service->safeJsIdentifier('delete', 'Method'))->toBe('deleteMethod')
+            ->and($this->service->safeJsIdentifier('export', 'Method'))->toBe('exportMethod')
+            ->and($this->service->safeJsIdentifier('in', 'Method'))->toBe('inMethod')
+            ->and($this->service->safeJsIdentifier('typeof', 'Method'))->toBe('typeofMethod')
+            ->and($this->service->safeJsIdentifier('delete', 'Controller'))->toBe('deleteController');
+    });
+
+    test('returns non-reserved identifiers unchanged', function () {
+        expect($this->service->safeJsIdentifier('index', 'Method'))->toBe('index')
+            ->and($this->service->safeJsIdentifier('show', 'Method'))->toBe('show');
+    });
+
+    test('is case-sensitive — PascalCase is not reserved', function () {
+        expect($this->service->safeJsIdentifier('Delete', 'Controller'))->toBe('Delete');
+    });
+});
+
 describe('toJsLiteral', function () {
     test('toJsLiteral converts null', function () {
         expect($this->service->toJsLiteral(null))->toBe('null');
@@ -529,6 +762,18 @@ describe('toJsLiteral', function () {
         $obj = (object) ['name' => 'test', 'value' => 42];
 
         expect($this->service->toJsLiteral($obj))->toBe("{name: 'test', value: 42}");
+    });
+});
+
+describe('routeArgsToJs', function () {
+    test('routeArgsToJs includes where constraint in output', function () {
+        $args = [
+            ['name' => 'id', 'required' => true, 'where' => '[0-9]+'],
+        ];
+
+        $result = $this->service->routeArgsToJs($args);
+
+        expect($result)->toContain("where: '[0-9]+'");
     });
 });
 
@@ -984,14 +1229,14 @@ describe('callCommandUsing and callCommandWith', function () {
 
     test('callCommandWith can modify config values', function () {
         LaravelTsPublish::callCommandUsing(function () {
-            config()->set('ts-publish.additional_model_directories', ['modules/Blog/Models']);
+            config()->set('ts-publish.models.additional_directories', ['modules/Blog/Models']);
         });
 
-        expect(config('ts-publish.additional_model_directories'))->not->toBe(['modules/Blog/Models']);
+        expect(config('ts-publish.models.additional_directories'))->not->toBe(['modules/Blog/Models']);
 
         $this->service->callCommandWith();
 
-        expect(config('ts-publish.additional_model_directories'))->toBe(['modules/Blog/Models']);
+        expect(config('ts-publish.models.additional_directories'))->toBe(['modules/Blog/Models']);
     });
 
     test('later callCommandUsing replaces the previous closure', function () {
@@ -1126,6 +1371,19 @@ describe('qualifyGlobalType', function () {
         );
 
         expect($result)->toBe('crm.models.User | null');
+    });
+
+    test('does not re-qualify bare names that belong to the skip namespace', function () {
+        // Image is in app.models — after Pass 1, AppUser becomes bare 'User'
+        // Pass 2 must NOT re-qualify that bare User with crm.models
+        $result = $this->service->qualifyGlobalType(
+            'Post | Product | AppUser | CrmUser',
+            ['app.models' => ['User', 'Post', 'Product'], 'crm.models' => ['User']],
+            'app.models',
+            ['AppUser' => 'app.models.User', 'CrmUser' => 'crm.models.User'],
+        );
+
+        expect($result)->toBe('Post | Product | User | crm.models.User');
     });
 });
 
@@ -1312,6 +1570,35 @@ class DocblockReturnClass
     public function nullableShorthand()
     {
         return null;
+    }
+
+    /**
+     * @return array{
+     *      auth: array{
+     *          user: array{
+     *              id: int,
+     *              name: string,
+     *              email: string
+     *          }|null
+     *      },
+     *      flash: array{
+     *          success: string|null,
+     *          error: string|null
+     *      },
+     *      appName: string
+     *  }
+     */
+    public function multilineArrayShape(): array
+    {
+        return [];
+    }
+
+    /**
+     * @return array{name: string, age: int}
+     */
+    public function singleLineArrayShape(): array
+    {
+        return [];
     }
 }
 
