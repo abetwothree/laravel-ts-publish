@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesClassNames;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Resources\Attributes\Collects;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node;
@@ -116,6 +117,10 @@ class ResourceAstAnalyzer
         });
 
         if (! $toArrayMethod instanceof ClassMethod || $toArrayMethod->stmts === null) {
+            if ($this->isResourceCollection()) {
+                return $this->buildCollectionDelegatedAnalysis();
+            }
+
             return $this->buildModelDelegatedAnalysis() ?? new ResourceAnalysis;
         }
 
@@ -1375,13 +1380,27 @@ class ResourceAstAnalyzer
     /**
      * Resolve the singular resource FQCN for a ResourceCollection.
      *
-     * Checks the explicit $collects property first, then falls back
-     * to naming convention (UserCollection → UserResource).
+     * Resolution order:
+     * 1. #[Collects] PHP attribute on the class (Laravel 12+)
+     * 2. Explicit $collects property default value
+     * 3. Naming convention: XCollection → XResource
      *
      * @return class-string<JsonResource>|null
      */
     protected function resolveSingularResourceClass(): ?string
     {
+        // Priority 1: #[Collects] attribute (Laravel 12+)
+        $collectsAttrs = $this->resourceReflection->getAttributes(Collects::class);
+
+        if ($collectsAttrs !== []) {
+            $collectsClass = $collectsAttrs[0]->newInstance()->class;
+
+            if (class_exists($collectsClass) && is_a($collectsClass, JsonResource::class, true)) {
+                return $collectsClass;
+            }
+        }
+
+        // Priority 2: explicit $collects property default value
         /** @var array<string, mixed> $defaults */
         $defaults = $this->resourceReflection->getDefaultProperties();
         $collects = $defaults['collects'] ?? null;
@@ -1410,6 +1429,53 @@ class ResourceAstAnalyzer
         }
 
         return null;
+    }
+
+    /**
+     * Build a ResourceAnalysis for a ResourceCollection subclass that has no toArray() method.
+     *
+     * Reads the $wrap key to determine the property name (default: 'data').
+     * - If $wrap is a non-empty string: generates `{ data: SingularResource[] }` interface shape
+     * - If $wrap is null: sets flatTypeAlias so the writer emits `export type X = SingularResource[]`
+     */
+    protected function buildCollectionDelegatedAnalysis(): ResourceAnalysis
+    {
+        $singular = $this->resolveSingularResourceClass();
+
+        if ($singular === null) {
+            return new ResourceAnalysis;
+        }
+
+        // Read the declared $wrap value from this class only (not inherited).
+        // $wrap is a static property on JsonResource (default: 'data').
+        $wrapKey = 'data';
+
+        if ($this->resourceReflection->hasProperty('wrap')) {
+            $wrapProp = $this->resourceReflection->getProperty('wrap');
+
+            if ($wrapProp->getDeclaringClass()->getName() === $this->resourceReflection->getName()) {
+                /** @var string|null $wrapKey */
+                $wrapKey = $wrapProp->getDefaultValue();
+            }
+        }
+
+        $singularBaseName = class_basename($singular);
+
+        if ($wrapKey === null || $wrapKey === '') {
+            return new ResourceAnalysis(flatTypeAlias: $singularBaseName.'[]', flatTypeAliasFqcn: $singular);
+        }
+
+        $key = $wrapKey ? $wrapKey : 'data';
+
+        return new ResourceAnalysis(
+            properties: [[
+                'name' => $key,
+                'type' => $singularBaseName.'[]',
+                'optional' => false,
+                'description' => '',
+            ]],
+            nestedResources: [$wrapKey => $singular],
+        );
     }
 
     /**
