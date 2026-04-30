@@ -2624,11 +2624,11 @@ describe('ResourceAstAnalyzer with PostFlatCollection ($wrap = null, no toArray)
 
     test('has flatTypeAlias set to PostResource[]', function () {
         expect($this->analysis->flatTypeAlias)->toBe('PostResource[]');
-    });
+    })->skip(fn () => ! version_compare(app()->version(), '13', '>='));
 
     test('has flatTypeAliasFqcn pointing to PostResource', function () {
         expect($this->analysis->flatTypeAliasFqcn)->toBe(PostResource::class);
-    });
+    })->skip(fn () => ! version_compare(app()->version(), '13', '>='));
 
     test('has no properties (type alias skips interface shape)', function () {
         expect($this->analysis->properties)->toBeEmpty();

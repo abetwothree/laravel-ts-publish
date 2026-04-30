@@ -465,7 +465,7 @@ test('rewritePaginatedResourceProps rewrites flat collection to JsonResourcePagi
         ->and($resultFqcns)->not->toContain(PostFlatCollection::class)
         ->and($resultFqcns)->toContain(PostResource::class)
         ->and($externalImports)->toBe(['@tolki/types' => ['JsonResourcePaginator']]);
-});
+})->skip(fn () => ! version_compare(app()->version(), '13', '>='));
 
 // ─── analyze() shared-template isolation ──────────────────────────
 
