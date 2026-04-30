@@ -26,6 +26,7 @@ use JsonSerializable;
  *     valueImports: ValuesImportMap,
  *     modelClass: class-string|null,
  *     tsExtends: list<string>,
+ *     typeAlias: string|null,
  * }
  *
  * @implements Arrayable<string, string|PropertiesList|TypesImportMap|ValuesImportMap|list<string>|null>
@@ -50,6 +51,7 @@ final readonly class TsResourceDto implements Arrayable, Datable, Jsonable, Json
         public array $valueImports = [],
         public ?string $modelClass = null,
         public array $tsExtends = [],
+        public ?string $typeAlias = null,
     ) {}
 
     /** @return ResourceData */
@@ -66,6 +68,7 @@ final readonly class TsResourceDto implements Arrayable, Datable, Jsonable, Json
             'valueImports' => $this->valueImports,
             'modelClass' => $this->modelClass,
             'tsExtends' => $this->tsExtends,
+            'typeAlias' => $this->typeAlias,
         ];
     }
 
