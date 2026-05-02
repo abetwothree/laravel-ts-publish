@@ -37,6 +37,14 @@ class CommentResource extends JsonResource
             'post_direct' => new PostResource($this->post),
             'post_limited' => $this->post->only(['id', 'title']), // relation with only specific attributes
             'post_extended' => $this->post?->except(['created_at', 'updated_at']), // relation with except specific attributes
+            'user_name' => $this->whenLoaded('user', fn (): ?string => $this->user->name),
+            'user_email' => $this->whenLoaded('user', fn (): ?string => $this->resource->user->email),
+            'user_name_nullable' => $this->whenLoaded('user', fn (): ?string => $this->user?->name),
+            'user_email_nullable' => $this->whenLoaded('user', fn (): ?string => $this->resource->user?->email),
+            'user_role' => $this->user?->role,
+            'user_profile' => $this->resource->user?->profile,
+            'user_profile_bio' => $this->user?->profile?->bio,
+            'user_profile_avatar_url' => $this->resource->user?->profile?->avatar_url,
         ];
     }
 }
