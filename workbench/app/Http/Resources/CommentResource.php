@@ -38,7 +38,7 @@ class CommentResource extends JsonResource
             'post_limited' => $this->post->only(['id', 'title']), // relation with only specific attributes
             'post_extended' => $this->post?->except(['created_at', 'updated_at']), // relation with except specific attributes
             'user_name' => $this->whenLoaded('user', fn (): ?string => $this->user->name),
-            'user_email' => $this->whenLoaded('user', fn (): ?string => $this->resource->user->email),
+            'user_email' => $this->whenLoaded('user', fn (): ?string => $this->resource->user->email), // annotation fallback test — 3-deep non-nullsafe chain is unresolvable, so ?string annotation kicks in
             'user_name_nullable' => $this->whenLoaded('user', fn (): ?string => $this->user?->name),
             'user_email_nullable' => $this->whenLoaded('user', fn (): ?string => $this->resource->user?->email),
             'user_role' => $this->user?->role,

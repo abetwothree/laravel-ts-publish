@@ -1175,7 +1175,7 @@ class ResourceAstAnalyzer
         }
 
         // Whether any step in the chain uses ?-> (making the whole expression nullable)
-        $hasNullable = count(array_filter($chain, fn (array $step): bool => $step['nullable'])) > 0;
+        $hasNullable = array_any($chain, fn (array $step): bool => $step['nullable']);
 
         // Traverse all intermediate steps, updating $currentModel to the related model at each step
         $count = count($chain);
