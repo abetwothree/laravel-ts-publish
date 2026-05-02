@@ -25,6 +25,7 @@ use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\ProfileResource;
 use Workbench\App\Http\Resources\ServiceDeskResource;
+use Workbench\App\Http\Resources\ToArrayCastsResource;
 use Workbench\App\Http\Resources\TraitSpreadCoverageResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Http\Resources\WarehouseResource;
@@ -224,6 +225,121 @@ describe('ResourceTransformer with CommentResource', function () {
 
         expect($data->properties['post']['type'])->toBe('PostResource');
         expect($data->properties['post']['optional'])->toBeTrue();
+    });
+
+    // closure return-type annotation as fallback ───────────────────
+
+    test('body wins over annotation — user_name is string not nullable', function () {
+        $data = (new ResourceTransformer(CommentResource::class))->data();
+
+        expect($data->properties['user_name']['type'])->toBe('string');
+        expect($data->properties['user_name']['optional'])->toBeTrue();
+    });
+
+    test('annotation fallback fires when body is unknown — user_email is string|null', function () {
+        $data = (new ResourceTransformer(CommentResource::class))->data();
+
+        expect($data->properties['user_email']['type'])->toBe('string | null');
+        expect($data->properties['user_email']['optional'])->toBeTrue();
+    });
+
+    // nullsafe chains inside whenLoaded closures ──────────────────
+
+    test('nullsafe chain in closure resolves to correct type — user_name_nullable is string|null', function () {
+        $data = (new ResourceTransformer(CommentResource::class))->data();
+
+        expect($data->properties['user_name_nullable']['type'])->toBe('string | null');
+        expect($data->properties['user_name_nullable']['optional'])->toBeTrue();
+    });
+
+    test('nullsafe chain in closure resolves to correct type — user_email_nullable is string|null', function () {
+        $data = (new ResourceTransformer(CommentResource::class))->data();
+
+        expect($data->properties['user_email_nullable']['type'])->toBe('string | null');
+        expect($data->properties['user_email_nullable']['optional'])->toBeTrue();
+    });
+
+    // top-level nullsafe chains ───────────────────────────────────
+
+    test('top-level nullsafe resolves enum — user_role is RoleType|null', function () {
+        config()->set('ts-publish.enums_use_tolki_package', false);
+        $data = (new ResourceTransformer(CommentResource::class))->data();
+
+        expect($data->properties['user_role']['type'])->toBe('RoleType | null');
+        expect($data->properties['user_role']['optional'])->toBeFalse();
+    });
+
+    test('top-level nullsafe enum imports RoleType from enums', function () {
+        config()->set('ts-publish.enums_use_tolki_package', false);
+        $data = (new ResourceTransformer(CommentResource::class))->data();
+
+        expect($data->typeImports)->toHaveKey('../enums');
+        expect($data->typeImports['../enums'])->toContain('RoleType');
+    });
+
+    test('top-level nullsafe skips resource wrapper — user_profile is Profile|null', function () {
+        $data = (new ResourceTransformer(CommentResource::class))->data();
+
+        expect($data->properties['user_profile']['type'])->toBe('Profile | null');
+        expect($data->properties['user_profile']['optional'])->toBeFalse();
+    });
+
+    test('top-level nullsafe relation imports Profile from models', function () {
+        $data = (new ResourceTransformer(CommentResource::class))->data();
+
+        expect($data->typeImports)->toHaveKey('../models');
+        expect($data->typeImports['../models'])->toContain('Profile');
+    });
+
+    test('multi-hop nullsafe resolves attribute — user_profile_bio is string|null', function () {
+        $data = (new ResourceTransformer(CommentResource::class))->data();
+
+        expect($data->properties['user_profile_bio']['type'])->toBe('string | null');
+        expect($data->properties['user_profile_bio']['optional'])->toBeFalse();
+    });
+
+    test('multi-hop nullsafe resolves attribute — user_profile_avatar_url is string|null', function () {
+        $data = (new ResourceTransformer(CommentResource::class))->data();
+
+        expect($data->properties['user_profile_avatar_url']['type'])->toBe('string | null');
+        expect($data->properties['user_profile_avatar_url']['optional'])->toBeFalse();
+    });
+});
+
+describe('ResourceTransformer with ToArrayCastsResource — #[TsResourceCasts] on toArray() method', function () {
+    test('overrides property type — role becomes string', function () {
+        $data = (new ResourceTransformer(ToArrayCastsResource::class))->data();
+
+        expect($data->properties['role']['type'])->toBe('string');
+        expect($data->properties['role']['optional'])->toBeFalse();
+    });
+
+    test('overrides type and sets optional — email becomes string|null and optional', function () {
+        $data = (new ResourceTransformer(ToArrayCastsResource::class))->data();
+
+        expect($data->properties['email']['type'])->toBe('string | null');
+        expect($data->properties['email']['optional'])->toBeTrue();
+    });
+
+    test('injects property not in return array — injected_field is Record<string, unknown>', function () {
+        $data = (new ResourceTransformer(ToArrayCastsResource::class))->data();
+
+        expect($data->properties['injected_field']['type'])->toBe('Record<string, unknown>');
+        expect($data->properties['injected_field']['optional'])->toBeFalse();
+    });
+
+    test('registers custom import for GeoPoint', function () {
+        $data = (new ResourceTransformer(ToArrayCastsResource::class))->data();
+
+        expect($data->typeImports)->toHaveKey('@/types/geo');
+        expect($data->typeImports['@/types/geo'])->toContain('GeoPoint');
+    });
+
+    test('unoverridden properties remain unaffected — id is number — name is string', function () {
+        $data = (new ResourceTransformer(ToArrayCastsResource::class))->data();
+
+        expect($data->properties['id']['type'])->toBe('number');
+        expect($data->properties['name']['type'])->toBe('string');
     });
 });
 
