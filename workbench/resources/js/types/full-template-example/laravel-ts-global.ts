@@ -1384,6 +1384,14 @@ declare global {
             post_direct: PostResource;
             post_limited: { id: number; title: string };
             post_extended: { id: number; title: string; content: string; user_id: number; status: enums.StatusType; published_at: string | null; metadata: unknown[] | null; rating: number | null; category: string; options: unknown[] | null; deleted_at: string | null; category_id: number | null; visibility: enums.VisibilityType | null; priority: enums.PriorityType | null; word_count: number | null; reading_time_minutes: number | null; featured_image_url: string | null; is_pinned: boolean; title_display: string | null; excerpt: string | null; reading_time: string; author: models.User; categoryRel: models.Category | null; comments: models.Comment[]; tags: models.Tag[]; images: models.Image[] } | null;
+            user_name?: string;
+            user_email?: string | null;
+            user_name_nullable?: string | null;
+            user_email_nullable?: string | null;
+            user_role: enums.RoleType | null;
+            user_profile: models.Profile | null;
+            user_profile_bio: string | null;
+            user_profile_avatar_url: string | null;
         }
         /** Child resource that uses SharedExtendsInterface AND extends a parent that also uses it. SharedExtendsInterface should appear only once in the result despite being reachable via two paths. */
         export interface ChildSharedResource extends SharedInterface {
@@ -1472,6 +1480,15 @@ declare global {
             products_count?: number;
             posts?: PostResource[];
             products?: ProductResource[];
+        }
+        /** Fixture resource used to test #[TsResourceCasts] placed on the toArray() method rather than on the class. No class-level annotation is present on purpose so that method-level behavior is tested in isolation. */
+        export interface ToArrayCastsResource {
+            id: number;
+            name: string;
+            email?: string | null;
+            role: string;
+            injected_field: Record<string, unknown>;
+            coordinates: GeoPoint;
         }
         /** User account resource. */
         export interface UserResource {
