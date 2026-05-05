@@ -4886,13 +4886,68 @@
                 "optional": false
             },
             {
+                "name": "post_title",
+                "type": "string",
+                "optional": true
+            },
+            {
+                "name": "post_content",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "post_title_display",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "post_author",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "post_resource_title",
+                "type": "string",
+                "optional": true
+            },
+            {
+                "name": "post_resource_content",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "post_resource_title_display",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "post_resource_author",
+                "type": "string | null",
+                "optional": true
+            },
+            {
                 "name": "user_name",
                 "type": "string",
                 "optional": true
             },
             {
                 "name": "user_email",
+                "type": "string",
+                "optional": true
+            },
+            {
+                "name": "user_email_annotated",
                 "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "unresolvable_status",
+                "type": "unknown",
+                "optional": true
+            },
+            {
+                "name": "resolvable_status",
+                "type": "StatusType",
                 "optional": true
             },
             {
@@ -6410,12 +6465,12 @@
             },
             {
                 "name": "user_name",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             },
             {
                 "name": "user_email",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             }
         ],

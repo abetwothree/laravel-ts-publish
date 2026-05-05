@@ -1304,8 +1304,19 @@ declare global {
             post_direct: PostResource;
             post_limited: { id: number; title: string };
             post_extended: { id: number; title: string; content: string; user_id: number; status: crm.enums.StatusType; published_at: string | null; metadata: unknown[] | null; rating: number | null; category: string; options: unknown[] | null; deleted_at: string | null; category_id: number | null; visibility: app.enums.VisibilityType | null; priority: app.enums.PriorityType | null; word_count: number | null; reading_time_minutes: number | null; featured_image_url: string | null; is_pinned: boolean; title_display: string | null; excerpt: string | null; reading_time: string; author: crm.models.User; categoryRel: app.models.Category | null; comments: app.models.Comment[]; tags: app.models.Tag[]; images: app.models.Image[] } | null;
+            post_title?: string;
+            post_content?: string | null;
+            post_title_display?: string | null;
+            post_author?: string | null;
+            post_resource_title?: string;
+            post_resource_content?: string | null;
+            post_resource_title_display?: string | null;
+            post_resource_author?: string | null;
             user_name?: string;
-            user_email?: string | null;
+            user_email?: string;
+            user_email_annotated?: string | null;
+            unresolvable_status?: unknown;
+            resolvable_status?: crm.enums.StatusType;
             user_name_nullable?: string | null;
             user_email_nullable?: string | null;
             user_role: app.enums.RoleType | null;
@@ -1721,8 +1732,8 @@ declare global {
         /** Exercises resolveClosureReturnExpression with a Closure passed to merge(). The closure has a guard clause followed by the real array return. */
         export interface MergeClosureResource {
             id: number;
-            user_name: unknown;
-            user_email: unknown;
+            user_name: string;
+            user_email: string;
         }
         export interface MediaTypeInstanceOfResource {
             name: string;
