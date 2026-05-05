@@ -236,11 +236,37 @@ describe('ResourceTransformer with CommentResource', function () {
         expect($data->properties['user_name']['optional'])->toBeTrue();
     });
 
-    test('annotation fallback fires when body is unknown — user_email is string|null', function () {
+    test('non-nullsafe chain traversal — user_email resolves to string via body', function () {
+        // `fn (): ?string => $this->resource->user->email` — body resolved by analyzePropertyChain.
         $data = (new ResourceTransformer(CommentResource::class))->data();
 
-        expect($data->properties['user_email']['type'])->toBe('string | null');
+        expect($data->properties['user_email']['type'])->toBe('string');
         expect($data->properties['user_email']['optional'])->toBeTrue();
+    });
+
+    test('annotation fallback fires when body is a FuncCall — user_email_annotated is string|null', function () {
+        // `fn (): ?string => strtolower(...)` — FuncCall body is unresolvable; ?string annotation kicks in.
+        $data = (new ResourceTransformer(CommentResource::class))->data();
+
+        expect($data->properties['user_email_annotated']['type'])->toBe('string | null');
+        expect($data->properties['user_email_annotated']['optional'])->toBeTrue();
+    });
+
+    test('no annotation and unresolvable body — unresolvable_status is unknown', function () {
+        // `fn () => $this->resource->user->role` — no annotation, body unresolvable → unknown
+        $data = (new ResourceTransformer(CommentResource::class))->data();
+
+        expect($data->properties['unresolvable_status']['type'])->toBe('unknown');
+        expect($data->properties['unresolvable_status']['optional'])->toBeTrue();
+    });
+
+    test('enum annotation fallback resolves type — resolvable_status is StatusType', function () {
+        // `fn (): Status => $this->resource->user->role` — body unresolvable; Status annotation
+        // resolves to StatusType with FQCN tracking via the annotation fallback.
+        $data = (new ResourceTransformer(CommentResource::class))->data();
+
+        expect($data->properties['resolvable_status']['type'])->toBe('StatusType');
+        expect($data->properties['resolvable_status']['optional'])->toBeTrue();
     });
 
     // nullsafe chains inside whenLoaded closures ──────────────────
@@ -303,6 +329,77 @@ describe('ResourceTransformer with CommentResource', function () {
 
         expect($data->properties['user_profile_avatar_url']['type'])->toBe('string | null');
         expect($data->properties['user_profile_avatar_url']['optional'])->toBeFalse();
+    });
+
+    // plain and nullsafe chain traversal inside whenLoaded — $this->post —————————
+
+    test('plain chain in whenLoaded closure — post_title resolves to string', function () {
+        $data = (new ResourceTransformer(CommentResource::class))->data();
+
+        expect($data->properties['post_title']['type'])->toBe('string');
+        expect($data->properties['post_title']['optional'])->toBeTrue();
+    });
+
+    test('nullsafe chain in whenLoaded closure — post_content is string|null', function () {
+        $data = (new ResourceTransformer(CommentResource::class))->data();
+
+        expect($data->properties['post_content']['type'])->toBe('string | null');
+        expect($data->properties['post_content']['optional'])->toBeTrue();
+    });
+
+    test('nullsafe accessor in whenLoaded closure — post_title_display is string|null', function () {
+        $data = (new ResourceTransformer(CommentResource::class))->data();
+
+        expect($data->properties['post_title_display']['type'])->toBe('string | null');
+        expect($data->properties['post_title_display']['optional'])->toBeTrue();
+    });
+
+    test('mixed chain in whenLoaded closure — post_author is string|null', function () {
+        $data = (new ResourceTransformer(CommentResource::class))->data();
+
+        expect($data->properties['post_author']['type'])->toBe('string | null');
+        expect($data->properties['post_author']['optional'])->toBeTrue();
+    });
+
+    // same chains via $this->resource ———————————————————————
+
+    test('resource wrapper skipped — post_resource_title resolves to string', function () {
+        $data = (new ResourceTransformer(CommentResource::class))->data();
+
+        expect($data->properties['post_resource_title']['type'])->toBe('string');
+        expect($data->properties['post_resource_title']['optional'])->toBeTrue();
+    });
+
+    test('resource wrapper skipped — post_resource_content is string|null', function () {
+        $data = (new ResourceTransformer(CommentResource::class))->data();
+
+        expect($data->properties['post_resource_content']['type'])->toBe('string | null');
+        expect($data->properties['post_resource_content']['optional'])->toBeTrue();
+    });
+
+    test('resource wrapper skipped — post_resource_title_display is string|null', function () {
+        $data = (new ResourceTransformer(CommentResource::class))->data();
+
+        expect($data->properties['post_resource_title_display']['type'])->toBe('string | null');
+        expect($data->properties['post_resource_title_display']['optional'])->toBeTrue();
+    });
+
+    test('resource wrapper skipped — post_resource_author is string|null', function () {
+        $data = (new ResourceTransformer(CommentResource::class))->data();
+
+        expect($data->properties['post_resource_author']['type'])->toBe('string | null');
+        expect($data->properties['post_resource_author']['optional'])->toBeTrue();
+    });
+
+    // $this->resource chains match $this-> chains ———————————————
+
+    test('resource-wrapped chains resolve identically to direct chains', function () {
+        $data = (new ResourceTransformer(CommentResource::class))->data();
+
+        expect($data->properties['post_resource_title']['type'])->toBe($data->properties['post_title']['type'])
+            ->and($data->properties['post_resource_content']['type'])->toBe($data->properties['post_content']['type'])
+            ->and($data->properties['post_resource_title_display']['type'])->toBe($data->properties['post_title_display']['type'])
+            ->and($data->properties['post_resource_author']['type'])->toBe($data->properties['post_author']['type']);
     });
 });
 

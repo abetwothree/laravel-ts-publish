@@ -2608,13 +2608,43 @@ describe('ResourceAstAnalyzer with CommentResource — nullsafe chains and closu
             ->and($prop['optional'])->toBeTrue();
     });
 
-    test('annotation fallback fires when body is unknown — user_email is string|null', function () {
-        // `fn (): ?string => $this->resource->user->email` — 3-deep chain is unresolvable; annotation ?string kicks in
+    test('non-nullsafe chain traversal — user_email resolves to string via body', function () {
+        // `fn (): ?string => $this->resource->user->email` — 3-deep non-nullsafe chain;
+        // body now resolved by analyzePropertyChain, winning over the ?string annotation.
         $prop = collect($this->analysis->properties)->firstWhere('name', 'user_email');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    test('annotation fallback fires when body is a FuncCall — user_email_annotated is string|null', function () {
+        // `fn (): ?string => strtolower(...)` — FuncCall body is unresolvable; ?string annotation kicks in.
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'user_email_annotated');
 
         expect($prop)->not->toBeNull()
             ->and($prop['type'])->toBe('string | null')
             ->and($prop['optional'])->toBeTrue();
+    });
+
+    test('no annotation and unresolvable body — unresolvable_status is unknown', function () {
+        // `fn () => $this->resource->user->role` — no return type annotation, body is unresolvable → unknown
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'unresolvable_status');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('unknown')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    test('enum annotation fallback resolves type and FQCN — resolvable_status is StatusType', function () {
+        // `fn (): Status => $this->resource->user->role` — body is unresolvable (3-deep non-nullsafe);
+        // Status annotation resolves to StatusType with directEnumFqcn tracking.
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'resolvable_status');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('StatusType')
+            ->and($prop['optional'])->toBeTrue()
+            ->and($this->analysis->directEnumFqcns['resolvable_status'])->toBe('Workbench\\App\\Enums\\Status');
     });
 
     // nullsafe chains inside whenLoaded closures ──────────────────
@@ -2683,6 +2713,94 @@ describe('ResourceAstAnalyzer with CommentResource — nullsafe chains and closu
         expect($prop)->not->toBeNull()
             ->and($prop['type'])->toBe('string | null')
             ->and($prop['optional'])->toBeFalse();
+    });
+
+    // plain and nullsafe chain traversal inside whenLoaded — $this->post —————————
+
+    test('plain chain in whenLoaded closure — post_title resolves to string', function () {
+        // `fn () => $this->post->title` — proxy step $this->post skipped via closureRelationModelClass;
+        // plain -> traversal resolves title on Post
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'post_title');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    test('nullsafe chain in whenLoaded closure — post_content is string|null', function () {
+        // `fn () => $this->post?->content` — proxy step skipped; ?-> appends | null
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'post_content');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string | null')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    test('nullsafe accessor in whenLoaded closure — post_title_display is string|null', function () {
+        // `fn () => $this->post?->title_display` — proxy step skipped; accessor returns string|null
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'post_title_display');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string | null')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    test('mixed chain in whenLoaded closure — post_author is string|null', function () {
+        // `fn () => $this->post->author?->name` — proxy step skipped; traverses author relation then resolves name
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'post_author');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string | null')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    // same chains via $this->resource ———————————————————————
+
+    test('resource wrapper skipped — post_resource_title resolves to string', function () {
+        // `fn () => $this->resource->post->title` — resource wrapper and proxy step skipped
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'post_resource_title');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    test('resource wrapper skipped — post_resource_content is string|null', function () {
+        // `fn () => $this->resource?->post?->content` — resource wrapper and proxy step skipped
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'post_resource_content');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string | null')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    test('resource wrapper skipped — post_resource_title_display is string|null', function () {
+        // `fn () => $this->resource->post?->title_display` — resource wrapper and proxy step skipped
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'post_resource_title_display');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string | null')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    test('resource wrapper skipped — post_resource_author is string|null', function () {
+        // `fn () => $this->resource->post->author?->name` — resource wrapper and proxy step skipped
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'post_resource_author');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string | null')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    // $this->resource chains match $this-> chains ———————————————
+
+    test('resource-wrapped chains resolve identically to direct chains', function () {
+        $props = collect($this->analysis->properties)->keyBy('name');
+
+        expect($props['post_resource_title']['type'])->toBe($props['post_title']['type'])
+            ->and($props['post_resource_content']['type'])->toBe($props['post_content']['type'])
+            ->and($props['post_resource_title_display']['type'])->toBe($props['post_title_display']['type'])
+            ->and($props['post_resource_author']['type'])->toBe($props['post_author']['type']);
     });
 });
 
