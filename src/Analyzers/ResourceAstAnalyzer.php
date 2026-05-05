@@ -18,19 +18,23 @@ use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
+use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\BooleanNot;
+use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\Instanceof_;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\NullsafeMethodCall;
+use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use PhpParser\Node\NullableType;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Do_;
@@ -43,6 +47,7 @@ use PhpParser\Node\Stmt\While_;
 use PhpParser\NodeFinder;
 use ReflectionClass;
 use ReflectionEnum;
+use ReflectionMethod;
 
 /**
  * Analyzes a JsonResource's toArray() method body to extract property names,
@@ -64,6 +69,11 @@ use ReflectionEnum;
  *      embeddedEnumFqcns?: list<class-string>,
  *      embeddedModelFqcns?: list<class-string>,
  *      embeddedResourceFqcns?: list<class-string>
+ * }
+ * @phpstan-type ClosureAnnotationResult = array{
+ *      type: string,
+ *      directEnumFqcn?: class-string,
+ *      modelFqcn?: class-string
  * }
  */
 class ResourceAstAnalyzer
@@ -133,6 +143,10 @@ class ResourceAstAnalyzer
         $branchAnalysis = $this->analyzeAllReturnBranches($toArrayMethod->stmts);
 
         if ($branchAnalysis !== null) {
+            if ($this->resourceReflection->hasMethod('toArray')) {
+                $this->applyTsResourceCastsFromMethod($this->resourceReflection->getMethod('toArray'), $branchAnalysis);
+            }
+
             return $branchAnalysis;
         }
 
@@ -371,15 +385,27 @@ class ResourceAstAnalyzer
             return $result; // @codeCoverageIgnore
         }
 
-        // Closures / arrow functions — collect all return expressions and build a union type
+        // Closures / arrow functions — analyze the body first. If that returns unknown,
+        // fall back to the return type annotation (e.g. `fn (): ?string => ...` → `string | null`).
         $closureReturns = $this->resolveClosureReturnExpressions($expr);
 
         if ($closureReturns !== []) {
-            if (count($closureReturns) === 1) {
-                return $this->analyzeValueExpression($closureReturns[0]);
+            $bodyResult = count($closureReturns) === 1
+                ? $this->analyzeValueExpression($closureReturns[0])
+                : $this->analyzeClosureUnion($closureReturns);
+
+            if ($bodyResult['type'] !== 'unknown') {
+                return $bodyResult;
             }
 
-            return $this->analyzeClosureUnion($closureReturns);
+            // Body is unknown — try the return type annotation as a fallback
+            $annotationResult = $this->resolveClosureAstReturnType($expr);
+
+            if ($annotationResult !== null) {
+                return [...$annotationResult, 'optional' => false];
+            }
+
+            return $bodyResult;
         }
 
         // $this->when(condition, value) or $this->when(condition, value, default)
@@ -464,6 +490,12 @@ class ResourceAstAnalyzer
             return $this->analyzeInlineArray($expr);
         }
 
+        // $this->anyProp?->subProp or $this->resource->anyProp?->subProp — nullsafe property chain
+        // e.g. $this->user?->role, $this->user?->profile?->bio, $this->resource->user?->profile
+        if ($expr instanceof NullsafePropertyFetch) {
+            return $this->analyzePropertyChain($expr);
+        }
+
         // $this->anyProp->subProp — e.g. $this->resource->name / ->value on a backed enum
         if ($expr instanceof PropertyFetch && $this->isThisPropertyFetch($expr->var)) {
             $info = $this->analyzeWrappedEnumResourceProperty($expr);
@@ -479,7 +511,25 @@ class ResourceAstAnalyzer
                 $info = $this->analyzeRelatedModelProperty($expr->name->toString());
             }
 
+            // Final fallback: general chain traversal (e.g. $this->resource->name when the
+            // specific enum/model-wrapped handlers cannot resolve it).
+            if ($info['type'] === 'unknown') {
+                $info = $this->analyzePropertyChain($expr);
+            }
+
             return $info;
+        }
+
+        // $this->anyProp->subProp->deepProp — plain (non-nullsafe) PropertyFetch chains of
+        // 3 or more levels rooted at $this (e.g. `$this->resource->user->role` inside a
+        // whenLoaded closure). The 2-deep handler above is skipped because $expr->var is not
+        // a direct $this->prop, so we fall through to the general chain traversal here.
+        if ($expr instanceof PropertyFetch) {
+            $info = $this->analyzePropertyChain($expr);
+
+            if ($info['type'] !== 'unknown') {
+                return $info;
+            }
         }
 
         // $this->anyProp->method() — e.g. $this->resource->extensions() on a backed enum or model
@@ -1065,6 +1115,277 @@ class ResourceAstAnalyzer
         }
 
         // Apply #[TsResourceCasts] attribute overrides from the method
+        $this->applyTsResourceCastsFromMethod($method, $analysis);
+
+        return $analysis;
+    }
+
+    /**
+     * Decompose a property-fetch expression rooted at `$this` into an ordered chain of
+     * `{name: string, nullable: bool}` steps. Returns null if the root is not `$this`.
+     *
+     * `nullable` is true when the access operator for that step is `?->` (NullsafePropertyFetch)
+     * meaning the chain returns null if the receiver is null.
+     *
+     * Example: `$this->resource->user?->profile?->bio`
+     *   → [{name:'resource',nullable:false},{name:'user',nullable:false},{name:'profile',nullable:true},{name:'bio',nullable:true}]
+     *
+     * @return list<array{name: string, nullable: bool}>|null
+     */
+    private function decomposePropertyChain(Expr $expr): ?array
+    {
+        /** @var list<array{name: string, nullable: bool}> $chain */
+        $chain = [];
+        $current = $expr;
+
+        while ($current instanceof PropertyFetch || $current instanceof NullsafePropertyFetch) {
+            if (! $current->name instanceof Identifier) {
+                return null;
+            }
+
+            $chain[] = [
+                'name' => $current->name->toString(),
+                'nullable' => $current instanceof NullsafePropertyFetch,
+            ];
+
+            $current = $current->var;
+        }
+
+        // Root must be $this
+        if (! $current instanceof Variable || $current->name !== 'this') {
+            return null;
+        }
+
+        return array_reverse($chain);
+    }
+
+    /**
+     * Analyze a property-fetch chain rooted at `$this` by traversing each relation and
+     * attribute step until the final property is resolved.
+     *
+     * Handles both plain `->` and nullsafe `?->` operators, or any mix of the two.
+     * If any step in the chain uses `?->`, `| null` is appended to the resolved type.
+     *
+     * Entry points:
+     * - NullsafePropertyFetch chains (e.g. `$this->user?->role`)
+     * - Plain PropertyFetch chains of any depth (e.g. `$this->resource->user->role`)
+     * - 2-deep chains like `$this->resource->name` as a final fallback after the specific
+     *   enum/model-wrapped handlers
+     *
+     * The starting model is `$this->closureRelationModelClass` when inside a whenLoaded
+     * closure, or `$this->modelClass` otherwise.
+     *
+     * @return ValueExpressionResult
+     */
+    private function analyzePropertyChain(Expr $expr): array
+    {
+        $chain = $this->decomposePropertyChain($expr);
+
+        if ($chain === null || $chain === []) {
+            return $this->unknownResult();
+        }
+
+        /** @var class-string<Model>|null $currentModel */
+        $currentModel = $this->closureRelationModelClass ?? $this->modelClass;
+
+        if ($currentModel === null) {
+            return $this->unknownResult();
+        }
+
+        $resolver = resolve(ModelAttributeResolver::class);
+
+        // Skip the `$this->resource` wrapper property when it is not a real model relation
+        if ($chain[0]['name'] === 'resource') {
+            $check = $resolver->resolveRelation($currentModel, 'resource');
+
+            if ($check['type'] === 'unknown') {
+                array_shift($chain);
+            }
+        }
+
+        if ($chain === []) {
+            return $this->unknownResult();
+        }
+
+        // Whether any step in the chain uses ?-> (making the whole expression nullable)
+        $hasNullable = array_any($chain, fn (array $step): bool => $step['nullable']);
+
+        // Traverse all intermediate steps, updating $currentModel to the related model at each step
+        $count = count($chain);
+
+        // When inside a whenLoaded closure, the first chain step may be the resource's proxy to the
+        // already-loaded relation model (e.g. `$this->user` in `whenLoaded('user', fn() => $this->user?->name)`).
+        // If it doesn't resolve as a relation on closureRelationModelClass, skip it.
+        $startIndex = 0;
+
+        if ($this->closureRelationModelClass !== null && $count >= 2) {
+            $firstRelation = $resolver->resolveRelation($currentModel, $chain[0]['name']);
+
+            if ($firstRelation['type'] === 'unknown') {
+                $startIndex = 1;
+            }
+        }
+
+        for ($i = $startIndex; $i < $count - 1; $i++) {
+            $relationInfo = $resolver->resolveRelation($currentModel, $chain[$i]['name']);
+
+            if ($relationInfo['type'] === 'unknown' || $relationInfo['modelFqcn'] === null) {
+                return $this->unknownResult();
+            }
+
+            $currentModel = $relationInfo['modelFqcn'];
+        }
+
+        // Resolve the final step as an attribute first, then fall back to relation
+        $lastStep = $chain[$count - 1];
+        $tsInfo = $resolver->resolveAttribute($currentModel, $lastStep['name']);
+
+        if ($tsInfo['type'] === 'unknown') {
+            // Fallback: the final step might itself be a relation (e.g. $this->user?->profile)
+            $relationInfo = $resolver->resolveRelation($currentModel, $lastStep['name']);
+
+            if ($relationInfo['type'] === 'unknown') {
+                return $this->unknownResult();
+            }
+
+            $type = $hasNullable && ! str_ends_with($relationInfo['type'], ' | null')
+                ? $relationInfo['type'].' | null'
+                : $relationInfo['type'];
+
+            /** @var ValueExpressionResult $result */
+            $result = ['type' => $type, 'optional' => false];
+
+            if ($relationInfo['modelFqcn'] !== null) {
+                $result['modelFqcn'] = $relationInfo['modelFqcn'];
+            }
+
+            return $result;
+        }
+
+        $type = $hasNullable && ! str_ends_with($tsInfo['type'], ' | null')
+            ? $tsInfo['type'].' | null'
+            : $tsInfo['type'];
+
+        /** @var ValueExpressionResult $result */
+        $result = ['type' => $type, 'optional' => false];
+
+        /** @var class-string|null $enumFqcn */
+        $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
+
+        if ($enumFqcn !== null) {
+            $result['directEnumFqcn'] = $enumFqcn;
+        }
+
+        return $result;
+    }
+
+    /**
+     * If an arrow function or closure has a return type annotation, resolve it to a
+     * ClosureAnnotationResult (type string + optional FQCN metadata). Returns null if the
+     * annotation is absent, is a complex union/intersection type, or maps to a non-useful
+     * type (void, mixed, never) or an unresolvable class.
+     *
+     * Used by analyzeValueExpression() as a fallback when body analysis returns unknown,
+     * e.g. for `fn (): ?string => someUnresolvableExpression()` or
+     * `fn (): Status => someUnresolvableExpression()`.
+     *
+     * @return ClosureAnnotationResult|null
+     */
+    private function resolveClosureAstReturnType(Expr $expr): ?array
+    {
+        if (! $expr instanceof ArrowFunction && ! $expr instanceof ClosureExpr) {
+            return null;
+        }
+
+        $returnType = $expr->returnType;
+
+        if ($returnType === null) {
+            return null;
+        }
+
+        return $this->convertAstTypeNodeToTs($returnType);
+    }
+
+    /**
+     * Convert a PHP-Parser return-type AST node to a ClosureAnnotationResult (type +
+     * optional FQCN metadata). Returns null for union/intersection types, void, never,
+     * mixed, or unresolvable class names.
+     *
+     * For Name nodes, enumFqcns[0] is mapped to directEnumFqcn and classFqcns[0] to
+     * modelFqcn so the caller can track the FQCN alongside the type string. Types with
+     * customImports (e.g. #[TsType] classes with import paths) return null because that
+     * metadata cannot be represented in ValueExpressionResult.
+     *
+     * For NullableType, metadata from the inner node is preserved while '| null' is
+     * appended to the type string.
+     *
+     * @return ClosureAnnotationResult|null
+     */
+    private function convertAstTypeNodeToTs(Node $typeNode): ?array
+    {
+        if ($typeNode instanceof NullableType) {
+            $inner = $this->convertAstTypeNodeToTs($typeNode->type);
+
+            if ($inner === null) {
+                return null;
+            }
+
+            return [...$inner, 'type' => $inner['type'].' | null'];
+        }
+
+        if ($typeNode instanceof Identifier) {
+            $phpType = $typeNode->toString();
+
+            if (in_array($phpType, ['void', 'never', 'mixed'], true)) {
+                return null;
+            }
+
+            $tsInfo = LaravelTsPublish::toTsType($phpType);
+
+            return $tsInfo['type'] !== 'unknown' ? ['type' => $tsInfo['type']] : null;
+        }
+
+        if ($typeNode instanceof Name) {
+            $phpType = $typeNode->toString();
+            $tsInfo = LaravelTsPublish::toTsType($phpType);
+
+            if ($tsInfo['type'] === 'unknown') {
+                return null;
+            }
+
+            // Types with customImports cannot be represented in ValueExpressionResult —
+            // return null so the caller falls back to 'unknown' rather than emitting a
+            // type that is missing its import registration.
+            if ($tsInfo['customImports'] !== []) {
+                return null;
+            }
+
+            /** @var ClosureAnnotationResult $result */
+            $result = ['type' => $tsInfo['type']];
+
+            if ($tsInfo['enumFqcns'] !== []) {
+                $result['directEnumFqcn'] = $tsInfo['enumFqcns'][0];
+            } elseif ($tsInfo['classFqcns'] !== []) {
+                $result['modelFqcn'] = $tsInfo['classFqcns'][0];
+            }
+
+            return $result;
+        }
+
+        // UnionType / IntersectionType — fall through to body analysis
+        return null;
+    }
+
+    /**
+     * Apply #[TsResourceCasts] attribute overrides declared on a reflection method to
+     * the given ResourceAnalysis, updating or injecting property types as directed.
+     *
+     * Used both by analyzeThisMethodSpread() for trait/helper methods and by analyze()
+     * for the toArray() method itself, allowing #[TsResourceCasts] to be placed directly
+     * on toArray() as a lightweight override mechanism.
+     */
+    private function applyTsResourceCastsFromMethod(ReflectionMethod $method, ResourceAnalysis $analysis): void
+    {
         foreach ($method->getAttributes(TsResourceCasts::class) as $attr) {
             $instance = $attr->newInstance();
 
@@ -1106,8 +1427,6 @@ class ResourceAstAnalyzer
                 }
             }
         }
-
-        return $analysis;
     }
 
     /**
@@ -1315,7 +1634,7 @@ class ResourceAstAnalyzer
      *
      * @return array<string, string>
      */
-    protected function parseReturnArrayShape(\ReflectionMethod $method): array
+    protected function parseReturnArrayShape(ReflectionMethod $method): array
     {
         $docComment = $method->getDocComment();
 
