@@ -2852,3 +2852,47 @@ describe('ResourceAstAnalyzer with ToArrayCastsResource — #[TsResourceCasts] o
             ->and($prop['type'])->toBe('string');
     });
 });
+
+describe('ResourceAstAnalyzer with PostCollection (#[Collects] attribute, no toArray)', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(PostCollection::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection))->analyze();
+    });
+
+    test('produces data property with PostResource[] type', function () {
+        $data = collect($this->analysis->properties)->firstWhere('name', 'data');
+
+        expect($data)->not->toBeNull()
+            ->and($data['type'])->toBe('PostResource[]')
+            ->and($data['optional'])->toBeFalse();
+    });
+
+    test('tracks PostResource FQCN in nestedResources under data key', function () {
+        expect($this->analysis->nestedResources)
+            ->toHaveKey('data')
+            ->and($this->analysis->nestedResources['data'])->toBe(PostResource::class);
+    });
+
+    test('flatTypeAlias is null (collection wraps data in key)', function () {
+        expect($this->analysis->flatTypeAlias)->toBeNull();
+    });
+});
+
+describe('ResourceAstAnalyzer with PostFlatCollection ($wrap = null, no toArray)', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(PostFlatCollection::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection))->analyze();
+    });
+
+    test('has flatTypeAlias set to PostResource[]', function () {
+        expect($this->analysis->flatTypeAlias)->toBe('PostResource[]');
+    })->skip(fn () => ! version_compare(app()->version(), '13', '>='));
+
+    test('has flatTypeAliasFqcn pointing to PostResource', function () {
+        expect($this->analysis->flatTypeAliasFqcn)->toBe(PostResource::class);
+    })->skip(fn () => ! version_compare(app()->version(), '13', '>='));
+
+    test('has no properties (type alias skips interface shape)', function () {
+        expect($this->analysis->properties)->toBeEmpty();
+    });
+});
