@@ -70,6 +70,11 @@ use ReflectionMethod;
  *      embeddedModelFqcns?: list<class-string>,
  *      embeddedResourceFqcns?: list<class-string>
  * }
+ * @phpstan-type ClosureAnnotationResult = array{
+ *      type: string,
+ *      directEnumFqcn?: class-string,
+ *      modelFqcn?: class-string
+ * }
  */
 class ResourceAstAnalyzer
 {
@@ -390,10 +395,10 @@ class ResourceAstAnalyzer
             }
 
             // Body is unknown — try the return type annotation as a fallback
-            $annotationType = $this->resolveClosureAstReturnType($expr);
+            $annotationResult = $this->resolveClosureAstReturnType($expr);
 
-            if ($annotationType !== null) {
-                return ['type' => $annotationType, 'optional' => false];
+            if ($annotationResult !== null) {
+                return [...$annotationResult, 'optional' => false];
             }
 
             return $bodyResult;
@@ -484,7 +489,7 @@ class ResourceAstAnalyzer
         // $this->anyProp?->subProp or $this->resource->anyProp?->subProp — nullsafe property chain
         // e.g. $this->user?->role, $this->user?->profile?->bio, $this->resource->user?->profile
         if ($expr instanceof NullsafePropertyFetch) {
-            return $this->analyzeNullsafePropertyChain($expr);
+            return $this->analyzePropertyChain($expr);
         }
 
         // $this->anyProp->subProp — e.g. $this->resource->name / ->value on a backed enum
@@ -502,7 +507,25 @@ class ResourceAstAnalyzer
                 $info = $this->analyzeRelatedModelProperty($expr->name->toString());
             }
 
+            // Final fallback: general chain traversal (e.g. $this->resource->name when the
+            // specific enum/model-wrapped handlers cannot resolve it).
+            if ($info['type'] === 'unknown') {
+                $info = $this->analyzePropertyChain($expr);
+            }
+
             return $info;
+        }
+
+        // $this->anyProp->subProp->deepProp — plain (non-nullsafe) PropertyFetch chains of
+        // 3 or more levels rooted at $this (e.g. `$this->resource->user->role` inside a
+        // whenLoaded closure). The 2-deep handler above is skipped because $expr->var is not
+        // a direct $this->prop, so we fall through to the general chain traversal here.
+        if ($expr instanceof PropertyFetch) {
+            $info = $this->analyzePropertyChain($expr);
+
+            if ($info['type'] !== 'unknown') {
+                return $info;
+            }
         }
 
         // $this->anyProp->method() — e.g. $this->resource->extensions() on a backed enum or model
@@ -1133,18 +1156,24 @@ class ResourceAstAnalyzer
     }
 
     /**
-     * Analyze a nullsafe property chain (e.g. `$this->user?->role`) by traversing each
-     * relation step until the final attribute is reached.
+     * Analyze a property-fetch chain rooted at `$this` by traversing each relation and
+     * attribute step until the final property is resolved.
      *
-     * If any step uses `?->` (nullable), the resolved type always gets `| null` appended
-     * since the Laravel resource returns null when the relation is absent at runtime.
+     * Handles both plain `->` and nullsafe `?->` operators, or any mix of the two.
+     * If any step in the chain uses `?->`, `| null` is appended to the resolved type.
+     *
+     * Entry points:
+     * - NullsafePropertyFetch chains (e.g. `$this->user?->role`)
+     * - Plain PropertyFetch chains of any depth (e.g. `$this->resource->user->role`)
+     * - 2-deep chains like `$this->resource->name` as a final fallback after the specific
+     *   enum/model-wrapped handlers
      *
      * The starting model is `$this->closureRelationModelClass` when inside a whenLoaded
      * closure, or `$this->modelClass` otherwise.
      *
      * @return ValueExpressionResult
      */
-    private function analyzeNullsafePropertyChain(Expr $expr): array
+    private function analyzePropertyChain(Expr $expr): array
     {
         $chain = $this->decomposePropertyChain($expr);
 
@@ -1247,14 +1276,18 @@ class ResourceAstAnalyzer
     }
 
     /**
-     * If an arrow function or closure has a scalar return type annotation, resolve it to
-     * a TypeScript type string and return it. Returns null if the annotation is absent,
-     * is a complex union/intersection type, or maps to a non-useful type (void, mixed, never).
+     * If an arrow function or closure has a return type annotation, resolve it to a
+     * ClosureAnnotationResult (type string + optional FQCN metadata). Returns null if the
+     * annotation is absent, is a complex union/intersection type, or maps to a non-useful
+     * type (void, mixed, never) or an unresolvable class.
      *
      * Used by analyzeValueExpression() as a fallback when body analysis returns unknown,
-     * e.g. for `fn (): ?string => someUnresolvableExpression()`.
+     * e.g. for `fn (): ?string => someUnresolvableExpression()` or
+     * `fn (): Status => someUnresolvableExpression()`.
+     *
+     * @return ClosureAnnotationResult|null
      */
-    private function resolveClosureAstReturnType(Expr $expr): ?string
+    private function resolveClosureAstReturnType(Expr $expr): ?array
     {
         if (! $expr instanceof ArrowFunction && ! $expr instanceof ClosureExpr) {
             return null;
@@ -1270,12 +1303,21 @@ class ResourceAstAnalyzer
     }
 
     /**
-     * Convert a PHP-Parser return-type AST node to a TypeScript type string.
+     * Convert a PHP-Parser return-type AST node to a ClosureAnnotationResult (type +
+     * optional FQCN metadata). Returns null for union/intersection types, void, never,
+     * mixed, or unresolvable class names.
      *
-     * Handles Identifier (scalar types), Name (qualified class names), and NullableType.
-     * Returns null for union/intersection types, void, never, and mixed.
+     * For Name nodes, enumFqcns[0] is mapped to directEnumFqcn and classFqcns[0] to
+     * modelFqcn so the caller can track the FQCN alongside the type string. Types with
+     * customImports (e.g. #[TsType] classes with import paths) return null because that
+     * metadata cannot be represented in ValueExpressionResult.
+     *
+     * For NullableType, metadata from the inner node is preserved while '| null' is
+     * appended to the type string.
+     *
+     * @return ClosureAnnotationResult|null
      */
-    private function convertAstTypeNodeToTs(Node $typeNode): ?string
+    private function convertAstTypeNodeToTs(Node $typeNode): ?array
     {
         if ($typeNode instanceof NullableType) {
             $inner = $this->convertAstTypeNodeToTs($typeNode->type);
@@ -1284,7 +1326,7 @@ class ResourceAstAnalyzer
                 return null;
             }
 
-            return $inner.' | null';
+            return [...$inner, 'type' => $inner['type'].' | null'];
         }
 
         if ($typeNode instanceof Identifier) {
@@ -1296,14 +1338,34 @@ class ResourceAstAnalyzer
 
             $tsInfo = LaravelTsPublish::phpToTypeScriptType($phpType);
 
-            return $tsInfo['type'] !== 'unknown' ? $tsInfo['type'] : null;
+            return $tsInfo['type'] !== 'unknown' ? ['type' => $tsInfo['type']] : null;
         }
 
         if ($typeNode instanceof Name) {
             $phpType = $typeNode->toString();
             $tsInfo = LaravelTsPublish::phpToTypeScriptType($phpType);
 
-            return $tsInfo['type'] !== 'unknown' ? $tsInfo['type'] : null;
+            if ($tsInfo['type'] === 'unknown') {
+                return null;
+            }
+
+            // Types with customImports cannot be represented in ValueExpressionResult —
+            // return null so the caller falls back to 'unknown' rather than emitting a
+            // type that is missing its import registration.
+            if ($tsInfo['customImports'] !== []) {
+                return null;
+            }
+
+            /** @var ClosureAnnotationResult $result */
+            $result = ['type' => $tsInfo['type']];
+
+            if ($tsInfo['enumFqcns'] !== []) {
+                $result['directEnumFqcn'] = $tsInfo['enumFqcns'][0];
+            } elseif ($tsInfo['classFqcns'] !== []) {
+                $result['modelFqcn'] = $tsInfo['classFqcns'][0];
+            }
+
+            return $result;
         }
 
         // UnionType / IntersectionType — fall through to body analysis
