@@ -2,6 +2,14 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v1.4.3 - 2026-05-05
+
+### What's Changed
+
+* Resource AST nullsafe chains by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/32
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v1.4.2...v1.4.3
+
 ## v1.4.2 - 2026-04-25
 
 ### What's Changed

@@ -53,6 +53,7 @@ export * from './spread-with-guard-double-closure-return-resource';
 export * from './tag-resource';
 export * from './team-member-resource';
 export * from './team-resource';
+export * from './to-array-casts-resource';
 export * from './trait-spread-coverage-resource';
 export * from './unit-enum-resource';
 export * from './user-collection';
