@@ -1629,6 +1629,17 @@ declare global {
             priority: app.enums.PriorityType | null;
             priority_new: app.enums.PriorityType | null;
             comments: { id: number; content: string; user: crm.models.User }[];
+            published: boolean;
+            rating_display: number;
+            word_count: string;
+            heading_content: unknown[];
+            publishable: boolean;
+            comments_count: number;
+            is_featured: boolean;
+            category_is_first?: boolean | null;
+            category_is_active?: boolean | null;
+            category_breadcrumb?: string | null;
+            comments_resolved?: CommentResource[];
         }
         export interface RoutableResource extends ResourceRoutes, Pick<Routable, "store" | "update"> {
         }
@@ -1658,6 +1669,17 @@ declare global {
             priority: app.enums.PriorityType | null;
             priority_new: app.enums.PriorityType | null;
             comments: { id: number; content: string; user: crm.models.User }[];
+            published: boolean;
+            rating_display: number;
+            word_count: string;
+            heading_content: unknown[];
+            publishable: boolean;
+            comments_count: number;
+            is_featured: boolean;
+            category_is_first?: boolean | null;
+            category_is_active?: boolean | null;
+            category_breadcrumb?: string | null;
+            comments_resolved?: CommentResource[];
         }
         /** Resource that delegates to parent — tests non-array return guard. */
         export interface DelegatingResource {

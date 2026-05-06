@@ -6088,6 +6088,61 @@
                 "name": "comments",
                 "type": "{ id: number; content: string; user: User }[]",
                 "optional": false
+            },
+            {
+                "name": "published",
+                "type": "boolean",
+                "optional": false
+            },
+            {
+                "name": "rating_display",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "word_count",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "heading_content",
+                "type": "unknown[]",
+                "optional": false
+            },
+            {
+                "name": "publishable",
+                "type": "boolean",
+                "optional": false
+            },
+            {
+                "name": "comments_count",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "is_featured",
+                "type": "boolean",
+                "optional": false
+            },
+            {
+                "name": "category_is_first",
+                "type": "boolean | null",
+                "optional": true
+            },
+            {
+                "name": "category_is_active",
+                "type": "boolean | null",
+                "optional": true
+            },
+            {
+                "name": "category_breadcrumb",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "comments_resolved",
+                "type": "CommentResource[]",
+                "optional": true
             }
         ],
         "RoutableResource": [],
@@ -6208,6 +6263,61 @@
                 "name": "comments",
                 "type": "{ id: number; content: string; user: User }[]",
                 "optional": false
+            },
+            {
+                "name": "published",
+                "type": "boolean",
+                "optional": false
+            },
+            {
+                "name": "rating_display",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "word_count",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "heading_content",
+                "type": "unknown[]",
+                "optional": false
+            },
+            {
+                "name": "publishable",
+                "type": "boolean",
+                "optional": false
+            },
+            {
+                "name": "comments_count",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "is_featured",
+                "type": "boolean",
+                "optional": false
+            },
+            {
+                "name": "category_is_first",
+                "type": "boolean | null",
+                "optional": true
+            },
+            {
+                "name": "category_is_active",
+                "type": "boolean | null",
+                "optional": true
+            },
+            {
+                "name": "category_breadcrumb",
+                "type": "string | null",
+                "optional": true
+            },
+            {
+                "name": "comments_resolved",
+                "type": "CommentResource[]",
+                "optional": true
             }
         ],
         "DelegatingResource": [],
