@@ -2,6 +2,14 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v1.4.5 - 2026-05-06
+
+### What's Changed
+
+* AST static methods support  by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/34
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v1.4.4...v1.4.5
+
 ## v1.4.4 - 2026-05-06
 
 ### What's Changed
