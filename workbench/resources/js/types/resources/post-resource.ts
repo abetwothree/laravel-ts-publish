@@ -28,4 +28,8 @@ export interface PostResource
     category_is_active?: boolean | null;
     category_breadcrumb?: string | null;
     comments_resolved?: CommentResource[];
+    post_class_name: string;
+    post_table_name: string;
+    category_class_name?: string;
+    category_table_name?: string;
 }
