@@ -128,6 +128,57 @@ describe('ResourceTransformer with PostResource', function () {
             ->toContain('PostResource.php')
             ->not->toStartWith('/');
     });
+
+    // cast, mixin method, and resolve() expressions ————————————
+
+    test('(bool) cast resolves to boolean', function () {
+        $data = (new ResourceTransformer(PostResource::class))->data();
+
+        expect($data->properties['published']['type'])->toBe('boolean');
+        expect($data->properties['published']['optional'])->toBeFalse();
+    });
+
+    test('@mixin method with return type — publishable resolves to boolean', function () {
+        $data = (new ResourceTransformer(PostResource::class))->data();
+
+        expect($data->properties['publishable']['type'])->toBe('boolean');
+        expect($data->properties['publishable']['optional'])->toBeFalse();
+    });
+
+    test('@mixin method via $this->resource — comments_count resolves to number', function () {
+        $data = (new ResourceTransformer(PostResource::class))->data();
+
+        expect($data->properties['comments_count']['type'])->toBe('number');
+        expect($data->properties['comments_count']['optional'])->toBeFalse();
+    });
+
+    test('@mixin method with docblock only — is_featured resolves to boolean', function () {
+        $data = (new ResourceTransformer(PostResource::class))->data();
+
+        expect($data->properties['is_featured']['type'])->toBe('boolean');
+        expect($data->properties['is_featured']['optional'])->toBeFalse();
+    });
+
+    test('nullsafe relation method in whenLoaded closure — category_is_first resolves to boolean|null', function () {
+        $data = (new ResourceTransformer(PostResource::class))->data();
+
+        expect($data->properties['category_is_first']['type'])->toBe('boolean | null');
+        expect($data->properties['category_is_first']['optional'])->toBeTrue();
+    });
+
+    test('nullsafe relation method via $this->resource in whenLoaded closure — category_is_active resolves to boolean|null', function () {
+        $data = (new ResourceTransformer(PostResource::class))->data();
+
+        expect($data->properties['category_is_active']['type'])->toBe('boolean | null');
+        expect($data->properties['category_is_active']['optional'])->toBeTrue();
+    });
+
+    test('resource collection with ->resolve() — comments_resolved resolves to CommentResource[]', function () {
+        $data = (new ResourceTransformer(PostResource::class))->data();
+
+        expect($data->properties['comments_resolved']['type'])->toBe('CommentResource[]');
+        expect($data->properties['comments_resolved']['optional'])->toBeTrue();
+    });
 });
 
 describe('ResourceTransformer with UserResource', function () {
