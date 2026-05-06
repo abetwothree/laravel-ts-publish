@@ -1714,6 +1714,9 @@ declare global {
             priority_new: enums.PriorityType | null;
             comments: { id: number; content: string; user: models.User }[];
             published: boolean;
+            rating_display: number;
+            word_count: string;
+            heading_content: unknown[];
             publishable: boolean;
             comments_count: number;
             is_featured: boolean;
@@ -1751,6 +1754,9 @@ declare global {
             priority_new: enums.PriorityType | null;
             comments: { id: number; content: string; user: models.User }[];
             published: boolean;
+            rating_display: number;
+            word_count: string;
+            heading_content: unknown[];
             publishable: boolean;
             comments_count: number;
             is_featured: boolean;

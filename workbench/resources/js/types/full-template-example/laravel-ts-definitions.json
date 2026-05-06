@@ -6095,6 +6095,21 @@
                 "optional": false
             },
             {
+                "name": "rating_display",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "word_count",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "heading_content",
+                "type": "unknown[]",
+                "optional": false
+            },
+            {
                 "name": "publishable",
                 "type": "boolean",
                 "optional": false
@@ -6252,6 +6267,21 @@
             {
                 "name": "published",
                 "type": "boolean",
+                "optional": false
+            },
+            {
+                "name": "rating_display",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "word_count",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "heading_content",
+                "type": "unknown[]",
                 "optional": false
             },
             {

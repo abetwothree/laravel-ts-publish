@@ -149,6 +149,43 @@ describe('ResourceAstAnalyzer with PostResource', function () {
             ->and($prop['optional'])->toBeFalse();
     });
 
+    test('(int) cast inside arithmetic expression resolves to number', function () {
+        // `(int) round(...) / 2` — cast binds tighter than /, outer node is BinaryOp\Div
+        $reflection = new ReflectionClass(PostResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'rating_display');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('number')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('(string) cast resolves to string', function () {
+        $reflection = new ReflectionClass(PostResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'word_count');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('(array) cast resolves to unknown[]', function () {
+        $reflection = new ReflectionClass(PostResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'heading_content');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('unknown[]')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
     test('@mixin method with return type — publishable resolves to boolean', function () {
         $reflection = new ReflectionClass(PostResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection, Post::class);

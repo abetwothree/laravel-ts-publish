@@ -20,6 +20,7 @@ use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Assign;
+use PhpParser\Node\Expr\BinaryOp;
 use PhpParser\Node\Expr\BooleanNot;
 use PhpParser\Node\Expr\Cast\Array_ as CastArray_;
 use PhpParser\Node\Expr\Cast\Bool_ as CastBool;
@@ -402,6 +403,25 @@ class ResourceAstAnalyzer
 
         if ($expr instanceof CastArray_) {
             return ['type' => 'unknown[]', 'optional' => false];
+        }
+
+        // Arithmetic binary operations always produce a numeric result.
+        // This handles cases like `(int) round(...) / 2` where PHP's operator
+        // precedence causes the cast to bind tighter than the division, making
+        // the outer AST node a BinaryOp\Div rather than a Cast.
+        if ($expr instanceof BinaryOp\Plus
+            || $expr instanceof BinaryOp\Minus
+            || $expr instanceof BinaryOp\Mul
+            || $expr instanceof BinaryOp\Div
+            || $expr instanceof BinaryOp\Mod
+            || $expr instanceof BinaryOp\Pow
+        ) {
+            return ['type' => 'number', 'optional' => false];
+        }
+
+        // String concatenation always produces a string result.
+        if ($expr instanceof BinaryOp\Concat) {
+            return ['type' => 'string', 'optional' => false];
         }
 
         // Closures / arrow functions — analyze the body first. If that returns unknown,

@@ -19,6 +19,9 @@ export interface ApiPostResource
     priority_new: AsEnum<typeof Priority> | null;
     comments: { id: number; content: string; user: User }[];
     published: boolean;
+    rating_display: number;
+    word_count: string;
+    heading_content: unknown[];
     publishable: boolean;
     comments_count: number;
     is_featured: boolean;

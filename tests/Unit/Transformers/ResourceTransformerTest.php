@@ -138,6 +138,27 @@ describe('ResourceTransformer with PostResource', function () {
         expect($data->properties['published']['optional'])->toBeFalse();
     });
 
+    test('(int) cast resolves to number', function () {
+        $data = (new ResourceTransformer(PostResource::class))->data();
+
+        expect($data->properties['rating_display']['type'])->toBe('number');
+        expect($data->properties['rating_display']['optional'])->toBeFalse();
+    });
+
+    test('(string) cast resolves to string', function () {
+        $data = (new ResourceTransformer(PostResource::class))->data();
+
+        expect($data->properties['word_count']['type'])->toBe('string');
+        expect($data->properties['word_count']['optional'])->toBeFalse();
+    });
+
+    test('(array) cast resolves to unknown[]', function () {
+        $data = (new ResourceTransformer(PostResource::class))->data();
+
+        expect($data->properties['heading_content']['type'])->toBe('unknown[]');
+        expect($data->properties['heading_content']['optional'])->toBeFalse();
+    });
+
     test('@mixin method with return type — publishable resolves to boolean', function () {
         $data = (new ResourceTransformer(PostResource::class))->data();
 

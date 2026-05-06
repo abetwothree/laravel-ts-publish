@@ -1630,6 +1630,9 @@ declare global {
             priority_new: app.enums.PriorityType | null;
             comments: { id: number; content: string; user: crm.models.User }[];
             published: boolean;
+            rating_display: number;
+            word_count: string;
+            heading_content: unknown[];
             publishable: boolean;
             comments_count: number;
             is_featured: boolean;
@@ -1667,6 +1670,9 @@ declare global {
             priority_new: app.enums.PriorityType | null;
             comments: { id: number; content: string; user: crm.models.User }[];
             published: boolean;
+            rating_display: number;
+            word_count: string;
+            heading_content: unknown[];
             publishable: boolean;
             comments_count: number;
             is_featured: boolean;
