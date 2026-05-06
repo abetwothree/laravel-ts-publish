@@ -257,6 +257,56 @@ describe('ResourceAstAnalyzer with PostResource', function () {
             ->and($prop['type'])->toBe('CommentResource[]')
             ->and($prop['optional'])->toBeTrue();
     });
+
+    // static method call expressions ———————————————————————————————
+
+    test('$this::staticMethod() resolves return type — post_class_name', function () {
+        $reflection = new ReflectionClass(PostResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'post_class_name');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('$this->resource::staticMethod() resolves return type — post_table_name', function () {
+        $reflection = new ReflectionClass(PostResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'post_table_name');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('relation::staticMethod() in whenLoaded closure resolves return type — category_class_name', function () {
+        $reflection = new ReflectionClass(PostResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'category_class_name');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    test('resource->relation::staticMethod() in whenLoaded closure resolves return type — category_table_name', function () {
+        $reflection = new ReflectionClass(PostResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'category_table_name');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string')
+            ->and($prop['optional'])->toBeTrue();
+    });
 });
 
 describe('ResourceAstAnalyzer with UserResource', function () {

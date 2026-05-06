@@ -200,6 +200,36 @@ describe('ResourceTransformer with PostResource', function () {
         expect($data->properties['comments_resolved']['type'])->toBe('CommentResource[]');
         expect($data->properties['comments_resolved']['optional'])->toBeTrue();
     });
+
+    // static method call expressions ———————————————————————————————
+
+    test('$this::staticMethod() resolves return type — post_class_name', function () {
+        $data = (new ResourceTransformer(PostResource::class))->data();
+
+        expect($data->properties['post_class_name']['type'])->toBe('string');
+        expect($data->properties['post_class_name']['optional'])->toBeFalse();
+    });
+
+    test('$this->resource::staticMethod() resolves return type — post_table_name', function () {
+        $data = (new ResourceTransformer(PostResource::class))->data();
+
+        expect($data->properties['post_table_name']['type'])->toBe('string');
+        expect($data->properties['post_table_name']['optional'])->toBeFalse();
+    });
+
+    test('relation::staticMethod() in whenLoaded closure resolves return type — category_class_name', function () {
+        $data = (new ResourceTransformer(PostResource::class))->data();
+
+        expect($data->properties['category_class_name']['type'])->toBe('string');
+        expect($data->properties['category_class_name']['optional'])->toBeTrue();
+    });
+
+    test('resource->relation::staticMethod() in whenLoaded closure resolves return type — category_table_name', function () {
+        $data = (new ResourceTransformer(PostResource::class))->data();
+
+        expect($data->properties['category_table_name']['type'])->toBe('string');
+        expect($data->properties['category_table_name']['optional'])->toBeTrue();
+    });
 });
 
 describe('ResourceTransformer with UserResource', function () {

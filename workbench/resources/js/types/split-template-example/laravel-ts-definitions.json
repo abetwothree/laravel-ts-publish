@@ -6143,6 +6143,26 @@
                 "name": "comments_resolved",
                 "type": "CommentResource[]",
                 "optional": true
+            },
+            {
+                "name": "post_class_name",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "post_table_name",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "category_class_name",
+                "type": "string",
+                "optional": true
+            },
+            {
+                "name": "category_table_name",
+                "type": "string",
+                "optional": true
             }
         ],
         "RoutableResource": [],
@@ -6317,6 +6337,26 @@
             {
                 "name": "comments_resolved",
                 "type": "CommentResource[]",
+                "optional": true
+            },
+            {
+                "name": "post_class_name",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "post_table_name",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "category_class_name",
+                "type": "string",
+                "optional": true
+            },
+            {
+                "name": "category_table_name",
+                "type": "string",
                 "optional": true
             }
         ],

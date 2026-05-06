@@ -508,6 +508,39 @@ class ResourceAstAnalyzer
             return $this->analyzeStaticCall($expr->var);
         }
 
+        // $this::staticMethod() — the resource itself is the receiver.
+        // Reuse analyzeThisMethodCall which checks: resource methods → wrapped class → @mixin model.
+        if ($expr instanceof StaticCall
+            && $expr->class instanceof Variable
+            && $expr->class->name === 'this'
+            && $expr->name instanceof Identifier
+        ) {
+            return $this->analyzeThisMethodCall($expr->name->toString());
+        }
+
+        // $this->resource::staticMethod() — delegate to the wrapped/model class.
+        // Must come before the closure-context PropertyFetch handler below.
+        if ($expr instanceof StaticCall
+            && $expr->class instanceof PropertyFetch
+            && $expr->class->var instanceof Variable
+            && $expr->class->var->name === 'this'
+            && $expr->class->name instanceof Identifier
+            && $expr->class->name->toString() === 'resource'
+            && $expr->name instanceof Identifier
+        ) {
+            return $this->analyzeStaticMethodOnResource($expr->name->toString());
+        }
+
+        // $this->relation::staticMethod() or $this->resource->relation::staticMethod()
+        // inside a whenLoaded closure — delegate to the related model's method resolver.
+        if ($expr instanceof StaticCall
+            && $expr->class instanceof PropertyFetch
+            && $expr->name instanceof Identifier
+            && $this->closureRelationModelClass !== null
+        ) {
+            return $this->analyzeRelatedModelMethodCall($expr->name->toString());
+        }
+
         // EnumResource::make($this->prop) or SomeResource::make/collection()
         if ($expr instanceof StaticCall) {
             return $this->analyzeStaticCall($expr);
@@ -2255,6 +2288,43 @@ class ResourceAstAnalyzer
         }
 
         return $result; // @codeCoverageIgnore
+    }
+
+    /**
+     * Analyze a static method call on the resource's wrapped class or backing model,
+     * originating from a `$this->resource::staticMethod()` expression.
+     *
+     * Mirrors the logic of analyzeWrappedResourceMethodCall: tries the wrapped class first,
+     * then falls back to the @mixin model class. PHP reflection handles static methods
+     * identically to instance methods, so no special casing is required here.
+     *
+     * @return ValueExpressionResult
+     */
+    protected function analyzeStaticMethodOnResource(string $methodName): array
+    {
+        $result = $this->unknownResult();
+        $wrappedClass = $this->resolveWrappedClass();
+
+        if ($wrappedClass !== null && method_exists($wrappedClass, $methodName)) {
+            /** @var class-string $wrappedClass */
+            $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($wrappedClass), $methodName);
+
+            if ($tsInfo['type'] !== '' && $tsInfo['type'] !== 'unknown') {
+                return [...$tsInfo, 'optional' => false];
+            }
+        }
+
+        if ($this->modelClass !== null && method_exists($this->modelClass, $methodName)) {
+            /** @var class-string $modelClass */
+            $modelClass = $this->modelClass;
+            $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($modelClass), $methodName);
+
+            if ($tsInfo['type'] !== '' && $tsInfo['type'] !== 'unknown') {
+                return [...$tsInfo, 'optional' => false];
+            }
+        }
+
+        return $result;
     }
 
     /**

@@ -125,4 +125,15 @@ class Post extends Model
     {
         return $this->priority === Priority::High;
     }
+
+    public static function className(): string
+    {
+        return self::class;
+    }
+
+    /** @return string */
+    public static function tableName()
+    {
+        return (new self)->getTable();
+    }
 }
