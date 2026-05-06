@@ -21,6 +21,11 @@ use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\BooleanNot;
+use PhpParser\Node\Expr\Cast\Array_ as CastArray_;
+use PhpParser\Node\Expr\Cast\Bool_ as CastBool;
+use PhpParser\Node\Expr\Cast\Double as CastDouble;
+use PhpParser\Node\Expr\Cast\Int_ as CastInt;
+use PhpParser\Node\Expr\Cast\String_ as CastString;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
@@ -381,6 +386,24 @@ class ResourceAstAnalyzer
             return $result; // @codeCoverageIgnore
         }
 
+        // PHP cast operators — type is determined entirely by the cast, not the inner expression.
+        // (bool), (int), (float)/(double), (string), (array) → map directly to TS primitives.
+        if ($expr instanceof CastBool) {
+            return ['type' => 'boolean', 'optional' => false];
+        }
+
+        if ($expr instanceof CastInt || $expr instanceof CastDouble) {
+            return ['type' => 'number', 'optional' => false];
+        }
+
+        if ($expr instanceof CastString) {
+            return ['type' => 'string', 'optional' => false];
+        }
+
+        if ($expr instanceof CastArray_) {
+            return ['type' => 'unknown[]', 'optional' => false];
+        }
+
         // Closures / arrow functions — analyze the body first. If that returns unknown,
         // fall back to the return type annotation (e.g. `fn (): ?string => ...` → `string | null`).
         $closureReturns = $this->resolveClosureReturnExpressions($expr);
@@ -455,6 +478,16 @@ class ResourceAstAnalyzer
             return $this->analyzeRelatedModelMethodCall($expr->name->toString());
         }
 
+        // SomeResource::collection(...)->resolve() — strip the trailing ->resolve() and
+        // delegate to analyzeStaticCall so the resource type is still inferred correctly.
+        if ($expr instanceof MethodCall
+            && $expr->name instanceof Identifier
+            && $expr->name->toString() === 'resolve'
+            && $expr->var instanceof StaticCall
+        ) {
+            return $this->analyzeStaticCall($expr->var);
+        }
+
         // EnumResource::make($this->prop) or SomeResource::make/collection()
         if ($expr instanceof StaticCall) {
             return $this->analyzeStaticCall($expr);
@@ -484,6 +517,12 @@ class ResourceAstAnalyzer
         // Inline array literal → recursively build inline object type { key: type; ... }
         if ($expr instanceof Array_) {
             return $this->analyzeInlineArray($expr);
+        }
+
+        // $this->anyProp?->method() or $this->resource->anyProp?->method() — nullsafe method chain.
+        // e.g. $this->categoryRel?->isFirst(), $this->resource->categoryRel?->isActive()
+        if ($expr instanceof NullsafeMethodCall) {
+            return $this->analyzeMethodChain($expr);
         }
 
         // $this->anyProp?->subProp or $this->resource->anyProp?->subProp — nullsafe property chain
@@ -1273,6 +1312,112 @@ class ResourceAstAnalyzer
         }
 
         return $result;
+    }
+
+    /**
+     * Analyze a nullsafe method-call chain rooted at `$this`, traversing relations to
+     * find the terminal model and resolving the method's return type on it.
+     *
+     * Handles patterns like:
+     * - `$this->categoryRel?->isFirst()` inside a `whenLoaded('categoryRel', ...)` closure
+     * - `$this->resource->categoryRel?->isActive()` (resource wrapper stripped)
+     * - `$this->user?->profile?->someMethod()` outside a closure
+     *
+     * Because the operator is `?->`, the result is always made nullable.
+     *
+     * @return ValueExpressionResult
+     */
+    private function analyzeMethodChain(NullsafeMethodCall $call): array
+    {
+        $methodName = $call->name instanceof Identifier ? $call->name->toString() : null;
+
+        if ($methodName === null) {
+            return $this->unknownResult();
+        }
+
+        $chain = $this->decomposePropertyChain($call->var);
+
+        if ($chain === null || $chain === []) {
+            return $this->unknownResult();
+        }
+
+        /** @var class-string<Model>|null $currentModel */
+        $currentModel = $this->closureRelationModelClass ?? $this->modelClass;
+
+        if ($currentModel === null) {
+            return $this->unknownResult();
+        }
+
+        $resolver = resolve(ModelAttributeResolver::class);
+
+        // Skip the `$this->resource` wrapper property when it is not a real model relation
+        if ($chain[0]['name'] === 'resource') {
+            $check = $resolver->resolveRelation($currentModel, 'resource');
+
+            if ($check['type'] === 'unknown') {
+                array_shift($chain);
+            }
+        }
+
+        if ($chain === []) {
+            return $this->unknownResult();
+        }
+
+        $count = count($chain);
+
+        // When inside a whenLoaded closure, the first chain step may be the resource's proxy to the
+        // already-loaded relation model (e.g. `$this->categoryRel` in
+        // `whenLoaded('categoryRel', fn() => $this->categoryRel?->isFirst())`).
+        // If it doesn't resolve as a relation on closureRelationModelClass, skip it.
+        $startIndex = 0;
+
+        if ($this->closureRelationModelClass !== null) {
+            $firstRelation = $resolver->resolveRelation($currentModel, $chain[0]['name']);
+
+            if ($firstRelation['type'] === 'unknown') {
+                $startIndex = 1;
+            }
+        }
+
+        // Traverse all intermediate relation steps, updating $currentModel at each step
+        for ($i = $startIndex; $i < $count - 1; $i++) {
+            $relationInfo = $resolver->resolveRelation($currentModel, $chain[$i]['name']);
+
+            if ($relationInfo['type'] === 'unknown' || $relationInfo['modelFqcn'] === null) {
+                return $this->unknownResult();
+            }
+
+            /** @var class-string<Model> $relatedModel */
+            $relatedModel = $relationInfo['modelFqcn'];
+            $currentModel = $relatedModel;
+        }
+
+        // The last chain step is the relation whose methods we are calling on
+        // (e.g., `$this->categoryRel` in `$this->categoryRel?->isFirst()`).
+        // Traverse it as a relation to get the terminal model — unless it was the skipped proxy.
+        if ($startIndex <= $count - 1) {
+            $lastStep = $chain[$count - 1];
+            $relationInfo = $resolver->resolveRelation($currentModel, $lastStep['name']);
+
+            if ($relationInfo['type'] !== 'unknown' && $relationInfo['modelFqcn'] !== null) {
+                /** @var class-string<Model> $relatedModel */
+                $relatedModel = $relationInfo['modelFqcn'];
+                $currentModel = $relatedModel;
+            }
+        }
+
+        $tsInfo = $resolver->resolveMethodReturnType($currentModel, $methodName);
+
+        if ($tsInfo['type'] === '' || $tsInfo['type'] === 'unknown') {
+            return $this->unknownResult();
+        }
+
+        // NullsafeMethodCall always produces a nullable result
+        $type = str_ends_with($tsInfo['type'], ' | null')
+            ? $tsInfo['type']
+            : $tsInfo['type'].' | null';
+
+        return ['type' => $type, 'optional' => false];
     }
 
     /**
@@ -2067,6 +2212,18 @@ class ResourceAstAnalyzer
         $wrappedClass = $this->resolveWrappedClass();
 
         if ($wrappedClass === null || ! method_exists($wrappedClass, $methodName)) {
+            // Fall back to modelClass for `$this->resource->method()` calls on @mixin-style resources
+            // (e.g. `$this->resource->commentsCount()` where commentsCount() lives on the model).
+            if ($this->modelClass !== null && method_exists($this->modelClass, $methodName)) {
+                /** @var class-string $modelClass */
+                $modelClass = $this->modelClass;
+                $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($modelClass), $methodName);
+
+                if ($tsInfo['type'] !== '' && $tsInfo['type'] !== 'unknown') {
+                    return [...$tsInfo, 'optional' => false];
+                }
+            }
+
             return $result;
         }
 
@@ -2196,7 +2353,22 @@ class ResourceAstAnalyzer
             }
         }
 
-        return $this->unknownResult(); // @codeCoverageIgnore
+        // 3. Fall back to the resource's backing model class (covers @mixin-delegated calls
+        //    like `$this->publishable()` on a resource with `@mixin Post`).
+        if ($this->modelClass !== null && method_exists($this->modelClass, $methodName)) {
+            /** @var class-string $modelClass */
+            $modelClass = $this->modelClass;
+            $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($modelClass), $methodName);
+
+            if ($tsInfo['type'] !== '' && $tsInfo['type'] !== 'unknown') {
+                return [
+                    ...$tsInfo,
+                    'optional' => false,
+                ];
+            }
+        }
+
+        return $this->unknownResult();
     }
 
     /**
