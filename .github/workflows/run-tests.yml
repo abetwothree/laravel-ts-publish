@@ -20,7 +20,7 @@ concurrency:
 jobs:
   test:
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 5
+    timeout-minutes: 15
     strategy:
       fail-fast: true
       matrix:
@@ -47,7 +47,7 @@ jobs:
         with:
           php-version: ${{ matrix.php }}
           extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv, imagick, fileinfo
-          coverage: xdebug
+          coverage: ${{ (matrix.laravel == '13.*' && matrix.stability == 'prefer-stable' && matrix.php == '8.5') && 'xdebug' || 'none' }}
 
       - name: Setup problem matchers
         run: |
@@ -62,8 +62,13 @@ jobs:
       - name: List Installed Dependencies
         run: composer show -D
 
-      - name: Execute tests
+      - name: Execute tests with coverage
+        if: always() && matrix.laravel == '13.*' && matrix.stability == 'prefer-stable' && matrix.php == '8.5'
         run: vendor/bin/pest --ci --parallel --coverage --coverage-clover clover.xml
+
+      - name: Execute tests without coverage
+        if: always() && !(matrix.laravel == '13.*' && matrix.stability == 'prefer-stable' && matrix.php == '8.5')
+        run: vendor/bin/pest --ci --parallel
 
       - name: Make code coverage badge
         if: always() && matrix.laravel == '13.*' && matrix.stability == 'prefer-stable' && matrix.php == '8.5'
