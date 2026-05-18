@@ -136,6 +136,179 @@ describe('ResourceAstAnalyzer with PostResource', function () {
             ->and($comments['type'])->toContain('content: string')
             ->and($comments['type'])->toContain('user: User');
     });
+
+    // cast, mixin method, and resolve() expressions ————————————
+
+    test('(bool) cast resolves to boolean', function () {
+        $reflection = new ReflectionClass(PostResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'published');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('boolean')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('(int) cast inside arithmetic expression resolves to number', function () {
+        // `(int) round(...) / 2` — cast binds tighter than /, outer node is BinaryOp\Div
+        $reflection = new ReflectionClass(PostResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'rating_display');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('number')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('(string) cast resolves to string', function () {
+        $reflection = new ReflectionClass(PostResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'word_count');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('(array) cast resolves to unknown[]', function () {
+        $reflection = new ReflectionClass(PostResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'heading_content');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('unknown[]')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('@mixin method with return type — publishable resolves to boolean', function () {
+        $reflection = new ReflectionClass(PostResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'publishable');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('boolean')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('@mixin method via $this->resource — comments_count resolves to number', function () {
+        $reflection = new ReflectionClass(PostResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'comments_count');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('number')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('@mixin method with docblock only — is_featured resolves to boolean', function () {
+        $reflection = new ReflectionClass(PostResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'is_featured');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('boolean')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('nullsafe relation method in whenLoaded closure — category_is_first resolves to boolean|null', function () {
+        $reflection = new ReflectionClass(PostResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'category_is_first');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('boolean | null')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    test('nullsafe relation method via $this->resource in whenLoaded closure — category_is_active resolves to boolean|null', function () {
+        $reflection = new ReflectionClass(PostResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'category_is_active');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('boolean | null')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    test('resource collection with ->resolve() — comments_resolved resolves to CommentResource[]', function () {
+        $reflection = new ReflectionClass(PostResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'comments_resolved');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('CommentResource[]')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    // static method call expressions ———————————————————————————————
+
+    test('$this::staticMethod() resolves return type — post_class_name', function () {
+        $reflection = new ReflectionClass(PostResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'post_class_name');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('$this->resource::staticMethod() resolves return type — post_table_name', function () {
+        $reflection = new ReflectionClass(PostResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'post_table_name');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('relation::staticMethod() in whenLoaded closure resolves return type — category_class_name', function () {
+        $reflection = new ReflectionClass(PostResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'category_class_name');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    test('resource->relation::staticMethod() in whenLoaded closure resolves return type — category_table_name', function () {
+        $reflection = new ReflectionClass(PostResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'category_table_name');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string')
+            ->and($prop['optional'])->toBeTrue();
+    });
 });
 
 describe('ResourceAstAnalyzer with UserResource', function () {
