@@ -17,6 +17,9 @@ import type { {{ implode(', ', $types) }} } from '{{ $path }}';
 @endif
  * @see {{ $data->fqcn }}
  */
+@if($data->typeAlias !== null)
+export type {{ $data->resourceName }} = {!! $data->typeAlias !!};
+@else
 export interface {{ $data->resourceName }}{!! count($data->tsExtends) > 0 ? ' extends ' . implode(', ', $data->tsExtends) : '' !!}
 {
 @foreach ($data->properties as $name => $property)
@@ -26,3 +29,4 @@ export interface {{ $data->resourceName }}{!! count($data->tsExtends) > 0 ? ' ex
     {!! LaravelTsPublish::validJsObjectKey($name) !!}{!! $property['optional'] ? '?' : '' !!}: {!! $property['type'] !!};
 @endforeach
 }
+@endif

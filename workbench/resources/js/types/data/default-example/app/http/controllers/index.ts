@@ -8,6 +8,11 @@ export { default as DomainController } from './domain-controller';
 export { default as EnumBoundController } from './enum-bound-controller';
 export { default as ExcludableController } from './excludable-controller';
 export { default as InertiaController } from './inertia-controller';
+export { default as InertiaNamedCollectionsController } from './inertia-named-collections-controller';
+export { default as InertiaPaginationsController } from './inertia-paginations-controller';
+export { default as InertiaResourceSharedTemplate } from './inertia-resource-shared-template';
+export { default as InertiaSingleResourceController } from './inertia-single-resource-controller';
+export { default as InertiaTsCastsController } from './inertia-ts-casts-controller';
 export { default as InvokableController } from './invokable-controller';
 export { default as InvokableInertiaController } from './invokable-inertia-controller';
 export { default as InvokableModelBoundController } from './invokable-model-bound-controller';
@@ -18,5 +23,6 @@ export { default as NamedInvokableController } from './named-invokable-controlle
 export { default as OptionalParamController } from './optional-param-controller';
 export { default as ParameterCaseController } from './parameter-case-controller';
 export { default as PostController } from './post-controller';
+export { default as PostInertiaController } from './post-inertia-controller';
 export { default as PrimaryKeyController } from './primary-key-controller';
 export { default as TypedParamController } from './typed-param-controller';

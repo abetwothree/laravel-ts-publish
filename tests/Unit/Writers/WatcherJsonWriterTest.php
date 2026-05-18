@@ -151,5 +151,5 @@ test('watcher json excludes resources when publish_resources is false', function
     $decoded = json_decode($content, true);
     $paths = collect($decoded);
 
-    expect($paths->contains(fn ($p) => str_contains($p, 'Resource')))->toBeFalse();
+    expect($paths->contains(fn ($p) => str_contains($p, 'Resources/')))->toBeFalse();
 });

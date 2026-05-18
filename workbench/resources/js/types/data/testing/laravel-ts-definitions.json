@@ -6279,6 +6279,13 @@
                 "optional": false
             }
         ],
+        "PostCollection": [
+            {
+                "name": "data",
+                "type": "PostResource[]",
+                "optional": false
+            }
+        ],
         "ApiPostResource": [
             {
                 "name": "morphValue",
@@ -6607,6 +6614,7 @@
             }
         ],
         "DelegatingResource": [],
+        "PostFlatCollection": [],
         "TeamResource": [
             {
                 "name": "id",
