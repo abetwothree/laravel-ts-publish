@@ -1,0 +1,1 @@
+export { default as PrismController } from './prism-controller';

@@ -24,14 +24,14 @@ class EnumWriter extends CoreWriter
         $data = $transformer->data();
 
         /** @var view-string $template */
-        $template = config()->string('ts-publish.enum_template');
+        $template = config()->string('ts-publish.enums.template');
 
         $content = view(
             $template,
             [
                 'filename' => $filename,
-                'metadataEnabled' => config()->boolean('ts-publish.enum_metadata_enabled'),
-                'usesTolkiPackage' => config()->boolean('ts-publish.enums_use_tolki_package'),
+                'metadataEnabled' => config()->boolean('ts-publish.enums.metadata_enabled'),
+                'usesTolkiPackage' => config()->boolean('ts-publish.enums.use_tolki_package'),
                 'data' => $data,
             ]
         )->render();
@@ -46,9 +46,7 @@ class EnumWriter extends CoreWriter
     protected function writeEnumFile(string $filename, string $content, string $namespacePath): void
     {
         $outputBase = config()->string('ts-publish.output_directory');
-        $outputPath = config()->boolean('ts-publish.modular_publishing')
-            ? $outputBase.'/'.$namespacePath
-            : $outputBase.'/enums';
+        $outputPath = $outputBase.'/'.$namespacePath;
 
         $this->filesystem->ensureDirectoryExists($outputPath);
         $this->filesystem->put("$outputPath/$filename.ts", $content);

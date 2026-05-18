@@ -87,6 +87,7 @@ class EnumTransformer extends CoreTransformer
         return new TsEnumDto(
             enumName: $this->enumName,
             description: $this->description,
+            fqcn: $this->fqcn(),
             filePath: $this->filePath,
             filename: $this->filename(),
             cases: $this->cases,
@@ -199,8 +200,8 @@ class EnumTransformer extends CoreTransformer
 
     protected function transformMethods(): self
     {
-        $autoInclude = config('ts-publish.auto_include_enum_methods');
-        $caseFormatting = config()->string('ts-publish.enum_method_case');
+        $autoInclude = config('ts-publish.enums.auto_include_methods');
+        $caseFormatting = config()->string('ts-publish.enums.method_case');
 
         foreach ($this->reflectionEnum->getMethods() as $method) {
             $methodName = $method->getName();
@@ -260,8 +261,8 @@ class EnumTransformer extends CoreTransformer
 
     protected function transformStaticMethods(): self
     {
-        $autoInclude = config('ts-publish.auto_include_enum_static_methods');
-        $caseFormatting = config()->string('ts-publish.enum_method_case');
+        $autoInclude = config('ts-publish.enums.auto_include_static_methods');
+        $caseFormatting = config()->string('ts-publish.enums.method_case');
 
         foreach ($this->reflectionEnum->getMethods() as $method) {
             $methodName = $method->getName();

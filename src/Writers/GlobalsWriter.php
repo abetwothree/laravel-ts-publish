@@ -19,28 +19,21 @@ class GlobalsWriter
 
     public function write(Runner $runner): string
     {
-        if (! config()->boolean('ts-publish.output_globals_file')) {
+        if (! config()->boolean('ts-publish.globals.enabled')) {
             return '';
         }
 
         /** @var view-string $template */
-        $template = config()->string('ts-publish.globals_template');
-
-        $isModular = config()->boolean('ts-publish.modular_publishing');
-
-        $modelsNamespace = config()->string('ts-publish.models_namespace');
-        $enumsNamespace = config()->string('ts-publish.enums_namespace');
-        $resourcesNamespace = config()->string('ts-publish.resources_namespace', 'resources');
+        $template = config()->string('ts-publish.globals.template');
 
         // Build a map of global namespace → type names it owns, used for cross-namespace qualification.
-        // In non-modular mode: 'enums' => [...], 'models' => [...], 'resources' => [...]
-        // In modular mode: 'accounting.enums' => [...], 'app.models' => [...], etc.
+        // Each key is a dot-separated namespace path, e.g. 'app.enums' => [...], 'app.models' => [...].
         /** @var array<string, list<string>> $globalTypesByNamespace */
         $globalTypesByNamespace = [];
 
         foreach ($runner->enumGenerators as $gen) {
             $t = $gen->transformer;
-            $ns = $isModular ? str_replace('/', '.', $t->namespacePath) : $enumsNamespace;
+            $ns = str_replace('/', '.', $t->namespacePath);
             $globalTypesByNamespace[$ns][] = $t->enumName;
             $globalTypesByNamespace[$ns][] = $t->enumName.'Type';
             if ($t->backed) {
@@ -50,13 +43,13 @@ class GlobalsWriter
 
         foreach ($runner->modelGenerators as $gen) {
             $t = $gen->transformer;
-            $ns = $isModular ? str_replace('/', '.', $t->namespacePath) : $modelsNamespace;
+            $ns = str_replace('/', '.', $t->namespacePath);
             $globalTypesByNamespace[$ns][] = $t->modelName;
         }
 
         foreach ($runner->resourceGenerators as $gen) {
             $t = $gen->transformer;
-            $ns = $isModular ? str_replace('/', '.', $t->namespacePath) : $resourcesNamespace;
+            $ns = str_replace('/', '.', $t->namespacePath);
             $globalTypesByNamespace[$ns][] = $t->resourceName;
         }
 
@@ -105,41 +98,32 @@ class GlobalsWriter
         }
 
         $viewData = [
-            'enums' => $runner->enumGenerators->map(fn (EnumGenerator $g) => $g->transformer),
-            'models' => $runner->modelGenerators->map(fn (ModelGenerator $g) => $g->transformer),
-            'resources' => $runner->resourceGenerators->map(fn (ResourceGenerator $g) => $g->transformer),
-            'modelsNamespace' => $modelsNamespace,
-            'enumsNamespace' => $enumsNamespace,
-            'resourcesNamespace' => $resourcesNamespace,
-            'isModular' => $isModular,
             'globalTypesByNamespace' => $globalTypesByNamespace,
             'globalAliasMap' => $globalAliasMap,
             'externalTypeImports' => $externalTypeImports,
         ];
 
-        if ($isModular) {
-            $viewData['groupedModels'] = $runner->modelGenerators
-                ->groupBy(fn (ModelGenerator $g) => str_replace('/', '.', $g->transformer->namespacePath))
-                ->map(fn ($group) => $group->map(fn (ModelGenerator $g) => $g->transformer))
-                ->sortKeys();
+        $viewData['groupedModels'] = $runner->modelGenerators
+            ->groupBy(fn (ModelGenerator $g) => str_replace('/', '.', $g->transformer->namespacePath))
+            ->map(fn ($group) => $group->map(fn (ModelGenerator $g) => $g->transformer))
+            ->sortKeys();
 
-            $viewData['groupedEnums'] = $runner->enumGenerators
-                ->groupBy(fn (EnumGenerator $g) => str_replace('/', '.', $g->transformer->namespacePath))
-                ->map(fn ($group) => $group->map(fn (EnumGenerator $g) => $g->transformer))
-                ->sortKeys();
+        $viewData['groupedEnums'] = $runner->enumGenerators
+            ->groupBy(fn (EnumGenerator $g) => str_replace('/', '.', $g->transformer->namespacePath))
+            ->map(fn ($group) => $group->map(fn (EnumGenerator $g) => $g->transformer))
+            ->sortKeys();
 
-            $viewData['groupedResources'] = $runner->resourceGenerators
-                ->groupBy(fn (ResourceGenerator $g) => str_replace('/', '.', $g->transformer->namespacePath))
-                ->map(fn ($group) => $group->map(fn (ResourceGenerator $g) => $g->transformer))
-                ->sortKeys();
-        }
+        $viewData['groupedResources'] = $runner->resourceGenerators
+            ->groupBy(fn (ResourceGenerator $g) => str_replace('/', '.', $g->transformer->namespacePath))
+            ->map(fn ($group) => $group->map(fn (ResourceGenerator $g) => $g->transformer))
+            ->sortKeys();
 
         $content = view($template, $viewData)->render();
 
         if (config()->boolean('ts-publish.output_to_files')) {
-            $globalDir = config('ts-publish.global_directory');
+            $globalDir = config('ts-publish.globals.output_directory');
             $outputPath = is_string($globalDir) ? $globalDir : config()->string('ts-publish.output_directory');
-            $filename = config()->string('ts-publish.global_filename');
+            $filename = config()->string('ts-publish.globals.filename');
 
             $this->filesystem->ensureDirectoryExists($outputPath);
             $this->filesystem->put("$outputPath/$filename", $content);

@@ -7,7 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Writers\JsonWriter;
 use Illuminate\Filesystem\Filesystem;
 
 test('writes json content when enabled', function () {
-    config()->set('ts-publish.output_json_file', true);
+    config()->set('ts-publish.json.enabled', true);
     config()->set('ts-publish.output_to_files', false);
 
     $runner = resolve(Runner::class);
@@ -26,7 +26,7 @@ test('writes json content when enabled', function () {
 });
 
 test('returns empty string when json output is disabled', function () {
-    config()->set('ts-publish.output_json_file', false);
+    config()->set('ts-publish.json.enabled', false);
     config()->set('ts-publish.output_to_files', false);
 
     $runner = resolve(Runner::class);
@@ -39,7 +39,7 @@ test('returns empty string when json output is disabled', function () {
 });
 
 test('json models contain columns as name/type pairs', function () {
-    config()->set('ts-publish.output_json_file', true);
+    config()->set('ts-publish.json.enabled', true);
     config()->set('ts-publish.output_to_files', false);
 
     $runner = resolve(Runner::class);
@@ -56,7 +56,7 @@ test('json models contain columns as name/type pairs', function () {
 });
 
 test('json enums contain cases and methods', function () {
-    config()->set('ts-publish.output_json_file', true);
+    config()->set('ts-publish.json.enabled', true);
     config()->set('ts-publish.output_to_files', false);
 
     $runner = resolve(Runner::class);
@@ -77,7 +77,7 @@ test('json enums contain cases and methods', function () {
 });
 
 test('writes json file to disk when output_to_files is enabled', function () {
-    config()->set('ts-publish.output_json_file', true);
+    config()->set('ts-publish.json.enabled', true);
 
     $filesystem = Mockery::mock(Filesystem::class);
     $filesystem->shouldReceive('ensureDirectoryExists')->once();

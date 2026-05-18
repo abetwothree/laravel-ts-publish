@@ -9,6 +9,7 @@ describe('TsEnumDto', function () {
         $this->dto = new TsEnumDto(
             enumName: 'Status',
             description: 'A test enum',
+            fqcn: 'App\Enums\Status',
             filePath: 'app/Enums/Status.php',
             filename: 'status',
             cases: [

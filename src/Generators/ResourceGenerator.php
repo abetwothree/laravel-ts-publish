@@ -20,13 +20,13 @@ class ResourceGenerator extends CoreGenerator
     public function generate(): string
     {
         /** @var ResourceTransformer $transformer */
-        $transformer = resolve(config()->string('ts-publish.resource_transformer_class'), [
+        $transformer = resolve(config()->string('ts-publish.resources.transformer_class'), [
             'findable' => $this->findable,
         ]);
         $this->transformer = $transformer;
 
         /** @var ResourceWriter $writer */
-        $writer = resolve(config()->string('ts-publish.resource_writer_class'));
+        $writer = resolve(config()->string('ts-publish.resources.writer_class'));
 
         return $this->content = $writer->write($this->transformer);
     }

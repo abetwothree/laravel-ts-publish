@@ -53,7 +53,7 @@ class RelationMap
         /** @var array<class-string, string> $merged */
         $merged = array_merge(
             $map,
-            array_filter(config()->array('ts-publish.relation_nullability_map', []), 'is_string'),
+            array_filter(config()->array('ts-publish.models.relation_nullability_map', []), 'is_string'),
         );
 
         return self::$map = $merged;

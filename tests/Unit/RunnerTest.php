@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
@@ -36,8 +38,9 @@ test('runner generates enum barrel content', function () {
     $runner = new Runner;
     $runner->run();
 
-    expect($runner->enumBarrelContent)
-        ->toBeString()
+    expect($runner->enumModularBarrels)->toBeArray()
+        ->toHaveKey('workbench/app/enums')
+        ->and($runner->enumModularBarrels['workbench/app/enums'])
         ->toContain("export * from './status'");
 });
 
@@ -45,24 +48,25 @@ test('runner generates model barrel content', function () {
     $runner = new Runner;
     $runner->run();
 
-    expect($runner->modelBarrelContent)
-        ->toBeString()
+    expect($runner->modelModularBarrels)->toBeArray()
+        ->toHaveKey('workbench/app/models')
+        ->and($runner->modelModularBarrels['workbench/app/models'])
         ->toContain("export * from './user'");
 });
 
 test('runner generates globals content when enabled', function () {
-    config()->set('ts-publish.output_globals_file', true);
+    config()->set('ts-publish.globals.enabled', true);
 
     $runner = new Runner;
     $runner->run();
 
     expect($runner->globalsContent)
         ->toContain('declare global')
-        ->toContain('export namespace models');
+        ->toContain('export namespace workbench.app.models');
 });
 
 test('runner generates empty globals content when disabled', function () {
-    config()->set('ts-publish.output_globals_file', false);
+    config()->set('ts-publish.globals.enabled', false);
 
     $runner = new Runner;
     $runner->run();
@@ -71,7 +75,7 @@ test('runner generates empty globals content when disabled', function () {
 });
 
 test('runner generates json content when enabled', function () {
-    config()->set('ts-publish.output_json_file', true);
+    config()->set('ts-publish.json.enabled', true);
 
     $runner = new Runner;
     $runner->run();
@@ -83,7 +87,7 @@ test('runner generates json content when enabled', function () {
 });
 
 test('runner generates empty json content when disabled', function () {
-    config()->set('ts-publish.output_json_file', false);
+    config()->set('ts-publish.json.enabled', false);
 
     $runner = new Runner;
     $runner->run();
@@ -92,7 +96,7 @@ test('runner generates empty json content when disabled', function () {
 });
 
 test('runner generates watcher json content when enabled', function () {
-    config()->set('ts-publish.output_collected_files_json', true);
+    config()->set('ts-publish.watcher.enabled', true);
 
     $runner = new Runner;
     $runner->run();
@@ -104,7 +108,7 @@ test('runner generates watcher json content when enabled', function () {
 });
 
 test('runner generates empty watcher json content when disabled', function () {
-    config()->set('ts-publish.output_collected_files_json', false);
+    config()->set('ts-publish.watcher.enabled', false);
 
     $runner = new Runner;
     $runner->run();
@@ -112,21 +116,20 @@ test('runner generates empty watcher json content when disabled', function () {
     expect($runner->watcherJsonContent)->toBe('');
 });
 
-describe('Runner modular publishing', function () {
+describe('Runner namespaced output', function () {
     beforeEach(function () {
-        config()->set('ts-publish.modular_publishing', true);
         config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
 
         // Include Blog module classes in collector discovery
-        $existingModels = config()->array('ts-publish.additional_model_directories');
-        config()->set('ts-publish.additional_model_directories', [
+        $existingModels = config()->array('ts-publish.models.additional_directories');
+        config()->set('ts-publish.models.additional_directories', [
             ...$existingModels,
             Article::class,
             Reaction::class,
         ]);
 
-        $existingEnums = config()->array('ts-publish.additional_enum_directories');
-        config()->set('ts-publish.additional_enum_directories', [
+        $existingEnums = config()->array('ts-publish.enums.additional_directories');
+        config()->set('ts-publish.enums.additional_directories', [
             ...$existingEnums,
             ArticleStatus::class,
             ContentType::class,
@@ -164,16 +167,16 @@ describe('Runner modular publishing', function () {
             ->and($runner->modelModularBarrels['accounting/models'])->toContain("export * from './invoice'");
     });
 
-    test('runner generates combined barrel content for modular mode', function () {
+    test('runner generates combined modular barrels', function () {
         $runner = new Runner;
         $runner->run();
 
-        expect($runner->enumBarrelContent)->toBeString()->not->toBeEmpty();
-        expect($runner->modelBarrelContent)->toBeString()->not->toBeEmpty();
+        expect($runner->enumModularBarrels)->toBeArray()->not->toBeEmpty();
+        expect($runner->modelModularBarrels)->toBeArray()->not->toBeEmpty();
     });
 
     test('runner generates modular globals when enabled', function () {
-        config()->set('ts-publish.output_globals_file', true);
+        config()->set('ts-publish.globals.enabled', true);
 
         $runner = new Runner;
         $runner->run();
@@ -194,7 +197,7 @@ describe('Runner conditional publishing', function () {
         $runner->run();
 
         expect($runner->enumGenerators)->toBeEmpty()
-            ->and($runner->enumBarrelContent)->toBe('')
+            ->and($runner->enumModularBarrels)->toBe([])
             ->and($runner->modelGenerators)->not->toBeEmpty();
     });
 
@@ -204,7 +207,7 @@ describe('Runner conditional publishing', function () {
         $runner->run();
 
         expect($runner->modelGenerators)->toBeEmpty()
-            ->and($runner->modelBarrelContent)->toBe('')
+            ->and($runner->modelModularBarrels)->toBe([])
             ->and($runner->enumGenerators)->not->toBeEmpty();
     });
 
@@ -216,12 +219,12 @@ describe('Runner conditional publishing', function () {
 
         expect($runner->enumGenerators)->toBeEmpty()
             ->and($runner->modelGenerators)->toBeEmpty()
-            ->and($runner->enumBarrelContent)->toBe('')
-            ->and($runner->modelBarrelContent)->toBe('');
+            ->and($runner->enumModularBarrels)->toBe([])
+            ->and($runner->modelModularBarrels)->toBe([]);
     });
 
     test('globals only contains enums when models are skipped', function () {
-        config()->set('ts-publish.output_globals_file', true);
+        config()->set('ts-publish.globals.enabled', true);
 
         $runner = new Runner;
         $runner->shouldPublishModels = false;
@@ -229,12 +232,12 @@ describe('Runner conditional publishing', function () {
 
         expect($runner->globalsContent)
             ->toContain('declare global')
-            ->toContain('export namespace enums')
-            ->not->toContain('export namespace models');
+            ->toContain('export namespace workbench.app.enums')
+            ->not->toContain('export namespace workbench.app.models');
     });
 
     test('globals only contains models when enums are skipped', function () {
-        config()->set('ts-publish.output_globals_file', true);
+        config()->set('ts-publish.globals.enabled', true);
 
         $runner = new Runner;
         $runner->shouldPublishEnums = false;
@@ -242,12 +245,12 @@ describe('Runner conditional publishing', function () {
 
         expect($runner->globalsContent)
             ->toContain('declare global')
-            ->toContain('export namespace models')
-            ->not->toContain('export namespace enums');
+            ->toContain('export namespace workbench.app.models')
+            ->not->toContain('export namespace workbench.app.enums');
     });
 
     test('json output only contains enums when models are skipped', function () {
-        config()->set('ts-publish.output_json_file', true);
+        config()->set('ts-publish.json.enabled', true);
 
         $runner = new Runner;
         $runner->shouldPublishModels = false;
@@ -262,7 +265,7 @@ describe('Runner conditional publishing', function () {
     });
 
     test('watcher json includes all config-enabled file paths regardless of runner publish flags', function () {
-        config()->set('ts-publish.output_collected_files_json', true);
+        config()->set('ts-publish.watcher.enabled', true);
 
         $runner = new Runner;
         $runner->shouldPublishModels = false;
@@ -282,10 +285,10 @@ describe('Runner conditional publishing', function () {
     });
 
     test('respects publish_enums config value', function () {
-        config()->set('ts-publish.publish_enums', false);
+        config()->set('ts-publish.enums.enabled', false);
 
         $runner = new Runner;
-        $runner->shouldPublishEnums = config()->boolean('ts-publish.publish_enums');
+        $runner->shouldPublishEnums = config()->boolean('ts-publish.enums.enabled');
         $runner->run();
 
         expect($runner->enumGenerators)->toBeEmpty()
@@ -293,13 +296,69 @@ describe('Runner conditional publishing', function () {
     });
 
     test('respects publish_models config value', function () {
-        config()->set('ts-publish.publish_models', false);
+        config()->set('ts-publish.models.enabled', false);
 
         $runner = new Runner;
-        $runner->shouldPublishModels = config()->boolean('ts-publish.publish_models');
+        $runner->shouldPublishModels = config()->boolean('ts-publish.models.enabled');
         $runner->run();
 
         expect($runner->modelGenerators)->toBeEmpty()
             ->and($runner->enumGenerators)->not->toBeEmpty();
     });
+});
+
+// ─── Inertia config generation ────────────────────────────────────
+
+test('runner inertiaConfigContent is empty when inertia is disabled', function () {
+    config()->set('ts-publish.inertia.enabled', false);
+
+    $runner = new Runner;
+    $runner->run();
+
+    expect($runner->inertiaConfigContent)->toBe('');
+});
+
+test('runner generates inertiaConfigContent when inertia is enabled with mocked converter', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockSharedData = Mockery::mock(InertiaSharedDataAnalyzer::class);
+    $mockSharedData->shouldReceive('setAppPaths')->once();
+    $mockSharedData->shouldReceive('analyze')->andReturn([
+        'sharedPageProps' => '{ appName: string }',
+        'withAllErrors' => true,
+        'importStatements' => [],
+    ]);
+
+    $mockPageAnalyzer = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockPageAnalyzer->shouldReceive('analyze')->andReturn(null);
+
+    app()->instance(InertiaSharedDataAnalyzer::class, $mockSharedData);
+    app()->instance(InertiaPageAnalyzer::class, $mockPageAnalyzer);
+
+    $runner = new Runner;
+    $runner->run();
+
+    expect($runner->inertiaConfigContent)
+        ->toContain("declare module '@inertiajs/core'")
+        ->toContain('sharedPageProps: { appName: string }')
+        ->toContain('errorValueType: string[]');
+});
+
+test('runner inertiaConfigContent is empty when converter returns null', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockSharedData = Mockery::mock(InertiaSharedDataAnalyzer::class);
+    $mockSharedData->shouldReceive('setAppPaths')->once();
+    $mockSharedData->shouldReceive('analyze')->andReturn(null);
+
+    $mockPageAnalyzer = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockPageAnalyzer->shouldReceive('analyze')->andReturn(null);
+
+    app()->instance(InertiaSharedDataAnalyzer::class, $mockSharedData);
+    app()->instance(InertiaPageAnalyzer::class, $mockPageAnalyzer);
+
+    $runner = new Runner;
+    $runner->run();
+
+    expect($runner->inertiaConfigContent)->toBe('');
 });

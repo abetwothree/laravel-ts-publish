@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -31,6 +32,7 @@ use Workbench\App\Models\User;
 use Workbench\App\Models\Warehouse;
 use Workbench\App\Relations\CompositeMorphTo;
 use Workbench\Crm\Models\Deal;
+use Workbench\Crm\Models\User as CrmUser;
 
 describe('ModelTransformer with User model', function () {
     test('transforms User model name and filePath', function () {
@@ -116,11 +118,11 @@ describe('ModelTransformer with User model', function () {
         $data = (new ModelTransformer(User::class))->data();
 
         // Model imports should include related model types but not self
-        expect($data->typeImports)->toHaveKey('./');
-        expect($data->typeImports['./'])->toContain('Profile')
-            ->and($data->typeImports['./'])->toContain('Post')
-            ->and($data->typeImports['./'])->toContain('Image')
-            ->and($data->typeImports['./'])->not->toContain('User');
+        expect($data->typeImports)->toHaveKey('.');
+        expect($data->typeImports['.'])->toContain('Profile')
+            ->and($data->typeImports['.'])->toContain('Post')
+            ->and($data->typeImports['.'])->toContain('Image')
+            ->and($data->typeImports['.'])->not->toContain('User');
     });
 });
 
@@ -331,7 +333,7 @@ describe('ModelTransformer with TrackingEvent model that has a helper method col
 
 describe('ModelTransformer with User model respecting relationship_case config', function () {
     test('respects relationship_case config for relation names', function () {
-        config()->set('ts-publish.relationship_case', 'snake');
+        config()->set('ts-publish.models.relationship_case', 'snake');
 
         $data = (new ModelTransformer(User::class))->data();
 
@@ -385,7 +387,6 @@ describe('ModelTransformer namespacePath', function () {
 
 describe('ModelTransformer modular typeImports', function () {
     test('computes modular typeImports with relative paths for Invoice model', function () {
-        config()->set('ts-publish.modular_publishing', true);
         config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
 
         $data = (new ModelTransformer(Invoice::class))->data();
@@ -405,7 +406,6 @@ describe('ModelTransformer modular typeImports', function () {
     });
 
     test('computes modular typeImports for User model with enum and model imports', function () {
-        config()->set('ts-publish.modular_publishing', true);
         config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
 
         $data = (new ModelTransformer(User::class))->data();
@@ -421,16 +421,6 @@ describe('ModelTransformer modular typeImports', function () {
         expect($data->typeImports['.'])->toContain('Profile')
             ->and($data->typeImports['.'])->toContain('Post')
             ->and($data->typeImports['.'])->not->toContain('User');
-    });
-
-    test('non-modular typeImports uses flat paths', function () {
-        config()->set('ts-publish.modular_publishing', false);
-
-        $data = (new ModelTransformer(User::class))->data();
-
-        // Non-modular uses hardcoded '../enums' and './' paths
-        expect($data->typeImports)->toHaveKey('../enums');
-        expect($data->typeImports)->toHaveKey('./');
     });
 });
 
@@ -470,22 +460,7 @@ describe('ModelTransformer import alias resolution for duplicate names', functio
             ->and($allImports)->toContain('StatusType as CrmStatusType');
     });
 
-    test('aliases model imports in flat (non-modular) mode', function () {
-        config()->set('ts-publish.modular_publishing', false);
-
-        $data = (new ModelTransformer(Deal::class))->data();
-
-        // Flat mode should still alias conflicting names
-        expect($data->relations['customer']['type'])->toBe('CustomerUser');
-        expect($data->relations['admin']['type'])->toBe('AdminUser');
-
-        expect($data->typeImports)->toHaveKey('./');
-        expect($data->typeImports['./'])->toContain('User as AdminUser')
-            ->and($data->typeImports['./'])->toContain('User as CustomerUser');
-    });
-
-    test('aliases model imports in modular mode with correct relative paths', function () {
-        config()->set('ts-publish.modular_publishing', true);
+    test('aliases model imports with correct relative paths', function () {
         config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
 
         $data = (new ModelTransformer(Deal::class))->data();
@@ -544,6 +519,32 @@ describe('ModelTransformer import alias resolution for duplicate names', functio
 
         // Accounting\Enums\InvoiceStatus → strip 'Workbench\', skip 'Enums' → 'Accounting'
         expect($method->invoke($transformer, 'Workbench\\Accounting\\Enums\\InvoiceStatus'))->toBe('Accounting');
+    });
+
+    test('falls back to namespace-based alias when relation-based aliases collide', function () {
+        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+        // Both App\User and Crm\User have morphMany(Image, 'imageable')
+        // → both get modelFqcnRelations[FQCN] = ['imageable'] → Str::studly('imageable').'User' = 'ImageableUser'
+        // → collision detected → fallback to namespace-based: AppUser, CrmUser
+        resolve(ModelAttributeResolver::class)->buildMorphTargetMap([
+            User::class,
+            CrmUser::class,
+            Post::class,
+            Product::class,
+            Image::class,
+        ]);
+
+        $data = (new ModelTransformer(Image::class))->data();
+
+        // The MorphTo union should use distinct namespace-based aliases
+        expect($data->relations['imageable']['type'])->toBe('Post | Product | AppUser | CrmUser');
+
+        // Imports should use namespace-based aliases, not duplicate ImageableUser
+        $allImports = array_merge(...array_values($data->typeImports));
+        expect($allImports)->toContain('User as AppUser')
+            ->and($allImports)->toContain('User as CrmUser')
+            ->and($allImports)->not->toContain('User as ImageableUser');
     });
 });
 
@@ -614,7 +615,7 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
     });
 
     test('enumColumns is empty when enums_use_tolki_package is disabled', function () {
-        config()->set('ts-publish.enums_use_tolki_package', false);
+        config()->set('ts-publish.enums.use_tolki_package', false);
 
         $data = (new ModelTransformer(Post::class))->data();
 
@@ -647,7 +648,7 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
     });
 
     test('does not add @tolki/enum import when enums_use_tolki_package is disabled', function () {
-        config()->set('ts-publish.enums_use_tolki_package', false);
+        config()->set('ts-publish.enums.use_tolki_package', false);
 
         $data = (new ModelTransformer(Post::class))->data();
 
@@ -680,7 +681,7 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
     });
 
     test('does not add enum const imports when enums_use_tolki_package is disabled', function () {
-        config()->set('ts-publish.enums_use_tolki_package', false);
+        config()->set('ts-publish.enums.use_tolki_package', false);
 
         $data = (new ModelTransformer(Post::class))->data();
 
@@ -700,7 +701,6 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
     });
 
     test('adds enum const names to valueImports in modular mode', function () {
-        config()->set('ts-publish.modular_publishing', true);
         config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
 
         $data = (new ModelTransformer(Post::class))->data();
@@ -855,10 +855,79 @@ describe('ModelTransformer nullable relations', function () {
     });
 
     test('MorphTo with non-nullable morph columns is not nullable', function () {
+        resolve(ModelAttributeResolver::class)->buildMorphTargetMap([
+            User::class,
+            Post::class,
+            Product::class,
+            Image::class,
+        ]);
+
         $data = (new ModelTransformer(Image::class))->data();
 
         // Image uses morphs('imageable') — NOT NULL columns
-        expect($data->relations['imageable']['type'])->toBe('Image');
+        // MorphTo targets resolved via inverse MorphMany scanning: Post, Product, User
+        expect($data->relations['imageable']['type'])->toBe('Post | Product | User');
+    });
+
+    test('MorphTo with resolved targets includes target models in import map', function () {
+        resolve(ModelAttributeResolver::class)->buildMorphTargetMap([
+            User::class,
+            Post::class,
+            Product::class,
+            Image::class,
+        ]);
+
+        $data = (new ModelTransformer(Image::class))->data();
+
+        // Each morph target should appear in the type imports (flattened values)
+        $importedTypes = array_merge(...array_values($data->typeImports));
+
+        expect($importedTypes)
+            ->toContain('Post')
+            ->toContain('Product')
+            ->toContain('User');
+    });
+
+    test('MorphTo without resolved targets falls back to unknown', function () {
+        // No buildMorphTargetMap() call — morph map is empty
+        $data = (new ModelTransformer(Image::class))->data();
+
+        expect($data->relations['imageable']['type'])->toBe('unknown');
+    });
+
+    test('MorphTo is not dropped when models.included is set', function () {
+        resolve(ModelAttributeResolver::class)->buildMorphTargetMap([
+            User::class,
+            Post::class,
+            Product::class,
+            Image::class,
+        ]);
+
+        // Only include Post and Image — but MorphTo should still appear
+        config()->set('ts-publish.models.included', [Post::class, Image::class]);
+
+        $data = (new ModelTransformer(Image::class))->data();
+
+        // MorphTo relation is present, and only the included target appears in the union
+        expect($data->relations)->toHaveKey('imageable')
+            ->and($data->relations['imageable']['type'])->toBe('Post');
+    });
+
+    test('MorphTo targets are filtered by models.excluded', function () {
+        resolve(ModelAttributeResolver::class)->buildMorphTargetMap([
+            User::class,
+            Post::class,
+            Product::class,
+            Image::class,
+        ]);
+
+        // Exclude Product from the morph union
+        config()->set('ts-publish.models.excluded', [Product::class]);
+
+        $data = (new ModelTransformer(Image::class))->data();
+
+        // Product should not appear in the union
+        expect($data->relations['imageable']['type'])->toBe('Post | User');
     });
 
     test('HasOne is always nullable', function () {
@@ -883,7 +952,7 @@ describe('ModelTransformer nullable relations', function () {
     });
 
     test('nullable relations disabled via config', function () {
-        config()->set('ts-publish.nullable_relations', false);
+        config()->set('ts-publish.models.nullable_relations', false);
 
         $data = (new ModelTransformer(User::class))->data();
 
@@ -892,7 +961,7 @@ describe('ModelTransformer nullable relations', function () {
     });
 
     test('relation_nullability_map config overrides default strategy', function () {
-        config()->set('ts-publish.relation_nullability_map', [
+        config()->set('ts-publish.models.relation_nullability_map', [
             HasOne::class => 'never',
         ]);
 
@@ -903,7 +972,7 @@ describe('ModelTransformer nullable relations', function () {
     });
 
     test('relation_nullability_map can make BelongsTo always nullable', function () {
-        config()->set('ts-publish.relation_nullability_map', [
+        config()->set('ts-publish.models.relation_nullability_map', [
             BelongsTo::class => 'nullable',
         ]);
 
@@ -914,7 +983,7 @@ describe('ModelTransformer nullable relations', function () {
     });
 
     test('fk strategy on non-BelongsTo relation falls back to nullable', function () {
-        config()->set('ts-publish.relation_nullability_map', [
+        config()->set('ts-publish.models.relation_nullability_map', [
             HasOne::class => 'fk',
         ]);
 
@@ -925,7 +994,7 @@ describe('ModelTransformer nullable relations', function () {
     });
 
     test('morph strategy on non-MorphTo relation falls back to nullable', function () {
-        config()->set('ts-publish.relation_nullability_map', [
+        config()->set('ts-publish.models.relation_nullability_map', [
             HasOne::class => 'morph',
         ]);
 
@@ -956,7 +1025,7 @@ describe('ModelTransformer composite foreign keys', function () {
 
 describe('ModelTransformer composite morph foreign keys', function () {
     test('MorphTo with composite FK is nullable when any FK column is nullable', function () {
-        config()->set('ts-publish.relation_nullability_map', [
+        config()->set('ts-publish.models.relation_nullability_map', [
             CompositeMorphTo::class => 'morph',
         ]);
 
@@ -964,11 +1033,12 @@ describe('ModelTransformer composite morph foreign keys', function () {
 
         // CompositeComment.commentable uses composite FK ['commentable_id_1', 'commentable_id_2']
         // commentable_id_2 is nullable, so the relation should be nullable
-        expect($data->relations['commentable']['type'])->toBe('CompositeComment | null');
+        // MorphTo is typed as 'unknown' since the related model is polymorphic
+        expect($data->relations['commentable']['type'])->toBe('unknown | null');
     });
 
     test('MorphTo with composite FK is not nullable when all columns are non-nullable', function () {
-        config()->set('ts-publish.relation_nullability_map', [
+        config()->set('ts-publish.models.relation_nullability_map', [
             CompositeMorphTo::class => 'morph',
         ]);
 
@@ -976,7 +1046,8 @@ describe('ModelTransformer composite morph foreign keys', function () {
 
         // StrictCompositeComment.commentable uses composite FK ['commentable_id_1', 'commentable_id_2']
         // All FK columns and commentable_type are NOT NULL
-        expect($data->relations['commentable']['type'])->toBe('StrictCompositeComment');
+        // MorphTo is typed as 'unknown' since the related model is polymorphic
+        expect($data->relations['commentable']['type'])->toBe('unknown');
     });
 });
 
@@ -1226,8 +1297,8 @@ describe('Image model @return Attribute<> docblock accessor resolution', functio
         expect($data->mutators)->toHaveKey('uploader_from_docblock')
             ->and($data->mutators['uploader_from_docblock']['type'])->toBe('User | null');
 
-        expect($data->typeImports)->toHaveKey('./');
-        expect($data->typeImports['./'])->toContain('User');
+        expect($data->typeImports)->toHaveKey('.');
+        expect($data->typeImports['.'])->toContain('User');
     });
 
     // #[TsType] class with import

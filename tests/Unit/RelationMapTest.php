@@ -55,7 +55,7 @@ test('gather caches the result on subsequent calls', function () {
 });
 
 test('gather merges relation_nullability_map config overrides', function () {
-    config()->set('ts-publish.relation_nullability_map', [
+    config()->set('ts-publish.models.relation_nullability_map', [
         BelongsTo::class => 'nullable',
     ]);
 
@@ -65,7 +65,7 @@ test('gather merges relation_nullability_map config overrides', function () {
 });
 
 test('config overrides take precedence over defaults', function () {
-    config()->set('ts-publish.relation_nullability_map', [
+    config()->set('ts-publish.models.relation_nullability_map', [
         HasOne::class => 'never',
         HasMany::class => 'nullable',
     ]);
@@ -77,7 +77,7 @@ test('config overrides take precedence over defaults', function () {
 });
 
 test('config can add custom relation types not in defaults', function () {
-    config()->set('ts-publish.relation_nullability_map', [
+    config()->set('ts-publish.models.relation_nullability_map', [
         'App\\Relations\\CustomRelation' => 'nullable',
     ]);
 
@@ -104,7 +104,7 @@ test('strategyFor resolves FQCNs directly', function () {
 });
 
 test('strategyFor resolves custom package relation by short name', function () {
-    config()->set('ts-publish.relation_nullability_map', [
+    config()->set('ts-publish.models.relation_nullability_map', [
         'SomePackage\\Relations\\BelongsToTenant' => 'never',
     ]);
 

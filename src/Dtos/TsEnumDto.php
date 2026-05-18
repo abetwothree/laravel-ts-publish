@@ -19,6 +19,7 @@ use JsonSerializable;
  * @phpstan-type EnumData = array{
  *     enumName: string,
  *     description: string,
+ *     fqcn: string,
  *     filePath: string,
  *     filename: string,
  *     cases: CasesList,
@@ -31,7 +32,7 @@ use JsonSerializable;
  *
  * @implements Arrayable<string, string|CasesList|MethodsList|StaticMethodsList|CaseKindsList|CaseTypesList|bool>
  */
-class TsEnumDto implements Arrayable, Datable, Jsonable, JsonSerializable
+final readonly class TsEnumDto implements Arrayable, Datable, Jsonable, JsonSerializable
 {
     /**
      * @param  CasesList  $cases
@@ -43,6 +44,7 @@ class TsEnumDto implements Arrayable, Datable, Jsonable, JsonSerializable
     public function __construct(
         public string $enumName,
         public string $description,
+        public string $fqcn,
         public string $filePath,
         public string $filename,
         public array $cases,
@@ -59,6 +61,7 @@ class TsEnumDto implements Arrayable, Datable, Jsonable, JsonSerializable
         return [
             'enumName' => $this->enumName,
             'description' => $this->description,
+            'fqcn' => $this->fqcn,
             'filePath' => $this->filePath,
             'filename' => $this->filename,
             'cases' => $this->cases,

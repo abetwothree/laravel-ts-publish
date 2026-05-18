@@ -138,6 +138,7 @@ class ResourceTransformer extends CoreTransformer
         return new TsResourceDto(
             resourceName: $this->resourceName,
             description: $this->description,
+            fqcn: $this->fqcn(),
             filePath: $this->filePath,
             filename: $this->filename(),
             properties: $this->properties,
@@ -324,7 +325,7 @@ class ResourceTransformer extends CoreTransformer
         }
 
         /** @var ModelsCollector $collector */
-        $collector = resolve(config()->string('ts-publish.model_collector_class'));
+        $collector = resolve(config()->string('ts-publish.models.collector_class'));
 
         foreach ($collector->collect() as $modelClass) {
             $reflection = new ReflectionClass($modelClass);
@@ -404,7 +405,7 @@ class ResourceTransformer extends CoreTransformer
 
         // Populate enum tracking maps from EnumResource::make() properties
         foreach ($analysis->enumResources as $propName => $fqcn) {
-            $tsInfo = LaravelTsPublish::phpToTypeScriptType($fqcn);
+            $tsInfo = LaravelTsPublish::toTsType($fqcn);
             $this->enumFqcnMap[$fqcn] = $tsInfo['enumTypes'][0] ?? class_basename($fqcn).'Type';
             $this->enumConstMap[$fqcn] = $tsInfo['enums'][0] ?? class_basename($fqcn);
             $nullable = str_contains($this->properties[$propName]['type'] ?? '', 'null');
@@ -415,7 +416,7 @@ class ResourceTransformer extends CoreTransformer
         // Populate enum tracking maps from direct $this->prop enum access
         foreach ($analysis->directEnumFqcns as $propName => $fqcn) {
             if (! isset($this->enumFqcnMap[$fqcn])) {
-                $tsInfo = LaravelTsPublish::phpToTypeScriptType($fqcn);
+                $tsInfo = LaravelTsPublish::toTsType($fqcn);
                 $this->enumFqcnMap[$fqcn] = $tsInfo['enumTypes'][0] ?? class_basename($fqcn).'Type';
                 $this->enumConstMap[$fqcn] = $tsInfo['enums'][0] ?? class_basename($fqcn);
             }
@@ -502,28 +503,16 @@ class ResourceTransformer extends CoreTransformer
     {
         $typeImports = [];
         $valueImports = [];
-        $isModular = config()->boolean('ts-publish.modular_publishing');
         $hasEnums = $this->shouldGenerateHasEnums();
 
-        if ($isModular) {
-            $typeImports = [
-                ...$this->collectModularTypeImports($this->enumFqcnMap),
-                ...$this->collectModularTypeImports($this->resourceFqcnMap),
-                ...$this->collectModularTypeImports($this->modelFqcnMap),
-            ];
+        $typeImports = [
+            ...$this->collectModularTypeImports($this->enumFqcnMap),
+            ...$this->collectModularTypeImports($this->resourceFqcnMap),
+            ...$this->collectModularTypeImports($this->modelFqcnMap),
+        ];
 
-            if ($hasEnums) {
-                $valueImports = $this->collectModularValueImports($this->enumPropertyFqcns());
-            }
-        } else {
-            ['typeImports' => $typeImports, 'valueImports' => $valueImports] = $this->buildFlatEnumImports(
-                $this->enumFqcnMap,
-                $this->enumPropertyFqcns(),
-                $hasEnums,
-            );
-
-            $this->addSortedImports($typeImports, './', $this->collectFlatTypeImports($this->resourceFqcnMap));
-            $this->addSortedImports($typeImports, '../models', $this->collectFlatTypeImports($this->modelFqcnMap));
+        if ($hasEnums) {
+            $valueImports = $this->collectModularValueImports($this->enumPropertyFqcns());
         }
 
         $typeImports = $this->mergeCustomImports($typeImports, $this->customImports);
@@ -540,7 +529,7 @@ class ResourceTransformer extends CoreTransformer
      */
     protected function rewriteEnumResourceTypes(): self
     {
-        if (! config()->boolean('ts-publish.enums_use_tolki_package') || $this->enumResourceProperties === []) {
+        if (! config()->boolean('ts-publish.enums.use_tolki_package') || $this->enumResourceProperties === []) {
             return $this;
         }
 
@@ -813,8 +802,6 @@ class ResourceTransformer extends CoreTransformer
      */
     public function globalEnumConstMap(): array
     {
-        $isModular = config()->boolean('ts-publish.modular_publishing');
-        $enumsNs = config()->string('ts-publish.enums_namespace');
         $map = [];
 
         foreach ($this->enumResourceProperties as $info) {
@@ -830,9 +817,7 @@ class ResourceTransformer extends CoreTransformer
             }
 
             $typeName = $originalConstName.'Type';
-            $ns = $isModular
-                ? str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn))
-                : $enumsNs;
+            $ns = str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn));
 
             $map[$constAlias] = $ns.'.'.$typeName;
         }
@@ -850,27 +835,17 @@ class ResourceTransformer extends CoreTransformer
      */
     public function globalAliasMap(): array
     {
-        $isModular = config()->boolean('ts-publish.modular_publishing');
-        $modelsNs = config()->string('ts-publish.models_namespace');
-        $enumsNs = config()->string('ts-publish.enums_namespace');
-        $resourcesNs = config()->string('ts-publish.resources_namespace', 'resources');
         $map = [];
 
         foreach ($this->importAliases as $fqcn => $alias) {
             if (isset($this->enumFqcnMap[$fqcn])) {
-                $ns = $isModular
-                    ? str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn))
-                    : $enumsNs;
+                $ns = str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn));
                 $map[$alias] = $ns.'.'.$this->enumFqcnMap[$fqcn];
             } elseif (isset($this->resourceFqcnMap[$fqcn])) {
-                $ns = $isModular
-                    ? str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn))
-                    : $resourcesNs;
+                $ns = str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn));
                 $map[$alias] = $ns.'.'.$this->resourceFqcnMap[$fqcn];
             } elseif (isset($this->modelFqcnMap[$fqcn])) {
-                $ns = $isModular
-                    ? str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn))
-                    : $modelsNs;
+                $ns = str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn));
                 $map[$alias] = $ns.'.'.$this->modelFqcnMap[$fqcn];
             }
         }

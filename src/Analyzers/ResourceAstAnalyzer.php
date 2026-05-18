@@ -1534,14 +1534,14 @@ class ResourceAstAnalyzer
                 return null;
             }
 
-            $tsInfo = LaravelTsPublish::phpToTypeScriptType($phpType);
+            $tsInfo = LaravelTsPublish::toTsType($phpType);
 
             return $tsInfo['type'] !== 'unknown' ? ['type' => $tsInfo['type']] : null;
         }
 
         if ($typeNode instanceof Name) {
             $phpType = $typeNode->toString();
-            $tsInfo = LaravelTsPublish::phpToTypeScriptType($phpType);
+            $tsInfo = LaravelTsPublish::toTsType($phpType);
 
             if ($tsInfo['type'] === 'unknown') {
                 return null;

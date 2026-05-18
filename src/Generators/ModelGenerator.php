@@ -20,13 +20,13 @@ class ModelGenerator extends CoreGenerator
     public function generate(): string
     {
         /** @var ModelTransformer $transformer */
-        $transformer = resolve(config()->string('ts-publish.model_transformer_class'), [
+        $transformer = resolve(config()->string('ts-publish.models.transformer_class'), [
             'findable' => $this->findable,
         ]);
         $this->transformer = $transformer;
 
         /** @var ModelWriter $writer */
-        $writer = resolve(config()->string('ts-publish.model_writer_class'));
+        $writer = resolve(config()->string('ts-publish.models.writer_class'));
 
         return $this->content = $writer->write($this->transformer);
     }

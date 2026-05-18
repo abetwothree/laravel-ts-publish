@@ -1,0 +1,23 @@
+/**
+ * Fixture resource exercising variable-return trait method spreads.
+ *
+ * @see Workbench\App\Http\Resources\VarReturnSpreadResource
+ */
+export interface VarReturnSpreadResource
+{
+    id: number;
+    baseKey: string;
+    conditionalKey?: unknown;
+    always: unknown;
+    sometimes?: unknown;
+    ifBranch?: unknown;
+    elseifBranch?: unknown;
+    elseBranch?: unknown;
+    conditionalBaseKey?: unknown;
+    foundB?: unknown;
+    foreachKey?: unknown;
+    forKey?: unknown;
+    whileKey?: unknown;
+    doWhileKey?: unknown;
+    status: unknown;
+}

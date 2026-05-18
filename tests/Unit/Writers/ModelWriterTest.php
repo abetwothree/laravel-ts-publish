@@ -83,7 +83,7 @@ describe('ModelWriter Resource interface output', function () {
         $transformer = new ModelTransformer(Post::class);
 
         config()->set('ts-publish.output_to_files', false);
-        config()->set('ts-publish.model_template', 'laravel-ts-publish::model-full');
+        config()->set('ts-publish.models.template', 'laravel-ts-publish::model-full');
 
         $content = $writer->write($transformer);
 
@@ -99,7 +99,7 @@ describe('ModelWriter Resource interface output', function () {
         $transformer = new ModelTransformer(Post::class);
 
         config()->set('ts-publish.output_to_files', false);
-        config()->set('ts-publish.model_template', 'laravel-ts-publish::model-split');
+        config()->set('ts-publish.models.template', 'laravel-ts-publish::model-split');
 
         $content = $writer->write($transformer);
 
@@ -115,7 +115,7 @@ describe('ModelWriter Resource interface output', function () {
         $transformer = new ModelTransformer(Post::class);
 
         config()->set('ts-publish.output_to_files', false);
-        config()->set('ts-publish.model_template', 'laravel-ts-publish::model-full');
+        config()->set('ts-publish.models.template', 'laravel-ts-publish::model-full');
 
         $content = $writer->write($transformer);
 
@@ -130,7 +130,7 @@ describe('ModelWriter Resource interface output', function () {
         $transformer = new ModelTransformer(Post::class);
 
         config()->set('ts-publish.output_to_files', false);
-        config()->set('ts-publish.enums_use_tolki_package', false);
+        config()->set('ts-publish.enums.use_tolki_package', false);
 
         $content = $writer->write($transformer);
 
@@ -155,7 +155,7 @@ describe('ModelWriter Resource interface output', function () {
         $transformer = new ModelTransformer(Deal::class);
 
         config()->set('ts-publish.output_to_files', false);
-        config()->set('ts-publish.model_template', 'laravel-ts-publish::model-full');
+        config()->set('ts-publish.models.template', 'laravel-ts-publish::model-full');
         $content = $writer->write($transformer);
 
         expect($content)
@@ -169,7 +169,7 @@ describe('ModelWriter Resource interface output', function () {
         $transformer = new ModelTransformer(Post::class);
 
         config()->set('ts-publish.output_to_files', false);
-        config()->set('ts-publish.model_template', 'laravel-ts-publish::model-split');
+        config()->set('ts-publish.models.template', 'laravel-ts-publish::model-split');
 
         $content = $writer->write($transformer);
 
@@ -185,7 +185,7 @@ describe('ModelWriter Resource interface output', function () {
         $transformer = new ModelTransformer(Post::class);
 
         config()->set('ts-publish.output_to_files', false);
-        config()->set('ts-publish.model_template', 'laravel-ts-publish::model-full');
+        config()->set('ts-publish.models.template', 'laravel-ts-publish::model-full');
 
         $content = $writer->write($transformer);
 
@@ -203,7 +203,7 @@ describe('ModelWriter Resource interface output', function () {
 
         $content = $writer->write($transformer);
 
-        expect($content)->toContain("import { type AsEnum } from '@tolki/enum'");
+        expect($content)->toContain("import { type AsEnum } from '@tolki/ts'");
     });
 
     test('imports enum const names as value imports and type names as type imports', function () {
@@ -239,7 +239,7 @@ test('renders extends clause from TsExtends attribute in split template', functi
     $transformer = new ModelTransformer(Warehouse::class);
 
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.model_template', 'laravel-ts-publish::model-split');
+    config()->set('ts-publish.models.template', 'laravel-ts-publish::model-split');
 
     $content = $writer->write($transformer);
 
@@ -254,7 +254,7 @@ test('renders extends clause from TsExtends attribute in full template', functio
     $transformer = new ModelTransformer(Warehouse::class);
 
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.model_template', 'laravel-ts-publish::model-full');
+    config()->set('ts-publish.models.template', 'laravel-ts-publish::model-full');
 
     $content = $writer->write($transformer);
 
@@ -268,7 +268,7 @@ test('model without TsExtends renders plain interface', function () {
     $transformer = new ModelTransformer(User::class);
 
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.model_template', 'laravel-ts-publish::model-split');
+    config()->set('ts-publish.models.template', 'laravel-ts-publish::model-split');
 
     $content = $writer->write($transformer);
 

@@ -1,6 +1,6 @@
 @use('AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish')
 @if($usesTolkiPackage && count($data->valueImports) > 0)
-import { type AsEnum } from '@tolki/enum';
+import { type AsEnum } from '@tolki/ts';
 
 @endif
 @foreach ($data->valueImports as $path => $names)
@@ -10,9 +10,13 @@ import { {{ implode(', ', $names) }} } from '{{ $path }}';
 import type { {{ implode(', ', $types) }} } from '{{ $path }}';
 @endforeach
 
+/**
 @if($data->description)
-/** {!! LaravelTsPublish::sanitizeJsDoc($data->description) !!} */
+ * {!! LaravelTsPublish::sanitizeJsDoc($data->description) !!}
+ *
 @endif
+ * @see {{ $data->fqcn }}
+ */
 export interface {{ $data->resourceName }}{!! count($data->tsExtends) > 0 ? ' extends ' . implode(', ', $data->tsExtends) : '' !!}
 {
 @foreach ($data->properties as $name => $property)

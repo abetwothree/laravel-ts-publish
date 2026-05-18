@@ -9,6 +9,7 @@ describe('TsModelDto', function () {
         $this->dto = new TsModelDto(
             modelName: 'User',
             description: 'A test model',
+            fqcn: 'App\Models\User',
             filePath: 'app/Models/User.php',
             filename: 'user',
             columns: [

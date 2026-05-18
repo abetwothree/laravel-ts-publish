@@ -26,9 +26,9 @@ class ModelsCollector extends CoreCollector
     protected function finderSettings(): array
     {
         return [
-            'included' => $this->sanitizeAllowSetting(config()->array('ts-publish.included_models')),
-            'excluded' => $this->sanitizeAllowSetting(config()->array('ts-publish.excluded_models')),
-            'additional_directories' => $this->sanitizeAllowSetting(config()->array('ts-publish.additional_model_directories')),
+            'included' => $this->sanitizeAllowSetting(config()->array('ts-publish.models.included')),
+            'excluded' => $this->sanitizeAllowSetting(config()->array('ts-publish.models.excluded')),
+            'additional_directories' => $this->sanitizeAllowSetting(config()->array('ts-publish.models.additional_directories')),
         ];
     }
 }

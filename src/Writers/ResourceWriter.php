@@ -22,7 +22,7 @@ class ResourceWriter extends CoreWriter
         $filename = $transformer->filename();
 
         /** @var view-string $template */
-        $template = config()->string('ts-publish.resource_template');
+        $template = config()->string('ts-publish.resources.template');
 
         $data = $transformer->data();
 
@@ -30,7 +30,7 @@ class ResourceWriter extends CoreWriter
             $template,
             [
                 'filename' => $filename,
-                'usesTolkiPackage' => config()->boolean('ts-publish.enums_use_tolki_package'),
+                'usesTolkiPackage' => config()->boolean('ts-publish.enums.use_tolki_package'),
                 'data' => $data,
             ]
         )->render();
@@ -45,9 +45,7 @@ class ResourceWriter extends CoreWriter
     protected function writeResourceFile(string $filename, string $content, string $namespacePath): void
     {
         $outputBase = config()->string('ts-publish.output_directory');
-        $outputPath = config()->boolean('ts-publish.modular_publishing')
-            ? $outputBase.'/'.$namespacePath
-            : $outputBase.'/'.config()->string('ts-publish.resources_namespace', 'resources');
+        $outputPath = $outputBase.'/'.$namespacePath;
 
         $this->filesystem->ensureDirectoryExists($outputPath);
         $this->filesystem->put("$outputPath/$filename.ts", $content);

@@ -34,7 +34,7 @@ use LogicException;
  *
  * @internal
  */
-class ModelInfo implements Arrayable, ArrayAccess
+final readonly class ModelInfo implements Arrayable, ArrayAccess
 {
     /**
      * @param  ModelClassType  $class  The model's fully-qualified class.

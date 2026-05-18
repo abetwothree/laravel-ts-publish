@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use Illuminate\Support\Collection;
 use InvalidArgumentException;
 use ReflectionClass;
@@ -31,6 +32,10 @@ class RunnerForSource extends BaseRunner
         /** @var Collection<int, ResourceGenerator> $resourceGenerators */
         $resourceGenerators = collect();
         $this->resourceGenerators = $resourceGenerators;
+
+        /** @var Collection<int, RouteGenerator> $routeGenerators */
+        $routeGenerators = collect();
+        $this->routeGenerators = $routeGenerators;
     }
 
     public function run(): void
@@ -61,8 +66,14 @@ class RunnerForSource extends BaseRunner
             }
 
             $this->generateResource($fqcn);
+        } elseif ($this->validateController($reflection)) {
+            if (! $this->shouldPublishRoutes) {
+                throw new InvalidArgumentException("Route publishing is disabled: {$fqcn}");
+            }
+
+            $this->generateRoute($fqcn);
         } else {
-            throw new InvalidArgumentException("Class is not a publishable enum, model, or resource: {$fqcn}");
+            throw new InvalidArgumentException("Class is not a publishable enum, model, resource, or controller: {$fqcn}");
         }
     }
 
@@ -85,7 +96,7 @@ class RunnerForSource extends BaseRunner
     {
         /** @var EnumGenerator $generator */
         $generator = resolve(
-            config()->string('ts-publish.enum_generator_class'),
+            config()->string('ts-publish.enums.generator_class'),
             ['findable' => $fqcn],
         );
 
@@ -96,7 +107,7 @@ class RunnerForSource extends BaseRunner
     {
         /** @var ModelGenerator $generator */
         $generator = resolve(
-            config()->string('ts-publish.model_generator_class'),
+            config()->string('ts-publish.models.generator_class'),
             ['findable' => $fqcn],
         );
 
@@ -107,10 +118,29 @@ class RunnerForSource extends BaseRunner
     {
         /** @var ResourceGenerator $generator */
         $generator = resolve(
-            config()->string('ts-publish.resource_generator_class'),
+            config()->string('ts-publish.resources.generator_class'),
             ['findable' => $fqcn],
         );
 
         $this->resourceGenerators = collect([$generator]);
+    }
+
+    /**
+     * Generate a route from a controller FQCN.
+     *
+     * Class existence and TsExclude are already validated by run() → validateController(),
+     * so no redundant checks are needed here.
+     *
+     * @param  class-string  $fqcn  The fully qualified class name of the controller.
+     */
+    protected function generateRoute(string $fqcn): void
+    {
+        /** @var RouteGenerator $generator */
+        $generator = resolve(
+            config()->string('ts-publish.routes.generator_class'),
+            ['findable' => $fqcn],
+        );
+
+        $this->routeGenerators = collect([$generator]);
     }
 }

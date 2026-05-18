@@ -45,6 +45,22 @@ class LaravelTsPublish
 {
     protected static ?Closure $callCommandWith = null;
 
+    /** @var list<string> */
+    private const RESERVED_JS_IDENTIFIERS = [
+        'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
+        'default', 'delete', 'do', 'else', 'export', 'extends', 'false',
+        'finally', 'for', 'function', 'if', 'import', 'in', 'instanceof',
+        'let', 'new', 'null', 'return', 'static', 'super', 'switch', 'this',
+        'throw', 'true', 'try', 'typeof', 'var', 'void', 'while', 'with',
+        'yield',
+    ];
+
+    /** @var list<string> */
+    public const array TS_PRIMITIVES = [
+        'string', 'number', 'boolean', 'bigint', 'symbol',
+        'null', 'undefined', 'object', 'unknown', 'any', 'never', 'void',
+    ];
+
     /**
      * Set something to do when the publish command runs, using a callback Closure
      */
@@ -136,7 +152,7 @@ class LaravelTsPublish
      *
      * @return TypeScriptTypeInfo
      */
-    public function phpToTypeScriptType(string $phpType): array
+    public function toTsType(string $phpType): array
     {
         $typesMap = $this->typesMap(); // keys are already lowercased
         $lower = strtolower($phpType);
@@ -144,8 +160,10 @@ class LaravelTsPublish
 
         // 0. Nullable shorthand ?T → recurse on T and append | null
         if (str_starts_with($phpType, '?')) {
-            $inner = $this->phpToTypeScriptType(substr($phpType, 1));
-            $inner['type'] .= ' | null';
+            $inner = $this->toTsType(substr($phpType, 1));
+            if (! str_contains($inner['type'], 'null')) {
+                $inner['type'] .= ' | null';
+            }
 
             return $inner;
         }
@@ -251,7 +269,7 @@ class LaravelTsPublish
         if (str_starts_with($lower, 'encrypted:')) {
             $inner = substr($lower, strlen('encrypted:'));
 
-            return $this->phpToTypeScriptType($inner);
+            return $this->toTsType($inner);
         }
 
         // 7. Partial map match (e.g. "tinyint(1)" contains "tinyint")
@@ -336,7 +354,7 @@ class LaravelTsPublish
 
         // Single named type — includes ?T shorthand (allowsNull() + getName() !== 'null')
         if ($returnType instanceof ReflectionNamedType) {
-            $result = $this->phpToTypeScriptType($returnType->getName());
+            $result = $this->toTsType($returnType->getName());
 
             if ($returnType->allowsNull() && $returnType->getName() !== 'null') {
                 $result['type'] .= ' | null';
@@ -356,7 +374,7 @@ class LaravelTsPublish
 
             foreach ($returnType->getTypes() as $type) {
                 $infos[] = $type instanceof ReflectionNamedType
-                    ? $this->phpToTypeScriptType($type->getName())
+                    ? $this->toTsType($type->getName())
                     : $this->emptyTypeScriptInfo(); // ReflectionIntersectionType inside a DNF union → unknown
             }
 
@@ -368,8 +386,11 @@ class LaravelTsPublish
 
     /**
      * Parse the `@return` docblock of a method and resolve each type part
-     * through phpToTypeScriptType, resolving short class names via the
+     * through toTsType, resolving short class names via the
      * declaring file's use statements.
+     *
+     * Supports multiline `@return` types including `array{...}` shapes
+     * that span multiple lines in the docblock.
      *
      * @return TypeScriptTypeInfo
      */
@@ -381,13 +402,13 @@ class LaravelTsPublish
             return $this->emptyTypeScriptInfo();
         }
 
-        // Match @return that follows "* " to avoid grabbing from inline comments
-        if (! preg_match('/(?<=\* )@return\s+([^\s*]+)/', $docComment, $matches)) {
+        $returnTypeString = $this->extractReturnTypeFromDocblock($docComment);
+
+        if ($returnTypeString === null) {
             return $this->emptyTypeScriptInfo();
         }
 
-        $returnTypeString = $matches[1];
-        $parts = explode('|', $returnTypeString);
+        $parts = $this->splitPhpDocUnionType($returnTypeString);
 
         // Build a use-map from the declaring file for short name resolution
         $declaringClass = $method->getDeclaringClass();
@@ -404,7 +425,7 @@ class LaravelTsPublish
             }
 
             $resolved = $this->resolveDocblockTypeName($part, $useMap, $namespace);
-            $infos[] = $this->phpToTypeScriptType($resolved);
+            $infos[] = $this->toTsType($resolved);
         }
 
         if ($infos === []) {
@@ -448,7 +469,7 @@ class LaravelTsPublish
 
     /**
      * Resolve a docblock type string (potentially a union like `string|null`)
-     * through use-statement resolution and phpToTypeScriptType.
+     * through use-statement resolution and toTsType.
      *
      * @return TypeScriptTypeInfo
      */
@@ -466,11 +487,11 @@ class LaravelTsPublish
         );
 
         if (count($parts) === 1) {
-            return $this->phpToTypeScriptType($parts[0]);
+            return $this->toTsType($parts[0]);
         }
 
         $infos = array_map(
-            fn (string $part) => $this->phpToTypeScriptType($part),
+            fn (string $part) => $this->toTsType($part),
             $parts,
         );
 
@@ -513,6 +534,266 @@ class LaravelTsPublish
         } // @codeCoverageIgnoreEnd
 
         return $type;
+    }
+
+    /**
+     * Extract the complete `@return` type string from a docblock,
+     * including multiline `array{...}` shapes with nested braces.
+     *
+     * Returns null when no `@return` tag is found.
+     */
+    public function extractReturnTypeFromDocblock(string $docComment): ?string
+    {
+        // Normalize: strip comment markers, join into a single line
+        $lines = explode("\n", $docComment);
+        $content = '';
+
+        foreach ($lines as $line) {
+            $stripped = preg_replace('#^\s*/?\*+\s?#', '', $line) ?? '';
+            $stripped = preg_replace('#\s*\*+/$#', '', $stripped);
+            $content .= ' '.$stripped;
+        }
+
+        $content = trim($content);
+
+        // Find @return tag
+        if (! preg_match('/@return\s+/', $content, $match, PREG_OFFSET_CAPTURE)) {
+            return null;
+        }
+
+        $start = (int) $match[0][1] + strlen((string) $match[0][0]);
+        $rest = trim(substr($content, $start));
+
+        // If the type starts with array{, use brace matching to capture the full shape
+        if (str_starts_with($rest, 'array{')) {
+            $depth = 0;
+            $end = 0;
+
+            for ($i = 5; $i < strlen($rest); $i++) {
+                if ($rest[$i] === '{') {
+                    $depth++;
+                } elseif ($rest[$i] === '}') {
+                    $depth--;
+
+                    if ($depth === 0) {
+                        $end = $i + 1;
+
+                        break;
+                    }
+                }
+            }
+
+            if ($end > 0) {
+                // Capture any trailing union, allowing spaces around `|` (e.g. `array{...} | null`)
+                $after = substr($rest, $end);
+                $afterTrimmed = ltrim($after);
+
+                if (preg_match('/^(\s*\|\s*[^\s|@]+)+/', $afterTrimmed, $trailingMatch)) {
+                    $trailingNormalized = (string) preg_replace('/\s*\|\s*/', '|', $trailingMatch[0]);
+
+                    return $this->normalizeDocblockWhitespace(substr($rest, 0, $end).$trailingNormalized);
+                }
+
+                return $this->normalizeDocblockWhitespace(substr($rest, 0, $end));
+            }
+        }
+
+        // Otherwise, capture until whitespace (single-line type)
+        preg_match('/^(\S+)/', $rest, $typeMatch);
+
+        return $typeMatch[1] ?? null;
+    }
+
+    /**
+     * Collapse excessive whitespace in a docblock type string to single spaces.
+     */
+    protected function normalizeDocblockWhitespace(string $type): string
+    {
+        return (string) preg_replace('/\s+/', ' ', trim($type));
+    }
+
+    /**
+     * Split a PHPDoc type string on `|` at the top level (depth 0),
+     * respecting nested `{}`, `<>`, and `()`.
+     *
+     * @return list<string>
+     */
+    public function splitPhpDocUnionType(string $type): array
+    {
+        $parts = [];
+        $depth = 0;
+        $current = '';
+
+        for ($i = 0; $i < strlen($type); $i++) {
+            $char = $type[$i];
+
+            if ($char === '{' || $char === '<' || $char === '(') {
+                $depth++;
+            } elseif ($char === '}' || $char === '>' || $char === ')') {
+                $depth--;
+            } elseif ($char === '|' && $depth === 0) {
+                $parts[] = trim($current);
+                $current = '';
+
+                continue;
+            }
+
+            $current .= $char;
+        }
+
+        if (trim($current) !== '') {
+            $parts[] = trim($current);
+        }
+
+        return $parts;
+    }
+
+    /**
+     * Parse the `@return array{...}` docblock of a method into a map of
+     * property name → TypeScript type string.
+     *
+     * Only handles top-level `array{key: type, ...}` shapes. Returns an empty
+     * array when the `@return` tag is missing or not an array shape.
+     *
+     * @return array<string, string>
+     */
+    public function parseDocblockReturnArrayShape(ReflectionMethod $method): array
+    {
+        $docComment = $method->getDocComment();
+
+        if ($docComment === false) {
+            return [];
+        }
+
+        $returnType = $this->extractReturnTypeFromDocblock($docComment);
+
+        if ($returnType === null || ! str_starts_with($returnType, 'array{')) {
+            return [];
+        }
+
+        $declaringClass = $method->getDeclaringClass();
+        $useMap = $this->parseFileUseStatements($declaringClass);
+        $namespace = $declaringClass->getNamespaceName();
+
+        return $this->parseArrayShapeToTsTypes($returnType, $useMap, $namespace);
+    }
+
+    /**
+     * Parse a PHPDoc `array{key: type, ...}` shape string into a map
+     * of property name → TypeScript type string.
+     *
+     * Handles nested `array{...}` shapes and union types recursively.
+     *
+     * @param  array<string, string>  $useMap
+     * @return array<string, string>
+     */
+    public function parseArrayShapeToTsTypes(string $shape, array $useMap, string $namespace): array
+    {
+        if (! str_starts_with($shape, 'array{') || ! str_ends_with($shape, '}')) {
+            return [];
+        }
+
+        $inner = trim(substr($shape, 6, -1));
+
+        if ($inner === '') {
+            return [];
+        }
+
+        $entries = $this->splitAtTopLevelCommas($inner);
+        $result = [];
+
+        foreach ($entries as $entry) {
+            $entry = trim($entry);
+
+            // Match 'key: type' or 'key?: type'
+            if (preg_match('/^(\w+)\??\s*:\s*(.+)$/s', $entry, $m)) {
+                $result[$m[1]] = $this->resolvePhpDocTypeToTs(trim($m[2]), $useMap, $namespace);
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Resolve a PHPDoc type string (including nested array shapes) to a TypeScript type string.
+     *
+     * @param  array<string, string>  $useMap
+     */
+    public function resolvePhpDocTypeToTs(string $phpType, array $useMap, string $namespace): string
+    {
+        $phpType = trim($phpType);
+
+        // Handle union types first (e.g. string|null, array{...}|null)
+        // so that depth-aware splitting separates "array{...}" from "|null" correctly
+        $unionParts = $this->splitPhpDocUnionType($phpType);
+
+        if (count($unionParts) > 1) {
+            $tsParts = array_map(
+                fn (string $part) => $this->resolvePhpDocTypeToTs($part, $useMap, $namespace),
+                $unionParts,
+            );
+
+            return implode(' | ', $tsParts);
+        }
+
+        // Handle array{...} shapes recursively (after union split, this is a pure shape)
+        if (str_starts_with($phpType, 'array{')) {
+            $innerTypes = $this->parseArrayShapeToTsTypes($phpType, $useMap, $namespace);
+
+            if ($innerTypes !== []) {
+                $parts = [];
+
+                foreach ($innerTypes as $key => $type) {
+                    $parts[] = $key.': '.$type;
+                }
+
+                return '{ '.implode(', ', $parts).' }';
+            }
+
+            return 'Record<string, unknown>';
+        }
+
+        // Simple type — resolve through the existing pipeline
+        $resolved = $this->resolveDocblockTypeName($phpType, $useMap, $namespace);
+        $info = $this->toTsType($resolved);
+
+        return $info['type'];
+    }
+
+    /**
+     * Split a string on commas at the top level (depth 0),
+     * respecting nested `{}`, `<>`, and `()`.
+     *
+     * @return list<string>
+     */
+    protected function splitAtTopLevelCommas(string $input): array
+    {
+        $parts = [];
+        $depth = 0;
+        $current = '';
+
+        for ($i = 0; $i < strlen($input); $i++) {
+            $char = $input[$i];
+
+            if ($char === '{' || $char === '<' || $char === '(') {
+                $depth++;
+            } elseif ($char === '}' || $char === '>' || $char === ')') {
+                $depth--;
+            } elseif ($char === ',' && $depth === 0) {
+                $parts[] = trim($current);
+                $current = '';
+
+                continue;
+            }
+
+            $current .= $char;
+        }
+
+        if (trim($current) !== '') {
+            $parts[] = trim($current);
+        }
+
+        return $parts;
     }
 
     /**
@@ -561,6 +842,25 @@ class LaravelTsPublish
 
         // json_encode produces a properly escaped double-quoted string valid in JS/TS
         return (string) json_encode($key);
+    }
+
+    /**
+     * Ensure a string is safe to use as a bare JavaScript/TypeScript identifier
+     * (i.e., for `const` declarations or export aliases — NOT object property keys,
+     * where reserved words are valid in TypeScript interfaces and object literals).
+     *
+     * Guards against reserved JS/TS keywords (e.g. 'delete' → 'deleteMethod').
+     *
+     * @param  string  $name  The proposed identifier
+     * @param  string  $suffix  Required suffix appended when $name is reserved (e.g., 'Method', 'Controller')
+     */
+    public function safeJsIdentifier(string $name, string $suffix): string
+    {
+        if (in_array($name, self::RESERVED_JS_IDENTIFIERS, true)) {
+            return $name.$suffix;
+        }
+
+        return $name;
     }
 
     /**
@@ -622,12 +922,6 @@ class LaravelTsPublish
 
         return 'null';
     }
-
-    /** @var list<string> */
-    public const array TS_PRIMITIVES = [
-        'string', 'number', 'boolean', 'bigint', 'symbol',
-        'null', 'undefined', 'object', 'unknown', 'any', 'never', 'void',
-    ];
 
     /**
      * Extract importable type identifiers from a TypeScript type string,
@@ -884,7 +1178,12 @@ class LaravelTsPublish
             $typeStr = preg_replace($pattern, $replacement, $typeStr) ?? $typeStr;
         }
 
-        // Pass 2: qualify any remaining bare type names with their namespace
+        // Pass 2: qualify any remaining bare type names with their namespace.
+        // Skip names that also exist in the skip namespace — those bare references
+        // belong to the current context and must not be re-qualified with another namespace.
+        /** @var list<string> $skipTypeNames */
+        $skipTypeNames = $namespacedTypes[$skipNamespace] ?? [];
+
         foreach ($namespacedTypes as $namespace => $typeNames) {
             if ($namespace === $skipNamespace) {
                 continue;
@@ -894,6 +1193,10 @@ class LaravelTsPublish
             usort($typeNames, fn (string $a, string $b): int => strlen($b) - strlen($a));
 
             foreach ($typeNames as $typeName) {
+                if (in_array($typeName, $skipTypeNames, true)) {
+                    continue;
+                }
+
                 $pattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($typeName, '/').'(?![A-Za-z0-9_$])/';
                 $typeStr = preg_replace($pattern, $namespace.'.'.$typeName, $typeStr) ?? $typeStr;
             }
@@ -981,6 +1284,41 @@ class LaravelTsPublish
         }
 
         return implode(' ', $description);
+    }
+
+    /**
+     * Serialize a list of route arg metadata objects to a JavaScript array literal.
+     *
+     * Each entry is output as an inline object with only the fields that are present,
+     * so that the generated TypeScript stays compact (no `undefined` noise).
+     *
+     * @param  list<array{name: string, required: bool, _routeKey?: string, _enumValues?: list<string|int>, where?: string}>  $args
+     */
+    public function routeArgsToJs(array $args): string
+    {
+        $entries = [];
+
+        foreach ($args as $arg) {
+            $parts = [];
+            $parts[] = 'name: '.$this->toJsLiteral($arg['name']);
+            $parts[] = 'required: '.$this->toJsLiteral($arg['required']);
+
+            if (isset($arg['_routeKey'])) {
+                $parts[] = '_routeKey: '.$this->toJsLiteral($arg['_routeKey']);
+            }
+
+            if (isset($arg['_enumValues'])) {
+                $parts[] = '_enumValues: '.$this->toJsLiteral($arg['_enumValues']);
+            }
+
+            if (isset($arg['where'])) {
+                $parts[] = 'where: '.$this->toJsLiteral($arg['where']);
+            }
+
+            $entries[] = '{'.implode(', ', $parts).'}';
+        }
+
+        return '['.implode(', ', $entries).']';
     }
 
     /**

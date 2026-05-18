@@ -290,7 +290,7 @@ describe('EnumTransformer namespacePath', function () {
 
 describe('EnumTransformer auto_include_enum_methods', function () {
     test('includes all public non-static methods when enabled', function () {
-        config()->set('ts-publish.auto_include_enum_methods', true);
+        config()->set('ts-publish.enums.auto_include_methods', true);
 
         $transformer = new EnumTransformer(PaymentMethod::class);
         $data = $transformer->data();
@@ -303,7 +303,7 @@ describe('EnumTransformer auto_include_enum_methods', function () {
     });
 
     test('does not include static methods', function () {
-        config()->set('ts-publish.auto_include_enum_methods', true);
+        config()->set('ts-publish.enums.auto_include_methods', true);
 
         $transformer = new EnumTransformer(PaymentMethod::class);
         $data = $transformer->data();
@@ -312,7 +312,7 @@ describe('EnumTransformer auto_include_enum_methods', function () {
     });
 
     test('respects attribute name and description when present', function () {
-        config()->set('ts-publish.auto_include_enum_methods', true);
+        config()->set('ts-publish.enums.auto_include_methods', true);
 
         $transformer = new EnumTransformer(Priority::class);
         $data = $transformer->data();
@@ -329,7 +329,7 @@ describe('EnumTransformer auto_include_enum_methods', function () {
     });
 
     test('does not include methods without attribute when disabled', function () {
-        config()->set('ts-publish.auto_include_enum_methods', false);
+        config()->set('ts-publish.enums.auto_include_methods', false);
 
         $transformer = new EnumTransformer(Priority::class);
         $data = $transformer->data();
@@ -339,7 +339,7 @@ describe('EnumTransformer auto_include_enum_methods', function () {
     });
 
     test('skips auto-included methods with required parameters', function () {
-        config()->set('ts-publish.auto_include_enum_methods', true);
+        config()->set('ts-publish.enums.auto_include_methods', true);
 
         $transformer = new EnumTransformer(Priority::class);
         $data = $transformer->data();
@@ -354,7 +354,7 @@ describe('EnumTransformer auto_include_enum_methods', function () {
 
 describe('EnumTransformer auto_include_enum_static_methods', function () {
     test('includes all public static methods when enabled', function () {
-        config()->set('ts-publish.auto_include_enum_static_methods', true);
+        config()->set('ts-publish.enums.auto_include_static_methods', true);
 
         $transformer = new EnumTransformer(PaymentMethod::class);
         $data = $transformer->data();
@@ -365,7 +365,7 @@ describe('EnumTransformer auto_include_enum_static_methods', function () {
     });
 
     test('does not include non-static methods', function () {
-        config()->set('ts-publish.auto_include_enum_static_methods', true);
+        config()->set('ts-publish.enums.auto_include_static_methods', true);
 
         $transformer = new EnumTransformer(PaymentMethod::class);
         $data = $transformer->data();
@@ -374,7 +374,7 @@ describe('EnumTransformer auto_include_enum_static_methods', function () {
     });
 
     test('excludes built-in enum static methods', function () {
-        config()->set('ts-publish.auto_include_enum_static_methods', true);
+        config()->set('ts-publish.enums.auto_include_static_methods', true);
 
         $transformer = new EnumTransformer(PaymentMethod::class);
         $data = $transformer->data();
@@ -385,7 +385,7 @@ describe('EnumTransformer auto_include_enum_static_methods', function () {
     });
 
     test('respects attribute name and description when present', function () {
-        config()->set('ts-publish.auto_include_enum_static_methods', true);
+        config()->set('ts-publish.enums.auto_include_static_methods', true);
 
         $transformer = new EnumTransformer(Priority::class);
         $data = $transformer->data();
@@ -400,7 +400,7 @@ describe('EnumTransformer auto_include_enum_static_methods', function () {
     });
 
     test('does not include static methods without attribute when disabled', function () {
-        config()->set('ts-publish.auto_include_enum_static_methods', false);
+        config()->set('ts-publish.enums.auto_include_static_methods', false);
 
         $transformer = new EnumTransformer(Priority::class);
         $data = $transformer->data();
@@ -410,7 +410,7 @@ describe('EnumTransformer auto_include_enum_static_methods', function () {
     });
 
     test('skips auto-included static methods with required parameters', function () {
-        config()->set('ts-publish.auto_include_enum_static_methods', true);
+        config()->set('ts-publish.enums.auto_include_static_methods', true);
 
         $transformer = new EnumTransformer(Priority::class);
         $data = $transformer->data();
@@ -509,7 +509,7 @@ describe('EnumTransformer parseTsTypeOverrides defensive branch', function () {
 
 describe('EnumTransformer #[TsExclude] attribute', function () {
     test('excludes methods with #[TsExclude] when auto_include_enum_methods is enabled', function () {
-        config()->set('ts-publish.auto_include_enum_methods', true);
+        config()->set('ts-publish.enums.auto_include_methods', true);
 
         $data = (new EnumTransformer(ExcludableEnum::class))->data();
 
@@ -518,7 +518,7 @@ describe('EnumTransformer #[TsExclude] attribute', function () {
     });
 
     test('TsExclude wins over explicit #[TsEnumMethod] attribute', function () {
-        config()->set('ts-publish.auto_include_enum_methods', true);
+        config()->set('ts-publish.enums.auto_include_methods', true);
 
         $data = (new EnumTransformer(ExcludableEnum::class))->data();
 
@@ -526,7 +526,7 @@ describe('EnumTransformer #[TsExclude] attribute', function () {
     });
 
     test('excludes static methods with #[TsExclude] when auto_include_enum_static_methods is enabled', function () {
-        config()->set('ts-publish.auto_include_enum_static_methods', true);
+        config()->set('ts-publish.enums.auto_include_static_methods', true);
 
         $data = (new EnumTransformer(ExcludableEnum::class))->data();
 
@@ -535,7 +535,7 @@ describe('EnumTransformer #[TsExclude] attribute', function () {
     });
 
     test('TsExclude wins over explicit #[TsEnumStaticMethod] attribute', function () {
-        config()->set('ts-publish.auto_include_enum_static_methods', true);
+        config()->set('ts-publish.enums.auto_include_static_methods', true);
 
         $data = (new EnumTransformer(ExcludableEnum::class))->data();
 
