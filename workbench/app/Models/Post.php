@@ -109,4 +109,31 @@ class Post extends Model
     {
         return $this->morphMany(Image::class, 'imageable');
     }
+
+    public function publishable(): bool
+    {
+        return $this->status === Status::Published && $this->visibility === Visibility::Public;
+    }
+
+    public function commentsCount(): int
+    {
+        return $this->comments()->count();
+    }
+
+    /** @return bool */
+    public function isFeatured()
+    {
+        return $this->priority === Priority::High;
+    }
+
+    public static function className(): string
+    {
+        return self::class;
+    }
+
+    /** @return string */
+    public static function tableName()
+    {
+        return (new self)->getTable();
+    }
 }

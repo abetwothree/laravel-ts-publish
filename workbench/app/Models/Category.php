@@ -62,4 +62,26 @@ class Category extends Model
                 : $this->name,
         );
     }
+
+    public function isFirst(): bool
+    {
+        return $this->sort_order === 1;
+    }
+
+    /** @return bool */
+    public function isActive()
+    {
+        return $this->is_active;
+    }
+
+    public static function className(): string
+    {
+        return self::class;
+    }
+
+    /** @return string */
+    public static function tableName()
+    {
+        return (new self)->getTable();
+    }
 }
