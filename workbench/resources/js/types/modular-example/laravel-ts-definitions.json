@@ -5886,6 +5886,61 @@
                 "name": "posts_count",
                 "type": "number",
                 "optional": true
+            },
+            {
+                "name": "children_self_collection",
+                "type": "CategoryResource[]",
+                "optional": false
+            },
+            {
+                "name": "children_self_resource_collection",
+                "type": "CategoryResource[]",
+                "optional": false
+            },
+            {
+                "name": "children_self_collection_first_callable",
+                "type": "CategoryResource[]",
+                "optional": false
+            },
+            {
+                "name": "children_when_self_collection",
+                "type": "CategoryResource[]",
+                "optional": true
+            },
+            {
+                "name": "children_when_self_resource_collection",
+                "type": "CategoryResource[]",
+                "optional": true
+            },
+            {
+                "name": "children_when_self_collection_first_callable",
+                "type": "CategoryResource[]",
+                "optional": true
+            },
+            {
+                "name": "parent_self",
+                "type": "CategoryResource",
+                "optional": false
+            },
+            {
+                "name": "parent_make_self",
+                "type": "CategoryResource",
+                "optional": false
+            },
+            {
+                "name": "parent_resource_self",
+                "type": "CategoryResource",
+                "optional": false
+            },
+            {
+                "name": "parent_when_self",
+                "type": "CategoryResource",
+                "optional": true
+            },
+            {
+                "name": "parent_when_resource_self",
+                "type": "CategoryResource",
+                "optional": true
             }
         ],
         "ExtendedAddressResource": [
