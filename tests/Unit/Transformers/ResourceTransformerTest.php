@@ -926,6 +926,85 @@ describe('ResourceTransformer self-referencing resources', function () {
         expect($data->properties['parent']['type'])->toBe('CategoryResource');
         expect($data->properties['children']['type'])->toBe('CategoryResource[]');
     });
+
+    // self:: and new self() expressions ———————————————————————————————————————
+
+    test('self::collection() resolves to CategoryResource[]', function () {
+        $data = (new ResourceTransformer(CategoryResource::class))->data();
+
+        expect($data->properties['children_self_collection']['type'])->toBe('CategoryResource[]');
+        expect($data->properties['children_self_collection']['optional'])->toBeFalse();
+    });
+
+    test('self::collection() via $this->resource resolves to CategoryResource[]', function () {
+        $data = (new ResourceTransformer(CategoryResource::class))->data();
+
+        expect($data->properties['children_self_resource_collection']['type'])->toBe('CategoryResource[]');
+        expect($data->properties['children_self_resource_collection']['optional'])->toBeFalse();
+    });
+
+    test('self::collection(...) first-class callable resolves to CategoryResource[]', function () {
+        $data = (new ResourceTransformer(CategoryResource::class))->data();
+
+        expect($data->properties['children_self_collection_first_callable']['type'])->toBe('CategoryResource[]');
+        expect($data->properties['children_self_collection_first_callable']['optional'])->toBeFalse();
+    });
+
+    test('whenLoaded with self::collection() resolves to optional CategoryResource[]', function () {
+        $data = (new ResourceTransformer(CategoryResource::class))->data();
+
+        expect($data->properties['children_when_self_collection']['type'])->toBe('CategoryResource[]');
+        expect($data->properties['children_when_self_collection']['optional'])->toBeTrue();
+    });
+
+    test('whenLoaded with self::collection() via $this->resource resolves to optional CategoryResource[]', function () {
+        $data = (new ResourceTransformer(CategoryResource::class))->data();
+
+        expect($data->properties['children_when_self_resource_collection']['type'])->toBe('CategoryResource[]');
+        expect($data->properties['children_when_self_resource_collection']['optional'])->toBeTrue();
+    });
+
+    test('whenLoaded with self::collection(...) FCC resolves to optional CategoryResource[]', function () {
+        $data = (new ResourceTransformer(CategoryResource::class))->data();
+
+        expect($data->properties['children_when_self_collection_first_callable']['type'])->toBe('CategoryResource[]');
+        expect($data->properties['children_when_self_collection_first_callable']['optional'])->toBeTrue();
+    });
+
+    test('new self() resolves to CategoryResource', function () {
+        $data = (new ResourceTransformer(CategoryResource::class))->data();
+
+        expect($data->properties['parent_self']['type'])->toBe('CategoryResource');
+        expect($data->properties['parent_self']['optional'])->toBeFalse();
+    });
+
+    test('self::make() resolves to CategoryResource', function () {
+        $data = (new ResourceTransformer(CategoryResource::class))->data();
+
+        expect($data->properties['parent_make_self']['type'])->toBe('CategoryResource');
+        expect($data->properties['parent_make_self']['optional'])->toBeFalse();
+    });
+
+    test('new self() via $this->resource resolves to CategoryResource', function () {
+        $data = (new ResourceTransformer(CategoryResource::class))->data();
+
+        expect($data->properties['parent_resource_self']['type'])->toBe('CategoryResource');
+        expect($data->properties['parent_resource_self']['optional'])->toBeFalse();
+    });
+
+    test('whenLoaded with new self() in closure resolves to optional CategoryResource', function () {
+        $data = (new ResourceTransformer(CategoryResource::class))->data();
+
+        expect($data->properties['parent_when_self']['type'])->toBe('CategoryResource');
+        expect($data->properties['parent_when_self']['optional'])->toBeTrue();
+    });
+
+    test('whenLoaded with new self() via $this->resource in closure resolves to optional CategoryResource', function () {
+        $data = (new ResourceTransformer(CategoryResource::class))->data();
+
+        expect($data->properties['parent_when_resource_self']['type'])->toBe('CategoryResource');
+        expect($data->properties['parent_when_resource_self']['optional'])->toBeTrue();
+    });
 });
 
 describe('ResourceTransformer with parent::toArray spread', function () {
