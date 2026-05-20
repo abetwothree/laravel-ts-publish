@@ -569,6 +569,140 @@ describe('ResourceAstAnalyzer with CategoryResource', function () {
             ->and($children['type'])->toBe('CategoryResource[]')
             ->and($children['optional'])->toBeTrue();
     });
+
+    // self:: and new self() expressions ———————————————————————————————————————
+
+    test('self::collection() resolves to CategoryResource[]', function () {
+        $reflection = new ReflectionClass(CategoryResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Category::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'children_self_collection');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('CategoryResource[]')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('self::collection() via $this->resource resolves to CategoryResource[]', function () {
+        $reflection = new ReflectionClass(CategoryResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Category::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'children_self_resource_collection');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('CategoryResource[]')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('self::collection(...) first-class callable resolves to CategoryResource[]', function () {
+        $reflection = new ReflectionClass(CategoryResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Category::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'children_self_collection_first_callable');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('CategoryResource[]')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('whenLoaded with self::collection() resolves to optional CategoryResource[]', function () {
+        $reflection = new ReflectionClass(CategoryResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Category::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'children_when_self_collection');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('CategoryResource[]')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    test('whenLoaded with self::collection() via $this->resource resolves to optional CategoryResource[]', function () {
+        $reflection = new ReflectionClass(CategoryResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Category::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'children_when_self_resource_collection');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('CategoryResource[]')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    test('whenLoaded with self::collection(...) FCC resolves to optional CategoryResource[]', function () {
+        $reflection = new ReflectionClass(CategoryResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Category::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'children_when_self_collection_first_callable');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('CategoryResource[]')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    test('new self() resolves to CategoryResource', function () {
+        $reflection = new ReflectionClass(CategoryResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Category::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'parent_self');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('CategoryResource')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('self::make() resolves to CategoryResource', function () {
+        $reflection = new ReflectionClass(CategoryResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Category::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'parent_make_self');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('CategoryResource')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('new self() via $this->resource resolves to CategoryResource', function () {
+        $reflection = new ReflectionClass(CategoryResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Category::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'parent_resource_self');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('CategoryResource')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('whenLoaded with new self() in closure resolves to optional CategoryResource', function () {
+        $reflection = new ReflectionClass(CategoryResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Category::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'parent_when_self');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('CategoryResource')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    test('whenLoaded with new self() via $this->resource in closure resolves to optional CategoryResource', function () {
+        $reflection = new ReflectionClass(CategoryResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, Category::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', 'parent_when_resource_self');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('CategoryResource')
+            ->and($prop['optional'])->toBeTrue();
+    });
 });
 
 describe('ResourceAstAnalyzer with InvoiceResource', function () {

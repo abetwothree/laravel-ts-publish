@@ -866,6 +866,13 @@ class ResourceAstAnalyzer
             return $result; // @codeCoverageIgnore
         }
 
+        // Resolve `self` and `static` to the resource's own FQCN so that
+        // self::make(), self::collection(), and static::*() calls are treated
+        // identically to ClassName::make() / ClassName::collection() calls.
+        if ($className === 'self' || $className === 'static') {
+            $className = $this->resourceReflection->getName();
+        }
+
         // EnumResource::make($this->prop)
         if ($this->isEnumResourceClass($className) && $methodName === 'make') {
             return $this->analyzeEnumResourceMake($call);
@@ -916,6 +923,12 @@ class ResourceAstAnalyzer
         }
 
         $className = $expr->class->toString();
+
+        // Resolve `self` and `static` to the resource's own FQCN so that
+        // `new self(...)` is treated identically to `new ClassName(...)`.
+        if ($className === 'self' || $className === 'static') {
+            $className = $this->resourceReflection->getName();
+        }
 
         // new EnumResource($this->prop)
         if ($this->isEnumResourceClass($className)) {
