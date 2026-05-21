@@ -3,6 +3,6 @@ export interface MediaTypePositiveInstanceOfResource
 {
     name: string;
     value: string;
-    meta: { label?: unknown };
+    meta: { label?: string };
     empty: Record<string, unknown>;
 }

@@ -1373,11 +1373,30 @@ declare global {
             timezone?: string;
             locale?: string;
         }
+        /** Exercises: ternary operator in various return-value positions. All properties in this resource use the ternary operator (`? :`) or the Elvis operator (`?:`) as the value expression. The scenarios cover: - enum resource vs null - enum resource vs enum resource (same / different enum class) - named resource vs null - named resource vs named resource (same / different class) - resource collection vs null - scalar vs null (string, integer) - string literal vs string literal - Elvis / short-ternary - ternary nested inside a whenLoaded closure - ternary with $this->resource accessor */
+        export interface TernaryResource {
+            status_or_null: app.enums.StatusType | null;
+            status_or_status: app.enums.StatusType;
+            status_resource_or_type: app.enums.StatusType | crm.enums.StatusType;
+            status_or_visibility: app.enums.StatusType | app.enums.VisibilityType | null;
+            category_or_null: CategoryResource | null;
+            category_or_category: CategoryResource;
+            category_or_user: CategoryResource | crm.http.resources.UserResource;
+            image_or_null: ImageResource | null;
+            comments_or_null: CommentResource[] | null;
+            comments_or_comments: CommentResource[];
+            title_or_null: string | null;
+            word_count_or_null: number | null;
+            pin_label: string;
+            title_fallback: string;
+            category_when_loaded_or_null?: CategoryResource | null;
+            category_resource_or_null: CategoryResource | null;
+        }
         /** Exercises collectDirectReturns elseif, else, and loop branches in the main toArray() body (not inside closures). */
         export interface ControlFlowReturnResource {
             id: number;
-            archived?: unknown;
-            draft?: unknown;
+            archived?: boolean;
+            draft?: boolean;
             total?: number;
             status?: app.enums.OrderStatusType;
         }
@@ -1385,7 +1404,7 @@ declare global {
         export interface MediaTypePositiveInstanceOfResource {
             name: string;
             value: string;
-            meta: { label?: unknown };
+            meta: { label?: string };
             empty: Record<string, unknown>;
         }
         /** Exercises: reading model from @mixin ModelClass in docblock Do not change, it needs to match the AddressExtendsResource exactly */
@@ -1450,7 +1469,7 @@ declare global {
             elseifBranch?: unknown;
             elseBranch?: unknown;
             conditionalBaseKey?: unknown;
-            foundB?: unknown;
+            foundB?: boolean;
             foreachKey?: unknown;
             forKey?: unknown;
             whileKey?: unknown;
@@ -1599,7 +1618,7 @@ declare global {
             location: GeoPoint;
             flag?: string | null;
             extra: Record<string, unknown>;
-            extra_field: unknown;
+            extra_field: string;
         }
         export interface NonArrayReturnResource {
         }
@@ -1748,7 +1767,7 @@ declare global {
         }
         export interface UserCollection {
             data: crm.http.resources.UserResource[];
-            has_admin: unknown;
+            has_admin: boolean;
         }
         /** Exercises the bug where resolveClosureReturnExpression() picks the first Return_ statement in a closure — which is the guard-clause `return null` instead of the actual data array. The closure has: if (! $this->user) { return null; }  ← guard clause (first return) return [ 'name' => ..., 'email' => ... ];  ← actual data (should be picked) */
         export interface GuardClauseClosureResource {
@@ -1903,8 +1922,8 @@ declare global {
         export interface QuirkyResource {
             id: number;
             flag?: unknown;
-            extra: unknown;
-            dynamic?: unknown;
+            extra: string;
+            dynamic?: string;
             normal_merge_key?: number;
             formatted: unknown;
             plain_user: crm.http.resources.UserResource;
@@ -1931,11 +1950,11 @@ declare global {
         /** Exercises closure control-flow paths in collectReturnExpressions: elseif, else, switch, try/catch/finally, foreach, and do-while. */
         export interface ClosureControlFlowResource {
             id: number;
-            buyer_info?: { role: unknown; name: string };
-            status_label?: { label: unknown };
+            buyer_info?: { role: string; name: string };
+            status_label?: { label: string };
             safe_total?: { amount: number } | { amount: unknown };
             tags?: { first_item: string } | { first_item: unknown };
-            retry_result?: { attempted: unknown };
+            retry_result?: { attempted: boolean };
         }
         export interface SpreadWithGuardDoubleClosureReturnResource {
             id: number;

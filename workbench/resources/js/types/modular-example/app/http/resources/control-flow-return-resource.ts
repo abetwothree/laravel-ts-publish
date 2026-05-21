@@ -4,8 +4,8 @@ import type { OrderStatusType } from '../../enums';
 export interface ControlFlowReturnResource
 {
     id: number;
-    archived?: unknown;
-    draft?: unknown;
+    archived?: boolean;
+    draft?: boolean;
     total?: number;
     status?: OrderStatusType;
 }

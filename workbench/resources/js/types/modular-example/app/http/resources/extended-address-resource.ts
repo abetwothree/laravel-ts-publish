@@ -15,5 +15,5 @@ export interface ExtendedAddressResource
     location: GeoPoint;
     flag?: string | null;
     extra: Record<string, unknown>;
-    extra_field: unknown;
+    extra_field: string;
 }
