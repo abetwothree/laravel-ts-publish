@@ -4200,12 +4200,12 @@
             },
             {
                 "name": "plain",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             },
             {
                 "name": "basic",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             },
             {
@@ -4707,7 +4707,7 @@
             },
             {
                 "name": "full_name",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             }
         ],
@@ -5438,37 +5438,37 @@
             },
             {
                 "name": "conditionalKey",
-                "type": "unknown",
+                "type": "string",
                 "optional": true
             },
             {
                 "name": "always",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             },
             {
                 "name": "sometimes",
-                "type": "unknown",
+                "type": "string",
                 "optional": true
             },
             {
                 "name": "ifBranch",
-                "type": "unknown",
+                "type": "string",
                 "optional": true
             },
             {
                 "name": "elseifBranch",
-                "type": "unknown",
+                "type": "string",
                 "optional": true
             },
             {
                 "name": "elseBranch",
-                "type": "unknown",
+                "type": "string",
                 "optional": true
             },
             {
                 "name": "conditionalBaseKey",
-                "type": "unknown",
+                "type": "string",
                 "optional": true
             },
             {
@@ -5478,27 +5478,27 @@
             },
             {
                 "name": "foreachKey",
-                "type": "unknown",
+                "type": "string",
                 "optional": true
             },
             {
                 "name": "forKey",
-                "type": "unknown",
+                "type": "string",
                 "optional": true
             },
             {
                 "name": "whileKey",
-                "type": "unknown",
+                "type": "string",
                 "optional": true
             },
             {
                 "name": "doWhileKey",
-                "type": "unknown",
+                "type": "string",
                 "optional": true
             },
             {
                 "name": "status",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             }
         ],
@@ -5530,12 +5530,12 @@
             },
             {
                 "name": "plain",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             },
             {
                 "name": "basic",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             },
             {
@@ -6053,12 +6053,12 @@
             },
             {
                 "name": "plain",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             },
             {
                 "name": "basic",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             },
             {
@@ -6331,12 +6331,12 @@
             },
             {
                 "name": "plain",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             },
             {
                 "name": "basic",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             },
             {
@@ -7431,12 +7431,12 @@
             },
             {
                 "name": "safe_total",
-                "type": "{ amount: number } | { amount: unknown }",
+                "type": "{ amount: number }",
                 "optional": true
             },
             {
                 "name": "tags",
-                "type": "{ first_item: string } | { first_item: unknown }",
+                "type": "{ first_item: string } | { first_item: null }",
                 "optional": true
             },
             {

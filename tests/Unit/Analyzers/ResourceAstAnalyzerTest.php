@@ -1484,18 +1484,18 @@ describe('ResourceAstAnalyzer trait spread doc type branches', function () {
         expect($customVal['type'])->toBe('CustomObject');
     });
 
-    test('includes properties from trait methods without docblocks', function () {
+    test('includes properties from trait methods without docblocks — type inferred from body', function () {
         $plain = collect($this->analysis->properties)->firstWhere('name', 'plain');
 
         expect($plain)->not->toBeNull()
-            ->and($plain['type'])->toBe('unknown');
+            ->and($plain['type'])->toBe('string'); // strtoupper() resolves to string
     });
 
-    test('includes properties from trait methods without array shape annotation', function () {
+    test('includes properties from trait methods without array shape annotation — type inferred from body', function () {
         $basic = collect($this->analysis->properties)->firstWhere('name', 'basic');
 
         expect($basic)->not->toBeNull()
-            ->and($basic['type'])->toBe('unknown');
+            ->and($basic['type'])->toBe('string'); // strtolower() resolves to string
     });
 
     test('resolves multiline @return array shape types', function () {
@@ -1963,7 +1963,8 @@ describe('ResourceAstAnalyzer with variable-return trait method spreads', functi
         $always = collect($analysis->properties)->firstWhere('name', 'always');
 
         expect($always)->not->toBeNull()
-            ->and($always['optional'])->toBeFalse();
+            ->and($always['optional'])->toBeFalse()
+            ->and($always['type'])->toBe('string'); // strtoupper() → string
     });
 
     test('marks conditional dim assignments inside if blocks as optional', function () {
@@ -1976,8 +1977,10 @@ describe('ResourceAstAnalyzer with variable-return trait method spreads', functi
 
         expect($conditionalKey)->not->toBeNull()
             ->and($conditionalKey['optional'])->toBeTrue()
+            ->and($conditionalKey['type'])->toBe('string') // strtolower() → string
             ->and($sometimes)->not->toBeNull()
-            ->and($sometimes['optional'])->toBeTrue();
+            ->and($sometimes['optional'])->toBeTrue()
+            ->and($sometimes['type'])->toBe('string'); // strtolower() → string
     });
 
     test('marks elseif and else branch assignments as optional', function () {
@@ -2103,6 +2106,57 @@ describe('ResourceAstAnalyzer with variable-return trait method spreads', functi
 
         // Unconditional assignment exists, so optional must be false
         expect($statusProps->first()['optional'])->toBeFalse();
+    });
+
+    test('resolves strtolower/strtoupper function calls to string in if/elseif/else branches', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $ifBranch = collect($analysis->properties)->firstWhere('name', 'ifBranch');
+        $elseifBranch = collect($analysis->properties)->firstWhere('name', 'elseifBranch');
+        $elseBranch = collect($analysis->properties)->firstWhere('name', 'elseBranch');
+
+        expect($ifBranch['type'])->toBe('string')
+            ->and($elseifBranch['type'])->toBe('string')
+            ->and($elseBranch['type'])->toBe('string');
+    });
+
+    test('resolves strtoupper() inside conditional base array assignment to string', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $conditionalBaseKey = collect($analysis->properties)->firstWhere('name', 'conditionalBaseKey');
+
+        expect($conditionalBaseKey['type'])->toBe('string');
+    });
+
+    test('resolves strtolower/strtoupper inside loop bodies to string', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $foreachKey = collect($analysis->properties)->firstWhere('name', 'foreachKey');
+        $forKey = collect($analysis->properties)->firstWhere('name', 'forKey');
+        $whileKey = collect($analysis->properties)->firstWhere('name', 'whileKey');
+        $doWhileKey = collect($analysis->properties)->firstWhere('name', 'doWhileKey');
+
+        expect($foreachKey['type'])->toBe('string')
+            ->and($forKey['type'])->toBe('string')
+            ->and($whileKey['type'])->toBe('string')
+            ->and($doWhileKey['type'])->toBe('string');
+    });
+
+    test('resolves strtolower() on unconditional + conditional duplicate key to string', function () {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $status = collect($analysis->properties)->firstWhere('name', 'status');
+
+        expect($status['type'])->toBe('string')
+            ->and($status['optional'])->toBeFalse();
     });
 });
 
@@ -2677,18 +2731,20 @@ describe('ResourceAstAnalyzer with ClosureControlFlowResource (collectReturnExpr
             ->and($statusLabel['type'])->toContain('label');
     });
 
-    test('resolves closure with try/catch into union type', function () {
+    test('resolves closure with try/catch/finally — all numeric branches deduplicate to single shape', function () {
         $safeTotal = collect($this->analysis->properties)->firstWhere('name', 'safe_total');
 
         expect($safeTotal)->not->toBeNull()
-            ->and($safeTotal['type'])->toContain('amount');
+            ->and($safeTotal['type'])->toBe('{ amount: number }')
+            ->and($safeTotal['optional'])->toBeTrue();
     });
 
-    test('resolves closure with foreach loop', function () {
+    test('resolves closure with foreach — null literal in array value becomes null type not unknown', function () {
         $tags = collect($this->analysis->properties)->firstWhere('name', 'tags');
 
         expect($tags)->not->toBeNull()
-            ->and($tags['type'])->toContain('first_item');
+            ->and($tags['type'])->toBe('{ first_item: string } | { first_item: null }')
+            ->and($tags['optional'])->toBeTrue();
     });
 
     test('resolves closure with do-while loop', function () {
@@ -2927,7 +2983,8 @@ describe('ResourceAstAnalyzer with CommentResource — nullsafe chains and closu
     });
 
     test('annotation fallback fires when body is a FuncCall — user_email_annotated is string|null', function () {
-        // `fn (): ?string => strtolower(...)` — FuncCall body is unresolvable; ?string annotation kicks in.
+        // `fn (): ?string => json_decode(...)` — json_decode() returns mixed (resolves to unknown) so the body stays unknown;
+        // ?string annotation kicks in → string|null.
         $prop = collect($this->analysis->properties)->firstWhere('name', 'user_email_annotated');
 
         expect($prop)->not->toBeNull()
@@ -2936,7 +2993,8 @@ describe('ResourceAstAnalyzer with CommentResource — nullsafe chains and closu
     });
 
     test('no annotation and unresolvable body — unresolvable_status is unknown', function () {
-        // `fn () => $this->resource->user->role` — no return type annotation, body is unresolvable → unknown
+        // `fn () => json_decode(...)` — json_decode() returns mixed (resolves to unknown) so the body stays unknown;
+        // no return type annotation → unknown.
         $prop = collect($this->analysis->properties)->firstWhere('name', 'unresolvable_status');
 
         expect($prop)->not->toBeNull()
@@ -2945,7 +3003,7 @@ describe('ResourceAstAnalyzer with CommentResource — nullsafe chains and closu
     });
 
     test('enum annotation fallback resolves type and FQCN — resolvable_status is StatusType', function () {
-        // `fn (): Status => $this->resource->user->role` — body is unresolvable (3-deep non-nullsafe);
+        // `fn (): Status => json_decode(...)` — body is unresolvable (json_decode returns mixed → unknown);
         // Status annotation resolves to StatusType with directEnumFqcn tracking.
         $prop = collect($this->analysis->properties)->firstWhere('name', 'resolvable_status');
 

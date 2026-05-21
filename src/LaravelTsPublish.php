@@ -14,6 +14,7 @@ use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use ReflectionClass;
+use ReflectionException;
 use ReflectionFunction;
 use ReflectionIntersectionType;
 use ReflectionMethod;
@@ -327,6 +328,56 @@ class LaravelTsPublish
     public function closureReturnedTypes(Closure $closure): array
     {
         return $this->resolveReflectionType(new ReflectionFunction($closure)->getReturnType());
+    }
+
+    /**
+     * Resolve a PHP built-in function name to its TypeScript return type using reflection.
+     *
+     * @return TypeScriptTypeInfo
+     */
+    public function nativePhpFunctionReturnedTypes(string $name): array
+    {
+        /** @var array<string, TypeScriptTypeInfo> $cache */
+        static $cache = [];
+
+        if (array_key_exists($name, $cache)) {
+            return $cache[$name];
+        }
+
+        $result = $this->emptyTypeScriptInfo();
+
+        try {
+            $rf = new ReflectionFunction($name);
+        } catch (ReflectionException) {
+            return $cache[$name] = $result;
+        }
+
+        if (! $rf->isInternal()) {
+            return $cache[$name] = $result;
+        }
+
+        $returnType = $rf->getReturnType();
+
+        if ($returnType === null) {
+            return $cache[$name] = $result;
+        }
+
+        // Exclude class/interface return types — only built-in scalar types are safe to map.
+        // Non-builtin types can produce false matches via phpToTypeScriptType's partial
+        // string matching (e.g. Carbon\CarbonInterface contains "int" → number).
+        if ($returnType instanceof ReflectionNamedType && ! $returnType->isBuiltin()) {
+            return $cache[$name] = $result;
+        }
+
+        if ($returnType instanceof ReflectionUnionType) {
+            foreach ($returnType->getTypes() as $type) {
+                if ($type instanceof ReflectionNamedType && ! $type->isBuiltin()) {
+                    return $cache[$name] = $result;
+                }
+            }
+        }
+
+        return $cache[$name] = $this->resolveReflectionType($returnType);
     }
 
     /** @return TypeScriptTypeInfo */

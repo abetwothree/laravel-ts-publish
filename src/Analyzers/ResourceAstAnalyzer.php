@@ -38,6 +38,8 @@ use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Ternary;
+use PhpParser\Node\Expr\UnaryMinus;
+use PhpParser\Node\Expr\UnaryPlus;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
@@ -427,12 +429,22 @@ class ResourceAstAnalyzer
             return ['type' => 'number', 'optional' => false];
         }
 
-        // true / false constants resolve to boolean; null is handled separately in
-        // analyzeClosureUnion and analyzeTernary.
-        if ($expr instanceof ConstFetch
-            && in_array($expr->name->toLowerString(), ['true', 'false'], true)
-        ) {
-            return ['type' => 'boolean', 'optional' => false];
+        // Unary numeric operators (-x, +x) always produce a numeric result in PHP.
+        // Non-literal operands (e.g. -$variable) are handled optimistically as `number`
+        // because the analyzer does not track variable types at this stage.
+        if ($expr instanceof UnaryMinus || $expr instanceof UnaryPlus) {
+            return ['type' => 'number', 'optional' => false];
+        }
+
+        // true / false constants resolve to boolean; null resolves to null.
+        if ($expr instanceof ConstFetch) {
+            $constName = $expr->name->toLowerString();
+            if ($constName === 'null') {
+                return ['type' => 'null', 'optional' => false];
+            }
+            if (in_array($constName, ['true', 'false'], true)) {
+                return ['type' => 'boolean', 'optional' => false];
+            }
         }
 
         // Arithmetic binary operations always produce a numeric result.
@@ -452,6 +464,16 @@ class ResourceAstAnalyzer
         // String concatenation always produces a string result.
         if ($expr instanceof BinaryOp\Concat) {
             return ['type' => 'string', 'optional' => false];
+        }
+
+        // Known PHP built-in function calls — resolve return type from function name.
+        // e.g. strtolower() → string, strlen() → number, is_null() → boolean.
+        if ($expr instanceof FuncCall && $expr->name instanceof Name) {
+            $tsType = $this->resolveKnownFunctionCallType($expr->name->getLast());
+
+            if ($tsType !== null) {
+                return ['type' => $tsType, 'optional' => false];
+            }
         }
 
         // Closures / arrow functions — analyze the body first. If that returns unknown,
@@ -704,6 +726,19 @@ class ResourceAstAnalyzer
         }
 
         return $result;
+    }
+
+    /**
+     * Resolve a PHP built-in function name to its TypeScript return type using reflection.
+     *
+     * Returns null when the function is unknown, has no declared return type, returns a
+     * class/interface type, or when the resolved TS type is unknown.
+     */
+    private function resolveKnownFunctionCallType(string $name): ?string
+    {
+        $tsInfo = LaravelTsPublish::nativePhpFunctionReturnedTypes($name);
+
+        return ! str_contains($tsInfo['type'], 'unknown') ? $tsInfo['type'] : null;
     }
 
     /**
@@ -2816,7 +2851,11 @@ class ResourceAstAnalyzer
         $hasNull = false;
 
         foreach ($returns as $returnExpr) {
-            // Null literal → contributes `null` to the union
+            // Guard-clause null (e.g. `return null;` at the top level of a closure branch)
+            // is intercepted here before reaching analyzeValueExpression, so the standalone
+            // `null` union member is tracked separately from object-shape branches. Null that
+            // appears as an *array value* (e.g. `return ['key' => null]`) is handled inside
+            // analyzeValueExpression via the ConstFetch 'null' branch and never reaches here.
             if ($returnExpr instanceof ConstFetch
                 && $returnExpr->name->toLowerString() === 'null') {
                 $hasNull = true;

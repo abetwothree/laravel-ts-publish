@@ -348,7 +348,8 @@ describe('ResourceTransformer with CommentResource', function () {
     });
 
     test('annotation fallback fires when body is a FuncCall — user_email_annotated is string|null', function () {
-        // `fn (): ?string => strtolower(...)` — FuncCall body is unresolvable; ?string annotation kicks in.
+        // `fn (): ?string => json_decode(...)` — json_decode() returns mixed (resolves to unknown) so the body stays unknown;
+        // ?string annotation kicks in.
         $data = (new ResourceTransformer(CommentResource::class))->data();
 
         expect($data->properties['user_email_annotated']['type'])->toBe('string | null');
@@ -356,7 +357,8 @@ describe('ResourceTransformer with CommentResource', function () {
     });
 
     test('no annotation and unresolvable body — unresolvable_status is unknown', function () {
-        // `fn () => $this->resource->user->role` — no annotation, body unresolvable → unknown
+        // `fn () => json_decode(...)` — json_decode() returns mixed (resolves to unknown) so the body stays unknown;
+        // no return type annotation → unknown.
         $data = (new ResourceTransformer(CommentResource::class))->data();
 
         expect($data->properties['unresolvable_status']['type'])->toBe('unknown');
@@ -364,8 +366,8 @@ describe('ResourceTransformer with CommentResource', function () {
     });
 
     test('enum annotation fallback resolves type — resolvable_status is StatusType', function () {
-        // `fn (): Status => $this->resource->user->role` — body unresolvable; Status annotation
-        // resolves to StatusType with FQCN tracking via the annotation fallback.
+        // `fn (): Status => json_decode(...)` — body unresolvable (json_decode returns mixed → unknown);
+        // Status annotation resolves to StatusType with FQCN tracking via the annotation fallback.
         $data = (new ResourceTransformer(CommentResource::class))->data();
 
         expect($data->properties['resolvable_status']['type'])->toBe('StatusType');

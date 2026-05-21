@@ -1224,8 +1224,8 @@ declare global {
             computed: string;
             date_val: string;
             custom_val: CustomObject;
-            plain: unknown;
-            basic: unknown;
+            plain: string;
+            basic: string;
             firstName: string;
             lastName: string;
             isActive: boolean;
@@ -1341,7 +1341,7 @@ declare global {
             ownedTeams: models.Team[];
             images: models.Image[];
             notifications: models.DatabaseNotification[];
-            full_name: unknown;
+            full_name: string;
         }
         /** Exercises: multiple whenAggregated (sum/min/max), whenNotNull, when, whenCounted, two mergeWhen blocks, Resource::collection x2. */
         export interface ProductResource {
@@ -1547,19 +1547,19 @@ declare global {
         export interface VarReturnSpreadResource {
             id: number;
             baseKey: string;
-            conditionalKey?: unknown;
-            always: unknown;
-            sometimes?: unknown;
-            ifBranch?: unknown;
-            elseifBranch?: unknown;
-            elseBranch?: unknown;
-            conditionalBaseKey?: unknown;
+            conditionalKey?: string;
+            always: string;
+            sometimes?: string;
+            ifBranch?: string;
+            elseifBranch?: string;
+            elseBranch?: string;
+            conditionalBaseKey?: string;
             foundB?: boolean;
-            foreachKey?: unknown;
-            forKey?: unknown;
-            whileKey?: unknown;
-            doWhileKey?: unknown;
-            status: unknown;
+            foreachKey?: string;
+            forKey?: string;
+            whileKey?: string;
+            doWhileKey?: string;
+            status: string;
         }
         /** Fixture resource exercising bare function call spreads (without $this->). */
         export interface BareFuncCallResource {
@@ -1568,8 +1568,8 @@ declare global {
             computed: string;
             date_val: string;
             custom_val: CustomObject;
-            plain: unknown;
-            basic: unknown;
+            plain: string;
+            basic: string;
             firstName: string;
             lastName: string;
             isActive: boolean;
@@ -1695,8 +1695,8 @@ declare global {
             computed: string;
             date_val: string;
             custom_val: CustomObject;
-            plain: unknown;
-            basic: unknown;
+            plain: string;
+            basic: string;
             firstName: string;
             lastName: string;
             isActive: boolean;
@@ -1767,8 +1767,8 @@ declare global {
             computed: string;
             date_val: string;
             custom_val: CustomObject;
-            plain: unknown;
-            basic: unknown;
+            plain: string;
+            basic: string;
             firstName: string;
             lastName: string;
             isActive: boolean;
@@ -2037,8 +2037,8 @@ declare global {
             id: number;
             buyer_info?: { role: string; name: string };
             status_label?: { label: string };
-            safe_total?: { amount: number } | { amount: unknown };
-            tags?: { first_item: string } | { first_item: unknown };
+            safe_total?: { amount: number };
+            tags?: { first_item: string } | { first_item: null };
             retry_result?: { attempted: boolean };
         }
         export interface SpreadWithGuardDoubleClosureReturnResource {
