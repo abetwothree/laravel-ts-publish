@@ -7,8 +7,8 @@ export interface ExtendedAddressResource
     computed: string;
     date_val: string;
     custom_val: CustomObject;
-    plain: unknown;
-    basic: unknown;
+    plain: string;
+    basic: string;
     firstName: string;
     lastName: string;
     isActive: boolean;
