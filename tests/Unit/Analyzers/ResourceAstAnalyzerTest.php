@@ -57,6 +57,7 @@ use Workbench\App\Http\Resources\SpreadWithGuardDoubleClosureReturnResource;
 use Workbench\App\Http\Resources\TagResource;
 use Workbench\App\Http\Resources\TeamMemberResource;
 use Workbench\App\Http\Resources\TeamResource;
+use Workbench\App\Http\Resources\TernaryResource;
 use Workbench\App\Http\Resources\ToArrayCastsResource;
 use Workbench\App\Http\Resources\TraitSpreadCoverageResource;
 use Workbench\App\Http\Resources\UnitEnumResource;
@@ -1224,7 +1225,7 @@ describe('ResourceAstAnalyzer with QuirkyResource', function () {
         $extra = collect($this->analysis->properties)->firstWhere('name', 'extra');
 
         expect($extra)->not->toBeNull()
-            ->and($extra['type'])->toBe('unknown')
+            ->and($extra['type'])->toBe('string')
             ->and($extra['optional'])->toBeFalse();
     });
 
@@ -1237,7 +1238,7 @@ describe('ResourceAstAnalyzer with QuirkyResource', function () {
         $dynamic = collect($this->analysis->properties)->firstWhere('name', 'dynamic');
 
         expect($dynamic)->not->toBeNull()
-            ->and($dynamic['type'])->toBe('unknown')
+            ->and($dynamic['type'])->toBe('string')
             ->and($dynamic['optional'])->toBeTrue();
     });
 
@@ -1832,7 +1833,7 @@ describe('ResourceAstAnalyzer with UserCollection (convention-based)', function 
         $hasAdmin = collect($this->analysis->properties)->firstWhere('name', 'has_admin');
 
         expect($hasAdmin)->not->toBeNull()
-            ->and($hasAdmin['type'])->toBe('unknown');
+            ->and($hasAdmin['type'])->toBe('boolean');
     });
 });
 
@@ -2769,8 +2770,8 @@ describe('ResourceAstAnalyzer with ControlFlowReturnResource (union multiple ret
         // Plain $this->property and literal values resolve to 'unknown' at the AST level;
         // the transformer resolves actual types using model metadata downstream
         expect($props->firstWhere('name', 'id')['type'])->toBe('number')
-            ->and($props->firstWhere('name', 'archived')['type'])->toBe('unknown')
-            ->and($props->firstWhere('name', 'draft')['type'])->toBe('unknown')
+            ->and($props->firstWhere('name', 'archived')['type'])->toBe('boolean')
+            ->and($props->firstWhere('name', 'draft')['type'])->toBe('boolean')
             ->and($props->firstWhere('name', 'total')['type'])->toBe('number')
             ->and($props->firstWhere('name', 'status')['type'])->toBe('OrderStatusType');
     });
@@ -3155,5 +3156,201 @@ describe('ResourceAstAnalyzer with ToArrayCastsResource — #[TsResourceCasts] o
         $prop = collect($this->analysis->properties)->firstWhere('name', 'name');
         expect($prop)->not->toBeNull()
             ->and($prop['type'])->toBe('string');
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TernaryResource — ternary operator support
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ResourceAstAnalyzer ternary operator — enum branches', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(TernaryResource::class);
+        $this->analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $this->analysis = $this->analyzer->analyze();
+    });
+
+    test('EnumResource::make vs null resolves to StatusType | null', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'status_or_null');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('StatusType | null')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('EnumResource::make vs null stores enumFqcn for AsEnum rewrite', function () {
+        expect($this->analysis->enumResources)->toHaveKey('status_or_null');
+    });
+
+    test('EnumResource::make vs EnumResource::make (same) resolves to StatusType', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'status_or_status');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('StatusType')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('EnumResource::make vs EnumResource::make (same) stores enumFqcn for AsEnum rewrite', function () {
+        expect($this->analysis->enumResources)->toHaveKey('status_or_status');
+    });
+
+    test('EnumResource::make vs EnumResource::make (different) resolves to union', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'status_or_visibility');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toContain('StatusType')
+            ->and($prop['type'])->toContain('VisibilityType')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('EnumResource::make vs EnumResource::make (different) stores multiEnumResourceFqcns for per-token AsEnum rewrite', function () {
+        expect($this->analysis->multiEnumResourceFqcns)->toHaveKey('status_or_visibility');
+
+        $fqcns = $this->analysis->multiEnumResourceFqcns['status_or_visibility'];
+        expect($fqcns)->toHaveCount(2)
+            ->and($fqcns[0])->toBe(Status::class)
+            ->and($fqcns[1])->toBe(Visibility::class);
+    });
+
+    test('EnumResource::make vs $this->prop (same enum) resolves to StatusType', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'status_resource_or_type');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('StatusType')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('EnumResource::make vs $this->prop (same enum) stores both enumFqcn and directEnumFqcn for mixed rewrite', function () {
+        expect($this->analysis->enumResources)->toHaveKey('status_resource_or_type')
+            ->and($this->analysis->directEnumFqcns)->toHaveKey('status_resource_or_type');
+    });
+});
+
+describe('ResourceAstAnalyzer ternary operator — resource branches', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(TernaryResource::class);
+        $this->analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $this->analysis = $this->analyzer->analyze();
+    });
+
+    test('Resource::make vs null resolves to CategoryResource | null', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'category_or_null');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('CategoryResource | null')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('Resource::make vs Resource::make (same) resolves to CategoryResource', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'category_or_category');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('CategoryResource')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('Resource::make vs Resource::make (different) resolves to union type', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'category_or_user');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toContain('CategoryResource')
+            ->and($prop['type'])->toContain('UserResource')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('new Resource() vs null resolves to ImageResource | null', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'image_or_null');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('ImageResource | null')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('Resource::collection vs null resolves to CommentResource[] | null', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'comments_or_null');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('CommentResource[] | null')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('Resource::collection vs Resource::collection (same) resolves to CommentResource[]', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'comments_or_comments');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('CommentResource[]')
+            ->and($prop['optional'])->toBeFalse();
+    });
+});
+
+describe('ResourceAstAnalyzer ternary operator — scalar branches', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(TernaryResource::class);
+        $this->analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $this->analysis = $this->analyzer->analyze();
+    });
+
+    test('string property vs null resolves to string | null', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'title_or_null');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string | null')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('number property vs null resolves to number | null', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'word_count_or_null');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('number | null')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('string literal vs string literal resolves to string', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'pin_label');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('Elvis operator with string fallback resolves to string', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'title_fallback');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string')
+            ->and($prop['optional'])->toBeFalse();
+    });
+});
+
+describe('ResourceAstAnalyzer ternary operator — conditional / closure contexts', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(TernaryResource::class);
+        $this->analyzer = new ResourceAstAnalyzer($reflection, Post::class);
+        $this->analysis = $this->analyzer->analyze();
+    });
+
+    test('ternary inside whenLoaded closure is optional', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'category_when_loaded_or_null');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toContain('CategoryResource')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    test('ternary using $this->resource accessor resolves to CategoryResource | null', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'category_resource_or_null');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('CategoryResource | null')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('nested ternary resolves to string | null', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'nested_ternary_label');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string | null')
+            ->and($prop['optional'])->toBeFalse();
     });
 });

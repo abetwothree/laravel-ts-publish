@@ -40,7 +40,9 @@ class ResourceTransformer extends CoreTransformer
     use ParsesTsExtends;
     use ResolvesClassNames;
     use ResolvesImportConflicts;
-    use TracksEnumImports;
+    use TracksEnumImports {
+        enumPropertyFqcns as traitEnumPropertyFqcns;
+    }
 
     public protected(set) string $resourceName;
 
@@ -103,6 +105,12 @@ class ResourceTransformer extends CoreTransformer
 
     /** @var array<string, class-string> property name => enum FQCN (from direct enum access) */
     protected array $propertyEnumFqcns = [];
+
+    /** @var array<string, class-string> property name => enum FQCN for properties that have a direct-access branch in a ternary/union alongside an EnumResource branch */
+    protected array $directEnumProperties = [];
+
+    /** @var array<string, list<class-string>> property name => ordered list of enum FQCNs for ternary/union where ALL non-null branches are EnumResource calls with different FQCNs */
+    protected array $multiEnumResourceProperties = [];
 
     /** @var array<string, string> property name => TS type override from model's #[TsCasts] */
     protected array $modelTsCastsOverrides = [];
@@ -420,6 +428,7 @@ class ResourceTransformer extends CoreTransformer
                 $this->enumConstMap[$fqcn] = $tsInfo['enums'][0] ?? class_basename($fqcn);
             }
             $this->propertyEnumFqcns[$propName] = $fqcn;
+            $this->directEnumProperties[$propName] = $fqcn;
         }
 
         // Populate nested resource tracking map (skip self-references)
@@ -444,6 +453,18 @@ class ResourceTransformer extends CoreTransformer
         // Populate inline model FQCN map from embedded model types in inline object type strings
         foreach ($analysis->inlineModelFqcns as $propName => $fqcns) {
             $this->propertyInlineModelFqcns[$propName] = $fqcns;
+        }
+
+        // Populate multi-FQCN enum tracking for ternary with multiple different EnumResource branches
+        foreach ($analysis->multiEnumResourceFqcns as $propName => $fqcns) {
+            foreach ($fqcns as $fqcn) {
+                if (! isset($this->enumFqcnMap[$fqcn])) {
+                    $tsInfo = LaravelTsPublish::phpToTypeScriptType($fqcn);
+                    $this->enumFqcnMap[$fqcn] = $tsInfo['enumTypes'][0] ?? class_basename($fqcn).'Type';
+                    $this->enumConstMap[$fqcn] = $tsInfo['enums'][0] ?? class_basename($fqcn);
+                }
+            }
+            $this->multiEnumResourceProperties[$propName] = $fqcns;
         }
 
         // Merge custom imports from trait method #[TsResourceCasts] attributes
@@ -540,17 +561,26 @@ class ResourceTransformer extends CoreTransformer
      */
     protected function rewriteEnumResourceTypes(): self
     {
-        if (! config()->boolean('ts-publish.enums_use_tolki_package') || $this->enumResourceProperties === []) {
+        if (! config()->boolean('ts-publish.enums_use_tolki_package')) {
             return $this;
         }
 
+        // Single FQCN per property (or mixed EnumResource + direct access)
         foreach ($this->enumResourceProperties as $propName => $info) {
             if (! isset($this->properties[$propName])) {
                 continue; // @codeCoverageIgnore
             }
 
             $constName = $this->constImportAliases[$info['fqcn']] ?? $this->enumConstMap[$info['fqcn']];
-            $type = 'AsEnum<typeof '.$constName.'>';
+
+            // Mixed ternary: one branch used EnumResource::make(), the other accessed $this->prop
+            // directly (same enum FQCN). Produce AsEnum<typeof X> | XType to represent both.
+            if (isset($this->directEnumProperties[$propName])) {
+                $enumTypeName = $this->enumFqcnMap[$info['fqcn']];
+                $type = 'AsEnum<typeof '.$constName.'> | '.$enumTypeName;
+            } else {
+                $type = 'AsEnum<typeof '.$constName.'>';
+            }
 
             if ($info['nullable']) {
                 $type .= ' | null';
@@ -561,20 +591,90 @@ class ResourceTransformer extends CoreTransformer
                 'type' => $type,
             ];
 
-            // Remove from type import map unless this FQCN is also used for direct property access
-            $usedForDirectAccess = false;
+            // Remove from type import map unless this FQCN is also used for direct property access.
+            // For mixed ternary properties, the direct-access branch still needs the type import.
+            $usedForDirectAccess = isset($this->directEnumProperties[$propName]);
 
-            foreach ($this->propertyEnumFqcns as $prop => $propFqcn) {
-                if ($propFqcn === $info['fqcn'] && ! isset($this->enumResourceProperties[$prop])) {
-                    $usedForDirectAccess = true;
+            if (! $usedForDirectAccess) {
+                // Another property in enumResourceProperties for the same FQCN may be a mixed-access
+                // ternary (EnumResource branch + direct-access branch), which still needs the type import.
+                foreach ($this->directEnumProperties as $prop => $propFqcn) {
+                    if ($propFqcn === $info['fqcn']) {
+                        $usedForDirectAccess = true;
 
-                    break;
+                        break;
+                    }
+                }
+            }
+
+            if (! $usedForDirectAccess) {
+                foreach ($this->propertyEnumFqcns as $prop => $propFqcn) {
+                    if ($propFqcn === $info['fqcn'] && ! isset($this->enumResourceProperties[$prop])) {
+                        $usedForDirectAccess = true;
+
+                        break;
+                    }
                 }
             }
 
             if (! $usedForDirectAccess) {
                 unset($this->enumFqcnMap[$info['fqcn']]);
             }
+        }
+
+        // Multi-FQCN: all non-null branches are EnumResource calls with different FQCNs.
+        // Positionally replace each non-null type token with AsEnum<typeof X>.
+        foreach ($this->multiEnumResourceProperties as $propName => $fqcns) {
+            if (! isset($this->properties[$propName])) {
+                continue; // @codeCoverageIgnore
+            }
+
+            $tokens = explode(' | ', $this->properties[$propName]['type']);
+            $fqcnIndex = 0;
+            $rewritten = [];
+
+            foreach ($tokens as $token) {
+                if ($token === 'null') {
+                    $rewritten[] = 'null';
+                } elseif (isset($fqcns[$fqcnIndex])) {
+                    $fqcn = $fqcns[$fqcnIndex++];
+                    $constName = $this->constImportAliases[$fqcn] ?? $this->enumConstMap[$fqcn];
+                    $rewritten[] = 'AsEnum<typeof '.$constName.'>';
+
+                    // Only remove from type import map if this FQCN is not still needed
+                    // by another property (e.g. a mixed ternary that produces XType in the union).
+                    $stillNeeded = false;
+
+                    foreach ($this->directEnumProperties as $propFqcn) {
+                        if ($propFqcn === $fqcn) {
+                            $stillNeeded = true;
+
+                            break;
+                        }
+                    }
+
+                    if (! $stillNeeded) {
+                        foreach ($this->propertyEnumFqcns as $prop => $propFqcn) {
+                            if ($propFqcn === $fqcn && ! isset($this->enumResourceProperties[$prop])) {
+                                $stillNeeded = true;
+
+                                break;
+                            }
+                        }
+                    }
+
+                    if (! $stillNeeded) {
+                        unset($this->enumFqcnMap[$fqcn]);
+                    }
+                } else {
+                    $rewritten[] = $token; // @codeCoverageIgnore
+                }
+            }
+
+            $this->properties[$propName] = [
+                ...$this->properties[$propName],
+                'type' => implode(' | ', $rewritten),
+            ];
         }
 
         return $this;
@@ -837,6 +937,25 @@ class ResourceTransformer extends CoreTransformer
             $map[$constAlias] = $ns.'.'.$typeName;
         }
 
+        // Also include FQCNs from multi-FQCN EnumResource properties (ternary with different enums)
+        foreach ($this->multiEnumResourceProperties as $fqcns) {
+            foreach ($fqcns as $fqcn) {
+                $constAlias = $this->constImportAliases[$fqcn] ?? $this->enumConstMap[$fqcn] ?? null;
+                $originalConstName = $this->enumConstMap[$fqcn] ?? null;
+
+                if ($constAlias === null || $originalConstName === null) {
+                    continue; // @codeCoverageIgnore
+                }
+
+                $typeName = $originalConstName.'Type';
+                $ns = $isModular
+                    ? str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn))
+                    : $enumsNs;
+
+                $map[$constAlias] = $ns.'.'.$typeName;
+            }
+        }
+
         return $map;
     }
 
@@ -882,5 +1001,30 @@ class ResourceTransformer extends CoreTransformer
     protected function enumProperties(): array
     {
         return $this->enumResourceProperties;
+    }
+
+    /**
+     * Return unique enum FQCNs for value-import generation.
+     *
+     * Extends the base implementation to include FQCNs from multi-FQCN EnumResource
+     * ternary properties (e.g. `status_or_visibility` where each branch wraps a different
+     * enum via EnumResource). These FQCNs are stored in `$this->multiEnumResourceProperties`
+     * rather than `enumResourceProperties`, so the base `enumPropertyFqcns()` misses them.
+     *
+     * @return list<string>
+     */
+    protected function enumPropertyFqcns(): array
+    {
+        $base = $this->traitEnumPropertyFqcns();
+
+        $multi = [];
+
+        foreach ($this->multiEnumResourceProperties as $fqcns) {
+            foreach ($fqcns as $fqcn) {
+                $multi[] = $fqcn;
+            }
+        }
+
+        return array_values(array_unique([...$base, ...$multi]));
     }
 }

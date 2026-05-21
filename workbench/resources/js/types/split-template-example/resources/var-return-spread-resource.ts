@@ -10,7 +10,7 @@ export interface VarReturnSpreadResource
     elseifBranch?: unknown;
     elseBranch?: unknown;
     conditionalBaseKey?: unknown;
-    foundB?: unknown;
+    foundB?: boolean;
     foreachKey?: unknown;
     forKey?: unknown;
     whileKey?: unknown;

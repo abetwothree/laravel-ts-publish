@@ -5164,6 +5164,93 @@
                 "optional": false
             }
         ],
+        "TernaryResource": [
+            {
+                "name": "status_or_null",
+                "type": "AsEnum<typeof Status> | null",
+                "optional": false
+            },
+            {
+                "name": "status_or_status",
+                "type": "AsEnum<typeof Status>",
+                "optional": false
+            },
+            {
+                "name": "status_resource_or_type",
+                "type": "AsEnum<typeof Status> | StatusType",
+                "optional": false
+            },
+            {
+                "name": "status_or_visibility",
+                "type": "AsEnum<typeof Status> | AsEnum<typeof Visibility> | null",
+                "optional": false
+            },
+            {
+                "name": "category_or_null",
+                "type": "CategoryResource | null",
+                "optional": false
+            },
+            {
+                "name": "category_or_category",
+                "type": "CategoryResource",
+                "optional": false
+            },
+            {
+                "name": "category_or_user",
+                "type": "CategoryResource | UserResource",
+                "optional": false
+            },
+            {
+                "name": "image_or_null",
+                "type": "ImageResource | null",
+                "optional": false
+            },
+            {
+                "name": "comments_or_null",
+                "type": "CommentResource[] | null",
+                "optional": false
+            },
+            {
+                "name": "comments_or_comments",
+                "type": "CommentResource[]",
+                "optional": false
+            },
+            {
+                "name": "title_or_null",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "word_count_or_null",
+                "type": "number | null",
+                "optional": false
+            },
+            {
+                "name": "pin_label",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "title_fallback",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "category_when_loaded_or_null",
+                "type": "CategoryResource | null",
+                "optional": true
+            },
+            {
+                "name": "category_resource_or_null",
+                "type": "CategoryResource | null",
+                "optional": false
+            },
+            {
+                "name": "nested_ternary_label",
+                "type": "string | null",
+                "optional": false
+            }
+        ],
         "ControlFlowReturnResource": [
             {
                 "name": "id",
@@ -5172,12 +5259,12 @@
             },
             {
                 "name": "archived",
-                "type": "unknown",
+                "type": "boolean",
                 "optional": true
             },
             {
                 "name": "draft",
-                "type": "unknown",
+                "type": "boolean",
                 "optional": true
             },
             {
@@ -5204,7 +5291,7 @@
             },
             {
                 "name": "meta",
-                "type": "{ label?: unknown }",
+                "type": "{ label?: string }",
                 "optional": false
             },
             {
@@ -5386,7 +5473,7 @@
             },
             {
                 "name": "foundB",
-                "type": "unknown",
+                "type": "boolean",
                 "optional": true
             },
             {
@@ -6006,7 +6093,7 @@
             },
             {
                 "name": "extra_field",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             }
         ],
@@ -6584,7 +6671,7 @@
             },
             {
                 "name": "has_admin",
-                "type": "unknown",
+                "type": "boolean",
                 "optional": false
             }
         ],
@@ -7220,12 +7307,12 @@
             },
             {
                 "name": "extra",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             },
             {
                 "name": "dynamic",
-                "type": "unknown",
+                "type": "string",
                 "optional": true
             },
             {
@@ -7334,12 +7421,12 @@
             },
             {
                 "name": "buyer_info",
-                "type": "{ role: unknown; name: string }",
+                "type": "{ role: string; name: string }",
                 "optional": true
             },
             {
                 "name": "status_label",
-                "type": "{ label: unknown }",
+                "type": "{ label: string }",
                 "optional": true
             },
             {
@@ -7354,7 +7441,7 @@
             },
             {
                 "name": "retry_result",
-                "type": "{ attempted: unknown }",
+                "type": "{ attempted: boolean }",
                 "optional": true
             }
         ],

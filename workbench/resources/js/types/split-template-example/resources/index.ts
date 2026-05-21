@@ -61,6 +61,7 @@ export * from './store';
 export * from './tag-resource';
 export * from './team-member-resource';
 export * from './team-resource';
+export * from './ternary-resource';
 export * from './to-array-casts-resource';
 export * from './tracking-event-resource';
 export * from './trait-spread-coverage-resource';

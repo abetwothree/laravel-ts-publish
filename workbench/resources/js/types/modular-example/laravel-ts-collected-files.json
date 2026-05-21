@@ -67,6 +67,7 @@
     "app\/Http\/Resources\/TagResource.php",
     "app\/Http\/Resources\/TeamMemberResource.php",
     "app\/Http\/Resources\/TeamResource.php",
+    "app\/Http\/Resources\/TernaryResource.php",
     "app\/Http\/Resources\/ToArrayCastsResource.php",
     "app\/Http\/Resources\/TraitSpreadCoverageResource.php",
     "app\/Http\/Resources\/UnitEnumResource.php",
