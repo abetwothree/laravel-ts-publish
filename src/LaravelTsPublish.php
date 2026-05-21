@@ -21,6 +21,7 @@ use ReflectionNamedType;
 use ReflectionType;
 use ReflectionUnionType;
 use UnitEnum;
+use ReflectionException;
 
 /**
  * @phpstan-type TypeScriptTypeInfo = array{
@@ -327,6 +328,45 @@ class LaravelTsPublish
     public function closureReturnedTypes(Closure $closure): array
     {
         return $this->resolveReflectionType(new ReflectionFunction($closure)->getReturnType());
+    }
+
+    /**
+     * Resolve a PHP built-in function name to its TypeScript return type using reflection.
+     *
+     * @return TypeScriptTypeInfo
+     */
+    public function nativePhpFunctionReturnedTypes(string $name): array
+    {
+        $result = $this->emptyTypeScriptInfo();
+
+        try {
+            $rf = new ReflectionFunction($name);
+        } catch (ReflectionException) {
+            return $result;
+        }
+
+        $returnType = $rf->getReturnType();
+
+        if ($returnType === null) {
+            return $result;
+        }
+
+        // Exclude class/interface return types — only built-in scalar types are safe to map.
+        // Non-builtin types can produce false matches via phpToTypeScriptType's partial
+        // string matching (e.g. Carbon\CarbonInterface contains "int" → number).
+        if ($returnType instanceof ReflectionNamedType && ! $returnType->isBuiltin()) {
+            return $result;
+        }
+
+        if ($returnType instanceof ReflectionUnionType) {
+            foreach ($returnType->getTypes() as $type) {
+                if ($type instanceof ReflectionNamedType && ! $type->isBuiltin()) {
+                    return $result;
+                }
+            }
+        }
+
+        return LaravelTsPublish::resolveReflectionType($returnType);
     }
 
     /** @return TypeScriptTypeInfo */

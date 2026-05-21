@@ -57,7 +57,11 @@ use PhpParser\Node\Stmt\While_;
 use PhpParser\NodeFinder;
 use ReflectionClass;
 use ReflectionEnum;
+use ReflectionException;
+use ReflectionFunction;
 use ReflectionMethod;
+use ReflectionNamedType;
+use ReflectionUnionType;
 
 /**
  * Analyzes a JsonResource's toArray() method body to extract property names,
@@ -454,6 +458,16 @@ class ResourceAstAnalyzer
             return ['type' => 'string', 'optional' => false];
         }
 
+        // Known PHP built-in function calls — resolve return type from function name.
+        // e.g. strtolower() → string, strlen() → number, is_null() → boolean.
+        if ($expr instanceof FuncCall && $expr->name instanceof Name) {
+            $tsType = $this->resolveKnownFunctionCallType($expr->name->getLast());
+
+            if ($tsType !== null) {
+                return ['type' => $tsType, 'optional' => false];
+            }
+        }
+
         // Closures / arrow functions — analyze the body first. If that returns unknown,
         // fall back to the return type annotation (e.g. `fn (): ?string => ...` → `string | null`).
         $closureReturns = $this->resolveClosureReturnExpressions($expr);
@@ -704,6 +718,19 @@ class ResourceAstAnalyzer
         }
 
         return $result;
+    }
+
+    /**
+     * Resolve a PHP built-in function name to its TypeScript return type using reflection.
+     *
+     * Returns null when the function is unknown, has no declared return type, returns a
+     * class/interface type, or when the resolved TS type is unknown.
+     */
+    private function resolveKnownFunctionCallType(string $name): ?string
+    {
+        $tsInfo = LaravelTsPublish::nativePhpFunctionReturnedTypes($name);
+
+        return ! str_contains($tsInfo['type'], 'unknown') ? $tsInfo['type'] : null;
     }
 
     /**
