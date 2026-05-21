@@ -437,12 +437,15 @@ class ResourceAstAnalyzer
             return ['type' => 'number', 'optional' => false];
         }
 
-        // true / false constants resolve to boolean; null is handled separately in
-        // analyzeClosureUnion and analyzeTernary.
-        if ($expr instanceof ConstFetch
-            && in_array($expr->name->toLowerString(), ['true', 'false'], true)
-        ) {
-            return ['type' => 'boolean', 'optional' => false];
+        // true / false constants resolve to boolean; null resolves to null.
+        if ($expr instanceof ConstFetch) {
+            $constName = $expr->name->toLowerString();
+            if ($constName === 'null') {
+                return ['type' => 'null', 'optional' => false];
+            }
+            if (in_array($constName, ['true', 'false'], true)) {
+                return ['type' => 'boolean', 'optional' => false];
+            }
         }
 
         // Arithmetic binary operations always produce a numeric result.
