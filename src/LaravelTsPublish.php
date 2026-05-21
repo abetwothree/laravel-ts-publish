@@ -337,6 +337,7 @@ class LaravelTsPublish
      */
     public function nativePhpFunctionReturnedTypes(string $name): array
     {
+        /** @var array<string, TypeScriptTypeInfo> $cache */
         static $cache = [];
 
         if (array_key_exists($name, $cache)) {
