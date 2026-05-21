@@ -3345,4 +3345,12 @@ describe('ResourceAstAnalyzer ternary operator — conditional / closure context
             ->and($prop['type'])->toBe('CategoryResource | null')
             ->and($prop['optional'])->toBeFalse();
     });
+
+    test('nested ternary resolves to string | null', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'nested_ternary_label');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string | null')
+            ->and($prop['optional'])->toBeFalse();
+    });
 });

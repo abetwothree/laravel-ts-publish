@@ -1789,6 +1789,8 @@ describe('ResourceTransformer ternary operator support', function () {
         config()->set('ts-publish.enums_use_tolki_package', true);
         $data = (new ResourceTransformer(TernaryResource::class))->data();
 
+        // The | null originates from the Post model's `visibility` column being nullable in the DB,
+        // not from an explicit null branch in TernaryResource — both ternary branches are EnumResource calls.
         expect($data->properties['status_or_visibility']['type'])->toBe('AsEnum<typeof Status> | AsEnum<typeof Visibility> | null');
         expect($data->properties['status_or_visibility']['optional'])->toBeFalse();
     });
@@ -1907,5 +1909,12 @@ describe('ResourceTransformer ternary operator support', function () {
 
         expect($data->properties['status_resource_or_type']['type'])->toBe('StatusType');
         expect($data->properties['status_resource_or_type']['optional'])->toBeFalse();
+    });
+
+    test('nested ternary resolves to string | null', function () {
+        $data = (new ResourceTransformer(TernaryResource::class))->data();
+
+        expect($data->properties['nested_ternary_label']['type'])->toBe('string | null');
+        expect($data->properties['nested_ternary_label']['optional'])->toBeFalse();
     });
 });

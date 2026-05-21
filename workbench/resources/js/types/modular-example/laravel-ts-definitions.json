@@ -5244,6 +5244,11 @@
                 "name": "category_resource_or_null",
                 "type": "CategoryResource | null",
                 "optional": false
+            },
+            {
+                "name": "nested_ternary_label",
+                "type": "string | null",
+                "optional": false
             }
         ],
         "ControlFlowReturnResource": [

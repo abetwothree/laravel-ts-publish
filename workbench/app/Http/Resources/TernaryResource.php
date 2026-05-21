@@ -58,7 +58,7 @@ class TernaryResource extends JsonResource
 
             // ── Enum resource vs enum resource (different classes) ─────────
             // Branches resolve to two different enum types.
-            // Expected TypeScript: AsEnum<typeof StatusType> | AsEnum<typeof VisibilityType> union.
+            // Expected TypeScript: AsEnum<typeof Status> | AsEnum<typeof Visibility> union.
             'status_or_visibility' => $this->is_pinned
                 ? EnumResource::make($this->status)
                 : new EnumResource($this->visibility),
@@ -146,6 +146,13 @@ class TernaryResource extends JsonResource
             // Expected TypeScript: CategoryResource, optional.
             'category_resource_or_null' => $this->resource->is_pinned
                 ? CategoryResource::make($this->resource->categoryRel)
+                : null,
+
+            // ── Nested ternary ─────────────────────────────────────────────
+            // The inner ternary resolves to string; the outer wraps it in a nullable union.
+            // Expected TypeScript: string | null.
+            'nested_ternary_label' => $this->is_pinned
+                ? ($this->word_count ? 'pinned-post' : 'unpinned-post')
                 : null,
         ];
     }

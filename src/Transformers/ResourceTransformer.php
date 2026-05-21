@@ -40,7 +40,9 @@ class ResourceTransformer extends CoreTransformer
     use ParsesTsExtends;
     use ResolvesClassNames;
     use ResolvesImportConflicts;
-    use TracksEnumImports;
+    use TracksEnumImports {
+        TracksEnumImports::enumPropertyFqcns as traitEnumPropertyFqcns;
+    }
 
     public protected(set) string $resourceName;
 
@@ -1013,9 +1015,7 @@ class ResourceTransformer extends CoreTransformer
      */
     protected function enumPropertyFqcns(): array
     {
-        // Inline the TracksEnumImports trait logic (CoreTransformer does not use the trait,
-        // so parent:: cannot resolve to it).
-        $base = array_values(array_unique(array_column($this->enumProperties(), 'fqcn')));
+        $base = $this->traitEnumPropertyFqcns();
 
         $multi = [];
 

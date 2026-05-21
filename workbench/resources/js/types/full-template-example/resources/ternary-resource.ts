@@ -23,4 +23,5 @@ export interface TernaryResource
     title_fallback: string;
     category_when_loaded_or_null?: CategoryResource | null;
     category_resource_or_null: CategoryResource | null;
+    nested_ternary_label: string | null;
 }

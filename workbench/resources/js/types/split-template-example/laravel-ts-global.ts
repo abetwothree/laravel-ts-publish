@@ -1475,6 +1475,7 @@ declare global {
             title_fallback: string;
             category_when_loaded_or_null?: CategoryResource | null;
             category_resource_or_null: CategoryResource | null;
+            nested_ternary_label: string | null;
         }
         /** Exercises collectDirectReturns elseif, else, and loop branches in the main toArray() body (not inside closures). */
         export interface ControlFlowReturnResource {
