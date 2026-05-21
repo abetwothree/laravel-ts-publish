@@ -2731,18 +2731,20 @@ describe('ResourceAstAnalyzer with ClosureControlFlowResource (collectReturnExpr
             ->and($statusLabel['type'])->toContain('label');
     });
 
-    test('resolves closure with try/catch into union type', function () {
+    test('resolves closure with try/catch/finally — all numeric branches deduplicate to single shape', function () {
         $safeTotal = collect($this->analysis->properties)->firstWhere('name', 'safe_total');
 
         expect($safeTotal)->not->toBeNull()
-            ->and($safeTotal['type'])->toContain('amount');
+            ->and($safeTotal['type'])->toBe('{ amount: number }')
+            ->and($safeTotal['optional'])->toBeTrue();
     });
 
-    test('resolves closure with foreach loop', function () {
+    test('resolves closure with foreach — null literal in array value becomes null type not unknown', function () {
         $tags = collect($this->analysis->properties)->firstWhere('name', 'tags');
 
         expect($tags)->not->toBeNull()
-            ->and($tags['type'])->toContain('first_item');
+            ->and($tags['type'])->toBe('{ first_item: string } | { first_item: null }')
+            ->and($tags['optional'])->toBeTrue();
     });
 
     test('resolves closure with do-while loop', function () {
