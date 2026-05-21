@@ -433,6 +433,9 @@ class ResourceAstAnalyzer
             return ['type' => 'number', 'optional' => false];
         }
 
+        // Unary numeric operators (-x, +x) always produce a numeric result in PHP.
+        // Non-literal operands (e.g. -$variable) are handled optimistically as `number`
+        // because the analyzer does not track variable types at this stage.
         if ($expr instanceof UnaryMinus || $expr instanceof UnaryPlus) {
             return ['type' => 'number', 'optional' => false];
         }
@@ -2852,7 +2855,11 @@ class ResourceAstAnalyzer
         $hasNull = false;
 
         foreach ($returns as $returnExpr) {
-            // Null literal → contributes `null` to the union
+            // Guard-clause null (e.g. `return null;` at the top level of a closure branch)
+            // is intercepted here before reaching analyzeValueExpression, so the standalone
+            // `null` union member is tracked separately from object-shape branches. Null that
+            // appears as an *array value* (e.g. `return ['key' => null]`) is handled inside
+            // analyzeValueExpression via the ConstFetch 'null' branch and never reaches here.
             if ($returnExpr instanceof ConstFetch
                 && $returnExpr->name->toLowerString() === 'null') {
                 $hasNull = true;
