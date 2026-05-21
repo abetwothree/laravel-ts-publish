@@ -337,36 +337,46 @@ class LaravelTsPublish
      */
     public function nativePhpFunctionReturnedTypes(string $name): array
     {
+        static $cache = [];
+
+        if (array_key_exists($name, $cache)) {
+            return $cache[$name];
+        }
+
         $result = $this->emptyTypeScriptInfo();
 
         try {
             $rf = new ReflectionFunction($name);
         } catch (ReflectionException) {
-            return $result;
+            return $cache[$name] = $result;
+        }
+
+        if (! $rf->isInternal()) {
+            return $cache[$name] = $result;
         }
 
         $returnType = $rf->getReturnType();
 
         if ($returnType === null) {
-            return $result;
+            return $cache[$name] = $result;
         }
 
         // Exclude class/interface return types — only built-in scalar types are safe to map.
         // Non-builtin types can produce false matches via phpToTypeScriptType's partial
         // string matching (e.g. Carbon\CarbonInterface contains "int" → number).
         if ($returnType instanceof ReflectionNamedType && ! $returnType->isBuiltin()) {
-            return $result;
+            return $cache[$name] = $result;
         }
 
         if ($returnType instanceof ReflectionUnionType) {
             foreach ($returnType->getTypes() as $type) {
                 if ($type instanceof ReflectionNamedType && ! $type->isBuiltin()) {
-                    return $result;
+                    return $cache[$name] = $result;
                 }
             }
         }
 
-        return LaravelTsPublish::resolveReflectionType($returnType);
+        return $cache[$name] = $this->resolveReflectionType($returnType);
     }
 
     /** @return TypeScriptTypeInfo */
