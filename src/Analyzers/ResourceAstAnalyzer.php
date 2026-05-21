@@ -38,6 +38,8 @@ use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Ternary;
+use PhpParser\Node\Expr\UnaryMinus;
+use PhpParser\Node\Expr\UnaryPlus;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
@@ -428,6 +430,10 @@ class ResourceAstAnalyzer
         }
 
         if ($expr instanceof Int_ || $expr instanceof Float_) {
+            return ['type' => 'number', 'optional' => false];
+        }
+
+        if ($expr instanceof UnaryMinus || $expr instanceof UnaryPlus) {
             return ['type' => 'number', 'optional' => false];
         }
 
