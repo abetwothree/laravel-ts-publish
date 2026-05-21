@@ -7431,12 +7431,12 @@
             },
             {
                 "name": "safe_total",
-                "type": "{ amount: number } | { amount: unknown }",
+                "type": "{ amount: number }",
                 "optional": true
             },
             {
                 "name": "tags",
-                "type": "{ first_item: string } | { first_item: unknown }",
+                "type": "{ first_item: string } | { first_item: null }",
                 "optional": true
             },
             {

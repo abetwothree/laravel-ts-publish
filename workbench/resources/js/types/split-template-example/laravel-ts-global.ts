@@ -2037,8 +2037,8 @@ declare global {
             id: number;
             buyer_info?: { role: string; name: string };
             status_label?: { label: string };
-            safe_total?: { amount: number } | { amount: unknown };
-            tags?: { first_item: string } | { first_item: unknown };
+            safe_total?: { amount: number };
+            tags?: { first_item: string } | { first_item: null };
             retry_result?: { attempted: boolean };
         }
         export interface SpreadWithGuardDoubleClosureReturnResource {
