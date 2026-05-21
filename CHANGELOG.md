@@ -2,6 +2,15 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v1.4.6 - 2026-05-21
+
+### What's Changed
+
+* Fix Support "self" keyword in resources by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/39
+* Ternary operator in resources by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/40
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v1.4.5...v1.4.6
+
 ## v1.4.5 - 2026-05-06
 
 ### What's Changed
