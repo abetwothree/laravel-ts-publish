@@ -41,7 +41,7 @@ class ResourceTransformer extends CoreTransformer
     use ResolvesClassNames;
     use ResolvesImportConflicts;
     use TracksEnumImports {
-        TracksEnumImports::enumPropertyFqcns as traitEnumPropertyFqcns;
+        enumPropertyFqcns as traitEnumPropertyFqcns;
     }
 
     public protected(set) string $resourceName;
