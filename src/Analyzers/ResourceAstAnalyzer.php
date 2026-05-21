@@ -59,11 +59,7 @@ use PhpParser\Node\Stmt\While_;
 use PhpParser\NodeFinder;
 use ReflectionClass;
 use ReflectionEnum;
-use ReflectionException;
-use ReflectionFunction;
 use ReflectionMethod;
-use ReflectionNamedType;
-use ReflectionUnionType;
 
 /**
  * Analyzes a JsonResource's toArray() method body to extract property names,

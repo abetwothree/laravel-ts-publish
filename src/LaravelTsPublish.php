@@ -14,6 +14,7 @@ use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use ReflectionClass;
+use ReflectionException;
 use ReflectionFunction;
 use ReflectionIntersectionType;
 use ReflectionMethod;
@@ -21,7 +22,6 @@ use ReflectionNamedType;
 use ReflectionType;
 use ReflectionUnionType;
 use UnitEnum;
-use ReflectionException;
 
 /**
  * @phpstan-type TypeScriptTypeInfo = array{
