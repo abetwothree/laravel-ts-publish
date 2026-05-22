@@ -1073,7 +1073,12 @@ class ResourceAstAnalyzer
     }
 
     /**
-     * Resolve an enum type from a $this->property expression (shared by EnumResource::make and new EnumResource).
+     * Resolve an enum type from a property-fetch expression (shared by EnumResource::make and new EnumResource).
+     *
+     * Handles two forms:
+     * - `$this->property` — resolved against the resource's own backing model.
+     * - `$variable->property` — resolved against `$closureRelationModelClass` when inside a
+     *   whenLoaded() closure (e.g. `fn ($user) => EnumResource::make($user->role)`).
      *
      * @return ValueExpressionResult|null
      */
@@ -1082,6 +1087,35 @@ class ResourceAstAnalyzer
         $result = $this->unknownResult();
 
         if (! $this->isThisPropertyFetch($argExpr)) {
+            // Handle $variable->property inside a whenLoaded closure.
+            if (
+                $argExpr instanceof PropertyFetch
+                && $argExpr->var instanceof Variable
+                && $argExpr->name instanceof Identifier
+                && $this->closureRelationModelClass !== null
+            ) {
+                $propName = $argExpr->name->toString();
+                $tsInfo = resolve(ModelAttributeResolver::class)->resolveAttribute($this->closureRelationModelClass, $propName);
+
+                /** @var class-string|null $enumFqcn */
+                $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
+
+                if ($enumFqcn === null) {
+                    return null;
+                }
+
+                // Use phpToTypeScriptType on the enum FQCN directly so we get the
+                // pure enum TS type ('RoleType') without any nullable suffix that
+                // appendNullable may have appended based on the DB column definition.
+                $enumTsInfo = LaravelTsPublish::phpToTypeScriptType($enumFqcn);
+
+                return [
+                    ...$result,
+                    'type' => $enumTsInfo['type'],
+                    'enumFqcn' => $enumFqcn,
+                ];
+            }
+
             return null;
         }
 
