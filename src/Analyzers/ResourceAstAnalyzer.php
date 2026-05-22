@@ -477,6 +477,13 @@ class ResourceAstAnalyzer
             return ['type' => 'string', 'optional' => false];
         }
 
+        // Null coalescing operator ($left ?? $right) — returns left if non-null, right otherwise.
+        // Resolve both sides and return the dominant type; if they match return that type,
+        // otherwise build a union of the two distinct types.
+        if ($expr instanceof BinaryOp\Coalesce) {
+            return $this->analyzeCoalesce($expr);
+        }
+
         // Known PHP built-in function calls — resolve return type from function name.
         // e.g. strtolower() → string, strlen() → number, is_null() → boolean.
         if ($expr instanceof FuncCall && $expr->name instanceof Name) {
@@ -766,6 +773,18 @@ class ResourceAstAnalyzer
             return $this->analyzeTernary($expr);
         }
 
+        // Bare closure-parameter variable bound via bindClosureParamsFromCondition().
+        // E.g. `$this->when($this->status, fn ($status) => $status)` — the closure body
+        // returns just `$status`, which is bound to `$this->status`, so we resolve the
+        // bound expression to get the correct type (e.g. `OrderStatusType`).
+        if ($expr instanceof Variable && is_string($expr->name)) {
+            $boundExpr = $this->closureParamExprBindings[$expr->name] ?? null;
+
+            if ($boundExpr !== null) {
+                return $this->analyzeValueExpression($boundExpr);
+            }
+        }
+
         return $result;
     }
 
@@ -780,6 +799,45 @@ class ResourceAstAnalyzer
         $tsInfo = LaravelTsPublish::nativePhpFunctionReturnedTypes($name);
 
         return ! str_contains($tsInfo['type'], 'unknown') ? $tsInfo['type'] : null;
+    }
+
+    /**
+     * Analyze a null-coalescing expression (`$left ?? $right`).
+     *
+     * Resolves both operands and returns the dominant type. When both sides resolve to
+     * the same type the result is that type (e.g. `string ?? string` → `string`). When
+     * they differ, a union of the two distinct types is returned (e.g. `string ?? number`
+     * → `string | number`). A `null` type on the left is treated as unknown because the
+     * coalesce operator guarantees the fallback is used instead.
+     *
+     * @return ValueExpressionResult
+     */
+    protected function analyzeCoalesce(BinaryOp\Coalesce $expr): array
+    {
+        $leftResult = $this->analyzeValueExpression($expr->left);
+        $rightResult = $this->analyzeValueExpression($expr->right);
+
+        $leftType = $leftResult['type'];
+        $rightType = $rightResult['type'];
+
+        // Strip a `| null` suffix from the left side — the right side acts as the fallback,
+        // so null is never the final result when a non-null fallback is provided.
+        $leftType = trim(str_replace('| null', '', $leftType));
+        $leftType = trim(str_replace('null |', '', $leftType));
+
+        if ($leftType === 'unknown' || $leftType === '') {
+            return ['type' => $rightType, 'optional' => false];
+        }
+
+        if ($rightType === 'unknown') {
+            return ['type' => $leftType, 'optional' => false];
+        }
+
+        if ($leftType === $rightType) {
+            return ['type' => $leftType, 'optional' => false];
+        }
+
+        return ['type' => $leftType.' | '.$rightType, 'optional' => false];
     }
 
     /**
