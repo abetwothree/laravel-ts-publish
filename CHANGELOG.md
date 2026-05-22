@@ -2,6 +2,15 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v1.4.7 - 2026-05-22
+
+### What's Changed
+
+* PHP functions return types by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/41
+* Conditional closure params by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/42
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v1.4.6...v1.4.7
+
 ## v1.4.6 - 2026-05-21
 
 ### What's Changed
