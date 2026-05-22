@@ -5241,7 +5241,7 @@
             },
             {
                 "name": "notes_or_default",
-                "type": "unknown",
+                "type": "string",
                 "optional": true
             },
             {
@@ -7593,7 +7593,7 @@
             },
             {
                 "name": "status_bare",
-                "type": "unknown",
+                "type": "OrderStatusType",
                 "optional": true
             },
             {

@@ -1400,7 +1400,7 @@ declare global {
         export interface ConditionalParamArrayResource {
             id: number;
             user_summary?: { id: number; email: string; name: string };
-            notes_or_default?: unknown;
+            notes_or_default?: string;
             user_meta?: { profile: { name: string; email: string }; verified: boolean };
         }
         /** Exercises: ternary operator in various return-value positions. All properties in this resource use the ternary operator (`? :`) or the Elvis operator (`?:`) as the value expression. The scenarios cover: - enum resource vs null - enum resource vs enum resource (same / different enum class) - named resource vs null - named resource vs named resource (same / different class) - resource collection vs null - scalar vs null (string, integer) - string literal vs string literal - Elvis / short-ternary - ternary nested inside a whenLoaded closure - ternary with $this->resource accessor */
@@ -2001,7 +2001,7 @@ declare global {
         export interface ConditionalParamEnumResource {
             id: number;
             status_resource?: app.enums.OrderStatusType;
-            status_bare?: unknown;
+            status_bare?: app.enums.OrderStatusType;
             currency_resource?: app.enums.CurrencyType;
             user_role?: app.enums.RoleType;
         }

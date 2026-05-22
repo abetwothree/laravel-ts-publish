@@ -1480,7 +1480,7 @@ declare global {
         export interface ConditionalParamArrayResource {
             id: number;
             user_summary?: { id: number; email: string; name: string };
-            notes_or_default?: unknown;
+            notes_or_default?: string;
             user_meta?: { profile: { name: string; email: string }; verified: boolean };
         }
         export interface Store {
@@ -2085,7 +2085,7 @@ declare global {
         export interface ConditionalParamEnumResource {
             id: number;
             status_resource?: enums.OrderStatusType;
-            status_bare?: unknown;
+            status_bare?: enums.OrderStatusType;
             currency_resource?: enums.CurrencyType;
             user_role?: enums.RoleType;
         }
