@@ -64,6 +64,7 @@
     "app\/Http\/Resources\/ProductResource.php",
     "app\/Http\/Resources\/ProfileResource.php",
     "app\/Http\/Resources\/QuirkyResource.php",
+    "app\/Http\/Resources\/ResourceWrappedEnumResource.php",
     "app\/Http\/Resources\/RoutableResource.php",
     "app\/Http\/Resources\/ServiceDeskResource.php",
     "app\/Http\/Resources\/SpreadJsonBaseResource.php",

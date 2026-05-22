@@ -1281,6 +1281,32 @@ class ResourceAstAnalyzer
                 ];
             }
 
+            // Handle $this->resource->property — semantically equivalent to $this->property.
+            // In a Laravel Resource, $this->resource is the underlying model instance,
+            // so `$this->resource->status` accesses the same attribute as `$this->status`.
+            // AST shape: PropertyFetch(var: PropertyFetch(var: Variable('this'), name: 'resource'), name: 'propName')
+            if (
+                $argExpr instanceof PropertyFetch
+                && $argExpr->var instanceof PropertyFetch
+                && $this->isThisPropertyFetch($argExpr->var)
+                && $argExpr->var->name instanceof Identifier
+                && $argExpr->var->name->toString() === 'resource'
+                && $argExpr->name instanceof Identifier
+            ) {
+                $propName = $argExpr->name->toString();
+                $info = $this->resolveModelAttributeTypeInfo($propName);
+
+                if ($info['enumFqcn'] === null) {
+                    return null;
+                }
+
+                return [
+                    ...$result,
+                    'type' => $info['type'],
+                    'enumFqcn' => $info['enumFqcn'],
+                ];
+            }
+
             return null;
         }
 

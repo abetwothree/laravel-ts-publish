@@ -56,6 +56,7 @@ export * from './product-resource';
 export * from './profile-resource';
 export * from './quirky-resource';
 export * from './reaction-resource';
+export * from './resource-wrapped-enum-resource';
 export * from './routable-resource';
 export * from './service-desk-resource';
 export * from './shipment-resource';

@@ -55,6 +55,7 @@ use Workbench\App\Http\Resources\OrderSummaryResource;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\QuirkyResource;
+use Workbench\App\Http\Resources\ResourceWrappedEnumResource;
 use Workbench\App\Http\Resources\SpreadJsonBaseResource;
 use Workbench\App\Http\Resources\SpreadWithClosureResource;
 use Workbench\App\Http\Resources\SpreadWithGuardClauseClosureResource;
@@ -3570,6 +3571,197 @@ describe('ResourceAstAnalyzer with ConditionalParamPrimitiveResource — whenNot
 
         expect($prop)->not->toBeNull()
             ->and($prop['type'])->toBe('number')
+            ->and($prop['optional'])->toBeTrue();
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ResourceWrappedEnumResource — issue #43: $this->resource->prop enum resolution
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ResourceAstAnalyzer with ResourceWrappedEnumResource — issue #43 $this->resource->prop', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(ResourceWrappedEnumResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, Post::class))->analyze();
+    });
+
+    // ── Direct access ──────────────────────────────────────────────────────────
+
+    test('EnumResource::make($this->resource->status) resolves to StatusType not unknown', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'status_make');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('StatusType')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('new EnumResource($this->resource->status) resolves to StatusType not unknown', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'status_new');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('StatusType')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('EnumResource::make($this->resource->visibility) resolves to VisibilityType|null not unknown', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'visibility_make');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('VisibilityType | null')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('new EnumResource($this->resource->priority) resolves to PriorityType|null not unknown', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'priority_new');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('PriorityType | null')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    // ── when() ─────────────────────────────────────────────────────────────────
+
+    test('when() pre-evaluated EnumResource::make($this->resource->status) resolves to StatusType', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'status_when_make');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('StatusType')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    test('when() arrow fn → EnumResource::make($this->resource->status) resolves to StatusType', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'status_when_arrow');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('StatusType')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    test('when() full closure → new EnumResource($this->resource->visibility) resolves to VisibilityType|null', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'visibility_when_full');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('VisibilityType | null')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    // ── whenNotNull() ──────────────────────────────────────────────────────────
+
+    test('whenNotNull() pre-evaluated EnumResource::make($this->resource->priority) resolves to PriorityType|null', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'priority_when_not_null_make');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('PriorityType | null')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    test('whenNotNull() arrow fn → EnumResource::make($this->resource->status) resolves to StatusType', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'status_when_not_null_arrow');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('StatusType')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    test('whenNotNull() full closure → new EnumResource($this->resource->visibility) resolves to VisibilityType|null', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'visibility_when_not_null_full');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('VisibilityType | null')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    // ── Ternary ────────────────────────────────────────────────────────────────
+
+    test('ternary: EnumResource::make($this->resource->status) vs null resolves to StatusType | null', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'status_ternary_null');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('StatusType | null')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('ternary: both branches same enum via $this->resource-> resolves to StatusType', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'status_ternary_both');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('StatusType')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    test('ternary: two different enum types via $this->resource-> resolves to StatusType | VisibilityType | null', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'status_or_visibility_ternary');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('StatusType | VisibilityType | null')
+            ->and($prop['optional'])->toBeFalse();
+    });
+
+    // ── Inline array ───────────────────────────────────────────────────────────
+
+    test('inline array with $this->resource-> enum values does not contain unknown', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'enums_array');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->not->toContain('unknown');
+    });
+
+    test('inline array with $this->resource-> enum values contains StatusType', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'enums_array');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toContain('StatusType');
+    });
+
+    // ── mergeWhen() ────────────────────────────────────────────────────────────
+
+    test('mergeWhen() inline array: EnumResource::make($this->resource->status) resolves to StatusType', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'merged_status');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('StatusType')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    test('mergeWhen() inline array: new EnumResource($this->resource->visibility) resolves to VisibilityType|null', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'merged_visibility');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('VisibilityType | null')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    test('mergeWhen() arrow closure array: EnumResource::make($this->resource->status) resolves to StatusType', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'deferred_status');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('StatusType')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    test('mergeWhen() arrow closure array: new EnumResource($this->resource->priority) resolves to PriorityType|null', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'deferred_priority');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('PriorityType | null')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    // ── whenLoaded() ───────────────────────────────────────────────────────────
+
+    test('whenLoaded() arrow fn: EnumResource::make($this->resource->status) resolves to StatusType', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'category_status');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('StatusType')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    test('whenLoaded() full closure: new EnumResource($this->resource->visibility) resolves to VisibilityType|null', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'category_visibility');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('VisibilityType | null')
             ->and($prop['optional'])->toBeTrue();
     });
 });

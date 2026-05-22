@@ -7763,6 +7763,113 @@
                 "type": "{ name: string; initials: string; email: string; phone: string | null; avatar: string | null; role: RoleType | null; is_premium: boolean } | { name: string; email: string; phone: string | null; avatar: string | null; role: RoleType | null; is_premium: boolean; name_titled: string; morph: string } | null",
                 "optional": true
             }
+        ],
+        "ResourceWrappedEnumResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "status_make",
+                "type": "AsEnum<typeof Status>",
+                "optional": false
+            },
+            {
+                "name": "status_new",
+                "type": "AsEnum<typeof Status>",
+                "optional": false
+            },
+            {
+                "name": "visibility_make",
+                "type": "AsEnum<typeof Visibility> | null",
+                "optional": false
+            },
+            {
+                "name": "priority_new",
+                "type": "AsEnum<typeof Priority> | null",
+                "optional": false
+            },
+            {
+                "name": "status_when_make",
+                "type": "AsEnum<typeof Status>",
+                "optional": true
+            },
+            {
+                "name": "status_when_arrow",
+                "type": "AsEnum<typeof Status>",
+                "optional": true
+            },
+            {
+                "name": "visibility_when_full",
+                "type": "AsEnum<typeof Visibility> | null",
+                "optional": true
+            },
+            {
+                "name": "priority_when_not_null_make",
+                "type": "AsEnum<typeof Priority> | null",
+                "optional": true
+            },
+            {
+                "name": "status_when_not_null_arrow",
+                "type": "AsEnum<typeof Status>",
+                "optional": true
+            },
+            {
+                "name": "visibility_when_not_null_full",
+                "type": "AsEnum<typeof Visibility> | null",
+                "optional": true
+            },
+            {
+                "name": "status_ternary_null",
+                "type": "AsEnum<typeof Status> | null",
+                "optional": false
+            },
+            {
+                "name": "status_ternary_both",
+                "type": "AsEnum<typeof Status>",
+                "optional": false
+            },
+            {
+                "name": "status_or_visibility_ternary",
+                "type": "AsEnum<typeof Status> | AsEnum<typeof Visibility> | null",
+                "optional": false
+            },
+            {
+                "name": "enums_array",
+                "type": "{ status: StatusType; visibility: VisibilityType | null; priority: PriorityType | null }",
+                "optional": false
+            },
+            {
+                "name": "merged_status",
+                "type": "AsEnum<typeof Status>",
+                "optional": true
+            },
+            {
+                "name": "merged_visibility",
+                "type": "AsEnum<typeof Visibility> | null",
+                "optional": true
+            },
+            {
+                "name": "deferred_status",
+                "type": "AsEnum<typeof Status>",
+                "optional": true
+            },
+            {
+                "name": "deferred_priority",
+                "type": "AsEnum<typeof Priority> | null",
+                "optional": true
+            },
+            {
+                "name": "category_status",
+                "type": "AsEnum<typeof Status>",
+                "optional": true
+            },
+            {
+                "name": "category_visibility",
+                "type": "AsEnum<typeof Visibility> | null",
+                "optional": true
+            }
         ]
     }
 }

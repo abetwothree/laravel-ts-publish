@@ -2038,6 +2038,30 @@ declare global {
             items: app.models.OrderItem[];
             customer?: { name: string; initials: string; email: string; phone: string | null; avatar: string | null; role: app.enums.RoleType | null; is_premium: boolean } | { name: string; email: string; phone: string | null; avatar: string | null; role: app.enums.RoleType | null; is_premium: boolean; name_titled: string; morph: string } | null;
         }
+        /** Exercises issue #43: EnumResource wrapping an enum accessed via `$this->resource->property` returns `unknown` instead of the correct `AsEnum` utility type. Each entry below represents a distinct code pattern where the enum is reached through the underlying model accessor (`$this->resource->prop`) rather than the Laravel Resource magic shorthand (`$this->prop`).  All entries should resolve to the same TypeScript type as their `$this->prop` counterparts. */
+        export interface ResourceWrappedEnumResource {
+            id: number;
+            status_make: app.enums.StatusType;
+            status_new: app.enums.StatusType;
+            visibility_make: app.enums.VisibilityType | null;
+            priority_new: app.enums.PriorityType | null;
+            status_when_make?: app.enums.StatusType;
+            status_when_arrow?: app.enums.StatusType;
+            visibility_when_full?: app.enums.VisibilityType | null;
+            priority_when_not_null_make?: app.enums.PriorityType | null;
+            status_when_not_null_arrow?: app.enums.StatusType;
+            visibility_when_not_null_full?: app.enums.VisibilityType | null;
+            status_ternary_null: app.enums.StatusType | null;
+            status_ternary_both: app.enums.StatusType;
+            status_or_visibility_ternary: app.enums.StatusType | app.enums.VisibilityType | null;
+            enums_array: { status: crm.enums.StatusType; visibility: app.enums.VisibilityType | null; priority: app.enums.PriorityType | null };
+            merged_status?: app.enums.StatusType;
+            merged_visibility?: app.enums.VisibilityType | null;
+            deferred_status?: app.enums.StatusType;
+            deferred_priority?: app.enums.PriorityType | null;
+            category_status?: app.enums.StatusType;
+            category_visibility?: app.enums.VisibilityType | null;
+        }
     }
     export namespace app.http.resources.admin {
         export interface Store {
