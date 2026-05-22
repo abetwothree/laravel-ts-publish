@@ -34,13 +34,10 @@ class ConditionalParamArrayResource extends JsonResource
                 'name' => $user->name,
             ]),
 
-            // when() with arrow fn param → inline array literal
-            'shipping_summary' => $this->when(
-                $this->shipping_address !== null,
-                fn ($address) => [
-                    'city' => $address['city'] ?? null,
-                    'country' => $address['country_code'] ?? null,
-                ]
+            // when() with arrow fn param → BinaryOp\Coalesce (??)
+            'notes_or_default' => $this->when(
+                true,
+                fn () => $this->notes ?? 'none'
             ),
 
             // whenLoaded with arrow fn param → nested array literal
