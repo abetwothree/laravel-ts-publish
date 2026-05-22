@@ -5021,6 +5021,28 @@
                 "optional": false
             }
         ],
+        "ConditionalParamJsonResourceResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "user",
+                "type": "UserResource",
+                "optional": true
+            },
+            {
+                "name": "items",
+                "type": "OrderItemResource[]",
+                "optional": true
+            },
+            {
+                "name": "user_when",
+                "type": "UserResource",
+                "optional": true
+            }
+        ],
         "WarehouseResource": [
             {
                 "name": "id",
@@ -5105,6 +5127,38 @@
                 "optional": true
             }
         ],
+        "ConditionalParamPrimitiveResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "user_name",
+                "type": "string",
+                "optional": true
+            },
+            {
+                "name": "user_id",
+                "type": "number",
+                "optional": true
+            },
+            {
+                "name": "user_verified",
+                "type": "boolean",
+                "optional": true
+            },
+            {
+                "name": "notes_upper",
+                "type": "string",
+                "optional": true
+            },
+            {
+                "name": "notes_length",
+                "type": "number",
+                "optional": true
+            }
+        ],
         "ProfileResource": [
             {
                 "name": "id",
@@ -5148,6 +5202,55 @@
             },
             {
                 "name": "locale",
+                "type": "string",
+                "optional": true
+            }
+        ],
+        "ConditionalParamMappedResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "items_mapped",
+                "type": "{ id: number; name: string; quantity: number }[]",
+                "optional": true
+            },
+            {
+                "name": "items_priced",
+                "type": "{ id: number; sku: string; unit_price: number; total_price: number }[]",
+                "optional": true
+            },
+            {
+                "name": "item_names",
+                "type": "string[]",
+                "optional": true
+            }
+        ],
+        "ConditionalParamArrayResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "user_summary",
+                "type": "{ id: number; email: string; name: string }",
+                "optional": true
+            },
+            {
+                "name": "notes_or_default",
+                "type": "string",
+                "optional": true
+            },
+            {
+                "name": "user_meta",
+                "type": "{ profile: { name: string; email: string }; verified: boolean }",
+                "optional": true
+            },
+            {
+                "name": "notes_when_null",
                 "type": "string",
                 "optional": true
             }
@@ -5630,6 +5733,43 @@
             {
                 "name": "total",
                 "type": "number",
+                "optional": true
+            }
+        ],
+        "ConditionalParamFullClosureResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "user_name",
+                "type": "string",
+                "optional": true
+            },
+            {
+                "name": "user_summary",
+                "type": "{ id: number; email: string }",
+                "optional": true
+            },
+            {
+                "name": "items_mapped",
+                "type": "{ id: number; name: string; quantity: number }[]",
+                "optional": true
+            },
+            {
+                "name": "user_resource",
+                "type": "UserResource",
+                "optional": true
+            },
+            {
+                "name": "status_resource",
+                "type": "AsEnum<typeof OrderStatus>",
+                "optional": true
+            },
+            {
+                "name": "shipping_safe",
+                "type": "{ name: string; email: string } | null",
                 "optional": true
             }
         ],
@@ -7442,6 +7582,33 @@
             {
                 "name": "retry_result",
                 "type": "{ attempted: boolean }",
+                "optional": true
+            }
+        ],
+        "ConditionalParamEnumResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "status_resource",
+                "type": "AsEnum<typeof OrderStatus>",
+                "optional": true
+            },
+            {
+                "name": "status_bare",
+                "type": "OrderStatusType",
+                "optional": true
+            },
+            {
+                "name": "currency_resource",
+                "type": "AsEnum<typeof Currency>",
+                "optional": true
+            },
+            {
+                "name": "user_role",
+                "type": "AsEnum<typeof Role>",
                 "optional": true
             }
         ],

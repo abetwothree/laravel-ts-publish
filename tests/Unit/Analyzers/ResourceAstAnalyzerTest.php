@@ -19,6 +19,11 @@ use Workbench\App\Http\Resources\ClosureControlFlowResource;
 use Workbench\App\Http\Resources\ClosureUnionMetadataResource;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\CommonResource;
+use Workbench\App\Http\Resources\ConditionalParamArrayResource;
+use Workbench\App\Http\Resources\ConditionalParamEnumResource;
+use Workbench\App\Http\Resources\ConditionalParamFullClosureResource;
+use Workbench\App\Http\Resources\ConditionalParamMappedResource;
+use Workbench\App\Http\Resources\ConditionalParamPrimitiveResource;
 use Workbench\App\Http\Resources\ControlFlowReturnResource;
 use Workbench\App\Http\Resources\DelegatingResource;
 use Workbench\App\Http\Resources\DelegatingWithMixinResource;
@@ -3410,5 +3415,161 @@ describe('ResourceAstAnalyzer ternary operator — conditional / closure context
         expect($prop)->not->toBeNull()
             ->and($prop['type'])->toBe('string | null')
             ->and($prop['optional'])->toBeFalse();
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// conditional closure param type resolution
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ResourceAstAnalyzer with ConditionalParamEnumResource — issue #38 enum param binding', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(ConditionalParamEnumResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, Order::class))->analyze();
+    });
+
+    // Bug D: $this->when($this->status, fn ($status) => EnumResource::make($status))
+    // $status is bound to $this->status (OrderStatus enum); EnumResource wraps it.
+    test('when() param → EnumResource::make($status) resolves to OrderStatusType not unknown', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'status_resource');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('OrderStatusType')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    // Bug D: $this->when($this->status, fn ($status) => $status)
+    // $status is the OrderStatus enum passed bare.
+    test('when() param → bare $status return resolves to OrderStatusType not unknown', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'status_bare');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('OrderStatusType')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    // Bug D: $this->when($this->currency, fn ($currency) => EnumResource::make($currency))
+    // $currency is the Currency enum on Order.
+    test('when() param → EnumResource::make($currency) resolves to CurrencyType not unknown', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'currency_resource');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('CurrencyType')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    // Bug A: $this->whenLoaded('user', fn ($user) => EnumResource::make($user->role))
+    // $user is the User relation; $user->role is the Role enum.
+    test('whenLoaded() param → EnumResource::make($user->role) resolves to RoleType not unknown', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'user_role');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('RoleType')
+            ->and($prop['optional'])->toBeTrue();
+    });
+});
+
+describe('ResourceAstAnalyzer with ConditionalParamMappedResource — issue #38 map() param binding', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(ConditionalParamMappedResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, Order::class))->analyze();
+    });
+
+    // Bug B: $this->whenLoaded('items', fn ($items) => $items->map(fn (OrderItem $item) => [...]))
+    // Outer param $items → collection; inner typed param $item → array shape.
+    test('whenLoaded() param → items->map() with typed inner closure resolves to array shape not unknown', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'items_mapped');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('{ id: number; name: string; quantity: number }[]')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    test('whenLoaded() param → items->map() with price fields resolves to array shape not unknown', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'items_priced');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('{ id: number; sku: string; unit_price: number; total_price: number }[]')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    test('whenLoaded() param → items->pluck() resolves to non-unknown type', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'item_names');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string[]')
+            ->and($prop['optional'])->toBeTrue();
+    });
+});
+
+describe('ResourceAstAnalyzer with ConditionalParamArrayResource — issue #38 coalesce resolution', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(ConditionalParamArrayResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, Order::class))->analyze();
+    });
+
+    // Bug C: fn () => $this->notes ?? 'none'
+    // $this->notes is string|null; ?? 'none' strips the null → should be string.
+    test('when() with coalesce (??) resolves to string not unknown', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'notes_or_default');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    // whenNull() with arrow fn → string fallback when value is null
+    test('whenNull() arrow fn → string resolves to string not unknown', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'notes_when_null');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string')
+            ->and($prop['optional'])->toBeTrue();
+    });
+});
+
+describe('ResourceAstAnalyzer with ConditionalParamFullClosureResource — issue #38 full closure params', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(ConditionalParamFullClosureResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, Order::class))->analyze();
+    });
+
+    // Bug B (full closure variant): function ($items) { return $items->map(function (OrderItem $item) { ... }); }
+    test('full closure param → items->map() with typed inner closure resolves to array shape not unknown', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'items_mapped');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('{ id: number; name: string; quantity: number }[]')
+            ->and($prop['optional'])->toBeTrue();
+    });
+
+    // Full closure: function ($status) { return EnumResource::make($status); }
+    // (condition is $this->status !== null — a boolean expression, so $status param = true)
+    test('full closure param → EnumResource::make resolves to non-unknown type', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'status_resource');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('OrderStatusType')
+            ->and($prop['optional'])->toBeTrue();
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// whenNotNull closure param binding — ConditionalParamPrimitiveResource
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ResourceAstAnalyzer with ConditionalParamPrimitiveResource — whenNotNull param binding', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(ConditionalParamPrimitiveResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, Order::class))->analyze();
+    });
+
+    // whenNotNull($this->notes, fn ($notes) => strlen($notes)) → number (not string | null)
+    test('whenNotNull() arrow fn param → strlen() resolves to number not string|null', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'notes_length');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('number')
+            ->and($prop['optional'])->toBeTrue();
     });
 });

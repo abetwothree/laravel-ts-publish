@@ -1419,6 +1419,13 @@ declare global {
             value: string;
             meta: { extensions: unknown[]; maxSizeMb: number; sizeUnit: string; icon: string };
         }
+        /** Exercises issue #38: closure parameter passed by the conditional method, where the return expression is a JsonResource make() or collection() call. The bug: the analyzer resolves the return type as `unknown` instead of inferring the resource type (e.g. UserResource or OrderItemResource[]). */
+        export interface ConditionalParamJsonResourceResource {
+            id: number;
+            user?: UserResource;
+            items?: OrderItemResource[];
+            user_when?: UserResource;
+        }
         /** Resource with no @mixin or TsResource — tests convention-based model guess. Also tests multiple TsExtends in parent class, trait, and locally. */
         export interface WarehouseResource extends BaseResource, ExtendableInterface, Omit<Timestamps, "created_at" | "updated_at">, ResourceRoutes, Pick<Routable, "store" | "update"> {
             id: number;
@@ -1441,6 +1448,15 @@ declare global {
             id: number;
             payload?: { address: AddressResource; items_loaded?: models.OrderItem[] } | null;
         }
+        /** Exercises issue #38: closure parameter passed by the conditional method. Each field uses a single-param arrow function that returns a scalar primitive. The bug: the analyzer resolves the return type of these closures as `unknown` instead of inferring the scalar type from the return expression. */
+        export interface ConditionalParamPrimitiveResource {
+            id: number;
+            user_name?: string;
+            user_id?: number;
+            user_verified?: boolean;
+            notes_upper?: string;
+            notes_length?: number;
+        }
         /** Exercises: multiple whenHas on different column types, multiple whenNotNull. */
         export interface ProfileResource {
             id: number;
@@ -1452,6 +1468,21 @@ declare global {
             social_links?: { twitter?: string; github?: string; linkedin?: string; website?: string };
             timezone?: string;
             locale?: string;
+        }
+        /** Exercises issue #38: the exact bug pattern from the issue report. A closure receives the loaded relation as a parameter and calls ->map() with a nested inner closure that returns an array shape. The bug: the outer closure param return type resolves to `unknown` instead of inferring the mapped array shape `{ id: number; name: string; quantity: number }[]`. */
+        export interface ConditionalParamMappedResource {
+            id: number;
+            items_mapped?: { id: number; name: string; quantity: number }[];
+            items_priced?: { id: number; sku: string; unit_price: number; total_price: number }[];
+            item_names?: string[];
+        }
+        /** Exercises issue #38: closure parameter passed by the conditional method. Each field uses a single-param arrow function that returns an inline array literal. The bug: the analyzer resolves the return type as `unknown` instead of inferring the array shape `{ id: number; email: string; name: string }`. */
+        export interface ConditionalParamArrayResource {
+            id: number;
+            user_summary?: { id: number; email: string; name: string };
+            notes_or_default?: string;
+            user_meta?: { profile: { name: string; email: string }; verified: boolean };
+            notes_when_null?: string;
         }
         export interface Store {
             id: number;
@@ -1594,6 +1625,16 @@ declare global {
             id: number;
             first_item_name?: unknown;
             total?: number;
+        }
+        /** Exercises issue #38 using non-arrow (full) closures with a parameter. Covers primitives, arrays, resources, enums, and guard-clause patterns — all using `function ($param) { return ...; }` syntax rather than arrow fns. The bug: the analyzer resolves the return type of these closures as `unknown` regardless of the return expression when a parameter is present. */
+        export interface ConditionalParamFullClosureResource {
+            id: number;
+            user_name?: string;
+            user_summary?: { id: number; email: string };
+            items_mapped?: { id: number; name: string; quantity: number }[];
+            user_resource?: UserResource;
+            status_resource?: enums.OrderStatusType;
+            shipping_safe?: { name: string; email: string } | null;
         }
         /** Mailing address resource */
         export interface Address {
@@ -2040,6 +2081,14 @@ declare global {
             safe_total?: { amount: number };
             tags?: { first_item: string } | { first_item: null };
             retry_result?: { attempted: boolean };
+        }
+        /** Exercises issue #38: closure parameter passed by the conditional method, where the return expression wraps an enum in EnumResource::make() or returns it bare. The bug: the analyzer resolves the return type as `unknown` instead of recognising the enum type from the param or the EnumResource wrapper. */
+        export interface ConditionalParamEnumResource {
+            id: number;
+            status_resource?: enums.OrderStatusType;
+            status_bare?: enums.OrderStatusType;
+            currency_resource?: enums.CurrencyType;
+            user_role?: enums.RoleType;
         }
         export interface SpreadWithGuardDoubleClosureReturnResource {
             id: number;

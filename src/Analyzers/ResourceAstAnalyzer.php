@@ -115,6 +115,17 @@ class ResourceAstAnalyzer
     protected ?string $closureRelationModelClass = null;
 
     /**
+     * Maps closure parameter variable names to bound expressions extracted from the
+     * surrounding `when()` condition. For example, `$this->when($this->status !== null,
+     * function ($status) { ... })` binds `'status'` → the `$this->status` PropertyFetch
+     * node, so that `EnumResource::make($status)` inside the closure can be resolved
+     * to the same type as `EnumResource::make($this->status)`.
+     *
+     * @var array<string, Expr>
+     */
+    protected array $closureParamExprBindings = [];
+
+    /**
      * @param  ReflectionClass<JsonResource>  $resourceReflection
      * @param  class-string<Model>|null  $modelClass
      */
@@ -466,6 +477,13 @@ class ResourceAstAnalyzer
             return ['type' => 'string', 'optional' => false];
         }
 
+        // Null coalescing operator ($left ?? $right) — returns left if non-null, right otherwise.
+        // Resolve both sides and return the dominant type; if they match return that type,
+        // otherwise build a union of the two distinct types.
+        if ($expr instanceof BinaryOp\Coalesce) {
+            return $this->analyzeCoalesce($expr);
+        }
+
         // Known PHP built-in function calls — resolve return type from function name.
         // e.g. strtolower() → string, strlen() → number, is_null() → boolean.
         if ($expr instanceof FuncCall && $expr->name instanceof Name) {
@@ -515,6 +533,12 @@ class ResourceAstAnalyzer
         if ($this->isThisMethodCall($expr, 'whenNotNull')) {
             /** @var MethodCall $expr */
             return $this->analyzeWhenNotNull($expr);
+        }
+
+        // $this->whenNull($this->value, $callback)
+        if ($this->isThisMethodCall($expr, 'whenNull')) {
+            /** @var MethodCall $expr */
+            return $this->analyzeWhenNull($expr);
         }
 
         // $this->whenLoaded('relation') or $this->whenLoaded('relation', value)
@@ -709,6 +733,36 @@ class ResourceAstAnalyzer
             return $this->analyzeRelatedModelProperty($expr->name->toString());
         }
 
+        // $variable->map(fn (TypedClass $item) => [...]) — resolve using the inner closure's
+        // typed first parameter. Does not require a pre-existing closureRelationModelClass
+        // because the element type is read directly from the closure's type hint.
+        if ($expr instanceof MethodCall
+            && $expr->var instanceof Variable
+            && is_string($expr->var->name)
+            && $expr->var->name !== 'this'
+            && $expr->name instanceof Identifier
+            && $expr->name->toString() === 'map'
+            && $expr->getArgs() !== []
+        ) {
+            $mapResult = $this->analyzeVariableMapCall($expr);
+
+            if ($mapResult !== null) {
+                return $mapResult;
+            }
+        }
+
+        // $variable->pluck('field') — resolve to an array of the field's type
+        if ($this->closureRelationModelClass !== null
+            && $expr instanceof MethodCall
+            && $expr->var instanceof Variable
+            && is_string($expr->var->name)
+            && $expr->var->name !== 'this'
+            && $expr->name instanceof Identifier
+            && $expr->name->toString() === 'pluck'
+        ) {
+            return $this->analyzeVariablePluckCall($expr);
+        }
+
         // $variable->method() — resolve against the related model in a whenLoaded closure context
         if ($this->closureRelationModelClass !== null
             && $expr instanceof MethodCall
@@ -725,6 +779,18 @@ class ResourceAstAnalyzer
             return $this->analyzeTernary($expr);
         }
 
+        // Bare closure-parameter variable bound via bindClosureParamsFromCondition().
+        // E.g. `$this->when($this->status, fn ($status) => $status)` — the closure body
+        // returns just `$status`, which is bound to `$this->status`, so we resolve the
+        // bound expression to get the correct type (e.g. `OrderStatusType`).
+        if ($expr instanceof Variable && is_string($expr->name)) {
+            $boundExpr = $this->closureParamExprBindings[$expr->name] ?? null;
+
+            if ($boundExpr !== null) {
+                return $this->analyzeValueExpression($boundExpr);
+            }
+        }
+
         return $result;
     }
 
@@ -739,6 +805,45 @@ class ResourceAstAnalyzer
         $tsInfo = LaravelTsPublish::nativePhpFunctionReturnedTypes($name);
 
         return ! str_contains($tsInfo['type'], 'unknown') ? $tsInfo['type'] : null;
+    }
+
+    /**
+     * Analyze a null-coalescing expression (`$left ?? $right`).
+     *
+     * Resolves both operands and returns the dominant type. When both sides resolve to
+     * the same type the result is that type (e.g. `string ?? string` → `string`). When
+     * they differ, a union of the two distinct types is returned (e.g. `string ?? number`
+     * → `string | number`). A `null` type on the left is treated as unknown because the
+     * coalesce operator guarantees the fallback is used instead.
+     *
+     * @return ValueExpressionResult
+     */
+    protected function analyzeCoalesce(BinaryOp\Coalesce $expr): array
+    {
+        $leftResult = $this->analyzeValueExpression($expr->left);
+        $rightResult = $this->analyzeValueExpression($expr->right);
+
+        $leftType = $leftResult['type'];
+        $rightType = $rightResult['type'];
+
+        // Strip a `| null` suffix from the left side — the right side acts as the fallback,
+        // so null is never the final result when a non-null fallback is provided.
+        $leftType = trim(str_replace('| null', '', $leftType));
+        $leftType = trim(str_replace('null |', '', $leftType));
+
+        if ($leftType === 'unknown' || $leftType === '') {
+            return ['type' => $rightType, 'optional' => false];
+        }
+
+        if ($rightType === 'unknown') {
+            return ['type' => $leftType, 'optional' => false];
+        }
+
+        if ($leftType === $rightType) {
+            return ['type' => $leftType, 'optional' => false];
+        }
+
+        return ['type' => $leftType.' | '.$rightType, 'optional' => false];
     }
 
     /**
@@ -777,9 +882,17 @@ class ResourceAstAnalyzer
         if (count($args) >= 2) {
             $valueExpr = $args[1]->value;
 
+            // When the condition contains $this->propName, bind the closure's first
+            // parameter to that expression so that `EnumResource::make($param)` and
+            // similar calls inside the closure can be resolved correctly.
+            $previousBindings = $this->closureParamExprBindings;
+            $this->bindClosureParamsFromCondition($args[0]->value, $valueExpr);
+
             // Resolve the type from the value expression
             $inner = $this->analyzeValueExpression($valueExpr);
             $inner['optional'] = true;
+
+            $this->closureParamExprBindings = $previousBindings;
 
             return $inner;
         }
@@ -813,18 +926,59 @@ class ResourceAstAnalyzer
     }
 
     /**
-     * Analyze $this->whenNotNull($this->value) — resolve the inner expression type.
+     * Analyze $this->whenNotNull($this->value, $callback) — resolve the callback expression type.
+     *
+     * whenNotNull passes the non-null value of $args[0] to the callback $args[1].
+     * We analyze the callback (args[1]) for the TypeScript type, and bind the
+     * closure param to the condition expression (args[0]) so inner calls resolve correctly.
      *
      * @return ValueExpressionResult
      */
     protected function analyzeWhenNotNull(MethodCall $call): array
     {
+        return $this->analyzeWhenPossiblyNull($call);
+    }
+
+    /**
+     * Analyze $this->whenNull($this->value, $callback) — resolve the callback expression type.
+     *
+     * whenNull passes null to the callback when the value is null. We analyze args[1] (the
+     * callback) for the TypeScript type. No closure param binding is needed because null
+     * is passed — there is no meaningful expression to bind the param to.
+     *
+     * @return ValueExpressionResult
+     */
+    protected function analyzeWhenNull(MethodCall $call): array
+    {
+        return $this->analyzeWhenPossiblyNull($call);
+    }
+
+    /**
+     * Analyze $this->whenNotNull(...) or $this->whenNull(...) — shared logic for analyzing the callback and binding the closure param.
+     *
+     * @return ValueExpressionResult
+     */
+    protected function analyzeWhenPossiblyNull(MethodCall $call): array
+    {
         $result = $this->unknownResult();
         $args = $call->getArgs();
 
-        if (count($args) >= 1) {
+        if (count($args) === 1) {
             $inner = $this->analyzeValueExpression($args[0]->value);
             $inner['optional'] = true;
+
+            return $inner;
+        }
+
+        if (count($args) >= 2) {
+            $valueExpr = $args[1]->value;
+            $previousBindings = $this->closureParamExprBindings;
+
+            $this->bindClosureParamsFromCondition($args[0]->value, $valueExpr);
+            $inner = $this->analyzeValueExpression($valueExpr);
+            $inner['optional'] = true;
+
+            $this->closureParamExprBindings = $previousBindings;
 
             return $inner;
         }
@@ -1073,7 +1227,12 @@ class ResourceAstAnalyzer
     }
 
     /**
-     * Resolve an enum type from a $this->property expression (shared by EnumResource::make and new EnumResource).
+     * Resolve an enum type from a property-fetch expression (shared by EnumResource::make and new EnumResource).
+     *
+     * Handles two forms:
+     * - `$this->property` — resolved against the resource's own backing model.
+     * - `$variable->property` — resolved against `$closureRelationModelClass` when inside a
+     *   whenLoaded() closure (e.g. `fn ($user) => EnumResource::make($user->role)`).
      *
      * @return ValueExpressionResult|null
      */
@@ -1082,6 +1241,46 @@ class ResourceAstAnalyzer
         $result = $this->unknownResult();
 
         if (! $this->isThisPropertyFetch($argExpr)) {
+            // Handle bare $variable that is a closure parameter bound to $this->prop
+            // via a when() condition (e.g. `EnumResource::make($status)` where
+            // `$status` was bound to `$this->status` from the condition).
+            if ($argExpr instanceof Variable && is_string($argExpr->name)) {
+                $boundExpr = $this->closureParamExprBindings[$argExpr->name] ?? null;
+
+                if ($boundExpr !== null) {
+                    return $this->resolveEnumFromPropertyArg($boundExpr);
+                }
+            }
+
+            // Handle $variable->property inside a whenLoaded closure.
+            if (
+                $argExpr instanceof PropertyFetch
+                && $argExpr->var instanceof Variable
+                && $argExpr->name instanceof Identifier
+                && $this->closureRelationModelClass !== null
+            ) {
+                $propName = $argExpr->name->toString();
+                $tsInfo = resolve(ModelAttributeResolver::class)->resolveAttribute($this->closureRelationModelClass, $propName);
+
+                /** @var class-string|null $enumFqcn */
+                $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
+
+                if ($enumFqcn === null) {
+                    return null;
+                }
+
+                // Use phpToTypeScriptType on the enum FQCN directly so we get the
+                // pure enum TS type ('RoleType') without any nullable suffix that
+                // appendNullable may have appended based on the DB column definition.
+                $enumTsInfo = LaravelTsPublish::phpToTypeScriptType($enumFqcn);
+
+                return [
+                    ...$result,
+                    'type' => $enumTsInfo['type'],
+                    'enumFqcn' => $enumFqcn,
+                ];
+            }
+
             return null;
         }
 
@@ -2994,6 +3193,189 @@ class ResourceAstAnalyzer
         }
 
         return $result;
+    }
+
+    /**
+     * Analyze a `$variable->map(fn (TypedClass $item) => [...])` call by resolving the
+     * inner closure's typed first parameter class, then analyzing the closure body.
+     *
+     * When the inner closure has a typed first parameter (e.g. `fn (OrderItem $item) => [...]`),
+     * its FQCN (already resolved by NameResolver) is temporarily set as the closure relation
+     * model class, and the closure body is analyzed against that class. The result is wrapped
+     * as `elementType[]`.
+     *
+     * Returns null when the inner closure has no typed class parameter, the class is not a
+     * Model subclass, or the body analysis resolves to unknown — allowing the caller to fall
+     * through to the generic method handler.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function analyzeVariableMapCall(MethodCall $call): ?array
+    {
+        $args = $call->getArgs();
+
+        if ($args === []) {
+            return null;
+        }
+
+        $closureArg = $args[0]->value;
+
+        if ($closureArg instanceof ArrowFunction) {
+            $params = $closureArg->params;
+        } elseif ($closureArg instanceof ClosureExpr) {
+            $params = $closureArg->params;
+        } else {
+            return null;
+        }
+
+        if ($params === []) {
+            return null;
+        }
+
+        $firstParam = $params[0];
+
+        // Require a named class type hint (already FQCN-resolved by NameResolver)
+        if (! ($firstParam->type instanceof Name)) {
+            return null;
+        }
+
+        $paramClass = $firstParam->type->toString();
+
+        if (! class_exists($paramClass) || ! is_a($paramClass, Model::class, true)) {
+            return null;
+        }
+
+        /** @var class-string<Model> $paramClass */
+        $previousRelationModel = $this->closureRelationModelClass;
+        $this->closureRelationModelClass = $paramClass;
+
+        $returnExprs = $this->resolveClosureReturnExpressions($closureArg);
+
+        $bodyResult = match (count($returnExprs)) {
+            0 => null,
+            1 => $this->analyzeValueExpression($returnExprs[0]),
+            default => $this->analyzeClosureUnion($returnExprs),
+        };
+
+        $this->closureRelationModelClass = $previousRelationModel;
+
+        if ($bodyResult === null || $bodyResult['type'] === 'unknown') {
+            return null;
+        }
+
+        $bodyResult['type'] = $bodyResult['type'].'[]';
+        $bodyResult['optional'] = false;
+
+        return $bodyResult;
+    }
+
+    /**
+     * Analyze a `$variable->pluck('field')` call within a whenLoaded closure context.
+     *
+     * Resolves the named field's TypeScript type from the related model class and returns
+     * it as an array type. Returns `unknown[]` when the field type cannot be determined,
+     * which satisfies callers that only need a non-`unknown` result.
+     *
+     * @return ValueExpressionResult
+     */
+    private function analyzeVariablePluckCall(MethodCall $call): array
+    {
+        $args = $call->getArgs();
+
+        if (count($args) >= 1 && $args[0]->value instanceof String_) {
+            $fieldName = $args[0]->value->value;
+            $info = $this->analyzeRelatedModelProperty($fieldName);
+
+            if ($info['type'] !== 'unknown') {
+                $info['type'] = $info['type'].'[]';
+                $info['optional'] = false;
+
+                return $info;
+            }
+        }
+
+        return ['type' => 'unknown[]', 'optional' => false];
+    }
+
+    /**
+     * When a `when()` condition contains a `$this->propName` expression, bind the first
+     * parameter of the closure/arrow-function value to that PropertyFetch expression.
+     *
+     * This allows expressions like `EnumResource::make($status)` inside a closure passed
+     * to `$this->when($this->status !== null, function ($status) { ... })` to be resolved
+     * as if they were `EnumResource::make($this->status)`.
+     */
+    private function bindClosureParamsFromCondition(Expr $condition, Expr $valueExpr): void
+    {
+        $thisPropExpr = $this->extractThisPropertyFromCondition($condition);
+
+        if ($thisPropExpr === null) {
+            return;
+        }
+
+        $firstParam = null;
+
+        if ($valueExpr instanceof ArrowFunction && $valueExpr->params !== []) {
+            $firstParam = $valueExpr->params[0];
+        } elseif ($valueExpr instanceof ClosureExpr && $valueExpr->params !== []) {
+            $firstParam = $valueExpr->params[0];
+        }
+
+        if ($firstParam === null) {
+            return;
+        }
+
+        if ($firstParam->var instanceof Variable && is_string($firstParam->var->name)) {
+            $this->closureParamExprBindings[$firstParam->var->name] = $thisPropExpr;
+        }
+    }
+
+    /**
+     * Extract a `$this->propName` PropertyFetch expression from a boolean condition.
+     *
+     * Handles the following patterns:
+     * - `$this->prop` — bare property access used as a truthy condition.
+     * - `$this->prop !== null` / `null !== $this->prop`
+     * - `$this->prop === null` / `null === $this->prop`
+     */
+    private function extractThisPropertyFromCondition(Expr $condition): ?Expr
+    {
+        // bare $this->propName
+        if ($this->isThisPropertyFetch($condition)) {
+            return $condition;
+        }
+
+        // $this->propName !== null  or  null !== $this->propName
+        if ($condition instanceof BinaryOp\NotIdentical) {
+            if ($this->isThisPropertyFetch($condition->left) && $this->isNullConstFetch($condition->right)) {
+                return $condition->left;
+            }
+
+            if ($this->isThisPropertyFetch($condition->right) && $this->isNullConstFetch($condition->left)) {
+                return $condition->right;
+            }
+        }
+
+        // $this->propName === null  or  null === $this->propName
+        if ($condition instanceof BinaryOp\Identical) {
+            if ($this->isThisPropertyFetch($condition->left) && $this->isNullConstFetch($condition->right)) {
+                return $condition->left;
+            }
+
+            if ($this->isThisPropertyFetch($condition->right) && $this->isNullConstFetch($condition->left)) {
+                return $condition->right;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Return true when the expression is a `null` constant fetch.
+     */
+    private function isNullConstFetch(Expr $expr): bool
+    {
+        return $expr instanceof ConstFetch && strtolower($expr->name->toString()) === 'null';
     }
 
     /**
