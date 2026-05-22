@@ -23,6 +23,7 @@ use Workbench\App\Http\Resources\ConditionalParamArrayResource;
 use Workbench\App\Http\Resources\ConditionalParamEnumResource;
 use Workbench\App\Http\Resources\ConditionalParamFullClosureResource;
 use Workbench\App\Http\Resources\ConditionalParamMappedResource;
+use Workbench\App\Http\Resources\ConditionalParamPrimitiveResource;
 use Workbench\App\Http\Resources\ControlFlowReturnResource;
 use Workbench\App\Http\Resources\DelegatingResource;
 use Workbench\App\Http\Resources\DelegatingWithMixinResource;
@@ -3418,7 +3419,7 @@ describe('ResourceAstAnalyzer ternary operator — conditional / closure context
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Issue #38 — conditional closure param type resolution
+// conditional closure param type resolution
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('ResourceAstAnalyzer with ConditionalParamEnumResource — issue #38 enum param binding', function () {
@@ -3496,7 +3497,7 @@ describe('ResourceAstAnalyzer with ConditionalParamMappedResource — issue #38 
         $prop = collect($this->analysis->properties)->firstWhere('name', 'item_names');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->not->toBe('unknown')
+            ->and($prop['type'])->toBe('string[]')
             ->and($prop['optional'])->toBeTrue();
     });
 });
@@ -3539,7 +3540,27 @@ describe('ResourceAstAnalyzer with ConditionalParamFullClosureResource — issue
         $prop = collect($this->analysis->properties)->firstWhere('name', 'status_resource');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->not->toBe('unknown')
+            ->and($prop['type'])->toBe('OrderStatusType')
+            ->and($prop['optional'])->toBeTrue();
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// whenNotNull closure param binding — ConditionalParamPrimitiveResource
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ResourceAstAnalyzer with ConditionalParamPrimitiveResource — whenNotNull param binding', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(ConditionalParamPrimitiveResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, Order::class))->analyze();
+    });
+
+    // whenNotNull($this->notes, fn ($notes) => strlen($notes)) → number (not string | null)
+    test('whenNotNull() arrow fn param → strlen() resolves to number not string|null', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'notes_length');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('number')
             ->and($prop['optional'])->toBeTrue();
     });
 });
