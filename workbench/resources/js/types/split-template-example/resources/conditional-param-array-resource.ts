@@ -3,6 +3,6 @@ export interface ConditionalParamArrayResource
 {
     id: number;
     user_summary?: { id: number; email: string; name: string };
-    shipping_summary?: { city: unknown; country: unknown };
+    notes_or_default?: unknown;
     user_meta?: { profile: { name: string; email: string }; verified: boolean };
 }

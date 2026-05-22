@@ -1392,15 +1392,15 @@ declare global {
         /** Exercises issue #38: the exact bug pattern from the issue report. A closure receives the loaded relation as a parameter and calls ->map() with a nested inner closure that returns an array shape. The bug: the outer closure param return type resolves to `unknown` instead of inferring the mapped array shape `{ id: number; name: string; quantity: number }[]`. */
         export interface ConditionalParamMappedResource {
             id: number;
-            items_mapped?: unknown;
-            items_priced?: unknown;
-            item_names?: unknown;
+            items_mapped?: { id: number; name: string; quantity: number }[];
+            items_priced?: { id: number; sku: string; unit_price: number; total_price: number }[];
+            item_names?: string[];
         }
         /** Exercises issue #38: closure parameter passed by the conditional method. Each field uses a single-param arrow function that returns an inline array literal. The bug: the analyzer resolves the return type as `unknown` instead of inferring the array shape `{ id: number; email: string; name: string }`. */
         export interface ConditionalParamArrayResource {
             id: number;
             user_summary?: { id: number; email: string; name: string };
-            shipping_summary?: { city: unknown; country: unknown };
+            notes_or_default?: unknown;
             user_meta?: { profile: { name: string; email: string }; verified: boolean };
         }
         /** Exercises: ternary operator in various return-value positions. All properties in this resource use the ternary operator (`? :`) or the Elvis operator (`?:`) as the value expression. The scenarios cover: - enum resource vs null - enum resource vs enum resource (same / different enum class) - named resource vs null - named resource vs named resource (same / different class) - resource collection vs null - scalar vs null (string, integer) - string literal vs string literal - Elvis / short-ternary - ternary nested inside a whenLoaded closure - ternary with $this->resource accessor */
@@ -1546,9 +1546,9 @@ declare global {
             id: number;
             user_name?: string;
             user_summary?: { id: number; email: string };
-            items_mapped?: unknown;
+            items_mapped?: { id: number; name: string; quantity: number }[];
             user_resource?: crm.http.resources.UserResource;
-            status_resource?: unknown;
+            status_resource?: app.enums.OrderStatusType;
             shipping_safe?: { name: string; email: string } | null;
         }
         /** Mailing address resource */
@@ -2000,10 +2000,10 @@ declare global {
         /** Exercises issue #38: closure parameter passed by the conditional method, where the return expression wraps an enum in EnumResource::make() or returns it bare. The bug: the analyzer resolves the return type as `unknown` instead of recognising the enum type from the param or the EnumResource wrapper. */
         export interface ConditionalParamEnumResource {
             id: number;
-            status_resource?: unknown;
+            status_resource?: app.enums.OrderStatusType;
             status_bare?: unknown;
-            currency_resource?: unknown;
-            user_role?: unknown;
+            currency_resource?: app.enums.CurrencyType;
+            user_role?: app.enums.RoleType;
         }
         export interface SpreadWithGuardDoubleClosureReturnResource {
             id: number;

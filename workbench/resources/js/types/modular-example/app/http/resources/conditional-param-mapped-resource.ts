@@ -2,7 +2,7 @@
 export interface ConditionalParamMappedResource
 {
     id: number;
-    items_mapped?: unknown;
-    items_priced?: unknown;
-    item_names?: unknown;
+    items_mapped?: { id: number; name: string; quantity: number }[];
+    items_priced?: { id: number; sku: string; unit_price: number; total_price: number }[];
+    item_names?: string[];
 }

@@ -1472,15 +1472,15 @@ declare global {
         /** Exercises issue #38: the exact bug pattern from the issue report. A closure receives the loaded relation as a parameter and calls ->map() with a nested inner closure that returns an array shape. The bug: the outer closure param return type resolves to `unknown` instead of inferring the mapped array shape `{ id: number; name: string; quantity: number }[]`. */
         export interface ConditionalParamMappedResource {
             id: number;
-            items_mapped?: unknown;
-            items_priced?: unknown;
-            item_names?: unknown;
+            items_mapped?: { id: number; name: string; quantity: number }[];
+            items_priced?: { id: number; sku: string; unit_price: number; total_price: number }[];
+            item_names?: string[];
         }
         /** Exercises issue #38: closure parameter passed by the conditional method. Each field uses a single-param arrow function that returns an inline array literal. The bug: the analyzer resolves the return type as `unknown` instead of inferring the array shape `{ id: number; email: string; name: string }`. */
         export interface ConditionalParamArrayResource {
             id: number;
             user_summary?: { id: number; email: string; name: string };
-            shipping_summary?: { city: unknown; country: unknown };
+            notes_or_default?: unknown;
             user_meta?: { profile: { name: string; email: string }; verified: boolean };
         }
         export interface Store {
@@ -1630,9 +1630,9 @@ declare global {
             id: number;
             user_name?: string;
             user_summary?: { id: number; email: string };
-            items_mapped?: unknown;
+            items_mapped?: { id: number; name: string; quantity: number }[];
             user_resource?: UserResource;
-            status_resource?: unknown;
+            status_resource?: enums.OrderStatusType;
             shipping_safe?: { name: string; email: string } | null;
         }
         /** Mailing address resource */
@@ -2084,10 +2084,10 @@ declare global {
         /** Exercises issue #38: closure parameter passed by the conditional method, where the return expression wraps an enum in EnumResource::make() or returns it bare. The bug: the analyzer resolves the return type as `unknown` instead of recognising the enum type from the param or the EnumResource wrapper. */
         export interface ConditionalParamEnumResource {
             id: number;
-            status_resource?: unknown;
+            status_resource?: enums.OrderStatusType;
             status_bare?: unknown;
-            currency_resource?: unknown;
-            user_role?: unknown;
+            currency_resource?: enums.CurrencyType;
+            user_role?: enums.RoleType;
         }
         export interface SpreadWithGuardDoubleClosureReturnResource {
             id: number;
