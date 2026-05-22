@@ -2054,7 +2054,8 @@ declare global {
             status_ternary_null: app.enums.StatusType | null;
             status_ternary_both: app.enums.StatusType;
             status_or_visibility_ternary: app.enums.StatusType | app.enums.VisibilityType | null;
-            enums_array: { status: crm.enums.StatusType; visibility: app.enums.VisibilityType | null; priority: app.enums.PriorityType | null };
+            enums_array: { status: app.enums.StatusType; visibility: app.enums.VisibilityType | null; priority: app.enums.PriorityType | null };
+            mixed_enums_array: { status_type: crm.enums.StatusType; visibility_type: app.enums.VisibilityType | null; priority_type: app.enums.PriorityType | null; status_resource_type: crm.enums.StatusType; visibility_resource_type: app.enums.VisibilityType | null; priority_resource_type: app.enums.PriorityType | null; status_enum: app.enums.StatusType; visibility_enum: app.enums.VisibilityType | null; priority_enum: app.enums.PriorityType | null };
             merged_status?: app.enums.StatusType;
             merged_visibility?: app.enums.VisibilityType | null;
             deferred_status?: app.enums.StatusType;

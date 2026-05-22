@@ -41,6 +41,7 @@ class ResourceTransformer extends CoreTransformer
     use ResolvesClassNames;
     use ResolvesImportConflicts;
     use TracksEnumImports {
+        shouldGenerateHasEnums as traitShouldGenerateHasEnums;
         enumPropertyFqcns as traitEnumPropertyFqcns;
     }
 
@@ -99,6 +100,9 @@ class ResourceTransformer extends CoreTransformer
 
     /** @var array<string, list<class-string>> property name => model FQCNs embedded in inline object type strings */
     protected array $propertyInlineModelFqcns = [];
+
+    /** @var array<string, list<class-string>> property name => enum FQCNs embedded via EnumResource in inline object type strings (used for value imports when tolki is enabled) */
+    protected array $propertyInlineEnumResourceFqcns = [];
 
     /** @var array<string, class-string> property name => resource FQCN (from nested resources) */
     protected array $propertyResourceFqcns = [];
@@ -453,6 +457,18 @@ class ResourceTransformer extends CoreTransformer
         // Populate inline model FQCN map from embedded model types in inline object type strings
         foreach ($analysis->inlineModelFqcns as $propName => $fqcns) {
             $this->propertyInlineModelFqcns[$propName] = $fqcns;
+        }
+
+        // Populate inline enum resource FQCN map for value-import generation
+        // (enum FQCNs used via EnumResource inside inline object type strings)
+        foreach ($analysis->inlineEnumResourceFqcns as $propName => $fqcns) {
+            foreach ($fqcns as $fqcn) {
+                if (! isset($this->enumConstMap[$fqcn])) {
+                    $tsInfo = LaravelTsPublish::phpToTypeScriptType($fqcn);
+                    $this->enumConstMap[$fqcn] = $tsInfo['enums'][0] ?? class_basename($fqcn);
+                }
+            }
+            $this->propertyInlineEnumResourceFqcns[$propName] = $fqcns;
         }
 
         // Populate multi-FQCN enum tracking for ternary with multiple different EnumResource branches
@@ -1004,6 +1020,22 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
+     * Whether to generate HasEnums value imports.
+     *
+     * Extends the base trait implementation to also return `true` when inline
+     * object properties contain EnumResource-wrapped FQCNs (and tolki is enabled),
+     * since those also need value imports for `AsEnum<typeof X>` usage.
+     */
+    protected function shouldGenerateHasEnums(): bool
+    {
+        if (! config()->boolean('ts-publish.enums_use_tolki_package')) {
+            return false;
+        }
+
+        return $this->enumProperties() !== [] || $this->propertyInlineEnumResourceFqcns !== [];
+    }
+
+    /**
      * Return unique enum FQCNs for value-import generation.
      *
      * Extends the base implementation to include FQCNs from multi-FQCN EnumResource
@@ -1025,6 +1057,14 @@ class ResourceTransformer extends CoreTransformer
             }
         }
 
-        return array_values(array_unique([...$base, ...$multi]));
+        $inlineResources = [];
+
+        foreach ($this->propertyInlineEnumResourceFqcns as $fqcns) {
+            foreach ($fqcns as $fqcn) {
+                $inlineResources[] = $fqcn;
+            }
+        }
+
+        return array_values(array_unique([...$base, ...$multi, ...$inlineResources]));
     }
 }

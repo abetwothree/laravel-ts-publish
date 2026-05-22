@@ -3697,20 +3697,84 @@ describe('ResourceAstAnalyzer with ResourceWrappedEnumResource — issue #43 $th
             ->and($prop['optional'])->toBeFalse();
     });
 
-    // ── Inline array ───────────────────────────────────────────────────────────
+    // ── Inline array: enums_array (all EnumResource) ──────────────────────────
 
-    test('inline array with $this->resource-> enum values does not contain unknown', function () {
+    test('inline array with only EnumResource::make() values produces AsEnum types when tolki enabled', function () {
         $prop = collect($this->analysis->properties)->firstWhere('name', 'enums_array');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->not->toContain('unknown');
+            ->and($prop['type'])->toBe('{ status: AsEnum<typeof Status>; visibility: AsEnum<typeof Visibility> | null; priority: AsEnum<typeof Priority> | null }');
     });
 
-    test('inline array with $this->resource-> enum values contains StatusType', function () {
-        $prop = collect($this->analysis->properties)->firstWhere('name', 'enums_array');
+    test('inline array with only EnumResource::make() values produces plain types when tolki disabled', function () {
+        config()->set('ts-publish.enums_use_tolki_package', false);
+        $reflection = new ReflectionClass(ResourceWrappedEnumResource::class);
+        $analysis = (new ResourceAstAnalyzer($reflection, Post::class))->analyze();
+        $prop = collect($analysis->properties)->firstWhere('name', 'enums_array');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toContain('StatusType');
+            ->and($prop['type'])->toBe('{ status: StatusType; visibility: VisibilityType | null; priority: PriorityType | null }');
+    });
+
+    test('inline array with only EnumResource values records FQCNs in inlineEnumResourceFqcns', function () {
+        expect($this->analysis->inlineEnumResourceFqcns)->toHaveKey('enums_array')
+            ->and($this->analysis->inlineEnumResourceFqcns['enums_array'])->toContain(Status::class)
+            ->and($this->analysis->inlineEnumResourceFqcns['enums_array'])->toContain(Visibility::class)
+            ->and($this->analysis->inlineEnumResourceFqcns['enums_array'])->toContain(Priority::class);
+    });
+
+    // ── Inline array: mixed_enums_array (direct + EnumResource) ───────────────
+
+    test('mixed inline array: direct $this->prop enum access produces plain type', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'mixed_enums_array');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toContain('status_type: StatusType')
+            ->and($prop['type'])->toContain('visibility_type: VisibilityType | null')
+            ->and($prop['type'])->toContain('priority_type: PriorityType | null');
+    });
+
+    test('mixed inline array: $this->resource->prop direct access produces plain type', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'mixed_enums_array');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toContain('status_resource_type: StatusType')
+            ->and($prop['type'])->toContain('visibility_resource_type: VisibilityType | null')
+            ->and($prop['type'])->toContain('priority_resource_type: PriorityType | null');
+    });
+
+    test('mixed inline array: EnumResource::make($this->resource->prop) produces AsEnum types when tolki enabled', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'mixed_enums_array');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toContain('status_enum: AsEnum<typeof Status>')
+            ->and($prop['type'])->toContain('visibility_enum: AsEnum<typeof Visibility> | null')
+            ->and($prop['type'])->toContain('priority_enum: AsEnum<typeof Priority> | null');
+    });
+
+    test('mixed inline array: EnumResource::make($this->resource->prop) produces plain type when tolki disabled', function () {
+        config()->set('ts-publish.enums_use_tolki_package', false);
+        $reflection = new ReflectionClass(ResourceWrappedEnumResource::class);
+        $analysis = (new ResourceAstAnalyzer($reflection, Post::class))->analyze();
+        $prop = collect($analysis->properties)->firstWhere('name', 'mixed_enums_array');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toContain('status_enum: StatusType')
+            ->and($prop['type'])->not->toContain('AsEnum');
+    });
+
+    test('mixed inline array: enum resource FQCNs appear in inlineEnumResourceFqcns', function () {
+        expect($this->analysis->inlineEnumResourceFqcns)->toHaveKey('mixed_enums_array')
+            ->and($this->analysis->inlineEnumResourceFqcns['mixed_enums_array'])->toContain(Status::class)
+            ->and($this->analysis->inlineEnumResourceFqcns['mixed_enums_array'])->toContain(Visibility::class)
+            ->and($this->analysis->inlineEnumResourceFqcns['mixed_enums_array'])->toContain(Priority::class);
+    });
+
+    test('mixed inline array: direct enum FQCNs appear in inlineEnumFqcns', function () {
+        expect($this->analysis->inlineEnumFqcns)->toHaveKey('mixed_enums_array')
+            ->and($this->analysis->inlineEnumFqcns['mixed_enums_array'])->toContain(Status::class)
+            ->and($this->analysis->inlineEnumFqcns['mixed_enums_array'])->toContain(Visibility::class)
+            ->and($this->analysis->inlineEnumFqcns['mixed_enums_array'])->toContain(Priority::class);
     });
 
     // ── mergeWhen() ────────────────────────────────────────────────────────────

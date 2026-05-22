@@ -20,7 +20,8 @@ export interface ResourceWrappedEnumResource
     status_ternary_null: AsEnum<typeof Status> | null;
     status_ternary_both: AsEnum<typeof Status>;
     status_or_visibility_ternary: AsEnum<typeof Status> | AsEnum<typeof Visibility> | null;
-    enums_array: { status: StatusType; visibility: VisibilityType | null; priority: PriorityType | null };
+    enums_array: { status: AsEnum<typeof Status>; visibility: AsEnum<typeof Visibility> | null; priority: AsEnum<typeof Priority> | null };
+    mixed_enums_array: { status_type: StatusType; visibility_type: VisibilityType | null; priority_type: PriorityType | null; status_resource_type: StatusType; visibility_resource_type: VisibilityType | null; priority_resource_type: PriorityType | null; status_enum: AsEnum<typeof Status>; visibility_enum: AsEnum<typeof Visibility> | null; priority_enum: AsEnum<typeof Priority> | null };
     merged_status?: AsEnum<typeof Status>;
     merged_visibility?: AsEnum<typeof Visibility> | null;
     deferred_status?: AsEnum<typeof Status>;

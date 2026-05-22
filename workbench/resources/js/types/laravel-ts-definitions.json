@@ -7837,7 +7837,12 @@
             },
             {
                 "name": "enums_array",
-                "type": "{ status: StatusType; visibility: VisibilityType | null; priority: PriorityType | null }",
+                "type": "{ status: AsEnum<typeof Status>; visibility: AsEnum<typeof Visibility> | null; priority: AsEnum<typeof Priority> | null }",
+                "optional": false
+            },
+            {
+                "name": "mixed_enums_array",
+                "type": "{ status_type: StatusType; visibility_type: VisibilityType | null; priority_type: PriorityType | null; status_resource_type: StatusType; visibility_resource_type: VisibilityType | null; priority_resource_type: PriorityType | null; status_enum: AsEnum<typeof Status>; visibility_enum: AsEnum<typeof Visibility> | null; priority_enum: AsEnum<typeof Priority> | null }",
                 "optional": false
             },
             {

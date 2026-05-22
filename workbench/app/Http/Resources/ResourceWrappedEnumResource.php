@@ -114,6 +114,19 @@ class ResourceWrappedEnumResource extends JsonResource
                 'priority' => EnumResource::make($this->resource->priority),
             ],
 
+            // Mixed type and enum instance type array where every enum value goes through $this->resource->prop
+            'mixed_enums_array' => [
+                'status_type' => $this->status,
+                'visibility_type' => $this->visibility,
+                'priority_type' => $this->priority,
+                'status_resource_type' => $this->resource->status,
+                'visibility_resource_type' => $this->resource->visibility,
+                'priority_resource_type' => $this->resource->priority,
+                'status_enum' => EnumResource::make($this->resource->status),
+                'visibility_enum' => new EnumResource($this->resource->visibility),
+                'priority_enum' => EnumResource::make($this->resource->priority),
+            ],
+
             // ── mergeWhen() ───────────────────────────────────────────────
 
             // mergeWhen() with inline array containing $this->resource->prop enums

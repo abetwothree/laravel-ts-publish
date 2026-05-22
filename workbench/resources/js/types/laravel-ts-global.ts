@@ -2139,6 +2139,7 @@ declare global {
             status_ternary_both: enums.StatusType;
             status_or_visibility_ternary: enums.StatusType | enums.VisibilityType | null;
             enums_array: { status: enums.StatusType; visibility: enums.VisibilityType | null; priority: enums.PriorityType | null };
+            mixed_enums_array: { status_type: enums.StatusType; visibility_type: enums.VisibilityType | null; priority_type: enums.PriorityType | null; status_resource_type: enums.StatusType; visibility_resource_type: enums.VisibilityType | null; priority_resource_type: enums.PriorityType | null; status_enum: enums.StatusType; visibility_enum: enums.VisibilityType | null; priority_enum: enums.PriorityType | null };
             merged_status?: enums.StatusType;
             merged_visibility?: enums.VisibilityType | null;
             deferred_status?: enums.StatusType;
