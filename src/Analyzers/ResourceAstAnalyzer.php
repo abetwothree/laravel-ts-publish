@@ -920,7 +920,11 @@ class ResourceAstAnalyzer
     }
 
     /**
-     * Analyze $this->whenNotNull($this->value) — resolve the inner expression type.
+     * Analyze $this->whenNotNull($this->value, $callback) — resolve the callback expression type.
+     *
+     * whenNotNull passes the non-null value of $args[0] to the callback $args[1].
+     * We analyze the callback (args[1]) for the TypeScript type, and bind the
+     * closure param to the condition expression (args[0]) so inner calls resolve correctly.
      *
      * @return ValueExpressionResult
      */
@@ -929,9 +933,22 @@ class ResourceAstAnalyzer
         $result = $this->unknownResult();
         $args = $call->getArgs();
 
-        if (count($args) >= 1) {
+        if (count($args) === 1) {
             $inner = $this->analyzeValueExpression($args[0]->value);
             $inner['optional'] = true;
+
+            return $inner;
+        }
+
+        if (count($args) >= 2) {
+            $valueExpr = $args[1]->value;
+            $previousBindings = $this->closureParamExprBindings;
+
+            $this->bindClosureParamsFromCondition($args[0]->value, $valueExpr);
+            $inner = $this->analyzeValueExpression($valueExpr);
+            $inner['optional'] = true;
+
+            $this->closureParamExprBindings = $previousBindings;
 
             return $inner;
         }
@@ -3300,27 +3317,35 @@ class ResourceAstAnalyzer
 
         // $this->propName !== null  or  null !== $this->propName
         if ($condition instanceof BinaryOp\NotIdentical) {
-            if ($this->isThisPropertyFetch($condition->left)) {
+            if ($this->isThisPropertyFetch($condition->left) && $this->isNullConstFetch($condition->right)) {
                 return $condition->left;
             }
 
-            if ($this->isThisPropertyFetch($condition->right)) {
+            if ($this->isThisPropertyFetch($condition->right) && $this->isNullConstFetch($condition->left)) {
                 return $condition->right;
             }
         }
 
         // $this->propName === null  or  null === $this->propName
         if ($condition instanceof BinaryOp\Identical) {
-            if ($this->isThisPropertyFetch($condition->left)) {
+            if ($this->isThisPropertyFetch($condition->left) && $this->isNullConstFetch($condition->right)) {
                 return $condition->left;
             }
 
-            if ($this->isThisPropertyFetch($condition->right)) {
+            if ($this->isThisPropertyFetch($condition->right) && $this->isNullConstFetch($condition->left)) {
                 return $condition->right;
             }
         }
 
         return null;
+    }
+
+    /**
+     * Return true when the expression is a `null` constant fetch.
+     */
+    private function isNullConstFetch(Expr $expr): bool
+    {
+        return $expr instanceof ConstFetch && strtolower($expr->name->toString()) === 'null';
     }
 
     /**

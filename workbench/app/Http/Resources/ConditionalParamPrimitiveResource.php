@@ -39,8 +39,8 @@ class ConditionalParamPrimitiveResource extends JsonResource
             // when() with arrow fn receiving the truthy value as param
             'notes_upper' => $this->when($this->notes, fn ($notes) => strtoupper($notes)),
 
-            // when() with arrow fn returning a plain int literal
-            'notes_length' => $this->when($this->notes !== null, fn ($notes) => strlen($this->notes ?? '')),
+            // whenNotNull() with arrow fn param → strlen() result
+            'notes_length' => $this->whenNotNull($this->notes, fn ($notes) => strlen($notes)),
         ];
     }
 }

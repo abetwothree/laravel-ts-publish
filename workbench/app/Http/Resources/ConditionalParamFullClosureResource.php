@@ -59,8 +59,8 @@ class ConditionalParamFullClosureResource extends JsonResource
                 return UserResource::make($user);
             }),
 
-            // Full closure param → EnumResource::make on relation property
-            'status_resource' => $this->when($this->status !== null, function ($status) {
+            // Full closure param → EnumResource::make on enum attribute (value passed to closure by whenNotNull)
+            'status_resource' => $this->whenNotNull($this->status, function ($status) {
                 return EnumResource::make($status);
             }),
 
