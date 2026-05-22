@@ -5248,6 +5248,11 @@
                 "name": "user_meta",
                 "type": "{ profile: { name: string; email: string }; verified: boolean }",
                 "optional": true
+            },
+            {
+                "name": "notes_when_null",
+                "type": "string",
+                "optional": true
             }
         ],
         "Store": [

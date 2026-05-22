@@ -1402,6 +1402,7 @@ declare global {
             user_summary?: { id: number; email: string; name: string };
             notes_or_default?: string;
             user_meta?: { profile: { name: string; email: string }; verified: boolean };
+            notes_when_null?: string;
         }
         /** Exercises: ternary operator in various return-value positions. All properties in this resource use the ternary operator (`? :`) or the Elvis operator (`?:`) as the value expression. The scenarios cover: - enum resource vs null - enum resource vs enum resource (same / different enum class) - named resource vs null - named resource vs named resource (same / different class) - resource collection vs null - scalar vs null (string, integer) - string literal vs string literal - Elvis / short-ternary - ternary nested inside a whenLoaded closure - ternary with $this->resource accessor */
         export interface TernaryResource {

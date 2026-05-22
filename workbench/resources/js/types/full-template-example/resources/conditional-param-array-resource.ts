@@ -5,4 +5,5 @@ export interface ConditionalParamArrayResource
     user_summary?: { id: number; email: string; name: string };
     notes_or_default?: string;
     user_meta?: { profile: { name: string; email: string }; verified: boolean };
+    notes_when_null?: string;
 }
