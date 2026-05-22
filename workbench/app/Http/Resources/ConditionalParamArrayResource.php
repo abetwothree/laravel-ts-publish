@@ -29,16 +29,16 @@ class ConditionalParamArrayResource extends JsonResource
 
             // Arrow fn param → inline array literal with multiple scalar keys
             'user_summary' => $this->whenLoaded('user', fn ($user) => [
-                'id'    => $user->id,
+                'id' => $user->id,
                 'email' => $user->email,
-                'name'  => $user->name,
+                'name' => $user->name,
             ]),
 
             // when() with arrow fn param → inline array literal
             'shipping_summary' => $this->when(
                 $this->shipping_address !== null,
                 fn ($address) => [
-                    'city'    => $address['city'] ?? null,
+                    'city' => $address['city'] ?? null,
                     'country' => $address['country_code'] ?? null,
                 ]
             ),
@@ -46,7 +46,7 @@ class ConditionalParamArrayResource extends JsonResource
             // whenLoaded with arrow fn param → nested array literal
             'user_meta' => $this->whenLoaded('user', fn ($user) => [
                 'profile' => [
-                    'name'  => $user->name,
+                    'name' => $user->name,
                     'email' => $user->email,
                 ],
                 'verified' => (bool) $user->email_verified_at,

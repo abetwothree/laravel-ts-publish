@@ -38,7 +38,7 @@ class ConditionalParamFullClosureResource extends JsonResource
             // Full closure param → inline array literal
             'user_summary' => $this->whenLoaded('user', function ($user) {
                 return [
-                    'id'    => $user->id,
+                    'id' => $user->id,
                     'email' => $user->email,
                 ];
             }),
@@ -47,8 +47,8 @@ class ConditionalParamFullClosureResource extends JsonResource
             'items_mapped' => $this->whenLoaded('items', function ($items) {
                 return $items->map(function (OrderItem $item) {
                     return [
-                        'id'       => $item->id,
-                        'name'     => $item->name,
+                        'id' => $item->id,
+                        'name' => $item->name,
                         'quantity' => $item->quantity,
                     ];
                 });
@@ -71,7 +71,7 @@ class ConditionalParamFullClosureResource extends JsonResource
                 }
 
                 return [
-                    'name'  => $user->name,
+                    'name' => $user->name,
                     'email' => $user->email,
                 ];
             }),

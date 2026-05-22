@@ -31,15 +31,15 @@ class ConditionalParamMappedResource extends JsonResource
 
             // Exact pattern from issue #38: outer param + inner typed param
             'items_mapped' => $this->whenLoaded('items', fn ($items) => $items->map(fn (OrderItem $item) => [
-                'id'       => $item->id,
-                'name'     => $item->name,
+                'id' => $item->id,
+                'name' => $item->name,
                 'quantity' => $item->quantity,
             ])),
 
             // Variant: map with unit_price included
             'items_priced' => $this->whenLoaded('items', fn ($items) => $items->map(fn (OrderItem $item) => [
-                'id'         => $item->id,
-                'sku'        => $item->sku,
+                'id' => $item->id,
+                'sku' => $item->sku,
                 'unit_price' => $item->unit_price,
                 'total_price' => $item->total_price,
             ])),

@@ -29,20 +29,21 @@ class ConditionalParamEnumResource extends JsonResource
             'id' => $this->id,
 
             // when() with arrow fn param → EnumResource::make($param)
+            // $this->status is the condition; Laravel passes it as $status to the closure
             'status_resource' => $this->when(
-                $this->status !== null,
+                $this->status,
                 fn ($status) => EnumResource::make($status)
             ),
 
             // when() with arrow fn param → bare enum (no wrapper)
             'status_bare' => $this->when(
-                $this->status !== null,
+                $this->status,
                 fn ($status) => $status
             ),
 
             // when() with arrow fn param → EnumResource::make($param) on currency
             'currency_resource' => $this->when(
-                $this->currency !== null,
+                $this->currency,
                 fn ($currency) => EnumResource::make($currency)
             ),
 
