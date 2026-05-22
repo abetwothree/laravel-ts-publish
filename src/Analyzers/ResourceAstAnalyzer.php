@@ -535,6 +535,12 @@ class ResourceAstAnalyzer
             return $this->analyzeWhenNotNull($expr);
         }
 
+        // $this->whenNull($this->value, $callback)
+        if ($this->isThisMethodCall($expr, 'whenNull')) {
+            /** @var MethodCall $expr */
+            return $this->analyzeWhenNull($expr);
+        }
+
         // $this->whenLoaded('relation') or $this->whenLoaded('relation', value)
         if ($this->isThisMethodCall($expr, 'whenLoaded')) {
             /** @var MethodCall $expr */
@@ -949,6 +955,30 @@ class ResourceAstAnalyzer
             $inner['optional'] = true;
 
             $this->closureParamExprBindings = $previousBindings;
+
+            return $inner;
+        }
+
+        return [...$result, 'optional' => true]; // @codeCoverageIgnore
+    }
+
+    /**
+     * Analyze $this->whenNull($this->value, $callback) — resolve the callback expression type.
+     *
+     * whenNull passes null to the callback when the value is null. We analyze args[1] (the
+     * callback) for the TypeScript type. No closure param binding is needed because null
+     * is passed — there is no meaningful expression to bind the param to.
+     *
+     * @return ValueExpressionResult
+     */
+    protected function analyzeWhenNull(MethodCall $call): array
+    {
+        $result = $this->unknownResult();
+        $args = $call->getArgs();
+
+        if (count($args) >= 2) {
+            $inner = $this->analyzeValueExpression($args[1]->value);
+            $inner['optional'] = true;
 
             return $inner;
         }

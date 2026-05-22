@@ -48,6 +48,9 @@ class ConditionalParamArrayResource extends JsonResource
                 ],
                 'verified' => (bool) $user->email_verified_at,
             ]),
+
+            // whenNull() with arrow fn → string fallback when value is null
+            'notes_when_null' => $this->whenNull($this->notes, fn () => 'no notes'),
         ];
     }
 }

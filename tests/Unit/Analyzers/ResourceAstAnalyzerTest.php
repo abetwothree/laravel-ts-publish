@@ -3517,6 +3517,15 @@ describe('ResourceAstAnalyzer with ConditionalParamArrayResource — issue #38 c
             ->and($prop['type'])->toBe('string')
             ->and($prop['optional'])->toBeTrue();
     });
+
+    // whenNull() with arrow fn → string fallback when value is null
+    test('whenNull() arrow fn → string resolves to string not unknown', function () {
+        $prop = collect($this->analysis->properties)->firstWhere('name', 'notes_when_null');
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string')
+            ->and($prop['optional'])->toBeTrue();
+    });
 });
 
 describe('ResourceAstAnalyzer with ConditionalParamFullClosureResource — issue #38 full closure params', function () {
