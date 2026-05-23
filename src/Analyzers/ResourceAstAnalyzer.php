@@ -2540,14 +2540,18 @@ class ResourceAstAnalyzer
         // Propagate import metadata from the inner analysis so that enum, model,
         // and resource FQCNs referenced inside the inline object reach the outer
         // ResourceAnalysis and generate the correct import statements.
-        //
+
         // When Tolki is enabled, enum resources need value imports (const), not type imports.
         // Direct enum accesses always need type imports.
         if ($useTolki) {
+            $nestedInlineEnumFqcns = $analysis->inlineEnumFqcns === []
+                 ? []
+                 : array_merge(...array_values($analysis->inlineEnumFqcns));
+
             $embeddedEnumFqcns = array_values(array_unique([
                 ...array_values($analysis->directEnumFqcns),
                 // Propagate any deeply-nested direct enum FQCNs from sub-inline-arrays.
-                ...array_merge(...array_values($analysis->inlineEnumFqcns)),
+                ...$nestedInlineEnumFqcns,
             ]));
 
             $enumResourceFqcns = array_values($analysis->enumResources);
