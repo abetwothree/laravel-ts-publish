@@ -24,6 +24,7 @@ use Workbench\App\Http\Resources\OrderResource;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\ProfileResource;
+use Workbench\App\Http\Resources\ResourceWrappedEnumResource;
 use Workbench\App\Http\Resources\ServiceDeskResource;
 use Workbench\App\Http\Resources\TernaryResource;
 use Workbench\App\Http\Resources\ToArrayCastsResource;
@@ -1918,5 +1919,65 @@ describe('ResourceTransformer ternary operator support', function () {
 
         expect($data->properties['nested_ternary_label']['type'])->toBe('string | null');
         expect($data->properties['nested_ternary_label']['optional'])->toBeFalse();
+    });
+});
+
+describe('ResourceTransformer with ResourceWrappedEnumResource — inline array enum resolution', function () {
+    test('inline array with all EnumResource properties produces AsEnum types when tolki enabled', function () {
+        config()->set('ts-publish.enums_use_tolki_package', true);
+        $data = (new ResourceTransformer(ResourceWrappedEnumResource::class))->data();
+
+        expect($data->properties['enums_array']['type'])
+            ->toBe('{ status: AsEnum<typeof Status>; visibility: AsEnum<typeof Visibility> | null; priority: AsEnum<typeof Priority> | null }');
+    });
+
+    test('inline array with all EnumResource properties produces plain types when tolki disabled', function () {
+        config()->set('ts-publish.enums_use_tolki_package', false);
+        $data = (new ResourceTransformer(ResourceWrappedEnumResource::class))->data();
+
+        expect($data->properties['enums_array']['type'])
+            ->toBe('{ status: StatusType; visibility: VisibilityType | null; priority: PriorityType | null }');
+    });
+
+    test('mixed inline array produces plain types for direct enum access and AsEnum for EnumResource', function () {
+        config()->set('ts-publish.enums_use_tolki_package', true);
+        $data = (new ResourceTransformer(ResourceWrappedEnumResource::class))->data();
+
+        $type = $data->properties['mixed_enums_array']['type'];
+
+        expect($type)
+            ->toContain('status_type: StatusType')
+            ->toContain('visibility_type: VisibilityType | null')
+            ->toContain('priority_type: PriorityType | null')
+            ->toContain('status_resource_type: StatusType')
+            ->toContain('visibility_resource_type: VisibilityType | null')
+            ->toContain('priority_resource_type: PriorityType | null')
+            ->toContain('status_enum: AsEnum<typeof Status>')
+            ->toContain('visibility_enum: AsEnum<typeof Visibility> | null')
+            ->toContain('priority_enum: AsEnum<typeof Priority> | null');
+    });
+
+    test('mixed inline array produces only plain types when tolki disabled', function () {
+        config()->set('ts-publish.enums_use_tolki_package', false);
+        $data = (new ResourceTransformer(ResourceWrappedEnumResource::class))->data();
+
+        $type = $data->properties['mixed_enums_array']['type'];
+
+        expect($type)
+            ->not->toContain('AsEnum')
+            ->toContain('status_enum: StatusType')
+            ->toContain('visibility_enum: VisibilityType | null')
+            ->toContain('priority_enum: PriorityType | null');
+    });
+
+    test('inline enum resource properties generate value imports (hasEnums) when tolki enabled', function () {
+        config()->set('ts-publish.enums_use_tolki_package', true);
+        $data = (new ResourceTransformer(ResourceWrappedEnumResource::class))->data();
+
+        $allValueImports = $data->valueImports !== [] ? array_merge(...array_values($data->valueImports)) : [];
+
+        expect($allValueImports)->toContain('Status');
+        expect($allValueImports)->toContain('Visibility');
+        expect($allValueImports)->toContain('Priority');
     });
 });

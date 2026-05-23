@@ -2122,5 +2122,30 @@ declare global {
             items: models.OrderItem[];
             customer?: { name: string; initials: string; email: string; phone: string | null; avatar: string | null; role: enums.RoleType | null; is_premium: boolean } | { name: string; email: string; phone: string | null; avatar: string | null; role: enums.RoleType | null; is_premium: boolean; name_titled: string; morph: string } | null;
         }
+        /** Exercises issue #43: EnumResource wrapping an enum accessed via `$this->resource->property` returns `unknown` instead of the correct `AsEnum` utility type. Each entry below represents a distinct code pattern where the enum is reached through the underlying model accessor (`$this->resource->prop`) rather than the Laravel Resource magic shorthand (`$this->prop`).  All entries should resolve to the same TypeScript type as their `$this->prop` counterparts. */
+        export interface ResourceWrappedEnumResource {
+            id: number;
+            status_make: enums.StatusType;
+            status_new: enums.StatusType;
+            visibility_make: enums.VisibilityType | null;
+            priority_new: enums.PriorityType | null;
+            status_when_make?: enums.StatusType;
+            status_when_arrow?: enums.StatusType;
+            visibility_when_full?: enums.VisibilityType | null;
+            priority_when_not_null_make?: enums.PriorityType | null;
+            status_when_not_null_arrow?: enums.StatusType;
+            visibility_when_not_null_full?: enums.VisibilityType | null;
+            status_ternary_null: enums.StatusType | null;
+            status_ternary_both: enums.StatusType;
+            status_or_visibility_ternary: enums.StatusType | enums.VisibilityType | null;
+            enums_array: { status: enums.StatusType; visibility: enums.VisibilityType | null; priority: enums.PriorityType | null };
+            mixed_enums_array: { status_type: enums.StatusType; visibility_type: enums.VisibilityType | null; priority_type: enums.PriorityType | null; status_resource_type: enums.StatusType; visibility_resource_type: enums.VisibilityType | null; priority_resource_type: enums.PriorityType | null; status_enum: enums.StatusType; visibility_enum: enums.VisibilityType | null; priority_enum: enums.PriorityType | null };
+            merged_status?: enums.StatusType;
+            merged_visibility?: enums.VisibilityType | null;
+            deferred_status?: enums.StatusType;
+            deferred_priority?: enums.PriorityType | null;
+            category_status?: enums.StatusType;
+            category_visibility?: enums.VisibilityType | null;
+        }
     }
 }
