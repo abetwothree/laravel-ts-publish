@@ -5,7 +5,10 @@ import type { Timestamps } from '@/types/util';
 import type { ColorType, MembershipLevelType, PriorityType, RoleType, StatusType as CrmStatusType, StatusType as WorkbenchStatusType } from '../enums';
 import type { Address, Comment, DatabaseNotification, Image, Order, Post, Profile, Team, User as CrmUser, User as WorkbenchUser } from '../models';
 
-/** Resource with no @mixin or TsResource — tests convention-based model guess. Also tests multiple TsExtends in parent class, trait, and locally. */
+/**
+ * Resource with no @mixin or TsResource — tests convention-based model guess.
+ * Also tests multiple TsExtends in parent class, trait, and locally.
+ */
 export interface WarehouseResource extends BaseResource, ExtendableInterface, Omit<Timestamps, "created_at" | "updated_at">, ResourceRoutes, Pick<Routable, "store" | "update">
 {
     id: number;

@@ -5,7 +5,12 @@ import type { StatusType as CrmStatusType, StatusType as WorkbenchStatusType } f
 import type { User as CrmUser, User as WorkbenchUser } from '../models';
 import type { UserResource as CrmUserResource, UserResource as WorkbenchUserResource } from './';
 
-/** Exercises: dual enum conflict — $this->status (App\Enums\Status direct access) vs EnumResource::make($this->crm_status) (Crm\Enums\Status), whenLoaded bare with two different User models (Crm\User + App\User), when conditional, resource wrapping with colliding resource names, dual EnumResource::make. */
+/**
+ * Exercises: dual enum conflict — $this->status (App\Enums\Status direct access)
+ * vs EnumResource::make($this->crm_status) (Crm\Enums\Status), whenLoaded bare
+ * with two different User models (Crm\User + App\User), when conditional,
+ * resource wrapping with colliding resource names, dual EnumResource::make.
+ */
 export interface DealResource
 {
     id: number;

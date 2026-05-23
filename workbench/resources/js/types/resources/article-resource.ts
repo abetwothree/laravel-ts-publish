@@ -4,7 +4,11 @@ import { ArticleStatus, ContentType } from '../enums';
 import type { User } from '../models';
 import type { ReactionResource } from './';
 
-/** Exercises: multiple EnumResource::make, when(cond, Resource::collection), whenLoaded bare (cross-module App\User as author), whenNotNull, whenCounted, whenAggregated, when conditional with direct property. */
+/**
+ * Exercises: multiple EnumResource::make, when(cond, Resource::collection),
+ * whenLoaded bare (cross-module App\User as author), whenNotNull, whenCounted,
+ * whenAggregated, when conditional with direct property.
+ */
 export interface ArticleResource
 {
     id: number;

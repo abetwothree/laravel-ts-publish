@@ -4,7 +4,22 @@ import { Status, Visibility } from '../../enums';
 import type { StatusType } from '../../enums';
 import type { CategoryResource, CommentResource, ImageResource, UserResource } from '.';
 
-/** Exercises: ternary operator in various return-value positions. All properties in this resource use the ternary operator (`? :`) or the Elvis operator (`?:`) as the value expression. The scenarios cover: - enum resource vs null - enum resource vs enum resource (same / different enum class) - named resource vs null - named resource vs named resource (same / different class) - resource collection vs null - scalar vs null (string, integer) - string literal vs string literal - Elvis / short-ternary - ternary nested inside a whenLoaded closure - ternary with $this->resource accessor */
+/**
+ * Exercises: ternary operator in various return-value positions.
+ *
+ * All properties in this resource use the ternary operator (`? :`) or the
+ * Elvis operator (`?:`) as the value expression. The scenarios cover:
+ * - enum resource vs null
+ * - enum resource vs enum resource (same / different enum class)
+ * - named resource vs null
+ * - named resource vs named resource (same / different class)
+ * - resource collection vs null
+ * - scalar vs null (string, integer)
+ * - string literal vs string literal
+ * - Elvis / short-ternary
+ * - ternary nested inside a whenLoaded closure
+ * - ternary with $this->resource accessor
+ */
 export interface TernaryResource
 {
     status_or_null: AsEnum<typeof Status> | null;

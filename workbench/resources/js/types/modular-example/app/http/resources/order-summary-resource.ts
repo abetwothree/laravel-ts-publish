@@ -1,7 +1,10 @@
 import type { OrderStatusType } from '../../enums';
 import type { User } from '../../models';
 
-/** Exercises direct property access for accessors, mutators, and relations without using whenLoaded or other conditional wrappers. */
+/**
+ * Exercises direct property access for accessors, mutators, and relations
+ * without using whenLoaded or other conditional wrappers.
+ */
 export interface OrderSummaryResource
 {
     id: number;

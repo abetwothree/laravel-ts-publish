@@ -990,7 +990,7 @@ class LaravelTsPublish
      * JSDoc block with each line prefixed by ` * `, and blank lines rendered as ` *`.
      * Internally calls sanitizeJsDoc() to escape any closing comment sequences.
      *
-     * @param int $indent Number of leading spaces to prefix every line of the output.
+     * @param  int  $indent  Number of leading spaces to prefix every line of the output.
      */
     public function formatJsDoc(string $description, int $indent = 0): string
     {

@@ -5,7 +5,10 @@ import type { CurrencyType } from '../../enums';
 import type { OrderItem } from '../../models';
 import type { UserResource } from '.';
 
-/** Exercises advanced merge patterns: mergeWhen with EnumResource::make, mergeWhen with Resource::make, whenLoaded with value arg. */
+/**
+ * Exercises advanced merge patterns: mergeWhen with EnumResource::make,
+ * mergeWhen with Resource::make, whenLoaded with value arg.
+ */
 export interface OrderDetailResource
 {
     id: number;

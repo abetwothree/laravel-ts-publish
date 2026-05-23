@@ -1,6 +1,9 @@
 import { defineEnum } from '@tolki/enum';
 
-/** Pure unit enum (no backing type) — tests that the publisher handles unit enums where case names become the values in TypeScript. */
+/**
+ * Pure unit enum (no backing type) — tests that the publisher handles unit enums
+ * where case names become the values in TypeScript.
+ */
 export const Visibility = defineEnum({
     Public: 'Public',
     Private: 'Private',

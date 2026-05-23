@@ -1,6 +1,9 @@
 import type { Shipment } from '../models';
 
-/** Exercises: direct enum property access ($this->status), whenLoaded bare on same-module relation (Shipment). */
+/**
+ * Exercises: direct enum property access ($this->status),
+ * whenLoaded bare on same-module relation (Shipment).
+ */
 export interface TrackingEventResource
 {
     id: number;
