@@ -1004,6 +1004,11 @@ class LaravelTsPublish
 
             // Skip empty remnants from /** and */
             if ($trimmed === '' || $trimmed === '/') {
+                // Preserve blank lines within the description (but not while inside a tag
+                // block, and not as leading blank lines before any text has been collected)
+                if (! $inTag && $description !== []) {
+                    $description[] = '';
+                }
                 $inTag = false;
 
                 continue;
@@ -1031,7 +1036,12 @@ class LaravelTsPublish
             $description[] = $trimmed;
         }
 
-        return implode(' ', $description);
+        // Trim trailing blank lines produced by the closing */ line
+        while ($description !== [] && end($description) === '') {
+            array_pop($description);
+        }
+
+        return implode("\n", $description);
     }
 
     /**

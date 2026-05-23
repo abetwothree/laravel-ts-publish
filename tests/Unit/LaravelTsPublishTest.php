@@ -882,7 +882,9 @@ describe('parseDocBlockDescription', function () {
  * Second line of description.
  */
 DOC;
-        expect($this->service->parseDocBlockDescription($doc))->toBe('First line of description. Second line of description.');
+        expect($this->service->parseDocBlockDescription($doc))->toBe(
+            "First line of description.\nSecond line of description."
+        );
     });
 
     test('filters out @-tag lines', function () {
@@ -951,6 +953,19 @@ DOC;
  */
 DOC;
         expect($this->service->parseDocBlockDescription($doc))->toBe('Visible description after tag block.');
+    });
+
+    test('preserves blank lines between description paragraphs', function () {
+        $doc = <<<'DOC'
+/**
+ * First paragraph.
+ *
+ * Second paragraph.
+ */
+DOC;
+        expect($this->service->parseDocBlockDescription($doc))->toBe(
+            "First paragraph.\n\nSecond paragraph."
+        );
     });
 });
 
