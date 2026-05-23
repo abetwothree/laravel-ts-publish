@@ -1,6 +1,10 @@
 import type { MembershipLevelType, RoleType } from '../enums';
 
-/** Represents a user loaded through a team's belongsToMany pivot. Exercises: whenPivotLoaded, whenPivotLoadedAs, whenHas on enum attributes. */
+/**
+ * Represents a user loaded through a team's belongsToMany pivot.
+ *
+ * Exercises: whenPivotLoaded, whenPivotLoadedAs, whenHas on enum attributes.
+ */
 export interface TeamMemberResource
 {
     id: number;

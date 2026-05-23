@@ -1,4 +1,7 @@
-/** Exercises closure control-flow paths in collectReturnExpressions: elseif, else, switch, try/catch/finally, foreach, and do-while. */
+/**
+ * Exercises closure control-flow paths in collectReturnExpressions:
+ * elseif, else, switch, try/catch/finally, foreach, and do-while.
+ */
 export interface ClosureControlFlowResource
 {
     id: number;

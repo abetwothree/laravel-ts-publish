@@ -1,7 +1,10 @@
 import type { ProductJsonMetaData, ProductMetadata } from '@js/types/product';
 import type { ImageResource, TagResource } from './';
 
-/** Exercises: multiple whenAggregated (sum/min/max), whenNotNull, when, whenCounted, two mergeWhen blocks, Resource::collection x2. */
+/**
+ * Exercises: multiple whenAggregated (sum/min/max), whenNotNull, when,
+ * whenCounted, two mergeWhen blocks, Resource::collection x2.
+ */
 export interface ProductResource
 {
     id: string;

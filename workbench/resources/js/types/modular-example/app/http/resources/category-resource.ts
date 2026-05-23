@@ -1,6 +1,9 @@
 import type { PostResource } from '.';
 
-/** Exercises: self-referencing Resource::make and Resource::collection, when conditional, whenCounted, cross-resource PostResource::collection. */
+/**
+ * Exercises: self-referencing Resource::make and Resource::collection,
+ * when conditional, whenCounted, cross-resource PostResource::collection.
+ */
 export interface CategoryResource
 {
     id: number;

@@ -983,6 +983,41 @@ class LaravelTsPublish
     }
 
     /**
+     * Format a description string into a properly-structured JSDoc comment block.
+     *
+     * For single-line descriptions, outputs an inline `/** ... *\/` block.
+     * For multi-line descriptions (those containing newlines), outputs a multi-line
+     * JSDoc block with each line prefixed by ` * `, and blank lines rendered as ` *`.
+     * Internally calls sanitizeJsDoc() to escape any closing comment sequences.
+     *
+     * @param  int  $indent  Number of leading spaces to prefix every line of the output.
+     */
+    public function formatJsDoc(string $description, int $indent = 0): string
+    {
+        $sanitized = $this->sanitizeJsDoc($description);
+        $prefix = str_repeat(' ', $indent);
+
+        if (! str_contains($sanitized, "\n")) {
+            return "{$prefix}/** {$sanitized} */";
+        }
+
+        $lines = explode("\n", $sanitized);
+        $result = "{$prefix}/**\n";
+
+        foreach ($lines as $line) {
+            if ($line === '') {
+                $result .= "{$prefix} *\n";
+            } else {
+                $result .= "{$prefix} * {$line}\n";
+            }
+        }
+
+        $result .= "{$prefix} */";
+
+        return $result;
+    }
+
+    /**
      * Extract the human-readable description from a PHPDoc block,
      * ignoring all @-prefixed tags (@param, @return, @phpstan-*, etc.).
      */
@@ -1004,6 +1039,11 @@ class LaravelTsPublish
 
             // Skip empty remnants from /** and */
             if ($trimmed === '' || $trimmed === '/') {
+                // Preserve blank lines within the description (but not while inside a tag
+                // block, and not as leading blank lines before any text has been collected)
+                if (! $inTag && $description !== []) {
+                    $description[] = '';
+                }
                 $inTag = false;
 
                 continue;
@@ -1031,7 +1071,12 @@ class LaravelTsPublish
             $description[] = $trimmed;
         }
 
-        return implode(' ', $description);
+        // Trim trailing blank lines produced by the closing */ line
+        while ($description !== [] && end($description) === '') {
+            array_pop($description);
+        }
+
+        return implode("\n", $description);
     }
 
     /**

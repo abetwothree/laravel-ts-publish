@@ -1,7 +1,18 @@
 import type { CurrencyType, OrderStatusType, PaymentMethodType, RoleType } from '../../enums';
 import type { OrderItem, User } from '../../models';
 
-/** Exercises both bugs simultaneously — the exact pattern from the original ProcessProcessablesResource that triggered the issue: Bug 1: ...parent::toArray() spread (2 items in outer return) + a whenLoaded closure with more items (5), causing findBestArrayReturn() to pick the wrong return statement. Bug 2: The closure has a guard clause (`return null;`) before the data array, causing resolveClosureReturnExpression() to pick null instead of the data shape. */
+/**
+ * Exercises both bugs simultaneously — the exact pattern from the original
+ * ProcessProcessablesResource that triggered the issue:
+ *
+ * Bug 1: ...parent::toArray() spread (2 items in outer return) + a whenLoaded
+ * closure with more items (5), causing findBestArrayReturn() to pick
+ * the wrong return statement.
+ *
+ * Bug 2: The closure has a guard clause (`return null;`) before the data array,
+ * causing resolveClosureReturnExpression() to pick null instead of the
+ * data shape.
+ */
 export interface SpreadWithGuardClauseClosureResource
 {
     id: number;

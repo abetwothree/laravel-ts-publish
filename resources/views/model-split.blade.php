@@ -11,19 +11,19 @@ import type { {{ implode(', ', $types) }} } from '{{ $path }}';
 @endforeach
 
 @if($data->description)
-/** {!! LaravelTsPublish::sanitizeJsDoc($data->description) !!} */
+{!! LaravelTsPublish::formatJsDoc($data->description) !!}
 @endif
 export interface {{ $data->modelName }}{!! count($data->tsExtends) > 0 ? ' extends ' . implode(', ', $data->tsExtends) : '' !!}
 {
 @foreach ($data->columns as $name => $column)
 @if($column['description'])
-    /** {!! LaravelTsPublish::sanitizeJsDoc($column['description']) !!} */
+{!! LaravelTsPublish::formatJsDoc($column['description'], 4) !!}
 @endif
     {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $column['type'] !!};
 @endforeach
 @foreach ($data->appends as $name => $append)
 @if($append['description'])
-    /** {!! LaravelTsPublish::sanitizeJsDoc($append['description']) !!} */
+{!! LaravelTsPublish::formatJsDoc($append['description'], 4) !!}
 @endif
     {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $append['type'] !!};
 @endforeach
@@ -50,7 +50,7 @@ export interface {{ $data->modelName }}Mutators
 {
 @foreach ($data->mutators as $name => $mutator)
 @if($mutator['description'])
-    /** {!! LaravelTsPublish::sanitizeJsDoc($mutator['description']) !!} */
+{!! LaravelTsPublish::formatJsDoc($mutator['description'], 4) !!}
 @endif
     {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $mutator['type'] !!};
 @endforeach
@@ -76,7 +76,7 @@ export interface {{ $data->modelName }}Relations
     // Relations
 @foreach ($data->relations as $name => $relation)
 @if($relation['description'])
-    /** {!! LaravelTsPublish::sanitizeJsDoc($relation['description']) !!} */
+{!! LaravelTsPublish::formatJsDoc($relation['description'], 4) !!}
 @endif
     {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $relation['type'] !!};
 @endforeach

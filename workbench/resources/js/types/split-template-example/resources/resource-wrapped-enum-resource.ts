@@ -3,7 +3,15 @@ import { type AsEnum } from '@tolki/enum';
 import { Priority, Status, Visibility } from '../enums';
 import type { PriorityType, StatusType, VisibilityType } from '../enums';
 
-/** Exercises issue #43: EnumResource wrapping an enum accessed via `$this->resource->property` returns `unknown` instead of the correct `AsEnum` utility type. Each entry below represents a distinct code pattern where the enum is reached through the underlying model accessor (`$this->resource->prop`) rather than the Laravel Resource magic shorthand (`$this->prop`).  All entries should resolve to the same TypeScript type as their `$this->prop` counterparts. */
+/**
+ * Exercises issue #43: EnumResource wrapping an enum accessed via `$this->resource->property`
+ * returns `unknown` instead of the correct `AsEnum` utility type.
+ *
+ * Each entry below represents a distinct code pattern where the enum is reached
+ * through the underlying model accessor (`$this->resource->prop`) rather than the
+ * Laravel Resource magic shorthand (`$this->prop`).  All entries should resolve
+ * to the same TypeScript type as their `$this->prop` counterparts.
+ */
 export interface ResourceWrappedEnumResource
 {
     id: number;

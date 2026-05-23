@@ -4,7 +4,11 @@ import { Carrier, ShipmentStatus } from '../enums';
 import type { Order } from '../models';
 import type { TrackingEventResource } from './';
 
-/** Exercises: EnumResource::make on two enums (Carrier, Status), when, whenNotNull, whenLoaded bare cross-module (App\Order), Resource::collection, whenCounted, whenAggregated, mergeWhen with complex expression. */
+/**
+ * Exercises: EnumResource::make on two enums (Carrier, Status), when, whenNotNull,
+ * whenLoaded bare cross-module (App\Order), Resource::collection,
+ * whenCounted, whenAggregated, mergeWhen with complex expression.
+ */
 export interface ShipmentResource
 {
     id: number;

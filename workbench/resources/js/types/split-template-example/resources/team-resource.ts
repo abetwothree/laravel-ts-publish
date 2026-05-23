@@ -1,6 +1,9 @@
 import type { TeamMemberResource, UserResource } from './';
 
-/** Exercises: when, whenLoaded + Resource::make, Resource::collection, whenCounted, mergeWhen. */
+/**
+ * Exercises: when, whenLoaded + Resource::make, Resource::collection,
+ * whenCounted, mergeWhen.
+ */
 export interface TeamResource
 {
     id: number;

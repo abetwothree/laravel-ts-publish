@@ -4,7 +4,7 @@ import { defineEnum } from '@tolki/enum';
 
 @endif
 @if($data->description)
-/** {!! LaravelTsPublish::sanitizeJsDoc($data->description) !!} */
+{!! LaravelTsPublish::formatJsDoc($data->description) !!}
 @endif
 @if($metadataEnabled && $usesTolkiPackage)
 export const {{ $data->enumName }} = defineEnum({
@@ -13,7 +13,7 @@ export const {{ $data->enumName }} = {
 @endif
 @foreach ($data->cases as $case)
 @if($case['description'])
-    /** {!! LaravelTsPublish::sanitizeJsDoc($case['description']) !!} */
+{!! LaravelTsPublish::formatJsDoc($case['description'], 4) !!}
 @endif
     {!! LaravelTsPublish::validJsObjectKey($case['name']) !!}: {!! LaravelTsPublish::toJsLiteral($case['value']) !!},
 @endforeach
@@ -22,7 +22,7 @@ export const {{ $data->enumName }} = {
 @endif
 @foreach ($data->methods as $methodName => $method)
 @if($method['description'])
-    /** {!! LaravelTsPublish::sanitizeJsDoc($method['description']) !!} */
+{!! LaravelTsPublish::formatJsDoc($method['description'], 4) !!}
 @endif
     {!! LaravelTsPublish::validJsObjectKey($method['name']) !!}: {
 @foreach ($method['returns'] as $caseName => $returnValue)
@@ -32,7 +32,7 @@ export const {{ $data->enumName }} = {
 @endforeach
 @foreach ($data->staticMethods as $methodName => $method)
 @if($method['description'])
-    /** {!! LaravelTsPublish::sanitizeJsDoc($method['description']) !!} */
+{!! LaravelTsPublish::formatJsDoc($method['description'], 4) !!}
 @endif
     {!! LaravelTsPublish::validJsObjectKey($method['name']) !!}: {!! LaravelTsPublish::toJsLiteral($method['return']) !!},
 @endforeach

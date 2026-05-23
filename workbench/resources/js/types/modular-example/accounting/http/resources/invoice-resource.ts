@@ -7,7 +7,11 @@ import type { DueAtNoticeType, PaymentStatusType } from '../../enums';
 import type { Invoice } from '../../models';
 import type { PaymentResource } from '.';
 
-/** Exercises: when(cond, EnumResource::make) — conditional enum, cross-module whenLoaded bare (App\User), Resource::collection sibling, whenCounted, when(cond, value), mergeWhen. */
+/**
+ * Exercises: when(cond, EnumResource::make) — conditional enum, cross-module
+ * whenLoaded bare (App\User), Resource::collection sibling, whenCounted,
+ * when(cond, value), mergeWhen.
+ */
 export interface InvoiceResource
 {
     id: number;
