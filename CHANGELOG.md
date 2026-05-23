@@ -2,6 +2,15 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v1.5.0 - 2026-05-23
+
+### What's Changed
+
+* Issue #43 resource->enums by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/45
+* Preserve multiline comment formatting by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/46
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v1.4.7...v1.5.0
+
 ## v1.4.7 - 2026-05-22
 
 ### What's Changed
