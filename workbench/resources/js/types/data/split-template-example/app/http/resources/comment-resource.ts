@@ -2,9 +2,7 @@ import type { PriorityType, RoleType, StatusType, VisibilityType } from '../../e
 import type { Category, Comment, Image, Profile, Tag, User } from '../../models';
 import type { PostResource, UserResource } from '.';
 
-/**
- * @see Workbench\App\Http\Resources\CommentResource
- */
+/** @see Workbench\App\Http\Resources\CommentResource */
 export interface CommentResource
 {
     id: number;

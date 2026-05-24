@@ -5,9 +5,7 @@ import type { Order } from '../../app/models';
 import type { CarrierType, ShipmentStatusType } from '../enums';
 import type { TrackingEvent } from '.';
 
-/**
- * @see Workbench\Shipping\Models\Shipment
- */
+/** @see Workbench\Shipping\Models\Shipment */
 export interface Shipment
 {
     id: number;

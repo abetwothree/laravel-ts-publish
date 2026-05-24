@@ -3,7 +3,8 @@ import type { Order, OrderItem, User } from '../../models';
 import type { ProductResource } from '.';
 
 /**
- * Exercises: whenLoaded with Resource::make, whenLoaded bare (1-arg form), whenNotNull on nullable JSON column.
+ * Exercises: whenLoaded with Resource::make, whenLoaded bare (1-arg form),
+ * whenNotNull on nullable JSON column.
  *
  * @see Workbench\App\Http\Resources\OrderItemResource
  */

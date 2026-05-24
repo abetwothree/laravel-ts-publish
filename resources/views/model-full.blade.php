@@ -10,20 +10,23 @@ import { {{ implode(', ', $names) }} } from '{{ $path }}';
 import type { {{ implode(', ', $types) }} } from '{{ $path }}';
 @endforeach
 
-/**
-@if($data->description)
- * {!! LaravelTsPublish::sanitizeJsDoc($data->description) !!}
- *
-@endif
- * @see {{ $data->fqcn }}
- */
+@php
+    $description = $data->description;
+
+    if ($description) {
+        $description .= "\n\n";
+    }
+
+    $description .= "@see {$data->fqcn}";
+@endphp
+{!! LaravelTsPublish::formatJsDoc($description) !!}
 export interface {{ $data->modelName }}{!! count($data->tsExtends) > 0 ? ' extends ' . implode(', ', $data->tsExtends) : '' !!}
 {
 @if (count($data->columns) > 0)
     // Columns
 @foreach ($data->columns as $name => $column)
 @if($column['description'])
-    /** {!! LaravelTsPublish::sanitizeJsDoc($column['description']) !!} */
+{!! LaravelTsPublish::formatJsDoc($column['description'], 4) !!}
 @endif
     {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $column['type'] !!};
 @endforeach
@@ -32,13 +35,13 @@ export interface {{ $data->modelName }}{!! count($data->tsExtends) > 0 ? ' exten
     // Mutators
 @foreach ($data->mutators as $name => $mutator)
 @if($mutator['description'])
-    /** {!! LaravelTsPublish::sanitizeJsDoc($mutator['description']) !!} */
+{!! LaravelTsPublish::formatJsDoc($mutator['description'], 4) !!}
 @endif
     {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $mutator['type'] !!};
 @endforeach
 @foreach ($data->appends as $name => $append)
 @if($append['description'])
-    /** {!! LaravelTsPublish::sanitizeJsDoc($append['description']) !!} */
+{!! LaravelTsPublish::formatJsDoc($append['description'], 4) !!}
 @endif
     {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $append['type'] !!};
 @endforeach
@@ -47,25 +50,25 @@ export interface {{ $data->modelName }}{!! count($data->tsExtends) > 0 ? ' exten
     // Relations
 @foreach ($data->relations as $name => $relation)
 @if($relation['description'])
-    /** {!! LaravelTsPublish::sanitizeJsDoc($relation['description']) !!} */
+{!! LaravelTsPublish::formatJsDoc($relation['description'], 4) !!}
 @endif
     {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $relation['type'] !!};
 @endforeach
     // Counts
 @foreach ($data->relations as $name => $relation)
-    {!! LaravelTsPublish::validJsObjectKey($name.'_count') !!}: number;
+    {!! LaravelTsPublish::validJsObjectKey($name . '_count') !!}: number;
 @endforeach
     // Exists
 @foreach ($data->relations as $name => $relation)
-    {!! LaravelTsPublish::validJsObjectKey($name.'_exists') !!}: boolean;
+    {!! LaravelTsPublish::validJsObjectKey($name . '_exists') !!}: boolean;
 @endforeach
 @endif
 }
 @if (count($data->enumColumns) > 0 || count($data->enumMutators) > 0 || count($data->enumAppends) > 0)
 
 @php
-$allEnumKeys = array_merge(array_keys($data->enumColumns), array_keys($data->enumMutators), array_keys($data->enumAppends));
-$omitKeys = implode(' | ', array_map(fn($k) => "'" . $k . "'", $allEnumKeys));
+    $allEnumKeys = array_merge(array_keys($data->enumColumns), array_keys($data->enumMutators), array_keys($data->enumAppends));
+    $omitKeys = implode(' | ', array_map(fn($k) => "'" . $k . "'", $allEnumKeys));
 @endphp
 export interface {{ $data->modelName }}Resource extends Omit<{{ $data->modelName }}, {!! $omitKeys !!}>
 {

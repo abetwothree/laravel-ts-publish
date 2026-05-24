@@ -5,9 +5,7 @@ import type { PriorityType, StatusType, VisibilityType } from '../../enums';
 import type { User } from '../../models';
 import type { CommentResource } from '.';
 
-/**
- * @see Workbench\App\Http\Resources\ApiPostResource
- */
+/** @see Workbench\App\Http\Resources\ApiPostResource */
 export interface ApiPostResource
 {
     morphValue: string;

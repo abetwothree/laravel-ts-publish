@@ -3,7 +3,8 @@ import type { OrderItem } from '../../models';
 import type { TagResource } from '.';
 
 /**
- * Exercises analyzeClosureUnion metadata propagation (enum, model, resource FQCNs) and analyzeRelatedModelMethodCall fallback (line 451).
+ * Exercises analyzeClosureUnion metadata propagation (enum, model, resource FQCNs)
+ * and analyzeRelatedModelMethodCall fallback (line 451).
  *
  * @see Workbench\App\Http\Resources\ClosureUnionMetadataResource
  */

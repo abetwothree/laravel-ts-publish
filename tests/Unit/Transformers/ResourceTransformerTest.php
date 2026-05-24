@@ -24,7 +24,9 @@ use Workbench\App\Http\Resources\OrderResource;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\ProfileResource;
+use Workbench\App\Http\Resources\ResourceWrappedEnumResource;
 use Workbench\App\Http\Resources\ServiceDeskResource;
+use Workbench\App\Http\Resources\TernaryResource;
 use Workbench\App\Http\Resources\ToArrayCastsResource;
 use Workbench\App\Http\Resources\TraitSpreadCoverageResource;
 use Workbench\App\Http\Resources\UserResource;
@@ -347,7 +349,8 @@ describe('ResourceTransformer with CommentResource', function () {
     });
 
     test('annotation fallback fires when body is a FuncCall — user_email_annotated is string|null', function () {
-        // `fn (): ?string => strtolower(...)` — FuncCall body is unresolvable; ?string annotation kicks in.
+        // `fn (): ?string => json_decode(...)` — json_decode() returns mixed (resolves to unknown) so the body stays unknown;
+        // ?string annotation kicks in.
         $data = (new ResourceTransformer(CommentResource::class))->data();
 
         expect($data->properties['user_email_annotated']['type'])->toBe('string | null');
@@ -355,7 +358,8 @@ describe('ResourceTransformer with CommentResource', function () {
     });
 
     test('no annotation and unresolvable body — unresolvable_status is unknown', function () {
-        // `fn () => $this->resource->user->role` — no annotation, body unresolvable → unknown
+        // `fn () => json_decode(...)` — json_decode() returns mixed (resolves to unknown) so the body stays unknown;
+        // no return type annotation → unknown.
         $data = (new ResourceTransformer(CommentResource::class))->data();
 
         expect($data->properties['unresolvable_status']['type'])->toBe('unknown');
@@ -363,8 +367,8 @@ describe('ResourceTransformer with CommentResource', function () {
     });
 
     test('enum annotation fallback resolves type — resolvable_status is StatusType', function () {
-        // `fn (): Status => $this->resource->user->role` — body unresolvable; Status annotation
-        // resolves to StatusType with FQCN tracking via the annotation fallback.
+        // `fn (): Status => json_decode(...)` — body unresolvable (json_decode returns mixed → unknown);
+        // Status annotation resolves to StatusType with FQCN tracking via the annotation fallback.
         $data = (new ResourceTransformer(CommentResource::class))->data();
 
         expect($data->properties['resolvable_status']['type'])->toBe('StatusType');
@@ -390,7 +394,7 @@ describe('ResourceTransformer with CommentResource', function () {
     // top-level nullsafe chains ───────────────────────────────────
 
     test('top-level nullsafe resolves enum — user_role is RoleType|null', function () {
-        config()->set('ts-publish.enums_use_tolki_package', false);
+        config()->set('ts-publish.enums.use_tolki_package', false);
         $data = (new ResourceTransformer(CommentResource::class))->data();
 
         expect($data->properties['user_role']['type'])->toBe('RoleType | null');
@@ -398,7 +402,7 @@ describe('ResourceTransformer with CommentResource', function () {
     });
 
     test('top-level nullsafe enum imports RoleType from enums', function () {
-        config()->set('ts-publish.enums_use_tolki_package', false);
+        config()->set('ts-publish.enums.use_tolki_package', false);
         $data = (new ResourceTransformer(CommentResource::class))->data();
 
         expect($data->typeImports)->toHaveKey('../../enums');
@@ -685,6 +689,34 @@ describe('ResourceTransformer imports', function () {
         expect($data->typeImports)->toHaveKey('../../models');
         expect($data->typeImports['../../models'])->toContain('Profile');
     });
+
+    test('TernaryResource has value imports for all multi-FQCN EnumResource FQCNs with tolki', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+        $data = (new ResourceTransformer(TernaryResource::class))->data();
+
+        expect($data->valueImports)->toHaveKey('../../enums');
+        expect($data->valueImports['../../enums'])->toContain('Status');
+        expect($data->valueImports['../../enums'])->toContain('Visibility');
+    });
+
+    test('TernaryResource has type import for StatusType when mixed ternary uses direct access with tolki', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+        $data = (new ResourceTransformer(TernaryResource::class))->data();
+
+        // status_resource_or_type: AsEnum<typeof Status> | StatusType — StatusType needs a type import
+        expect($data->typeImports)->toHaveKey('../../enums');
+        expect($data->typeImports['../../enums'])->toContain('StatusType');
+    });
+
+    test('TernaryResource has type imports for StatusType and VisibilityType without tolki', function () {
+        config()->set('ts-publish.enums.use_tolki_package', false);
+        $data = (new ResourceTransformer(TernaryResource::class))->data();
+
+        expect($data->typeImports)->toHaveKey('../../enums');
+        expect($data->typeImports['../../enums'])->toContain('StatusType');
+        expect($data->typeImports['../../enums'])->toContain('VisibilityType');
+        expect($data->valueImports)->toBeEmpty();
+    });
 });
 
 describe('ResourceTransformer with AddressResource', function () {
@@ -921,6 +953,85 @@ describe('ResourceTransformer self-referencing resources', function () {
 
         expect($data->properties['parent']['type'])->toBe('CategoryResource');
         expect($data->properties['children']['type'])->toBe('CategoryResource[]');
+    });
+
+    // self:: and new self() expressions ———————————————————————————————————————
+
+    test('self::collection() resolves to CategoryResource[]', function () {
+        $data = (new ResourceTransformer(CategoryResource::class))->data();
+
+        expect($data->properties['children_self_collection']['type'])->toBe('CategoryResource[]');
+        expect($data->properties['children_self_collection']['optional'])->toBeFalse();
+    });
+
+    test('self::collection() via $this->resource resolves to CategoryResource[]', function () {
+        $data = (new ResourceTransformer(CategoryResource::class))->data();
+
+        expect($data->properties['children_self_resource_collection']['type'])->toBe('CategoryResource[]');
+        expect($data->properties['children_self_resource_collection']['optional'])->toBeFalse();
+    });
+
+    test('self::collection(...) first-class callable resolves to CategoryResource[]', function () {
+        $data = (new ResourceTransformer(CategoryResource::class))->data();
+
+        expect($data->properties['children_self_collection_first_callable']['type'])->toBe('CategoryResource[]');
+        expect($data->properties['children_self_collection_first_callable']['optional'])->toBeFalse();
+    });
+
+    test('whenLoaded with self::collection() resolves to optional CategoryResource[]', function () {
+        $data = (new ResourceTransformer(CategoryResource::class))->data();
+
+        expect($data->properties['children_when_self_collection']['type'])->toBe('CategoryResource[]');
+        expect($data->properties['children_when_self_collection']['optional'])->toBeTrue();
+    });
+
+    test('whenLoaded with self::collection() via $this->resource resolves to optional CategoryResource[]', function () {
+        $data = (new ResourceTransformer(CategoryResource::class))->data();
+
+        expect($data->properties['children_when_self_resource_collection']['type'])->toBe('CategoryResource[]');
+        expect($data->properties['children_when_self_resource_collection']['optional'])->toBeTrue();
+    });
+
+    test('whenLoaded with self::collection(...) FCC resolves to optional CategoryResource[]', function () {
+        $data = (new ResourceTransformer(CategoryResource::class))->data();
+
+        expect($data->properties['children_when_self_collection_first_callable']['type'])->toBe('CategoryResource[]');
+        expect($data->properties['children_when_self_collection_first_callable']['optional'])->toBeTrue();
+    });
+
+    test('new self() resolves to CategoryResource', function () {
+        $data = (new ResourceTransformer(CategoryResource::class))->data();
+
+        expect($data->properties['parent_self']['type'])->toBe('CategoryResource');
+        expect($data->properties['parent_self']['optional'])->toBeFalse();
+    });
+
+    test('self::make() resolves to CategoryResource', function () {
+        $data = (new ResourceTransformer(CategoryResource::class))->data();
+
+        expect($data->properties['parent_make_self']['type'])->toBe('CategoryResource');
+        expect($data->properties['parent_make_self']['optional'])->toBeFalse();
+    });
+
+    test('new self() via $this->resource resolves to CategoryResource', function () {
+        $data = (new ResourceTransformer(CategoryResource::class))->data();
+
+        expect($data->properties['parent_resource_self']['type'])->toBe('CategoryResource');
+        expect($data->properties['parent_resource_self']['optional'])->toBeFalse();
+    });
+
+    test('whenLoaded with new self() in closure resolves to optional CategoryResource', function () {
+        $data = (new ResourceTransformer(CategoryResource::class))->data();
+
+        expect($data->properties['parent_when_self']['type'])->toBe('CategoryResource');
+        expect($data->properties['parent_when_self']['optional'])->toBeTrue();
+    });
+
+    test('whenLoaded with new self() via $this->resource in closure resolves to optional CategoryResource', function () {
+        $data = (new ResourceTransformer(CategoryResource::class))->data();
+
+        expect($data->properties['parent_when_resource_self']['type'])->toBe('CategoryResource');
+        expect($data->properties['parent_when_resource_self']['optional'])->toBeTrue();
     });
 });
 
@@ -1623,5 +1734,224 @@ describe('ResourceTransformer with AddressMixinResource and AddressExtendsResour
         expect($mixinData->properties)->toBe($extendsData->properties);
         expect($mixinData->typeImports)->toBe($extendsData->typeImports);
         expect($mixinData->valueImports)->toBe($extendsData->valueImports);
+    });
+});
+
+describe('ResourceTransformer ternary operator support', function () {
+    test('EnumResource::make vs null resolves to StatusType | null', function () {
+        config()->set('ts-publish.enums.use_tolki_package', false);
+        $data = (new ResourceTransformer(TernaryResource::class))->data();
+
+        expect($data->properties['status_or_null']['type'])->toBe('StatusType | null');
+        expect($data->properties['status_or_null']['optional'])->toBeFalse();
+    });
+
+    test('EnumResource::make vs EnumResource::make (same) resolves to StatusType', function () {
+        config()->set('ts-publish.enums.use_tolki_package', false);
+        $data = (new ResourceTransformer(TernaryResource::class))->data();
+
+        expect($data->properties['status_or_status']['type'])->toBe('StatusType');
+        expect($data->properties['status_or_status']['optional'])->toBeFalse();
+    });
+
+    test('EnumResource::make vs EnumResource::make (different) resolves to union', function () {
+        config()->set('ts-publish.enums.use_tolki_package', false);
+        $data = (new ResourceTransformer(TernaryResource::class))->data();
+
+        expect($data->properties['status_or_visibility']['type'])->toContain('StatusType');
+        expect($data->properties['status_or_visibility']['type'])->toContain('VisibilityType');
+    });
+
+    test('EnumResource::make vs EnumResource::make (different enums) resolves to AsEnum union with tolki enabled', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+        $data = (new ResourceTransformer(TernaryResource::class))->data();
+
+        // The | null originates from the Post model's `visibility` column being nullable in the DB,
+        // not from an explicit null branch in TernaryResource — both ternary branches are EnumResource calls.
+        expect($data->properties['status_or_visibility']['type'])->toBe('AsEnum<typeof Status> | AsEnum<typeof Visibility> | null');
+        expect($data->properties['status_or_visibility']['optional'])->toBeFalse();
+    });
+
+    test('Resource::make vs null resolves to CategoryResource | null', function () {
+        $data = (new ResourceTransformer(TernaryResource::class))->data();
+
+        expect($data->properties['category_or_null']['type'])->toBe('CategoryResource | null');
+        expect($data->properties['category_or_null']['optional'])->toBeFalse();
+    });
+
+    test('Resource::make vs Resource::make (same) resolves to CategoryResource', function () {
+        $data = (new ResourceTransformer(TernaryResource::class))->data();
+
+        expect($data->properties['category_or_category']['type'])->toBe('CategoryResource');
+        expect($data->properties['category_or_category']['optional'])->toBeFalse();
+    });
+
+    test('Resource::make vs Resource::make (different) resolves to union type', function () {
+        $data = (new ResourceTransformer(TernaryResource::class))->data();
+
+        expect($data->properties['category_or_user']['type'])->toContain('CategoryResource');
+        expect($data->properties['category_or_user']['type'])->toContain('UserResource');
+    });
+
+    test('new Resource() vs null resolves to ImageResource | null', function () {
+        $data = (new ResourceTransformer(TernaryResource::class))->data();
+
+        expect($data->properties['image_or_null']['type'])->toBe('ImageResource | null');
+        expect($data->properties['image_or_null']['optional'])->toBeFalse();
+    });
+
+    test('Resource::collection vs null resolves to CommentResource[] | null', function () {
+        $data = (new ResourceTransformer(TernaryResource::class))->data();
+
+        expect($data->properties['comments_or_null']['type'])->toBe('CommentResource[] | null');
+        expect($data->properties['comments_or_null']['optional'])->toBeFalse();
+    });
+
+    test('Resource::collection vs Resource::collection (same) resolves to CommentResource[]', function () {
+        $data = (new ResourceTransformer(TernaryResource::class))->data();
+
+        expect($data->properties['comments_or_comments']['type'])->toBe('CommentResource[]');
+        expect($data->properties['comments_or_comments']['optional'])->toBeFalse();
+    });
+
+    test('string property vs null resolves to string | null', function () {
+        $data = (new ResourceTransformer(TernaryResource::class))->data();
+
+        expect($data->properties['title_or_null']['type'])->toBe('string | null');
+        expect($data->properties['title_or_null']['optional'])->toBeFalse();
+    });
+
+    test('number property vs null resolves to number | null', function () {
+        $data = (new ResourceTransformer(TernaryResource::class))->data();
+
+        expect($data->properties['word_count_or_null']['type'])->toBe('number | null');
+        expect($data->properties['word_count_or_null']['optional'])->toBeFalse();
+    });
+
+    test('string literal vs string literal resolves to string', function () {
+        $data = (new ResourceTransformer(TernaryResource::class))->data();
+
+        expect($data->properties['pin_label']['type'])->toBe('string');
+        expect($data->properties['pin_label']['optional'])->toBeFalse();
+    });
+
+    test('Elvis operator with string fallback resolves to string', function () {
+        $data = (new ResourceTransformer(TernaryResource::class))->data();
+
+        expect($data->properties['title_fallback']['type'])->toBe('string');
+        expect($data->properties['title_fallback']['optional'])->toBeFalse();
+    });
+
+    test('ternary inside whenLoaded closure is optional with resource type', function () {
+        $data = (new ResourceTransformer(TernaryResource::class))->data();
+
+        expect($data->properties['category_when_loaded_or_null']['type'])->toContain('CategoryResource');
+        expect($data->properties['category_when_loaded_or_null']['optional'])->toBeTrue();
+    });
+
+    test('ternary using $this->resource accessor resolves to CategoryResource | null', function () {
+        $data = (new ResourceTransformer(TernaryResource::class))->data();
+
+        expect($data->properties['category_resource_or_null']['type'])->toBe('CategoryResource | null');
+        expect($data->properties['category_resource_or_null']['optional'])->toBeFalse();
+    });
+
+    test('EnumResource::make vs null resolves to AsEnum | null with tolki enabled', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+        $data = (new ResourceTransformer(TernaryResource::class))->data();
+
+        expect($data->properties['status_or_null']['type'])->toBe('AsEnum<typeof Status> | null');
+        expect($data->properties['status_or_null']['optional'])->toBeFalse();
+    });
+
+    test('EnumResource::make vs EnumResource::make (same) resolves to AsEnum with tolki enabled', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+        $data = (new ResourceTransformer(TernaryResource::class))->data();
+
+        expect($data->properties['status_or_status']['type'])->toBe('AsEnum<typeof Status>');
+        expect($data->properties['status_or_status']['optional'])->toBeFalse();
+    });
+
+    test('EnumResource::make vs $this->prop (same enum) resolves to AsEnum | XType with tolki enabled', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+        $data = (new ResourceTransformer(TernaryResource::class))->data();
+
+        expect($data->properties['status_resource_or_type']['type'])->toBe('AsEnum<typeof Status> | StatusType');
+        expect($data->properties['status_resource_or_type']['optional'])->toBeFalse();
+    });
+
+    test('EnumResource::make vs $this->prop (same enum) resolves to XType without tolki', function () {
+        config()->set('ts-publish.enums.use_tolki_package', false);
+        $data = (new ResourceTransformer(TernaryResource::class))->data();
+
+        expect($data->properties['status_resource_or_type']['type'])->toBe('StatusType');
+        expect($data->properties['status_resource_or_type']['optional'])->toBeFalse();
+    });
+
+    test('nested ternary resolves to string | null', function () {
+        $data = (new ResourceTransformer(TernaryResource::class))->data();
+
+        expect($data->properties['nested_ternary_label']['type'])->toBe('string | null');
+        expect($data->properties['nested_ternary_label']['optional'])->toBeFalse();
+    });
+});
+
+describe('ResourceTransformer with ResourceWrappedEnumResource — inline array enum resolution', function () {
+    test('inline array with all EnumResource properties produces AsEnum types when tolki enabled', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+        $data = (new ResourceTransformer(ResourceWrappedEnumResource::class))->data();
+
+        expect($data->properties['enums_array']['type'])
+            ->toBe('{ status: AsEnum<typeof Status>; visibility: AsEnum<typeof Visibility> | null; priority: AsEnum<typeof Priority> | null }');
+    });
+
+    test('inline array with all EnumResource properties produces plain types when tolki disabled', function () {
+        config()->set('ts-publish.enums.use_tolki_package', false);
+        $data = (new ResourceTransformer(ResourceWrappedEnumResource::class))->data();
+
+        expect($data->properties['enums_array']['type'])
+            ->toBe('{ status: StatusType; visibility: VisibilityType | null; priority: PriorityType | null }');
+    });
+
+    test('mixed inline array produces plain types for direct enum access and AsEnum for EnumResource', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+        $data = (new ResourceTransformer(ResourceWrappedEnumResource::class))->data();
+
+        $type = $data->properties['mixed_enums_array']['type'];
+
+        expect($type)
+            ->toContain('status_type: StatusType')
+            ->toContain('visibility_type: VisibilityType | null')
+            ->toContain('priority_type: PriorityType | null')
+            ->toContain('status_resource_type: StatusType')
+            ->toContain('visibility_resource_type: VisibilityType | null')
+            ->toContain('priority_resource_type: PriorityType | null')
+            ->toContain('status_enum: AsEnum<typeof Status>')
+            ->toContain('visibility_enum: AsEnum<typeof Visibility> | null')
+            ->toContain('priority_enum: AsEnum<typeof Priority> | null');
+    });
+
+    test('mixed inline array produces only plain types when tolki disabled', function () {
+        config()->set('ts-publish.enums.use_tolki_package', false);
+        $data = (new ResourceTransformer(ResourceWrappedEnumResource::class))->data();
+
+        $type = $data->properties['mixed_enums_array']['type'];
+
+        expect($type)
+            ->not->toContain('AsEnum')
+            ->toContain('status_enum: StatusType')
+            ->toContain('visibility_enum: VisibilityType | null')
+            ->toContain('priority_enum: PriorityType | null');
+    });
+
+    test('inline enum resource properties generate value imports (hasEnums) when tolki enabled', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+        $data = (new ResourceTransformer(ResourceWrappedEnumResource::class))->data();
+
+        $allValueImports = $data->valueImports !== [] ? array_merge(...array_values($data->valueImports)) : [];
+
+        expect($allValueImports)->toContain('Status');
+        expect($allValueImports)->toContain('Visibility');
+        expect($allValueImports)->toContain('Priority');
     });
 });

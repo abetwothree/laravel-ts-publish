@@ -1,6 +1,4 @@
-/**
- * @see Workbench\App\Models\Admin\Store
- */
+/** @see Workbench\App\Models\Admin\Store */
 export interface Store
 {
     // Columns

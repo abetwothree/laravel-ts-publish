@@ -1,6 +1,4 @@
-/**
- * @see Workbench\App\Models\SlugPost
- */
+/** @see Workbench\App\Models\SlugPost */
 export interface SlugPost
 {
     id: number;

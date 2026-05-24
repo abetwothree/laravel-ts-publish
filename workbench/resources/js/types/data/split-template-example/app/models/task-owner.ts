@@ -1,8 +1,6 @@
 import type { TaskAssignment } from '.';
 
-/**
- * @see Workbench\App\Models\TaskOwner
- */
+/** @see Workbench\App\Models\TaskOwner */
 export interface TaskOwner
 {
     id: number;

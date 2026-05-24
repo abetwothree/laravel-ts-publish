@@ -1,6 +1,4 @@
-/**
- * @see Workbench\App\Http\Resources\MediaTypeResource
- */
+/** @see Workbench\App\Http\Resources\MediaTypeResource */
 export interface MediaTypeResource
 {
     name: string;

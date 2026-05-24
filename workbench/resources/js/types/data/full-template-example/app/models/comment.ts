@@ -1,8 +1,6 @@
 import type { Post, User } from '.';
 
-/**
- * @see Workbench\App\Models\Comment
- */
+/** @see Workbench\App\Models\Comment */
 export interface Comment
 {
     // Columns

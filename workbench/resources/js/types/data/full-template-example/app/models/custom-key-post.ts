@@ -1,6 +1,4 @@
-/**
- * @see Workbench\App\Models\CustomKeyPost
- */
+/** @see Workbench\App\Models\CustomKeyPost */
 export interface CustomKeyPost
 {
     // Columns

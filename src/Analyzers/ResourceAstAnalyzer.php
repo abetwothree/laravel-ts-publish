@@ -37,10 +37,16 @@ use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Expr\Ternary;
+use PhpParser\Node\Expr\UnaryMinus;
+use PhpParser\Node\Expr\UnaryPlus;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\NullableType;
+use PhpParser\Node\Scalar\Float_;
+use PhpParser\Node\Scalar\Int_;
+use PhpParser\Node\Scalar\InterpolatedString;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Do_;
@@ -64,6 +70,7 @@ use ReflectionMethod;
  * @phpstan-import-type ImportMapType from ResourceAnalysis
  * @phpstan-import-type InlineEnumFqcnsMap from ResourceAnalysis
  * @phpstan-import-type InlineModelFqcnsMap from ResourceAnalysis
+ * @phpstan-import-type MultiEnumFqcnsMap from ResourceAnalysis
  *
  * @phpstan-type ValueExpressionResult = array{
  *      type: string,
@@ -73,8 +80,10 @@ use ReflectionMethod;
  *      resourceFqcn?: class-string,
  *      modelFqcn?: class-string,
  *      embeddedEnumFqcns?: list<class-string>,
+ *      embeddedEnumResourceFqcns?: list<class-string>,
  *      embeddedModelFqcns?: list<class-string>,
- *      embeddedResourceFqcns?: list<class-string>
+ *      embeddedResourceFqcns?: list<class-string>,
+ *      multiEnumResourceFqcns?: list<class-string>
  * }
  * @phpstan-type ClosureAnnotationResult = array{
  *      type: string,
@@ -105,6 +114,17 @@ class ResourceAstAnalyzer
      * @var class-string<Model>|null
      */
     protected ?string $closureRelationModelClass = null;
+
+    /**
+     * Maps closure parameter variable names to bound expressions extracted from the
+     * surrounding `when()` condition. For example, `$this->when($this->status !== null,
+     * function ($status) { ... })` binds `'status'` → the `$this->status` PropertyFetch
+     * node, so that `EnumResource::make($status)` inside the closure can be resolved
+     * to the same type as `EnumResource::make($this->status)`.
+     *
+     * @var array<string, Expr>
+     */
+    protected array $closureParamExprBindings = [];
 
     /**
      * @param  ReflectionClass<JsonResource>  $resourceReflection
@@ -195,6 +215,10 @@ class ResourceAstAnalyzer
         $inlineEnumFqcns = [];
         /** @var InlineModelFqcnsMap $inlineModelFqcns */
         $inlineModelFqcns = [];
+        /** @var MultiEnumFqcnsMap $multiEnumResourceFqcns */
+        $multiEnumResourceFqcns = [];
+        /** @var InlineEnumFqcnsMap $inlineEnumResourceFqcns */
+        $inlineEnumResourceFqcns = [];
 
         foreach ($array->items as $item) {
             // Handle ...parent::toArray($request) spread
@@ -205,7 +229,8 @@ class ResourceAstAnalyzer
                     $this->syncAnalysisMaps(
                         $properties, $enumResources, $nestedResources,
                         $directEnumFqcns, $modelFqcns, $customImports,
-                        $parentAnalysis, $inlineEnumFqcns, $inlineModelFqcns,
+                        $parentAnalysis, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
+                        $inlineEnumResourceFqcns,
                     );
                 }
 
@@ -225,7 +250,8 @@ class ResourceAstAnalyzer
                     $this->syncAnalysisMaps(
                         $properties, $enumResources, $nestedResources,
                         $directEnumFqcns, $modelFqcns, $customImports,
-                        $filterAnalysis, $inlineEnumFqcns, $inlineModelFqcns,
+                        $filterAnalysis, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
+                        $inlineEnumResourceFqcns,
                     );
                 }
 
@@ -244,7 +270,8 @@ class ResourceAstAnalyzer
                     $this->syncAnalysisMaps(
                         $properties, $enumResources, $nestedResources,
                         $directEnumFqcns, $modelFqcns, $customImports,
-                        $spreadAnalysis, $inlineEnumFqcns, $inlineModelFqcns,
+                        $spreadAnalysis, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
+                        $inlineEnumResourceFqcns,
                     );
                 }
 
@@ -264,7 +291,8 @@ class ResourceAstAnalyzer
                         $this->syncAnalysisMaps(
                             $properties, $enumResources, $nestedResources,
                             $directEnumFqcns, $modelFqcns, $customImports,
-                            $spreadAnalysis, $inlineEnumFqcns, $inlineModelFqcns,
+                            $spreadAnalysis, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
+                            $inlineEnumResourceFqcns,
                         );
                     }
                 }
@@ -279,7 +307,8 @@ class ResourceAstAnalyzer
                 $this->syncAnalysisMaps(
                     $properties, $enumResources, $nestedResources,
                     $directEnumFqcns, $modelFqcns, $customImports,
-                    $mergeResult, $inlineEnumFqcns, $inlineModelFqcns,
+                    $mergeResult, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
+                    $inlineEnumResourceFqcns,
                 );
 
                 continue;
@@ -298,7 +327,7 @@ class ResourceAstAnalyzer
             $result = $this->analyzeValueExpression($item->value);
 
             // When a child key overrides a parent spread key, clear stale parent tracking
-            unset($enumResources[$keyName], $nestedResources[$keyName], $directEnumFqcns[$keyName], $modelFqcns[$keyName]);
+            unset($enumResources[$keyName], $nestedResources[$keyName], $directEnumFqcns[$keyName], $modelFqcns[$keyName], $multiEnumResourceFqcns[$keyName]);
 
             $properties[] = [
                 'name' => $keyName,
@@ -307,10 +336,14 @@ class ResourceAstAnalyzer
                 'description' => '',
             ];
 
-            $this->dispatchFqcnResults($keyName, $result, $enumResources, $directEnumFqcns, $nestedResources, $modelFqcns);
+            $this->dispatchFqcnResults($keyName, $result, $enumResources, $directEnumFqcns, $nestedResources, $modelFqcns, $multiEnumResourceFqcns);
 
             foreach ($result['embeddedEnumFqcns'] ?? [] as $fqcn) {
                 $inlineEnumFqcns[$keyName][] = $fqcn;
+            }
+
+            foreach ($result['embeddedEnumResourceFqcns'] ?? [] as $fqcn) {
+                $inlineEnumResourceFqcns[$keyName][] = $fqcn;
             }
 
             foreach ($result['embeddedModelFqcns'] ?? [] as $fqcn) {
@@ -328,6 +361,8 @@ class ResourceAstAnalyzer
             modelFqcns: $modelFqcns,
             inlineEnumFqcns: $inlineEnumFqcns,
             inlineModelFqcns: $inlineModelFqcns,
+            multiEnumResourceFqcns: $multiEnumResourceFqcns,
+            inlineEnumResourceFqcns: $inlineEnumResourceFqcns,
         );
     }
 
@@ -342,6 +377,8 @@ class ResourceAstAnalyzer
      * @param  ImportMapType  $customImports
      * @param  InlineEnumFqcnsMap  $inlineEnumFqcns
      * @param  InlineModelFqcnsMap  $inlineModelFqcns
+     * @param  MultiEnumFqcnsMap  $multiEnumResourceFqcns
+     * @param  InlineEnumFqcnsMap  $inlineEnumResourceFqcns
      */
     protected function syncAnalysisMaps(
         array &$properties,
@@ -353,12 +390,15 @@ class ResourceAstAnalyzer
         ResourceAnalysis $source,
         array &$inlineEnumFqcns = [],
         array &$inlineModelFqcns = [],
+        array &$multiEnumResourceFqcns = [],
+        array &$inlineEnumResourceFqcns = [],
     ): void {
         $properties = [...$properties, ...$source->properties];
         $enumResources = [...$enumResources, ...$source->enumResources];
         $nestedResources = [...$nestedResources, ...$source->nestedResources];
         $directEnumFqcns = [...$directEnumFqcns, ...$source->directEnumFqcns];
         $modelFqcns = [...$modelFqcns, ...$source->modelFqcns];
+        $multiEnumResourceFqcns = [...$multiEnumResourceFqcns, ...$source->multiEnumResourceFqcns];
 
         foreach ($source->customImports as $path => $types) {
             $customImports[$path] = [...($customImports[$path] ?? []), ...$types];
@@ -373,6 +413,12 @@ class ResourceAstAnalyzer
         foreach ($source->inlineModelFqcns as $propName => $fqcns) {
             $inlineModelFqcns[$propName] = array_values(array_unique(
                 [...($inlineModelFqcns[$propName] ?? []), ...$fqcns]
+            ));
+        }
+
+        foreach ($source->inlineEnumResourceFqcns as $propName => $fqcns) {
+            $inlineEnumResourceFqcns[$propName] = array_values(array_unique(
+                [...($inlineEnumResourceFqcns[$propName] ?? []), ...$fqcns]
             ));
         }
     }
@@ -409,6 +455,34 @@ class ResourceAstAnalyzer
             return ['type' => 'unknown[]', 'optional' => false];
         }
 
+        // Scalar literals — String_, Int_, Float_ nodes appear as ternary branch values,
+        // array items, and other inline expressions.
+        if ($expr instanceof String_ || $expr instanceof InterpolatedString) {
+            return ['type' => 'string', 'optional' => false];
+        }
+
+        if ($expr instanceof Int_ || $expr instanceof Float_) {
+            return ['type' => 'number', 'optional' => false];
+        }
+
+        // Unary numeric operators (-x, +x) always produce a numeric result in PHP.
+        // Non-literal operands (e.g. -$variable) are handled optimistically as `number`
+        // because the analyzer does not track variable types at this stage.
+        if ($expr instanceof UnaryMinus || $expr instanceof UnaryPlus) {
+            return ['type' => 'number', 'optional' => false];
+        }
+
+        // true / false constants resolve to boolean; null resolves to null.
+        if ($expr instanceof ConstFetch) {
+            $constName = $expr->name->toLowerString();
+            if ($constName === 'null') {
+                return ['type' => 'null', 'optional' => false];
+            }
+            if (in_array($constName, ['true', 'false'], true)) {
+                return ['type' => 'boolean', 'optional' => false];
+            }
+        }
+
         // Arithmetic binary operations always produce a numeric result.
         // This handles cases like `(int) round(...) / 2` where PHP's operator
         // precedence causes the cast to bind tighter than the division, making
@@ -426,6 +500,23 @@ class ResourceAstAnalyzer
         // String concatenation always produces a string result.
         if ($expr instanceof BinaryOp\Concat) {
             return ['type' => 'string', 'optional' => false];
+        }
+
+        // Null coalescing operator ($left ?? $right) — returns left if non-null, right otherwise.
+        // Resolve both sides and return the dominant type; if they match return that type,
+        // otherwise build a union of the two distinct types.
+        if ($expr instanceof BinaryOp\Coalesce) {
+            return $this->analyzeCoalesce($expr);
+        }
+
+        // Known PHP built-in function calls — resolve return type from function name.
+        // e.g. strtolower() → string, strlen() → number, is_null() → boolean.
+        if ($expr instanceof FuncCall && $expr->name instanceof Name) {
+            $tsType = $this->resolveKnownFunctionCallType($expr->name->getLast());
+
+            if ($tsType !== null) {
+                return ['type' => $tsType, 'optional' => false];
+            }
         }
 
         // Closures / arrow functions — analyze the body first. If that returns unknown,
@@ -467,6 +558,12 @@ class ResourceAstAnalyzer
         if ($this->isThisMethodCall($expr, 'whenNotNull')) {
             /** @var MethodCall $expr */
             return $this->analyzeWhenNotNull($expr);
+        }
+
+        // $this->whenNull($this->value, $callback)
+        if ($this->isThisMethodCall($expr, 'whenNull')) {
+            /** @var MethodCall $expr */
+            return $this->analyzeWhenNull($expr);
         }
 
         // $this->whenLoaded('relation') or $this->whenLoaded('relation', value)
@@ -661,6 +758,36 @@ class ResourceAstAnalyzer
             return $this->analyzeRelatedModelProperty($expr->name->toString());
         }
 
+        // $variable->map(fn (TypedClass $item) => [...]) — resolve using the inner closure's
+        // typed first parameter. Does not require a pre-existing closureRelationModelClass
+        // because the element type is read directly from the closure's type hint.
+        if ($expr instanceof MethodCall
+            && $expr->var instanceof Variable
+            && is_string($expr->var->name)
+            && $expr->var->name !== 'this'
+            && $expr->name instanceof Identifier
+            && $expr->name->toString() === 'map'
+            && $expr->getArgs() !== []
+        ) {
+            $mapResult = $this->analyzeVariableMapCall($expr);
+
+            if ($mapResult !== null) {
+                return $mapResult;
+            }
+        }
+
+        // $variable->pluck('field') — resolve to an array of the field's type
+        if ($this->closureRelationModelClass !== null
+            && $expr instanceof MethodCall
+            && $expr->var instanceof Variable
+            && is_string($expr->var->name)
+            && $expr->var->name !== 'this'
+            && $expr->name instanceof Identifier
+            && $expr->name->toString() === 'pluck'
+        ) {
+            return $this->analyzeVariablePluckCall($expr);
+        }
+
         // $variable->method() — resolve against the related model in a whenLoaded closure context
         if ($this->closureRelationModelClass !== null
             && $expr instanceof MethodCall
@@ -672,7 +799,99 @@ class ResourceAstAnalyzer
             return $this->analyzeRelatedModelMethodCall($expr->name->toString());
         }
 
+        // Ternary / Elvis operator: $cond ? $if : $else  or  $cond ?: $else
+        if ($expr instanceof Ternary) {
+            return $this->analyzeTernary($expr);
+        }
+
+        // Bare closure-parameter variable bound via bindClosureParamsFromCondition().
+        // E.g. `$this->when($this->status, fn ($status) => $status)` — the closure body
+        // returns just `$status`, which is bound to `$this->status`, so we resolve the
+        // bound expression to get the correct type (e.g. `OrderStatusType`).
+        if ($expr instanceof Variable && is_string($expr->name)) {
+            $boundExpr = $this->closureParamExprBindings[$expr->name] ?? null;
+
+            if ($boundExpr !== null) {
+                return $this->analyzeValueExpression($boundExpr);
+            }
+        }
+
         return $result;
+    }
+
+    /**
+     * Resolve a PHP built-in function name to its TypeScript return type using reflection.
+     *
+     * Returns null when the function is unknown, has no declared return type, returns a
+     * class/interface type, or when the resolved TS type is unknown.
+     */
+    private function resolveKnownFunctionCallType(string $name): ?string
+    {
+        $tsInfo = LaravelTsPublish::nativePhpFunctionReturnedTypes($name);
+
+        return ! str_contains($tsInfo['type'], 'unknown') ? $tsInfo['type'] : null;
+    }
+
+    /**
+     * Analyze a null-coalescing expression (`$left ?? $right`).
+     *
+     * Resolves both operands and returns the dominant type. When both sides resolve to
+     * the same type the result is that type (e.g. `string ?? string` → `string`). When
+     * they differ, a union of the two distinct types is returned (e.g. `string ?? number`
+     * → `string | number`). A `null` type on the left is treated as unknown because the
+     * coalesce operator guarantees the fallback is used instead.
+     *
+     * @return ValueExpressionResult
+     */
+    protected function analyzeCoalesce(BinaryOp\Coalesce $expr): array
+    {
+        $leftResult = $this->analyzeValueExpression($expr->left);
+        $rightResult = $this->analyzeValueExpression($expr->right);
+
+        $leftType = $leftResult['type'];
+        $rightType = $rightResult['type'];
+
+        // Strip a `| null` suffix from the left side — the right side acts as the fallback,
+        // so null is never the final result when a non-null fallback is provided.
+        $leftType = trim(str_replace('| null', '', $leftType));
+        $leftType = trim(str_replace('null |', '', $leftType));
+
+        if ($leftType === 'unknown' || $leftType === '') {
+            return ['type' => $rightType, 'optional' => false];
+        }
+
+        if ($rightType === 'unknown') {
+            return ['type' => $leftType, 'optional' => false];
+        }
+
+        if ($leftType === $rightType) {
+            return ['type' => $leftType, 'optional' => false];
+        }
+
+        return ['type' => $leftType.' | '.$rightType, 'optional' => false];
+    }
+
+    /**
+     * Analyze a ternary or Elvis expression.
+     *
+     * Regular ternary (`$cond ? $if : $else`): both branches are analyzed and their
+     * types are merged with union semantics via analyzeClosureUnion. If one branch is
+     * a null literal, the resulting type string includes `| null` (e.g. `StatusType | null`).
+     *
+     * Elvis (`$cond ?: $else`, where `$if === null`): the truthy value is `$cond` itself,
+     * and `$else` is the non-null fallback. Both sides are analyzed and unioned.
+     *
+     * @return ValueExpressionResult
+     */
+    protected function analyzeTernary(Ternary $expr): array
+    {
+        // Elvis: $cond ?: $else — the truthy branch IS the condition expression
+        if ($expr->if === null) {
+            return $this->analyzeClosureUnion([$expr->cond, $expr->else]);
+        }
+
+        // Regular ternary: $cond ? $if : $else
+        return $this->analyzeClosureUnion([$expr->if, $expr->else]);
     }
 
     /**
@@ -688,9 +907,17 @@ class ResourceAstAnalyzer
         if (count($args) >= 2) {
             $valueExpr = $args[1]->value;
 
+            // When the condition contains $this->propName, bind the closure's first
+            // parameter to that expression so that `EnumResource::make($param)` and
+            // similar calls inside the closure can be resolved correctly.
+            $previousBindings = $this->closureParamExprBindings;
+            $this->bindClosureParamsFromCondition($args[0]->value, $valueExpr);
+
             // Resolve the type from the value expression
             $inner = $this->analyzeValueExpression($valueExpr);
             $inner['optional'] = true;
+
+            $this->closureParamExprBindings = $previousBindings;
 
             return $inner;
         }
@@ -724,18 +951,59 @@ class ResourceAstAnalyzer
     }
 
     /**
-     * Analyze $this->whenNotNull($this->value) — resolve the inner expression type.
+     * Analyze $this->whenNotNull($this->value, $callback) — resolve the callback expression type.
+     *
+     * whenNotNull passes the non-null value of $args[0] to the callback $args[1].
+     * We analyze the callback (args[1]) for the TypeScript type, and bind the
+     * closure param to the condition expression (args[0]) so inner calls resolve correctly.
      *
      * @return ValueExpressionResult
      */
     protected function analyzeWhenNotNull(MethodCall $call): array
     {
+        return $this->analyzeWhenPossiblyNull($call);
+    }
+
+    /**
+     * Analyze $this->whenNull($this->value, $callback) — resolve the callback expression type.
+     *
+     * whenNull passes null to the callback when the value is null. We analyze args[1] (the
+     * callback) for the TypeScript type. No closure param binding is needed because null
+     * is passed — there is no meaningful expression to bind the param to.
+     *
+     * @return ValueExpressionResult
+     */
+    protected function analyzeWhenNull(MethodCall $call): array
+    {
+        return $this->analyzeWhenPossiblyNull($call);
+    }
+
+    /**
+     * Analyze $this->whenNotNull(...) or $this->whenNull(...) — shared logic for analyzing the callback and binding the closure param.
+     *
+     * @return ValueExpressionResult
+     */
+    protected function analyzeWhenPossiblyNull(MethodCall $call): array
+    {
         $result = $this->unknownResult();
         $args = $call->getArgs();
 
-        if (count($args) >= 1) {
+        if (count($args) === 1) {
             $inner = $this->analyzeValueExpression($args[0]->value);
             $inner['optional'] = true;
+
+            return $inner;
+        }
+
+        if (count($args) >= 2) {
+            $valueExpr = $args[1]->value;
+            $previousBindings = $this->closureParamExprBindings;
+
+            $this->bindClosureParamsFromCondition($args[0]->value, $valueExpr);
+            $inner = $this->analyzeValueExpression($valueExpr);
+            $inner['optional'] = true;
+
+            $this->closureParamExprBindings = $previousBindings;
 
             return $inner;
         }
@@ -870,6 +1138,13 @@ class ResourceAstAnalyzer
             return $result; // @codeCoverageIgnore
         }
 
+        // Resolve `self` and `static` to the resource's own FQCN so that
+        // self::make(), self::collection(), and static::*() calls are treated
+        // identically to ClassName::make() / ClassName::collection() calls.
+        if ($className === 'self' || $className === 'static') {
+            $className = $this->resourceReflection->getName();
+        }
+
         // EnumResource::make($this->prop)
         if ($this->isEnumResourceClass($className) && $methodName === 'make') {
             return $this->analyzeEnumResourceMake($call);
@@ -921,6 +1196,12 @@ class ResourceAstAnalyzer
 
         $className = $expr->class->toString();
 
+        // Resolve `self` and `static` to the resource's own FQCN so that
+        // `new self(...)` is treated identically to `new ClassName(...)`.
+        if ($className === 'self' || $className === 'static') {
+            $className = $this->resourceReflection->getName();
+        }
+
         // new EnumResource($this->prop)
         if ($this->isEnumResourceClass($className)) {
             $args = $expr->getArgs();
@@ -971,7 +1252,12 @@ class ResourceAstAnalyzer
     }
 
     /**
-     * Resolve an enum type from a $this->property expression (shared by EnumResource::make and new EnumResource).
+     * Resolve an enum type from a property-fetch expression (shared by EnumResource::make and new EnumResource).
+     *
+     * Handles two forms:
+     * - `$this->property` — resolved against the resource's own backing model.
+     * - `$variable->property` — resolved against `$closureRelationModelClass` when inside a
+     *   whenLoaded() closure (e.g. `fn ($user) => EnumResource::make($user->role)`).
      *
      * @return ValueExpressionResult|null
      */
@@ -980,6 +1266,72 @@ class ResourceAstAnalyzer
         $result = $this->unknownResult();
 
         if (! $this->isThisPropertyFetch($argExpr)) {
+            // Handle bare $variable that is a closure parameter bound to $this->prop
+            // via a when() condition (e.g. `EnumResource::make($status)` where
+            // `$status` was bound to `$this->status` from the condition).
+            if ($argExpr instanceof Variable && is_string($argExpr->name)) {
+                $boundExpr = $this->closureParamExprBindings[$argExpr->name] ?? null;
+
+                if ($boundExpr !== null) {
+                    return $this->resolveEnumFromPropertyArg($boundExpr);
+                }
+            }
+
+            // Handle $variable->property inside a whenLoaded closure.
+            if (
+                $argExpr instanceof PropertyFetch
+                && $argExpr->var instanceof Variable
+                && $argExpr->name instanceof Identifier
+                && $this->closureRelationModelClass !== null
+            ) {
+                $propName = $argExpr->name->toString();
+                $tsInfo = resolve(ModelAttributeResolver::class)->resolveAttribute($this->closureRelationModelClass, $propName);
+
+                /** @var class-string|null $enumFqcn */
+                $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
+
+                if ($enumFqcn === null) {
+                    return null;
+                }
+
+                // Use toTsType on the enum FQCN directly so we get the
+                // pure enum TS type ('RoleType') without any nullable suffix that
+                // appendNullable may have appended based on the DB column definition.
+                $enumTsInfo = LaravelTsPublish::toTsType($enumFqcn);
+
+                return [
+                    ...$result,
+                    'type' => $enumTsInfo['type'],
+                    'enumFqcn' => $enumFqcn,
+                ];
+            }
+
+            // Handle $this->resource->property — semantically equivalent to $this->property.
+            // In a Laravel Resource, $this->resource is the underlying model instance,
+            // so `$this->resource->status` accesses the same attribute as `$this->status`.
+            // AST shape: PropertyFetch(var: PropertyFetch(var: Variable('this'), name: 'resource'), name: 'propName')
+            if (
+                $argExpr instanceof PropertyFetch
+                && $argExpr->var instanceof PropertyFetch
+                && $this->isThisPropertyFetch($argExpr->var)
+                && $argExpr->var->name instanceof Identifier
+                && $argExpr->var->name->toString() === 'resource'
+                && $argExpr->name instanceof Identifier
+            ) {
+                $propName = $argExpr->name->toString();
+                $info = $this->resolveModelAttributeTypeInfo($propName);
+
+                if ($info['enumFqcn'] === null) {
+                    return null;
+                }
+
+                return [
+                    ...$result,
+                    'type' => $info['type'],
+                    'enumFqcn' => $info['enumFqcn'],
+                ];
+            }
+
             return null;
         }
 
@@ -1082,6 +1434,10 @@ class ResourceAstAnalyzer
         $inlineEnumFqcns = [];
         /** @var InlineModelFqcnsMap $inlineModelFqcns */
         $inlineModelFqcns = [];
+        /** @var MultiEnumFqcnsMap $multiEnumResourceFqcns */
+        $multiEnumResourceFqcns = [];
+        /** @var InlineEnumFqcnsMap $inlineEnumResourceFqcns */
+        $inlineEnumResourceFqcns = [];
 
         foreach ($array->items as $item) {
             if ($item->key === null) {
@@ -1103,10 +1459,14 @@ class ResourceAstAnalyzer
                 'description' => '',
             ];
 
-            $this->dispatchFqcnResults($keyName, $result, $enumResources, $directEnumFqcns, $nestedResources, $modelFqcns);
+            $this->dispatchFqcnResults($keyName, $result, $enumResources, $directEnumFqcns, $nestedResources, $modelFqcns, $multiEnumResourceFqcns);
 
             foreach ($result['embeddedEnumFqcns'] ?? [] as $fqcn) {
                 $inlineEnumFqcns[$keyName][] = $fqcn;
+            }
+
+            foreach ($result['embeddedEnumResourceFqcns'] ?? [] as $fqcn) {
+                $inlineEnumResourceFqcns[$keyName][] = $fqcn;
             }
 
             foreach ($result['embeddedModelFqcns'] ?? [] as $fqcn) {
@@ -1122,6 +1482,8 @@ class ResourceAstAnalyzer
             modelFqcns: $modelFqcns,
             inlineEnumFqcns: $inlineEnumFqcns,
             inlineModelFqcns: $inlineModelFqcns,
+            multiEnumResourceFqcns: $multiEnumResourceFqcns,
+            inlineEnumResourceFqcns: $inlineEnumResourceFqcns,
         );
     }
 
@@ -1652,11 +2014,16 @@ class ResourceAstAnalyzer
         $inlineEnumFqcns = [];
         /** @var InlineModelFqcnsMap $inlineModelFqcns */
         $inlineModelFqcns = [];
+        /** @var MultiEnumFqcnsMap $multiEnumResourceFqcns */
+        $multiEnumResourceFqcns = [];
+        /** @var InlineEnumFqcnsMap $inlineEnumResourceFqcns */
+        $inlineEnumResourceFqcns = [];
 
         $this->collectVariableArrayAssignments(
             $stmts, $varName, false,
             $properties, $enumResources, $nestedResources,
-            $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns,
+            $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
+            $inlineEnumResourceFqcns,
         );
 
         return new ResourceAnalysis(
@@ -1668,6 +2035,8 @@ class ResourceAstAnalyzer
             modelFqcns: $modelFqcns,
             inlineEnumFqcns: $inlineEnumFqcns,
             inlineModelFqcns: $inlineModelFqcns,
+            multiEnumResourceFqcns: $multiEnumResourceFqcns,
+            inlineEnumResourceFqcns: $inlineEnumResourceFqcns,
         );
     }
 
@@ -1685,6 +2054,8 @@ class ResourceAstAnalyzer
      * @param  ImportMapType  $customImports
      * @param  InlineEnumFqcnsMap  $inlineEnumFqcns
      * @param  InlineModelFqcnsMap  $inlineModelFqcns
+     * @param  MultiEnumFqcnsMap  $multiEnumResourceFqcns
+     * @param  InlineEnumFqcnsMap  $inlineEnumResourceFqcns
      */
     protected function collectVariableArrayAssignments(
         array $stmts,
@@ -1698,6 +2069,8 @@ class ResourceAstAnalyzer
         array &$customImports,
         array &$inlineEnumFqcns,
         array &$inlineModelFqcns,
+        array &$multiEnumResourceFqcns = [],
+        array &$inlineEnumResourceFqcns = [],
     ): void {
         foreach ($stmts as $stmt) {
             if (! $stmt instanceof ExpressionStmt && ! $stmt instanceof If_
@@ -1725,7 +2098,8 @@ class ResourceAstAnalyzer
                 $this->syncAnalysisMaps(
                     $properties, $enumResources, $nestedResources,
                     $directEnumFqcns, $modelFqcns, $customImports,
-                    $baseAnalysis, $inlineEnumFqcns, $inlineModelFqcns,
+                    $baseAnalysis, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
+                    $inlineEnumResourceFqcns,
                 );
 
                 continue;
@@ -1773,12 +2147,17 @@ class ResourceAstAnalyzer
                     $nestedResources[$keyName],
                     $directEnumFqcns[$keyName],
                     $modelFqcns[$keyName],
+                    $multiEnumResourceFqcns[$keyName],
                 );
 
-                $this->dispatchFqcnResults($keyName, $result, $enumResources, $directEnumFqcns, $nestedResources, $modelFqcns);
+                $this->dispatchFqcnResults($keyName, $result, $enumResources, $directEnumFqcns, $nestedResources, $modelFqcns, $multiEnumResourceFqcns);
 
                 foreach ($result['embeddedEnumFqcns'] ?? [] as $fqcn) {
                     $inlineEnumFqcns[$keyName][] = $fqcn;
+                }
+
+                foreach ($result['embeddedEnumResourceFqcns'] ?? [] as $fqcn) {
+                    $inlineEnumResourceFqcns[$keyName][] = $fqcn;
                 }
 
                 foreach ($result['embeddedModelFqcns'] ?? [] as $fqcn) {
@@ -1793,14 +2172,16 @@ class ResourceAstAnalyzer
                 $this->collectVariableArrayAssignments(
                     $stmt->stmts, $varName, true,
                     $properties, $enumResources, $nestedResources,
-                    $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns,
+                    $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
+                    $inlineEnumResourceFqcns,
                 );
 
                 foreach ($stmt->elseifs as $elseif) {
                     $this->collectVariableArrayAssignments(
                         $elseif->stmts, $varName, true,
                         $properties, $enumResources, $nestedResources,
-                        $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns,
+                        $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
+                        $inlineEnumResourceFqcns,
                     );
                 }
 
@@ -1808,7 +2189,8 @@ class ResourceAstAnalyzer
                     $this->collectVariableArrayAssignments(
                         $stmt->else->stmts, $varName, true,
                         $properties, $enumResources, $nestedResources,
-                        $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns,
+                        $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
+                        $inlineEnumResourceFqcns,
                     );
                 }
             }
@@ -1819,7 +2201,8 @@ class ResourceAstAnalyzer
                 $this->collectVariableArrayAssignments(
                     $stmt->stmts, $varName, true,
                     $properties, $enumResources, $nestedResources,
-                    $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns,
+                    $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
+                    $inlineEnumResourceFqcns,
                 );
             }
         }
@@ -2136,6 +2519,7 @@ class ResourceAstAnalyzer
      * @param  ClassMapType  $directEnumFqcns
      * @param  ClassMapType  $nestedResources
      * @param  ClassMapType  $modelFqcns
+     * @param  MultiEnumFqcnsMap  $multiEnumResourceFqcns
      */
     protected function dispatchFqcnResults(
         string $keyName,
@@ -2144,6 +2528,7 @@ class ResourceAstAnalyzer
         array &$directEnumFqcns,
         array &$nestedResources,
         array &$modelFqcns,
+        array &$multiEnumResourceFqcns = [],
     ): void {
         if (isset($result['enumFqcn'])) {
             $enumResources[$keyName] = $result['enumFqcn'];
@@ -2151,6 +2536,10 @@ class ResourceAstAnalyzer
 
         if (isset($result['directEnumFqcn'])) {
             $directEnumFqcns[$keyName] = $result['directEnumFqcn'];
+        }
+
+        if (isset($result['multiEnumResourceFqcns'])) {
+            $multiEnumResourceFqcns[$keyName] = $result['multiEnumResourceFqcns'];
         }
 
         if (isset($result['resourceFqcn'])) {
@@ -2192,12 +2581,26 @@ class ResourceAstAnalyzer
             return ['type' => 'Record<string, unknown>', 'optional' => false];
         }
 
-        $parts = array_map(function (array $prop): string {
+        $useTolki = config()->boolean('ts-publish.enums.use_tolki_package');
+
+        $parts = array_map(function (array $prop) use ($analysis, $useTolki): string {
             $key = LaravelTsPublish::validJsObjectKey($prop['name']);
 
+            $type = $prop['type'];
+
+            // When Tolki is enabled, rewrite the type for EnumResource-wrapped properties
+            // to `AsEnum<typeof X>` to match the top-level enum resource transformer behaviour.
+            if ($useTolki && isset($analysis->enumResources[$prop['name']])) {
+                $fqcn = $analysis->enumResources[$prop['name']];
+                $tsInfo = LaravelTsPublish::toTsType($fqcn);
+                $constName = $tsInfo['enums'][0] ?? class_basename($fqcn);
+                $nullable = str_contains($type, 'null');
+                $type = 'AsEnum<typeof '.$constName.'>'.($nullable ? ' | null' : '');
+            }
+
             return $prop['optional']
-                ? "{$key}?: {$prop['type']}"
-                : "{$key}: {$prop['type']}";
+                ? "{$key}?: {$type}"
+                : "{$key}: {$type}";
         }, $analysis->properties);
 
         $result = ['type' => '{ '.implode('; ', $parts).' }', 'optional' => false];
@@ -2205,10 +2608,38 @@ class ResourceAstAnalyzer
         // Propagate import metadata from the inner analysis so that enum, model,
         // and resource FQCNs referenced inside the inline object reach the outer
         // ResourceAnalysis and generate the correct import statements.
-        $embeddedEnumFqcns = array_values(array_unique([
-            ...array_values($analysis->directEnumFqcns),
-            ...array_values($analysis->enumResources),
-        ]));
+
+        // When Tolki is enabled, enum resources need value imports (const), not type imports.
+        // Direct enum accesses always need type imports.
+        if ($useTolki) {
+            $nestedInlineEnumFqcns = $analysis->inlineEnumFqcns === []
+                 ? []
+                 : array_merge(...array_values($analysis->inlineEnumFqcns));
+
+            $embeddedEnumFqcns = array_values(array_unique([
+                ...array_values($analysis->directEnumFqcns),
+                // Propagate any deeply-nested direct enum FQCNs from sub-inline-arrays.
+                ...$nestedInlineEnumFqcns,
+            ]));
+
+            $enumResourceFqcns = array_values($analysis->enumResources);
+            // Propagate any deeply-nested enum resource FQCNs from sub-inline-arrays.
+            foreach ($analysis->inlineEnumResourceFqcns as $nestedFqcns) {
+                foreach ($nestedFqcns as $fqcn) {
+                    $enumResourceFqcns[] = $fqcn;
+                }
+            }
+            $embeddedEnumResourceFqcns = array_values(array_unique($enumResourceFqcns));
+        } else {
+            // Tolki OFF: all enum FQCNs (both direct and EnumResource) need type imports.
+            $embeddedEnumFqcns = array_values(array_unique([
+                ...array_values($analysis->directEnumFqcns),
+                ...array_values($analysis->enumResources),
+                ...array_merge(...array_values($analysis->inlineEnumFqcns)),
+                ...array_merge(...array_values($analysis->inlineEnumResourceFqcns)),
+            ]));
+            $embeddedEnumResourceFqcns = [];
+        }
 
         $embeddedModelFqcns = array_values(array_unique(
             array_values($analysis->modelFqcns),
@@ -2216,6 +2647,10 @@ class ResourceAstAnalyzer
 
         if ($embeddedEnumFqcns !== []) {
             $result['embeddedEnumFqcns'] = $embeddedEnumFqcns;
+        }
+
+        if ($embeddedEnumResourceFqcns !== []) {
+            $result['embeddedEnumResourceFqcns'] = $embeddedEnumResourceFqcns;
         }
 
         if ($embeddedModelFqcns !== []) {
@@ -2597,6 +3032,8 @@ class ResourceAstAnalyzer
         $directEnumFqcns = [];
         $modelFqcns = [];
         $customImports = [];
+        /** @var MultiEnumFqcnsMap $multiEnumResourceFqcns */
+        $multiEnumResourceFqcns = [];
 
         foreach ($analyses as $analysis) {
             foreach ($analysis->properties as $prop) {
@@ -2607,6 +3044,7 @@ class ResourceAstAnalyzer
             $nestedResources = [...$nestedResources, ...$analysis->nestedResources];
             $directEnumFqcns = [...$directEnumFqcns, ...$analysis->directEnumFqcns];
             $modelFqcns = [...$modelFqcns, ...$analysis->modelFqcns];
+            $multiEnumResourceFqcns = [...$multiEnumResourceFqcns, ...$analysis->multiEnumResourceFqcns];
 
             foreach ($analysis->customImports as $path => $names) { // @codeCoverageIgnoreStart
                 $customImports[$path] = array_values(array_unique([
@@ -2656,6 +3094,7 @@ class ResourceAstAnalyzer
             customImports: $customImports,
             directEnumFqcns: $directEnumFqcns,
             modelFqcns: $modelFqcns,
+            multiEnumResourceFqcns: $multiEnumResourceFqcns,
         );
     }
 
@@ -2781,7 +3220,11 @@ class ResourceAstAnalyzer
     {
         /** @var list<string> $types */
         $types = [];
-        /** @var list<class-string> $embeddedEnumFqcns */
+        /** @var list<class-string> $enumResourceFqcns FQCNs from EnumResource::make() / new EnumResource() branches */
+        $enumResourceFqcns = [];
+        /** @var list<class-string> $enumDirectFqcns FQCNs from direct $this->prop enum-access branches */
+        $enumDirectFqcns = [];
+        /** @var list<class-string> $embeddedEnumFqcns FQCNs embedded inside nested inline-object types */
         $embeddedEnumFqcns = [];
         /** @var list<class-string> $embeddedModelFqcns */
         $embeddedModelFqcns = [];
@@ -2790,7 +3233,11 @@ class ResourceAstAnalyzer
         $hasNull = false;
 
         foreach ($returns as $returnExpr) {
-            // Null literal → contributes `null` to the union
+            // Guard-clause null (e.g. `return null;` at the top level of a closure branch)
+            // is intercepted here before reaching analyzeValueExpression, so the standalone
+            // `null` union member is tracked separately from object-shape branches. Null that
+            // appears as an *array value* (e.g. `return ['key' => null]`) is handled inside
+            // analyzeValueExpression via the ConstFetch 'null' branch and never reaches here.
             if ($returnExpr instanceof ConstFetch
                 && $returnExpr->name->toLowerString() === 'null') {
                 $hasNull = true;
@@ -2807,13 +3254,14 @@ class ResourceAstAnalyzer
             // Collect the type string
             $types[] = $inner['type'];
 
-            // Merge import metadata
-            if (isset($inner['enumFqcn'])) { // @codeCoverageIgnoreStart
-                $embeddedEnumFqcns[] = $inner['enumFqcn'];
-            } // @codeCoverageIgnoreEnd
+            // Merge import metadata — track EnumResource branches separately from direct-access
+            // branches so the result can propagate the correct FQCN metadata.
+            if (isset($inner['enumFqcn'])) {
+                $enumResourceFqcns[] = $inner['enumFqcn'];
+            }
 
             if (isset($inner['directEnumFqcn'])) {
-                $embeddedEnumFqcns[] = $inner['directEnumFqcn'];
+                $enumDirectFqcns[] = $inner['directEnumFqcn'];
             }
 
             if (isset($inner['embeddedEnumFqcns'])) {
@@ -2844,15 +3292,76 @@ class ResourceAstAnalyzer
         // Deduplicate types while preserving order
         $types = array_values(array_unique($types));
 
+        // Remove a standalone 'null' entry when another type already contains null
+        // as a top-level union member (e.g. 'number | null' from a nullable column).
+        // This prevents 'number | null | null' when a nullable property is one branch
+        // of a ternary and a null literal is the other branch.
+        // Heuristic: split each type string by ' | ' and check if 'null' appears as an
+        // exact token — this is safe for inline object types because the trailing `}`
+        // prevents 'null }' from matching 'null'.
+        $explicitNullIndex = array_search('null', $types, true);
+
+        if ($explicitNullIndex !== false && count($types) > 1) {
+            $otherTypes = array_values(array_filter($types, fn (string $t): bool => $t !== 'null'));
+            $alreadyHasNull = false;
+
+            foreach ($otherTypes as $t) {
+                if (in_array('null', explode(' | ', $t), true)) {
+                    $alreadyHasNull = true;
+
+                    break;
+                }
+            }
+
+            if ($alreadyHasNull) {
+                unset($types[$explicitNullIndex]);
+                $types = array_values($types);
+            }
+        }
+
         if ($types === []) {
             return $this->unknownResult(); // @codeCoverageIgnore
         }
 
         $result = ['type' => implode(' | ', $types), 'optional' => false];
 
+        $enumResourceFqcns = array_values(array_unique($enumResourceFqcns));
+        $enumDirectFqcns = array_values(array_unique($enumDirectFqcns));
         $embeddedEnumFqcns = array_values(array_unique($embeddedEnumFqcns));
         $embeddedModelFqcns = array_values(array_unique($embeddedModelFqcns));
         $embeddedResourceFqcns = array_values(array_unique($embeddedResourceFqcns));
+
+        // Determine how to propagate enum FQCN metadata based on which branch sources are present.
+        // - Pure EnumResource branches (single FQCN): propagate `enumFqcn` so the transformer
+        //   rewrites the type to AsEnum<typeof X> when the tolki package is enabled.
+        // - Mixed branches (same FQCN from both EnumResource and direct access): propagate both
+        //   `enumFqcn` and `directEnumFqcn` so the transformer produces AsEnum<typeof X> | XType.
+        // - Multiple different FQCNs or other complex combinations: fall back to embedded imports.
+        if ($enumResourceFqcns !== []) {
+            $allBranchFqcns = array_values(array_unique([...$enumResourceFqcns, ...$enumDirectFqcns]));
+
+            if ($enumDirectFqcns === [] && count($enumResourceFqcns) === 1) {
+                // Pure EnumResource, single FQCN.
+                $result['enumFqcn'] = $enumResourceFqcns[0];
+            } elseif ($enumDirectFqcns !== [] && count($allBranchFqcns) === 1) {
+                // Mixed: same FQCN via EnumResource and via direct access.
+                $result['enumFqcn'] = $allBranchFqcns[0];
+                $result['directEnumFqcn'] = $allBranchFqcns[0];
+            } elseif ($enumDirectFqcns === []
+                && count($enumResourceFqcns) > 1
+                && count($enumResourceFqcns) === count($types)
+            ) {
+                // All non-null branches are EnumResource with different FQCNs.
+                // Emit ordered list so the transformer can do per-token AsEnum rewrite.
+                $result['multiEnumResourceFqcns'] = $enumResourceFqcns;
+            } else {
+                // Multiple different FQCNs or complex mixed branches: fall back to embedded imports.
+                $embeddedEnumFqcns = array_values(array_unique([...$allBranchFqcns, ...$embeddedEnumFqcns]));
+            }
+        } elseif ($enumDirectFqcns !== []) {
+            // Only direct-access enum branches: existing embedded behaviour.
+            $embeddedEnumFqcns = array_values(array_unique([...$enumDirectFqcns, ...$embeddedEnumFqcns]));
+        }
 
         if ($embeddedEnumFqcns !== []) {
             $result['embeddedEnumFqcns'] = $embeddedEnumFqcns;
@@ -2867,6 +3376,189 @@ class ResourceAstAnalyzer
         }
 
         return $result;
+    }
+
+    /**
+     * Analyze a `$variable->map(fn (TypedClass $item) => [...])` call by resolving the
+     * inner closure's typed first parameter class, then analyzing the closure body.
+     *
+     * When the inner closure has a typed first parameter (e.g. `fn (OrderItem $item) => [...]`),
+     * its FQCN (already resolved by NameResolver) is temporarily set as the closure relation
+     * model class, and the closure body is analyzed against that class. The result is wrapped
+     * as `elementType[]`.
+     *
+     * Returns null when the inner closure has no typed class parameter, the class is not a
+     * Model subclass, or the body analysis resolves to unknown — allowing the caller to fall
+     * through to the generic method handler.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function analyzeVariableMapCall(MethodCall $call): ?array
+    {
+        $args = $call->getArgs();
+
+        if ($args === []) {
+            return null;
+        }
+
+        $closureArg = $args[0]->value;
+
+        if ($closureArg instanceof ArrowFunction) {
+            $params = $closureArg->params;
+        } elseif ($closureArg instanceof ClosureExpr) {
+            $params = $closureArg->params;
+        } else {
+            return null;
+        }
+
+        if ($params === []) {
+            return null;
+        }
+
+        $firstParam = $params[0];
+
+        // Require a named class type hint (already FQCN-resolved by NameResolver)
+        if (! ($firstParam->type instanceof Name)) {
+            return null;
+        }
+
+        $paramClass = $firstParam->type->toString();
+
+        if (! class_exists($paramClass) || ! is_a($paramClass, Model::class, true)) {
+            return null;
+        }
+
+        /** @var class-string<Model> $paramClass */
+        $previousRelationModel = $this->closureRelationModelClass;
+        $this->closureRelationModelClass = $paramClass;
+
+        $returnExprs = $this->resolveClosureReturnExpressions($closureArg);
+
+        $bodyResult = match (count($returnExprs)) {
+            0 => null,
+            1 => $this->analyzeValueExpression($returnExprs[0]),
+            default => $this->analyzeClosureUnion($returnExprs),
+        };
+
+        $this->closureRelationModelClass = $previousRelationModel;
+
+        if ($bodyResult === null || $bodyResult['type'] === 'unknown') {
+            return null;
+        }
+
+        $bodyResult['type'] = $bodyResult['type'].'[]';
+        $bodyResult['optional'] = false;
+
+        return $bodyResult;
+    }
+
+    /**
+     * Analyze a `$variable->pluck('field')` call within a whenLoaded closure context.
+     *
+     * Resolves the named field's TypeScript type from the related model class and returns
+     * it as an array type. Returns `unknown[]` when the field type cannot be determined,
+     * which satisfies callers that only need a non-`unknown` result.
+     *
+     * @return ValueExpressionResult
+     */
+    private function analyzeVariablePluckCall(MethodCall $call): array
+    {
+        $args = $call->getArgs();
+
+        if (count($args) >= 1 && $args[0]->value instanceof String_) {
+            $fieldName = $args[0]->value->value;
+            $info = $this->analyzeRelatedModelProperty($fieldName);
+
+            if ($info['type'] !== 'unknown') {
+                $info['type'] = $info['type'].'[]';
+                $info['optional'] = false;
+
+                return $info;
+            }
+        }
+
+        return ['type' => 'unknown[]', 'optional' => false];
+    }
+
+    /**
+     * When a `when()` condition contains a `$this->propName` expression, bind the first
+     * parameter of the closure/arrow-function value to that PropertyFetch expression.
+     *
+     * This allows expressions like `EnumResource::make($status)` inside a closure passed
+     * to `$this->when($this->status !== null, function ($status) { ... })` to be resolved
+     * as if they were `EnumResource::make($this->status)`.
+     */
+    private function bindClosureParamsFromCondition(Expr $condition, Expr $valueExpr): void
+    {
+        $thisPropExpr = $this->extractThisPropertyFromCondition($condition);
+
+        if ($thisPropExpr === null) {
+            return;
+        }
+
+        $firstParam = null;
+
+        if ($valueExpr instanceof ArrowFunction && $valueExpr->params !== []) {
+            $firstParam = $valueExpr->params[0];
+        } elseif ($valueExpr instanceof ClosureExpr && $valueExpr->params !== []) {
+            $firstParam = $valueExpr->params[0];
+        }
+
+        if ($firstParam === null) {
+            return;
+        }
+
+        if ($firstParam->var instanceof Variable && is_string($firstParam->var->name)) {
+            $this->closureParamExprBindings[$firstParam->var->name] = $thisPropExpr;
+        }
+    }
+
+    /**
+     * Extract a `$this->propName` PropertyFetch expression from a boolean condition.
+     *
+     * Handles the following patterns:
+     * - `$this->prop` — bare property access used as a truthy condition.
+     * - `$this->prop !== null` / `null !== $this->prop`
+     * - `$this->prop === null` / `null === $this->prop`
+     */
+    private function extractThisPropertyFromCondition(Expr $condition): ?Expr
+    {
+        // bare $this->propName
+        if ($this->isThisPropertyFetch($condition)) {
+            return $condition;
+        }
+
+        // $this->propName !== null  or  null !== $this->propName
+        if ($condition instanceof BinaryOp\NotIdentical) {
+            if ($this->isThisPropertyFetch($condition->left) && $this->isNullConstFetch($condition->right)) {
+                return $condition->left;
+            }
+
+            if ($this->isThisPropertyFetch($condition->right) && $this->isNullConstFetch($condition->left)) {
+                return $condition->right;
+            }
+        }
+
+        // $this->propName === null  or  null === $this->propName
+        if ($condition instanceof BinaryOp\Identical) {
+            if ($this->isThisPropertyFetch($condition->left) && $this->isNullConstFetch($condition->right)) {
+                return $condition->left;
+            }
+
+            if ($this->isThisPropertyFetch($condition->right) && $this->isNullConstFetch($condition->left)) {
+                return $condition->right;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Return true when the expression is a `null` constant fetch.
+     */
+    private function isNullConstFetch(Expr $expr): bool
+    {
+        return $expr instanceof ConstFetch && strtolower($expr->name->toString()) === 'null';
     }
 
     /**

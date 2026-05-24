@@ -48,9 +48,9 @@ class CommentResource extends JsonResource
             'post_resource_author' => $this->whenLoaded('post', fn () => $this->resource->post->author?->name), // Same as post_author but accessed via $this->resource
             'user_name' => $this->whenLoaded('user', fn (): ?string => $this->user->name),
             'user_email' => $this->whenLoaded('user', fn (): ?string => $this->resource->user->email), // non-nullsafe chain traversal test — 3-deep chain resolved via analyzePropertyChain; body wins over ?string annotation → string
-            'user_email_annotated' => $this->whenLoaded('user', fn (): ?string => strtolower((string) $this->user->email)), // annotation fallback test — FuncCall body is unresolvable, so ?string annotation kicks in → string|null
-            'unresolvable_status' => $this->whenLoaded('user', fn () => strtolower((string) $this->user->email)), // no annotation, FuncCall body unresolvable → unknown
-            'resolvable_status' => $this->whenLoaded('user', fn (): Status => strtolower((string) $this->user->email)), // annotation fallback test — FuncCall body unresolvable, Status annotation resolves to StatusType with FQCN
+            'user_email_annotated' => $this->whenLoaded('user', fn (): ?string => json_decode($this->user->email)), // annotation fallback test — json_decode() returns mixed (resolves to unknown) so the body stays unknown; ?string annotation kicks in → string|null
+            'unresolvable_status' => $this->whenLoaded('user', fn () => json_decode($this->user->email)), // no annotation, body unresolvable (json_decode returns mixed → unknown) → unknown
+            'resolvable_status' => $this->whenLoaded('user', fn (): Status => json_decode($this->user->email)), // annotation fallback test — body unresolvable (json_decode returns mixed → unknown); Status annotation resolves to StatusType with FQCN
             'user_name_nullable' => $this->whenLoaded('user', fn (): ?string => $this->user?->name),
             'user_email_nullable' => $this->whenLoaded('user', fn (): ?string => $this->resource->user?->email),
             'user_role' => $this->user?->role,

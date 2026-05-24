@@ -1,7 +1,8 @@
 import type { SharedModelInterface } from '@/types/shared-model';
 
 /**
- * Child model that uses SharedExtendsTrait directly AND extends a parent that also uses it. SharedModelInterface should appear only once despite being reachable via two paths.
+ * Child model that uses SharedExtendsTrait directly AND extends a parent that also uses it.
+ * SharedModelInterface should appear only once despite being reachable via two paths.
  *
  * @see Workbench\App\Models\ChildSharedExtendableModel
  */

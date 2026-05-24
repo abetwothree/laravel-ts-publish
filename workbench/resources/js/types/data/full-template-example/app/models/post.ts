@@ -4,9 +4,7 @@ import { Priority, Status, Visibility } from '../enums';
 import type { PriorityType, StatusType, VisibilityType } from '../enums';
 import type { Category, Comment, Image, Tag, User } from '.';
 
-/**
- * @see Workbench\App\Models\Post
- */
+/** @see Workbench\App\Models\Post */
 export interface Post
 {
     // Columns

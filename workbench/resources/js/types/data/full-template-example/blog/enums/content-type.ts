@@ -1,8 +1,6 @@
 import { defineEnum } from '@tolki/ts';
 
-/**
- * @see Workbench\Blog\Enums\ContentType
- */
+/** @see Workbench\Blog\Enums\ContentType */
 export const ContentType = defineEnum({
     Post: 'post',
     Tutorial: 'tutorial',

@@ -11,13 +11,13 @@ export interface ExtendedAddressResource
     computed: string;
     date_val: string;
     custom_val: CustomObject;
-    plain: unknown;
-    basic: unknown;
+    plain: string;
+    basic: string;
     firstName: string;
     lastName: string;
     isActive: boolean;
     location: GeoPoint;
     flag?: string | null;
     extra: Record<string, unknown>;
-    extra_field: unknown;
+    extra_field: string;
 }

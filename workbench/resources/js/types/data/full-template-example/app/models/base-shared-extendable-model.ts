@@ -1,8 +1,6 @@
 import type { SharedModelInterface } from '@/types/shared-model';
 
-/**
- * @see Workbench\App\Models\BaseSharedExtendableModel
- */
+/** @see Workbench\App\Models\BaseSharedExtendableModel */
 export interface BaseSharedExtendableModel extends SharedModelInterface
 {
     // Columns

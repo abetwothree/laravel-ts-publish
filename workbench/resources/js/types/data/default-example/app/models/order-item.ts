@@ -1,8 +1,6 @@
 import type { Order, Product } from '.';
 
-/**
- * @see Workbench\App\Models\OrderItem
- */
+/** @see Workbench\App\Models\OrderItem */
 export interface OrderItem
 {
     id: number;

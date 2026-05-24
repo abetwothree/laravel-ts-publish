@@ -1,8 +1,6 @@
 import { defineEnum } from '@tolki/ts';
 
-/**
- * @see Workbench\Crm\Enums\Status
- */
+/** @see Workbench\Crm\Enums\Status */
 export const Status = defineEnum({
     Lead: 'lead',
     Prospect: 'prospect',

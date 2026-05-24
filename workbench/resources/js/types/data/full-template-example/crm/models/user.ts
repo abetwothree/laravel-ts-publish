@@ -4,9 +4,7 @@ import { Status } from '../enums';
 import type { Image } from '../../app/models';
 import type { StatusType } from '../enums';
 
-/**
- * @see Workbench\Crm\Models\User
- */
+/** @see Workbench\Crm\Models\User */
 export interface User
 {
     // Columns

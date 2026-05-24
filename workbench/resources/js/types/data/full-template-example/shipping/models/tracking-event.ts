@@ -1,8 +1,6 @@
 import type { Shipment } from '.';
 
-/**
- * @see Workbench\Shipping\Models\TrackingEvent
- */
+/** @see Workbench\Shipping\Models\TrackingEvent */
 export interface TrackingEvent
 {
     // Columns

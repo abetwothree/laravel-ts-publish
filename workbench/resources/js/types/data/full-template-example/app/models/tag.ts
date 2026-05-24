@@ -1,8 +1,6 @@
 import type { Post, Product } from '.';
 
-/**
- * @see Workbench\App\Models\Tag
- */
+/** @see Workbench\App\Models\Tag */
 export interface Tag
 {
     // Columns

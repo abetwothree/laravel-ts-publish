@@ -5,9 +5,7 @@ import type { User } from '../../app/models';
 import type { ArticleStatusType, ContentTypeType } from '../enums';
 import type { Reaction } from '.';
 
-/**
- * @see Workbench\Blog\Models\Article
- */
+/** @see Workbench\Blog\Models\Article */
 export interface Article
 {
     id: number;

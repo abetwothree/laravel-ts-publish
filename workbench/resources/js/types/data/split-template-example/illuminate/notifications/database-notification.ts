@@ -1,8 +1,6 @@
 import type { User } from '../../app/models';
 
-/**
- * @see Illuminate\Notifications\DatabaseNotification
- */
+/** @see Illuminate\Notifications\DatabaseNotification */
 export interface DatabaseNotification
 {
     id: string;

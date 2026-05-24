@@ -5,9 +5,7 @@ import type { User } from '../../app/models';
 import type { InvoiceStatusType } from '../enums';
 import type { Payment } from '.';
 
-/**
- * @see Workbench\Accounting\Models\Invoice
- */
+/** @see Workbench\Accounting\Models\Invoice */
 export interface Invoice
 {
     // Columns

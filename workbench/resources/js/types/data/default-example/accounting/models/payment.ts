@@ -6,9 +6,7 @@ import type { CurrencyType, PaymentMethodType } from '../../app/enums';
 import type { DueAtNoticeType, PaymentStatusType } from '../enums';
 import type { Invoice } from '.';
 
-/**
- * @see Workbench\Accounting\Models\Payment
- */
+/** @see Workbench\Accounting\Models\Payment */
 export interface Payment
 {
     id: number;

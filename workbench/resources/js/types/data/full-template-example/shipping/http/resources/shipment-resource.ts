@@ -5,7 +5,9 @@ import type { Order } from '../../../app/models';
 import type { TrackingEventResource } from '.';
 
 /**
- * Exercises: EnumResource::make on two enums (Carrier, Status), when, whenNotNull, whenLoaded bare cross-module (App\Order), Resource::collection, whenCounted, whenAggregated, mergeWhen with complex expression.
+ * Exercises: EnumResource::make on two enums (Carrier, Status), when, whenNotNull,
+ * whenLoaded bare cross-module (App\Order), Resource::collection,
+ * whenCounted, whenAggregated, mergeWhen with complex expression.
  *
  * @see Workbench\Shipping\Http\Resources\ShipmentResource
  */

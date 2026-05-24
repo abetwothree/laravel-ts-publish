@@ -37,5 +37,5 @@ export interface SpreadJsonBaseResource
     ownedTeams: Team[];
     images: Image[];
     notifications: DatabaseNotification[];
-    full_name: unknown;
+    full_name: string;
 }

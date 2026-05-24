@@ -1,8 +1,6 @@
 import type { ParentModelInterface } from '@/types/model-parent';
 
-/**
- * @see Workbench\App\Models\ModelWithParentExtends
- */
+/** @see Workbench\App\Models\ModelWithParentExtends */
 export interface ModelWithParentExtends extends ParentModelInterface
 {
     // Columns

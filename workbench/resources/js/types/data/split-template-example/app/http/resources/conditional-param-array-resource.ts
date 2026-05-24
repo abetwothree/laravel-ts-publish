@@ -1,0 +1,17 @@
+/**
+ * Exercises issue #38: closure parameter passed by the conditional method.
+ * Each field uses a single-param arrow function that returns an inline array literal.
+ *
+ * The bug: the analyzer resolves the return type as `unknown` instead of
+ * inferring the array shape `{ id: number; email: string; name: string }`.
+ *
+ * @see Workbench\App\Http\Resources\ConditionalParamArrayResource
+ */
+export interface ConditionalParamArrayResource
+{
+    id: number;
+    user_summary?: { id: number; email: string; name: string };
+    notes_or_default?: string;
+    user_meta?: { profile: { name: string; email: string }; verified: boolean };
+    notes_when_null?: string;
+}

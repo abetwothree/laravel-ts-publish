@@ -4,9 +4,7 @@ import { Currency, OrderStatus, PaymentMethod } from '../enums';
 import type { CurrencyType, OrderStatusType, PaymentMethodType } from '../enums';
 import type { OrderItem, User } from '.';
 
-/**
- * @see Workbench\App\Models\Order
- */
+/** @see Workbench\App\Models\Order */
 export interface Order
 {
     // Columns

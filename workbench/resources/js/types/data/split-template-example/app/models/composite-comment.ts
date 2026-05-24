@@ -1,6 +1,4 @@
-/**
- * @see Workbench\App\Models\CompositeComment
- */
+/** @see Workbench\App\Models\CompositeComment */
 export interface CompositeComment
 {
     id: number;

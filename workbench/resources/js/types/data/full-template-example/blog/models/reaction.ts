@@ -1,9 +1,7 @@
 import type { User } from '../../app/models';
 import type { Article } from '.';
 
-/**
- * @see Workbench\Blog\Models\Reaction
- */
+/** @see Workbench\Blog\Models\Reaction */
 export interface Reaction
 {
     // Columns

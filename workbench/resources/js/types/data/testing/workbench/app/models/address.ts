@@ -1,8 +1,6 @@
 import type { User } from '.';
 
-/**
- * @see Workbench\App\Models\Address
- */
+/** @see Workbench\App\Models\Address */
 export interface Address
 {
     id: number;

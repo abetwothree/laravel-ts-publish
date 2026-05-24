@@ -1,5 +1,6 @@
 /**
- * Exercises resolveClosureReturnExpression with a Closure passed to merge(). The closure has a guard clause followed by the real array return.
+ * Exercises resolveClosureReturnExpression with a Closure passed to merge().
+ * The closure has a guard clause followed by the real array return.
  *
  * @see Workbench\App\Http\Resources\MergeClosureResource
  */

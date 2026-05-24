@@ -6,9 +6,7 @@ import type { User as CrmUser } from '../../crm/models';
 import type { StatusType } from '../enums';
 import type { Post, Product, User as AppUser } from '.';
 
-/**
- * @see Workbench\App\Models\Image
- */
+/** @see Workbench\App\Models\Image */
 export interface Image
 {
     // Columns

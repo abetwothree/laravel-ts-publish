@@ -1,16 +1,14 @@
 import type { GeoPoint } from '@/types/geo';
 
-/**
- * @see Workbench\App\Http\Resources\TraitSpreadCoverageResource
- */
+/** @see Workbench\App\Http\Resources\TraitSpreadCoverageResource */
 export interface TraitSpreadCoverageResource
 {
     id: number;
     computed: string;
     date_val: string;
     custom_val: CustomObject;
-    plain: unknown;
-    basic: unknown;
+    plain: string;
+    basic: string;
     firstName: string;
     lastName: string;
     isActive: boolean;

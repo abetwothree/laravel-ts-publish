@@ -1,7 +1,8 @@
 import { defineEnum } from '@tolki/ts';
 
 /**
- * Pure unit enum (no backing type) — tests that the publisher handles unit enums where case names become the values in TypeScript.
+ * Pure unit enum (no backing type) — tests that the publisher handles unit enums
+ * where case names become the values in TypeScript.
  *
  * @see Workbench\App\Enums\Visibility
  */

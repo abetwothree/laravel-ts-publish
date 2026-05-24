@@ -1,8 +1,6 @@
 import type { OrderResource } from '.';
 
-/**
- * @see Workbench\App\Http\Resources\OrderCollection
- */
+/** @see Workbench\App\Http\Resources\OrderCollection */
 export interface OrderCollection
 {
     data: OrderResource[];

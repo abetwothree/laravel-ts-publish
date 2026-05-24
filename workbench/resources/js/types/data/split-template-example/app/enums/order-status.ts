@@ -1,7 +1,8 @@
 import { defineEnum } from '@tolki/ts';
 
 /**
- * Int-backed enum with TsCase descriptions, instance methods, and static methods. Exercises the full attribute surface area in combination.
+ * Int-backed enum with TsCase descriptions, instance methods, and static methods.
+ * Exercises the full attribute surface area in combination.
  *
  * @see Workbench\App\Enums\OrderStatus
  */

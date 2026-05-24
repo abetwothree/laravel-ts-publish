@@ -2,7 +2,8 @@ import type { User } from '../../../app/models';
 import type { Article } from '../../models';
 
 /**
- * Exercises: multiple whenLoaded bare — both same-module (Article) and cross-module (App\User) model type resolution.
+ * Exercises: multiple whenLoaded bare — both same-module (Article)
+ * and cross-module (App\User) model type resolution.
  *
  * @see Workbench\Blog\Http\Resources\ReactionResource
  */

@@ -23,6 +23,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * @phpstan-type ImportMapType = TypesImportMap
  * @phpstan-type InlineEnumFqcnsMap = array<string, list<class-string>>
  * @phpstan-type InlineModelFqcnsMap = array<string, list<class-string>>
+ * @phpstan-type MultiEnumFqcnsMap = array<string, list<class-string>>
  */
 class ResourceAnalysis
 {
@@ -35,6 +36,8 @@ class ResourceAnalysis
      * @param  ClassMapType  $modelFqcns  property name => model FQCN (from bare whenLoaded)
      * @param  InlineEnumFqcnsMap  $inlineEnumFqcns  property name => list of enum FQCNs embedded in inline object type strings
      * @param  InlineModelFqcnsMap  $inlineModelFqcns  property name => list of model FQCNs embedded in inline object type strings
+     * @param  MultiEnumFqcnsMap  $multiEnumResourceFqcns  property name => ordered list of enum FQCNs (for multi-EnumResource ternary/union branches, used for AsEnum rewrite)
+     * @param  InlineEnumFqcnsMap  $inlineEnumResourceFqcns  property name => list of enum FQCNs embedded via EnumResource in inline object type strings (used for value imports)
      * @param  string|null  $flatTypeAlias  when set, the collection emits `export type X = SingularResource[]` instead of an interface
      * @param  class-string<JsonResource>|null  $flatTypeAliasFqcn  FQCN of the singular resource for the flat type alias
      */
@@ -47,6 +50,8 @@ class ResourceAnalysis
         public array $modelFqcns = [],
         public array $inlineEnumFqcns = [],
         public array $inlineModelFqcns = [],
+        public array $multiEnumResourceFqcns = [],
+        public array $inlineEnumResourceFqcns = [],
         public ?string $flatTypeAlias = null,
         public ?string $flatTypeAliasFqcn = null,
     ) {}
