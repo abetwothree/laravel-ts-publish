@@ -305,9 +305,10 @@ class InertiaPageAnalyzer
      * Rewrite paginator generic types in the type string based on the paginator-model map.
      *
      * For each entry in `$paginatorModelMap`, searches the type string for
-     * `propKey: PaginatorFqcn<unknown>` (using dot-notation) and replaces `<unknown>`
-     * with the model's dot-notation class name. The model FQCN is appended to `$fqcns`
-     * so the existing import pipeline resolves it to a relative import path.
+     * `propKey: PaginatorFqcn<...>` (using dot-notation, matching any generic suffix)
+     * and replaces the generic with the model's dot-notation class name. The model FQCN
+     * is appended to `$fqcns` so the existing import pipeline resolves it to a relative
+     * import path.
      *
      * @param  list<class-string>  $fqcns
      * @param  array<string, class-string>  $paginatorModelMap  prop key => model FQCN
@@ -327,11 +328,11 @@ class InertiaPageAnalyzer
 
             foreach (array_keys(SurveyorTypeMapper::TOLKI_TYPES_MAP) as $paginatorFqcn) {
                 $paginatorDot = str_replace('\\', '.', $paginatorFqcn);
-                $search = $propKey.': '.$paginatorDot.'<unknown>';
-                $replace = $propKey.': '.$paginatorDot.'<'.$modelDotNotation.'>';
+                $pattern = '/'.preg_quote($propKey, '/').':\s+'.preg_quote($paginatorDot, '/').'<[^>]*>/';
+                $replacement = $propKey.': '.$paginatorDot.'<'.$modelDotNotation.'>';
 
-                if (str_contains($typeString, $search)) {
-                    $typeString = str_replace($search, $replace, $typeString);
+                if (preg_match($pattern, $typeString)) {
+                    $typeString = (string) preg_replace($pattern, $replacement, $typeString);
 
                     if (! in_array($modelFqcn, $fqcns, true)) {
                         $fqcns[] = $modelFqcn;

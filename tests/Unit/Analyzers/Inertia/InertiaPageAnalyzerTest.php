@@ -6,9 +6,11 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use Laravel\Ranger\Collectors\Response as ResponseCollector;
 use Laravel\Ranger\Components\JsonResponse;
 use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
+use Workbench\App\Http\Controllers\InertiaPaginationsController;
 use Workbench\App\Http\Controllers\InertiaResourceSharedTemplate;
 use Workbench\App\Http\Controllers\InertiaSingleResourceController;
 use Workbench\App\Http\Controllers\InertiaTsCastsController;
+use Workbench\App\Http\Controllers\PostInertiaController;
 use Workbench\App\Http\Resources\PostCollection;
 use Workbench\App\Http\Resources\PostFlatCollection;
 use Workbench\App\Http\Resources\PostResource;
@@ -384,6 +386,32 @@ test('rewritePaginatorGenerics skips prop key not found in type string', functio
         ->and($resultFqcns)->not->toContain($modelFqcn);
 });
 
+test('rewritePaginatorGenerics replaces non-unknown generic with model dot-notation for LengthAwarePaginator', function () {
+    $mock = Mockery::mock(ResponseCollector::class);
+
+    $analyzer = new class($mock) extends InertiaPageAnalyzer
+    {
+        /**
+         * @param  list<class-string>  $fqcns
+         * @param  array<string, class-string>  $paginatorModelMap
+         * @return array{string, list<class-string>}
+         */
+        public function expose(string $typeString, array $fqcns, array $paginatorModelMap): array
+        {
+            return $this->rewritePaginatorGenerics($typeString, $fqcns, $paginatorModelMap);
+        }
+    };
+
+    $paginatorFqcn = 'Illuminate\\Pagination\\LengthAwarePaginator';
+    $modelFqcn = 'Workbench\\App\\Models\\Post';
+    // Surveyor may produce concrete generics (e.g. <number, string>) instead of <unknown>
+    $typeString = 'Inertia.SharedData & { posts: Illuminate.Pagination.LengthAwarePaginator<number, string> }';
+
+    [$resultType] = $analyzer->expose($typeString, [$paginatorFqcn], ['posts' => $modelFqcn]);
+
+    expect($resultType)->toBe('Inertia.SharedData & { posts: Illuminate.Pagination.LengthAwarePaginator<Workbench.App.Models.Post> }');
+});
+
 // ─── rewritePaginatedResourceProps() ──────────────────────────────
 
 test('rewritePaginatedResourceProps returns unchanged when map is empty', function () {
@@ -630,4 +658,50 @@ test('analyze() rewrites Resource::collection($paginator) to JsonResourcePaginat
     expect($result)->not->toBeNull()
         ->and($result['pageType'])->toContain('JsonResourcePaginator<WarehouseResource>')
         ->and($result['pageType'])->not->toContain('AnonymousResourceCollection<unknown>');
+});
+
+// ─── analyze() paginator generic rewriting ───────────────────────
+
+test('analyze() rewrites LengthAwarePaginator generic to model type for InertiaPaginationsController@lengthAware', function () {
+    $collector = app(ResponseCollector::class);
+    $analyzer = new InertiaPageAnalyzer($collector);
+
+    $result = $analyzer->analyze(['uses' => InertiaPaginationsController::class.'@lengthAware']);
+
+    expect($result)->not->toBeNull()
+        ->and($result['pageType'])->toContain('LengthAwarePaginator<Post>')
+        ->and($result['pageType'])->not->toContain('<number, string>');
+});
+
+test('analyze() rewrites SimplePaginator generic to model type for InertiaPaginationsController@simple', function () {
+    $collector = app(ResponseCollector::class);
+    $analyzer = new InertiaPageAnalyzer($collector);
+
+    $result = $analyzer->analyze(['uses' => InertiaPaginationsController::class.'@simple']);
+
+    expect($result)->not->toBeNull()
+        ->and($result['pageType'])->toContain('SimplePaginator<Post>')
+        ->and($result['pageType'])->not->toContain('<number, string>');
+});
+
+test('analyze() rewrites CursorPaginator generic to model type for InertiaPaginationsController@cursor', function () {
+    $collector = app(ResponseCollector::class);
+    $analyzer = new InertiaPageAnalyzer($collector);
+
+    $result = $analyzer->analyze(['uses' => InertiaPaginationsController::class.'@cursor']);
+
+    expect($result)->not->toBeNull()
+        ->and($result['pageType'])->toContain('CursorPaginator<Post>')
+        ->and($result['pageType'])->not->toContain('<number, string>');
+});
+
+test('analyze() rewrites LengthAwarePaginator generic to model type for PostInertiaController@index', function () {
+    $collector = app(ResponseCollector::class);
+    $analyzer = new InertiaPageAnalyzer($collector);
+
+    $result = $analyzer->analyze(['uses' => PostInertiaController::class.'@index']);
+
+    expect($result)->not->toBeNull()
+        ->and($result['pageType'])->toContain('LengthAwarePaginator<Post>')
+        ->and($result['pageType'])->not->toContain('<number, string>');
 });
