@@ -5,7 +5,9 @@ import type { PostCollection, PostFlatCollection, PostResource } from '../resour
 export type ResourceAnonymousPaginatedPageProps = Inertia.SharedData & { posts: JsonResourcePaginator<PostResource> };
 
 /**
-  * Tests anonymous paginated result Result should be { posts: JsonResourcePaginator<PostResource> }
+  * Tests anonymous paginated result
+
+Result should be { posts: JsonResourcePaginator<PostResource> }
   */
 export const resourceAnonymousPaginated = annotatePageProps<ResourceAnonymousPaginatedPageProps>()(defineRoute({
     name: 'collection.resource-anonymous-paginated',
@@ -17,7 +19,9 @@ export const resourceAnonymousPaginated = annotatePageProps<ResourceAnonymousPag
 export type ResourceAnonymousPageProps = Inertia.SharedData & { posts: AnonymousResourceCollection<PostResource> };
 
 /**
-  * Tests anonymous result Result should be { posts: AnonymousResourceCollection<PostResource> }
+  * Tests anonymous result
+
+Result should be { posts: AnonymousResourceCollection<PostResource> }
   */
 export const resourceAnonymous = annotatePageProps<ResourceAnonymousPageProps>()(defineRoute({
     name: 'collection.resource-anonymous',
@@ -29,7 +33,9 @@ export const resourceAnonymous = annotatePageProps<ResourceAnonymousPageProps>()
 export type NamedCollectionPaginatedPageProps = Inertia.SharedData & { posts: PostCollection & ResourcePagination };
 
 /**
-  * Test return types with paginated named collection class Result should be { posts: PostCollection & ResourcePagination }
+  * Test return types with paginated named collection class
+
+Result should be { posts: PostCollection & ResourcePagination }
   */
 export const namedCollectionPaginated = annotatePageProps<NamedCollectionPaginatedPageProps>()(defineRoute({
     name: 'collection.named-collection-paginated',
@@ -41,7 +47,9 @@ export const namedCollectionPaginated = annotatePageProps<NamedCollectionPaginat
 export type NamedPageProps = Inertia.SharedData & { posts: PostCollection };
 
 /**
-  * Test return types with named collection class Result should be { posts: PostCollection }
+  * Test return types with named collection class
+
+Result should be { posts: PostCollection }
   */
 export const named = annotatePageProps<NamedPageProps>()(defineRoute({
     name: 'collection.named',
@@ -53,7 +61,9 @@ export const named = annotatePageProps<NamedPageProps>()(defineRoute({
 export type FlatPaginatedPageProps = Inertia.SharedData & { posts: JsonResourcePaginator<PostResource> };
 
 /**
-  * Test a named collection class with a flat collection (no data $wrap value) Result should be { posts: JsonResourcePaginator<PostResource> }
+  * Test a named collection class with a flat collection (no data $wrap value)
+
+Result should be { posts: JsonResourcePaginator<PostResource> }
   */
 export const flatPaginated = annotatePageProps<FlatPaginatedPageProps>()(defineRoute({
     name: 'collection.flat-paginated',
@@ -65,7 +75,11 @@ export const flatPaginated = annotatePageProps<FlatPaginatedPageProps>()(defineR
 export type FlatPageProps = Inertia.SharedData & { posts: PostFlatCollection };
 
 /**
-  * Test a named collection class with a flat collection (no data $wrap value) Using the `PostFlatCollection` works because its definition is "type PostFlatCollection = PostResource[];" Result should be { posts: PostFlatCollection }
+  * Test a named collection class with a flat collection (no data $wrap value)
+
+Using the `PostFlatCollection` works because its definition is "type PostFlatCollection = PostResource[];"
+
+Result should be { posts: PostFlatCollection }
   */
 export const flat = annotatePageProps<FlatPageProps>()(defineRoute({
     name: 'collection.flat',
