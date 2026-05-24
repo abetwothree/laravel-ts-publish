@@ -11,9 +11,7 @@ import type { ColorType, PriorityType, StatusType as WorkbenchStatusType } from 
 import type { Coordinate } from '../value-objects';
 import type { User as ManagerUser } from '.';
 
-/**
- * @see Workbench\App\Models\Warehouse
- */
+/** @see Workbench\App\Models\Warehouse */
 export interface Warehouse extends HasTimestamps, Pick<Auditable, "created_by" | "updated_by">
 {
     id: number;

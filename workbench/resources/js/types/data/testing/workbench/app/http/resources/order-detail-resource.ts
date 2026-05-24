@@ -6,7 +6,8 @@ import type { OrderItem } from '../../models';
 import type { UserResource } from '.';
 
 /**
- * Exercises advanced merge patterns: mergeWhen with EnumResource::make, mergeWhen with Resource::make, whenLoaded with value arg.
+ * Exercises advanced merge patterns: mergeWhen with EnumResource::make,
+ * mergeWhen with Resource::make, whenLoaded with value arg.
  *
  * @see Workbench\App\Http\Resources\OrderDetailResource
  */

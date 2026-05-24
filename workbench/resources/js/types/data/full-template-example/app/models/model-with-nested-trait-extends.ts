@@ -1,8 +1,6 @@
 import type { TraitInterface } from '@/types/model-trait';
 
-/**
- * @see Workbench\App\Models\ModelWithNestedTraitExtends
- */
+/** @see Workbench\App\Models\ModelWithNestedTraitExtends */
 export interface ModelWithNestedTraitExtends extends TraitInterface
 {
     // Columns

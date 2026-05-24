@@ -1,6 +1,4 @@
-/**
- * @see Workbench\App\Models\UuidPost
- */
+/** @see Workbench\App\Models\UuidPost */
 export interface UuidPost
 {
     // Columns

@@ -1,8 +1,6 @@
 import type { Post } from '.';
 
-/**
- * @see Workbench\App\Models\Category
- */
+/** @see Workbench\App\Models\Category */
 export interface Category
 {
     id: number;

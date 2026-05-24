@@ -1106,6 +1106,50 @@ describe('sanitizeJsDoc', function () {
     });
 });
 
+describe('formatJsDoc', function () {
+    test('renders single-line description as inline JSDoc', function () {
+        expect($this->service->formatJsDoc('A simple description'))->toBe('/** A simple description */');
+    });
+
+    test('renders multi-line description as block JSDoc', function () {
+        expect($this->service->formatJsDoc("First line\nSecond line"))->toBe(
+            "/**\n * First line\n * Second line\n */"
+        );
+    });
+
+    test('renders blank lines as empty asterisk lines', function () {
+        expect($this->service->formatJsDoc("First paragraph\n\nSecond paragraph"))->toBe(
+            "/**\n * First paragraph\n *\n * Second paragraph\n */"
+        );
+    });
+
+    test('applies indent to single-line description', function () {
+        expect($this->service->formatJsDoc('A simple description', 4))->toBe('    /** A simple description */');
+    });
+
+    test('applies indent to multi-line description', function () {
+        expect($this->service->formatJsDoc("First line\nSecond line", 4))->toBe(
+            "    /**\n     * First line\n     * Second line\n     */"
+        );
+    });
+
+    test('applies 8-space indent correctly', function () {
+        expect($this->service->formatJsDoc("Line 1\nLine 2", 8))->toBe(
+            "        /**\n         * Line 1\n         * Line 2\n         */"
+        );
+    });
+
+    test('escapes closing comment sequence via sanitizeJsDoc', function () {
+        expect($this->service->formatJsDoc('Contains */ comment ender'))->toBe(
+            '/** Contains *\/ comment ender */'
+        );
+    });
+
+    test('returns inline JSDoc for empty description', function () {
+        expect($this->service->formatJsDoc(''))->toBe('/**  */');
+    });
+});
+
 describe('parseDocBlockDescription', function () {
     test('returns empty string for false', function () {
         expect($this->service->parseDocBlockDescription(false))->toBe('');
@@ -1127,7 +1171,9 @@ describe('parseDocBlockDescription', function () {
  * Second line of description.
  */
 DOC;
-        expect($this->service->parseDocBlockDescription($doc))->toBe('First line of description. Second line of description.');
+        expect($this->service->parseDocBlockDescription($doc))->toBe(
+            "First line of description.\nSecond line of description."
+        );
     });
 
     test('filters out @-tag lines', function () {
@@ -1196,6 +1242,19 @@ DOC;
  */
 DOC;
         expect($this->service->parseDocBlockDescription($doc))->toBe('Visible description after tag block.');
+    });
+
+    test('preserves blank lines between description paragraphs', function () {
+        $doc = <<<'DOC'
+/**
+ * First paragraph.
+ *
+ * Second paragraph.
+ */
+DOC;
+        expect($this->service->parseDocBlockDescription($doc))->toBe(
+            "First paragraph.\n\nSecond paragraph."
+        );
     });
 });
 

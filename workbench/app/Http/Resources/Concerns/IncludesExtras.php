@@ -17,13 +17,13 @@ trait IncludesExtras
             'id' => $this->id,
             'computed' => strtoupper('x'),
             'date_val' => now(),
-            'custom_val' => ucfirst('y'),
+            'custom_val' => json_decode('{}'), // json_decode() returns mixed (resolves to unknown) → body stays unknown; docblock CustomObject kicks in
         ];
     }
 
     protected function includeNoDocs(): array
     {
-        return ['plain' => strtoupper('test')];
+        return ['plain' => strtoupper('test')]; // strtoupper resolves to string (no docblock to override)
     }
 
     /**
@@ -31,7 +31,7 @@ trait IncludesExtras
      */
     protected function includeNoShape(): array
     {
-        return ['basic' => strtolower('test')];
+        return ['basic' => strtolower('test')]; // strtolower resolves to string (description-only docblock, no array shape)
     }
 
     /**

@@ -1,9 +1,7 @@
 import type { MenuSettingsType } from '@js/types/settings';
 import type { User } from '.';
 
-/**
- * @see Workbench\App\Models\Profile
- */
+/** @see Workbench\App\Models\Profile */
 export interface Profile
 {
     // Columns

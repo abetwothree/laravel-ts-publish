@@ -1,6 +1,4 @@
-/**
- * @see Workbench\App\Models\TrackingEvent
- */
+/** @see Workbench\App\Models\TrackingEvent */
 export interface TrackingEvent
 {
     // Columns

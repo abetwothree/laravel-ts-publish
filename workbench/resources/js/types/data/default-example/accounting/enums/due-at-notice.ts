@@ -1,8 +1,6 @@
 import { defineEnum } from '@tolki/ts';
 
-/**
- * @see Workbench\Accounting\Enums\DueAtNotice
- */
+/** @see Workbench\Accounting\Enums\DueAtNotice */
 export const DueAtNotice = defineEnum({
     ComingUp: 'Payment due date is coming up',
     DueToday: 'Payment is due today',

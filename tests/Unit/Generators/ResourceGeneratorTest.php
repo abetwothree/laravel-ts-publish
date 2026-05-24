@@ -131,7 +131,7 @@ test('filename delegates to transformer', function () {
 
 test('generates GuardClauseClosureResource with guard clause producing union with null', function () {
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.enums_use_tolki_package', false);
+    config()->set('ts-publish.enums.use_tolki_package', false);
 
     $generator = resolve(ResourceGenerator::class, ['findable' => GuardClauseClosureResource::class]);
 
@@ -144,7 +144,7 @@ test('generates GuardClauseClosureResource with guard clause producing union wit
 
 test('generates SpreadWithClosureResource with parent spread and closure whenLoaded', function () {
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.enums_use_tolki_package', false);
+    config()->set('ts-publish.enums.use_tolki_package', false);
 
     $generator = resolve(ResourceGenerator::class, ['findable' => SpreadWithClosureResource::class]);
 
@@ -162,7 +162,7 @@ test('generates SpreadWithClosureResource with parent spread and closure whenLoa
 
 test('generates SpreadWithGuardClauseClosureResource with guard clause and parent spread', function () {
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.enums_use_tolki_package', false);
+    config()->set('ts-publish.enums.use_tolki_package', false);
 
     $generator = resolve(ResourceGenerator::class, ['findable' => SpreadWithGuardClauseClosureResource::class]);
 
@@ -182,7 +182,7 @@ test('generates SpreadWithGuardClauseClosureResource with guard clause and paren
 
 test('generates SpreadWithGuardDoubleClosureReturnResource with union of two shapes plus null', function () {
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.enums_use_tolki_package', false);
+    config()->set('ts-publish.enums.use_tolki_package', false);
 
     $generator = resolve(ResourceGenerator::class, ['findable' => SpreadWithGuardDoubleClosureReturnResource::class]);
 

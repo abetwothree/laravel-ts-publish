@@ -2,6 +2,33 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v1.5.0 - 2026-05-23
+
+### What's Changed
+
+* Issue #43 resource->enums by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/45
+* Preserve multiline comment formatting by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/46
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v1.4.7...v1.5.0
+
+## v1.4.7 - 2026-05-22
+
+### What's Changed
+
+* PHP functions return types by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/41
+* Conditional closure params by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/42
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v1.4.6...v1.4.7
+
+## v1.4.6 - 2026-05-21
+
+### What's Changed
+
+* Fix Support "self" keyword in resources by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/39
+* Ternary operator in resources by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/40
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v1.4.5...v1.4.6
+
 ## v1.4.5 - 2026-05-06
 
 ### What's Changed

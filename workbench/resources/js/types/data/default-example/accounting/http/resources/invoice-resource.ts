@@ -8,7 +8,9 @@ import type { Invoice } from '../../models';
 import type { PaymentResource } from '.';
 
 /**
- * Exercises: when(cond, EnumResource::make) — conditional enum, cross-module whenLoaded bare (App\User), Resource::collection sibling, whenCounted, when(cond, value), mergeWhen.
+ * Exercises: when(cond, EnumResource::make) — conditional enum, cross-module
+ * whenLoaded bare (App\User), Resource::collection sibling, whenCounted,
+ * when(cond, value), mergeWhen.
  *
  * @see Workbench\Accounting\Http\Resources\InvoiceResource
  */

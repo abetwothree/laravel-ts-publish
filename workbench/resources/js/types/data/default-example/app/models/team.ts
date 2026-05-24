@@ -1,8 +1,6 @@
 import type { User } from '.';
 
-/**
- * @see Workbench\App\Models\Team
- */
+/** @see Workbench\App\Models\Team */
 export interface Team
 {
     id: number;

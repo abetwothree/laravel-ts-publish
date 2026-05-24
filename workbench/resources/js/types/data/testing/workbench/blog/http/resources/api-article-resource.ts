@@ -4,9 +4,7 @@ import { ArticleStatus, ContentType } from '../../enums';
 import type { GeoPoint } from '@/types/geo';
 import type { User } from '../../../app/models';
 
-/**
- * @see Workbench\Blog\Http\Resources\ApiArticleResource
- */
+/** @see Workbench\Blog\Http\Resources\ApiArticleResource */
 export interface ApiArticleResource
 {
     morphValue: string;
@@ -14,8 +12,8 @@ export interface ApiArticleResource
     computed: string;
     date_val: string;
     custom_val: CustomObject;
-    plain: unknown;
-    basic: unknown;
+    plain: string;
+    basic: string;
     firstName: string;
     lastName: string;
     isActive: boolean;

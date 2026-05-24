@@ -1,9 +1,7 @@
 import type { ProductJsonMetaData, ProductMetadata } from '@js/types/product';
 import type { Image, OrderItem, Tag } from '.';
 
-/**
- * @see Workbench\App\Models\Product
- */
+/** @see Workbench\App\Models\Product */
 export interface Product
 {
     // Columns

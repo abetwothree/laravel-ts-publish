@@ -1,6 +1,4 @@
-/**
- * @see Workbench\App\Http\Resources\MediaTypeUnknownResource
- */
+/** @see Workbench\App\Http\Resources\MediaTypeUnknownResource */
 export interface MediaTypeUnknownResource
 {
     name: unknown;

@@ -3,7 +3,14 @@ import type { MembershipLevelType, RoleType } from '../../enums';
 import type { Address, Comment, Image, Order, Post, Profile, Team } from '../../models';
 
 /**
- * Exercises the bug where findBestArrayReturn() selects a nested closure's return array (more items) over the actual toArray() return (fewer items due to ...parent::toArray() spread counting as one). The outer toArray() return has 2 items: ...parent::toArray() + 'metadata'. The closure inside whenLoaded has 4 items, so the old recursive finder would pick the closure's array, flattening it as top-level properties and losing the parent spread + metadata key entirely.
+ * Exercises the bug where findBestArrayReturn() selects a nested closure's
+ * return array (more items) over the actual toArray() return (fewer items
+ * due to ...parent::toArray() spread counting as one).
+ *
+ * The outer toArray() return has 2 items: ...parent::toArray() + 'metadata'.
+ * The closure inside whenLoaded has 4 items, so the old recursive finder
+ * would pick the closure's array, flattening it as top-level properties
+ * and losing the parent spread + metadata key entirely.
  *
  * @see Workbench\App\Http\Resources\SpreadWithClosureResource
  */

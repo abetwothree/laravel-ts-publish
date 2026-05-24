@@ -1,9 +1,7 @@
 import type { CurrencyType, OrderStatusType, PaymentMethodType, RoleType } from '../../enums';
 import type { OrderItem, User } from '../../models';
 
-/**
- * @see Workbench\App\Http\Resources\SpreadWithGuardDoubleClosureReturnResource
- */
+/** @see Workbench\App\Http\Resources\SpreadWithGuardDoubleClosureReturnResource */
 export interface SpreadWithGuardDoubleClosureReturnResource
 {
     id: number;

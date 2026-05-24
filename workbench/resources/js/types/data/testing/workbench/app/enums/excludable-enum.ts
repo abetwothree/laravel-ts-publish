@@ -1,7 +1,8 @@
 import { defineEnum } from '@tolki/ts';
 
 /**
- * Enum with methods excluded via #[TsExclude] — tests method-level exclusion when auto_include is enabled and when explicit attributes are present.
+ * Enum with methods excluded via #[TsExclude] — tests method-level exclusion
+ * when auto_include is enabled and when explicit attributes are present.
  *
  * @see Workbench\App\Enums\ExcludableEnum
  */

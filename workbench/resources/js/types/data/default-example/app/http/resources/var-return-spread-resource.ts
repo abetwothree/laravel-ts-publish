@@ -7,17 +7,17 @@ export interface VarReturnSpreadResource
 {
     id: number;
     baseKey: string;
-    conditionalKey?: unknown;
-    always: unknown;
-    sometimes?: unknown;
-    ifBranch?: unknown;
-    elseifBranch?: unknown;
-    elseBranch?: unknown;
-    conditionalBaseKey?: unknown;
-    foundB?: unknown;
-    foreachKey?: unknown;
-    forKey?: unknown;
-    whileKey?: unknown;
-    doWhileKey?: unknown;
-    status: unknown;
+    conditionalKey?: string;
+    always: string;
+    sometimes?: string;
+    ifBranch?: string;
+    elseifBranch?: string;
+    elseBranch?: string;
+    conditionalBaseKey?: string;
+    foundB?: boolean;
+    foreachKey?: string;
+    forKey?: string;
+    whileKey?: string;
+    doWhileKey?: string;
+    status: string;
 }

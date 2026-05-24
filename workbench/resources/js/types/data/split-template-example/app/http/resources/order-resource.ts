@@ -3,9 +3,7 @@ import { type AsEnum } from '@tolki/ts';
 import { Currency, OrderStatus } from '../../enums';
 import type { OrderItem } from '../../models';
 
-/**
- * @see Workbench\App\Http\Resources\OrderResource
- */
+/** @see Workbench\App\Http\Resources\OrderResource */
 export interface OrderResource
 {
     id: number;

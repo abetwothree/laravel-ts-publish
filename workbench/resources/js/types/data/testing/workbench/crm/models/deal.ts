@@ -7,9 +7,7 @@ import type { User as AdminUser } from '../../app/models';
 import type { StatusType as CrmStatusType } from '../enums';
 import type { User as CustomerUser } from '.';
 
-/**
- * @see Workbench\Crm\Models\Deal
- */
+/** @see Workbench\Crm\Models\Deal */
 export interface Deal
 {
     id: number;

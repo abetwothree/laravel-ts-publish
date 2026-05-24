@@ -1,8 +1,6 @@
 import { defineEnum } from '@tolki/ts';
 
-/**
- * @see Workbench\Accounting\Enums\PaymentStatus
- */
+/** @see Workbench\Accounting\Enums\PaymentStatus */
 export const PaymentStatus = defineEnum({
     Pending: 'pending',
     Completed: 'completed',

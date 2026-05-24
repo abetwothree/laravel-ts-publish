@@ -1,8 +1,6 @@
 import type { StatusType } from '../../enums';
 
-/**
- * @see Workbench\Crm\Http\Resources\UserResource
- */
+/** @see Workbench\Crm\Http\Resources\UserResource */
 export interface UserResource
 {
     id: number;

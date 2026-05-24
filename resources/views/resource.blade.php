@@ -10,18 +10,21 @@ import { {{ implode(', ', $names) }} } from '{{ $path }}';
 import type { {{ implode(', ', $types) }} } from '{{ $path }}';
 @endforeach
 
-/**
-@if($data->description)
- * {!! LaravelTsPublish::sanitizeJsDoc($data->description) !!}
- *
-@endif
- * @see {{ $data->fqcn }}
- */
+@php
+    $description = $data->description;
+
+    if ($description) {
+        $description .= "\n\n";
+    }
+
+    $description .= "@see {$data->fqcn}";
+@endphp
+{!! LaravelTsPublish::formatJsDoc($description) !!}
 export interface {{ $data->resourceName }}{!! count($data->tsExtends) > 0 ? ' extends ' . implode(', ', $data->tsExtends) : '' !!}
 {
 @foreach ($data->properties as $name => $property)
 @if($property['description'])
-    /** {!! LaravelTsPublish::sanitizeJsDoc($property['description']) !!} */
+{!! LaravelTsPublish::formatJsDoc($property['description'], 4) !!}
 @endif
     {!! LaravelTsPublish::validJsObjectKey($name) !!}{!! $property['optional'] ? '?' : '' !!}: {!! $property['type'] !!};
 @endforeach

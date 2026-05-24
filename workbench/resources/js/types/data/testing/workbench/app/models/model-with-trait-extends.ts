@@ -1,8 +1,6 @@
 import type { TraitInterface } from '@/types/model-trait';
 
-/**
- * @see Workbench\App\Models\ModelWithTraitExtends
- */
+/** @see Workbench\App\Models\ModelWithTraitExtends */
 export interface ModelWithTraitExtends extends TraitInterface
 {
     id: number;

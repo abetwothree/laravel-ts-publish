@@ -9,7 +9,8 @@ import type { ColorType, MembershipLevelType, PriorityType, RoleType, StatusType
 import type { Address, Comment, Image, Order, Post, Profile, Team, User as AppUser } from '../../models';
 
 /**
- * Resource with no @mixin or TsResource — tests convention-based model guess. Also tests multiple TsExtends in parent class, trait, and locally.
+ * Resource with no @mixin or TsResource — tests convention-based model guess.
+ * Also tests multiple TsExtends in parent class, trait, and locally.
  *
  * @see Workbench\App\Http\Resources\WarehouseResource
  */

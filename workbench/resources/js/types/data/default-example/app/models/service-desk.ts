@@ -2,7 +2,13 @@ import type { User } from '../../crm/models';
 import type { Order } from '.';
 
 /**
- * A help-desk ticket linked to a customer Order and optionally assigned to a CRM agent. Exercises the inline model FQCN collision scenario: two relations to classes with the same basename (App\Models\User via order.user and Crm\Models\User via crm_agent) force import aliasing. The `order_requester` property is an inline object produced by `$this->order?->only(['user'])`, whose nested model token must be rewritten via the inlineModelFqcns tracking path.
+ * A help-desk ticket linked to a customer Order and optionally assigned to a CRM agent.
+ *
+ * Exercises the inline model FQCN collision scenario: two relations to classes with the
+ * same basename (App\Models\User via order.user and Crm\Models\User via crm_agent) force
+ * import aliasing. The `order_requester` property is an inline object produced by
+ * `$this->order?->only(['user'])`, whose nested model token must be rewritten via
+ * the inlineModelFqcns tracking path.
  *
  * @see Workbench\App\Models\ServiceDesk
  */

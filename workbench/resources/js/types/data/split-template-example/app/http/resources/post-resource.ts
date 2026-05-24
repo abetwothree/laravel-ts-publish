@@ -4,9 +4,7 @@ import { Priority, Status, Visibility } from '../../enums';
 import type { User } from '../../models';
 import type { CommentResource } from '.';
 
-/**
- * @see Workbench\App\Http\Resources\PostResource
- */
+/** @see Workbench\App\Http\Resources\PostResource */
 export interface PostResource
 {
     morphValue: string;

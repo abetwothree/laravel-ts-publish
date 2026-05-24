@@ -140,14 +140,23 @@ declare global {
             changes: { attributes: Record<string, unknown>; old: Record<string, unknown> };
             diff: unknown[] | Record<string, unknown>;
         }
-        /** Exercises the ModelTransformer unknown-type fallback paths using untyped SQLite columns. */
+        /**
+         * Exercises the ModelTransformer unknown-type fallback paths
+         * using untyped SQLite columns.
+         */
         export interface UntypedColumn {
             // Columns
             id: number | null;
-            /** Accessor with no return type on the getter closure — resolves to unknown, exercises the 'attribute'/'accessor' match arm */
+            /**
+             * Accessor with no return type on the getter closure — resolves to unknown,
+             * exercises the 'attribute'/'accessor' match arm
+             */
             accessor_col: unknown | null;
             cast_col: unknown | null;
-            /** Accessor with no return type on an untyped nullable column — exercises the nullable fallback (appends ' | null'). */
+            /**
+             * Accessor with no return type on an untyped nullable column — exercises
+             * the nullable fallback (appends ' | null').
+             */
             nullable_accessor_col: unknown | null;
         }
         export interface CompositeComment {
@@ -320,7 +329,10 @@ declare global {
             images_count: number;
             images_exists: boolean;
         }
-        /** Child model that uses SharedExtendsTrait directly AND extends a parent that also uses it. SharedModelInterface should appear only once despite being reachable via two paths. */
+        /**
+         * Child model that uses SharedExtendsTrait directly AND extends a parent that also uses it.
+         * SharedModelInterface should appear only once despite being reachable via two paths.
+         */
         export interface ChildSharedExtendableModel extends SharedModelInterface {
             // Columns
             id: number;
@@ -648,7 +660,15 @@ declare global {
             user_count: number;
             user_exists: boolean;
         }
-        /** A help-desk ticket linked to a customer Order and optionally assigned to a CRM agent. Exercises the inline model FQCN collision scenario: two relations to classes with the same basename (App\Models\User via order.user and Crm\Models\User via crm_agent) force import aliasing. The `order_requester` property is an inline object produced by `$this->order?->only(['user'])`, whose nested model token must be rewritten via the inlineModelFqcns tracking path. */
+        /**
+         * A help-desk ticket linked to a customer Order and optionally assigned to a CRM agent.
+         *
+         * Exercises the inline model FQCN collision scenario: two relations to classes with the
+         * same basename (App\Models\User via order.user and Crm\Models\User via crm_agent) force
+         * import aliasing. The `order_requester` property is an inline object produced by
+         * `$this->order?->only(['user'])`, whose nested model token must be rewritten via
+         * the inlineModelFqcns tracking path.
+         */
         export interface ServiceDesk {
             // Columns
             id: number;
@@ -1042,7 +1062,10 @@ declare global {
         export type PaymentMethodType = 'credit_card' | 'debit_card' | 'paypal' | 'bank_transfer' | 'cash_on_delivery' | 'crypto' | 'apple_pay' | 'google_pay';
         export type PaymentMethodKind = 'CreditCard' | 'DebitCard' | 'PayPal' | 'BankTransfer' | 'CashOnDelivery' | 'Crypto' | 'ApplePay' | 'GooglePay';
 
-        /** Pure unit enum with no attributes and no methods. Tests the absolute minimal enum path. */
+        /**
+         * Pure unit enum with no attributes and no methods.
+         * Tests the absolute minimal enum path.
+         */
         export interface MembershipLevel
         {
             Free: 'Free',
@@ -1052,7 +1075,10 @@ declare global {
         }
         export type MembershipLevelType = 'Free' | 'Basic' | 'Premium' | 'Enterprise';
 
-        /** Enum with methods excluded via #[TsExclude] — tests method-level exclusion when auto_include is enabled and when explicit attributes are present. */
+        /**
+         * Enum with methods excluded via #[TsExclude] — tests method-level exclusion
+         * when auto_include is enabled and when explicit attributes are present.
+         */
         export interface ExcludableEnum
         {
             Alpha: 'alpha',
@@ -1083,7 +1109,10 @@ declare global {
         export type SeasonType = 'spring' | 'summer' | 'autumn' | 'winter';
         export type SeasonKind = 'Spring' | 'Summer' | 'Autumn' | 'Winter';
 
-        /** Pure unit enum (no backing type) — tests that the publisher handles unit enums where case names become the values in TypeScript. */
+        /**
+         * Pure unit enum (no backing type) — tests that the publisher handles unit enums
+         * where case names become the values in TypeScript.
+         */
         export interface Visibility
         {
             Public: 'Public',
@@ -1106,7 +1135,10 @@ declare global {
         export type MediaTypeType = 'image' | 'video' | 'audio' | 'document' | 'archive';
         export type MediaTypeKind = 'Image' | 'Video' | 'Audio' | 'Document' | 'Archive';
 
-        /** Int-backed enum with TsCase descriptions, instance methods, and static methods. Exercises the full attribute surface area in combination. */
+        /**
+         * Int-backed enum with TsCase descriptions, instance methods, and static methods.
+         * Exercises the full attribute surface area in combination.
+         */
         export interface OrderStatus
         {
             /** Order has been placed but not yet processed */
@@ -1229,7 +1261,11 @@ declare global {
         export type ShipmentStatusKind = 'Pending' | 'LabelCreated' | 'PickedUp' | 'InTransit' | 'OutForDelivery' | 'Delivered' | 'Returned';
     }
     export namespace accounting.http.resources {
-        /** Exercises: when(cond, EnumResource::make) — conditional enum, cross-module whenLoaded bare (App\User), Resource::collection sibling, whenCounted, when(cond, value), mergeWhen. */
+        /**
+         * Exercises: when(cond, EnumResource::make) — conditional enum, cross-module
+         * whenLoaded bare (App\User), Resource::collection sibling, whenCounted,
+         * when(cond, value), mergeWhen.
+         */
         export interface InvoiceResource {
             id: number;
             number: string;
@@ -1247,7 +1283,10 @@ declare global {
             latest_payment_only: { invoice_id: number; status: accounting.enums.PaymentStatusType; method: app.enums.PaymentMethodType; currency: app.enums.CurrencyType; amount: number; reference: string | null; paid_at: string | null } | null;
             latest_payment_excluded: { id: number; created_at: string | null; updated_at: string | null; due_notice: accounting.enums.DueAtNoticeType; invoice: accounting.models.Invoice } | null;
         }
-        /** Exercises: multiple EnumResource::make from different namespaces (PaymentStatus, Currency from App), whenHas on PaymentMethod enum attribute, whenNotNull. */
+        /**
+         * Exercises: multiple EnumResource::make from different namespaces (PaymentStatus,
+         * Currency from App), whenHas on PaymentMethod enum attribute, whenNotNull.
+         */
         export interface PaymentResource {
             id: number;
             status: accounting.enums.PaymentStatusType;
@@ -1334,9 +1373,12 @@ declare global {
             ownedTeams: app.models.Team[];
             images: app.models.Image[];
             notifications: illuminate.notifications.DatabaseNotification[];
-            full_name: unknown;
+            full_name: string;
         }
-        /** Exercises: multiple whenAggregated (sum/min/max), whenNotNull, when, whenCounted, two mergeWhen blocks, Resource::collection x2. */
+        /**
+         * Exercises: multiple whenAggregated (sum/min/max), whenNotNull, when,
+         * whenCounted, two mergeWhen blocks, Resource::collection x2.
+         */
         export interface ProductResource {
             id: string;
             name: string;
@@ -1397,10 +1439,20 @@ declare global {
             user_profile_bio: string | null;
             user_profile_avatar_url: string | null;
         }
-        /** Child resource that uses SharedExtendsInterface AND extends a parent that also uses it. SharedExtendsInterface should appear only once in the result despite being reachable via two paths. */
+        /**
+         * Child resource that uses SharedExtendsInterface AND extends a parent that also uses it.
+         * SharedExtendsInterface should appear only once in the result despite being reachable via two paths.
+         */
         export interface ChildSharedResource extends SharedInterface {
         }
-        /** Exercises the inline model FQCN collision scenario. Two relations point to classes with the same basename: Crm\Models\User (direct, via crm_agent) and App\Models\User (embedded inside the inline object from order->only). The transformer must alias both and rewrite the token inside the inline object type string via the inlineModelFqcns tracking path. */
+        /**
+         * Exercises the inline model FQCN collision scenario.
+         *
+         * Two relations point to classes with the same basename: Crm\Models\User (direct, via crm_agent)
+         * and App\Models\User (embedded inside the inline object from order->only). The transformer must
+         * alias both and rewrite the token inside the inline object type string via the inlineModelFqcns
+         * tracking path.
+         */
         export interface ServiceDeskResource {
             id: number;
             title: string;
@@ -1412,7 +1464,23 @@ declare global {
             value: string;
             meta: { extensions: unknown[]; maxSizeMb: number; sizeUnit: string; icon: string };
         }
-        /** Resource with no @mixin or TsResource — tests convention-based model guess. Also tests multiple TsExtends in parent class, trait, and locally. */
+        /**
+         * Exercises issue #38: closure parameter passed by the conditional method,
+         * where the return expression is a JsonResource make() or collection() call.
+         *
+         * The bug: the analyzer resolves the return type as `unknown` instead of
+         * inferring the resource type (e.g. UserResource or OrderItemResource[]).
+         */
+        export interface ConditionalParamJsonResourceResource {
+            id: number;
+            user?: UserResource;
+            items?: OrderItemResource[];
+            user_when?: UserResource;
+        }
+        /**
+         * Resource with no @mixin or TsResource — tests convention-based model guess.
+         * Also tests multiple TsExtends in parent class, trait, and locally.
+         */
         export interface WarehouseResource extends BaseResource, ExtendableInterface, Omit<Timestamps, "created_at" | "updated_at">, ResourceRoutes, Pick<Routable, "store" | "update"> {
             id: number;
             name: string;
@@ -1429,10 +1497,30 @@ declare global {
             last_user_activity_by_partial: { id: number; name: string } | null;
             last_user_activity_by_mostly: { email: string; company: string | null; status: crm.enums.StatusType; created_at: string | null; updated_at: string | null; images: app.models.Image[] } | { email: string; email_verified_at: string | null; password: string; options: unknown[] | null; remember_token: string | null; created_at: string | null; updated_at: string | null; role: app.enums.RoleType | null; membership_level: app.enums.MembershipLevelType | null; phone: string | null; avatar: string | null; bio: string | null; settings: unknown[] | null; last_login_at: string | null; last_login_ip: string | null; initials: string; is_premium: boolean; profile: app.models.Profile | null; posts: app.models.Post[]; comments: app.models.Comment[]; orders: app.models.Order[]; addresses: Address[]; teams: app.models.Team[]; ownedTeams: app.models.Team[]; images: app.models.Image[]; notifications: illuminate.notifications.DatabaseNotification[] } | null;
         }
-        /** Exercises analyzeInlineArray embeddedModelFqcns and embeddedResourceFqcns (lines 1501, 1508-1510) by returning inline arrays that contain whenLoaded() (model FQCN) and SomeResource::make() (resource FQCN) inside a closure union. */
+        /**
+         * Exercises analyzeInlineArray embeddedModelFqcns and embeddedResourceFqcns
+         * (lines 1501, 1508-1510) by returning inline arrays that contain
+         * whenLoaded() (model FQCN) and SomeResource::make() (resource FQCN)
+         * inside a closure union.
+         */
         export interface InlineArrayFqcnResource {
             id: number;
             payload?: { address: AddressResource; items_loaded?: app.models.OrderItem[] } | null;
+        }
+        /**
+         * Exercises issue #38: closure parameter passed by the conditional method.
+         * Each field uses a single-param arrow function that returns a scalar primitive.
+         *
+         * The bug: the analyzer resolves the return type of these closures as `unknown`
+         * instead of inferring the scalar type from the return expression.
+         */
+        export interface ConditionalParamPrimitiveResource {
+            id: number;
+            user_name?: string;
+            user_id?: number;
+            user_verified?: boolean;
+            notes_upper?: string;
+            notes_length?: number;
         }
         /** Exercises: multiple whenHas on different column types, multiple whenNotNull. */
         export interface ProfileResource {
@@ -1446,22 +1534,96 @@ declare global {
             timezone?: string;
             locale?: string;
         }
-        /** Exercises collectDirectReturns elseif, else, and loop branches in the main toArray() body (not inside closures). */
+        /**
+         * Exercises issue #38: the exact bug pattern from the issue report.
+         * A closure receives the loaded relation as a parameter and calls ->map()
+         * with a nested inner closure that returns an array shape.
+         *
+         * The bug: the outer closure param return type resolves to `unknown` instead of
+         * inferring the mapped array shape `{ id: number; name: string; quantity: number }[]`.
+         */
+        export interface ConditionalParamMappedResource {
+            id: number;
+            items_mapped?: { id: number; name: string; quantity: number }[];
+            items_priced?: { id: number; sku: string; unit_price: number; total_price: number }[];
+            item_names?: string[];
+        }
+        /**
+         * Exercises issue #38: closure parameter passed by the conditional method.
+         * Each field uses a single-param arrow function that returns an inline array literal.
+         *
+         * The bug: the analyzer resolves the return type as `unknown` instead of
+         * inferring the array shape `{ id: number; email: string; name: string }`.
+         */
+        export interface ConditionalParamArrayResource {
+            id: number;
+            user_summary?: { id: number; email: string; name: string };
+            notes_or_default?: string;
+            user_meta?: { profile: { name: string; email: string }; verified: boolean };
+            notes_when_null?: string;
+        }
+        /**
+         * Exercises: ternary operator in various return-value positions.
+         *
+         * All properties in this resource use the ternary operator (`? :`) or the
+         * Elvis operator (`?:`) as the value expression. The scenarios cover:
+         * - enum resource vs null
+         * - enum resource vs enum resource (same / different enum class)
+         * - named resource vs null
+         * - named resource vs named resource (same / different class)
+         * - resource collection vs null
+         * - scalar vs null (string, integer)
+         * - string literal vs string literal
+         * - Elvis / short-ternary
+         * - ternary nested inside a whenLoaded closure
+         * - ternary with $this->resource accessor
+         */
+        export interface TernaryResource {
+            status_or_null: app.enums.StatusType | null;
+            status_or_status: app.enums.StatusType;
+            status_resource_or_type: app.enums.StatusType | crm.enums.StatusType;
+            status_or_visibility: app.enums.StatusType | app.enums.VisibilityType | null;
+            category_or_null: CategoryResource | null;
+            category_or_category: CategoryResource;
+            category_or_user: CategoryResource | UserResource;
+            image_or_null: ImageResource | null;
+            comments_or_null: CommentResource[] | null;
+            comments_or_comments: CommentResource[];
+            title_or_null: string | null;
+            word_count_or_null: number | null;
+            pin_label: string;
+            title_fallback: string;
+            category_when_loaded_or_null?: CategoryResource | null;
+            category_resource_or_null: CategoryResource | null;
+            nested_ternary_label: string | null;
+        }
+        /**
+         * Exercises collectDirectReturns elseif, else, and loop branches
+         * in the main toArray() body (not inside closures).
+         */
         export interface ControlFlowReturnResource {
             id: number;
-            archived?: unknown;
-            draft?: unknown;
+            archived?: boolean;
+            draft?: boolean;
             total?: number;
             status?: app.enums.OrderStatusType;
         }
-        /** Resource using a positive instanceof guard (not negated). Also includes inline arrays with optional keys and an empty inline array to exercise additional coverage paths. */
+        /**
+         * Resource using a positive instanceof guard (not negated).
+         * Also includes inline arrays with optional keys and an empty inline array
+         * to exercise additional coverage paths.
+         */
         export interface MediaTypePositiveInstanceOfResource {
             name: string;
             value: string;
-            meta: { label?: unknown };
+            meta: { label?: string };
             empty: Record<string, unknown>;
         }
-        /** Exercises: reading model from @mixin ModelClass in docblock Do not change, it needs to match the AddressExtendsResource exactly */
+        /**
+         * Exercises: reading model from @mixin ModelClass in docblock
+         *
+         * Do not change, it needs to match the AddressExtendsResource exactly
+         */
         export interface AddressMixinResource {
             morphValue: string;
             id: number;
@@ -1481,7 +1643,11 @@ declare global {
             posts?: PostResource[];
             products?: ProductResource[];
         }
-        /** Fixture resource used to test #[TsResourceCasts] placed on the toArray() method rather than on the class. No class-level annotation is present on purpose so that method-level behavior is tested in isolation. */
+        /**
+         * Fixture resource used to test #[TsResourceCasts] placed on the toArray() method
+         * rather than on the class. No class-level annotation is present on purpose so that
+         * method-level behavior is tested in isolation.
+         */
         export interface ToArrayCastsResource {
             id: number;
             name: string;
@@ -1503,7 +1669,12 @@ declare global {
             posts_count?: number;
             comments_count?: number;
         }
-        /** Resource with non-conventional name — tests #[UseResource] attribute model resolution. The backing model (TrackingEvent) uses #[UseResource(EventLogResource::class)] to point to this resource since it can't be found by naming convention. */
+        /**
+         * Resource with non-conventional name — tests #[UseResource] attribute model resolution.
+         *
+         * The backing model (TrackingEvent) uses #[UseResource(EventLogResource::class)]
+         * to point to this resource since it can't be found by naming convention.
+         */
         export interface EventLogResource {
             id: number;
             description: string | null;
@@ -1516,19 +1687,19 @@ declare global {
         export interface VarReturnSpreadResource {
             id: number;
             baseKey: string;
-            conditionalKey?: unknown;
-            always: unknown;
-            sometimes?: unknown;
-            ifBranch?: unknown;
-            elseifBranch?: unknown;
-            elseBranch?: unknown;
-            conditionalBaseKey?: unknown;
-            foundB?: unknown;
-            foreachKey?: unknown;
-            forKey?: unknown;
-            whileKey?: unknown;
-            doWhileKey?: unknown;
-            status: unknown;
+            conditionalKey?: string;
+            always: string;
+            sometimes?: string;
+            ifBranch?: string;
+            elseifBranch?: string;
+            elseBranch?: string;
+            conditionalBaseKey?: string;
+            foundB?: boolean;
+            foreachKey?: string;
+            forKey?: string;
+            whileKey?: string;
+            doWhileKey?: string;
+            status: string;
         }
         /** Fixture resource exercising bare function call spreads (without $this->). */
         export interface BareFuncCallResource {
@@ -1537,8 +1708,8 @@ declare global {
             computed: string;
             date_val: string;
             custom_val: CustomObject;
-            plain: unknown;
-            basic: unknown;
+            plain: string;
+            basic: string;
             firstName: string;
             lastName: string;
             isActive: boolean;
@@ -1564,6 +1735,23 @@ declare global {
             first_item_name?: unknown;
             total?: number;
         }
+        /**
+         * Exercises issue #38 using non-arrow (full) closures with a parameter.
+         * Covers primitives, arrays, resources, enums, and guard-clause patterns —
+         * all using `function ($param) { return ...; }` syntax rather than arrow fns.
+         *
+         * The bug: the analyzer resolves the return type of these closures as `unknown`
+         * regardless of the return expression when a parameter is present.
+         */
+        export interface ConditionalParamFullClosureResource {
+            id: number;
+            user_name?: string;
+            user_summary?: { id: number; email: string };
+            items_mapped?: { id: number; name: string; quantity: number }[];
+            user_resource?: UserResource;
+            status_resource?: app.enums.OrderStatusType;
+            shipping_safe?: { name: string; email: string } | null;
+        }
         /** Mailing address resource */
         export interface Address {
             morphValue: string;
@@ -1587,7 +1775,16 @@ declare global {
             id: number;
             total: number;
         }
-        /** Exercises the bug where findBestArrayReturn() selects a nested closure's return array (more items) over the actual toArray() return (fewer items due to ...parent::toArray() spread counting as one). The outer toArray() return has 2 items: ...parent::toArray() + 'metadata'. The closure inside whenLoaded has 4 items, so the old recursive finder would pick the closure's array, flattening it as top-level properties and losing the parent spread + metadata key entirely. */
+        /**
+         * Exercises the bug where findBestArrayReturn() selects a nested closure's
+         * return array (more items) over the actual toArray() return (fewer items
+         * due to ...parent::toArray() spread counting as one).
+         *
+         * The outer toArray() return has 2 items: ...parent::toArray() + 'metadata'.
+         * The closure inside whenLoaded has 4 items, so the old recursive finder
+         * would pick the closure's array, flattening it as top-level properties
+         * and losing the parent spread + metadata key entirely.
+         */
         export interface SpreadWithClosureResource {
             id: number;
             name: string;
@@ -1634,7 +1831,10 @@ declare global {
             value: unknown;
             meta: { extensions: unknown; maxSizeMb: unknown; sizeUnit: string; icon: unknown };
         }
-        /** Exercises: self-referencing Resource::make and Resource::collection, when conditional, whenCounted, cross-resource PostResource::collection. */
+        /**
+         * Exercises: self-referencing Resource::make and Resource::collection,
+         * when conditional, whenCounted, cross-resource PostResource::collection.
+         */
         export interface CategoryResource {
             id: number;
             name: string;
@@ -1646,6 +1846,17 @@ declare global {
             children?: CategoryResource[];
             posts?: PostResource[];
             posts_count?: number;
+            children_self_collection: CategoryResource[];
+            children_self_resource_collection: CategoryResource[];
+            children_self_collection_first_callable: CategoryResource[];
+            children_when_self_collection?: CategoryResource[];
+            children_when_self_resource_collection?: CategoryResource[];
+            children_when_self_collection_first_callable?: CategoryResource[];
+            parent_self: CategoryResource;
+            parent_make_self: CategoryResource;
+            parent_resource_self: CategoryResource;
+            parent_when_self?: CategoryResource;
+            parent_when_resource_self?: CategoryResource;
         }
         /** Exercises: parent spread inheriting customImports from parent trait TsResourceCasts. */
         export interface ExtendedAddressResource {
@@ -1653,15 +1864,15 @@ declare global {
             computed: string;
             date_val: string;
             custom_val: CustomObject;
-            plain: unknown;
-            basic: unknown;
+            plain: string;
+            basic: string;
             firstName: string;
             lastName: string;
             isActive: boolean;
             location: GeoPoint;
             flag?: string | null;
             extra: Record<string, unknown>;
-            extra_field: unknown;
+            extra_field: string;
         }
         export interface NonArrayReturnResource {
         }
@@ -1669,7 +1880,10 @@ declare global {
             data: OrderResource[];
             total_count: unknown;
         }
-        /** Exercises direct property access for accessors, mutators, and relations without using whenLoaded or other conditional wrappers. */
+        /**
+         * Exercises direct property access for accessors, mutators, and relations
+         * without using whenLoaded or other conditional wrappers.
+         */
         export interface OrderSummaryResource {
             id: number;
             is_paid: boolean;
@@ -1681,10 +1895,16 @@ declare global {
             notes: string | null;
             search_index: unknown;
         }
-        /** Edge-case resource for $this->only() / $this->except() guard clause coverage. No @mixin — so buildModelDelegatedAnalysis() returns null. */
+        /**
+         * Edge-case resource for $this->only() / $this->except() guard clause coverage.
+         * No @mixin — so buildModelDelegatedAnalysis() returns null.
+         */
         export interface OrderFilterEdgeResource {
         }
-        /** Resource wrapping a unit enum (no backing type) to test the ->value fallback. Also accesses an unknown property to test the unknown enum property path. */
+        /**
+         * Resource wrapping a unit enum (no backing type) to test the ->value fallback.
+         * Also accesses an unknown property to test the unknown enum property path.
+         */
         export interface UnitEnumResource {
             name: string;
             value: string | number;
@@ -1725,8 +1945,8 @@ declare global {
             computed: string;
             date_val: string;
             custom_val: CustomObject;
-            plain: unknown;
-            basic: unknown;
+            plain: string;
+            basic: string;
             firstName: string;
             lastName: string;
             isActive: boolean;
@@ -1765,7 +1985,10 @@ declare global {
         /** Resource that delegates to parent — tests non-array return guard. */
         export interface DelegatingResource {
         }
-        /** Exercises: when, whenLoaded + Resource::make, Resource::collection, whenCounted, mergeWhen. */
+        /**
+         * Exercises: when, whenLoaded + Resource::make, Resource::collection,
+         * whenCounted, mergeWhen.
+         */
         export interface TeamResource {
             id: number;
             name: string;
@@ -1777,7 +2000,11 @@ declare global {
             members_count?: number;
             settings?: unknown[] | null;
         }
-        /** Exercises: reading model from @extends ParentClass<Model> in docblock Do not change, it needs to match the AddressMixinResource exactly */
+        /**
+         * Exercises: reading model from @extends ParentClass<Model> in docblock
+         *
+         * Do not change, it needs to match the AddressMixinResource exactly
+         */
         export interface AddressExtendsResource {
             morphValue: string;
             id: number;
@@ -1801,7 +2028,11 @@ declare global {
             shipped_at?: string | null;
             delivered_at?: string | null;
         }
-        /** Exercises resolveArrayOrClosureToProperties with a multi-return closure passed to merge(). The closure has multiple branches returning different array shapes, which should be merged with union semantics. */
+        /**
+         * Exercises resolveArrayOrClosureToProperties with a multi-return closure
+         * passed to merge(). The closure has multiple branches returning different
+         * array shapes, which should be merged with union semantics.
+         */
         export interface MergeMultiBranchClosureResource {
             id: number;
             archived_at?: string | null;
@@ -1810,15 +2041,26 @@ declare global {
         }
         export interface UserCollection {
             data: UserResource[];
-            has_admin: unknown;
+            has_admin: boolean;
         }
-        /** Exercises the bug where resolveClosureReturnExpression() picks the first Return_ statement in a closure — which is the guard-clause `return null` instead of the actual data array. The closure has: if (! $this->user) { return null; }  ← guard clause (first return) return [ 'name' => ..., 'email' => ... ];  ← actual data (should be picked) */
+        /**
+         * Exercises the bug where resolveClosureReturnExpression() picks the first
+         * Return_ statement in a closure — which is the guard-clause `return null`
+         * instead of the actual data array.
+         *
+         * The closure has:
+         * if (! $this->user) { return null; }  ← guard clause (first return)
+         * return [ 'name' => ..., 'email' => ... ];  ← actual data (should be picked)
+         */
         export interface GuardClauseClosureResource {
             id: number;
             total: number;
             buyer?: { name: string; email: string } | null;
         }
-        /** Exercises: whenLoaded with Resource::make, whenLoaded bare (1-arg form), whenNotNull on nullable JSON column. */
+        /**
+         * Exercises: whenLoaded with Resource::make, whenLoaded bare (1-arg form),
+         * whenNotNull on nullable JSON column.
+         */
         export interface OrderItemResource {
             id: number;
             name: string;
@@ -1832,7 +2074,10 @@ declare global {
             order_limited: { id: number; total: number } | null;
             order_extended: { id: number; ulid: string; user_id: number; status: app.enums.OrderStatusType; payment_method: app.enums.PaymentMethodType | null; currency: app.enums.CurrencyType; subtotal: number; tax: number; discount: number; total: number; shipping_address: unknown[] | null; billing_address: unknown[] | null; notes: string | null; placed_at: string | null; paid_at: string | null; shipped_at: string | null; delivered_at: string | null; cancelled_at: string | null; ip_address: string | null; user_agent: string | null; deleted_at: string | null; item_count: number; is_paid: boolean; formatted_total: string; user: crm.models.User; items: app.models.OrderItem[] };
         }
-        /** Exercises resolveClosureReturnExpression with a Closure passed to merge(). The closure has a guard clause followed by the real array return. */
+        /**
+         * Exercises resolveClosureReturnExpression with a Closure passed to merge().
+         * The closure has a guard clause followed by the real array return.
+         */
         export interface MergeClosureResource {
             id: number;
             user_name: string;
@@ -1843,7 +2088,11 @@ declare global {
             value: string;
             meta: { extensions: unknown[]; maxSizeMb: number; sizeUnit: string; icon: string };
         }
-        /** Represents a user loaded through a team's belongsToMany pivot. Exercises: whenPivotLoaded, whenPivotLoadedAs, whenHas on enum attributes. */
+        /**
+         * Represents a user loaded through a team's belongsToMany pivot.
+         *
+         * Exercises: whenPivotLoaded, whenPivotLoadedAs, whenHas on enum attributes.
+         */
         export interface TeamMemberResource {
             id: number;
             name: string;
@@ -1855,7 +2104,10 @@ declare global {
             joined_at?: unknown;
             subscription_role?: unknown;
         }
-        /** Exercises analyzeClosureUnion metadata propagation (enum, model, resource FQCNs) and analyzeRelatedModelMethodCall fallback (line 451). */
+        /**
+         * Exercises analyzeClosureUnion metadata propagation (enum, model, resource FQCNs)
+         * and analyzeRelatedModelMethodCall fallback (line 451).
+         */
         export interface ClosureUnionMetadataResource {
             id: number;
             status_or_null?: app.enums.OrderStatusType | null;
@@ -1925,7 +2177,18 @@ declare global {
             images: app.models.Image[];
             notifications: illuminate.notifications.DatabaseNotification[];
         }
-        /** Exercises both bugs simultaneously — the exact pattern from the original ProcessProcessablesResource that triggered the issue: Bug 1: ...parent::toArray() spread (2 items in outer return) + a whenLoaded closure with more items (5), causing findBestArrayReturn() to pick the wrong return statement. Bug 2: The closure has a guard clause (`return null;`) before the data array, causing resolveClosureReturnExpression() to pick null instead of the data shape. */
+        /**
+         * Exercises both bugs simultaneously — the exact pattern from the original
+         * ProcessProcessablesResource that triggered the issue:
+         *
+         * Bug 1: ...parent::toArray() spread (2 items in outer return) + a whenLoaded
+         * closure with more items (5), causing findBestArrayReturn() to pick
+         * the wrong return statement.
+         *
+         * Bug 2: The closure has a guard clause (`return null;`) before the data array,
+         * causing resolveClosureReturnExpression() to pick null instead of the
+         * data shape.
+         */
         export interface SpreadWithGuardClauseClosureResource {
             id: number;
             ulid: string;
@@ -1965,8 +2228,8 @@ declare global {
         export interface QuirkyResource {
             id: number;
             flag?: unknown;
-            extra: unknown;
-            dynamic?: unknown;
+            extra: string;
+            dynamic?: string;
             normal_merge_key?: number;
             formatted: unknown;
             plain_user: UserResource;
@@ -1980,7 +2243,10 @@ declare global {
             fake_field: unknown;
             fake_relation?: unknown;
         }
-        /** Exercises advanced merge patterns: mergeWhen with EnumResource::make, mergeWhen with Resource::make, whenLoaded with value arg. */
+        /**
+         * Exercises advanced merge patterns: mergeWhen with EnumResource::make,
+         * mergeWhen with Resource::make, whenLoaded with value arg.
+         */
         export interface OrderDetailResource {
             id: number;
             status: app.enums.OrderStatusType;
@@ -1990,14 +2256,31 @@ declare global {
             shipping_user?: UserResource;
             order_items?: app.models.OrderItem[];
         }
-        /** Exercises closure control-flow paths in collectReturnExpressions: elseif, else, switch, try/catch/finally, foreach, and do-while. */
+        /**
+         * Exercises closure control-flow paths in collectReturnExpressions:
+         * elseif, else, switch, try/catch/finally, foreach, and do-while.
+         */
         export interface ClosureControlFlowResource {
             id: number;
-            buyer_info?: { role: unknown; name: string };
-            status_label?: { label: unknown };
-            safe_total?: { amount: number } | { amount: unknown };
-            tags?: { first_item: string } | { first_item: unknown };
-            retry_result?: { attempted: unknown };
+            buyer_info?: { role: string; name: string };
+            status_label?: { label: string };
+            safe_total?: { amount: number };
+            tags?: { first_item: string } | { first_item: null };
+            retry_result?: { attempted: boolean };
+        }
+        /**
+         * Exercises issue #38: closure parameter passed by the conditional method,
+         * where the return expression wraps an enum in EnumResource::make() or returns it bare.
+         *
+         * The bug: the analyzer resolves the return type as `unknown` instead of
+         * recognising the enum type from the param or the EnumResource wrapper.
+         */
+        export interface ConditionalParamEnumResource {
+            id: number;
+            status_resource?: app.enums.OrderStatusType;
+            status_bare?: app.enums.OrderStatusType;
+            currency_resource?: app.enums.CurrencyType;
+            user_role?: app.enums.RoleType;
         }
         export interface SpreadWithGuardDoubleClosureReturnResource {
             id: number;
@@ -2031,6 +2314,39 @@ declare global {
             items: app.models.OrderItem[];
             customer?: { name: string; initials: string; email: string; phone: string | null; avatar: string | null; role: app.enums.RoleType | null; is_premium: boolean } | { name: string; email: string; phone: string | null; avatar: string | null; role: app.enums.RoleType | null; is_premium: boolean; name_titled: string; morph: string } | null;
         }
+        /**
+         * Exercises issue #43: EnumResource wrapping an enum accessed via `$this->resource->property`
+         * returns `unknown` instead of the correct `AsEnum` utility type.
+         *
+         * Each entry below represents a distinct code pattern where the enum is reached
+         * through the underlying model accessor (`$this->resource->prop`) rather than the
+         * Laravel Resource magic shorthand (`$this->prop`).  All entries should resolve
+         * to the same TypeScript type as their `$this->prop` counterparts.
+         */
+        export interface ResourceWrappedEnumResource {
+            id: number;
+            status_make: app.enums.StatusType;
+            status_new: app.enums.StatusType;
+            visibility_make: app.enums.VisibilityType | null;
+            priority_new: app.enums.PriorityType | null;
+            status_when_make?: app.enums.StatusType;
+            status_when_arrow?: app.enums.StatusType;
+            visibility_when_full?: app.enums.VisibilityType | null;
+            priority_when_not_null_make?: app.enums.PriorityType | null;
+            status_when_not_null_arrow?: app.enums.StatusType;
+            visibility_when_not_null_full?: app.enums.VisibilityType | null;
+            status_ternary_null: app.enums.StatusType | null;
+            status_ternary_both: app.enums.StatusType;
+            status_or_visibility_ternary: app.enums.StatusType | app.enums.VisibilityType | null;
+            enums_array: { status: app.enums.StatusType; visibility: app.enums.VisibilityType | null; priority: app.enums.PriorityType | null };
+            mixed_enums_array: { status_type: crm.enums.StatusType; visibility_type: app.enums.VisibilityType | null; priority_type: app.enums.PriorityType | null; status_resource_type: crm.enums.StatusType; visibility_resource_type: app.enums.VisibilityType | null; priority_resource_type: app.enums.PriorityType | null; status_enum: app.enums.StatusType; visibility_enum: app.enums.VisibilityType | null; priority_enum: app.enums.PriorityType | null };
+            merged_status?: app.enums.StatusType;
+            merged_visibility?: app.enums.VisibilityType | null;
+            deferred_status?: app.enums.StatusType;
+            deferred_priority?: app.enums.PriorityType | null;
+            category_status?: app.enums.StatusType;
+            category_visibility?: app.enums.VisibilityType | null;
+        }
     }
     export namespace app.http.resources.admin {
         export interface Store {
@@ -2045,8 +2361,8 @@ declare global {
             computed: string;
             date_val: string;
             custom_val: CustomObject;
-            plain: unknown;
-            basic: unknown;
+            plain: string;
+            basic: string;
             firstName: string;
             lastName: string;
             isActive: boolean;
@@ -2062,14 +2378,21 @@ declare global {
             is_featured: boolean;
             author?: crm.models.User;
         }
-        /** Exercises: multiple whenLoaded bare — both same-module (Article) and cross-module (App\User) model type resolution. */
+        /**
+         * Exercises: multiple whenLoaded bare — both same-module (Article)
+         * and cross-module (App\User) model type resolution.
+         */
         export interface ReactionResource {
             id: number;
             emoji: string;
             article?: blog.models.Article;
             user?: crm.models.User;
         }
-        /** Exercises: multiple EnumResource::make, when(cond, Resource::collection), whenLoaded bare (cross-module App\User as author), whenNotNull, whenCounted, whenAggregated, when conditional with direct property. */
+        /**
+         * Exercises: multiple EnumResource::make, when(cond, Resource::collection),
+         * whenLoaded bare (cross-module App\User as author), whenNotNull, whenCounted,
+         * whenAggregated, when conditional with direct property.
+         */
         export interface ArticleResource {
             id: number;
             title: string;
@@ -2096,7 +2419,12 @@ declare global {
             company: string | null;
             status: crm.enums.StatusType;
         }
-        /** Exercises: dual enum conflict — $this->status (App\Enums\Status direct access) vs EnumResource::make($this->crm_status) (Crm\Enums\Status), whenLoaded bare with two different User models (Crm\User + App\User), when conditional, resource wrapping with colliding resource names, dual EnumResource::make. */
+        /**
+         * Exercises: dual enum conflict — $this->status (App\Enums\Status direct access)
+         * vs EnumResource::make($this->crm_status) (Crm\Enums\Status), whenLoaded bare
+         * with two different User models (Crm\User + App\User), when conditional,
+         * resource wrapping with colliding resource names, dual EnumResource::make.
+         */
         export interface DealResource {
             id: number;
             title: string;
@@ -2113,7 +2441,10 @@ declare global {
         }
     }
     export namespace shipping.http.resources {
-        /** Exercises: direct enum property access ($this->status), whenLoaded bare on same-module relation (Shipment). */
+        /**
+         * Exercises: direct enum property access ($this->status),
+         * whenLoaded bare on same-module relation (Shipment).
+         */
         export interface TrackingEventResource {
             id: number;
             status: string;
@@ -2122,7 +2453,11 @@ declare global {
             occurred_at: string;
             shipment?: shipping.models.Shipment;
         }
-        /** Exercises: EnumResource::make on two enums (Carrier, Status), when, whenNotNull, whenLoaded bare cross-module (App\Order), Resource::collection, whenCounted, whenAggregated, mergeWhen with complex expression. */
+        /**
+         * Exercises: EnumResource::make on two enums (Carrier, Status), when, whenNotNull,
+         * whenLoaded bare cross-module (App\Order), Resource::collection,
+         * whenCounted, whenAggregated, mergeWhen with complex expression.
+         */
         export interface ShipmentResource {
             id: number;
             tracking_number: string | null;

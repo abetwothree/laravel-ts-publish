@@ -4446,12 +4446,12 @@
             },
             {
                 "name": "plain",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             },
             {
                 "name": "basic",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             },
             {
@@ -4953,7 +4953,7 @@
             },
             {
                 "name": "full_name",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             }
         ],
@@ -5267,6 +5267,28 @@
                 "optional": false
             }
         ],
+        "ConditionalParamJsonResourceResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "user",
+                "type": "UserResource",
+                "optional": true
+            },
+            {
+                "name": "items",
+                "type": "OrderItemResource[]",
+                "optional": true
+            },
+            {
+                "name": "user_when",
+                "type": "UserResource",
+                "optional": true
+            }
+        ],
         "WarehouseResource": [
             {
                 "name": "id",
@@ -5351,6 +5373,38 @@
                 "optional": true
             }
         ],
+        "ConditionalParamPrimitiveResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "user_name",
+                "type": "string",
+                "optional": true
+            },
+            {
+                "name": "user_id",
+                "type": "number",
+                "optional": true
+            },
+            {
+                "name": "user_verified",
+                "type": "boolean",
+                "optional": true
+            },
+            {
+                "name": "notes_upper",
+                "type": "string",
+                "optional": true
+            },
+            {
+                "name": "notes_length",
+                "type": "number",
+                "optional": true
+            }
+        ],
         "ProfileResource": [
             {
                 "name": "id",
@@ -5398,6 +5452,55 @@
                 "optional": true
             }
         ],
+        "ConditionalParamMappedResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "items_mapped",
+                "type": "{ id: number; name: string; quantity: number }[]",
+                "optional": true
+            },
+            {
+                "name": "items_priced",
+                "type": "{ id: number; sku: string; unit_price: number; total_price: number }[]",
+                "optional": true
+            },
+            {
+                "name": "item_names",
+                "type": "string[]",
+                "optional": true
+            }
+        ],
+        "ConditionalParamArrayResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "user_summary",
+                "type": "{ id: number; email: string; name: string }",
+                "optional": true
+            },
+            {
+                "name": "notes_or_default",
+                "type": "string",
+                "optional": true
+            },
+            {
+                "name": "user_meta",
+                "type": "{ profile: { name: string; email: string }; verified: boolean }",
+                "optional": true
+            },
+            {
+                "name": "notes_when_null",
+                "type": "string",
+                "optional": true
+            }
+        ],
         "Store": [
             {
                 "name": "id",
@@ -5410,6 +5513,93 @@
                 "optional": false
             }
         ],
+        "TernaryResource": [
+            {
+                "name": "status_or_null",
+                "type": "AsEnum<typeof Status> | null",
+                "optional": false
+            },
+            {
+                "name": "status_or_status",
+                "type": "AsEnum<typeof Status>",
+                "optional": false
+            },
+            {
+                "name": "status_resource_or_type",
+                "type": "AsEnum<typeof Status> | StatusType",
+                "optional": false
+            },
+            {
+                "name": "status_or_visibility",
+                "type": "AsEnum<typeof Status> | AsEnum<typeof Visibility> | null",
+                "optional": false
+            },
+            {
+                "name": "category_or_null",
+                "type": "CategoryResource | null",
+                "optional": false
+            },
+            {
+                "name": "category_or_category",
+                "type": "CategoryResource",
+                "optional": false
+            },
+            {
+                "name": "category_or_user",
+                "type": "CategoryResource | UserResource",
+                "optional": false
+            },
+            {
+                "name": "image_or_null",
+                "type": "ImageResource | null",
+                "optional": false
+            },
+            {
+                "name": "comments_or_null",
+                "type": "CommentResource[] | null",
+                "optional": false
+            },
+            {
+                "name": "comments_or_comments",
+                "type": "CommentResource[]",
+                "optional": false
+            },
+            {
+                "name": "title_or_null",
+                "type": "string | null",
+                "optional": false
+            },
+            {
+                "name": "word_count_or_null",
+                "type": "number | null",
+                "optional": false
+            },
+            {
+                "name": "pin_label",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "title_fallback",
+                "type": "string",
+                "optional": false
+            },
+            {
+                "name": "category_when_loaded_or_null",
+                "type": "CategoryResource | null",
+                "optional": true
+            },
+            {
+                "name": "category_resource_or_null",
+                "type": "CategoryResource | null",
+                "optional": false
+            },
+            {
+                "name": "nested_ternary_label",
+                "type": "string | null",
+                "optional": false
+            }
+        ],
         "ControlFlowReturnResource": [
             {
                 "name": "id",
@@ -5418,12 +5608,12 @@
             },
             {
                 "name": "archived",
-                "type": "unknown",
+                "type": "boolean",
                 "optional": true
             },
             {
                 "name": "draft",
-                "type": "unknown",
+                "type": "boolean",
                 "optional": true
             },
             {
@@ -5450,7 +5640,7 @@
             },
             {
                 "name": "meta",
-                "type": "{ label?: unknown }",
+                "type": "{ label?: string }",
                 "optional": false
             },
             {
@@ -5597,67 +5787,67 @@
             },
             {
                 "name": "conditionalKey",
-                "type": "unknown",
+                "type": "string",
                 "optional": true
             },
             {
                 "name": "always",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             },
             {
                 "name": "sometimes",
-                "type": "unknown",
+                "type": "string",
                 "optional": true
             },
             {
                 "name": "ifBranch",
-                "type": "unknown",
+                "type": "string",
                 "optional": true
             },
             {
                 "name": "elseifBranch",
-                "type": "unknown",
+                "type": "string",
                 "optional": true
             },
             {
                 "name": "elseBranch",
-                "type": "unknown",
+                "type": "string",
                 "optional": true
             },
             {
                 "name": "conditionalBaseKey",
-                "type": "unknown",
+                "type": "string",
                 "optional": true
             },
             {
                 "name": "foundB",
-                "type": "unknown",
+                "type": "boolean",
                 "optional": true
             },
             {
                 "name": "foreachKey",
-                "type": "unknown",
+                "type": "string",
                 "optional": true
             },
             {
                 "name": "forKey",
-                "type": "unknown",
+                "type": "string",
                 "optional": true
             },
             {
                 "name": "whileKey",
-                "type": "unknown",
+                "type": "string",
                 "optional": true
             },
             {
                 "name": "doWhileKey",
-                "type": "unknown",
+                "type": "string",
                 "optional": true
             },
             {
                 "name": "status",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             }
         ],
@@ -5689,12 +5879,12 @@
             },
             {
                 "name": "plain",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             },
             {
                 "name": "basic",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             },
             {
@@ -5789,6 +5979,43 @@
             {
                 "name": "total",
                 "type": "number",
+                "optional": true
+            }
+        ],
+        "ConditionalParamFullClosureResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "user_name",
+                "type": "string",
+                "optional": true
+            },
+            {
+                "name": "user_summary",
+                "type": "{ id: number; email: string }",
+                "optional": true
+            },
+            {
+                "name": "items_mapped",
+                "type": "{ id: number; name: string; quantity: number }[]",
+                "optional": true
+            },
+            {
+                "name": "user_resource",
+                "type": "UserResource",
+                "optional": true
+            },
+            {
+                "name": "status_resource",
+                "type": "AsEnum<typeof OrderStatus>",
+                "optional": true
+            },
+            {
+                "name": "shipping_safe",
+                "type": "{ name: string; email: string } | null",
                 "optional": true
             }
         ],
@@ -6132,6 +6359,61 @@
                 "name": "posts_count",
                 "type": "number",
                 "optional": true
+            },
+            {
+                "name": "children_self_collection",
+                "type": "CategoryResource[]",
+                "optional": false
+            },
+            {
+                "name": "children_self_resource_collection",
+                "type": "CategoryResource[]",
+                "optional": false
+            },
+            {
+                "name": "children_self_collection_first_callable",
+                "type": "CategoryResource[]",
+                "optional": false
+            },
+            {
+                "name": "children_when_self_collection",
+                "type": "CategoryResource[]",
+                "optional": true
+            },
+            {
+                "name": "children_when_self_resource_collection",
+                "type": "CategoryResource[]",
+                "optional": true
+            },
+            {
+                "name": "children_when_self_collection_first_callable",
+                "type": "CategoryResource[]",
+                "optional": true
+            },
+            {
+                "name": "parent_self",
+                "type": "CategoryResource",
+                "optional": false
+            },
+            {
+                "name": "parent_make_self",
+                "type": "CategoryResource",
+                "optional": false
+            },
+            {
+                "name": "parent_resource_self",
+                "type": "CategoryResource",
+                "optional": false
+            },
+            {
+                "name": "parent_when_self",
+                "type": "CategoryResource",
+                "optional": true
+            },
+            {
+                "name": "parent_when_resource_self",
+                "type": "CategoryResource",
+                "optional": true
             }
         ],
         "ExtendedAddressResource": [
@@ -6157,12 +6439,12 @@
             },
             {
                 "name": "plain",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             },
             {
                 "name": "basic",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             },
             {
@@ -6197,7 +6479,7 @@
             },
             {
                 "name": "extra_field",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             }
         ],
@@ -6435,12 +6717,12 @@
             },
             {
                 "name": "plain",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             },
             {
                 "name": "basic",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             },
             {
@@ -6775,7 +7057,7 @@
             },
             {
                 "name": "has_admin",
-                "type": "unknown",
+                "type": "boolean",
                 "optional": false
             }
         ],
@@ -7411,12 +7693,12 @@
             },
             {
                 "name": "extra",
-                "type": "unknown",
+                "type": "string",
                 "optional": false
             },
             {
                 "name": "dynamic",
-                "type": "unknown",
+                "type": "string",
                 "optional": true
             },
             {
@@ -7525,27 +7807,54 @@
             },
             {
                 "name": "buyer_info",
-                "type": "{ role: unknown; name: string }",
+                "type": "{ role: string; name: string }",
                 "optional": true
             },
             {
                 "name": "status_label",
-                "type": "{ label: unknown }",
+                "type": "{ label: string }",
                 "optional": true
             },
             {
                 "name": "safe_total",
-                "type": "{ amount: number } | { amount: unknown }",
+                "type": "{ amount: number }",
                 "optional": true
             },
             {
                 "name": "tags",
-                "type": "{ first_item: string } | { first_item: unknown }",
+                "type": "{ first_item: string } | { first_item: null }",
                 "optional": true
             },
             {
                 "name": "retry_result",
-                "type": "{ attempted: unknown }",
+                "type": "{ attempted: boolean }",
+                "optional": true
+            }
+        ],
+        "ConditionalParamEnumResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "status_resource",
+                "type": "AsEnum<typeof OrderStatus>",
+                "optional": true
+            },
+            {
+                "name": "status_bare",
+                "type": "OrderStatusType",
+                "optional": true
+            },
+            {
+                "name": "currency_resource",
+                "type": "AsEnum<typeof Currency>",
+                "optional": true
+            },
+            {
+                "name": "user_role",
+                "type": "AsEnum<typeof Role>",
                 "optional": true
             }
         ],
@@ -7698,6 +8007,118 @@
             {
                 "name": "customer",
                 "type": "{ name: string; initials: string; email: string; phone: string | null; avatar: string | null; role: RoleType | null; is_premium: boolean } | { name: string; email: string; phone: string | null; avatar: string | null; role: RoleType | null; is_premium: boolean; name_titled: string; morph: string } | null",
+                "optional": true
+            }
+        ],
+        "ResourceWrappedEnumResource": [
+            {
+                "name": "id",
+                "type": "number",
+                "optional": false
+            },
+            {
+                "name": "status_make",
+                "type": "AsEnum<typeof Status>",
+                "optional": false
+            },
+            {
+                "name": "status_new",
+                "type": "AsEnum<typeof Status>",
+                "optional": false
+            },
+            {
+                "name": "visibility_make",
+                "type": "AsEnum<typeof Visibility> | null",
+                "optional": false
+            },
+            {
+                "name": "priority_new",
+                "type": "AsEnum<typeof Priority> | null",
+                "optional": false
+            },
+            {
+                "name": "status_when_make",
+                "type": "AsEnum<typeof Status>",
+                "optional": true
+            },
+            {
+                "name": "status_when_arrow",
+                "type": "AsEnum<typeof Status>",
+                "optional": true
+            },
+            {
+                "name": "visibility_when_full",
+                "type": "AsEnum<typeof Visibility> | null",
+                "optional": true
+            },
+            {
+                "name": "priority_when_not_null_make",
+                "type": "AsEnum<typeof Priority> | null",
+                "optional": true
+            },
+            {
+                "name": "status_when_not_null_arrow",
+                "type": "AsEnum<typeof Status>",
+                "optional": true
+            },
+            {
+                "name": "visibility_when_not_null_full",
+                "type": "AsEnum<typeof Visibility> | null",
+                "optional": true
+            },
+            {
+                "name": "status_ternary_null",
+                "type": "AsEnum<typeof Status> | null",
+                "optional": false
+            },
+            {
+                "name": "status_ternary_both",
+                "type": "AsEnum<typeof Status>",
+                "optional": false
+            },
+            {
+                "name": "status_or_visibility_ternary",
+                "type": "AsEnum<typeof Status> | AsEnum<typeof Visibility> | null",
+                "optional": false
+            },
+            {
+                "name": "enums_array",
+                "type": "{ status: AsEnum<typeof Status>; visibility: AsEnum<typeof Visibility> | null; priority: AsEnum<typeof Priority> | null }",
+                "optional": false
+            },
+            {
+                "name": "mixed_enums_array",
+                "type": "{ status_type: StatusType; visibility_type: VisibilityType | null; priority_type: PriorityType | null; status_resource_type: StatusType; visibility_resource_type: VisibilityType | null; priority_resource_type: PriorityType | null; status_enum: AsEnum<typeof Status>; visibility_enum: AsEnum<typeof Visibility> | null; priority_enum: AsEnum<typeof Priority> | null }",
+                "optional": false
+            },
+            {
+                "name": "merged_status",
+                "type": "AsEnum<typeof Status>",
+                "optional": true
+            },
+            {
+                "name": "merged_visibility",
+                "type": "AsEnum<typeof Visibility> | null",
+                "optional": true
+            },
+            {
+                "name": "deferred_status",
+                "type": "AsEnum<typeof Status>",
+                "optional": true
+            },
+            {
+                "name": "deferred_priority",
+                "type": "AsEnum<typeof Priority> | null",
+                "optional": true
+            },
+            {
+                "name": "category_status",
+                "type": "AsEnum<typeof Status>",
+                "optional": true
+            },
+            {
+                "name": "category_visibility",
+                "type": "AsEnum<typeof Visibility> | null",
                 "optional": true
             }
         ]
