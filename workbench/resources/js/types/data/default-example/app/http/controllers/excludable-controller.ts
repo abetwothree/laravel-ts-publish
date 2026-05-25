@@ -1,6 +1,8 @@
 import { defineRoute } from '@tolki/ts';
 
-/** This action is included */
+/**
+  * This action is included
+  */
 export const show = defineRoute({
     name: 'excludable.show',
     url: '/excludable/{id}',

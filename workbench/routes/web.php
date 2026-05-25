@@ -15,6 +15,11 @@ use Workbench\App\Http\Controllers\EnumBoundController;
 use Workbench\App\Http\Controllers\ExcludableController;
 use Workbench\App\Http\Controllers\ExcludedController;
 use Workbench\App\Http\Controllers\InertiaController;
+use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
+use Workbench\App\Http\Controllers\InertiaPaginationsController;
+use Workbench\App\Http\Controllers\InertiaResourceSharedTemplate;
+use Workbench\App\Http\Controllers\InertiaSingleResourceController;
+use Workbench\App\Http\Controllers\InertiaTsCastsController;
 use Workbench\App\Http\Controllers\InvokableController;
 use Workbench\App\Http\Controllers\InvokableInertiaController;
 use Workbench\App\Http\Controllers\InvokableModelBoundController;
@@ -26,6 +31,7 @@ use Workbench\App\Http\Controllers\Nested\NestedController;
 use Workbench\App\Http\Controllers\OptionalParamController;
 use Workbench\App\Http\Controllers\ParameterCaseController;
 use Workbench\App\Http\Controllers\PostController;
+use Workbench\App\Http\Controllers\PostInertiaController;
 use Workbench\App\Http\Controllers\PrimaryKeyController;
 use Workbench\App\Http\Controllers\Prism\Prism\PrismController as NestedPrismController;
 use Workbench\App\Http\Controllers\Prism\PrismController;
@@ -100,3 +106,29 @@ Route::get('/inertia/dashboard', [InertiaController::class, 'dashboard'])->name(
 Route::get('/inertia/settings', [InertiaController::class, 'settings'])->name('inertia.settings');
 Route::get('/inertia/about', [InertiaController::class, 'about'])->name('inertia.about');
 Route::get('/inertia/conditional', [InertiaController::class, 'conditional'])->name('inertia.conditional');
+Route::get('/inertia/post/{post}', [InertiaController::class, 'post'])->name('inertia.post');
+
+Route::resource('posts-inertia', PostInertiaController::class, ['parameters' => ['posts-inertia' => 'post']]);
+
+Route::get('/pagination/length-aware', [InertiaPaginationsController::class, 'lengthAware'])->name('pagination.length-aware');
+Route::get('/pagination/simple', [InertiaPaginationsController::class, 'simple'])->name('pagination.simple');
+Route::get('/pagination/cursor', [InertiaPaginationsController::class, 'cursor'])->name('pagination.cursor');
+
+Route::get('/collection/resource-paginated-collection', [InertiaSingleResourceController::class, 'resourcePaginatedCollection'])->name('collection.resource-paginated-collection');
+Route::get('/collection/resource-anon-collection', [InertiaSingleResourceController::class, 'resourceAnonymousCollection'])->name('collection.resource-anon-collection');
+Route::get('/collection/resource', [InertiaSingleResourceController::class, 'resource'])->name('collection.resource');
+
+Route::get('/same-template/resource-paginated-collection', [InertiaResourceSharedTemplate::class, 'resourcePaginatedCollection'])->name('same-template.resource-paginated-collection');
+Route::get('/same-template/resource-anon-collection', [InertiaResourceSharedTemplate::class, 'resourceAnonymousCollection'])->name('same-template.resource-anon-collection');
+Route::get('/same-template/resource', [InertiaResourceSharedTemplate::class, 'resource'])->name('same-template.resource');
+
+Route::get('/collection/resource-anonymous-paginated', [InertiaNamedCollectionsController::class, 'resourceAnonymousPaginated'])->name('collection.resource-anonymous-paginated');
+Route::get('/collection/resource-anonymous', [InertiaNamedCollectionsController::class, 'resourceAnonymous'])->name('collection.resource-anonymous');
+
+Route::get('/collection/named-collection-paginated', [InertiaNamedCollectionsController::class, 'namedCollectionPaginated'])->name('collection.named-collection-paginated');
+Route::get('/collection/named', [InertiaNamedCollectionsController::class, 'namedCollection'])->name('collection.named');
+
+Route::get('/collection/flat-paginated', [InertiaNamedCollectionsController::class, 'flatCollectionPaginated'])->name('collection.flat-paginated');
+Route::get('/collection/flat', [InertiaNamedCollectionsController::class, 'flatCollection'])->name('collection.flat');
+
+Route::get('/ts-casts', [InertiaTsCastsController::class, 'index'])->name('ts-casts.index');

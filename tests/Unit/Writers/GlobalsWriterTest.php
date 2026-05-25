@@ -158,3 +158,18 @@ test('globals content resolves aliased types to namespace-qualified names', func
         ->toContain('imageable: Post | Product | User | crm.models.User')
         ->not->toContain('imageable: Post | Product | crm.models.User | crm.models.User');
 });
+
+test('globals resources section emits export type for flat collections', function () {
+    config()->set('ts-publish.globals.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+
+    $runner = resolve(Runner::class);
+    $runner->run();
+
+    $writer = new GlobalsWriter(new Filesystem);
+    $content = $writer->write($runner);
+
+    expect($content)
+        ->toContain('export type PostFlatCollection =')
+        ->not->toContain('export interface PostFlatCollection {');
+})->skip(fn () => ! version_compare(app()->version(), '13', '>='));

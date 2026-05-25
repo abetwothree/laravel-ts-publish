@@ -1910,6 +1910,9 @@ declare global {
             value: string | number;
             custom: unknown;
         }
+        export interface PostCollection {
+            data: PostResource[];
+        }
         export interface ApiPostResource {
             morphValue: string;
             id: number;
@@ -1985,6 +1988,11 @@ declare global {
         /** Resource that delegates to parent — tests non-array return guard. */
         export interface DelegatingResource {
         }
+        /**
+         * A ResourceCollection with $wrap = null so the collection IS the array,
+         * not wrapped in a 'data' key. Uses #[Collects] to identify the singular resource.
+         */
+        export type PostFlatCollection = PostResource[];
         /**
          * Exercises: when, whenLoaded + Resource::make, Resource::collection,
          * whenCounted, mergeWhen.

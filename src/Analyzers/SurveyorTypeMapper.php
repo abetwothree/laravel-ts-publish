@@ -17,6 +17,24 @@ use Laravel\Surveyor\Types\Contracts\Type;
 class SurveyorTypeMapper
 {
     /**
+     * Maps PHP FQCNs to their TypeScript names in the `@tolki/types` package.
+     *
+     * Includes both concrete pagination classes and their contract interfaces, plus
+     * AnonymousResourceCollection which becomes `AnonymousResourceCollection<T>` in TypeScript.
+     *
+     * @var array<string, string>
+     */
+    public const TOLKI_TYPES_MAP = [
+        'Illuminate\\Pagination\\LengthAwarePaginator' => 'LengthAwarePaginator',
+        'Illuminate\\Pagination\\Paginator' => 'SimplePaginator',
+        'Illuminate\\Pagination\\CursorPaginator' => 'CursorPaginator',
+        'Illuminate\\Contracts\\Pagination\\LengthAwarePaginator' => 'LengthAwarePaginator',
+        'Illuminate\\Contracts\\Pagination\\Paginator' => 'SimplePaginator',
+        'Illuminate\\Contracts\\Pagination\\CursorPaginator' => 'CursorPaginator',
+        'Illuminate\\Http\\Resources\\Json\\AnonymousResourceCollection' => 'AnonymousResourceCollection',
+    ];
+
+    /**
      * Convert a Surveyor Type to a TypeScript type string.
      */
     public static function convert(Type $type): string
@@ -146,10 +164,34 @@ class SurveyorTypeMapper
         $mapped = match ($value) {
             'Illuminate\\Support\\Stringable' => 'string',
             'Illuminate\\Support\\Collection' => 'unknown[]',
-            default => str_replace('\\', '.', $value),
+            default => isset(self::TOLKI_TYPES_MAP[$value])
+                ? str_replace('\\', '.', $value).self::buildGenericSuffix($type)
+                : str_replace('\\', '.', $value),
         };
 
         return self::decorate($mapped, $type);
+    }
+
+    /**
+     * Build the generic suffix for a TOLKI_TYPES_MAP class type.
+     *
+     * Uses the Surveyor-provided generic types when available, falling back
+     * to `<unknown>` when none are present (e.g. for bare paginator returns).
+     */
+    private static function buildGenericSuffix(Types\ClassType $type): string
+    {
+        $generics = $type->genericTypes();
+
+        if (empty($generics)) {
+            return '<unknown>';
+        }
+
+        $converted = array_values(array_map(
+            fn (mixed $t): string => $t instanceof Type ? self::convert($t) : 'unknown',
+            $generics,
+        ));
+
+        return '<'.implode(', ', $converted).'>';
     }
 
     /**
@@ -206,5 +248,61 @@ class SurveyorTypeMapper
         }
 
         return $type;
+    }
+
+    /**
+     * Extract PHP FQCNs from a type string containing dot-notation class references.
+     *
+     * Matches multi-segment PascalCase dot-notation (e.g. `Workbench.App.Models.Post`)
+     * and converts them back to FQCNs (`Workbench\App\Models\Post`). Filters to only
+     * those that actually exist as a class or enum. Excludes `Inertia.*` references
+     * which are TypeScript global namespaces, not PHP classes.
+     *
+     * @return list<class-string>
+     */
+    public static function extractDotNotationFqcns(string $typeString): array
+    {
+        // Match sequences of 2+ PascalCase segments separated by dots
+        preg_match_all('/\b([A-Z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)+)\b/', $typeString, $matches);
+
+        /** @var list<class-string> $fqcns */
+        $fqcns = [];
+
+        foreach (array_unique($matches[1]) as $dotNotation) {
+            // Exclude TypeScript globals (Inertia.*)
+            if (str_starts_with($dotNotation, 'Inertia.')) {
+                continue;
+            }
+
+            $fqcn = str_replace('.', '\\', $dotNotation);
+
+            if (class_exists($fqcn) || enum_exists($fqcn) || interface_exists($fqcn)) {
+                /** @var class-string $fqcn */
+                $fqcns[] = $fqcn;
+            }
+        }
+
+        return $fqcns;
+    }
+
+    /**
+     * Rewrite dot-notation class references in a type string to their base names.
+     *
+     * For each FQCN in `$fqcns`, replaces the dot-notation form
+     * (e.g. `Workbench.App.Models.Post`) with the base name (e.g. `Post`).
+     * FQCNs in `TOLKI_TYPES_MAP` use their mapped TypeScript name instead of
+     * the PHP class basename (e.g. `Paginator` → `SimplePaginator`).
+     *
+     * @param  list<class-string>  $fqcns
+     */
+    public static function rewriteDotNotationToBasenames(string $typeString, array $fqcns): string
+    {
+        foreach ($fqcns as $fqcn) {
+            $dotNotation = str_replace('\\', '.', $fqcn);
+            $basename = self::TOLKI_TYPES_MAP[$fqcn] ?? class_basename($fqcn);
+            $typeString = str_replace($dotNotation, $basename, $typeString);
+        }
+
+        return $typeString;
     }
 }

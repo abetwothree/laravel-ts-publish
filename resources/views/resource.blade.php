@@ -11,15 +11,18 @@ import type { {{ implode(', ', $types) }} } from '{{ $path }}';
 @endforeach
 
 @php
-    $description = $data->description;
+$description = $data->description;
 
-    if ($description) {
-        $description .= "\n\n";
-    }
+if ($description) {
+    $description .= "\n\n";
+}
 
-    $description .= "@see {$data->fqcn}";
+$description .= "@see {$data->fqcn}";
 @endphp
 {!! LaravelTsPublish::formatJsDoc($description) !!}
+@if($data->typeAlias !== null)
+export type {{ $data->resourceName }} = {!! $data->typeAlias !!};
+@else
 export interface {{ $data->resourceName }}{!! count($data->tsExtends) > 0 ? ' extends ' . implode(', ', $data->tsExtends) : '' !!}
 {
 @foreach ($data->properties as $name => $property)
@@ -29,3 +32,4 @@ export interface {{ $data->resourceName }}{!! count($data->tsExtends) > 0 ? ' ex
     {!! LaravelTsPublish::validJsObjectKey($name) !!}{!! $property['optional'] ? '?' : '' !!}: {!! $property['type'] !!};
 @endforeach
 }
+@endif

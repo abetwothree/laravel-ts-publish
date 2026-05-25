@@ -125,6 +125,9 @@ class ResourceTransformer extends CoreTransformer
     /** @var list<string> TypeScript extends clauses */
     public protected(set) array $tsExtends = [];
 
+    /** @var string|null TypeScript type alias (e.g. `export type X = SingularResource[]`) emitted instead of an interface */
+    public protected(set) ?string $typeAlias = null;
+
     #[Override]
     public function transform(): self
     {
@@ -158,6 +161,7 @@ class ResourceTransformer extends CoreTransformer
             valueImports: $this->valueImports,
             modelClass: $this->modelClass,
             tsExtends: $this->tsExtends,
+            typeAlias: $this->typeAlias,
         );
     }
 
@@ -405,6 +409,18 @@ class ResourceTransformer extends CoreTransformer
     {
         $analyzer = new ResourceAstAnalyzer($this->reflectionResource, $this->modelClass);
         $analysis = $analyzer->analyze();
+
+        // Handle flat type alias (e.g. `export type PostCollection = PostResource[]`)
+        // for ResourceCollection subclasses with $wrap = null.
+        if ($analysis->flatTypeAlias !== null) {
+            $this->typeAlias = $analysis->flatTypeAlias;
+
+            if ($analysis->flatTypeAliasFqcn !== null && $analysis->flatTypeAliasFqcn !== $this->findable) {
+                $this->resourceFqcnMap[$analysis->flatTypeAliasFqcn] = class_basename($analysis->flatTypeAliasFqcn);
+            }
+
+            return $this;
+        }
 
         // Convert ResourcePropertyInfo list into PropertiesList map
         foreach ($analysis->properties as $prop) {

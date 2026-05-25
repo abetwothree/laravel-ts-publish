@@ -289,3 +289,112 @@ test('objectToTypeString handles nullable types', function () {
 
     expect($result)->toBe('{ value: string | null }');
 });
+
+// ─── TOLKI_TYPES_MAP ──────────────────────────────────────────────
+
+test('TOLKI_TYPES_MAP contains all pagination concrete classes and interfaces', function () {
+    expect(SurveyorTypeMapper::TOLKI_TYPES_MAP)
+        ->toHaveKey('Illuminate\\Pagination\\LengthAwarePaginator', 'LengthAwarePaginator')
+        ->toHaveKey('Illuminate\\Pagination\\Paginator', 'SimplePaginator')
+        ->toHaveKey('Illuminate\\Pagination\\CursorPaginator', 'CursorPaginator')
+        ->toHaveKey('Illuminate\\Contracts\\Pagination\\LengthAwarePaginator', 'LengthAwarePaginator')
+        ->toHaveKey('Illuminate\\Contracts\\Pagination\\Paginator', 'SimplePaginator')
+        ->toHaveKey('Illuminate\\Contracts\\Pagination\\CursorPaginator', 'CursorPaginator')
+        ->toHaveKey('Illuminate\\Http\\Resources\\Json\\AnonymousResourceCollection', 'AnonymousResourceCollection');
+});
+
+test('converts LengthAwarePaginator ClassType to dot-notation with <unknown>', function () {
+    $type = new Types\ClassType('Illuminate\\Pagination\\LengthAwarePaginator');
+
+    expect(SurveyorTypeMapper::convert($type))
+        ->toBe('Illuminate.Pagination.LengthAwarePaginator<unknown>');
+});
+
+test('converts TOLKI_TYPES_MAP ClassType with Surveyor genericTypes to concrete generic suffix', function () {
+    $type = new Types\ClassType('Illuminate\\Pagination\\LengthAwarePaginator');
+    $type->setGenericTypes([new Types\ClassType('App\\Models\\Post')]);
+
+    expect(SurveyorTypeMapper::convert($type))
+        ->toBe('Illuminate.Pagination.LengthAwarePaginator<App.Models.Post>');
+});
+
+test('converts TOLKI_TYPES_MAP ClassType with multiple Surveyor genericTypes', function () {
+    $type = new Types\ClassType('Illuminate\\Pagination\\LengthAwarePaginator');
+    $type->setGenericTypes([new Types\ClassType('App\\Models\\Post'), new Types\StringType]);
+
+    expect(SurveyorTypeMapper::convert($type))
+        ->toBe('Illuminate.Pagination.LengthAwarePaginator<App.Models.Post, string>');
+});
+
+test('converts Paginator contract ClassType to dot-notation with <unknown>', function () {
+    $type = new Types\ClassType('Illuminate\\Contracts\\Pagination\\Paginator');
+
+    expect(SurveyorTypeMapper::convert($type))
+        ->toBe('Illuminate.Contracts.Pagination.Paginator<unknown>');
+});
+
+test('converts CursorPaginator contract ClassType to dot-notation with <unknown>', function () {
+    $type = new Types\ClassType('Illuminate\\Contracts\\Pagination\\CursorPaginator');
+
+    expect(SurveyorTypeMapper::convert($type))
+        ->toBe('Illuminate.Contracts.Pagination.CursorPaginator<unknown>');
+});
+
+test('converts AnonymousResourceCollection ClassType to dot-notation with <unknown>', function () {
+    $type = new Types\ClassType('Illuminate\\Http\\Resources\\Json\\AnonymousResourceCollection');
+
+    expect(SurveyorTypeMapper::convert($type))
+        ->toBe('Illuminate.Http.Resources.Json.AnonymousResourceCollection<unknown>');
+});
+
+// ─── extractDotNotationFqcns() ────────────────────────────────────
+
+test('extractDotNotationFqcns extracts PHP interface FQCNs from type string', function () {
+    $typeString = 'Inertia.SharedData & { posts: Illuminate.Contracts.Pagination.Paginator<unknown> }';
+    $fqcns = SurveyorTypeMapper::extractDotNotationFqcns($typeString);
+
+    expect($fqcns)->toContain('Illuminate\\Contracts\\Pagination\\Paginator');
+});
+
+test('extractDotNotationFqcns extracts CursorPaginator contract FQCN', function () {
+    $typeString = 'Inertia.SharedData & { posts: Illuminate.Contracts.Pagination.CursorPaginator<unknown> }';
+    $fqcns = SurveyorTypeMapper::extractDotNotationFqcns($typeString);
+
+    expect($fqcns)->toContain('Illuminate\\Contracts\\Pagination\\CursorPaginator');
+});
+
+test('extractDotNotationFqcns extracts AnonymousResourceCollection FQCN', function () {
+    $typeString = 'Inertia.SharedData & { posts: Illuminate.Http.Resources.Json.AnonymousResourceCollection<unknown> }';
+    $fqcns = SurveyorTypeMapper::extractDotNotationFqcns($typeString);
+
+    expect($fqcns)->toContain('Illuminate\\Http\\Resources\\Json\\AnonymousResourceCollection');
+});
+
+// ─── rewriteDotNotationToBasenames() ─────────────────────────────
+
+test('rewriteDotNotationToBasenames uses TOLKI_TYPES_MAP name for Paginator contract', function () {
+    $fqcns = ['Illuminate\\Contracts\\Pagination\\Paginator'];
+    $typeString = 'Inertia.SharedData & { posts: Illuminate.Contracts.Pagination.Paginator<unknown> }';
+
+    $result = SurveyorTypeMapper::rewriteDotNotationToBasenames($typeString, $fqcns);
+
+    expect($result)->toBe('Inertia.SharedData & { posts: SimplePaginator<unknown> }');
+});
+
+test('rewriteDotNotationToBasenames uses TOLKI_TYPES_MAP name for AnonymousResourceCollection', function () {
+    $fqcns = ['Illuminate\\Http\\Resources\\Json\\AnonymousResourceCollection'];
+    $typeString = 'Inertia.SharedData & { posts: Illuminate.Http.Resources.Json.AnonymousResourceCollection<unknown> }';
+
+    $result = SurveyorTypeMapper::rewriteDotNotationToBasenames($typeString, $fqcns);
+
+    expect($result)->toBe('Inertia.SharedData & { posts: AnonymousResourceCollection<unknown> }');
+});
+
+test('rewriteDotNotationToBasenames uses basename for non-mapped classes', function () {
+    $fqcns = ['Workbench\\App\\Models\\Post'];
+    $typeString = 'Inertia.SharedData & { post: Workbench.App.Models.Post }';
+
+    $result = SurveyorTypeMapper::rewriteDotNotationToBasenames($typeString, $fqcns);
+
+    expect($result)->toBe('Inertia.SharedData & { post: Post }');
+});

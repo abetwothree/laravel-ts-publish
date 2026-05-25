@@ -26,10 +26,7 @@ class RouteWriter extends CoreWriter
 
         /** @var view-string $template */
         $template = config()->string('ts-publish.routes.template');
-
-        $data = $transformer->data();
-
-        $content = view($template, ['data' => $data])->render();
+        $content = view($template, ['data' => $transformer->data()])->render();
 
         if (config()->boolean('ts-publish.output_to_files')) {
             $this->writeRouteFile($filename, $content, $transformer->namespacePath);

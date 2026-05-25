@@ -381,7 +381,7 @@ class LaravelTsPublish
         }
 
         // Exclude class/interface return types — only built-in scalar types are safe to map.
-        // Non-builtin types can produce false matches via phpToTypeScriptType's partial
+        // Non-builtin types can produce false matches via toTsType's partial
         // string matching (e.g. Carbon\CarbonInterface contains "int" → number).
         if ($returnType instanceof ReflectionNamedType && ! $returnType->isBuiltin()) {
             return $cache[$name] = $result;
