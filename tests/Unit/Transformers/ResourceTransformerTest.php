@@ -21,6 +21,7 @@ use Workbench\App\Http\Resources\MediaTypeInstanceOfResource;
 use Workbench\App\Http\Resources\MediaTypeResource;
 use Workbench\App\Http\Resources\MediaTypeUnknownResource;
 use Workbench\App\Http\Resources\OrderResource;
+use Workbench\App\Http\Resources\PostFlatCollection;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\ProfileResource;
@@ -1955,3 +1956,12 @@ describe('ResourceTransformer with ResourceWrappedEnumResource — inline array 
         expect($allValueImports)->toContain('Priority');
     });
 });
+
+describe('ResourceTransformer with PostFlatCollection (typeAlias)', function () {
+    test('typeAlias is publicly accessible after transform', function () {
+        $transformer = new ResourceTransformer(PostFlatCollection::class);
+        $transformer->transform();
+
+        expect($transformer->typeAlias)->toBe('PostResource[]');
+    })->skip(fn () => ! version_compare(app()->version(), '13', '>='));
+})->group('transformer');

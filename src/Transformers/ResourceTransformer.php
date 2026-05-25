@@ -126,7 +126,7 @@ class ResourceTransformer extends CoreTransformer
     public protected(set) array $tsExtends = [];
 
     /** @var string|null TypeScript type alias (e.g. `export type X = SingularResource[]`) emitted instead of an interface */
-    protected ?string $typeAlias = null;
+    public protected(set) ?string $typeAlias = null;
 
     #[Override]
     public function transform(): self
