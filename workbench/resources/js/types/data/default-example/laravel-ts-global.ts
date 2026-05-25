@@ -1992,8 +1992,7 @@ declare global {
          * A ResourceCollection with $wrap = null so the collection IS the array,
          * not wrapped in a 'data' key. Uses #[Collects] to identify the singular resource.
          */
-        export interface PostFlatCollection {
-        }
+        export type PostFlatCollection = PostResource[];
         /**
          * Exercises: when, whenLoaded + Resource::make, Resource::collection,
          * whenCounted, mergeWhen.

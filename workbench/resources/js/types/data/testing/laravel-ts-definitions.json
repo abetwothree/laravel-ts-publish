@@ -6896,7 +6896,9 @@
             }
         ],
         "DelegatingResource": [],
-        "PostFlatCollection": [],
+        "PostFlatCollection": {
+            "typeAlias": "PostResource[]"
+        },
         "TeamResource": [
             {
                 "name": "id",
