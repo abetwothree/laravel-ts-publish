@@ -97,6 +97,9 @@ declare global {
 @if($transformer->description)
 {!! LaravelTsPublish::formatJsDoc($transformer->description, 8) !!}
 @endif
+@if($transformer->typeAlias !== null)
+        export type {{ $transformer->resourceName }} = {!! LaravelTsPublish::qualifyGlobalType($transformer->typeAlias, $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
+@else
         export interface {{ $transformer->resourceName }}{!! count($transformer->tsExtends) > 0 ? ' extends '.implode(', ', $transformer->tsExtends) : '' !!} {
 @foreach ($transformer->properties as $name => $property)
 @if($property['description'])
@@ -105,6 +108,7 @@ declare global {
             {!! LaravelTsPublish::validJsObjectKey($name) !!}{!! $property['optional'] ? '?' : '' !!}: {!! LaravelTsPublish::qualifyGlobalType(LaravelTsPublish::rewriteAsEnumToType($property['type'], $transformer->globalEnumConstMap()), $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
 @endforeach
         }
+@endif
 @endforeach
     }
 @endif
