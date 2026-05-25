@@ -136,22 +136,26 @@ class JsonWriter
         return $data;
     }
 
-    /** @return array<string, list<array{name: string, type: string, optional: bool}>> */
+    /** @return array<string, list<array{name: string, type: string, optional: bool}>|array{typeAlias: string}> */
     protected function createJsonForResources(Runner $runner): array
     {
         $transformers = $runner->resourceGenerators->map(fn (ResourceGenerator $g) => $g->transformer);
         $data = [];
 
         foreach ($transformers as $transformer) {
-            $data[$transformer->resourceName] = array_map(
-                fn (array $prop, string $name) => [
-                    'name' => $name,
-                    'type' => $prop['type'],
-                    'optional' => $prop['optional'],
-                ],
-                $transformer->properties,
-                array_keys($transformer->properties),
-            );
+            if ($transformer->typeAlias !== null) {
+                $data[$transformer->resourceName] = ['typeAlias' => $transformer->typeAlias];
+            } else {
+                $data[$transformer->resourceName] = array_map(
+                    fn (array $prop, string $name) => [
+                        'name' => $name,
+                        'type' => $prop['type'],
+                        'optional' => $prop['optional'],
+                    ],
+                    $transformer->properties,
+                    array_keys($transformer->properties),
+                );
+            }
         }
 
         return $data;

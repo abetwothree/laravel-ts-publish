@@ -76,6 +76,21 @@ test('json enums contain cases and methods', function () {
         ->toHaveKey('staticMethods');
 });
 
+test('json resources include typeAlias for flat collections', function () {
+    config()->set('ts-publish.json.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+
+    $runner = resolve(Runner::class);
+    $runner->run();
+
+    $writer = new JsonWriter(new Filesystem);
+    $content = $writer->write($runner);
+    $decoded = json_decode($content, true);
+
+    expect($decoded['resources'])->toHaveKey('PostFlatCollection');
+    expect($decoded['resources']['PostFlatCollection'])->toBe(['typeAlias' => 'PostResource[]']);
+})->skip(fn () => ! version_compare(app()->version(), '13', '>='));
+
 test('writes json file to disk when output_to_files is enabled', function () {
     config()->set('ts-publish.json.enabled', true);
 
