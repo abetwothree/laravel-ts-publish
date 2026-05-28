@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\FormRequest\FormRequestRulesAnalyzer;
+use Workbench\App\Http\Requests\ArrayRulesRequest;
 use Workbench\App\Http\Requests\BooleanRulesRequest;
 use Workbench\App\Http\Requests\DateRulesRequest;
 use Workbench\App\Http\Requests\DynamicRequest;
@@ -181,6 +182,43 @@ describe('FormRequestRulesAnalyzer', function () {
             $node = collect($nodes)->firstWhere('fieldPath', 'banner');
             expect($node)->not->toBeNull();
             expect($node->tsType)->toBe('File');
+        });
+
+        it('infers string[] element type for array field with wildcard string rule', function () {
+            $analyzer = new FormRequestRulesAnalyzer;
+            $nodes = $analyzer->analyze(ArrayRulesRequest::class);
+
+            $node = collect($nodes)->firstWhere('fieldPath', 'tags');
+            expect($node)->not->toBeNull();
+            expect($node->tsType)->toBe('string[]');
+        });
+
+        it('infers number[] element type for array field with wildcard integer rule', function () {
+            $analyzer = new FormRequestRulesAnalyzer;
+            $nodes = $analyzer->analyze(ArrayRulesRequest::class);
+
+            $node = collect($nodes)->firstWhere('fieldPath', 'selected_ids');
+            expect($node)->not->toBeNull();
+            expect($node->tsType)->toBe('number[]');
+        });
+
+        it('infers string[] for nullable array field with wildcard string rule', function () {
+            $analyzer = new FormRequestRulesAnalyzer;
+            $nodes = $analyzer->analyze(ArrayRulesRequest::class);
+
+            $node = collect($nodes)->firstWhere('fieldPath', 'limited_choices');
+            expect($node)->not->toBeNull();
+            expect($node->tsType)->toBe('string[]');
+            expect($node->isNullable)->toBeTrue();
+        });
+
+        it('infers string[] for nested wildcard array field', function () {
+            $analyzer = new FormRequestRulesAnalyzer;
+            $nodes = $analyzer->analyze(ArrayRulesRequest::class);
+
+            $node = collect($nodes)->firstWhere('fieldPath', 'products.*.categories');
+            expect($node)->not->toBeNull();
+            expect($node->tsType)->toBe('string[]');
         });
     });
 });

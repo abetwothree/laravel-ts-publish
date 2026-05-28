@@ -85,6 +85,24 @@ class FormRequestRulesAnalyzer
      */
     protected function normalizeRules(array $rawRules): array
     {
+        // Pre-scan wildcard keys (e.g. `tags.*`) to build an element type lookup.
+        // Used to upgrade parent array fields from `unknown[]` to `elementType[]`.
+        /** @var array<string, string> $wildcardElementTypes */
+        $wildcardElementTypes = [];
+
+        foreach ($rawRules as $fieldPath => $ruleDefinition) {
+            /** @var string $fieldPath */
+            if (str_ends_with($fieldPath, '.*')) {
+                $parentPath = substr($fieldPath, 0, -2);
+                $parsedWildcard = $this->parseFieldRules($ruleDefinition);
+                $wildcardType = $this->resolveTsType($parsedWildcard);
+
+                if ($wildcardType !== 'unknown') {
+                    $wildcardElementTypes[$parentPath] = $wildcardType;
+                }
+            }
+        }
+
         /** @var array<string, FormRequestRuleNode> $nodes */
         $nodes = [];
 
@@ -93,6 +111,12 @@ class FormRequestRulesAnalyzer
             $parsedRules = $this->parseFieldRules($ruleDefinition);
 
             $tsType = $this->resolveTsType($parsedRules);
+
+            // Upgrade `unknown[]` to a typed array when a wildcard sibling defines the element type
+            if ($tsType === 'unknown[]' && isset($wildcardElementTypes[$fieldPath])) {
+                $tsType = $wildcardElementTypes[$fieldPath].'[]';
+            }
+
             $isRequired = $this->isRequired($parsedRules);
             $isNullable = $this->isNullable($parsedRules);
             $isProhibited = $this->isProhibited($parsedRules);
