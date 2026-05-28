@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Analyzers\FormRequest;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rules\Enum;
+use Illuminate\Validation\Rules\File;
 use Illuminate\Validation\Rules\In;
 use Illuminate\Validation\ValidationRuleParser;
 use ReflectionClass;
@@ -137,6 +138,8 @@ class FormRequestRulesAnalyzer
                 $parsed[] = [$rule, []];
             } elseif ($rule instanceof In) {
                 $parsed[] = [$rule, []];
+            } elseif ($rule instanceof File) {
+                $parsed[] = [$rule, []];
             } elseif (is_object($rule)) {
                 // Unknown object rule — treat as unresolvable
                 $parsed[] = [$rule, []];
@@ -153,6 +156,13 @@ class FormRequestRulesAnalyzer
      */
     protected function resolveTsType(array $rules): string
     {
+        // Check for File rule object (covers File and ImageFile since ImageFile extends File)
+        foreach ($rules as [$rule]) {
+            if ($rule instanceof File) {
+                return 'File';
+            }
+        }
+
         // Check for enum rule first (most specific)
         foreach ($rules as [$rule]) {
             if ($rule instanceof Enum) {

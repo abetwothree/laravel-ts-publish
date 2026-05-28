@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\FormRequest\FormRequestRulesAnalyzer;
 use Workbench\App\Http\Requests\BooleanRulesRequest;
 use Workbench\App\Http\Requests\DateRulesRequest;
 use Workbench\App\Http\Requests\DynamicRequest;
+use Workbench\App\Http\Requests\FileRulesRequest;
 use Workbench\App\Http\Requests\StorePostRequest;
 use Workbench\App\Http\Requests\StringRulesRequest;
 use Workbench\App\Http\Requests\UpdatePostRequest;
@@ -153,6 +154,33 @@ describe('FormRequestRulesAnalyzer', function () {
             $node = collect($nodes)->firstWhere('fieldPath', 'formatted_date');
             expect($node)->not->toBeNull();
             expect($node->tsType)->toBe('string');
+        });
+
+        it('maps extensions rule to File type', function () {
+            $analyzer = new FormRequestRulesAnalyzer;
+            $nodes = $analyzer->analyze(FileRulesRequest::class);
+
+            $node = collect($nodes)->firstWhere('fieldPath', 'photo');
+            expect($node)->not->toBeNull();
+            expect($node->tsType)->toBe('File');
+        });
+
+        it('maps File::types() object rule to File type', function () {
+            $analyzer = new FormRequestRulesAnalyzer;
+            $nodes = $analyzer->analyze(FileRulesRequest::class);
+
+            $node = collect($nodes)->firstWhere('fieldPath', 'small_attachment');
+            expect($node)->not->toBeNull();
+            expect($node->tsType)->toBe('File');
+        });
+
+        it('maps File::image() object rule (ImageFile) to File type', function () {
+            $analyzer = new FormRequestRulesAnalyzer;
+            $nodes = $analyzer->analyze(FileRulesRequest::class);
+
+            $node = collect($nodes)->firstWhere('fieldPath', 'banner');
+            expect($node)->not->toBeNull();
+            expect($node->tsType)->toBe('File');
         });
     });
 });
