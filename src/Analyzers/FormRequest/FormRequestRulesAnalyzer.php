@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Analyzers\FormRequest;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rules\AnyOf;
 use Illuminate\Validation\Rules\Enum;
 use Illuminate\Validation\Rules\File;
 use Illuminate\Validation\Rules\In;
@@ -164,6 +165,8 @@ class FormRequestRulesAnalyzer
                 $parsed[] = [$rule, []];
             } elseif ($rule instanceof File) {
                 $parsed[] = [$rule, []];
+            } elseif ($rule instanceof AnyOf) {
+                $parsed[] = [$rule, []];
             } elseif (is_object($rule)) {
                 // Unknown object rule — treat as unresolvable
                 $parsed[] = [$rule, []];
@@ -184,6 +187,13 @@ class FormRequestRulesAnalyzer
         foreach ($rules as [$rule]) {
             if ($rule instanceof File) {
                 return 'File';
+            }
+        }
+
+        // Check for AnyOf rule object — union inner rule sets
+        foreach ($rules as [$rule]) {
+            if ($rule instanceof AnyOf) {
+                return $this->resolveAnyOfType($rule);
             }
         }
 
@@ -270,6 +280,36 @@ class FormRequestRulesAnalyzer
         );
 
         return $literals !== [] ? implode(' | ', $literals) : 'string';
+    }
+
+    /**
+     * Resolve the TypeScript union type from an `AnyOf` rule object.
+     *
+     * Inspects each inner rule set and resolves its type.
+     * Returns a union of all non-`unknown` resolved types, or `'unknown'`
+     * when none of the inner sets can be resolved.
+     */
+    protected function resolveAnyOfType(AnyOf $rule): string
+    {
+        $reflection = new ReflectionClass($rule);
+
+        /** @var array<int, mixed> $innerRuleSets */
+        $innerRuleSets = $reflection->getProperty('rules')->getValue($rule);
+
+        $types = [];
+
+        foreach ($innerRuleSets as $ruleSet) {
+            $parsed = $this->parseFieldRules($ruleSet);
+            $type = $this->resolveTsType($parsed);
+
+            if ($type !== 'unknown') {
+                $types[] = $type;
+            }
+        }
+
+        $uniqueTypes = array_unique($types);
+
+        return $uniqueTypes !== [] ? implode(' | ', $uniqueTypes) : 'unknown';
     }
 
     /**

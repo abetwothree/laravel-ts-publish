@@ -11,6 +11,7 @@ use Workbench\App\Http\Requests\FileRulesRequest;
 use Workbench\App\Http\Requests\StorePostRequest;
 use Workbench\App\Http\Requests\StringRulesRequest;
 use Workbench\App\Http\Requests\UpdatePostRequest;
+use Workbench\App\Http\Requests\UtilityRulesRequest;
 
 describe('FormRequestRulesAnalyzer', function () {
     describe('analyze', function () {
@@ -219,6 +220,15 @@ describe('FormRequestRulesAnalyzer', function () {
             $node = collect($nodes)->firstWhere('fieldPath', 'products.*.categories');
             expect($node)->not->toBeNull();
             expect($node->tsType)->toBe('string[]');
+        });
+
+        it('maps Rule::anyOf with all-string inner rules to string type', function () {
+            $analyzer = new FormRequestRulesAnalyzer;
+            $nodes = $analyzer->analyze(UtilityRulesRequest::class);
+
+            $node = collect($nodes)->firstWhere('fieldPath', 'contact');
+            expect($node)->not->toBeNull();
+            expect($node->tsType)->toBe('string');
         });
     });
 });
