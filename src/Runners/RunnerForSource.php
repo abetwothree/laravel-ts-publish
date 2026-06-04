@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Runners;
 use AbeTwoThree\LaravelTsPublish\Collectors\Concerns\ValidatesCollectorFiles;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
@@ -36,6 +37,10 @@ class RunnerForSource extends BaseRunner
         /** @var Collection<int, RouteGenerator> $routeGenerators */
         $routeGenerators = collect();
         $this->routeGenerators = $routeGenerators;
+
+        /** @var Collection<int, FormRequestGenerator> $formRequestGenerators */
+        $formRequestGenerators = collect();
+        $this->formRequestGenerators = $formRequestGenerators;
     }
 
     public function run(): void
@@ -72,8 +77,14 @@ class RunnerForSource extends BaseRunner
             }
 
             $this->generateRoute($fqcn);
+        } elseif ($this->validateFormRequest($reflection)) {
+            if (! $this->shouldPublishFormRequests) {
+                throw new InvalidArgumentException("Form request publishing is disabled: {$fqcn}");
+            }
+
+            $this->generateFormRequest($fqcn);
         } else {
-            throw new InvalidArgumentException("Class is not a publishable enum, model, resource, or controller: {$fqcn}");
+            throw new InvalidArgumentException("Class is not a publishable enum, model, resource, controller, or form request: {$fqcn}");
         }
     }
 
@@ -142,5 +153,21 @@ class RunnerForSource extends BaseRunner
         );
 
         $this->routeGenerators = collect([$generator]);
+    }
+
+    /**
+     * Generate a FormRequest interface from its FQCN.
+     *
+     * @param  class-string  $fqcn  The fully qualified class name of the FormRequest.
+     */
+    protected function generateFormRequest(string $fqcn): void
+    {
+        /** @var FormRequestGenerator $generator */
+        $generator = resolve(
+            config()->string('ts-publish.form_requests.generator_class'),
+            ['findable' => $fqcn],
+        );
+
+        $this->formRequestGenerators = collect([$generator]);
     }
 }

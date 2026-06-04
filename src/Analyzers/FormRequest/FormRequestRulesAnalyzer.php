@@ -4,12 +4,32 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\FormRequest;
 
+use Illuminate\Auth\GenericUser;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rules\AnyOf;
+use Illuminate\Validation\Rules\ArrayRule;
+use Illuminate\Validation\Rules\Contains;
+use Illuminate\Validation\Rules\Date;
+use Illuminate\Validation\Rules\Dimensions;
+use Illuminate\Validation\Rules\DoesntContain;
+use Illuminate\Validation\Rules\Email;
 use Illuminate\Validation\Rules\Enum;
+use Illuminate\Validation\Rules\ExcludeIf;
+use Illuminate\Validation\Rules\ExcludeUnless;
+use Illuminate\Validation\Rules\Exists;
 use Illuminate\Validation\Rules\File;
 use Illuminate\Validation\Rules\In;
+use Illuminate\Validation\Rules\NotIn;
+use Illuminate\Validation\Rules\Numeric;
+use Illuminate\Validation\Rules\Password;
+use Illuminate\Validation\Rules\ProhibitedIf;
+use Illuminate\Validation\Rules\ProhibitedUnless;
+use Illuminate\Validation\Rules\RequiredIf;
+use Illuminate\Validation\Rules\RequiredUnless;
+use Illuminate\Validation\Rules\StringRule;
+use Illuminate\Validation\Rules\Unique;
 use Illuminate\Validation\ValidationRuleParser;
 use ReflectionClass;
 use Throwable;
@@ -65,6 +85,12 @@ class FormRequestRulesAnalyzer
             $formRequest = $fqcn::createFrom($fakeRequest);
             $formRequest->setContainer(app());
 
+            // Stub a fake authenticated user so that rules() methods calling
+            // Auth::user()->someMethod() don't throw on null. The stub returns
+            // false for any unknown method call, so auth-gated branches always
+            // resolve to the "unauthenticated" path.
+            $this->stubAuthUser();
+
             /** @var array<string, mixed> $rules */
             /** @phpstan-ignore method.notFound */
             $rules = $formRequest->rules();
@@ -73,6 +99,28 @@ class FormRequestRulesAnalyzer
         } catch (Throwable) {
             return null;
         }
+    }
+
+    /**
+     * Set a stub authenticated user so that `Auth::user()->anyMethod()` calls
+     * inside `rules()` don't throw. Any unknown method returns `false`.
+     */
+    private function stubAuthUser(): void
+    {
+        if (Auth::check()) {
+            return;
+        }
+
+        $stub = new class(['id' => null]) extends GenericUser
+        {
+            /** @param array<int, mixed> $arguments */
+            public function __call(string $name, array $arguments): mixed
+            {
+                return false;
+            }
+        };
+
+        Auth::setUser($stub);
     }
 
     /**
@@ -215,6 +263,29 @@ class FormRequestRulesAnalyzer
             }
         }
 
+        // Check for fluent Rule objects that determine the field's base TypeScript type
+        foreach ($rules as [$rule]) {
+            if ($rule instanceof StringRule || $rule instanceof Email || $rule instanceof Date || $rule instanceof Password) {
+                return 'string';
+            }
+
+            if ($rule instanceof Numeric) {
+                return 'number';
+            }
+
+            if ($rule instanceof Dimensions) {
+                return 'File';
+            }
+
+            if ($rule instanceof ArrayRule || $rule instanceof Contains || $rule instanceof DoesntContain) {
+                return 'unknown[]';
+            }
+
+            if ($rule instanceof NotIn) {
+                return 'string';
+            }
+        }
+
         // Check rule strings for scalar type
         foreach ($rules as [$rule, $params]) {
             if (! is_string($rule)) {
@@ -331,6 +402,25 @@ class FormRequestRulesAnalyzer
         $cases = $enumReflection->getMethod('cases')->invoke(null);
 
         /** @var \BackedEnum[] $cases */
+
+        // Apply .only() and .except() filters if set on the Enum rule
+        /** @var \UnitEnum[] $only */
+        $only = $reflection->getProperty('only')->getValue($rule);
+        /** @var \UnitEnum[] $except */
+        $except = $reflection->getProperty('except')->getValue($rule);
+
+        if ($only !== []) {
+            $cases = array_values(array_filter(
+                $cases,
+                fn (\BackedEnum $case): bool => in_array($case, $only, true),
+            ));
+        } elseif ($except !== []) {
+            $cases = array_values(array_filter(
+                $cases,
+                fn (\BackedEnum $case): bool => ! in_array($case, $except, true),
+            ));
+        }
+
         $values = array_map(
             fn (\BackedEnum $case): string => is_string($case->value) ? "'{$case->value}'" : (string) $case->value,
             $cases,
@@ -347,6 +437,10 @@ class FormRequestRulesAnalyzer
     protected function isRequired(array $rules): bool
     {
         foreach ($rules as [$rule]) {
+            if ($rule instanceof RequiredIf || $rule instanceof RequiredUnless) {
+                return true;
+            }
+
             if (! is_string($rule)) {
                 continue;
             }
@@ -416,6 +510,29 @@ class FormRequestRulesAnalyzer
     protected function resolveJsDocMetadata(array $rules): array
     {
         $metadata = [];
+
+        // Handle fluent Rule object annotations
+        foreach ($rules as [$rule]) {
+            if ($rule instanceof RequiredIf || $rule instanceof RequiredUnless) {
+                $metadata[] = '@metadata required-if conditional';
+            }
+
+            if ($rule instanceof ProhibitedIf || $rule instanceof ProhibitedUnless) {
+                $metadata[] = '@metadata prohibited-if conditional';
+            }
+
+            if ($rule instanceof ExcludeIf || $rule instanceof ExcludeUnless) {
+                $metadata[] = '@metadata exclude-if conditional';
+            }
+
+            if ($rule instanceof Exists) {
+                $metadata[] = '@constraint exists';
+            }
+
+            if ($rule instanceof Unique) {
+                $metadata[] = '@constraint unique';
+            }
+        }
 
         foreach ($rules as [$rule, $params]) {
             if (! is_string($rule)) {

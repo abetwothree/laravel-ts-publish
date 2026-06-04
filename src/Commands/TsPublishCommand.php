@@ -33,7 +33,8 @@ class TsPublishCommand extends Command
         {--only-models : Only publish models (ignoring enums, resources, and routes)}
         {--only-resources : Only publish resources (ignoring enums, models, and routes)}
         {--only-routes : Only publish routes (ignoring enums, models, and resources)}
-        {--only-functional : Only publish functional content like routes & enums}';
+        {--only-form-requests : Only publish form requests (ignoring enums, models, resources, and routes)}
+        {--only-functional : Only publish enabled functional content like routes & enums}';
 
     protected $description = 'Publish All TypeScript files from enums, models, resources, and routes';
 
@@ -69,12 +70,13 @@ class TsPublishCommand extends Command
         $onlyModels = (bool) $this->option('only-models');
         $onlyResources = (bool) $this->option('only-resources');
         $onlyRoutes = (bool) $this->option('only-routes');
+        $onlyFormRequests = (bool) $this->option('only-form-requests');
 
-        $onlyCount = (int) $onlyEnums + (int) $onlyModels + (int) $onlyResources + (int) $onlyRoutes;
+        $onlyCount = (int) $onlyEnums + (int) $onlyModels + (int) $onlyResources + (int) $onlyRoutes + (int) $onlyFormRequests;
 
         if ($onlyCount > 1) {
             if (! $this->output->isQuiet()) {
-                error('The --only-enums, --only-models, --only-resources, and --only-routes options cannot be used together. Please specify only one or none of these options.');
+                error('The --only-enums, --only-models, --only-resources, --only-routes, and --only-form-requests options cannot be used together. Please specify only one or none of these options.');
             }
 
             return self::FAILURE;
@@ -103,7 +105,8 @@ class TsPublishCommand extends Command
             $runner->shouldPublishEnums,
             $runner->shouldPublishModels,
             $runner->shouldPublishResources,
-            $runner->shouldPublishRoutes
+            $runner->shouldPublishRoutes,
+            $runner->shouldPublishFormRequests,
         ] = $flags;
 
         $runner->run();
@@ -120,8 +123,9 @@ class TsPublishCommand extends Command
                 $modelCount = count($runner->modelGenerators);
                 $resourceCount = count($runner->resourceGenerators);
                 $routeCount = count($runner->routeGenerators);
+                $formRequestCount = count($runner->formRequestGenerators);
 
-                outro("{$enumCount} enums, {$modelCount} models, {$resourceCount} resources, {$routeCount} routes — All done");
+                outro("{$enumCount} enums, {$modelCount} models, {$resourceCount} resources, {$routeCount} routes, {$formRequestCount} form requests — All done");
             } else {
                 outro('All done');
             }
@@ -147,7 +151,7 @@ class TsPublishCommand extends Command
                 return self::SUCCESS;
             }
 
-            [$runner->shouldPublishEnums, $runner->shouldPublishModels, $runner->shouldPublishResources, $runner->shouldPublishRoutes] = $flags;
+            [$runner->shouldPublishEnums, $runner->shouldPublishModels, $runner->shouldPublishResources, $runner->shouldPublishRoutes, $runner->shouldPublishFormRequests] = $flags;
             $runner->run();
         } catch (InvalidArgumentException $e) {
             if (! $this->output->isQuiet()) {
@@ -168,8 +172,9 @@ class TsPublishCommand extends Command
             $modelCount = count($runner->modelGenerators);
             $resourceCount = count($runner->resourceGenerators);
             $routeCount = count($runner->routeGenerators);
+            $formRequestCount = count($runner->formRequestGenerators);
 
-            outro("{$enumCount} enums, {$modelCount} models, {$resourceCount} resources, {$routeCount} routes — All done");
+            outro("{$enumCount} enums, {$modelCount} models, {$resourceCount} resources, {$routeCount} routes, {$formRequestCount} form requests — All done");
         }
 
         return self::SUCCESS;
@@ -178,7 +183,7 @@ class TsPublishCommand extends Command
     /**
      * Resolve the final publish flags from config values and command options.
      *
-     * @return array{0: bool, 1: bool, 2: bool, 3: bool}|null [shouldPublishEnums, shouldPublishModels, shouldPublishResources, shouldPublishRoutes] or null to abort
+     * @return array{0: bool, 1: bool, 2: bool, 3: bool, 4: bool}|null [shouldPublishEnums, shouldPublishModels, shouldPublishResources, shouldPublishRoutes, shouldPublishFormRequests] or null to abort
      */
     protected function resolvePublishFlags(): ?array
     {
@@ -186,14 +191,17 @@ class TsPublishCommand extends Command
         $configModels = config()->boolean('ts-publish.models.enabled');
         $configResources = config()->boolean('ts-publish.resources.enabled');
         $configRoutes = config()->boolean('ts-publish.routes.enabled');
+        $configFormRequests = config()->boolean('ts-publish.form_requests.enabled');
         $onlyEnums = (bool) $this->option('only-enums');
         $onlyModels = (bool) $this->option('only-models');
         $onlyResources = (bool) $this->option('only-resources');
         $onlyRoutes = (bool) $this->option('only-routes');
+        $onlyFormRequests = (bool) $this->option('only-form-requests');
         $onlyFunctional = (bool) $this->option('only-functional');
 
         $shouldPublishEnums = $configEnums;
         $shouldPublishRoutes = $configRoutes;
+        $shouldPublishFormRequests = $configFormRequests;
         $shouldPublishModels = $onlyFunctional ? false : $configModels;
         $shouldPublishResources = $onlyFunctional ? false : $configResources;
 
@@ -203,6 +211,7 @@ class TsPublishCommand extends Command
                 $shouldPublishModels,
                 $shouldPublishResources,
                 $shouldPublishRoutes,
+                $shouldPublishFormRequests,
             ];
 
             $enabledFlags = array_filter($responseSettings, fn (bool $v) => $v === true);
@@ -222,6 +231,7 @@ class TsPublishCommand extends Command
             $shouldPublishModels = false;
             $shouldPublishResources = false;
             $shouldPublishRoutes = false;
+            $shouldPublishFormRequests = false;
 
             if (! $configEnums) {
                 $shouldPublishEnums = $this->promptConfigOverride('enums');
@@ -236,6 +246,7 @@ class TsPublishCommand extends Command
             $shouldPublishEnums = false;
             $shouldPublishResources = false;
             $shouldPublishRoutes = false;
+            $shouldPublishFormRequests = false;
 
             if (! $configModels) {
                 $shouldPublishModels = $this->promptConfigOverride('models');
@@ -250,6 +261,7 @@ class TsPublishCommand extends Command
             $shouldPublishEnums = false;
             $shouldPublishModels = false;
             $shouldPublishRoutes = false;
+            $shouldPublishFormRequests = false;
 
             if (! $configResources) {
                 $shouldPublishResources = $this->promptConfigOverride('resources');
@@ -264,6 +276,7 @@ class TsPublishCommand extends Command
             $shouldPublishEnums = false;
             $shouldPublishModels = false;
             $shouldPublishResources = false;
+            $shouldPublishFormRequests = false;
 
             if (! $configRoutes) {
                 $shouldPublishRoutes = $this->promptConfigOverride('routes');
@@ -274,9 +287,24 @@ class TsPublishCommand extends Command
             }
         }
 
-        if (! $shouldPublishEnums && ! $shouldPublishModels && ! $shouldPublishResources && ! $shouldPublishRoutes) {
+        if ($onlyFormRequests) {
+            $shouldPublishEnums = false;
+            $shouldPublishModels = false;
+            $shouldPublishResources = false;
+            $shouldPublishRoutes = false;
+
+            if (! $configFormRequests) {
+                $shouldPublishFormRequests = $this->promptConfigOverride('form requests');
+
+                if (! $shouldPublishFormRequests) {
+                    return null;
+                }
+            }
+        }
+
+        if (! $shouldPublishEnums && ! $shouldPublishModels && ! $shouldPublishResources && ! $shouldPublishRoutes && ! $shouldPublishFormRequests) {
             if (! $this->output->isQuiet()) {
-                warning('Enums, models, resources, and routes are all disabled in config. Nothing to publish.');
+                warning('Enums, models, resources, routes, and form requests are all disabled in config. Nothing to publish.');
             }
 
             return null;
@@ -287,6 +315,7 @@ class TsPublishCommand extends Command
             $shouldPublishModels,
             $shouldPublishResources,
             $shouldPublishRoutes,
+            $shouldPublishFormRequests,
         ];
     }
 
