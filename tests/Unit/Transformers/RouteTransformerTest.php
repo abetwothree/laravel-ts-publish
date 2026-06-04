@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
 use Workbench\Accounting\Http\Controllers\TwoFactorController;
+use Workbench\Accounting\Http\Requests\VerifyTwoFactorRequest;
 use Workbench\App\Http\Controllers\CustomKeyController;
 use Workbench\App\Http\Controllers\CustomKeyNameController;
 use Workbench\App\Http\Controllers\CustomRouteKeyController;
@@ -15,6 +16,7 @@ use Workbench\App\Http\Controllers\DomainController;
 use Workbench\App\Http\Controllers\EnumBoundController;
 use Workbench\App\Http\Controllers\ExcludableController;
 use Workbench\App\Http\Controllers\InertiaController;
+use Workbench\App\Http\Controllers\InertiaFormRequestController;
 use Workbench\App\Http\Controllers\InvokableController;
 use Workbench\App\Http\Controllers\InvokableInertiaController;
 use Workbench\App\Http\Controllers\InvokableModelBoundController;
@@ -27,6 +29,8 @@ use Workbench\App\Http\Controllers\ParameterCaseController;
 use Workbench\App\Http\Controllers\PostController;
 use Workbench\App\Http\Controllers\PrimaryKeyController;
 use Workbench\App\Http\Controllers\TypedParamController;
+use Workbench\App\Http\Requests\StorePostRequest;
+use Workbench\App\Http\Requests\UpdatePostRequest;
 
 beforeEach(function () {
     RouteTransformer::clearModelInstanceCache();
@@ -380,8 +384,6 @@ test('digit-leading route name segment is prefixed with underscore', function ()
         ->and($verify['methodName'])->toBe('_2faVerify');
 });
 
-// ─── Inertia integration ──────────────────────────────────────────
-
 test('inertia actions do not include component or pageType when inertia is disabled', function () {
     config()->set('ts-publish.inertia.enabled', false);
 
@@ -647,8 +649,6 @@ test('invokable inertia controller action receives @__invoke uses string and ret
         ->and($invoke['pageType'])->toContain('Inertia.SharedData');
 });
 
-// ─── externalImports handling ─────────────────────────────────────
-
 test('resolvePageTypeImports maps TOLKI_TYPES_MAP FQCNs to @tolki/types import', function () {
     config()->set('ts-publish.inertia.enabled', true);
 
@@ -731,4 +731,189 @@ test('resolvePageTypeImports deduplicates @tolki/types entries from FQCNs and ex
 
     expect($dedupedCount)->toBe(count($tolkiImports))
         ->and($tolkiImports)->toContain('LengthAwarePaginator');
+});
+
+test('PostController store action detects StorePostRequest fqcn', function () {
+    $transformer = new RouteTransformer(PostController::class);
+    $store = collect($transformer->actions)->firstWhere('methodName', 'store');
+
+    expect($store)->not->toBeNull()
+        ->and($store)->toHaveKey('requestFqcn')
+        ->and($store['requestFqcn'])->toBe(StorePostRequest::class);
+});
+
+test('PostController store action requestTypeAlias is StorePostRequest', function () {
+    $transformer = new RouteTransformer(PostController::class);
+    $store = collect($transformer->actions)->firstWhere('methodName', 'store');
+
+    expect($store['requestTypeAlias'])->toBe('StorePostRequest');
+});
+
+test('PostController store action requestImportPath points to requests directory', function () {
+    $transformer = new RouteTransformer(PostController::class);
+    $store = collect($transformer->actions)->firstWhere('methodName', 'store');
+
+    expect($store['requestImportPath'])->toBe('../requests/store-post-request');
+});
+
+test('PostController update action detects UpdatePostRequest fqcn', function () {
+    $transformer = new RouteTransformer(PostController::class);
+    $update = collect($transformer->actions)->firstWhere('methodName', 'update');
+
+    expect($update)->not->toBeNull()
+        ->and($update)->toHaveKey('requestFqcn')
+        ->and($update['requestFqcn'])->toBe(UpdatePostRequest::class);
+});
+
+test('PostController update action requestTypeAlias is UpdatePostRequest', function () {
+    $transformer = new RouteTransformer(PostController::class);
+    $update = collect($transformer->actions)->firstWhere('methodName', 'update');
+
+    expect($update['requestTypeAlias'])->toBe('UpdatePostRequest');
+});
+
+test('PostController update action requestImportPath points to requests directory', function () {
+    $transformer = new RouteTransformer(PostController::class);
+    $update = collect($transformer->actions)->firstWhere('methodName', 'update');
+
+    expect($update['requestImportPath'])->toBe('../requests/update-post-request');
+});
+
+test('PostController transformer sets hasRequestTypes when FormRequest found', function () {
+    $transformer = new RouteTransformer(PostController::class);
+    $dto = $transformer->data();
+
+    expect($dto->hasRequestTypes)->toBeTrue();
+});
+
+test('TwoFactorController verify action detects VerifyTwoFactorRequest fqcn', function () {
+    $transformer = new RouteTransformer(TwoFactorController::class);
+    $verify = collect($transformer->actions)->firstWhere('originalMethodName', 'verify');
+
+    expect($verify)->not->toBeNull()
+        ->and($verify)->toHaveKey('requestFqcn')
+        ->and($verify['requestFqcn'])->toBe(VerifyTwoFactorRequest::class);
+});
+
+test('TwoFactorController verify action requestTypeAlias is VerifyTwoFactorRequest', function () {
+    $transformer = new RouteTransformer(TwoFactorController::class);
+    $verify = collect($transformer->actions)->firstWhere('originalMethodName', 'verify');
+
+    expect($verify['requestTypeAlias'])->toBe('VerifyTwoFactorRequest');
+});
+
+test('TwoFactorController verify action requestImportPath points to module requests directory', function () {
+    $transformer = new RouteTransformer(TwoFactorController::class);
+    $verify = collect($transformer->actions)->firstWhere('originalMethodName', 'verify');
+
+    expect($verify['requestImportPath'])->toBe('../requests/verify-two-factor-request');
+});
+
+test('TwoFactorController transformer sets hasRequestTypes when FormRequest found', function () {
+    $transformer = new RouteTransformer(TwoFactorController::class);
+    $dto = $transformer->data();
+
+    expect($dto->hasRequestTypes)->toBeTrue();
+});
+
+test('TwoFactorController setup action has no requestFqcn (GET route, no request body)', function () {
+    $transformer = new RouteTransformer(TwoFactorController::class);
+    $setup = collect($transformer->actions)->firstWhere('originalMethodName', 'setup');
+
+    expect($setup)->not->toBeNull()
+        ->and($setup)->not->toHaveKey('requestFqcn');
+});
+
+test('PostController index action has no requestFqcn', function () {
+    $transformer = new RouteTransformer(PostController::class);
+    $index = collect($transformer->actions)->firstWhere('methodName', 'index');
+
+    expect($index)->not->toBeNull()
+        ->and($index)->not->toHaveKey('requestFqcn');
+});
+
+test('PostController destroy action has no requestFqcn', function () {
+    $transformer = new RouteTransformer(PostController::class);
+    $destroy = collect($transformer->actions)->firstWhere('methodName', 'destroy');
+
+    expect($destroy)->not->toBeNull()
+        ->and($destroy)->not->toHaveKey('requestFqcn');
+});
+
+test('InvokableController has no requestFqcn on its single action', function () {
+    $transformer = new RouteTransformer(InvokableController::class);
+    $action = $transformer->actions[0];
+
+    expect($action)->not->toHaveKey('requestFqcn');
+});
+
+test('PostController typeImports contains both StorePostRequest and UpdatePostRequest', function () {
+    $transformer = new RouteTransformer(PostController::class);
+    $allImportedTypes = collect($transformer->typeImports)->flatten()->all();
+
+    expect($allImportedTypes)
+        ->toContain('StorePostRequest')
+        ->toContain('UpdatePostRequest');
+});
+
+test('PostController typeImports uses separate import paths for each request', function () {
+    $transformer = new RouteTransformer(PostController::class);
+
+    expect($transformer->typeImports)
+        ->toHaveKey('../requests/store-post-request')
+        ->toHaveKey('../requests/update-post-request');
+});
+
+test('InertiaFormRequestController store action has both pageType and requestFqcn when Inertia enabled', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockAnalyzer = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockAnalyzer->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action): ?array {
+            if (str_contains((string) $action['uses'], 'InertiaFormRequestController@store')) {
+                return [
+                    'component' => 'InertiaFormRequest/Success',
+                    'pageType' => 'Inertia.SharedData & { title: string }',
+                    'classFqcns' => [],
+                ];
+            }
+
+            return null;
+        });
+    app()->instance(InertiaPageAnalyzer::class, $mockAnalyzer);
+
+    $transformer = new RouteTransformer(InertiaFormRequestController::class);
+    $store = collect($transformer->actions)->firstWhere('methodName', 'store');
+
+    expect($store)
+        ->toHaveKey('pageType')
+        ->toHaveKey('requestFqcn')
+        ->and($store['requestFqcn'])->toBe(StorePostRequest::class)
+        ->and($store['pageType'])->toContain('Inertia.SharedData');
+});
+
+test('InertiaFormRequestController create action has pageType but no requestFqcn', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockAnalyzer = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockAnalyzer->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action): ?array {
+            if (str_contains((string) $action['uses'], 'InertiaFormRequestController@create')) {
+                return [
+                    'component' => 'InertiaFormRequest/Create',
+                    'pageType' => 'Inertia.SharedData',
+                    'classFqcns' => [],
+                ];
+            }
+
+            return null;
+        });
+    app()->instance(InertiaPageAnalyzer::class, $mockAnalyzer);
+
+    $transformer = new RouteTransformer(InertiaFormRequestController::class);
+    $create = collect($transformer->actions)->firstWhere('methodName', 'create');
+
+    expect($create)
+        ->toHaveKey('pageType')
+        ->not->toHaveKey('requestFqcn');
 });

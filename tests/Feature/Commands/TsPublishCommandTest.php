@@ -247,6 +247,7 @@ test('ts:publish warns and exits when both config types are disabled', function 
     config()->set('ts-publish.models.enabled', false);
     config()->set('ts-publish.resources.enabled', false);
     config()->set('ts-publish.routes.enabled', false);
+    config()->set('ts-publish.form_requests.enabled', false);
 
     $this->artisan('ts:publish', ['--preview' => 'true'])
         ->assertSuccessful()
@@ -341,6 +342,7 @@ test('ts:publish --source exits successfully when both config types disabled', f
     config()->set('ts-publish.models.enabled', false);
     config()->set('ts-publish.resources.enabled', false);
     config()->set('ts-publish.routes.enabled', false);
+    config()->set('ts-publish.form_requests.enabled', false);
 
     $this->artisan('ts:publish', ['--preview' => 'true', '--source' => 'Workbench\App\Enums\Status'])
         ->assertSuccessful()
@@ -485,6 +487,7 @@ test('ts:publish --only-functional warns when all functional options disabled', 
     config()->set('ts-publish.output_to_files', false);
     config()->set('ts-publish.enums.enabled', false);
     config()->set('ts-publish.routes.enabled', false);
+    config()->set('ts-publish.form_requests.enabled', false);
 
     $this->artisan('ts:publish', ['--preview' => 'true', '--only-functional' => true])
         ->assertSuccessful()

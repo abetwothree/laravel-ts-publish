@@ -8,6 +8,7 @@ use Workbench\App\Http\Requests\BooleanRulesRequest;
 use Workbench\App\Http\Requests\DateRulesRequest;
 use Workbench\App\Http\Requests\DynamicRequest;
 use Workbench\App\Http\Requests\FileRulesRequest;
+use Workbench\App\Http\Requests\RuleClassRequest;
 use Workbench\App\Http\Requests\StorePostRequest;
 use Workbench\App\Http\Requests\StringRulesRequest;
 use Workbench\App\Http\Requests\UpdatePostRequest;
@@ -229,6 +230,105 @@ describe('FormRequestRulesAnalyzer', function () {
             $node = collect($nodes)->firstWhere('fieldPath', 'contact');
             expect($node)->not->toBeNull();
             expect($node->tsType)->toBe('string');
+        });
+
+        it('maps Rule::string() fluent object to string type', function () {
+            $nodes = (new FormRequestRulesAnalyzer)->analyze(RuleClassRequest::class);
+            $node = collect($nodes)->firstWhere('fieldPath', 'title');
+            expect($node)->not->toBeNull();
+            expect($node->tsType)->toBe('string');
+        });
+
+        it('maps Rule::email() fluent object to string type', function () {
+            $nodes = (new FormRequestRulesAnalyzer)->analyze(RuleClassRequest::class);
+            $node = collect($nodes)->firstWhere('fieldPath', 'email');
+            expect($node)->not->toBeNull();
+            expect($node->tsType)->toBe('string');
+        });
+
+        it('maps Rule::date() fluent object to string type', function () {
+            $nodes = (new FormRequestRulesAnalyzer)->analyze(RuleClassRequest::class);
+            $node = collect($nodes)->firstWhere('fieldPath', 'start_date');
+            expect($node)->not->toBeNull();
+            expect($node->tsType)->toBe('string');
+        });
+
+        it('maps nullable Rule::date() fluent object to string type with isNullable', function () {
+            $nodes = (new FormRequestRulesAnalyzer)->analyze(RuleClassRequest::class);
+            $node = collect($nodes)->firstWhere('fieldPath', 'end_date');
+            expect($node)->not->toBeNull();
+            expect($node->tsType)->toBe('string');
+            expect($node->isNullable)->toBeTrue();
+        });
+
+        it('maps Rule::dimensions() fluent object to File type', function () {
+            $nodes = (new FormRequestRulesAnalyzer)->analyze(RuleClassRequest::class);
+            $node = collect($nodes)->firstWhere('fieldPath', 'avatar');
+            expect($node)->not->toBeNull();
+            expect($node->tsType)->toBe('File');
+        });
+
+        it('maps Rule::notIn() fluent object to string type', function () {
+            $nodes = (new FormRequestRulesAnalyzer)->analyze(RuleClassRequest::class);
+            $node = collect($nodes)->firstWhere('fieldPath', 'toppings');
+            expect($node)->not->toBeNull();
+            expect($node->tsType)->toBe('string');
+        });
+
+        it('maps Rule::numeric() fluent object to number type', function () {
+            $nodes = (new FormRequestRulesAnalyzer)->analyze(RuleClassRequest::class);
+            $node = collect($nodes)->firstWhere('fieldPath', 'quantity');
+            expect($node)->not->toBeNull();
+            expect($node->tsType)->toBe('number');
+        });
+
+        it('marks Rule::requiredIf() field as required', function () {
+            $nodes = (new FormRequestRulesAnalyzer)->analyze(RuleClassRequest::class);
+            $node = collect($nodes)->firstWhere('fieldPath', 'role_id_required_if');
+            expect($node)->not->toBeNull();
+            expect($node->isRequired)->toBeTrue();
+        });
+
+        it('adds prohibited-if conditional metadata for Rule::prohibitedIf()', function () {
+            $nodes = (new FormRequestRulesAnalyzer)->analyze(RuleClassRequest::class);
+            $node = collect($nodes)->firstWhere('fieldPath', 'role_id_prohibited');
+            expect($node)->not->toBeNull();
+            expect($node->jsDocMetadata)->toContain('@metadata prohibited-if conditional');
+        });
+
+        it('adds exclude-if conditional metadata for Rule::excludeIf()', function () {
+            $nodes = (new FormRequestRulesAnalyzer)->analyze(RuleClassRequest::class);
+            $node = collect($nodes)->firstWhere('fieldPath', 'role_id');
+            expect($node)->not->toBeNull();
+            expect($node->jsDocMetadata)->toContain('@metadata exclude-if conditional');
+        });
+
+        it('adds @constraint exists metadata for Rule::exists() object', function () {
+            $nodes = (new FormRequestRulesAnalyzer)->analyze(RuleClassRequest::class);
+            $node = collect($nodes)->firstWhere('fieldPath', 'state');
+            expect($node)->not->toBeNull();
+            expect($node->jsDocMetadata)->toContain('@constraint exists');
+        });
+
+        it('adds @constraint unique metadata for Rule::unique() object', function () {
+            $nodes = (new FormRequestRulesAnalyzer)->analyze(RuleClassRequest::class);
+            $node = collect($nodes)->firstWhere('fieldPath', 'email_unique');
+            expect($node)->not->toBeNull();
+            expect($node->jsDocMetadata)->toContain('@constraint unique');
+        });
+
+        it('filters enum values by Rule::enum()->only()', function () {
+            $nodes = (new FormRequestRulesAnalyzer)->analyze(RuleClassRequest::class);
+            $node = collect($nodes)->firstWhere('fieldPath', 'accent_color');
+            expect($node)->not->toBeNull();
+            expect($node->tsType)->toBe("'red' | 'blue'");
+        });
+
+        it('filters enum values by Rule::enum()->except()', function () {
+            $nodes = (new FormRequestRulesAnalyzer)->analyze(RuleClassRequest::class);
+            $node = collect($nodes)->firstWhere('fieldPath', 'forbidden_color');
+            expect($node)->not->toBeNull();
+            expect($node->tsType)->toBe("'green' | 'blue' | 'amber' | 'gray' | 'purple'");
         });
     });
 });
