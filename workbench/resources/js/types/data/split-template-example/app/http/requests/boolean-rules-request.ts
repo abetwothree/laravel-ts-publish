@@ -1,4 +1,8 @@
-/** @see Workbench\App\Http\Requests\BooleanRulesRequest */
+/**
+ * Get the validation rules that apply to the request.
+ *
+ * @see Workbench\App\Http\Requests\BooleanRulesRequest
+ */
 export interface BooleanRulesRequest {
     terms_accepted?: boolean;
     newsletter_accepted?: boolean;

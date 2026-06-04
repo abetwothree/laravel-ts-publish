@@ -23,6 +23,7 @@ use JsonSerializable;
  *     filename: string,
  *     namespacePath: string,
  *     typeName: string,
+ *     description: string,
  *     fields: list<FormRequestFieldData>,
  *     isDynamic: bool,
  * }
@@ -39,6 +40,7 @@ final readonly class TsFormRequestDto implements Arrayable, Datable, Jsonable, J
         public string $filename,
         public string $namespacePath,
         public string $typeName,
+        public string $description,
         public array $fields,
         public bool $isDynamic = false,
     ) {}
@@ -51,6 +53,7 @@ final readonly class TsFormRequestDto implements Arrayable, Datable, Jsonable, J
             'filename' => $this->filename,
             'namespacePath' => $this->namespacePath,
             'typeName' => $this->typeName,
+            'description' => $this->description,
             'fields' => $this->fields,
             'isDynamic' => $this->isDynamic,
         ];

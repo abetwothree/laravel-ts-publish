@@ -1,4 +1,8 @@
-/** @see Workbench\App\Http\Requests\DatabaseRulesRequest */
+/**
+ * Get the validation rules that apply to the request.
+ *
+ * @see Workbench\App\Http\Requests\DatabaseRulesRequest
+ */
 export interface DatabaseRulesRequest {
     /** @constraint exists */
     state: string;

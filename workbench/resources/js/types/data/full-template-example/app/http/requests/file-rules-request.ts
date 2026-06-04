@@ -1,4 +1,8 @@
-/** @see Workbench\App\Http\Requests\FileRulesRequest */
+/**
+ * Get the validation rules that apply to the request.
+ *
+ * @see Workbench\App\Http\Requests\FileRulesRequest
+ */
 export interface FileRulesRequest {
     document: File;
     avatar: File;

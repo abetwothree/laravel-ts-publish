@@ -1,4 +1,8 @@
-/** @see Workbench\App\Http\Requests\DateRulesRequest */
+/**
+ * Get the validation rules that apply to the request.
+ *
+ * @see Workbench\App\Http\Requests\DateRulesRequest
+ */
 export interface DateRulesRequest {
     /** @format date-time */
     event_date: string;

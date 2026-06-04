@@ -1,4 +1,8 @@
-/** @see Workbench\App\Http\Requests\RuleClassRequest */
+/**
+ * Get the validation rules that apply to the request.
+ *
+ * @see Workbench\App\Http\Requests\RuleClassRequest
+ */
 export interface RuleClassRequest {
     start_date: string;
     end_date?: string | null;

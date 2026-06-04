@@ -1,6 +1,7 @@
 @use('AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish')
 @php
-$formRequestDoc = "@see {$data->fqcn}";
+$formRequestDoc = $data->description !== '' ? $data->description . "\n\n" : '';
+$formRequestDoc .= "@see {$data->fqcn}";
 
 if ($data->isDynamic) {
     $formRequestDoc .= "\n@dynamic Rules could not be resolved statically.";

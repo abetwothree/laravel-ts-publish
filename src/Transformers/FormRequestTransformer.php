@@ -22,6 +22,8 @@ class FormRequestTransformer extends CoreTransformer
 {
     public protected(set) string $typeName;
 
+    public protected(set) string $description = '';
+
     public protected(set) string $filename;
 
     public protected(set) string $namespacePath;
@@ -54,6 +56,7 @@ class FormRequestTransformer extends CoreTransformer
             filename: $this->filename,
             namespacePath: $this->namespacePath,
             typeName: $this->typeName,
+            description: $this->description,
             fields: $this->fields,
             isDynamic: $this->isDynamic,
         );
@@ -72,6 +75,20 @@ class FormRequestTransformer extends CoreTransformer
         $this->typeName = $shortName;
         $this->filename = Str::kebab($shortName);
         $this->namespacePath = LaravelTsPublish::namespaceToPath($this->findable);
+
+        $description = '';
+
+        if ($reflection->hasMethod('rules')) {
+            $description = LaravelTsPublish::parseDocBlockDescription(
+                $reflection->getMethod('rules')->getDocComment()
+            );
+        }
+
+        if ($description === '') {
+            $description = LaravelTsPublish::parseDocBlockDescription($reflection->getDocComment());
+        }
+
+        $this->description = $description;
 
         return $this;
     }

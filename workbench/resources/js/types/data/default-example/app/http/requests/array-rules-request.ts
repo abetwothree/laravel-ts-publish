@@ -1,4 +1,8 @@
-/** @see Workbench\App\Http\Requests\ArrayRulesRequest */
+/**
+ * Get the validation rules that apply to the request.
+ *
+ * @see Workbench\App\Http\Requests\ArrayRulesRequest
+ */
 export interface ArrayRulesRequest {
     tags?: string[];
     "tags.*": string;

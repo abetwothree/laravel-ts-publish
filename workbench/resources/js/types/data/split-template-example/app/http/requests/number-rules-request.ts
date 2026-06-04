@@ -1,4 +1,8 @@
-/** @see Workbench\App\Http\Requests\NumberRulesRequest */
+/**
+ * Get the validation rules that apply to the request.
+ *
+ * @see Workbench\App\Http\Requests\NumberRulesRequest
+ */
 export interface NumberRulesRequest {
     score: number;
     price: number;
