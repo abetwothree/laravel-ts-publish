@@ -1,6 +1,4 @@
-/**
- * @see Workbench\App\Http\Requests\ArrayRulesRequest
- */
+/** @see Workbench\App\Http\Requests\ArrayRulesRequest */
 export interface ArrayRulesRequest {
     tags?: string[];
     "tags.*": string;

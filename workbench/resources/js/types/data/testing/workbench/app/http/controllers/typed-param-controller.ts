@@ -14,9 +14,7 @@ export const showRole = defineRoute({
     args: [{name: 'role', required: true}] as const,
 });
 
-/**
- * @see Workbench\App\Http\Controllers\TypedParamController
- */
+/** @see Workbench\App\Http\Controllers\TypedParamController */
 const TypedParamController = {
     showInt,
     showRole,

@@ -9,9 +9,7 @@ export const invoke = annotatePageProps<InvokePageProps>()(defineRoute({
     component: 'Profile',
 }));
 
-/**
- * @see Workbench\App\Http\Controllers\InvokableInertiaController
- */
+/** @see Workbench\App\Http\Controllers\InvokableInertiaController */
 const InvokableInertiaController = {
     '__invoke': invoke,
 };

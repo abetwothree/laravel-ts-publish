@@ -43,9 +43,7 @@ $needExtraSpacing = $action['shouldAnnotate'] || $action['hasFormRequest'] || $h
 
 @endif{{-- blank line between each export const; pageType block already has a trailing blank --}}
 @if($action['description'])
-/**
-  * {!! LaravelTsPublish::sanitizeJsDoc($action['description']) !!}
-  */
+{!! LaravelTsPublish::formatJsDoc($action['description']) !!}
 @endif
 @if($action['shouldAnnotate'] && $hasRequest)
 export const {!! LaravelTsPublish::validJsObjectKey($action['methodName']) !!} = annotateRequestPayload<{!! $action['requestTypeAlias'] !!}>()(annotatePageProps<{!! $action['pageTypeAnnotation'] !!}>()(defineRoute({
@@ -89,14 +87,10 @@ export const {!! LaravelTsPublish::validJsObjectKey($action['methodName']) !!} =
 
 @php
 $controllerName = LaravelTsPublish::safeJsIdentifier($data->controllerName, 'Controller');
+$controllerDescription = $data->description ? $data->description . "\n\n" : '';
+$controllerDescription .= "@see {$data->fqcn}";
 @endphp
-/**
-@if($data->description)
- * {!! LaravelTsPublish::sanitizeJsDoc($data->description) !!}
- *
-@endif
- * @see {{ $data->fqcn }}
- */
+{!! LaravelTsPublish::formatJsDoc($controllerDescription) !!}
 const {!! $controllerName !!} = {
 @foreach ($data->actions as $action)
 @if($action['originalMethodName'] === $action['methodName'])

@@ -1,6 +1,4 @@
-/**
- * @see Workbench\App\Http\Requests\StringRulesRequest
- */
+/** @see Workbench\App\Http\Requests\StringRulesRequest */
 export interface StringRulesRequest {
     /** @format active_url */
     website: string;

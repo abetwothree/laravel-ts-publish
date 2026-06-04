@@ -1,6 +1,4 @@
-/**
- * @see Workbench\App\Http\Requests\NumberRulesRequest
- */
+/** @see Workbench\App\Http\Requests\NumberRulesRequest */
 export interface NumberRulesRequest {
     score: number;
     price: number;

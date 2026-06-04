@@ -1,6 +1,4 @@
-/**
- * @see Workbench\App\Http\Requests\RuleClassRequest
- */
+/** @see Workbench\App\Http\Requests\RuleClassRequest */
 export interface RuleClassRequest {
     start_date: string;
     end_date?: string | null;

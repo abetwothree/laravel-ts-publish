@@ -4,9 +4,7 @@ import type { Post } from '../../models';
 
 export type DashboardPageProps = Inertia.SharedData & { stats: { users: number, posts: number, views: number }, recentActivity: [] };
 
-/**
-  * Display the dashboard page.
-  */
+/** Display the dashboard page. */
 export const dashboard = annotatePageProps<DashboardPageProps>()(defineRoute({
     name: 'inertia.dashboard',
     url: '/inertia/dashboard',
@@ -16,9 +14,7 @@ export const dashboard = annotatePageProps<DashboardPageProps>()(defineRoute({
 
 export type SettingsPageProps = Inertia.SharedData & { user: { name: string, email: string }, preferences: { theme: string, notifications: true } };
 
-/**
-  * Display the settings page.
-  */
+/** Display the settings page. */
 export const settings = annotatePageProps<SettingsPageProps>()(defineRoute({
     name: 'inertia.settings',
     url: '/inertia/settings',
@@ -28,9 +24,7 @@ export const settings = annotatePageProps<SettingsPageProps>()(defineRoute({
 
 export type AboutPageProps = Inertia.SharedData;
 
-/**
-  * Display the about page (no props).
-  */
+/** Display the about page (no props). */
 export const about = annotatePageProps<AboutPageProps>()(defineRoute({
     name: 'inertia.about',
     url: '/inertia/about',
@@ -41,9 +35,7 @@ export const about = annotatePageProps<AboutPageProps>()(defineRoute({
 export type ConditionalAuthenticatedPageProps = Inertia.SharedData & { user: unknown };
 export type ConditionalGuestPageProps = Inertia.SharedData & { message: string };
 
-/**
-  * Conditional rendering based on auth state.
-  */
+/** Conditional rendering based on auth state. */
 export const conditional = annotatePageProps<ConditionalAuthenticatedPageProps | ConditionalGuestPageProps>()(defineRoute({
     name: 'inertia.conditional',
     url: '/inertia/conditional',
@@ -53,9 +45,7 @@ export const conditional = annotatePageProps<ConditionalAuthenticatedPageProps |
 
 export type PostPageProps = Inertia.SharedData & { post: Post };
 
-/**
-  * Display a specific post.
-  */
+/** Display a specific post. */
 export const post = annotatePageProps<PostPageProps>()(defineRoute({
     name: 'inertia.post',
     url: '/inertia/post/{post}',
@@ -64,9 +54,7 @@ export const post = annotatePageProps<PostPageProps>()(defineRoute({
     component: 'PostShow',
 }));
 
-/**
- * @see Workbench\App\Http\Controllers\InertiaController
- */
+/** @see Workbench\App\Http\Controllers\InertiaController */
 const InertiaController = {
     dashboard,
     settings,

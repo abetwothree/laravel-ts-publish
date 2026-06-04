@@ -816,3 +816,13 @@ test('route writer combined create action with no request and Inertia pageType u
         ->toContain('export const create = annotatePageProps<CreatePageProps>()(defineRoute(')
         ->not->toContain('create = annotateRequestPayload');
 });
+
+test('route writer renders multi-line controller description with * prefix on each line', function () {
+    $generator = resolve(RouteGenerator::class, ['findable' => InertiaFormRequestController::class]);
+
+    // The controller docblock spans two lines; the second line must have " * " prefix
+    expect($generator->content)
+        ->toContain(
+            " * Demonstrates an Inertia controller that also uses FormRequest validation,\n * used by tests to verify"
+        );
+});

@@ -1,6 +1,4 @@
-/**
- * @see Workbench\App\Http\Requests\UpdatePostRequest
- */
+/** @see Workbench\App\Http\Requests\UpdatePostRequest */
 export interface UpdatePostRequest {
     title?: string;
     status: 'draft' | 'published' | 'archived';

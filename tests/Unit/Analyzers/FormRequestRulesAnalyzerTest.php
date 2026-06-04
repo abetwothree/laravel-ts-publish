@@ -332,6 +332,18 @@ describe('FormRequestRulesAnalyzer', function () {
             expect($node)->not->toBeNull();
             expect($node->tsType)->toBe("'green' | 'blue' | 'amber' | 'gray' | 'purple'");
         });
+
+        it('resets isDynamic to false on each analyze() call', function () {
+            $analyzer = new FormRequestRulesAnalyzer;
+
+            // First call: dynamic request → isDynamic becomes true
+            $analyzer->analyze(DynamicRequest::class);
+            expect($analyzer->isDynamic)->toBeTrue();
+
+            // Second call: static request → isDynamic must reset to false
+            $analyzer->analyze(StorePostRequest::class);
+            expect($analyzer->isDynamic)->toBeFalse();
+        });
     });
 
     describe('auth state restoration', function () {

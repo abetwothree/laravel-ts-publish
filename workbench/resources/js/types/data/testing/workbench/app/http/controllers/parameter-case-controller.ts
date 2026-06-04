@@ -21,9 +21,7 @@ export const screaming = defineRoute({
     args: [{name: 'SCREAMING_SNAKE', required: true}] as const,
 });
 
-/**
- * @see Workbench\App\Http\Controllers\ParameterCaseController
- */
+/** @see Workbench\App\Http\Controllers\ParameterCaseController */
 const ParameterCaseController = {
     camel,
     snake,

@@ -15,9 +15,10 @@ use Workbench\App\Enums\Visibility;
 use Workbench\App\Models\Address;
 
 /**
- * Exercises all date-category validation rules:
- * after, after_or_equal, before, before_or_equal, date,
- * date_equals, date_format, different, timezone.
+ * Exercises the full range of Rule class objects available in Laravel:
+ * date, anyOf, contains, doesntContain, dimensions, email, enum (with when/only/except),
+ * excludeIf, excludeUnless, exists, in, notIn, prohibitedIf, prohibitedUnless,
+ * requiredIf, requiredUnless, string, unique, forEach, numeric, and File::image.
  */
 class RuleClassRequest extends FormRequest
 {

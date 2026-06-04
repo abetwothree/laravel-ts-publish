@@ -1,14 +1,16 @@
 @use('AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish')
+@php
+$formRequestDoc = "@see {$data->fqcn}";
+
+if ($data->isDynamic) {
+    $formRequestDoc .= "\n@dynamic Rules could not be resolved statically.";
+}
+@endphp
 @if($data->isDynamic)
-/**
- * @see {{ $data->fqcn }}
- * @dynamic Rules could not be resolved statically.
- */
+{!! LaravelTsPublish::formatJsDoc($formRequestDoc) !!}
 export type {{ $data->typeName }} = Record<string, unknown>;
 @else
-/**
- * @see {{ $data->fqcn }}
- */
+{!! LaravelTsPublish::formatJsDoc($formRequestDoc) !!}
 export interface {{ $data->typeName }} {
 @foreach ($data->fields as $field)
 @if($field['isProhibited'])

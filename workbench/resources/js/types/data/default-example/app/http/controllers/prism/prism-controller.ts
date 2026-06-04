@@ -6,9 +6,7 @@ export const index = defineRoute({
     methods: ['get'] as const,
 });
 
-/**
- * @see Workbench\App\Http\Controllers\Prism\PrismController
- */
+/** @see Workbench\App\Http\Controllers\Prism\PrismController */
 const PrismController = {
     index,
 };

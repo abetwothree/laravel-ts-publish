@@ -1,6 +1,4 @@
-/**
- * @see Workbench\App\Http\Requests\StorePostRequest
- */
+/** @see Workbench\App\Http\Requests\StorePostRequest */
 export interface StorePostRequest {
     title: string;
     body: string;

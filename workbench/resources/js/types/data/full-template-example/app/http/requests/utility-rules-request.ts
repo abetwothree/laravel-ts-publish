@@ -1,6 +1,4 @@
-/**
- * @see Workbench\App\Http\Requests\UtilityRulesRequest
- */
+/** @see Workbench\App\Http\Requests\UtilityRulesRequest */
 export interface UtilityRulesRequest {
     contact: string;
     title: string;

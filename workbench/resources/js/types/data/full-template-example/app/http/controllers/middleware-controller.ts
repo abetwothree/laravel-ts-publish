@@ -6,9 +6,7 @@ export const index = defineRoute({
     methods: ['get'] as const,
 });
 
-/**
- * @see Workbench\App\Http\Controllers\MiddlewareController
- */
+/** @see Workbench\App\Http\Controllers\MiddlewareController */
 const MiddlewareController = {
     index,
 };

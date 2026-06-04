@@ -59,6 +59,8 @@ class FormRequestRulesAnalyzer
      */
     public function analyze(string $fqcn): array
     {
+        $this->isDynamic = false;
+
         $rules = $this->resolveRules($fqcn);
 
         if ($rules === null) {

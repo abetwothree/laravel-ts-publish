@@ -1,6 +1,4 @@
-/**
- * @see Workbench\App\Http\Requests\DateRulesRequest
- */
+/** @see Workbench\App\Http\Requests\DateRulesRequest */
 export interface DateRulesRequest {
     /** @format date-time */
     event_date: string;

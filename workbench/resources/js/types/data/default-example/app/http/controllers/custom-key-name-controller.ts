@@ -7,9 +7,7 @@ export const show = defineRoute({
     args: [{name: 'customKeyPost', required: true, _routeKey: 'custom_key'}] as const,
 });
 
-/**
- * @see Workbench\App\Http\Controllers\CustomKeyNameController
- */
+/** @see Workbench\App\Http\Controllers\CustomKeyNameController */
 const CustomKeyNameController = {
     show,
 };

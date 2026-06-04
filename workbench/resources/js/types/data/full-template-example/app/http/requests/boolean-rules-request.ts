@@ -1,6 +1,4 @@
-/**
- * @see Workbench\App\Http\Requests\BooleanRulesRequest
- */
+/** @see Workbench\App\Http\Requests\BooleanRulesRequest */
 export interface BooleanRulesRequest {
     terms_accepted?: boolean;
     newsletter_accepted?: boolean;

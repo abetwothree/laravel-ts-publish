@@ -32,9 +32,9 @@ export const resource = annotatePageProps<ResourcePageProps>()(defineRoute({
 
 /**
  * The purpose is to make sure the return types are properly grouped and defined for the same template that is used across different methods.
-
-Result should be:
-{ warehouses: JsonResourcePaginator<WarehouseResource>, warehouse_get: AnonymousResourceCollection<WarehouseResource>, warehouse_all: AnonymousResourceCollection<WarehouseResource>, warehouse_first: WarehouseResource, warehouse_find: WarehouseResource }
+ *
+ * Result should be:
+ * { warehouses: JsonResourcePaginator<WarehouseResource>, warehouse_get: AnonymousResourceCollection<WarehouseResource>, warehouse_all: AnonymousResourceCollection<WarehouseResource>, warehouse_first: WarehouseResource, warehouse_find: WarehouseResource }
  *
  * @see Workbench\App\Http\Controllers\InertiaResourceSharedTemplate
  */

@@ -6,9 +6,7 @@ export const index = defineRoute({
     methods: ['get'] as const,
 });
 
-/**
- * @see Workbench\App\Http\Controllers\Delete
- */
+/** @see Workbench\App\Http\Controllers\Delete */
 const Delete = {
     index,
 };

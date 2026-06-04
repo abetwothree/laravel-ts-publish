@@ -1,6 +1,4 @@
-/**
- * @see Workbench\App\Http\Requests\FileRulesRequest
- */
+/** @see Workbench\App\Http\Requests\FileRulesRequest */
 export interface FileRulesRequest {
     document: File;
     avatar: File;

@@ -6,9 +6,7 @@ export const action = defineRoute({
     methods: ['get'] as const,
 });
 
-/**
- * @see Workbench\App\Http\Controllers\MultiRouteController
- */
+/** @see Workbench\App\Http\Controllers\MultiRouteController */
 const MultiRouteController = {
     action,
 };

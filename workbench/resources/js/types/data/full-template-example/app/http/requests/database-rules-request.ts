@@ -1,6 +1,4 @@
-/**
- * @see Workbench\App\Http\Requests\DatabaseRulesRequest
- */
+/** @see Workbench\App\Http\Requests\DatabaseRulesRequest */
 export interface DatabaseRulesRequest {
     /** @constraint exists */
     state: string;

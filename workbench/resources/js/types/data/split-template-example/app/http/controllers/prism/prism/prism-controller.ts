@@ -6,9 +6,7 @@ export const nested = defineRoute({
     methods: ['get'] as const,
 });
 
-/**
- * @see Workbench\App\Http\Controllers\Prism\Prism\PrismController
- */
+/** @see Workbench\App\Http\Controllers\Prism\Prism\PrismController */
 const PrismController = {
     nested,
 };
