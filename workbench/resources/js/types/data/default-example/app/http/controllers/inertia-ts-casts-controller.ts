@@ -1,4 +1,5 @@
 import { defineRoute, annotatePageProps } from '@tolki/ts';
+
 import type { PageMeta } from '@workbench/types';
 
 export type IndexPageProps = Inertia.SharedData & { count: string, meta: PageMeta };

@@ -1,4 +1,5 @@
 import { defineRoute, annotatePageProps } from '@tolki/ts';
+
 import type { Post } from '../../models';
 
 export type DashboardPageProps = Inertia.SharedData & { stats: { users: number, posts: number, views: number }, recentActivity: [] };

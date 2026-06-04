@@ -1,4 +1,5 @@
 import { defineRoute, annotatePageProps } from '@tolki/ts';
+
 import type { LengthAwarePaginator } from '@tolki/types';
 import type { Post } from '../../models';
 

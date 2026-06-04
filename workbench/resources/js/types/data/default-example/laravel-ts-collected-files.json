@@ -21,6 +21,7 @@
     "app\/Http\/Controllers\/EnumBoundController.php",
     "app\/Http\/Controllers\/ExcludableController.php",
     "app\/Http\/Controllers\/InertiaController.php",
+    "app\/Http\/Controllers\/InertiaFormRequestController.php",
     "app\/Http\/Controllers\/InertiaNamedCollectionsController.php",
     "app\/Http\/Controllers\/InertiaPaginationsController.php",
     "app\/Http\/Controllers\/InertiaResourceSharedTemplate.php",

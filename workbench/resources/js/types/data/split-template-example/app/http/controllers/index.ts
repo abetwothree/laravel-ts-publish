@@ -8,6 +8,7 @@ export { default as DomainController } from './domain-controller';
 export { default as EnumBoundController } from './enum-bound-controller';
 export { default as ExcludableController } from './excludable-controller';
 export { default as InertiaController } from './inertia-controller';
+export { default as InertiaFormRequestController } from './inertia-form-request-controller';
 export { default as InertiaNamedCollectionsController } from './inertia-named-collections-controller';
 export { default as InertiaPaginationsController } from './inertia-paginations-controller';
 export { default as InertiaResourceSharedTemplate } from './inertia-resource-shared-template';

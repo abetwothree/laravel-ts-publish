@@ -1,4 +1,5 @@
 import { defineRoute, annotatePageProps } from '@tolki/ts';
+
 import type { AnonymousResourceCollection, JsonResourcePaginator, ResourcePagination } from '@tolki/types';
 import type { PostCollection, PostFlatCollection, PostResource } from '../resources';
 
