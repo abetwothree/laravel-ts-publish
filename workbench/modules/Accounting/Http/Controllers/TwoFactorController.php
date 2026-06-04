@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Workbench\Accounting\Http\Controllers;
 
+use Workbench\Accounting\Http\Requests\VerifyTwoFactorRequest;
+
 /**
  * Handles two-factor authentication for the accounting module.
  */
@@ -13,5 +15,5 @@ class TwoFactorController
     public function setup(): void {}
 
     /** Verify a 2FA code. */
-    public function verify(): void {}
+    public function verify(VerifyTwoFactorRequest $request): void {}
 }

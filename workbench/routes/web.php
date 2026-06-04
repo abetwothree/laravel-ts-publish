@@ -15,6 +15,7 @@ use Workbench\App\Http\Controllers\EnumBoundController;
 use Workbench\App\Http\Controllers\ExcludableController;
 use Workbench\App\Http\Controllers\ExcludedController;
 use Workbench\App\Http\Controllers\InertiaController;
+use Workbench\App\Http\Controllers\InertiaFormRequestController;
 use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
 use Workbench\App\Http\Controllers\InertiaPaginationsController;
 use Workbench\App\Http\Controllers\InertiaResourceSharedTemplate;
@@ -132,3 +133,5 @@ Route::get('/collection/flat-paginated', [InertiaNamedCollectionsController::cla
 Route::get('/collection/flat', [InertiaNamedCollectionsController::class, 'flatCollection'])->name('collection.flat');
 
 Route::get('/ts-casts', [InertiaTsCastsController::class, 'index'])->name('ts-casts.index');
+Route::get('/inertia-form-request/create', [InertiaFormRequestController::class, 'create'])->name('inertia-form-request.create');
+Route::post('/inertia-form-request', [InertiaFormRequestController::class, 'store'])->name('inertia-form-request.store');
