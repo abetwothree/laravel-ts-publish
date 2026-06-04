@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\FormRequest\FormRequestRulesAnalyzer;
+use Illuminate\Auth\GenericUser;
+use Illuminate\Support\Facades\Auth;
 use Workbench\App\Http\Requests\ArrayRulesRequest;
 use Workbench\App\Http\Requests\BooleanRulesRequest;
 use Workbench\App\Http\Requests\DateRulesRequest;
@@ -329,6 +331,27 @@ describe('FormRequestRulesAnalyzer', function () {
             $node = collect($nodes)->firstWhere('fieldPath', 'forbidden_color');
             expect($node)->not->toBeNull();
             expect($node->tsType)->toBe("'green' | 'blue' | 'amber' | 'gray' | 'purple'");
+        });
+    });
+
+    describe('auth state restoration', function () {
+        it('restores guest auth state after analyzing a static FormRequest', function () {
+            Auth::forgetUser();
+
+            (new FormRequestRulesAnalyzer)->analyze(StorePostRequest::class);
+
+            expect(Auth::check())->toBeFalse();
+        });
+
+        it('preserves an existing authenticated user after analyzing a FormRequest', function () {
+            $user = new GenericUser(['id' => 99]);
+            Auth::setUser($user);
+
+            (new FormRequestRulesAnalyzer)->analyze(StorePostRequest::class);
+
+            expect(Auth::id())->toBe(99);
+
+            Auth::forgetUser(); // cleanup
         });
     });
 });

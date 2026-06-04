@@ -32,6 +32,7 @@ use Illuminate\Validation\Rules\StringRule;
 use Illuminate\Validation\Rules\Unique;
 use Illuminate\Validation\ValidationRuleParser;
 use ReflectionClass;
+use ReflectionException;
 use Throwable;
 
 /**
@@ -78,6 +79,9 @@ class FormRequestRulesAnalyzer
      */
     protected function resolveRules(string $fqcn): ?array
     {
+        $wasAuthenticated = Auth::check();
+        $previousUser = $wasAuthenticated ? Auth::user() : null;
+
         try {
             $fakeRequest = Request::create('/', 'POST');
 
@@ -98,6 +102,12 @@ class FormRequestRulesAnalyzer
             return $rules;
         } catch (Throwable) {
             return null;
+        } finally {
+            if ($wasAuthenticated && $previousUser !== null) {
+                Auth::setUser($previousUser);
+            } else {
+                Auth::forgetUser();
+            }
         }
     }
 
@@ -327,8 +337,12 @@ class FormRequestRulesAnalyzer
      */
     protected function resolveInType(In $rule): string
     {
-        /** @var array<int, mixed> $values */
-        $values = (new ReflectionClass($rule))->getProperty('values')->getValue($rule);
+        try {
+            /** @var array<int, mixed> $values */
+            $values = (new ReflectionClass($rule))->getProperty('values')->getValue($rule);
+        } catch (ReflectionException) {
+            return 'string';
+        }
 
         $literals = array_map(
             fn (mixed $v): string => is_string($v) ? "'{$v}'" : (is_int($v) || is_float($v) ? (string) $v : ''),

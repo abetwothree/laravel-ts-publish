@@ -17,7 +17,7 @@ class InertiaFormRequestController
     /**
      * Show the form for creating a new post.
      *
-     * @returns Inertia response with no form request type.
+     * @return Inertia response with no form request type.
      */
     public function create(): Response
     {
@@ -27,7 +27,7 @@ class InertiaFormRequestController
     /**
      * Store a new post validated via StorePostRequest.
      *
-     * @returns Inertia response confirming the created post title.
+     * @return Inertia response confirming the created post title.
      */
     public function store(StorePostRequest $request): Response
     {

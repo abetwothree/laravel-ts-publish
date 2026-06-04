@@ -36,7 +36,7 @@ class TsPublishCommand extends Command
         {--only-form-requests : Only publish form requests (ignoring enums, models, resources, and routes)}
         {--only-functional : Only publish enabled functional content like routes & enums}';
 
-    protected $description = 'Publish All TypeScript files from enums, models, resources, and routes';
+    protected $description = 'Publish TypeScript files from enums, models, resources, routes, and form requests';
 
     public function handle(): int
     {

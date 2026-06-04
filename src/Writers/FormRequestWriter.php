@@ -51,7 +51,7 @@ class FormRequestWriter extends CoreWriter
     protected function resolveOutputPath(string $namespacePath): string
     {
         $outputPath = config('ts-publish.form_requests.output_path');
-        $outputBase = is_string($outputPath)
+        $outputBase = is_string($outputPath) && $outputPath !== ''
             ? $outputPath
             : config()->string('ts-publish.output_directory');
 

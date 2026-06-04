@@ -81,4 +81,21 @@ describe('FormRequestWriter', function () {
 
         $writer->write($transformer);
     });
+
+    it('falls back to output_directory when output_path config is empty string', function () {
+        $filesystem = Mockery::mock(Filesystem::class);
+        $filesystem->shouldReceive('ensureDirectoryExists')->once();
+        $filesystem->shouldReceive('put')->once()
+            ->withArgs(function (string $path, string $content) {
+                return str_starts_with($path, '/tmp/ts-fallback/');
+            });
+
+        config()->set('ts-publish.output_to_files', true);
+        config()->set('ts-publish.output_directory', '/tmp/ts-fallback');
+        config()->set('ts-publish.form_requests.output_path', '');
+
+        (new FormRequestWriter($filesystem))->write(
+            new FormRequestTransformer(StorePostRequest::class)
+        );
+    });
 });
