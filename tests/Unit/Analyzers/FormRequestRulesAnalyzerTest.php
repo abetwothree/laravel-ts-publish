@@ -161,6 +161,21 @@ describe('FormRequestRulesAnalyzer', function () {
             expect($node->tsType)->toBe('string');
         });
 
+        it('maps date and date_equals fields to @format date (not date-time)', function () {
+            $analyzer = new FormRequestRulesAnalyzer;
+            $nodes = $analyzer->analyze(DateRulesRequest::class);
+
+            $eventDate = collect($nodes)->firstWhere('fieldPath', 'event_date');
+            expect($eventDate)->not->toBeNull();
+            expect($eventDate->jsDocMetadata)->toContain('@format date');
+            expect($eventDate->jsDocMetadata)->not->toContain('@format date-time');
+
+            $releaseDate = collect($nodes)->firstWhere('fieldPath', 'release_date');
+            expect($releaseDate)->not->toBeNull();
+            expect($releaseDate->jsDocMetadata)->toContain('@format date');
+            expect($releaseDate->jsDocMetadata)->not->toContain('@format date-time');
+        });
+
         it('maps extensions rule to File type', function () {
             $analyzer = new FormRequestRulesAnalyzer;
             $nodes = $analyzer->analyze(FileRulesRequest::class);
@@ -223,6 +238,26 @@ describe('FormRequestRulesAnalyzer', function () {
             $node = collect($nodes)->firstWhere('fieldPath', 'products.*.categories');
             expect($node)->not->toBeNull();
             expect($node->tsType)->toBe('string[]');
+        });
+
+        it('forces dot-notation and wildcard paths to always be optional regardless of required rule', function () {
+            $analyzer = new FormRequestRulesAnalyzer;
+            $nodes = $analyzer->analyze(ArrayRulesRequest::class);
+
+            // Wildcard element path with required validator — must be optional
+            $tagsWildcard = collect($nodes)->firstWhere('fieldPath', 'tags.*');
+            expect($tagsWildcard)->not->toBeNull();
+            expect($tagsWildcard->isRequired)->toBeFalse();
+
+            // Deep dot-notation path with required validator — must be optional
+            $orderId = collect($nodes)->firstWhere('fieldPath', 'order.id');
+            expect($orderId)->not->toBeNull();
+            expect($orderId->isRequired)->toBeFalse();
+
+            // Deep nested wildcard with required validator — must be optional
+            $productName = collect($nodes)->firstWhere('fieldPath', 'products.*.name');
+            expect($productName)->not->toBeNull();
+            expect($productName->isRequired)->toBeFalse();
         });
 
         it('maps Rule::anyOf with all-string inner rules to string type', function () {

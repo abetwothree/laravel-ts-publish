@@ -184,6 +184,13 @@ class FormRequestRulesAnalyzer
             $isSometimes = $this->isSometimes($parsedRules);
             $jsDocMetadata = $this->resolveJsDocMetadata($parsedRules);
 
+            // Dot-notation and wildcard paths (e.g. `tags.*`, `order.id`) describe
+            // constraints on nested values, not root-level JSON keys. They can never
+            // be directly satisfied by a caller, so force them to optional.
+            if (str_contains($fieldPath, '.')) {
+                $isRequired = false;
+            }
+
             $nodes[$fieldPath] = new FormRequestRuleNode(
                 fieldPath: $fieldPath,
                 tsType: $tsType,
@@ -565,7 +572,7 @@ class FormRequestRulesAnalyzer
             } elseif (in_array($ruleLower, ['uuid', 'ulid', 'ip', 'ipv4', 'ipv6', 'mac_address', 'hex_color'], true)) {
                 $metadata[] = "@format {$ruleLower}";
             } elseif (in_array($ruleLower, ['date', 'date_equals'], true)) {
-                $metadata[] = '@format date-time';
+                $metadata[] = '@format date';
             } elseif (in_array($ruleLower, ['exists', 'unique'], true)) {
                 $metadata[] = "@constraint {$ruleLower}";
             } elseif (in_array($ruleLower, ['required_if', 'required_unless', 'required_with', 'required_without', 'required_with_all', 'required_without_all'], true)) {

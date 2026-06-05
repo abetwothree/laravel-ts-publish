@@ -184,22 +184,22 @@ describe('DateRulesRequest fields', function () {
         $this->transformer = new FormRequestTransformer(DateRulesRequest::class);
     });
 
-    it('event_date field is required string with @format date-time', function () {
+    it('event_date field is required string with @format date', function () {
         $field = collect($this->transformer->fields)->firstWhere('fieldPath', 'event_date');
 
         expect($field)->not->toBeNull()
             ->and($field['tsType'])->toBe('string')
             ->and($field['isRequired'])->toBeTrue()
-            ->and($field['jsDocMetadata'])->toContain('@format date-time');
+            ->and($field['jsDocMetadata'])->toContain('@format date');
     });
 
-    it('cancelled_at field is optional nullable string with @format date-time', function () {
+    it('cancelled_at field is optional nullable string with @format date', function () {
         $field = collect($this->transformer->fields)->firstWhere('fieldPath', 'cancelled_at');
 
         expect($field)->not->toBeNull()
             ->and($field['tsType'])->toBe('string')
             ->and($field['isNullable'])->toBeTrue()
-            ->and($field['jsDocMetadata'])->toContain('@format date-time');
+            ->and($field['jsDocMetadata'])->toContain('@format date');
     });
 });
 
@@ -247,12 +247,12 @@ describe('ArrayRulesRequest fields', function () {
             ->and($field['isRequired'])->toBeTrue();
     });
 
-    it('order.id nested field is required string with @format uuid', function () {
+    it('order.id nested field is optional string with @format uuid', function () {
         $field = collect($this->transformer->fields)->firstWhere('fieldPath', 'order.id');
 
         expect($field)->not->toBeNull()
             ->and($field['tsType'])->toBe('string')
-            ->and($field['isRequired'])->toBeTrue()
+            ->and($field['isRequired'])->toBeFalse()
             ->and($field['jsDocMetadata'])->toContain('@format uuid');
     });
 });

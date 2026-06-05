@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Commands;
 
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
@@ -412,6 +413,26 @@ class TsPublishCommand extends Command
             }
         }
 
+        if (count($runner->formRequestGenerators) > 0) {
+            $this->newLine();
+            $this->comment('Form Requests:');
+            foreach ($runner->formRequestGenerators as $generator) {
+                $this->newLine();
+                $this->comment("  {$generator->transformer->namespacePath}/{$generator->filename()}.ts");
+                $this->line($generator->content);
+            }
+        }
+
+        if (count($runner->formRequestModularBarrels) > 0) {
+            $this->newLine();
+            $this->comment('Form Request Barrel Files:');
+            foreach ($runner->formRequestModularBarrels as $namespacePath => $content) {
+                $this->newLine();
+                $this->comment("  {$namespacePath}/index.ts");
+                $this->line($content);
+            }
+        }
+
         if (! empty($runner->viteEnvContent)) {
             $viteEnvFilename = config()->string('ts-publish.vite_env.filename', 'vite-env.d.ts');
             $this->newLine();
@@ -451,6 +472,7 @@ class TsPublishCommand extends Command
         $modelCount = $runner->modelGenerators->count();
         $resourceCount = $runner->resourceGenerators->count();
         $routeCount = $runner->routeGenerators->count();
+        $formRequestCount = $runner->formRequestGenerators->count();
 
         $parts = [];
 
@@ -468,6 +490,10 @@ class TsPublishCommand extends Command
 
         if ($routeCount > 0) {
             $parts[] = Str::plural('route controller', $routeCount, true);
+        }
+
+        if ($formRequestCount > 0) {
+            $parts[] = Str::plural('form request', $formRequestCount, true);
         }
 
         if (count($parts) > 0) {
@@ -549,6 +575,20 @@ class TsPublishCommand extends Command
             );
         }
 
+        if (count($runner->formRequestGenerators) > 0) {
+            /** @var array<int, array<int, string>> $formRequestRows */
+            $formRequestRows = $runner->formRequestGenerators->map(fn (FormRequestGenerator $g) => [
+                $g->transformer->typeName,
+                $g->transformer->namespacePath.'/'.$g->filename().'.ts',
+                (string) count($g->transformer->fields),
+            ])->toArray();
+
+            table(
+                headers: ['Form Request', 'File', 'Fields'],
+                rows: $formRequestRows,
+            );
+        }
+
         $extras = $this->collectExtras($runner);
 
         if (count($extras) > 0) {
@@ -570,6 +610,7 @@ class TsPublishCommand extends Command
             ...array_map(fn (string $path) => ['Barrel', "{$path}/index.ts"], array_keys($runner->modelModularBarrels)),
             ...array_map(fn (string $path) => ['Barrel', "{$path}/index.ts"], array_keys($runner->resourceModularBarrels)),
             ...array_map(fn (string $path) => ['Route Barrel', "{$path}/index.ts"], array_keys($runner->routeModularBarrels)),
+            ...array_map(fn (string $path) => ['Form Request Barrel', "{$path}/index.ts"], array_keys($runner->formRequestModularBarrels)),
             $runner->globalsContent ? ['Globals', Config::string('ts-publish.globals.filename')] : null,
             $runner->viteEnvContent ? ['Vite Env', Config::string('ts-publish.vite_env.filename', 'vite-env.d.ts')] : null,
             $runner->inertiaConfigContent ? ['Inertia Config', Config::string('ts-publish.inertia.augmentation_filename')] : null,

@@ -160,9 +160,9 @@ describe('DateRulesRequest output', function () {
         expect($this->content)->toContain('cancelled_at?: string | null;');
     });
 
-    it('includes @format date-time annotations for date fields', function () {
-        // Both event_date and cancelled_at carry @format date-time
-        expect(substr_count($this->content, '@format date-time'))->toBeGreaterThanOrEqual(2);
+    it('includes @format date annotations for date fields', function () {
+        // Both event_date and cancelled_at carry @format date
+        expect(substr_count($this->content, '@format date'))->toBeGreaterThanOrEqual(2);
     });
 });
 
@@ -199,8 +199,8 @@ describe('ArrayRulesRequest output', function () {
         expect($this->content)->toContain('selected_ids: number[];');
     });
 
-    it('quotes dot-notation field names', function () {
-        expect($this->content)->toContain('"order.id": string;');
+    it('quotes dot-notation field names and marks them optional', function () {
+        expect($this->content)->toContain('"order.id"?: string;');
     });
 });
 

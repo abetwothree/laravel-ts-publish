@@ -43,6 +43,15 @@ test('ts:publish preview shows barrel files', function () {
         ->expectsOutputToContain('Model Barrel Files:');
 });
 
+test('ts:publish preview shows form request content', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true'])
+        ->assertSuccessful()
+        ->expectsOutputToContain('Form Requests:')
+        ->expectsOutputToContain('StorePostRequest');
+});
+
 test('ts:publish writes files to disk', function () {
     $outputDir = sys_get_temp_dir().'/laravel-ts-publish-test-'.uniqid();
     config()->set('ts-publish.output_directory', $outputDir);

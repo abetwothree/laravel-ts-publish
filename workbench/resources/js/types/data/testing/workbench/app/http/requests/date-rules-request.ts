@@ -4,23 +4,23 @@
  * @see Workbench\App\Http\Requests\DateRulesRequest
  */
 export interface DateRulesRequest {
-    /** @format date-time */
+    /** @format date */
     event_date: string;
-    /** @format date-time */
+    /** @format date */
     start_date: string;
-    /** @format date-time */
+    /** @format date */
     registration_deadline: string;
-    /** @format date-time */
+    /** @format date */
     birth_date: string;
-    /** @format date-time */
+    /** @format date */
     end_date: string;
-    /** @format date-time */
+    /** @format date */
     release_date: string;
     formatted_date: string;
     flexible_date: string;
-    /** @format date-time */
+    /** @format date */
     follow_up_date: string;
-    /** @format date-time */
+    /** @format date */
     cancelled_at?: string | null;
     user_timezone: string;
     us_timezone?: string | null;
