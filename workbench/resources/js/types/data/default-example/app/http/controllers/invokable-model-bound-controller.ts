@@ -7,9 +7,7 @@ export const invoke = defineRoute({
     args: [{name: 'post', required: true, _routeKey: 'id'}] as const,
 });
 
-/**
- * @see Workbench\App\Http\Controllers\InvokableModelBoundController
- */
+/** @see Workbench\App\Http\Controllers\InvokableModelBoundController */
 const InvokableModelBoundController = {
     '__invoke': invoke,
 };

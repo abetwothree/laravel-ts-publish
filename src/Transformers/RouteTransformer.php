@@ -12,8 +12,10 @@ use AbeTwoThree\LaravelTsPublish\Dtos\TsRouteDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use BackedEnum;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 use Override;
 use ReflectionClass;
@@ -64,22 +66,16 @@ class RouteTransformer extends CoreTransformer
     /** Whether any actions have page types that require the annotatePageProps import. */
     protected bool $hasPageTypes = false;
 
+    /** Whether any actions have FormRequest params that require the annotateRequestPayload import. */
+    protected bool $hasRequestTypes = false;
+
     #[Override]
     public function transform(): self
     {
-        $this->reflectionController = new ReflectionClass($this->findable);
-        $this->controllerName = $this->reflectionController->getShortName();
-        $this->filePath = (string) $this->reflectionController->getFileName();
-        $this->namespacePath = LaravelTsPublish::namespaceToPath($this->findable);
-        $this->description = LaravelTsPublish::parseDocBlockDescription($this->reflectionController->getDocComment());
-
-        if (config()->boolean('ts-publish.inertia.enabled')) {
-            $this->inertiaPageAnalyzer = resolve(InertiaPageAnalyzer::class);
-        }
-
-        $this->actions = $this->collectActions();
-
-        $this->typeImports = $this->resolvePageTypeImports();
+        $this->initReflection()
+            ->initInertiaAnalyzer()
+            ->initActions()
+            ->buildTypeImports();
 
         return $this;
     }
@@ -95,6 +91,7 @@ class RouteTransformer extends CoreTransformer
             actions: $this->actions,
             typeImports: $this->typeImports,
             hasPageTypes: $this->hasPageTypes,
+            hasRequestTypes: $this->hasRequestTypes,
         );
     }
 
@@ -102,6 +99,65 @@ class RouteTransformer extends CoreTransformer
     public function filename(): string
     {
         return Str::kebab($this->controllerName);
+    }
+
+    /**
+     * Initialize the reflection instance and controller metadata.
+     */
+    protected function initReflection(): self
+    {
+        $this->reflectionController = new ReflectionClass($this->findable);
+        $this->controllerName = $this->reflectionController->getShortName();
+        $this->filePath = (string) $this->reflectionController->getFileName();
+        $this->namespacePath = LaravelTsPublish::namespaceToPath($this->findable);
+        $this->description = LaravelTsPublish::parseDocBlockDescription($this->reflectionController->getDocComment());
+
+        return $this;
+    }
+
+    /**
+     * Conditionally resolve the Inertia page analyzer if Inertia support is enabled.
+     */
+    protected function initInertiaAnalyzer(): self
+    {
+        if (config()->boolean('ts-publish.inertia.enabled')) {
+            $this->inertiaPageAnalyzer = resolve(InertiaPageAnalyzer::class);
+        }
+
+        return $this;
+    }
+
+    /**
+     * Collect and set all publishable route actions.
+     */
+    protected function initActions(): self
+    {
+        $this->actions = $this->collectActions();
+
+        return $this;
+    }
+
+    /**
+     * Merge page-type and request-type import maps and store the sorted result.
+     */
+    protected function buildTypeImports(): self
+    {
+        $pageImports = $this->resolvePageTypeImports();
+        $requestImports = $this->resolveRequestTypeImports();
+
+        $merged = $pageImports;
+
+        foreach ($requestImports as $path => $types) {
+            foreach ($types as $type) {
+                if (! in_array($type, $merged[$path] ?? [], true)) {
+                    $merged[$path][] = $type;
+                }
+            }
+        }
+
+        $this->typeImports = LaravelTsPublish::sortImportPaths($merged);
+
+        return $this;
     }
 
     /**
@@ -202,6 +258,7 @@ class RouteTransformer extends CoreTransformer
             'description' => $description,
             'args' => $this->resolveArgs($route, $originalMethodName),
             'shouldAnnotate' => false, // set to true if Inertia page types are detected
+            'hasFormRequest' => false, // set to true if a FormRequest param is detected
         ];
 
         if ($this->inertiaPageAnalyzer !== null) {
@@ -240,7 +297,62 @@ class RouteTransformer extends CoreTransformer
             }
         }
 
+        if (Config::boolean('ts-publish.form_requests.enabled')) {
+            $this->detectFormRequest($originalMethodName, $action);
+        }
+
         return $action;
+    }
+
+    /**
+     * Detect a FormRequest parameter on the given controller method and populate
+     * request-related fields on the action array if found.
+     *
+     * @param  RouteActionData  $action
+     */
+    protected function detectFormRequest(string $originalMethodName, array &$action): void
+    {
+        if (! $this->reflectionController->hasMethod($originalMethodName)) {
+            return;
+        }
+
+        $method = $this->reflectionController->getMethod($originalMethodName);
+
+        foreach ($method->getParameters() as $param) {
+            $type = $param->getType();
+
+            if (! ($type instanceof ReflectionNamedType) || $type->isBuiltin()) {
+                continue;
+            }
+
+            $paramClass = $type->getName();
+
+            if (! class_exists($paramClass)) {
+                continue;
+            }
+
+            if (! is_a($paramClass, FormRequest::class, true)) {
+                continue;
+            }
+
+            $paramReflection = new ReflectionClass($paramClass);
+            $shortName = $paramReflection->getShortName();
+            $requestNamespacePath = LaravelTsPublish::namespaceToPath($paramClass);
+            $requestFilename = Str::kebab($shortName);
+
+            $action['requestFqcn'] = $paramClass;
+            $action['requestTypeAlias'] = $shortName;
+            $action['requestImportPath'] = LaravelTsPublish::relativeImportPath(
+                $this->namespacePath,
+                $requestNamespacePath,
+            ).'/'.$requestFilename;
+
+            $action['hasFormRequest'] = true;
+
+            $this->hasRequestTypes = true;
+
+            break;
+        }
     }
 
     /**
@@ -521,6 +633,36 @@ class RouteTransformer extends CoreTransformer
     public static function clearModelInstanceCache(): void
     {
         self::$modelInstanceCache = [];
+    }
+
+    /**
+     * Build a TypeScript import map for all FormRequest types referenced in route actions.
+     *
+     * Iterates the collected actions, groups each requestTypeAlias by its requestImportPath,
+     * and deduplicates so that multiple actions sharing the same import path produce a
+     * single consolidated import statement.
+     *
+     * @return TypesImportMap
+     */
+    private function resolveRequestTypeImports(): array
+    {
+        /** @var TypesImportMap $imports */
+        $imports = [];
+
+        foreach ($this->actions as $action) {
+            if (! isset($action['requestImportPath'], $action['requestTypeAlias'])) {
+                continue;
+            }
+
+            $path = $action['requestImportPath'];
+            $alias = $action['requestTypeAlias'];
+
+            if (! in_array($alias, $imports[$path] ?? [], true)) {
+                $imports[$path][] = $alias;
+            }
+        }
+
+        return $imports;
     }
 
     /**

@@ -7,9 +7,7 @@ export const byStatus = defineRoute({
     args: [{name: 'status', required: true, _enumValues: [0, 1]}] as const,
 });
 
-/**
- * @see Workbench\App\Http\Controllers\EnumBoundController
- */
+/** @see Workbench\App\Http\Controllers\EnumBoundController */
 const EnumBoundController = {
     byStatus,
 };

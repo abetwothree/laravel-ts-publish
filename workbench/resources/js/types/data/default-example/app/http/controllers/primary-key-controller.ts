@@ -7,9 +7,7 @@ export const show = defineRoute({
     args: [{name: 'uuidPost', required: true, _routeKey: 'uuid'}] as const,
 });
 
-/**
- * @see Workbench\App\Http\Controllers\PrimaryKeyController
- */
+/** @see Workbench\App\Http\Controllers\PrimaryKeyController */
 const PrimaryKeyController = {
     show,
 };

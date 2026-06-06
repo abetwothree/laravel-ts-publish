@@ -21,9 +21,7 @@ export const surprise = defineRoute({
     args: [{name: 'post', required: true, _routeKey: 'id'}] as const,
 });
 
-/**
- * @see Workbench\App\Http\Controllers\InvokableModelBoundPlusController
- */
+/** @see Workbench\App\Http\Controllers\InvokableModelBoundPlusController */
 const InvokableModelBoundPlusController = {
     '__invoke': invoke,
     extra,

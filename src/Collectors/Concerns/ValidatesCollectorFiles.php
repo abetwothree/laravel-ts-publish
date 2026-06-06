@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Collectors\Concerns;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Routing\Router;
 use ReflectionClass;
@@ -76,5 +77,15 @@ trait ValidatesCollectorFiles
     protected function excluded(ReflectionClass $reflection): bool
     {
         return $reflection->getAttributes(TsExclude::class) !== [];
+    }
+
+    /** @param ReflectionClass<object> $reflection */
+    protected function validateFormRequest(ReflectionClass $reflection): bool
+    {
+        if ($this->excluded($reflection)) {
+            return false;
+        }
+
+        return $reflection->isSubclassOf(FormRequest::class) && ! $reflection->isAbstract();
     }
 }

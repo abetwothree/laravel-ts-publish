@@ -14,9 +14,7 @@ export const multi = defineRoute({
     args: [{name: 'one', required: false}, {name: 'two', required: false}] as const,
 });
 
-/**
- * @see Workbench\App\Http\Controllers\OptionalParamController
- */
+/** @see Workbench\App\Http\Controllers\OptionalParamController */
 const OptionalParamController = {
     show,
     multi,

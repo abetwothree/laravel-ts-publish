@@ -4,12 +4,25 @@
 export {}
 @else
 @php
-$imports = $data->hasPageTypes ? "defineRoute, annotatePageProps" : "defineRoute";
+$importParts = ['defineRoute'];
+
+if ($data->hasPageTypes) {
+    $importParts[] = 'annotatePageProps';
+}
+
+if ($data->hasRequestTypes) {
+    $importParts[] = 'annotateRequestPayload';
+}
+
+$imports = implode(', ', $importParts);
 @endphp
 import { {!! $imports !!} } from '@tolki/ts';
+@if(count($data->typeImports) > 0)
+
 @foreach($data->typeImports as $importPath => $typeNames)
 import type { {!! implode(', ', $typeNames) !!} } from '{!! $importPath !!}';
 @endforeach
+@endif
 @foreach ($data->actions as $action)
 @if(isset($action['pageType']))
 
@@ -22,16 +35,22 @@ export type {!! Str::studly($action['methodName']) !!}PageProps = {!! $action['p
 @endif
 
 @endif
-@if(!$action['shouldAnnotate'])
+@php
+$hasRequest = isset($action['requestFqcn']);
+$needExtraSpacing = $action['shouldAnnotate'] || $action['hasFormRequest'] || $hasRequest;
+@endphp
+@if(!isset($action['pageType']))
 
-@endif{{-- purposeful empty space if no annotation - do not remove --}}
+@endif{{-- blank line between each export const; pageType block already has a trailing blank --}}
 @if($action['description'])
-/**
-  * {!! LaravelTsPublish::sanitizeJsDoc($action['description']) !!}
-  */
+{!! LaravelTsPublish::formatJsDoc($action['description']) !!}
 @endif
-@if($action['shouldAnnotate'])
+@if($action['shouldAnnotate'] && $hasRequest)
+export const {!! LaravelTsPublish::validJsObjectKey($action['methodName']) !!} = annotateRequestPayload<{!! $action['requestTypeAlias'] !!}>()(annotatePageProps<{!! $action['pageTypeAnnotation'] !!}>()(defineRoute({
+@elseif($action['shouldAnnotate'])
 export const {!! LaravelTsPublish::validJsObjectKey($action['methodName']) !!} = annotatePageProps<{!! $action['pageTypeAnnotation'] !!}>()(defineRoute({
+@elseif($hasRequest)
+export const {!! LaravelTsPublish::validJsObjectKey($action['methodName']) !!} = annotateRequestPayload<{!! $action['requestTypeAlias'] !!}>()(defineRoute({
 @else
 export const {!! LaravelTsPublish::validJsObjectKey($action['methodName']) !!} = defineRoute({
 @endif
@@ -57,7 +76,9 @@ export const {!! LaravelTsPublish::validJsObjectKey($action['methodName']) !!} =
     component: {!! LaravelTsPublish::toJsLiteral($action['component']) !!},
 @endif
 @endif
-@if($action['shouldAnnotate'])
+@if($action['shouldAnnotate'] && $hasRequest)
+})));
+@elseif($needExtraSpacing)
 }));
 @else
 });
@@ -66,14 +87,10 @@ export const {!! LaravelTsPublish::validJsObjectKey($action['methodName']) !!} =
 
 @php
 $controllerName = LaravelTsPublish::safeJsIdentifier($data->controllerName, 'Controller');
+$controllerDescription = $data->description ? $data->description . "\n\n" : '';
+$controllerDescription .= "@see {$data->fqcn}";
 @endphp
-/**
-@if($data->description)
- * {!! LaravelTsPublish::sanitizeJsDoc($data->description) !!}
- *
-@endif
- * @see {{ $data->fqcn }}
- */
+{!! LaravelTsPublish::formatJsDoc($controllerDescription) !!}
 const {!! $controllerName !!} = {
 @foreach ($data->actions as $action)
 @if($action['originalMethodName'] === $action['methodName'])

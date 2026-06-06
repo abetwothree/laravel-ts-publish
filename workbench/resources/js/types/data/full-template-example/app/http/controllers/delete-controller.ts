@@ -13,9 +13,7 @@ export const exportMethod = defineRoute({
     methods: ['get'] as const,
 });
 
-/**
- * @see Workbench\App\Http\Controllers\DeleteController
- */
+/** @see Workbench\App\Http\Controllers\DeleteController */
 const DeleteController = {
     'delete': deleteMethod,
     'export': exportMethod,

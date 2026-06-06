@@ -30,9 +30,13 @@ use JsonSerializable;
  *     description: string|null,
  *     args: list<RouteArgData>,
  *     shouldAnnotate: bool,
+ *     hasFormRequest: bool,
  *     component?: string|array<string, string>,
  *     pageType?: string|array<string, string>,
  *     pageTypeAnnotation?: string,
+ *     requestFqcn?: string,
+ *     requestTypeAlias?: string,
+ *     requestImportPath?: string,
  * }
  * @phpstan-type RouteData = array{
  *     controllerName: string,
@@ -42,6 +46,7 @@ use JsonSerializable;
  *     actions: list<RouteActionData>,
  *     typeImports: TypesImportMap,
  *     hasPageTypes: bool,
+ *     hasRequestTypes: bool,
  * }
  *
  * @implements Arrayable<string, mixed>
@@ -60,6 +65,7 @@ final readonly class TsRouteDto implements Arrayable, Datable, Jsonable, JsonSer
         public array $actions,
         public array $typeImports = [],
         public bool $hasPageTypes = false,
+        public bool $hasRequestTypes = false,
     ) {}
 
     /** @return RouteData */
@@ -73,6 +79,7 @@ final readonly class TsRouteDto implements Arrayable, Datable, Jsonable, JsonSer
             'actions' => $this->actions,
             'typeImports' => $this->typeImports,
             'hasPageTypes' => $this->hasPageTypes,
+            'hasRequestTypes' => $this->hasRequestTypes,
         ];
     }
 

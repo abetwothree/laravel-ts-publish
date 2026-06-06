@@ -13,9 +13,7 @@ export const show = defineRoute({
     args: [{name: 'id', required: true}] as const,
 });
 
-/**
- * @see Workbench\App\Http\Controllers\Nested\NestedController
- */
+/** @see Workbench\App\Http\Controllers\Nested\NestedController */
 const NestedController = {
     index,
     show,

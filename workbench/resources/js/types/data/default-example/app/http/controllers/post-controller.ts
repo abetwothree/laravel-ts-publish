@@ -1,4 +1,7 @@
-import { defineRoute } from '@tolki/ts';
+import { defineRoute, annotateRequestPayload } from '@tolki/ts';
+
+import type { StorePostRequest } from '../requests/store-post-request';
+import type { UpdatePostRequest } from '../requests/update-post-request';
 
 export const index = defineRoute({
     name: 'posts.index',
@@ -13,18 +16,18 @@ export const show = defineRoute({
     args: [{name: 'post', required: true, _routeKey: 'id'}] as const,
 });
 
-export const store = defineRoute({
+export const store = annotateRequestPayload<StorePostRequest>()(defineRoute({
     name: 'posts.store',
     url: '/posts',
     methods: ['post'] as const,
-});
+}));
 
-export const update = defineRoute({
+export const update = annotateRequestPayload<UpdatePostRequest>()(defineRoute({
     name: 'posts.update',
     url: '/posts/{post}',
     methods: ['put'] as const,
     args: [{name: 'post', required: true, _routeKey: 'id'}] as const,
-});
+}));
 
 export const destroy = defineRoute({
     name: 'posts.destroy',

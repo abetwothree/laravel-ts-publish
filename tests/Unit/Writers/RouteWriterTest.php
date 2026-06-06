@@ -8,11 +8,13 @@ use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Writers\RouteWriter;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Collection;
+use Workbench\Accounting\Http\Controllers\TwoFactorController;
 use Workbench\App\Http\Controllers\CustomKeyController;
 use Workbench\App\Http\Controllers\Delete;
 use Workbench\App\Http\Controllers\DeleteController;
 use Workbench\App\Http\Controllers\EnumBoundController;
 use Workbench\App\Http\Controllers\InertiaController;
+use Workbench\App\Http\Controllers\InertiaFormRequestController;
 use Workbench\App\Http\Controllers\InvokableController;
 use Workbench\App\Http\Controllers\NamedInvokableController;
 use Workbench\App\Http\Controllers\Nested\NestedController;
@@ -37,7 +39,7 @@ test('route writer generates TypeScript content with defineRoute import', functi
     $generator = resolve(RouteGenerator::class, ['findable' => PostController::class]);
 
     expect($generator->content)
-        ->toContain("import { defineRoute } from '@tolki/ts'")
+        ->toContain("import { defineRoute, annotateRequestPayload } from '@tolki/ts'")
         ->not->toContain('RouteQueryOptions');
 });
 
@@ -69,8 +71,8 @@ test('route writer generates export const for each action', function () {
     expect($generator->content)
         ->toContain('export const index = defineRoute(')
         ->toContain('export const show = defineRoute(')
-        ->toContain('export const store = defineRoute(')
-        ->toContain('export const update = defineRoute(')
+        ->toContain('export const store = annotateRequestPayload<StorePostRequest>()(defineRoute(')
+        ->toContain('export const update = annotateRequestPayload<UpdatePostRequest>()(defineRoute(')
         ->toContain('export const destroy = defineRoute(');
 });
 
@@ -248,8 +250,6 @@ test('route writer does not emit reserved keyword as const name', function () {
         ->not->toContain('export const export ');
 });
 
-// ─── export type PageProps alias ─────────────────────────────────
-
 test('route output emits export type PageProps alias for single inertia component', function () {
     config()->set('ts-publish.inertia.enabled', true);
 
@@ -391,8 +391,6 @@ test('route writer includes where constraint in output', function () {
     expect($generator->content)->toContain("where: '[0-9]+'");
 });
 
-// ─── Inertia route output ─────────────────────────────────────────
-
 test('route output includes .component for single inertia component', function () {
     config()->set('ts-publish.inertia.enabled', true);
 
@@ -486,8 +484,6 @@ test('route output does not include component when inertia is disabled', functio
         ->not->toContain('.component')
         ->not->toContain('.withComponent');
 });
-
-// ─── Phase 2: annotatePageProps annotation ─────────────────────────
 
 test('route output emits annotatePageProps annotation for single-component no-args inertia route', function () {
     config()->set('ts-publish.inertia.enabled', true);
@@ -715,4 +711,118 @@ test('route output emits import from externalImports for TsCasts override with i
 
     expect($generator->content)
         ->toContain("import type { PageMeta } from '@workbench/types';");
+});
+
+test('route writer includes StorePostRequest import type for PostController', function () {
+    $generator = resolve(RouteGenerator::class, ['findable' => PostController::class]);
+
+    expect($generator->content)
+        ->toContain("import type { StorePostRequest } from '../requests/store-post-request';");
+});
+
+test('route writer includes UpdatePostRequest import type for PostController', function () {
+    $generator = resolve(RouteGenerator::class, ['findable' => PostController::class]);
+
+    expect($generator->content)
+        ->toContain("import type { UpdatePostRequest } from '../requests/update-post-request';");
+});
+
+test('route writer wraps verify action with annotateRequestPayload<VerifyTwoFactorRequest>', function () {
+    $generator = resolve(RouteGenerator::class, ['findable' => TwoFactorController::class]);
+
+    expect($generator->content)
+        ->toContain('export const _2faVerify = annotateRequestPayload<VerifyTwoFactorRequest>()(defineRoute(');
+});
+
+test('route writer includes VerifyTwoFactorRequest import type for TwoFactorController', function () {
+    $generator = resolve(RouteGenerator::class, ['findable' => TwoFactorController::class]);
+
+    expect($generator->content)
+        ->toContain("import type { VerifyTwoFactorRequest } from '../requests/verify-two-factor-request';");
+});
+
+test('route writer does not wrap setup action with annotateRequestPayload', function () {
+    $generator = resolve(RouteGenerator::class, ['findable' => TwoFactorController::class]);
+
+    // setup is a GET with no FormRequest — must use plain defineRoute, not annotateRequestPayload
+    expect($generator->content)
+        ->toContain('export const _2faSetup = defineRoute(')
+        ->not->toContain('_2faSetup = annotateRequestPayload');
+});
+
+test('route writer index action uses plain defineRoute without annotateRequestPayload', function () {
+    $generator = resolve(RouteGenerator::class, ['findable' => PostController::class]);
+
+    expect($generator->content)
+        ->toContain('export const index = defineRoute(')
+        ->not->toContain('index = annotateRequestPayload');
+});
+
+test('route writer controller with no FormRequest has no import type statement', function () {
+    $generator = resolve(RouteGenerator::class, ['findable' => InvokableController::class]);
+
+    expect($generator->content)->not->toContain('import type');
+});
+
+test('route writer combined Inertia and FormRequest wraps store with nested annotation helpers', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockAnalyzer = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockAnalyzer->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action): ?array {
+            if (str_contains((string) $action['uses'], 'InertiaFormRequestController@store')) {
+                return [
+                    'component' => 'InertiaFormRequest/Success',
+                    'pageType' => 'Inertia.SharedData & { title: string }',
+                    'classFqcns' => [],
+                ];
+            }
+
+            return null;
+        });
+    app()->instance(InertiaPageAnalyzer::class, $mockAnalyzer);
+
+    $generator = resolve(RouteGenerator::class, ['findable' => InertiaFormRequestController::class]);
+
+    expect($generator->content)
+        ->toContain('export const store = annotateRequestPayload<StorePostRequest>()(annotatePageProps<StorePageProps>()(defineRoute(')
+        ->toContain('})));')
+        ->not->toContain('}));')
+        ->toContain("import type { StorePostRequest } from '../requests/store-post-request';")
+        ->toContain('export type StorePageProps = Inertia.SharedData & { title: string }');
+});
+
+test('route writer combined create action with no request and Inertia pageType uses annotatePageProps only', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockAnalyzer = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockAnalyzer->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action): ?array {
+            if (str_contains((string) $action['uses'], 'InertiaFormRequestController@create')) {
+                return [
+                    'component' => 'InertiaFormRequest/Create',
+                    'pageType' => 'Inertia.SharedData',
+                    'classFqcns' => [],
+                ];
+            }
+
+            return null;
+        });
+    app()->instance(InertiaPageAnalyzer::class, $mockAnalyzer);
+
+    $generator = resolve(RouteGenerator::class, ['findable' => InertiaFormRequestController::class]);
+
+    expect($generator->content)
+        ->toContain('export const create = annotatePageProps<CreatePageProps>()(defineRoute(')
+        ->not->toContain('create = annotateRequestPayload');
+});
+
+test('route writer renders multi-line controller description with * prefix on each line', function () {
+    $generator = resolve(RouteGenerator::class, ['findable' => InertiaFormRequestController::class]);
+
+    // The controller docblock spans two lines; the second line must have " * " prefix
+    expect($generator->content)
+        ->toContain(
+            " * Demonstrates an Inertia controller that also uses FormRequest validation,\n * used by tests to verify"
+        );
 });

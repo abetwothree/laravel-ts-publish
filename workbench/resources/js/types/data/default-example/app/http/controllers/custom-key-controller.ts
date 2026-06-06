@@ -7,9 +7,7 @@ export const show = defineRoute({
     args: [{name: 'article', required: true, _routeKey: 'slug'}] as const,
 });
 
-/**
- * @see Workbench\App\Http\Controllers\CustomKeyController
- */
+/** @see Workbench\App\Http\Controllers\CustomKeyController */
 const CustomKeyController = {
     show,
 };

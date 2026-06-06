@@ -3,19 +3,23 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
+use AbeTwoThree\LaravelTsPublish\Collectors\FormRequestsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ResourcesCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\RoutesCollector;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
+use AbeTwoThree\LaravelTsPublish\Transformers\FormRequestTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\EnumWriter;
+use AbeTwoThree\LaravelTsPublish\Writers\FormRequestWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\JsonWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\ModelWriter;
@@ -270,6 +274,36 @@ return [
         'transformer_class' => RouteTransformer::class,
         'writer_class' => RouteWriter::class,
         'template' => 'laravel-ts-publish::route',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Form Request Types
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, generates a TypeScript interface for each FormRequest class
+    | found in the application. Rules are resolved statically where possible;
+    | requests with dynamic rules fall back to `Record<string, unknown>`.
+    |
+    | 'namespace': Sub-directory namespace under the output_directory for the generated files.
+    | 'output_path': Override the base output directory for form-request files only.
+    | 'additional_directories': Extra directories to scan beyond app/Http/Requests.
+    | 'included': Allow-list of FQCN patterns (empty = all).
+    | 'excluded': Deny-list of FQCN patterns.
+    */
+
+    'form_requests' => [
+        'enabled' => true,
+        'namespace' => 'form-requests',
+        'output_path' => null,
+        'collector_class' => FormRequestsCollector::class,
+        'generator_class' => FormRequestGenerator::class,
+        'transformer_class' => FormRequestTransformer::class,
+        'writer_class' => FormRequestWriter::class,
+        'template' => 'laravel-ts-publish::form-request',
+        'additional_directories' => [],
+        'included' => [],
+        'excluded' => [],
     ],
 
     /*

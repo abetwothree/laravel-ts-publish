@@ -6,10 +6,12 @@ namespace AbeTwoThree\LaravelTsPublish\Runners;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
+use AbeTwoThree\LaravelTsPublish\Collectors\FormRequestsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ResourcesCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\RoutesCollector;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
@@ -35,6 +37,7 @@ class Runner extends BaseRunner
         $this->generateModels();
         $this->generateResources();
         $this->generateInertiaConfig();
+        $this->generateFormRequests();
         $this->generateRoutes();
 
         $this->generateGlobals();
@@ -174,6 +177,38 @@ class Runner extends BaseRunner
         $writer = resolve(InertiaConfigWriter::class);
 
         $this->inertiaConfigContent = $writer->write($sharedData);
+    }
+
+    protected function generateFormRequests(): void
+    {
+        /** @var Collection<int, FormRequestGenerator> $empty */
+        $empty = collect();
+
+        if (! $this->shouldPublishFormRequests || ! config()->boolean('ts-publish.form_requests.enabled')) {
+            $this->formRequestGenerators = $empty;
+
+            return;
+        }
+
+        /** @var FormRequestsCollector $collector */
+        $collector = resolve(config()->string('ts-publish.form_requests.collector_class'));
+
+        /** @var Collection<int, FormRequestGenerator> $formRequestGenerators */
+        $formRequestGenerators = collect();
+
+        foreach ($collector->collect() as $formRequestClass) {
+            /** @var FormRequestGenerator $generator */
+            $generator = resolve(
+                config()->string('ts-publish.form_requests.generator_class'),
+                ['findable' => $formRequestClass],
+            );
+
+            $formRequestGenerators->push($generator);
+        }
+
+        $this->formRequestGenerators = $formRequestGenerators;
+
+        $this->formRequestModularBarrels = $this->barrelWriter->writeModular($this->formRequestGenerators);
     }
 
     protected function generateRoutes(): void

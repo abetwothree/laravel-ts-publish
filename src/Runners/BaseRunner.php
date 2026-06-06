@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Runners;
 
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
@@ -52,6 +53,12 @@ abstract class BaseRunner
     /** @var array<string, string> Barrel contents keyed by namespace path */
     public protected(set) array $routeModularBarrels = [];
 
+    /** @var Collection<int, FormRequestGenerator> */
+    public protected(set) Collection $formRequestGenerators;
+
+    /** @var array<string, string> Barrel contents keyed by namespace path */
+    public protected(set) array $formRequestModularBarrels = [];
+
     public bool $shouldPublishEnums = true;
 
     public bool $shouldPublishModels = true;
@@ -59,6 +66,8 @@ abstract class BaseRunner
     public bool $shouldPublishResources = true;
 
     public bool $shouldPublishRoutes = true;
+
+    public bool $shouldPublishFormRequests = true;
 
     abstract public function run(): void;
 }

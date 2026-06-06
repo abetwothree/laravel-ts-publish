@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use AbeTwoThree\LaravelTsPublish\Generators\CoreGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use Illuminate\Filesystem\Filesystem;
@@ -49,7 +50,7 @@ class BarrelWriter
      * Groups generators by their transformer's namespacePath and writes
      * an index.ts barrel file for each unique namespace directory.
      *
-     * @param  Collection<int, EnumGenerator>|Collection<int, ModelGenerator>|Collection<int, ResourceGenerator>  $generators
+     * @param  Collection<int, EnumGenerator>|Collection<int, FormRequestGenerator>|Collection<int, ModelGenerator>|Collection<int, ResourceGenerator>  $generators
      * @return array<string, string> Barrel contents keyed by namespace path
      */
     public function writeModular(Collection $generators): array

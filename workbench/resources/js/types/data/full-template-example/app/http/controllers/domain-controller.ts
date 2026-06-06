@@ -7,9 +7,7 @@ export const index = defineRoute({
     methods: ['get'] as const,
 });
 
-/**
- * @see Workbench\App\Http\Controllers\DomainController
- */
+/** @see Workbench\App\Http\Controllers\DomainController */
 const DomainController = {
     index,
 };
