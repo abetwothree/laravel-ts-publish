@@ -279,21 +279,23 @@ class ResourceAstAnalyzer
             }
 
             // Handle ...functionCall() spread (bare trait method calls without $this->)
-            if ($item->key === null && $item->unpack
-                && $item->value instanceof FuncCall
-                && $item->value->name instanceof Name) {
-                $funcName = $item->value->name->getLast();
+            if ($item->key === null && $item->unpack && $item->value instanceof FuncCall) {
+                $funcCallName = $item->value->name;
 
-                if ($this->resourceReflection->hasMethod($funcName)) {
-                    $spreadAnalysis = $this->analyzeThisMethodSpread($funcName);
+                if ($funcCallName instanceof Name) {
+                    $funcName = $funcCallName->getLast();
 
-                    if ($spreadAnalysis !== null) {
-                        $this->syncAnalysisMaps(
-                            $properties, $enumResources, $nestedResources,
-                            $directEnumFqcns, $modelFqcns, $customImports,
-                            $spreadAnalysis, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
-                            $inlineEnumResourceFqcns,
-                        );
+                    if ($this->resourceReflection->hasMethod($funcName)) {
+                        $spreadAnalysis = $this->analyzeThisMethodSpread($funcName);
+
+                        if ($spreadAnalysis !== null) {
+                            $this->syncAnalysisMaps(
+                                $properties, $enumResources, $nestedResources,
+                                $directEnumFqcns, $modelFqcns, $customImports,
+                                $spreadAnalysis, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
+                                $inlineEnumResourceFqcns,
+                            );
+                        }
                     }
                 }
 
@@ -637,9 +639,12 @@ class ResourceAstAnalyzer
         if ($expr instanceof StaticCall
             && $expr->class instanceof PropertyFetch
             && $expr->name instanceof Identifier
-            && $this->closureRelationModelClass !== null
         ) {
-            return $this->analyzeRelatedModelMethodCall($expr->name->toString());
+            $closureModelClass = $this->closureRelationModelClass;
+
+            if ($closureModelClass !== null) {
+                return $this->analyzeRelatedModelMethodCall($expr->name->toString());
+            }
         }
 
         // EnumResource::make($this->prop) or SomeResource::make/collection()
@@ -730,7 +735,9 @@ class ResourceAstAnalyzer
 
             // When inside a whenLoaded closure and the wrapped-class resolution returned unknown,
             // try resolving the method against the related model (e.g. $this->user->nameTitled()).
-            if ($info['type'] === 'unknown' && $this->closureRelationModelClass !== null) {
+            $closureModelClass = $this->closureRelationModelClass;
+
+            if ($info['type'] === 'unknown' && $closureModelClass !== null) {
                 $info = $this->analyzeRelatedModelMethodCall($expr->name->toString());
             }
 
