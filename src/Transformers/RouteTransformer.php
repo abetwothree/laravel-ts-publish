@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 use Override;
 use ReflectionClass;
@@ -296,7 +297,9 @@ class RouteTransformer extends CoreTransformer
             }
         }
 
-        $this->detectFormRequest($originalMethodName, $action);
+        if (Config::boolean('ts-publish.form_requests.enabled')) {
+            $this->detectFormRequest($originalMethodName, $action);
+        }
 
         return $action;
     }
