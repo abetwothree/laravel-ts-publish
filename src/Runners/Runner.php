@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Runners;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastChannelsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\FormRequestsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
@@ -17,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
+use AbeTwoThree\LaravelTsPublish\Writers\BroadcastChannelsWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\InertiaConfigWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\JsonWriter;
@@ -38,6 +40,7 @@ class Runner extends BaseRunner
         $this->generateResources();
         $this->generateInertiaConfig();
         $this->generateFormRequests();
+        $this->generateBroadcastChannels();
         $this->generateRoutes();
 
         $this->generateGlobals();
@@ -209,6 +212,23 @@ class Runner extends BaseRunner
         $this->formRequestGenerators = $formRequestGenerators;
 
         $this->formRequestModularBarrels = $this->barrelWriter->writeModular($this->formRequestGenerators);
+    }
+
+    protected function generateBroadcastChannels(): void
+    {
+        if (! $this->shouldPublishBroadcastChannels || ! config()->boolean('ts-publish.broadcast_channels.enabled')) {
+            $this->broadcastChannelsContent = '';
+
+            return;
+        }
+
+        /** @var BroadcastChannelsCollector $collector */
+        $collector = resolve(config()->string('ts-publish.broadcast_channels.collector_class'));
+
+        /** @var BroadcastChannelsWriter $writer */
+        $writer = resolve(config()->string('ts-publish.broadcast_channels.writer_class'));
+
+        $this->broadcastChannelsContent = $writer->write($collector->collect());
     }
 
     protected function generateRoutes(): void
