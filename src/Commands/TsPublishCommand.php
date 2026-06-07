@@ -35,9 +35,10 @@ class TsPublishCommand extends Command
         {--only-resources : Only publish resources (ignoring enums, models, and routes)}
         {--only-routes : Only publish routes (ignoring enums, models, and resources)}
         {--only-form-requests : Only publish form requests (ignoring enums, models, resources, and routes)}
+        {--only-broadcast-channels : Only publish broadcast channel types (ignoring all other types)}
         {--only-functional : Only publish enabled functional content like routes & enums}';
 
-    protected $description = 'Publish TypeScript files from enums, models, resources, routes, and form requests';
+    protected $description = 'Publish TypeScript files from enums, models, resources, routes, form requests, and broadcast channels';
 
     public function handle(): int
     {
@@ -72,12 +73,13 @@ class TsPublishCommand extends Command
         $onlyResources = (bool) $this->option('only-resources');
         $onlyRoutes = (bool) $this->option('only-routes');
         $onlyFormRequests = (bool) $this->option('only-form-requests');
+        $onlyBroadcastChannels = (bool) $this->option('only-broadcast-channels');
 
-        $onlyCount = (int) $onlyEnums + (int) $onlyModels + (int) $onlyResources + (int) $onlyRoutes + (int) $onlyFormRequests;
+        $onlyCount = (int) $onlyEnums + (int) $onlyModels + (int) $onlyResources + (int) $onlyRoutes + (int) $onlyFormRequests + (int) $onlyBroadcastChannels;
 
         if ($onlyCount > 1) {
             if (! $this->output->isQuiet()) {
-                error('The --only-enums, --only-models, --only-resources, --only-routes, and --only-form-requests options cannot be used together. Please specify only one or none of these options.');
+                error('The --only-enums, --only-models, --only-resources, --only-routes, --only-form-requests, and --only-broadcast-channels options cannot be used together. Please specify only one or none of these options.');
             }
 
             return self::FAILURE;
@@ -108,6 +110,7 @@ class TsPublishCommand extends Command
             $runner->shouldPublishResources,
             $runner->shouldPublishRoutes,
             $runner->shouldPublishFormRequests,
+            $runner->shouldPublishBroadcastChannels,
         ] = $flags;
 
         $runner->run();
@@ -125,8 +128,11 @@ class TsPublishCommand extends Command
                 $resourceCount = count($runner->resourceGenerators);
                 $routeCount = count($runner->routeGenerators);
                 $formRequestCount = count($runner->formRequestGenerators);
+                $broadcastChannelsPublished = $runner->broadcastChannelsContent !== '';
 
-                outro("{$enumCount} enums, {$modelCount} models, {$resourceCount} resources, {$routeCount} routes, {$formRequestCount} form requests — All done");
+                outro("{$enumCount} enums, {$modelCount} models, {$resourceCount} resources, {$routeCount} routes, {$formRequestCount} form requests"
+                    .($broadcastChannelsPublished ? ', broadcast channels' : '')
+                    .' — All done');
             } else {
                 outro('All done');
             }
@@ -152,7 +158,14 @@ class TsPublishCommand extends Command
                 return self::SUCCESS;
             }
 
-            [$runner->shouldPublishEnums, $runner->shouldPublishModels, $runner->shouldPublishResources, $runner->shouldPublishRoutes, $runner->shouldPublishFormRequests] = $flags;
+            [
+                $runner->shouldPublishEnums,
+                $runner->shouldPublishModels,
+                $runner->shouldPublishResources,
+                $runner->shouldPublishRoutes,
+                $runner->shouldPublishFormRequests,
+                $runner->shouldPublishBroadcastChannels,
+            ] = $flags;
             $runner->run();
         } catch (InvalidArgumentException $e) {
             if (! $this->output->isQuiet()) {
@@ -184,7 +197,7 @@ class TsPublishCommand extends Command
     /**
      * Resolve the final publish flags from config values and command options.
      *
-     * @return array{0: bool, 1: bool, 2: bool, 3: bool, 4: bool}|null [shouldPublishEnums, shouldPublishModels, shouldPublishResources, shouldPublishRoutes, shouldPublishFormRequests] or null to abort
+     * @return array{0: bool, 1: bool, 2: bool, 3: bool, 4: bool, 5: bool}|null [shouldPublishEnums, shouldPublishModels, shouldPublishResources, shouldPublishRoutes, shouldPublishFormRequests, shouldPublishBroadcastChannels] or null to abort
      */
     protected function resolvePublishFlags(): ?array
     {
@@ -193,16 +206,19 @@ class TsPublishCommand extends Command
         $configResources = config()->boolean('ts-publish.resources.enabled');
         $configRoutes = config()->boolean('ts-publish.routes.enabled');
         $configFormRequests = config()->boolean('ts-publish.form_requests.enabled');
+        $configBroadcastChannels = config()->boolean('ts-publish.broadcast_channels.enabled');
         $onlyEnums = (bool) $this->option('only-enums');
         $onlyModels = (bool) $this->option('only-models');
         $onlyResources = (bool) $this->option('only-resources');
         $onlyRoutes = (bool) $this->option('only-routes');
         $onlyFormRequests = (bool) $this->option('only-form-requests');
+        $onlyBroadcastChannels = (bool) $this->option('only-broadcast-channels');
         $onlyFunctional = (bool) $this->option('only-functional');
 
         $shouldPublishEnums = $configEnums;
         $shouldPublishRoutes = $configRoutes;
         $shouldPublishFormRequests = $configFormRequests;
+        $shouldPublishBroadcastChannels = $configBroadcastChannels;
         $shouldPublishModels = $onlyFunctional ? false : $configModels;
         $shouldPublishResources = $onlyFunctional ? false : $configResources;
 
@@ -213,6 +229,7 @@ class TsPublishCommand extends Command
                 $shouldPublishResources,
                 $shouldPublishRoutes,
                 $shouldPublishFormRequests,
+                $shouldPublishBroadcastChannels,
             ];
 
             $enabledFlags = array_filter($responseSettings, fn (bool $v) => $v === true);
@@ -233,6 +250,7 @@ class TsPublishCommand extends Command
             $shouldPublishResources = false;
             $shouldPublishRoutes = false;
             $shouldPublishFormRequests = false;
+            $shouldPublishBroadcastChannels = false;
 
             if (! $configEnums) {
                 $shouldPublishEnums = $this->promptConfigOverride('enums');
@@ -248,6 +266,7 @@ class TsPublishCommand extends Command
             $shouldPublishResources = false;
             $shouldPublishRoutes = false;
             $shouldPublishFormRequests = false;
+            $shouldPublishBroadcastChannels = false;
 
             if (! $configModels) {
                 $shouldPublishModels = $this->promptConfigOverride('models');
@@ -263,6 +282,7 @@ class TsPublishCommand extends Command
             $shouldPublishModels = false;
             $shouldPublishRoutes = false;
             $shouldPublishFormRequests = false;
+            $shouldPublishBroadcastChannels = false;
 
             if (! $configResources) {
                 $shouldPublishResources = $this->promptConfigOverride('resources');
@@ -278,6 +298,7 @@ class TsPublishCommand extends Command
             $shouldPublishModels = false;
             $shouldPublishResources = false;
             $shouldPublishFormRequests = false;
+            $shouldPublishBroadcastChannels = false;
 
             if (! $configRoutes) {
                 $shouldPublishRoutes = $this->promptConfigOverride('routes');
@@ -293,6 +314,7 @@ class TsPublishCommand extends Command
             $shouldPublishModels = false;
             $shouldPublishResources = false;
             $shouldPublishRoutes = false;
+            $shouldPublishBroadcastChannels = false;
 
             if (! $configFormRequests) {
                 $shouldPublishFormRequests = $this->promptConfigOverride('form requests');
@@ -303,9 +325,26 @@ class TsPublishCommand extends Command
             }
         }
 
-        if (! $shouldPublishEnums && ! $shouldPublishModels && ! $shouldPublishResources && ! $shouldPublishRoutes && ! $shouldPublishFormRequests) {
+        if ($onlyBroadcastChannels) {
+            $shouldPublishEnums = false;
+            $shouldPublishModels = false;
+            $shouldPublishResources = false;
+            $shouldPublishRoutes = false;
+            $shouldPublishFormRequests = false;
+
+            if (! $configBroadcastChannels) {
+                $shouldPublishBroadcastChannels = $this->promptConfigOverride('broadcast channels');
+
+                if (! $shouldPublishBroadcastChannels) {
+                    return null;
+                }
+            }
+        }
+
+        if (! $shouldPublishEnums && ! $shouldPublishModels && ! $shouldPublishResources
+            && ! $shouldPublishRoutes && ! $shouldPublishFormRequests && ! $shouldPublishBroadcastChannels) {
             if (! $this->output->isQuiet()) {
-                warning('Enums, models, resources, routes, and form requests are all disabled in config. Nothing to publish.');
+                warning('Enums, models, resources, routes, form requests, and broadcast channels are all disabled in config. Nothing to publish.');
             }
 
             return null;
@@ -317,6 +356,7 @@ class TsPublishCommand extends Command
             $shouldPublishResources,
             $shouldPublishRoutes,
             $shouldPublishFormRequests,
+            $shouldPublishBroadcastChannels,
         ];
     }
 
@@ -450,6 +490,15 @@ class TsPublishCommand extends Command
             $this->newLine();
             $this->comment("  {$configFilename}");
             $this->line($runner->inertiaConfigContent);
+        }
+
+        if (! empty($runner->broadcastChannelsContent)) {
+            $filename = config()->string('ts-publish.broadcast_channels.filename', 'broadcast-channels.ts');
+            $this->newLine();
+            $this->comment('Broadcast Channels:');
+            $this->newLine();
+            $this->comment("  {$filename}");
+            $this->line($runner->broadcastChannelsContent);
         }
     }
 
@@ -614,6 +663,9 @@ class TsPublishCommand extends Command
             $runner->globalsContent ? ['Globals', Config::string('ts-publish.globals.filename')] : null,
             $runner->viteEnvContent ? ['Vite Env', Config::string('ts-publish.vite_env.filename', 'vite-env.d.ts')] : null,
             $runner->inertiaConfigContent ? ['Inertia Config', Config::string('ts-publish.inertia.augmentation_filename')] : null,
+            $runner->broadcastChannelsContent !== ''
+                ? ['Broadcast Channels', config()->string('ts-publish.broadcast_channels.filename', 'broadcast-channels.ts')]
+                : null,
             $runner->jsonContent ? ['JSON', Config::string('ts-publish.json.filename')] : null,
         ]);
     }
