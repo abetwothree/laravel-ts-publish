@@ -98,6 +98,9 @@ class TestCase extends Orchestra
             'ts-publish.watcher.enabled' => true,
             'ts-publish.vite_env.enabled' => true,
             'ts-publish.inertia.enabled' => true,
+            'ts-publish.routes.enabled' => true,
+            'ts-publish.form_requests.enabled' => true,
+            'ts-publish.broadcast_channels.enabled' => true,
             'ts-publish.models.additional_directories' => [
                 DatabaseNotification::class,
                 Invoice::class,

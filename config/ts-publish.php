@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastChannelsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\FormRequestsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
@@ -18,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
+use AbeTwoThree\LaravelTsPublish\Writers\BroadcastChannelsWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\EnumWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\FormRequestWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
@@ -304,6 +306,29 @@ return [
         'additional_directories' => [],
         'included' => [],
         'excluded' => [],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Broadcast Channel Types
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, generates a single broadcast-channels.ts file containing:
+    |   - A BroadcastChannel union type (template literal union of all channel names).
+    |   - A BroadcastChannels const with nested accessor functions matching the
+    |     dot-notation structure of each channel name.
+    |
+    | 'output_path': Override the output directory for the file. Defaults to output_directory.
+    | 'filename': Output filename. Defaults to 'broadcast-channels.ts'.
+    */
+
+    'broadcast_channels' => [
+        'enabled' => true,
+        'output_path' => null,
+        'filename' => 'broadcast-channels.ts',
+        'collector_class' => BroadcastChannelsCollector::class,
+        'writer_class' => BroadcastChannelsWriter::class,
+        'template' => 'laravel-ts-publish::broadcast-channels',
     ],
 
     /*

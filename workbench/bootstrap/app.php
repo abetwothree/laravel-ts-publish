@@ -12,6 +12,7 @@ return Application::configure(basePath: $APP_BASE_PATH ?? default_skeleton_path(
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
         commands: __DIR__.'/../routes/console.php',
+        channels: __DIR__.'/../routes/channels.php',
     )
     ->withMiddleware(function (Middleware $middleware): void {
         //

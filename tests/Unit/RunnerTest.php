@@ -362,3 +362,39 @@ test('runner inertiaConfigContent is empty when converter returns null', functio
 
     expect($runner->inertiaConfigContent)->toBe('');
 });
+
+test('runner generates broadcast channels content when enabled', function () {
+    config()->set('ts-publish.broadcast_channels.enabled', true);
+
+    $runner = new Runner;
+    $runner->run();
+
+    expect($runner->broadcastChannelsContent)
+        ->toContain('export type BroadcastChannel')
+        ->toContain('export const BroadcastChannels')
+        ->toContain('orders')
+        ->toContain('public-announcements')
+        // 'chat.{roomId}' is registered alongside 'chat.{roomId}.messages' in the
+        // workbench fixture — the $channel accessor must appear so both channels
+        // are reachable via the BroadcastChannels const.
+        ->toContain('$channel: `chat.${roomId}` as const');
+});
+
+test('runner skips broadcast channels when disabled', function () {
+    config()->set('ts-publish.broadcast_channels.enabled', false);
+
+    $runner = new Runner;
+    $runner->run();
+
+    expect($runner->broadcastChannelsContent)->toBe('');
+});
+
+test('runner skips broadcast channels when shouldPublishBroadcastChannels is false', function () {
+    config()->set('ts-publish.broadcast_channels.enabled', true);
+
+    $runner = new Runner;
+    $runner->shouldPublishBroadcastChannels = false;
+    $runner->run();
+
+    expect($runner->broadcastChannelsContent)->toBe('');
+});
