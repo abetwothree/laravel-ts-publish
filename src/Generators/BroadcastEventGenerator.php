@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Generators;
 
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
-use AbeTwoThree\LaravelTsPublish\Writers\CoreWriter;
+use AbeTwoThree\LaravelTsPublish\Writers\BroadcastEventWriter;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Override;
 
@@ -25,7 +25,7 @@ class BroadcastEventGenerator extends CoreGenerator
         ]);
         $this->transformer = $transformer;
 
-        /** @var CoreWriter<BroadcastEventTransformer> $writer */
+        /** @var BroadcastEventWriter $writer */
         $writer = resolve(config()->string('ts-publish.broadcast_events.writer_class'));
 
         return $this->content = $writer->write($this->transformer);
