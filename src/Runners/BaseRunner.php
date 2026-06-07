@@ -69,5 +69,9 @@ abstract class BaseRunner
 
     public bool $shouldPublishFormRequests = true;
 
+    public protected(set) string $broadcastChannelsContent = '';
+
+    public bool $shouldPublishBroadcastChannels = true;
+
     abstract public function run(): void;
 }
