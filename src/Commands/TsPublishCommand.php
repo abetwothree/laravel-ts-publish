@@ -543,6 +543,15 @@ class TsPublishCommand extends Command
             $this->comment("  {$filename}");
             $this->line($runner->broadcastChannelsContent);
         }
+
+        if (! empty($runner->broadcastEventsIndexContent)) {
+            $filename = config()->string('ts-publish.broadcast_events.filename', 'broadcast-events.ts');
+            $this->newLine();
+            $this->comment('Broadcast Events:');
+            $this->newLine();
+            $this->comment("  {$filename}");
+            $this->line($runner->broadcastEventsIndexContent);
+        }
     }
 
     protected function createPublishedFilesList(Runner|RunnerForSource $runner): void
