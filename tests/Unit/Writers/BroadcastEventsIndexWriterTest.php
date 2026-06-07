@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
-use AbeTwoThree\LaravelTsPublish\Writers\BroadcastEventWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\BroadcastEventsIndexWriter;
+use AbeTwoThree\LaravelTsPublish\Writers\BroadcastEventWriter;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Collection;
 use Workbench\App\Events\OrderShipped;
 use Workbench\App\Events\ServerCreated;
 use Workbench\App\Events\TeamMessageSent;
@@ -26,7 +27,7 @@ describe('BroadcastEventsIndexWriter', function () {
         config()->set('ts-publish.broadcast_events.index_filename', 'broadcast-events.ts');
     });
 
-    function buildGenerators(array $classes): \Illuminate\Support\Collection
+    function buildGenerators(array $classes): Collection
     {
         return collect($classes)->map(
             fn ($class) => app(BroadcastEventGenerator::class, ['findable' => $class])

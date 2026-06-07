@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastEventsCollector;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Support\Collection;
 use Workbench\App\Events\OrderShipped;
 use Workbench\App\Events\ServerCreated;
 use Workbench\App\Events\TeamMessageSent;
@@ -18,7 +19,7 @@ describe('BroadcastEventsCollector', function () {
         $collector = app(BroadcastEventsCollector::class);
         $results = $collector->collect();
 
-        expect($results)->toBeInstanceOf(\Illuminate\Support\Collection::class);
+        expect($results)->toBeInstanceOf(Collection::class);
 
         $classes = $results->all();
         expect($classes)->toContain(OrderShipped::class);

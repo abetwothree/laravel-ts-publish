@@ -34,7 +34,7 @@ class BroadcastEventWriter extends CoreWriter
 
         $content = view($template, [
             'filename' => $filename,
-            'data'     => $data,
+            'data' => $data,
         ])->render();
 
         if (config()->boolean('ts-publish.output_to_files')) {

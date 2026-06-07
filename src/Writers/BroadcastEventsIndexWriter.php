@@ -53,10 +53,10 @@ class BroadcastEventsIndexWriter
             $relativePath = './'.$transformer->namespacePath.'/'.$transformer->filename();
 
             return [
-                'eventName'     => $dto->eventName,
+                'eventName' => $dto->eventName,
                 'broadcastName' => $dto->broadcastName,
-                'constKey'      => $this->quoteKey($dto->eventName),
-                'importPath'    => $relativePath,
+                'constKey' => $this->quoteKey($dto->eventName),
+                'importPath' => $relativePath,
             ];
         });
 
@@ -70,9 +70,9 @@ class BroadcastEventsIndexWriter
         $template = config()->string('ts-publish.broadcast_events.index_template');
 
         return view($template, [
-            'isEmpty'    => false,
-            'imports'    => $imports->all(),
-            'events'     => $events->values()->all(),
+            'isEmpty' => false,
+            'imports' => $imports->all(),
+            'events' => $events->values()->all(),
             'eventNames' => $eventNames,
         ])->render();
     }

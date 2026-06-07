@@ -24,9 +24,9 @@ describe('BroadcastEventTransformer', function () {
         it('resolves all public properties', function () {
             $transformer = app(BroadcastEventTransformer::class, ['findable' => OrderShipped::class]);
             expect($transformer->properties)->toMatchArray([
-                'orderId'        => ['type' => 'number', 'optional' => false],
+                'orderId' => ['type' => 'number', 'optional' => false],
                 'trackingNumber' => ['type' => 'string', 'optional' => false],
-                'carrier'        => ['type' => 'string', 'optional' => false],
+                'carrier' => ['type' => 'string', 'optional' => false],
             ]);
         });
 
@@ -60,7 +60,7 @@ describe('BroadcastEventTransformer', function () {
         it('resolves public constructor properties', function () {
             $transformer = app(BroadcastEventTransformer::class, ['findable' => ServerCreated::class]);
             expect($transformer->properties)->toMatchArray([
-                'serverId'   => ['type' => 'number', 'optional' => false],
+                'serverId' => ['type' => 'number', 'optional' => false],
                 'serverName' => ['type' => 'string', 'optional' => false],
             ]);
         });

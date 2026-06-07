@@ -69,9 +69,9 @@ class BroadcastEventsEchoWriter
             $relativePath = './'.$transformer->namespacePath.'/'.$transformer->filename();
 
             return [
-                'eventName'     => $dto->eventName,
+                'eventName' => $dto->eventName,
                 'broadcastName' => $dto->broadcastName,
-                'importPath'    => $relativePath,
+                'importPath' => $relativePath,
             ];
         });
 
@@ -84,8 +84,8 @@ class BroadcastEventsEchoWriter
 
         return view($template, [
             'echoPackage' => $echoPackage,
-            'imports'     => $imports->all(),
-            'events'      => $events->values()->all(),
+            'imports' => $imports->all(),
+            'events' => $events->values()->all(),
         ])->render();
     }
 
@@ -105,8 +105,7 @@ class BroadcastEventsEchoWriter
             return $configured;
         }
 
-        return $this->detectEchoPackageFromPackageJson()
-            ?? '@laravel/echo';
+        return $this->detectEchoPackageFromPackageJson() ?? '@laravel/echo';
     }
 
     /**
@@ -134,7 +133,7 @@ class BroadcastEventsEchoWriter
             $packageJson['devDependencies'] ?? [],
         );
 
-        foreach (['@laravel/echo-vue', '@laravel/echo-react'] as $candidate) {
+        foreach (['@laravel/echo-vue', '@laravel/echo-react', '@laravel/echo-svelte'] as $candidate) {
             if (isset($allDeps[$candidate])) {
                 return $candidate;
             }

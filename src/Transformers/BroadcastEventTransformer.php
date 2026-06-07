@@ -134,7 +134,7 @@ class BroadcastEventTransformer extends CoreTransformer
             }
 
             $result[(string) $name] = [
-                'type'     => SurveyorTypeMapper::convert($type),
+                'type' => SurveyorTypeMapper::convert($type),
                 'optional' => $type->isOptional(),
             ];
         }
