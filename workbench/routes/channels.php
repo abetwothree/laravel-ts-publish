@@ -23,7 +23,18 @@ Broadcast::channel('user.{userId}.notifications', function ($user, $userId) {
     return (int) $user->id === (int) $userId;
 });
 
+/**
+ * This channel collides with the ones below so it is prefixed with `$` dollar sign to prevent naming collision with the channel `chat.{roomId}.channel` below
+ */
+Broadcast::channel('chat.{roomId}', function ($user, $roomId) {
+    return true;
+});
+
 Broadcast::channel('chat.{roomId}.messages', function ($user, $roomId) {
+    return true;
+});
+
+Broadcast::channel('chat.{roomId}.channel', function ($user, $roomId) {
     return true;
 });
 

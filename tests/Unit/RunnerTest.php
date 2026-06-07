@@ -373,7 +373,11 @@ test('runner generates broadcast channels content when enabled', function () {
         ->toContain('export type BroadcastChannel')
         ->toContain('export const BroadcastChannels')
         ->toContain('orders')
-        ->toContain('public-announcements');
+        ->toContain('public-announcements')
+        // 'chat.{roomId}' is registered alongside 'chat.{roomId}.messages' in the
+        // workbench fixture — the $channel accessor must appear so both channels
+        // are reachable via the BroadcastChannels const.
+        ->toContain('$channel: `chat.${roomId}` as const');
 });
 
 test('runner skips broadcast channels when disabled', function () {

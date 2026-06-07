@@ -1,7 +1,9 @@
 export type BroadcastChannel =
     | `orders.${string | number}`
     | `user.${string | number}.notifications`
+    | `chat.${string | number}`
     | `chat.${string | number}.messages`
+    | `chat.${string | number}.channel`
     | `public-announcements`
     | `order.${string | number}`
     | `post.${string | number}.comment.${string | number}`
@@ -16,7 +18,9 @@ export const BroadcastChannels = {
         notifications: `user.${userId}.notifications` as const,
     }),
     chat: (roomId: string | number) => ({
+        $channel: `chat.${roomId}` as const,
         messages: `chat.${roomId}.messages` as const,
+        channel: `chat.${roomId}.channel` as const,
     }),
     "public-announcements": `public-announcements` as const,
     order: (orderId: string | number) => `order.${orderId}` as const,

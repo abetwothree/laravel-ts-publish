@@ -73,10 +73,13 @@ test('multiple channels produce multi-line type union', function () {
 });
 
 test('full workbench fixture produces expected TypeScript structure', function () {
+    // This fixture mirrors the workbench channels.php, including 'chat.{roomId}'
+    // alongside 'chat.{roomId}.messages' to exercise the $channel accessor fix.
     $transformer = new BroadcastChannelsTransformer;
     $dto = $transformer->transform(collect([
         'orders.{orderId}',
         'user.{userId}.notifications',
+        'chat.{roomId}',
         'chat.{roomId}.messages',
         'public-announcements',
     ]));
@@ -86,6 +89,7 @@ test('full workbench fixture produces expected TypeScript structure', function (
     expect($dto->typeUnion)
         ->toContain('| `orders.${string | number}`')
         ->toContain('| `user.${string | number}.notifications`')
+        ->toContain('| `chat.${string | number}`')
         ->toContain('| `chat.${string | number}.messages`')
         ->toContain('| `public-announcements`;');
 
@@ -94,6 +98,7 @@ test('full workbench fixture produces expected TypeScript structure', function (
         ->toContain('user: (userId: string | number) => ({')
         ->toContain('notifications: `user.${userId}.notifications` as const')
         ->toContain('chat: (roomId: string | number) => ({')
+        ->toContain('$channel: `chat.${roomId}` as const')
         ->toContain('messages: `chat.${roomId}.messages` as const')
         ->toContain('"public-announcements": `public-announcements` as const');
 });
@@ -120,4 +125,40 @@ test('channels sharing a static prefix share the same const key', function () {
     expect($dto->constBody)
         ->toContain('general: `chat.${roomId}.general` as const')
         ->toContain('private: `chat.${roomId}.private` as const');
+});
+
+test('channel that is also a prefix of another channel exposes both a $channel accessor and its children', function () {
+    // 'chat.{roomId}' is a terminal channel AND a prefix of 'chat.{roomId}.messages'.
+    // The $channel key must appear in the nested object so both are accessible.
+    $transformer = new BroadcastChannelsTransformer;
+    $dto = $transformer->transform(collect([
+        'chat.{roomId}',
+        'chat.{roomId}.messages',
+    ]));
+
+    // Both appear in the union type
+    expect($dto->typeUnion)
+        ->toContain('`chat.${string | number}`')
+        ->toContain('`chat.${string | number}.messages`');
+
+    // The nested object has a $channel accessor for the parent channel value
+    expect($dto->constBody)
+        ->toContain('chat: (roomId: string | number) => ({')
+        ->toContain('$channel: `chat.${roomId}` as const')
+        ->toContain('messages: `chat.${roomId}.messages` as const');
+
+    // Only one 'chat' key in the output
+    expect(substr_count($dto->constBody, 'chat:'))->toBe(1);
+});
+
+test('non-overlapping channels are not affected by the selfChannel logic', function () {
+    // Regression guard: channels that are not prefixes of each other must
+    // not gain a $channel key.
+    $transformer = new BroadcastChannelsTransformer;
+    $dto = $transformer->transform(collect([
+        'user.{userId}.notifications',
+        'chat.{roomId}.messages',
+    ]));
+
+    expect($dto->constBody)->not->toContain('$channel');
 });

@@ -19,7 +19,7 @@ use InvalidArgumentException;
  * 2. Merge all entries and call Arr::undot() to get a nested tree.
  * 3. Recursively render each tree node to a TypeScript property string.
  *
- * @phpstan-type ChannelMeta = array{params: list<string>, originalName: string}
+ * @phpstan-type ChannelMeta = array{params: list<string>, originalName: string, selfChannel?: string}
  * @phpstan-type ChannelFlatEntry = array{__meta: ChannelMeta}
  */
 class BroadcastChannelsTransformer
@@ -55,6 +55,11 @@ class BroadcastChannelsTransformer
                      $newParams = $entry['__meta']['params'] ?? [];
                      if ($existingParams !== $newParams) {
                          throw new InvalidArgumentException("Broadcast channel segment [{$key}] has conflicting parameter names.");
+                     }
+                     // Propagate selfChannel when the incoming entry marks this segment as a
+                     // terminal channel (i.e. the channel name ends at this static segment).
+                     if (isset($entry['__meta']['selfChannel']) && ! isset($flatMap[$key]['__meta']['selfChannel'])) {
+                         $flatMap[$key]['__meta']['selfChannel'] = $entry['__meta']['selfChannel'];
                      }
                      continue;
                  }
@@ -162,6 +167,13 @@ class BroadcastChannelsTransformer
             }
         }
 
+        // Mark the last static-segment entry as the terminal for this channel so that
+        // renderTree can emit a $channel accessor when the node also has child channels.
+        $lastKey = array_key_last($nested);
+        if ($lastKey !== null) {
+            $nested[$lastKey]['__meta']['selfChannel'] = $channelName;
+        }
+
         return $nested;
     }
 
@@ -218,6 +230,16 @@ class BroadcastChannelsTransformer
             } else {
                 $nestedContent = $this->renderTree($children, $depth + 1);
                 $closingIndent = str_repeat('    ', $depth + 1);
+                $contentIndent = str_repeat('    ', $depth + 2);
+
+                // When this node is also a terminal channel (e.g. 'chat.{roomId}' exists
+                // alongside 'chat.{roomId}.messages'), inject a $channel accessor so the
+                // parent channel string is reachable alongside its child channels.
+                $rawSelfChannel = $meta['selfChannel'] ?? null;
+                if (is_string($rawSelfChannel)) {
+                    $selfValue = '`'.$this->toTemplateString($rawSelfChannel).'` as const';
+                    $nestedContent = "{$contentIndent}\$channel: {$selfValue},\n{$nestedContent}";
+                }
 
                 if ($params === []) {
                     $lines[] = "{$indent}{$tsKey}: {\n{$nestedContent}\n{$closingIndent}},";

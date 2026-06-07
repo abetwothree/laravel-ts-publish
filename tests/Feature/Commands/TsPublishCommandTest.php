@@ -555,6 +555,26 @@ test('ts:publish --only-broadcast-channels publishes only the broadcast-channels
     (new Filesystem)->deleteDirectory($outputDir);
 });
 
+test('ts:publish --only-broadcast-channels published file contains $channel accessor for overlapping channels', function () {
+    // 'chat.{roomId}' and 'chat.{roomId}.messages' are both registered in the
+    // workbench. The published file must contain a $channel accessor inside the
+    // chat() function so both channel strings are accessible at runtime.
+    $outputDir = sys_get_temp_dir().'/ts-publish-bc-overlap-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.broadcast_channels.enabled', true);
+
+    $this->artisan('ts:publish', ['--only-broadcast-channels' => true, '--preview' => 'false'])
+        ->assertSuccessful();
+
+    $content = file_get_contents($outputDir.'/broadcast-channels.ts');
+    expect($content)
+        ->toContain('$channel: `chat.${roomId}` as const')
+        ->toContain('messages: `chat.${roomId}.messages` as const');
+
+    (new Filesystem)->deleteDirectory($outputDir);
+});
+
 test('ts:publish broadcast channels disabled in config skips the file', function () {
     $outputDir = sys_get_temp_dir().'/ts-publish-bc-disabled-'.uniqid();
     config()->set('ts-publish.output_directory', $outputDir);
