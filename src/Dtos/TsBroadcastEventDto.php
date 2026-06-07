@@ -1,0 +1,65 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AbeTwoThree\LaravelTsPublish\Dtos;
+
+use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
+use Illuminate\Contracts\Support\Arrayable;
+use Illuminate\Contracts\Support\Jsonable;
+use JsonSerializable;
+
+/**
+ * @phpstan-type PropertyInfo = array{type: string, optional: bool}
+ * @phpstan-type PropertiesList = array<string, PropertyInfo>
+ * @phpstan-type BroadcastEventData = array{
+ *     eventName: string,
+ *     broadcastName: string,
+ *     fqcn: string,
+ *     description: string,
+ *     filename: string,
+ *     namespacePath: string,
+ *     properties: PropertiesList,
+ * }
+ *
+ * @implements Arrayable<string, mixed>
+ */
+final readonly class TsBroadcastEventDto implements Arrayable, Datable, Jsonable, JsonSerializable
+{
+    /**
+     * @param  PropertiesList  $properties  Map of property name → ['type' => 'number', 'optional' => false]
+     */
+    public function __construct(
+        public string $eventName,
+        public string $broadcastName,
+        public string $fqcn,
+        public string $description,
+        public string $filename,
+        public string $namespacePath,
+        public array $properties,
+    ) {}
+
+    /** @return BroadcastEventData */
+    public function toArray(): array
+    {
+        return [
+            'eventName' => $this->eventName,
+            'broadcastName' => $this->broadcastName,
+            'fqcn' => $this->fqcn,
+            'description' => $this->description,
+            'filename' => $this->filename,
+            'namespacePath' => $this->namespacePath,
+            'properties' => $this->properties,
+        ];
+    }
+
+    public function toJson($options = 0): string
+    {
+        return (string) json_encode($this->toArray(), $options);
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return $this->toArray();
+    }
+}
