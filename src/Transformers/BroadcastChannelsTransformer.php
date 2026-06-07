@@ -48,24 +48,25 @@ class BroadcastChannelsTransformer
         /** @var array<string, ChannelFlatEntry> $flatMap */
         $flatMap = [];
 
-         foreach ($channels as $name) {
-             foreach ($this->toFlatMapEntries($name) as $key => $entry) {
-                 if (isset($flatMap[$key])) {
-                     $existingParams = $flatMap[$key]['__meta']['params'] ?? [];
-                     $newParams = $entry['__meta']['params'] ?? [];
-                     if ($existingParams !== $newParams) {
-                         throw new InvalidArgumentException("Broadcast channel segment [{$key}] has conflicting parameter names.");
-                     }
-                     // Propagate selfChannel when the incoming entry marks this segment as a
-                     // terminal channel (i.e. the channel name ends at this static segment).
-                     if (isset($entry['__meta']['selfChannel']) && ! isset($flatMap[$key]['__meta']['selfChannel'])) {
-                         $flatMap[$key]['__meta']['selfChannel'] = $entry['__meta']['selfChannel'];
-                     }
-                     continue;
-                 }
-                 $flatMap[$key] = $entry;
-             }
-         }
+        foreach ($channels as $name) {
+            foreach ($this->toFlatMapEntries($name) as $key => $entry) {
+                if (isset($flatMap[$key])) {
+                    $existingParams = $flatMap[$key]['__meta']['params'] ?? [];
+                    $newParams = $entry['__meta']['params'] ?? [];
+                    if ($existingParams !== $newParams) {
+                        throw new InvalidArgumentException("Broadcast channel segment [{$key}] has conflicting parameter names.");
+                    }
+                    // Propagate selfChannel when the incoming entry marks this segment as a
+                    // terminal channel (i.e. the channel name ends at this static segment).
+                    if (isset($entry['__meta']['selfChannel']) && ! isset($flatMap[$key]['__meta']['selfChannel'])) {
+                        $flatMap[$key]['__meta']['selfChannel'] = $entry['__meta']['selfChannel'];
+                    }
+
+                    continue;
+                }
+                $flatMap[$key] = $entry;
+            }
+        }
 
         /** @var array<string, mixed> $tree */
         $tree = Arr::undot($flatMap);
