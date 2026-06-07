@@ -524,3 +524,47 @@ test('ts:publish --only-routes overrides when user confirms interactively', func
         ->expectsConfirmation('Config has routes publishing disabled. Override and publish routes anyway?', 'yes')
         ->assertSuccessful();
 });
+
+test('ts:publish preview shows broadcast channels content', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.broadcast_channels.enabled', true);
+
+    $this->artisan('ts:publish', ['--preview' => 'true'])
+        ->assertSuccessful()
+        ->expectsOutputToContain('Broadcast Channels:')
+        ->expectsOutputToContain('BroadcastChannel');
+});
+
+test('ts:publish --only-broadcast-channels publishes only the broadcast-channels file', function () {
+    $outputDir = sys_get_temp_dir().'/ts-publish-bc-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.broadcast_channels.enabled', true);
+
+    $this->artisan('ts:publish', ['--only-broadcast-channels' => true, '--preview' => 'false'])
+        ->assertSuccessful();
+
+    expect(file_exists($outputDir.'/broadcast-channels.ts'))->toBeTrue()
+        ->and(file_get_contents($outputDir.'/broadcast-channels.ts'))
+        ->toContain('export type BroadcastChannel')
+        ->toContain('export const BroadcastChannels');
+
+    // No enum or model files
+    expect(is_dir($outputDir.'/workbench/app/enums'))->toBeFalse();
+
+    (new Filesystem)->deleteDirectory($outputDir);
+});
+
+test('ts:publish broadcast channels disabled in config skips the file', function () {
+    $outputDir = sys_get_temp_dir().'/ts-publish-bc-disabled-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.broadcast_channels.enabled', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'false'])
+        ->assertSuccessful();
+
+    expect(file_exists($outputDir.'/broadcast-channels.ts'))->toBeFalse();
+
+    (new Filesystem)->deleteDirectory($outputDir);
+});
