@@ -1,20 +1,23 @@
 {
-  "name": "laravel-ts-publisher",
-  "version": "1.0.0",
-  "private": true,
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/abetwothree/laravel-ts-publish.git"
-  },
-  "type": "module",
-  "bugs": {
-    "url": "https://github.com/abetwothree/laravel-ts-publish/issues"
-  },
-  "homepage": "https://github.com/abetwothree/laravel-ts-publish#readme",
-  "dependencies": {
-    "@inertiajs/vue3": "^3.3.1",
-    "@tolki/ts": "^0.2.0",
-    "typescript": "^6.0.3",
-    "vite": "^8.0.16"
-  }
+    "name": "laravel-ts-publisher",
+    "version": "1.0.0",
+    "private": true,
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/abetwothree/laravel-ts-publish.git"
+    },
+    "type": "module",
+    "bugs": {
+        "url": "https://github.com/abetwothree/laravel-ts-publish/issues"
+    },
+    "homepage": "https://github.com/abetwothree/laravel-ts-publish#readme",
+    "dependencies": {
+        "@inertiajs/vue3": "^3.3.1",
+        "@laravel/echo-vue": "^2.3.7",
+        "@tolki/ts": "^0.2.0",
+        "laravel-echo": "^2.3.7",
+        "pusher-js": "^8.5.0",
+        "typescript": "^6.0.3",
+        "vite": "^8.0.16"
+    }
 }

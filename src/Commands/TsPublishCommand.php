@@ -113,7 +113,15 @@ class TsPublishCommand extends Command
             $runner->shouldPublishBroadcastChannels,
         ] = $flags;
 
-        $runner->run();
+        try {
+            $runner->run();
+        } catch (InvalidArgumentException $e) {
+            if (! $this->output->isQuiet()) {
+                error($e->getMessage());
+            }
+
+            return self::FAILURE;
+        }
 
         if (! $this->output->isQuiet()) {
             if ($preview) {

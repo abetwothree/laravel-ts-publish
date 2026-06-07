@@ -151,6 +151,17 @@ test('channel that is also a prefix of another channel exposes both a $channel a
     expect(substr_count($dto->constBody, 'chat:'))->toBe(1);
 });
 
+test('conflicting parameter names for the same static segment throw InvalidArgumentException', function () {
+    // 'orders.{orderId}' and 'orders.{slug}.timeline' both route through the
+    // static 'orders' segment, but assign it different wildcard param names.
+    // The transformer must reject this rather than silently generating broken TS.
+    $transformer = new BroadcastChannelsTransformer;
+    $transformer->transform(collect([
+        'orders.{orderId}',
+        'orders.{slug}.timeline',
+    ]));
+})->throws(InvalidArgumentException::class, 'conflicting parameter names');
+
 test('non-overlapping channels are not affected by the selfChannel logic', function () {
     // Regression guard: channels that are not prefixes of each other must
     // not gain a $channel key.

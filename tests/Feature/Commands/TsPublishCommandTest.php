@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Facades\Broadcast;
 
 use function Orchestra\Testbench\workbench_path;
 
@@ -533,6 +534,21 @@ test('ts:publish preview shows broadcast channels content', function () {
         ->assertSuccessful()
         ->expectsOutputToContain('Broadcast Channels:')
         ->expectsOutputToContain('BroadcastChannel');
+});
+
+test('ts:publish fails gracefully when broadcast channels have conflicting parameter names', function () {
+    // 'orders.{orderId}' is registered in the workbench. Registering 'orders.{slug}.timeline'
+    // in the same test causes the 'orders' segment to have two different wildcard names.
+    // Before the fix, runAll() had no try/catch so this surfaced as an uncaught exception.
+    // After the fix it must print a friendly error message and exit with a failure code.
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.broadcast_channels.enabled', true);
+
+    Broadcast::channel('orders.{slug}.timeline', fn () => true);
+
+    $this->artisan('ts:publish', ['--preview' => 'true'])
+        ->assertFailed()
+        ->expectsOutputToContain('conflicting parameter names');
 });
 
 test('ts:publish --only-broadcast-channels publishes only the broadcast-channels file', function () {
