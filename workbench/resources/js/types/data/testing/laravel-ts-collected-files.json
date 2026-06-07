@@ -174,5 +174,6 @@
     "modules\/Shipping\/Http\/Resources\/TrackingEventResource.php",
     "modules\/Shipping\/Models\/Shipment.php",
     "modules\/Shipping\/Models\/TrackingEvent.php",
+    "vendor\/laravel\/framework\/src\/Illuminate\/Broadcasting\/BroadcastController.php",
     "vendor\/laravel\/framework\/src\/Illuminate\/Notifications\/DatabaseNotification.php"
 ]

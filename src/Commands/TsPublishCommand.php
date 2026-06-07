@@ -655,9 +655,9 @@ class TsPublishCommand extends Command
     protected function collectExtras(Runner|RunnerForSource $runner): array
     {
         return array_filter([
-            ...array_map(fn (string $path) => ['Barrel', "{$path}/index.ts"], array_keys($runner->enumModularBarrels)),
-            ...array_map(fn (string $path) => ['Barrel', "{$path}/index.ts"], array_keys($runner->modelModularBarrels)),
-            ...array_map(fn (string $path) => ['Barrel', "{$path}/index.ts"], array_keys($runner->resourceModularBarrels)),
+            ...array_map(fn (string $path) => ['Enum Barrel', "{$path}/index.ts"], array_keys($runner->enumModularBarrels)),
+            ...array_map(fn (string $path) => ['Model Barrel', "{$path}/index.ts"], array_keys($runner->modelModularBarrels)),
+            ...array_map(fn (string $path) => ['Resource Barrel', "{$path}/index.ts"], array_keys($runner->resourceModularBarrels)),
             ...array_map(fn (string $path) => ['Route Barrel', "{$path}/index.ts"], array_keys($runner->routeModularBarrels)),
             ...array_map(fn (string $path) => ['Form Request Barrel', "{$path}/index.ts"], array_keys($runner->formRequestModularBarrels)),
             $runner->globalsContent ? ['Globals', Config::string('ts-publish.globals.filename')] : null,

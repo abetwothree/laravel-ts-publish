@@ -13,9 +13,9 @@ namespace AbeTwoThree\LaravelTsPublish\Dtos;
 final readonly class TsBroadcastChannelsDto
 {
     /**
-     * @param string $typeUnion  The complete "export type BroadcastChannel = ..." statement (with semicolon).
-     * @param string $constBody  The inner body (entries) of "export const BroadcastChannels = { ... }".
-     * @param bool   $isEmpty    True when no channels were collected.
+     * @param  string  $typeUnion  The complete "export type BroadcastChannel = ..." statement (with semicolon).
+     * @param  string  $constBody  The inner body (entries) of "export const BroadcastChannels = { ... }".
+     * @param  bool  $isEmpty  True when no channels were collected.
      */
     public function __construct(
         public string $typeUnion,
