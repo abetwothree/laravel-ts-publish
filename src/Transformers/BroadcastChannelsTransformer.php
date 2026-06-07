@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastChannelsDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
+use InvalidArgumentException;
 
 /**
  * Transforms a flat collection of broadcast channel name strings into a
@@ -45,10 +46,21 @@ class BroadcastChannelsTransformer
         $typeUnion = $this->buildTypeUnion($typeUnionMembers);
 
         /** @var array<string, ChannelFlatEntry> $flatMap */
-        $flatMap = $channels
-            ->map(fn (string $name) => $this->toFlatMapEntries($name))
-            ->collapse()
-            ->all();
+        $flatMap = [];
+
+         foreach ($channels as $name) {
+             foreach ($this->toFlatMapEntries($name) as $key => $entry) {
+                 if (isset($flatMap[$key])) {
+                     $existingParams = $flatMap[$key]['__meta']['params'] ?? [];
+                     $newParams = $entry['__meta']['params'] ?? [];
+                     if ($existingParams !== $newParams) {
+                         throw new InvalidArgumentException("Broadcast channel segment [{$key}] has conflicting parameter names.");
+                     }
+                     continue;
+                 }
+                 $flatMap[$key] = $entry;
+             }
+         }
 
         /** @var array<string, mixed> $tree */
         $tree = Arr::undot($flatMap);
