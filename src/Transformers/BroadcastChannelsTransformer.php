@@ -19,7 +19,7 @@ use InvalidArgumentException;
  * 2. Merge all entries and call Arr::undot() to get a nested tree.
  * 3. Recursively render each tree node to a TypeScript property string.
  *
- * @phpstan-type ChannelMeta = array{params: list<string>, originalName: string, selfChannel?: string}
+ * @phpstan-type ChannelMeta = array{params?: list<string>, originalName: string, selfChannel?: string}
  * @phpstan-type ChannelFlatEntry = array{__meta: ChannelMeta}
  */
 class BroadcastChannelsTransformer
