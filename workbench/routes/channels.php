@@ -24,7 +24,9 @@ Broadcast::channel('user.{userId}.notifications', function ($user, $userId) {
 });
 
 /**
- * This channel collides with the ones below so it is prefixed with `$` dollar sign to prevent naming collision with the channel `chat.{roomId}.channel` below
+ * This channel is both a terminal channel and a prefix of channels below.
+ * The TypeScript generator exposes it via a `$channel` accessor inside
+ * `BroadcastChannels.chat(roomId)` so it can coexist with child keys.
  */
 Broadcast::channel('chat.{roomId}', function ($user, $roomId) {
     return true;
