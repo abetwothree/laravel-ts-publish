@@ -8,3 +8,4 @@ export * from './ServerCreated';
 export * from './TeamMessageSent';
 export * from './UserNotification';
 export * from './UserRegisteredEvent';
+export * from './UserSynced';

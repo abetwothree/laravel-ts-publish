@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
+use AbeTwoThree\LaravelTsPublish\Writers\Concerns\ResolvesEventNameConflicts;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\File;
@@ -16,9 +17,14 @@ use Illuminate\Support\Facades\File;
  * channel listeners (Echo.listen(), useEcho()) are type-safe.
  *
  * Returns an empty string when echo_augmentation is disabled or no events are provided.
+ *
+ * @phpstan-type RawEchoEvent = array{eventName: string, broadcastName: string, importPath: string, namespacePath: string}
+ * @phpstan-type EchoEvent = array{eventName: string, broadcastName: string, importPath: string, namespacePath: string, importedAs: string, exportedName: string}
  */
 class BroadcastEventsEchoWriter
 {
+    use ResolvesEventNameConflicts;
+
     public function __construct(
         protected Filesystem $filesystem,
     ) {}
@@ -59,7 +65,7 @@ class BroadcastEventsEchoWriter
      */
     protected function renderContent(Collection $generators, string $echoPackage): string
     {
-        $events = $generators->map(function (BroadcastEventGenerator $generator): array {
+        $rawEvents = $generators->map(function (BroadcastEventGenerator $generator): array {
             $transformer = $generator->transformer;
             $dto = $transformer->data();
             $relativePath = './'.$transformer->namespacePath.'/'.$transformer->filename();
@@ -68,11 +74,15 @@ class BroadcastEventsEchoWriter
                 'eventName' => $dto->eventName,
                 'broadcastName' => $dto->broadcastName,
                 'importPath' => $relativePath,
+                'namespacePath' => $transformer->namespacePath,
             ];
         })->sortBy('eventName')->values();
 
+        /** @var Collection<int, EchoEvent> $events */
+        $events = $this->resolveEventNameConflicts($rawEvents); // @phpstan-ignore argument.type
+
         $imports = $events->map(
-            fn ($event) => "import type { {$event['eventName']} } from '{$event['importPath']}';"
+            fn ($event) => "import type { {$event['importedAs']} } from '{$event['importPath']}';"
         )->values();
 
         /** @var view-string $template */

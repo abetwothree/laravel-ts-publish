@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
+use AbeTwoThree\LaravelTsPublish\Writers\Concerns\ResolvesEventNameConflicts;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Collection;
 
@@ -13,9 +14,14 @@ use Illuminate\Support\Collection;
  *
  * Produces import statements, a BroadcastEvent union type, a flat BroadcastEvents const,
  * and re-export type aliases. Returns "export {};\n" when no generators are provided.
+ *
+ * @phpstan-type RawIndexEvent = array{eventName: string, broadcastName: string, constKey: string, importPath: string, namespacePath: string}
+ * @phpstan-type IndexEvent = array{eventName: string, broadcastName: string, constKey: string, importPath: string, namespacePath: string, importedAs: string, exportedName: string}
  */
 class BroadcastEventsIndexWriter
 {
+    use ResolvesEventNameConflicts;
+
     public function __construct(
         protected Filesystem $filesystem,
     ) {}
@@ -47,7 +53,7 @@ class BroadcastEventsIndexWriter
      */
     protected function renderContent(Collection $generators): string
     {
-        $events = $generators->map(function (BroadcastEventGenerator $generator): array {
+        $rawEvents = $generators->map(function (BroadcastEventGenerator $generator): array {
             $transformer = $generator->transformer;
             $dto = $transformer->data();
             $relativePath = './'.$transformer->namespacePath.'/'.$transformer->filename();
@@ -57,14 +63,18 @@ class BroadcastEventsIndexWriter
                 'broadcastName' => $dto->broadcastName,
                 'constKey' => $this->quoteKey($dto->eventName),
                 'importPath' => $relativePath,
+                'namespacePath' => $transformer->namespacePath,
             ];
         })->sortBy('eventName')->values();
 
+        /** @var Collection<int, IndexEvent> $events */
+        $events = $this->resolveEventNameConflicts($rawEvents); // @phpstan-ignore argument.type
+
         $imports = $events->map(
-            fn ($event) => "import type { {$event['eventName']} } from '{$event['importPath']}';"
+            fn ($event) => "import type { {$event['importedAs']} } from '{$event['importPath']}';"
         )->values();
 
-        $eventNames = $events->pluck('eventName')->values()->all();
+        $eventNames = $events->pluck('exportedName')->values()->all();
 
         /** @var view-string $template */
         $template = config()->string('ts-publish.broadcast_events.index_template');
@@ -87,6 +97,17 @@ class BroadcastEventsIndexWriter
         }
 
         return '"'.$key.'"';
+    }
+
+    /**
+     * Inject the updated constKey when a conflict alias is computed.
+     *
+     * @param  array<string, mixed>  $event
+     * @return array<string, mixed>
+     */
+    protected function extraConflictFields(array $event, string $alias): array
+    {
+        return ['constKey' => $this->quoteKey($alias)];
     }
 
     /**

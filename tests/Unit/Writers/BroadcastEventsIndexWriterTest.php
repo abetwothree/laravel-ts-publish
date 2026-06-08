@@ -12,6 +12,8 @@ use Workbench\App\Events\OrderShipped;
 use Workbench\App\Events\ServerCreated;
 use Workbench\App\Events\TeamMessageSent;
 use Workbench\App\Events\UserNotification;
+use Workbench\App\Events\UserSynced as AppUserSynced;
+use Workbench\Crm\Events\UserSynced as CrmUserSynced;
 
 describe('BroadcastEventsIndexWriter', function () {
     beforeEach(function () {
@@ -112,5 +114,26 @@ TS);
         expect(file_exists($expectedPath))->toBeTrue();
 
         app(Filesystem::class)->deleteDirectory($tmpDir);
+    });
+
+    it('aliases two events that share the same short class name', function () {
+        $generators = buildGenerators([AppUserSynced::class, CrmUserSynced::class]);
+        $writer = app(BroadcastEventsIndexWriter::class);
+
+        $content = $writer->write($generators);
+
+        // Both should be imported under namespace-prefix aliases
+        expect($content)->toContain('import type { UserSynced as AppUserSynced }');
+        expect($content)->toContain('import type { UserSynced as CrmUserSynced }');
+
+        // The const keys and re-export names should use the aliases, not the bare name
+        expect($content)->toContain('AppUserSynced:');
+        expect($content)->toContain('CrmUserSynced:');
+        // No standalone bare UserSynced: key (the substring would also appear in AppUserSynced: and CrmUserSynced:)
+        expect($content)->not->toMatch('/^\s+UserSynced:\s/m');
+
+        // Re-export block should export the aliases
+        expect($content)->toContain('AppUserSynced');
+        expect($content)->toContain('CrmUserSynced');
     });
 });

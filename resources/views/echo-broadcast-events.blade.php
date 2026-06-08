@@ -6,7 +6,7 @@
 declare module "{{ $echoPackage }}" {
     interface Events {
 @foreach($events as $event)
-        {!! LaravelTsPublish::validJsObjectKey($event['broadcastName']) !!}: {{ $event['eventName'] }};
+        {!! LaravelTsPublish::validJsObjectKey($event['broadcastName']) !!}: {{ $event['exportedName'] }};
 @endforeach
     }
 }

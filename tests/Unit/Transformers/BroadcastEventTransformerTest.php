@@ -14,6 +14,8 @@ use Workbench\App\Events\ServerCreated;
 use Workbench\App\Events\TeamMessageSent;
 use Workbench\App\Events\UserNotification;
 use Workbench\App\Events\UserRegisteredEvent;
+use Workbench\Crm\Events\StatusSynced;
+use Workbench\Crm\Events\UserSynced as CrmUserSynced;
 
 describe('BroadcastEventTransformer', function () {
     describe('OrderShipped (default broadcastAs, public props)', function () {
@@ -211,5 +213,55 @@ describe('PureEnumEvent (Role pure enum + Visibility pure enum + string)', funct
         $allTypes = array_merge(...array_values($transformer->typeImports));
         expect($allTypes)->toContain('RoleType');
         expect($allTypes)->toContain('VisibilityType');
+    });
+});
+
+describe('CrmUserSynced (two User models from different namespaces — import aliasing)', function () {
+    it('aliases App\\Models\\User as AppUser and Crm\\Models\\User as CrmUser', function () {
+        $transformer = app(BroadcastEventTransformer::class, ['findable' => CrmUserSynced::class]);
+        $allTypes = array_merge(...array_values($transformer->typeImports));
+        expect($allTypes)->toContain('User as AppUser');
+        expect($allTypes)->toContain('User as CrmUser');
+    });
+
+    it('rewrites the user property type to Partial<AppUser>', function () {
+        $transformer = app(BroadcastEventTransformer::class, ['findable' => CrmUserSynced::class]);
+        expect($transformer->properties['user']['type'])->toBe('Partial<AppUser>');
+    });
+
+    it('rewrites the crmUser property type to Partial<CrmUser>', function () {
+        $transformer = app(BroadcastEventTransformer::class, ['findable' => CrmUserSynced::class]);
+        expect($transformer->properties['crmUser']['type'])->toBe('Partial<CrmUser>');
+    });
+
+    it('does not produce duplicate unaliased User entries', function () {
+        $transformer = app(BroadcastEventTransformer::class, ['findable' => CrmUserSynced::class]);
+        $allTypes = array_merge(...array_values($transformer->typeImports));
+        expect(array_filter($allTypes, fn ($t) => $t === 'User'))->toBeEmpty();
+    });
+});
+
+describe('StatusSynced (two Status enums from different namespaces — import aliasing)', function () {
+    it('aliases App\\Enums\\Status as AppStatusType and Crm\\Enums\\Status as CrmStatusType', function () {
+        $transformer = app(BroadcastEventTransformer::class, ['findable' => StatusSynced::class]);
+        $allTypes = array_merge(...array_values($transformer->typeImports));
+        expect($allTypes)->toContain('StatusType as AppStatusType');
+        expect($allTypes)->toContain('StatusType as CrmStatusType');
+    });
+
+    it('rewrites the status property type to AppStatusType', function () {
+        $transformer = app(BroadcastEventTransformer::class, ['findable' => StatusSynced::class]);
+        expect($transformer->properties['status']['type'])->toBe('AppStatusType');
+    });
+
+    it('rewrites the crmStatus property type to CrmStatusType', function () {
+        $transformer = app(BroadcastEventTransformer::class, ['findable' => StatusSynced::class]);
+        expect($transformer->properties['crmStatus']['type'])->toBe('CrmStatusType');
+    });
+
+    it('does not produce duplicate unaliased StatusType entries', function () {
+        $transformer = app(BroadcastEventTransformer::class, ['findable' => StatusSynced::class]);
+        $allTypes = array_merge(...array_values($transformer->typeImports));
+        expect(array_filter($allTypes, fn ($t) => $t === 'StatusType'))->toBeEmpty();
     });
 });

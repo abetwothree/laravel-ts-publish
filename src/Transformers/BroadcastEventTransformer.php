@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\SurveyorTypeMapper;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Database\Eloquent\Model;
 use Laravel\Surveyor\Analyzed\ClassResult;
@@ -34,6 +35,8 @@ use UnitEnum;
  */
 class BroadcastEventTransformer extends CoreTransformer
 {
+    use ResolvesImportConflicts;
+
     /** Short PHP class name, e.g. 'OrderShipped'. */
     public protected(set) string $eventName;
 
@@ -78,6 +81,22 @@ class BroadcastEventTransformer extends CoreTransformer
     public protected(set) array $typeImports = [];
 
     /**
+     * Per-property FQCN tracking — maps property name to list of FQCNs added by that property's type.
+     *
+     * @var array<string, list<class-string>>
+     */
+    protected array $propertyFqcns = [];
+
+    /**
+     * Stub — broadcast events do not use enum const value imports.
+     *
+     * Required to satisfy the ResolvesImportConflicts trait's formatConstImportName() method.
+     *
+     * @var array<class-string, string>
+     */
+    protected array $enumConstMap = [];
+
+    /**
      * @param  class-string<ShouldBroadcast>  $findable
      */
     public function __construct(
@@ -100,6 +119,7 @@ class BroadcastEventTransformer extends CoreTransformer
         $this->namespacePath = LaravelTsPublish::namespaceToPath($this->findable);
         $this->broadcastName = $this->resolveBroadcastName($analyzed);
         $this->properties = $this->resolveProperties($analyzed);
+        $this->resolveImportConflicts();
         $this->typeImports = $this->buildTypeImports();
 
         return $this;
@@ -163,10 +183,24 @@ class BroadcastEventTransformer extends CoreTransformer
                 continue;
             }
 
-            $result[(string) $name] = [
+            $propName = (string) $name;
+            $enumsBefore = $this->enumFqcnMap;
+            $modelsBefore = $this->modelFqcnMap;
+
+            $result[$propName] = [
                 'type' => $this->convertType($type),
                 'optional' => $type->isOptional(),
             ];
+
+            /** @var class-string $fqcn */
+            foreach (array_diff_key($this->enumFqcnMap, $enumsBefore) as $fqcn => $_) {
+                $this->propertyFqcns[$propName][] = $fqcn;
+            }
+
+            /** @var class-string $fqcn */
+            foreach (array_diff_key($this->modelFqcnMap, $modelsBefore) as $fqcn => $_) {
+                $this->propertyFqcns[$propName][] = $fqcn;
+            }
         }
 
         return $result;
@@ -268,6 +302,78 @@ class BroadcastEventTransformer extends CoreTransformer
     }
 
     /**
+     * Detect conflicting import names and generate namespace-prefix aliases.
+     *
+     * When two models or enums with the same short name appear as property types,
+     * both are aliased using their namespace prefix
+     * (e.g. App\Models\User → AppUser, Crm\Models\User → CrmUser).
+     */
+    protected function resolveImportConflicts(): self
+    {
+        /** @var array<string, list<array{fqcn: string, kind: 'enum'|'model'}>> $reverseMap */
+        $reverseMap = [];
+
+        foreach ($this->enumFqcnMap as $fqcn => $typeName) {
+            $reverseMap[$typeName][] = ['fqcn' => $fqcn, 'kind' => 'enum'];
+        }
+
+        foreach ($this->modelFqcnMap as $fqcn => $typeName) {
+            $reverseMap[$typeName][] = ['fqcn' => $fqcn, 'kind' => 'model'];
+        }
+
+        foreach ($reverseMap as $entries) {
+            if (count($entries) <= 1) {
+                continue;
+            }
+
+            foreach ($entries as $entry) {
+                $fqcn = $entry['fqcn'];
+                $originalName = $entry['kind'] === 'enum'
+                    ? $this->enumFqcnMap[$fqcn]
+                    : $this->modelFqcnMap[$fqcn];
+
+                $this->importAliases[$fqcn] =
+                    $this->computeNamespacePrefix($fqcn, ['Events', 'Enums', 'Models']).$originalName;
+            }
+        }
+
+        if ($this->importAliases !== []) {
+            $this->rewriteTypeReferences();
+        }
+
+        return $this;
+    }
+
+    /**
+     * Rewrite property type references to use aliases.
+     *
+     * Uses per-property FQCN tracking so only the property that actually
+     * references a given FQCN is rewritten, preventing incorrect substitutions
+     * when multiple properties share the same original type name.
+     */
+    protected function rewriteTypeReferences(): void
+    {
+        foreach ($this->importAliases as $fqcn => $alias) {
+            $originalName = $this->enumFqcnMap[$fqcn] ?? $this->modelFqcnMap[$fqcn] ?? null;
+
+            if ($originalName === null || $originalName === $alias) {
+                continue;
+            }
+
+            $pattern = '/(?<![A-Za-z0-9_$])'.preg_quote($originalName, '/').'(?![A-Za-z0-9_$])/';
+
+            foreach ($this->properties as $key => $entry) {
+                if (! in_array($fqcn, $this->propertyFqcns[$key] ?? [], true)) {
+                    continue;
+                }
+
+                $this->properties[$key]['type'] =
+                    preg_replace($pattern, $alias, $entry['type'], 1) ?? $entry['type'];
+            }
+        }
+    }
+
+    /**
      * Build the TypeScript type import map from tracked model and enum FQCNs.
      *
      * Uses LaravelTsPublish::namespaceToPath() and relativeImportPath() to compute
@@ -283,13 +389,13 @@ class BroadcastEventTransformer extends CoreTransformer
         foreach ($this->modelFqcnMap as $fqcn => $typeName) {
             $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
             $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
-            $imports[$importPath][] = $typeName;
+            $imports[$importPath][] = $this->formatImportName($fqcn, $typeName);
         }
 
         foreach ($this->enumFqcnMap as $fqcn => $typeName) {
             $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
             $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
-            $imports[$importPath][] = $typeName;
+            $imports[$importPath][] = $this->formatImportName($fqcn, $typeName);
         }
 
         foreach ($imports as $path => $types) {
