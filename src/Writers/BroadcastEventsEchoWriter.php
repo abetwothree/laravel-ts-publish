@@ -8,7 +8,6 @@ use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\ResolvesEventNameConflicts;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\File;
 
 /**
  * Writes an echo-broadcast-events.d.ts module augmentation file for Laravel Echo.
@@ -123,12 +122,12 @@ class BroadcastEventsEchoWriter
     {
         $packageJsonPath = base_path('package.json');
 
-        if (! File::exists($packageJsonPath)) {
+        if (! $this->filesystem->exists($packageJsonPath)) {
             return null;
         }
 
         /** @var array{dependencies?: array<string, string>, devDependencies?: array<string, string>}|null $packageJson */
-        $packageJson = json_decode(File::get($packageJsonPath), true);
+        $packageJson = json_decode($this->filesystem->get($packageJsonPath), true);
 
         if (! is_array($packageJson)) {
             return null;

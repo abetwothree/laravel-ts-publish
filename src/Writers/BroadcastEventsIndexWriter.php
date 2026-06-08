@@ -22,9 +22,16 @@ class BroadcastEventsIndexWriter
 {
     use ResolvesEventNameConflicts;
 
+    /** @var view-string */
+    protected string $template;
+
     public function __construct(
         protected Filesystem $filesystem,
-    ) {}
+    ) {
+        /** @var view-string $template */
+        $template = config()->string('ts-publish.broadcast_events.index_template');
+        $this->template = $template;
+    }
 
     /**
      * Render the broadcast-events.ts index file from a collection of generators.
@@ -34,7 +41,12 @@ class BroadcastEventsIndexWriter
     public function write(Collection $generators): string
     {
         if ($generators->isEmpty()) {
-            $content = "export {};\n";
+            $content = view($this->template, [
+                'isEmpty' => true,
+                'imports' => [],
+                'events' => [],
+                'eventNames' => [],
+            ])->render();
         } else {
             $content = $this->renderContent($generators);
         }
@@ -76,10 +88,7 @@ class BroadcastEventsIndexWriter
 
         $eventNames = $events->pluck('exportedName')->values()->all();
 
-        /** @var view-string $template */
-        $template = config()->string('ts-publish.broadcast_events.index_template');
-
-        return view($template, [
+        return view($this->template, [
             'isEmpty' => false,
             'imports' => $imports->all(),
             'events' => $events->values()->all(),
