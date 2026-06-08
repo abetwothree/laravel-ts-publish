@@ -184,26 +184,64 @@ class BroadcastEventTransformer extends CoreTransformer
             }
 
             $propName = (string) $name;
-            $enumsBefore = $this->enumFqcnMap;
-            $modelsBefore = $this->modelFqcnMap;
 
             $result[$propName] = [
                 'type' => $this->convertType($type),
                 'optional' => $type->isOptional(),
             ];
 
-            /** @var class-string $fqcn */
-            foreach (array_diff_key($this->enumFqcnMap, $enumsBefore) as $fqcn => $_) {
-                $this->propertyFqcns[$propName][] = $fqcn;
-            }
-
-            /** @var class-string $fqcn */
-            foreach (array_diff_key($this->modelFqcnMap, $modelsBefore) as $fqcn => $_) {
-                $this->propertyFqcns[$propName][] = $fqcn;
-            }
+            $this->propertyFqcns[$propName] = array_values(array_unique($this->collectPropertyFqcns($type)));
         }
 
         return $result;
+    }
+
+    /**
+     * Recursively collect all enum and model FQCNs referenced by a type.
+     *
+     * Walks the full type tree (union, intersection, array) so that every
+     * property records all FQCNs it references — including FQCNs already seen
+     * in earlier properties. This ensures rewriteTypeReferences() correctly
+     * rewrites all properties when an import alias is introduced.
+     *
+     * @return list<class-string>
+     */
+    protected function collectPropertyFqcns(Type $type): array
+    {
+        if ($type instanceof ClassType) {
+            $fqcn = ltrim($type->value, '\\');
+            if (enum_exists($fqcn) || (class_exists($fqcn) && is_subclass_of($fqcn, Model::class))) {
+                return [$fqcn];
+            }
+
+            return [];
+        }
+
+        if ($type instanceof UnionType || $type instanceof IntersectionType) {
+            $fqcns = [];
+
+            foreach ($type->types as $inner) {
+                if ($inner instanceof Type) {
+                    $fqcns = array_merge($fqcns, $this->collectPropertyFqcns($inner));
+                }
+            }
+
+            return $fqcns;
+        }
+
+        if ($type instanceof ArrayType) {
+            $fqcns = [];
+
+            foreach ($type->value as $inner) {
+                if ($inner instanceof Type) {
+                    $fqcns = array_merge($fqcns, $this->collectPropertyFqcns($inner));
+                }
+            }
+
+            return $fqcns;
+        }
+
+        return [];
     }
 
     /**
