@@ -17,6 +17,6 @@ export const BroadcastEvents = Object.freeze({
 } as const);
 
 export type {
-    {!! implode(",\n\t", $eventNames) !!}
+    {!! implode(",\n    ", $eventNames) !!}
 };
 @endif

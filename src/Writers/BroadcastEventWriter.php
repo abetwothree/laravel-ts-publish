@@ -49,7 +49,11 @@ class BroadcastEventWriter extends CoreWriter
      */
     protected function writeEventFile(string $filename, string $content, string $namespacePath): void
     {
-        $outputBase = config()->string('ts-publish.output_directory');
+        $outputBase = config('ts-publish.broadcast_events.output_path');
+        if (! is_string($outputBase)) {
+            $outputBase = config()->string('ts-publish.output_directory');
+        }
+
         $outputPath = $outputBase.'/'.$namespacePath;
 
         $this->filesystem->ensureDirectoryExists($outputPath);

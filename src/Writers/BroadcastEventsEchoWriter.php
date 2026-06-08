@@ -43,10 +43,6 @@ class BroadcastEventsEchoWriter
 
         $echoPackage = $this->resolveEchoPackage();
 
-        if ($echoPackage === null) {
-            return '';
-        }
-
         $content = $this->renderContent($generators, $echoPackage);
 
         if (config()->boolean('ts-publish.output_to_files')) {
@@ -97,7 +93,7 @@ class BroadcastEventsEchoWriter
      *
      * Priority: config value → package.json detection → '@laravel/echo'
      */
-    protected function resolveEchoPackage(): ?string
+    protected function resolveEchoPackage(): string
     {
         $configured = config('ts-publish.broadcast_events.echo_augmentation.echo_package');
 

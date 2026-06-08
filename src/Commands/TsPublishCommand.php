@@ -39,7 +39,7 @@ class TsPublishCommand extends Command
         {--only-broadcast-events : Only publish broadcast event types (ignoring all other types)}
         {--only-functional : Only publish enabled functional content like routes & enums}';
 
-    protected $description = 'Publish TypeScript files from enums, models, resources, routes, form requests, and broadcast channels';
+    protected $description = 'Publish TypeScript files from enums, models, resources, routes, form requests, broadcast channels, and broadcast events';
 
     public function handle(): int
     {
@@ -545,7 +545,7 @@ class TsPublishCommand extends Command
         }
 
         if (! empty($runner->broadcastEventsIndexContent)) {
-            $filename = config()->string('ts-publish.broadcast_events.filename', 'broadcast-events.ts');
+            $filename = config()->string('ts-publish.broadcast_events.index_filename', 'broadcast-events.ts');
             $this->newLine();
             $this->comment('Broadcast Events:');
             $this->newLine();
