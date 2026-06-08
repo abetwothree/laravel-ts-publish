@@ -69,7 +69,7 @@ class BroadcastEventsEchoWriter
                 'broadcastName' => $dto->broadcastName,
                 'importPath' => $relativePath,
             ];
-        });
+        })->sortBy('eventName')->values();
 
         $imports = $events->map(
             fn ($event) => "import type { {$event['eventName']} } from '{$event['importPath']}';"
