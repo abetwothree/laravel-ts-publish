@@ -20,7 +20,7 @@ use Laravel\Surveyor\Types\StringType;
 use Laravel\Surveyor\Types\UnionType;
 use Override;
 use ReflectionClass;
-
+use UnitEnum;
 /**
  * Transforms a broadcast event class into a TsBroadcastEventDto ready for
  * TypeScript type generation.
@@ -249,7 +249,7 @@ class BroadcastEventTransformer extends CoreTransformer
 
         if (enum_exists($fqcn)) {
             $typeName = class_basename($fqcn).'Type';
-            /** @var class-string<\UnitEnum> $fqcn */
+            /** @var class-string<UnitEnum> $fqcn */
             $this->enumFqcnMap[$fqcn] = $typeName;
 
             return $typeName.$nullSuffix;

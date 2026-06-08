@@ -36,13 +36,13 @@ export const BroadcastEvents = Object.freeze({
 
 export type {
     EnumBroadcastEvent,
-	MixedTypesEvent,
-	MultiModelEvent,
-	OrderShipped,
-	PostPublishedEvent,
-	PureEnumEvent,
-	ServerCreated,
-	TeamMessageSent,
-	UserNotification,
-	UserRegisteredEvent
+    MixedTypesEvent,
+    MultiModelEvent,
+    OrderShipped,
+    PostPublishedEvent,
+    PureEnumEvent,
+    ServerCreated,
+    TeamMessageSent,
+    UserNotification,
+    UserRegisteredEvent
 };
