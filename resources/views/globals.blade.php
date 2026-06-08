@@ -148,7 +148,7 @@ $optional = ! $field['isRequired'] ? '?' : '';
 @php
 $optional = $prop['optional'] ? '?' : '';
 @endphp
-            {!! LaravelTsPublish::validJsObjectKey($name) !!}{{ $optional }}: {!! LaravelTsPublish::qualifyGlobalType($prop['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
+            {!! LaravelTsPublish::validJsObjectKey($name) !!}{{ $optional }}: {!! LaravelTsPublish::qualifyGlobalType($prop['type'], $globalTypesByNamespace, $namespace, $transformer->globalTypeReferenceMap()) !!};
 @endforeach
         }
 @endforeach

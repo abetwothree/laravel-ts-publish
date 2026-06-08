@@ -2747,7 +2747,7 @@ declare global {
             message: string;
         }
         export interface UserRegisteredEvent {
-            user: Partial<crm.models.User>;
+            user: Partial<app.models.User>;
             userId: number;
         }
         export interface PureEnumEvent {
@@ -2756,7 +2756,7 @@ declare global {
             action: string;
         }
         export interface EnumBroadcastEvent {
-            status: crm.enums.StatusType;
+            status: app.enums.StatusType;
             color: app.enums.ColorType;
         }
         export interface UserNotification {
@@ -2779,7 +2779,7 @@ declare global {
         }
         export interface MultiModelEvent {
             post: Partial<app.models.Post>;
-            user: Partial<crm.models.User>;
+            user: Partial<app.models.User>;
         }
         export interface UserSynced {
             userId: string;
@@ -2787,7 +2787,7 @@ declare global {
         }
         export interface MixedTypesEvent {
             post: Partial<app.models.Post>;
-            status: crm.enums.StatusType;
+            status: app.enums.StatusType;
             message: string;
         }
     }

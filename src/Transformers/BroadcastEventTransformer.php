@@ -469,4 +469,40 @@ class BroadcastEventTransformer extends CoreTransformer
 
         return $map;
     }
+
+    /**
+     * Build a deterministic per-event map of every referenced type name to its
+     * globally-qualified name.
+     *
+     * Unlike globalAliasMap(), this includes non-conflicting (un-aliased) model and
+     * enum references, keyed by the exact token that appears in each property's TS type
+     * (the import alias when one exists, otherwise the bare short name). Because conflicts
+     * within a single event are always resolved into unique aliases, the short names that
+     * remain are unambiguous, so keys never collide within one event.
+     *
+     * GlobalsWriter passes this map to qualifyGlobalType() so each event's property types
+     * resolve to the exact namespace the event imports — instead of relying on name-based
+     * qualification, which is non-deterministic when the same short name exists in multiple
+     * namespaces (e.g. App\Models\User vs Crm\Models\User).
+     *
+     * @return array<string, string> typeName|alias => 'dot.separated.namespace.TypeName'
+     */
+    public function globalTypeReferenceMap(): array
+    {
+        $map = [];
+
+        foreach ($this->enumFqcnMap as $fqcn => $typeName) {
+            $key = $this->importAliases[$fqcn] ?? $typeName;
+            $ns = str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn));
+            $map[$key] = $ns.'.'.$typeName;
+        }
+
+        foreach ($this->modelFqcnMap as $fqcn => $typeName) {
+            $key = $this->importAliases[$fqcn] ?? $typeName;
+            $ns = str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn));
+            $map[$key] = $ns.'.'.$typeName;
+        }
+
+        return $map;
+    }
 }

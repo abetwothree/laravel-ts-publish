@@ -2747,7 +2747,7 @@ declare global {
             message: string;
         }
         export interface UserRegisteredEvent {
-            user: Partial<workbench.crm.models.User>;
+            user: Partial<workbench.app.models.User>;
             userId: number;
         }
         export interface PureEnumEvent {
@@ -2756,7 +2756,7 @@ declare global {
             action: string;
         }
         export interface EnumBroadcastEvent {
-            status: workbench.crm.enums.StatusType;
+            status: workbench.app.enums.StatusType;
             color: workbench.app.enums.ColorType;
         }
         export interface UserNotification {
@@ -2779,7 +2779,7 @@ declare global {
         }
         export interface MultiModelEvent {
             post: Partial<workbench.app.models.Post>;
-            user: Partial<workbench.crm.models.User>;
+            user: Partial<workbench.app.models.User>;
         }
         export interface UserSynced {
             userId: string;
@@ -2787,7 +2787,7 @@ declare global {
         }
         export interface MixedTypesEvent {
             post: Partial<workbench.app.models.Post>;
-            status: workbench.crm.enums.StatusType;
+            status: workbench.app.enums.StatusType;
             message: string;
         }
     }

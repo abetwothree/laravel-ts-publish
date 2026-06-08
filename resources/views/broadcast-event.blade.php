@@ -12,6 +12,6 @@ export interface {{ $data->eventName }} {
     $tsType = $prop['type'];
     $optional = $prop['optional'] ? '?' : '';
 @endphp
-    {{ LaravelTsPublish::validJsObjectKey($name) }}{{ $optional }}: {!! $tsType !!};
+    {!! LaravelTsPublish::validJsObjectKey($name) !!}{{ $optional }}: {!! $tsType !!};
 @endforeach
 }
