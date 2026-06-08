@@ -189,7 +189,7 @@ class JsonWriter
     }
 
     /**
-     * @return array<string, array{broadcastName: string, properties: list<array{name: string, type: string, optional: bool}>}>
+     * @return array<string, array{eventName: string, broadcastName: string, properties: list<array{name: string, type: string, optional: bool}>}>
      */
     protected function createJsonForBroadcastEvents(Runner $runner): array
     {
@@ -198,7 +198,8 @@ class JsonWriter
         foreach ($runner->broadcastEventGenerators as $generator) {
             /** @var BroadcastEventGenerator $generator */
             $transformer = $generator->transformer;
-            $data[$transformer->eventName] = [
+            $data[$transformer->broadcastName] = [
+                'eventName' => $transformer->eventName,
                 'broadcastName' => $transformer->broadcastName,
                 'properties' => array_map(
                     fn (array $prop, string $name) => [

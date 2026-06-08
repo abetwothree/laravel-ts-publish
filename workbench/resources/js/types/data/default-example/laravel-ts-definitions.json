@@ -1,6 +1,7 @@
 {
     "broadcastEvents": {
-        "StatusSynced": {
+        ".Workbench.Crm.Events.StatusSynced": {
+            "eventName": "StatusSynced",
             "broadcastName": ".Workbench.Crm.Events.StatusSynced",
             "properties": [
                 {
@@ -15,22 +16,24 @@
                 }
             ]
         },
-        "UserSynced": {
-            "broadcastName": ".Workbench.App.Events.UserSynced",
+        ".Workbench.Crm.Events.UserSynced": {
+            "eventName": "UserSynced",
+            "broadcastName": ".Workbench.Crm.Events.UserSynced",
             "properties": [
                 {
-                    "name": "userId",
-                    "type": "string",
+                    "name": "user",
+                    "type": "Partial<AppUser>",
                     "optional": false
                 },
                 {
-                    "name": "action",
-                    "type": "string",
+                    "name": "crmUser",
+                    "type": "Partial<CrmUser>",
                     "optional": false
                 }
             ]
         },
-        "PostPublishedEvent": {
+        ".Workbench.App.Events.PostPublishedEvent": {
+            "eventName": "PostPublishedEvent",
             "broadcastName": ".Workbench.App.Events.PostPublishedEvent",
             "properties": [
                 {
@@ -45,7 +48,8 @@
                 }
             ]
         },
-        "UserRegisteredEvent": {
+        ".Workbench.App.Events.UserRegisteredEvent": {
+            "eventName": "UserRegisteredEvent",
             "broadcastName": ".Workbench.App.Events.UserRegisteredEvent",
             "properties": [
                 {
@@ -60,7 +64,8 @@
                 }
             ]
         },
-        "PureEnumEvent": {
+        ".Workbench.App.Events.PureEnumEvent": {
+            "eventName": "PureEnumEvent",
             "broadcastName": ".Workbench.App.Events.PureEnumEvent",
             "properties": [
                 {
@@ -80,7 +85,8 @@
                 }
             ]
         },
-        "EnumBroadcastEvent": {
+        ".Workbench.App.Events.EnumBroadcastEvent": {
+            "eventName": "EnumBroadcastEvent",
             "broadcastName": ".Workbench.App.Events.EnumBroadcastEvent",
             "properties": [
                 {
@@ -95,7 +101,8 @@
                 }
             ]
         },
-        "UserNotification": {
+        ".Workbench.App.Events.UserNotification": {
+            "eventName": "UserNotification",
             "broadcastName": ".Workbench.App.Events.UserNotification",
             "properties": [
                 {
@@ -115,7 +122,8 @@
                 }
             ]
         },
-        "ServerCreated": {
+        "server.created": {
+            "eventName": "ServerCreated",
             "broadcastName": "server.created",
             "properties": [
                 {
@@ -130,7 +138,8 @@
                 }
             ]
         },
-        "OrderShipped": {
+        ".Workbench.App.Events.OrderShipped": {
+            "eventName": "OrderShipped",
             "broadcastName": ".Workbench.App.Events.OrderShipped",
             "properties": [
                 {
@@ -150,7 +159,8 @@
                 }
             ]
         },
-        "TeamMessageSent": {
+        ".Workbench.App.Events.TeamMessageSent": {
+            "eventName": "TeamMessageSent",
             "broadcastName": ".Workbench.App.Events.TeamMessageSent",
             "properties": [
                 {
@@ -165,7 +175,8 @@
                 }
             ]
         },
-        "MultiModelEvent": {
+        ".Workbench.App.Events.MultiModelEvent": {
+            "eventName": "MultiModelEvent",
             "broadcastName": ".Workbench.App.Events.MultiModelEvent",
             "properties": [
                 {
@@ -180,7 +191,24 @@
                 }
             ]
         },
-        "MixedTypesEvent": {
+        ".Workbench.App.Events.UserSynced": {
+            "eventName": "UserSynced",
+            "broadcastName": ".Workbench.App.Events.UserSynced",
+            "properties": [
+                {
+                    "name": "userId",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "action",
+                    "type": "string",
+                    "optional": false
+                }
+            ]
+        },
+        ".Workbench.App.Events.MixedTypesEvent": {
+            "eventName": "MixedTypesEvent",
             "broadcastName": ".Workbench.App.Events.MixedTypesEvent",
             "properties": [
                 {
