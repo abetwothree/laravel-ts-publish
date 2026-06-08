@@ -552,6 +552,34 @@ class TsPublishCommand extends Command
             $this->comment("  {$filename}");
             $this->line($runner->broadcastEventsIndexContent);
         }
+
+        if (count($runner->broadcastEventGenerators) > 0) {
+            $this->newLine();
+            $this->comment('Broadcast Event Interfaces:');
+            foreach ($runner->broadcastEventGenerators as $generator) {
+                $this->newLine();
+                $this->comment("  {$generator->transformer->namespacePath}/{$generator->filename()}.ts");
+                $this->line($generator->content);
+            }
+        }
+        if (count($runner->broadcastEventModularBarrels) > 0) {
+            $this->newLine();
+            $this->comment('Broadcast Event Barrel Files:');
+            foreach ($runner->broadcastEventModularBarrels as $namespacePath => $content) {
+                $this->newLine();
+                $this->comment("  {$namespacePath}/index.ts");
+                $this->line($content);
+            }
+        }
+
+        if (! empty($runner->broadcastEventsEchoContent)) {
+            $filename = config()->string('ts-publish.broadcast_events.echo_augmentation.filename', 'echo-broadcast-events.d.ts');
+            $this->newLine();
+            $this->comment('Echo Broadcast Events:');
+            $this->newLine();
+            $this->comment("  {$filename}");
+            $this->line($runner->broadcastEventsEchoContent);
+        }
     }
 
     protected function createPublishedFilesList(Runner|RunnerForSource $runner): void

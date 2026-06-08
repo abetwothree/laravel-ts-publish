@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Runners;
 
 use AbeTwoThree\LaravelTsPublish\Collectors\Concerns\ValidatesCollectorFiles;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
@@ -41,6 +42,10 @@ class RunnerForSource extends BaseRunner
         /** @var Collection<int, FormRequestGenerator> $formRequestGenerators */
         $formRequestGenerators = collect();
         $this->formRequestGenerators = $formRequestGenerators;
+
+        /** @var Collection<int, BroadcastEventGenerator> $broadcastEventGenerators */
+        $broadcastEventGenerators = collect();
+        $this->broadcastEventGenerators = $broadcastEventGenerators;
     }
 
     public function run(): void

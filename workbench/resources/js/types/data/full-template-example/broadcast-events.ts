@@ -10,28 +10,28 @@ import type { UserNotification } from './app/events/UserNotification';
 import type { UserRegisteredEvent } from './app/events/UserRegisteredEvent';
 
 export type BroadcastEvent =
-    | ".Workbench.App.Events.EnumBroadcastEvent"
-    | ".Workbench.App.Events.MixedTypesEvent"
-    | ".Workbench.App.Events.MultiModelEvent"
-    | ".Workbench.App.Events.OrderShipped"
-    | ".Workbench.App.Events.PostPublishedEvent"
-    | ".Workbench.App.Events.PureEnumEvent"
-    | "server.created"
-    | ".Workbench.App.Events.TeamMessageSent"
-    | ".Workbench.App.Events.UserNotification"
-    | ".Workbench.App.Events.UserRegisteredEvent";
+    | '.Workbench.App.Events.EnumBroadcastEvent'
+    | '.Workbench.App.Events.MixedTypesEvent'
+    | '.Workbench.App.Events.MultiModelEvent'
+    | '.Workbench.App.Events.OrderShipped'
+    | '.Workbench.App.Events.PostPublishedEvent'
+    | '.Workbench.App.Events.PureEnumEvent'
+    | 'server.created'
+    | '.Workbench.App.Events.TeamMessageSent'
+    | '.Workbench.App.Events.UserNotification'
+    | '.Workbench.App.Events.UserRegisteredEvent';
 
 export const BroadcastEvents = Object.freeze({
-    EnumBroadcastEvent: ".Workbench.App.Events.EnumBroadcastEvent",
-    MixedTypesEvent: ".Workbench.App.Events.MixedTypesEvent",
-    MultiModelEvent: ".Workbench.App.Events.MultiModelEvent",
-    OrderShipped: ".Workbench.App.Events.OrderShipped",
-    PostPublishedEvent: ".Workbench.App.Events.PostPublishedEvent",
-    PureEnumEvent: ".Workbench.App.Events.PureEnumEvent",
-    ServerCreated: "server.created",
-    TeamMessageSent: ".Workbench.App.Events.TeamMessageSent",
-    UserNotification: ".Workbench.App.Events.UserNotification",
-    UserRegisteredEvent: ".Workbench.App.Events.UserRegisteredEvent",
+    EnumBroadcastEvent: '.Workbench.App.Events.EnumBroadcastEvent',
+    MixedTypesEvent: '.Workbench.App.Events.MixedTypesEvent',
+    MultiModelEvent: '.Workbench.App.Events.MultiModelEvent',
+    OrderShipped: '.Workbench.App.Events.OrderShipped',
+    PostPublishedEvent: '.Workbench.App.Events.PostPublishedEvent',
+    PureEnumEvent: '.Workbench.App.Events.PureEnumEvent',
+    ServerCreated: 'server.created',
+    TeamMessageSent: '.Workbench.App.Events.TeamMessageSent',
+    UserNotification: '.Workbench.App.Events.UserNotification',
+    UserRegisteredEvent: '.Workbench.App.Events.UserRegisteredEvent',
 } as const);
 
 export type {

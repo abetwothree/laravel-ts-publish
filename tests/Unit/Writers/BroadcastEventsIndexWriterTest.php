@@ -63,7 +63,7 @@ describe('BroadcastEventsIndexWriter', function () {
 
         $content = $writer->write($generators);
 
-        expect($content)->toContain('"server.created"');
+        expect($content)->toContain("'server.created'");
         expect($content)->toContain('ServerCreated:');
     });
 

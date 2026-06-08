@@ -347,7 +347,8 @@ return [
     | with a BroadcastEvent union type and flat BroadcastEvents const, and
     | optionally an echo-broadcast-events.d.ts Echo module augmentation file.
     |
-    | 'output_path': Override the base output directory (index + echo files).
+    | 'output_path': Override the base output directory for broadcast event files.
+    |     (Per-event interfaces + index; the Echo augmentation file falls back to this unless echo_augmentation.output_path is set.)
     | 'index_filename': Filename for the master index. Defaults to 'broadcast-events.ts'.
     | 'additional_directories': Extra directories to scan beyond app/Events.
     | 'included': Allow-list of FQCN patterns (empty = all).
@@ -356,7 +357,7 @@ return [
     | echo_augmentation:
     |   'enabled': Generate echo-broadcast-events.d.ts when true.
     |   'echo_package': npm package to augment. null = auto-detect from package.json
-    |                   (prefers @laravel/echo-vue / @laravel/echo-react, falls back to @laravel/echo).
+    |       (prefers @laravel/echo-vue / @laravel/echo-react / @laravel/echo-svelte, falls back to @laravel/echo).
     |   'filename': Output filename. Defaults to 'echo-broadcast-events.d.ts'.
     |   'output_path': Override output directory for the echo file.
     */
