@@ -88,8 +88,14 @@ class RunnerForSource extends BaseRunner
             }
 
             $this->generateFormRequest($fqcn);
+        } elseif ($this->validateBroadcastEvent($reflection)) {
+            if (! $this->shouldPublishBroadcastEvents) {
+                throw new InvalidArgumentException("Broadcast event publishing is disabled: {$fqcn}");
+            }
+
+            $this->generateBroadcastEvent($fqcn);
         } else {
-            throw new InvalidArgumentException("Class is not a publishable enum, model, resource, controller, or form request: {$fqcn}");
+            throw new InvalidArgumentException("Class is not a publishable enum, model, resource, controller, form request, or broadcast event: {$fqcn}");
         }
     }
 
@@ -174,5 +180,21 @@ class RunnerForSource extends BaseRunner
         );
 
         $this->formRequestGenerators = collect([$generator]);
+    }
+
+    /**
+     * Generate a broadcast event interface from its FQCN.
+     *
+     * @param  class-string  $fqcn  The fully qualified class name of the broadcast event.
+     */
+    protected function generateBroadcastEvent(string $fqcn): void
+    {
+        /** @var BroadcastEventGenerator $generator */
+        $generator = resolve(
+            config()->string('ts-publish.broadcast_events.generator_class'),
+            ['findable' => $fqcn],
+        );
+
+        $this->broadcastEventGenerators = collect([$generator]);
     }
 }

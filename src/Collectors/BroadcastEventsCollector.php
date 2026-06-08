@@ -33,8 +33,7 @@ class BroadcastEventsCollector extends CoreCollector
      */
     protected function classFilter(ReflectionClass $reflection): bool
     {
-        return $reflection->implementsInterface(ShouldBroadcast::class)
-            || $reflection->implementsInterface(ShouldBroadcastNow::class);
+        return $this->validateBroadcastEvent($reflection);
     }
 
     /**
