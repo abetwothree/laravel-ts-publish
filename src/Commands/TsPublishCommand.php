@@ -740,11 +740,18 @@ class TsPublishCommand extends Command
             ...array_map(fn (string $path) => ['Resource Barrel', "{$path}/index.ts"], array_keys($runner->resourceModularBarrels)),
             ...array_map(fn (string $path) => ['Route Barrel', "{$path}/index.ts"], array_keys($runner->routeModularBarrels)),
             ...array_map(fn (string $path) => ['Form Request Barrel', "{$path}/index.ts"], array_keys($runner->formRequestModularBarrels)),
+            ...array_map(fn (string $path) => ['Broadcast Event Barrel', "{$path}/index.ts"], array_keys($runner->broadcastEventModularBarrels)),
             $runner->globalsContent ? ['Globals', Config::string('ts-publish.globals.filename')] : null,
             $runner->viteEnvContent ? ['Vite Env', Config::string('ts-publish.vite_env.filename', 'vite-env.d.ts')] : null,
             $runner->inertiaConfigContent ? ['Inertia Config', Config::string('ts-publish.inertia.augmentation_filename')] : null,
             $runner->broadcastChannelsContent !== ''
                 ? ['Broadcast Channels', config()->string('ts-publish.broadcast_channels.filename', 'broadcast-channels.ts')]
+                : null,
+            $runner->broadcastEventsIndexContent !== ''
+                ? ['Broadcast Events', config()->string('ts-publish.broadcast_events.index_filename', 'broadcast-events.ts')]
+                : null,
+            $runner->broadcastEventsEchoContent !== ''
+                ? ['Echo Broadcast Events', config()->string('ts-publish.broadcast_events.echo_augmentation.filename', 'echo-broadcast-events.d.ts')]
                 : null,
             $runner->jsonContent ? ['JSON', Config::string('ts-publish.json.filename')] : null,
         ]);
