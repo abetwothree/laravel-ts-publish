@@ -2482,4 +2482,323 @@ declare global {
             transit_time?: unknown;
         }
     }
+    export namespace accounting.http.requests {
+        export interface VerifyTwoFactorRequest {
+            code: string;
+        }
+    }
+    export namespace app.http.requests {
+        export interface StorePostRequest {
+            title: string;
+            body: string;
+            published?: boolean;
+            rating?: number | null;
+            email: string;
+            tags?: string[];
+            "tags.*"?: string;
+        }
+        export interface StringRulesRequest {
+            website: string;
+            first_name: string;
+            username: string;
+            reference_code: string;
+            ascii_id: string;
+            password: string;
+            old_password: string;
+            new_password: string;
+            slug: string;
+            path: string;
+            email: string;
+            status_suffix: string;
+            media_type: 'image' | 'video' | 'audio' | 'document' | 'archive';
+            brand_color: string;
+            country_code: 'US' | 'CA' | 'UK' | 'AU';
+            ip_address?: string | null;
+            ipv4_address?: string | null;
+            ipv6_address?: string | null;
+            metadata?: string | null;
+            locale_code: string;
+            device_mac?: string | null;
+            title: string;
+            bio: string;
+            topping: string;
+            postal_code: string;
+            clean_text: string;
+            email_confirm: string;
+            iso_country_code: string;
+            honorific: string;
+            description: string;
+            currency_code: string;
+            homepage?: string | null;
+            external_id?: string | null;
+            request_id?: string | null;
+        }
+        export interface NumberRulesRequest {
+            score: number;
+            price: number;
+            exchange_rate: number;
+            sale_price: number;
+            pin: number;
+            verification_code: number;
+            max_price: number;
+            discounted_price: number;
+            quantity: number;
+            item_count: number;
+            min_age: number;
+            min_age_inclusive: number;
+            max_age: number;
+            retry_count: number;
+            account_number: number;
+            page: number;
+            tracking_code: number;
+            batch_size: number;
+            amount: number;
+            strict_amount: number;
+            confirm_quantity: number;
+            team_size: number;
+        }
+        export interface FileRulesRequest {
+            document: File;
+            avatar: File;
+            small_attachment: File;
+            banner: File;
+            thumbnail: File;
+            photo: File;
+            csv_import: File;
+            large_video?: File | null;
+            video?: File | null;
+            report: File;
+            exact_size_file?: File | null;
+        }
+        export interface UpdatePostRequest {
+            title?: string;
+            status: 'draft' | 'published' | 'archived';
+            category_id: number;
+            priority?: number | null;
+        }
+        export interface ArrayRulesRequest {
+            tags?: string[];
+            "tags.*"?: string;
+            selected_ids: number[];
+            "selected_ids.*"?: number;
+            roles: string[];
+            "roles.*"?: string;
+            allowed_roles: string[];
+            "allowed_roles.*"?: string;
+            sku_codes: string[];
+            "sku_codes.*"?: string;
+            airports: string[];
+            "airports.*"?: string;
+            primary_airport: string;
+            config: unknown[];
+            ordered_items: string[];
+            "ordered_items.*"?: string;
+            limited_choices?: string[] | null;
+            "limited_choices.*"?: string | null;
+            required_answers: string[];
+            "required_answers.*"?: string;
+            coordinates: number[];
+            "coordinates.*"?: number;
+            products: unknown[];
+            "products.*.name"?: string;
+            "products.*.price"?: number;
+            "products.*.quantity"?: number;
+            "products.*.categories"?: string[];
+            "products.*.categories.*"?: string;
+            "products.*.is_available"?: boolean;
+            order: unknown[];
+            "order.id"?: string;
+            "order.items"?: unknown[];
+            "order.items.*.product_id"?: number;
+            "order.items.*.quantity"?: number;
+        }
+        export interface RuleClassRequest {
+            start_date: string;
+            end_date?: string | null;
+            username: string;
+            roles: unknown[];
+            invalid_roles: unknown[];
+            avatar: File;
+            email: string;
+            order_status?: 0;
+            membership_level?: string;
+            visibility?: string;
+            role_id?: unknown;
+            team_id?: unknown;
+            state?: unknown;
+            zones: 'first-zone' | 'second-zone';
+            "airports.*"?: 'NYC' | 'LIT';
+            toppings: string;
+            role_id_prohibited?: unknown;
+            role_id_callback?: unknown;
+            role_id_prohibited_unless?: unknown;
+            role_id_prohibited_unless_callback?: unknown;
+            role_id_required_if: unknown;
+            role_id_required_if_callback: unknown;
+            role_id_required_unless: unknown;
+            role_id_required_unless_callback: unknown;
+            title: string;
+            email_unique: unknown;
+            "addresses.*.id"?: unknown;
+            photo: File;
+            quantity: number;
+            accent_color?: 'red' | 'blue';
+            forbidden_color?: 'green' | 'blue' | 'amber' | 'gray' | 'purple';
+        }
+        export interface UtilityRulesRequest {
+            contact: string;
+            title: string;
+            internal_token?: string | null;
+            guest_name?: string | null;
+            admin_note?: string | null;
+            nickname?: string | null;
+            secondary_email?: string | null;
+            bio?: string;
+            debug_info?: unknown;
+            dev_flags?: unknown;
+            legacy_field?: unknown;
+            deprecated_option?: unknown;
+            middle_name?: string | null;
+            search_query?: string | null;
+            filter_value?: string | null;
+            default_sort?: string | null;
+            sort_direction?: string | null;
+            pagination_size?: number | null;
+            coupon_code?: string | null;
+            trial_extension?: unknown;
+            free_tier_feature?: unknown;
+            premium_feature?: string | null;
+            pay_with_card?: boolean | null;
+            name: string;
+            notification_email: string | null;
+            phone_number: string | null;
+            reason_for_declining: string | null;
+            password_reset_token: string | null;
+            address_line_2: string | null;
+            full_address: string | null;
+            mobile: string | null;
+            contact_method: string | null;
+            permissions: unknown[];
+            optional_preference?: string;
+            is_authenticated: boolean;
+            role: string;
+            display_name?: string | null;
+            primary_email: string;
+            environment: string;
+            new_field?: string | null;
+            option_a?: string | null;
+            option_b?: string | null;
+            has_filter: boolean;
+            sort_field?: string | null;
+            page?: number | null;
+            is_free: boolean;
+            is_paid_subscriber: boolean;
+            accept_free_terms: boolean;
+            plan: string;
+            pay_with_bank_transfer?: boolean | null;
+            send_notifications: boolean;
+            send_sms: boolean;
+            accept_terms: boolean;
+            use_sso: boolean;
+            address_line_1?: string | null;
+            city?: string | null;
+            postal_code?: string | null;
+            landline?: string | null;
+            email?: string | null;
+            mobile_optional?: string | null;
+        }
+        export interface BooleanRulesRequest {
+            terms_accepted?: boolean;
+            newsletter_accepted?: boolean;
+            is_active?: boolean;
+            is_archived?: boolean | null;
+            is_featured?: boolean;
+            marketing_declined?: boolean;
+            privacy_declined?: boolean;
+        }
+        export interface DateRulesRequest {
+            event_date: string;
+            start_date: string;
+            registration_deadline: string;
+            birth_date: string;
+            end_date: string;
+            release_date: string;
+            formatted_date: string;
+            flexible_date: string;
+            follow_up_date: string;
+            cancelled_at?: string | null;
+            user_timezone: string;
+            us_timezone?: string | null;
+        }
+        export interface DatabaseRulesRequest {
+            state: string;
+            category_id: number;
+            country_code: string;
+            email: string;
+            username: string;
+            phone?: string | null;
+            parent_id?: number | null;
+        }
+        export type DynamicRequest = Record<string, unknown>;
+    }
+    export namespace app.events {
+        export interface PostPublishedEvent {
+            post: Partial<app.models.Post>;
+            message: string;
+        }
+        export interface UserRegisteredEvent {
+            user: Partial<crm.models.User>;
+            userId: number;
+        }
+        export interface PureEnumEvent {
+            role: app.enums.RoleType;
+            visibility: app.enums.VisibilityType;
+            action: string;
+        }
+        export interface EnumBroadcastEvent {
+            status: crm.enums.StatusType;
+            color: app.enums.ColorType;
+        }
+        export interface UserNotification {
+            userId: number;
+            title: string;
+            message: string;
+        }
+        export interface ServerCreated {
+            serverId: number;
+            serverName: string;
+        }
+        export interface OrderShipped {
+            orderId: number;
+            trackingNumber: string;
+            carrier: string;
+        }
+        export interface TeamMessageSent {
+            teamId: number;
+            content: string;
+        }
+        export interface MultiModelEvent {
+            post: Partial<app.models.Post>;
+            user: Partial<crm.models.User>;
+        }
+        export interface UserSynced {
+            userId: string;
+            action: string;
+        }
+        export interface MixedTypesEvent {
+            post: Partial<app.models.Post>;
+            status: crm.enums.StatusType;
+            message: string;
+        }
+    }
+    export namespace crm.events {
+        export interface StatusSynced {
+            status: app.enums.StatusType;
+            crmStatus: crm.enums.StatusType;
+        }
+        export interface UserSynced {
+            user: Partial<app.models.User>;
+            crmUser: Partial<crm.models.User>;
+        }
+    }
 }

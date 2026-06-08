@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
@@ -53,6 +55,18 @@ class GlobalsWriter
             $globalTypesByNamespace[$ns][] = $t->resourceName;
         }
 
+        foreach ($runner->formRequestGenerators as $gen) {
+            $t = $gen->transformer;
+            $ns = str_replace('/', '.', $t->namespacePath);
+            $globalTypesByNamespace[$ns][] = $t->typeName;
+        }
+
+        foreach ($runner->broadcastEventGenerators as $gen) {
+            $t = $gen->transformer;
+            $ns = str_replace('/', '.', $t->namespacePath);
+            $globalTypesByNamespace[$ns][] = $t->eventName;
+        }
+
         // Collect external (non-relative) type imports needed at the top of the globals file.
         // Model customImports hold imports from #[TsExtends] and #[TsType] with custom paths.
         // Resource typeImports hold all resolved imports; filter to non-relative ones.
@@ -82,6 +96,19 @@ class GlobalsWriter
             }
         }
 
+        foreach ($runner->broadcastEventGenerators as $gen) {
+            foreach ($gen->transformer->typeImports as $path => $types) {
+                if (str_starts_with($path, '.')) {
+                    continue;
+                }
+                foreach ($types as $type) {
+                    if (! in_array($type, $externalTypeImports[$path] ?? [], true)) {
+                        $externalTypeImports[$path][] = $type;
+                    }
+                }
+            }
+        }
+
         $externalTypeImports = LaravelTsPublish::sortImportPaths($externalTypeImports);
 
         // Build a merged alias map from all transformers so the globals template can resolve
@@ -94,6 +121,10 @@ class GlobalsWriter
         }
 
         foreach ($runner->resourceGenerators as $gen) {
+            $globalAliasMap = array_merge($globalAliasMap, $gen->transformer->globalAliasMap());
+        }
+
+        foreach ($runner->broadcastEventGenerators as $gen) {
             $globalAliasMap = array_merge($globalAliasMap, $gen->transformer->globalAliasMap());
         }
 
@@ -116,6 +147,16 @@ class GlobalsWriter
         $viewData['groupedResources'] = $runner->resourceGenerators
             ->groupBy(fn (ResourceGenerator $g) => str_replace('/', '.', $g->transformer->namespacePath))
             ->map(fn ($group) => $group->map(fn (ResourceGenerator $g) => $g->transformer))
+            ->sortKeys();
+
+        $viewData['groupedFormRequests'] = $runner->formRequestGenerators
+            ->groupBy(fn (FormRequestGenerator $g) => str_replace('/', '.', $g->transformer->namespacePath))
+            ->map(fn ($group) => $group->map(fn (FormRequestGenerator $g) => $g->transformer))
+            ->sortKeys();
+
+        $viewData['groupedBroadcastEvents'] = $runner->broadcastEventGenerators
+            ->groupBy(fn (BroadcastEventGenerator $g) => str_replace('/', '.', $g->transformer->namespacePath))
+            ->map(fn ($group) => $group->map(fn (BroadcastEventGenerator $g) => $g->transformer))
             ->sortKeys();
 
         $content = view($template, $viewData)->render();

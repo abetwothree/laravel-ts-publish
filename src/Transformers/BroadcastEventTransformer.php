@@ -406,4 +406,29 @@ class BroadcastEventTransformer extends CoreTransformer
 
         return LaravelTsPublish::sortImportPaths($imports);
     }
+
+    /**
+     * Build a map of import aliases to their globally-qualified names.
+     *
+     * Used by GlobalsWriter to resolve aliased type references (e.g. `AppUser`, `CrmStatusType`)
+     * back to the correct globally-namespaced names before the `qualifyGlobalType()` pass.
+     *
+     * @return array<string, string> alias => 'dot.separated.namespace.TypeName'
+     */
+    public function globalAliasMap(): array
+    {
+        $map = [];
+
+        foreach ($this->importAliases as $fqcn => $alias) {
+            if (isset($this->enumFqcnMap[$fqcn])) {
+                $ns = str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn));
+                $map[$alias] = $ns.'.'.$this->enumFqcnMap[$fqcn];
+            } elseif (isset($this->modelFqcnMap[$fqcn])) {
+                $ns = str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn));
+                $map[$alias] = $ns.'.'.$this->modelFqcnMap[$fqcn];
+            }
+        }
+
+        return $map;
+    }
 }
