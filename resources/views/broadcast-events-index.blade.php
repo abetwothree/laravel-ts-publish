@@ -10,11 +10,13 @@ export type BroadcastEvent =
     | "{{ $event['broadcastName'] }}"{{ $loop->last ? ';' : '' }}
 @endforeach
 
-export const BroadcastEvents = {
+export const BroadcastEvents = Object.freeze({
 @foreach($events as $event)
-    {!! $event['constKey'] !!}: "{{ $event['broadcastName'] }}" as const,
+    {!! $event['constKey'] !!}: "{{ $event['broadcastName'] }}",
 @endforeach
-} as const;
+} as const);
 
-export type { {!! implode(', ', $eventNames) !!} };
+export type {
+    {!! implode(",\n\t", $eventNames) !!}
+};
 @endif

@@ -51,10 +51,10 @@ describe('BroadcastEventsIndexWriter', function () {
 
         $content = $writer->write($generators);
 
-        expect($content)->toContain('export const BroadcastEvents');
+        expect($content)->toContain('export const BroadcastEvents = Object.freeze({');
         expect($content)->toContain('OrderShipped:');
         expect($content)->toContain('UserNotification:');
-        expect($content)->toContain('as const');
+        expect($content)->toContain('} as const)');
     });
 
     it('uses the broadcastAs() value in the const for ServerCreated', function () {
@@ -84,7 +84,11 @@ describe('BroadcastEventsIndexWriter', function () {
 
         $content = $writer->write($generators);
 
-        expect($content)->toContain('export type { OrderShipped }');
+        expect($content)->toContain(<<<'TS'
+export type {
+    OrderShipped
+};
+TS);
     });
 
     it('returns an empty export when no generators provided', function () {

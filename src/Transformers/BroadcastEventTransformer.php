@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\SurveyorTypeMapper;
+use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
@@ -19,13 +20,12 @@ use Laravel\Surveyor\Types\StringType;
 use Laravel\Surveyor\Types\UnionType;
 use Override;
 use ReflectionClass;
-use ReflectionEnum;
 
 /**
  * Transforms a broadcast event class into a TsBroadcastEventDto ready for
  * TypeScript type generation.
  *
- * @phpstan-import-type TypesImportMap from \AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable
+ * @phpstan-import-type TypesImportMap from Datable
  * @phpstan-import-type PropertyInfo from TsBroadcastEventDto
  * @phpstan-import-type PropertiesList from TsBroadcastEventDto
  *
@@ -257,7 +257,7 @@ class BroadcastEventTransformer extends CoreTransformer
 
         if (class_exists($fqcn) && is_subclass_of($fqcn, Model::class)) {
             $typeName = class_basename($fqcn);
-            /** @var class-string<\Illuminate\Database\Eloquent\Model> $fqcn */
+            /** @var class-string<Model> $fqcn */
             $this->modelFqcnMap[$fqcn] = $typeName;
 
             return 'Partial<'.$typeName.'>'.$nullSuffix;

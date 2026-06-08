@@ -10,7 +10,7 @@ use Illuminate\Contracts\Support\Jsonable;
 use JsonSerializable;
 
 /**
- * @phpstan-import-type TypesImportMap from \AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable
+ * @phpstan-import-type TypesImportMap from Datable
  *
  * @phpstan-type PropertyInfo = array{type: string, optional: bool}
  * @phpstan-type PropertiesList = array<string, PropertyInfo>

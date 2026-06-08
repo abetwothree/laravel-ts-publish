@@ -58,7 +58,7 @@ class BroadcastEventsIndexWriter
                 'constKey' => $this->quoteKey($dto->eventName),
                 'importPath' => $relativePath,
             ];
-        });
+        })->sortBy('eventName')->values();
 
         $imports = $events->map(
             fn ($event) => "import type { {$event['eventName']} } from '{$event['importPath']}';"
