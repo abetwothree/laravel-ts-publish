@@ -8,18 +8,24 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\SurveyorTypeMapper;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Database\Eloquent\Model;
 use Laravel\Surveyor\Analyzed\ClassResult;
 use Laravel\Surveyor\Analyzer\Analyzer;
 use Laravel\Surveyor\Types\ArrayType;
+use Laravel\Surveyor\Types\ClassType;
 use Laravel\Surveyor\Types\Contracts\Type;
+use Laravel\Surveyor\Types\IntersectionType;
 use Laravel\Surveyor\Types\StringType;
+use Laravel\Surveyor\Types\UnionType;
 use Override;
 use ReflectionClass;
+use ReflectionEnum;
 
 /**
  * Transforms a broadcast event class into a TsBroadcastEventDto ready for
  * TypeScript type generation.
  *
+ * @phpstan-import-type TypesImportMap from \AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable
  * @phpstan-import-type PropertyInfo from TsBroadcastEventDto
  * @phpstan-import-type PropertiesList from TsBroadcastEventDto
  *
@@ -50,6 +56,27 @@ class BroadcastEventTransformer extends CoreTransformer
     public protected(set) array $properties = [];
 
     /**
+     * Model FQCNs found in properties (FQCN => short TS type name).
+     *
+     * @var array<class-string, string>
+     */
+    protected array $modelFqcnMap = [];
+
+    /**
+     * Enum FQCNs found in properties (FQCN => 'NameType').
+     *
+     * @var array<class-string, string>
+     */
+    protected array $enumFqcnMap = [];
+
+    /**
+     * Resolved type imports: import path => list of type names.
+     *
+     * @var TypesImportMap
+     */
+    public protected(set) array $typeImports = [];
+
+    /**
      * @param  class-string<ShouldBroadcast>  $findable
      */
     public function __construct(
@@ -72,6 +99,7 @@ class BroadcastEventTransformer extends CoreTransformer
         $this->namespacePath = LaravelTsPublish::namespaceToPath($this->findable);
         $this->broadcastName = $this->resolveBroadcastName($analyzed);
         $this->properties = $this->resolveProperties($analyzed);
+        $this->typeImports = $this->buildTypeImports();
 
         return $this;
     }
@@ -93,6 +121,7 @@ class BroadcastEventTransformer extends CoreTransformer
             filename: $this->filename(),
             namespacePath: $this->namespacePath,
             properties: $this->properties,
+            typeImports: $this->typeImports,
         );
     }
 
@@ -134,7 +163,7 @@ class BroadcastEventTransformer extends CoreTransformer
             }
 
             $result[(string) $name] = [
-                'type' => SurveyorTypeMapper::convert($type),
+                'type' => $this->convertType($type),
                 'optional' => $type->isOptional(),
             ];
         }
@@ -163,5 +192,111 @@ class BroadcastEventTransformer extends CoreTransformer
                 ->mapWithKeys(fn ($prop) => [$prop->name => $prop->type])
                 ->all(),
         );
+    }
+
+    /**
+     * Convert a Surveyor type to a TypeScript string, detecting PHP enums and
+     * Eloquent models for tracking and proper TS type generation.
+     *
+     * - Backed PHP enums (int/string) → '{Name}Type', tracked in $enumFqcnMap
+     * - Pure PHP enums → '{Name}Type', tracked in $enumFqcnMap
+     * - Eloquent models → 'Partial<{Name}>', tracked in $modelFqcnMap
+     * - Union/Intersection types → recurse into members
+     * - All other types → delegate to SurveyorTypeMapper
+     */
+    protected function convertType(Type $type): string
+    {
+        if ($type instanceof ClassType) {
+            return $this->convertClassType($type);
+        }
+
+        if ($type instanceof UnionType) {
+            /** @var array<array-key, mixed> $types */
+            $types = $type->types;
+            $parts = array_map(
+                fn (mixed $t): string => $t instanceof Type ? $this->convertType($t) : 'unknown',
+                $types,
+            );
+
+            return implode(' | ', $parts);
+        }
+
+        if ($type instanceof IntersectionType) {
+            /** @var array<array-key, mixed> $types */
+            $types = $type->types;
+            $parts = array_map(
+                fn (mixed $t): string => $t instanceof Type ? $this->convertType($t) : 'unknown',
+                $types,
+            );
+
+            return implode(' & ', $parts);
+        }
+
+        return SurveyorTypeMapper::convert($type);
+    }
+
+    /**
+     * Convert a ClassType, intercepting PHP enums and Eloquent models.
+     *
+     * PHP enums become '{NameType}' (importing from the enum module).
+     * Eloquent models become 'Partial<Name>' (importing the model interface).
+     * Other known classes fall through to SurveyorTypeMapper.
+     */
+    protected function convertClassType(ClassType $type): string
+    {
+        $fqcn = ltrim($type->value, '\\');
+        $nullSuffix = $type->isNullable() ? ' | null' : '';
+
+        if (enum_exists($fqcn)) {
+            $typeName = class_basename($fqcn).'Type';
+            /** @var class-string<\UnitEnum> $fqcn */
+            $this->enumFqcnMap[$fqcn] = $typeName;
+
+            return $typeName.$nullSuffix;
+        }
+
+        if (class_exists($fqcn) && is_subclass_of($fqcn, Model::class)) {
+            $typeName = class_basename($fqcn);
+            /** @var class-string<\Illuminate\Database\Eloquent\Model> $fqcn */
+            $this->modelFqcnMap[$fqcn] = $typeName;
+
+            return 'Partial<'.$typeName.'>'.$nullSuffix;
+        }
+
+        return SurveyorTypeMapper::convert($type);
+    }
+
+    /**
+     * Build the TypeScript type import map from tracked model and enum FQCNs.
+     *
+     * Uses LaravelTsPublish::namespaceToPath() and relativeImportPath() to compute
+     * the correct relative path from this event's namespace to each dependency.
+     *
+     * @return TypesImportMap
+     */
+    protected function buildTypeImports(): array
+    {
+        /** @var TypesImportMap $imports */
+        $imports = [];
+
+        foreach ($this->modelFqcnMap as $fqcn => $typeName) {
+            $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
+            $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
+            $imports[$importPath][] = $typeName;
+        }
+
+        foreach ($this->enumFqcnMap as $fqcn => $typeName) {
+            $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
+            $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
+            $imports[$importPath][] = $typeName;
+        }
+
+        foreach ($imports as $path => $types) {
+            $unique = array_values(array_unique($types));
+            sort($unique);
+            $imports[$path] = $unique;
+        }
+
+        return LaravelTsPublish::sortImportPaths($imports);
     }
 }

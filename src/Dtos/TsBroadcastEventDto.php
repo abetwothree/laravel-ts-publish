@@ -10,6 +10,8 @@ use Illuminate\Contracts\Support\Jsonable;
 use JsonSerializable;
 
 /**
+ * @phpstan-import-type TypesImportMap from \AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable
+ *
  * @phpstan-type PropertyInfo = array{type: string, optional: bool}
  * @phpstan-type PropertiesList = array<string, PropertyInfo>
  * @phpstan-type BroadcastEventData = array{
@@ -20,6 +22,7 @@ use JsonSerializable;
  *     filename: string,
  *     namespacePath: string,
  *     properties: PropertiesList,
+ *     typeImports: TypesImportMap,
  * }
  *
  * @implements Arrayable<string, mixed>
@@ -28,6 +31,7 @@ final readonly class TsBroadcastEventDto implements Arrayable, Datable, Jsonable
 {
     /**
      * @param  PropertiesList  $properties  Map of property name → ['type' => 'number', 'optional' => false]
+     * @param  TypesImportMap  $typeImports  Map of import path → list of type names to import
      */
     public function __construct(
         public string $eventName,
@@ -37,6 +41,7 @@ final readonly class TsBroadcastEventDto implements Arrayable, Datable, Jsonable
         public string $filename,
         public string $namespacePath,
         public array $properties,
+        public array $typeImports,
     ) {}
 
     /** @return BroadcastEventData */
@@ -50,6 +55,7 @@ final readonly class TsBroadcastEventDto implements Arrayable, Datable, Jsonable
             'filename' => $this->filename,
             'namespacePath' => $this->namespacePath,
             'properties' => $this->properties,
+            'typeImports' => $this->typeImports,
         ];
     }
 
