@@ -254,6 +254,9 @@ class Runner extends BaseRunner
 
         if (! $this->shouldPublishBroadcastEvents || ! config()->boolean('ts-publish.broadcast_events.enabled')) {
             $this->broadcastEventGenerators = $empty;
+            $this->broadcastEventModularBarrels = [];
+            $this->broadcastEventsIndexContent = '';
+            $this->broadcastEventsEchoContent = '';
 
             return;
         }

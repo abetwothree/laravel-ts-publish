@@ -114,7 +114,7 @@ class BroadcastEventsEchoWriter
     }
 
     /**
-     * Detect @laravel/echo-vue or @laravel/echo-react from the project's package.json.
+     * Detect the preferred Laravel Echo package (@laravel/echo-vue / @laravel/echo-react / @laravel/echo-svelte)
      *
      * Returns the first matching package name, or null if neither is found.
      */
