@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Runners;
 
 use AbeTwoThree\LaravelTsPublish\Collectors\Concerns\ValidatesCollectorFiles;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
@@ -41,6 +42,10 @@ class RunnerForSource extends BaseRunner
         /** @var Collection<int, FormRequestGenerator> $formRequestGenerators */
         $formRequestGenerators = collect();
         $this->formRequestGenerators = $formRequestGenerators;
+
+        /** @var Collection<int, BroadcastEventGenerator> $broadcastEventGenerators */
+        $broadcastEventGenerators = collect();
+        $this->broadcastEventGenerators = $broadcastEventGenerators;
     }
 
     public function run(): void
@@ -83,8 +88,14 @@ class RunnerForSource extends BaseRunner
             }
 
             $this->generateFormRequest($fqcn);
+        } elseif ($this->validateBroadcastEvent($reflection)) {
+            if (! $this->shouldPublishBroadcastEvents) {
+                throw new InvalidArgumentException("Broadcast event publishing is disabled: {$fqcn}");
+            }
+
+            $this->generateBroadcastEvent($fqcn);
         } else {
-            throw new InvalidArgumentException("Class is not a publishable enum, model, resource, controller, or form request: {$fqcn}");
+            throw new InvalidArgumentException("Class is not a publishable enum, model, resource, controller, form request, or broadcast event: {$fqcn}");
         }
     }
 
@@ -169,5 +180,21 @@ class RunnerForSource extends BaseRunner
         );
 
         $this->formRequestGenerators = collect([$generator]);
+    }
+
+    /**
+     * Generate a broadcast event interface from its FQCN.
+     *
+     * @param  class-string  $fqcn  The fully qualified class name of the broadcast event.
+     */
+    protected function generateBroadcastEvent(string $fqcn): void
+    {
+        /** @var BroadcastEventGenerator $generator */
+        $generator = resolve(
+            config()->string('ts-publish.broadcast_events.generator_class'),
+            ['findable' => $fqcn],
+        );
+
+        $this->broadcastEventGenerators = collect([$generator]);
     }
 }

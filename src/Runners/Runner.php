@@ -6,11 +6,13 @@ namespace AbeTwoThree\LaravelTsPublish\Runners;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastChannelsCollector;
+use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastEventsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\FormRequestsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ResourcesCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\RoutesCollector;
+use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
@@ -19,6 +21,8 @@ use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\BroadcastChannelsWriter;
+use AbeTwoThree\LaravelTsPublish\Writers\BroadcastEventsEchoWriter;
+use AbeTwoThree\LaravelTsPublish\Writers\BroadcastEventsIndexWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\InertiaConfigWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\JsonWriter;
@@ -41,6 +45,7 @@ class Runner extends BaseRunner
         $this->generateInertiaConfig();
         $this->generateFormRequests();
         $this->generateBroadcastChannels();
+        $this->generateBroadcastEvents();
         $this->generateRoutes();
 
         $this->generateGlobals();
@@ -211,7 +216,11 @@ class Runner extends BaseRunner
 
         $this->formRequestGenerators = $formRequestGenerators;
 
-        $this->formRequestModularBarrels = $this->barrelWriter->writeModular($this->formRequestGenerators);
+        $formRequestOutputPath = config('ts-publish.form_requests.output_path');
+        $this->formRequestModularBarrels = $this->barrelWriter->writeModular(
+            $this->formRequestGenerators,
+            is_string($formRequestOutputPath) ? $formRequestOutputPath : null,
+        );
     }
 
     protected function generateBroadcastChannels(): void
@@ -229,6 +238,60 @@ class Runner extends BaseRunner
         $writer = resolve(config()->string('ts-publish.broadcast_channels.writer_class'));
 
         $this->broadcastChannelsContent = $writer->write($collector->collect());
+    }
+
+    /**
+     * Collect, transform, and write all broadcast event TypeScript interface files.
+     *
+     * Skips when shouldPublishBroadcastEvents is false or broadcast_events is disabled in config.
+     * Writes per-event files, barrel index files, the broadcast-events.ts index, and the
+     * optional echo-broadcast-events.d.ts module augmentation file.
+     */
+    protected function generateBroadcastEvents(): void
+    {
+        /** @var Collection<int, BroadcastEventGenerator> $empty */
+        $empty = collect();
+
+        if (! $this->shouldPublishBroadcastEvents || ! config()->boolean('ts-publish.broadcast_events.enabled')) {
+            $this->broadcastEventGenerators = $empty;
+            $this->broadcastEventModularBarrels = [];
+            $this->broadcastEventsIndexContent = '';
+            $this->broadcastEventsEchoContent = '';
+
+            return;
+        }
+
+        /** @var BroadcastEventsCollector $collector */
+        $collector = resolve(config()->string('ts-publish.broadcast_events.collector_class'));
+
+        /** @var Collection<int, BroadcastEventGenerator> $broadcastEventGenerators */
+        $broadcastEventGenerators = collect();
+
+        foreach ($collector->collect() as $eventClass) {
+            /** @var BroadcastEventGenerator $generator */
+            $generator = resolve(
+                config()->string('ts-publish.broadcast_events.generator_class'),
+                ['findable' => $eventClass],
+            );
+
+            $broadcastEventGenerators->push($generator);
+        }
+
+        $this->broadcastEventGenerators = $broadcastEventGenerators;
+
+        $broadcastEventsOutputPath = config('ts-publish.broadcast_events.output_path');
+        $this->broadcastEventModularBarrels = $this->barrelWriter->writeModular(
+            $this->broadcastEventGenerators,
+            is_string($broadcastEventsOutputPath) ? $broadcastEventsOutputPath : null,
+        );
+
+        /** @var BroadcastEventsIndexWriter $indexWriter */
+        $indexWriter = resolve(config()->string('ts-publish.broadcast_events.index_writer_class'));
+        $this->broadcastEventsIndexContent = $indexWriter->write($this->broadcastEventGenerators);
+
+        /** @var BroadcastEventsEchoWriter $echoWriter */
+        $echoWriter = resolve(config()->string('ts-publish.broadcast_events.echo_augmentation.writer_class'));
+        $this->broadcastEventsEchoContent = $echoWriter->write($this->broadcastEventGenerators);
     }
 
     protected function generateRoutes(): void

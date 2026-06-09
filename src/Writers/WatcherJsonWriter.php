@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Writers;
 
+use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastEventsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
+use AbeTwoThree\LaravelTsPublish\Collectors\FormRequestsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ResourcesCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\RoutesCollector;
@@ -33,6 +35,8 @@ class WatcherJsonWriter
             ...$this->collectModelPaths(),
             ...$this->collectResourcePaths(),
             ...$this->collectRoutePaths(),
+            ...$this->collectFormRequestPaths(),
+            ...$this->collectBroadcastEventPaths(),
         ];
 
         sort($paths, SORT_STRING);
@@ -133,6 +137,52 @@ class WatcherJsonWriter
 
         /** @var RoutesCollector $collector */
         $collector = resolve(config()->string('ts-publish.routes.collector_class'));
+
+        return array_values(
+            $collector->collect()
+                ->map(function (string $fqcn): string {
+                    $reflection = new ReflectionClass($fqcn);
+
+                    return LaravelTsPublish::resolveRelativePath((string) $reflection->getFileName());
+                })
+                ->all()
+        );
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function collectFormRequestPaths(): array
+    {
+        if (! config()->boolean('ts-publish.form_requests.enabled')) {
+            return [];
+        }
+
+        /** @var FormRequestsCollector $collector */
+        $collector = resolve(config()->string('ts-publish.form_requests.collector_class'));
+
+        return array_values(
+            $collector->collect()
+                ->map(function (string $fqcn): string {
+                    $reflection = new ReflectionClass($fqcn);
+
+                    return LaravelTsPublish::resolveRelativePath((string) $reflection->getFileName());
+                })
+                ->all()
+        );
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function collectBroadcastEventPaths(): array
+    {
+        if (! config()->boolean('ts-publish.broadcast_events.enabled')) {
+            return [];
+        }
+
+        /** @var BroadcastEventsCollector $collector */
+        $collector = resolve(config()->string('ts-publish.broadcast_events.collector_class'));
 
         return array_values(
             $collector->collect()

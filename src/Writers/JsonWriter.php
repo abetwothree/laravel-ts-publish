@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Writers;
 
+use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
+use AbeTwoThree\LaravelTsPublish\Dtos\TsFormRequestDto;
+use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
@@ -17,6 +21,8 @@ use Illuminate\Filesystem\Filesystem;
  * @phpstan-import-type CaseTypesList from EnumTransformer
  * @phpstan-import-type MethodsList from EnumTransformer
  * @phpstan-import-type StaticMethodsList from EnumTransformer
+ * @phpstan-import-type FormRequestFieldData from TsFormRequestDto
+ * @phpstan-import-type PropertyInfo from TsBroadcastEventDto
  */
 class JsonWriter
 {
@@ -47,8 +53,10 @@ class JsonWriter
     protected function createJsonContent(Runner $runner): string
     {
         $data = [
-            'models' => $this->createJsonForModels($runner),
+            'broadcastEvents' => $this->createJsonForBroadcastEvents($runner),
             'enums' => $this->createJsonForEnums($runner),
+            'formRequests' => $this->createJsonForFormRequests($runner),
+            'models' => $this->createJsonForModels($runner),
             'resources' => $this->createJsonForResources($runner),
         ];
 
@@ -156,6 +164,53 @@ class JsonWriter
                     array_keys($transformer->properties),
                 );
             }
+        }
+
+        return $data;
+    }
+
+    /**
+     * @return array<string, array{isDynamic: bool, fields: list<FormRequestFieldData>}>
+     */
+    protected function createJsonForFormRequests(Runner $runner): array
+    {
+        $data = [];
+
+        foreach ($runner->formRequestGenerators as $generator) {
+            /** @var FormRequestGenerator $generator */
+            $transformer = $generator->transformer;
+            $data[$transformer->typeName] = [
+                'isDynamic' => $transformer->isDynamic,
+                'fields' => $transformer->fields,
+            ];
+        }
+
+        return $data;
+    }
+
+    /**
+     * @return array<string, array{eventName: string, broadcastName: string, properties: list<array{name: string, type: string, optional: bool}>}>
+     */
+    protected function createJsonForBroadcastEvents(Runner $runner): array
+    {
+        $data = [];
+
+        foreach ($runner->broadcastEventGenerators as $generator) {
+            /** @var BroadcastEventGenerator $generator */
+            $transformer = $generator->transformer;
+            $data[$transformer->broadcastName] = [
+                'eventName' => $transformer->eventName,
+                'broadcastName' => $transformer->broadcastName,
+                'properties' => array_map(
+                    fn (array $prop, string $name) => [
+                        'name' => $name,
+                        'type' => $prop['type'],
+                        'optional' => $prop['optional'],
+                    ],
+                    $transformer->properties,
+                    array_keys($transformer->properties),
+                ),
+            ];
         }
 
         return $data;

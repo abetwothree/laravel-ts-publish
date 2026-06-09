@@ -259,6 +259,7 @@ test('ts:publish warns and exits when both config types are disabled', function 
     config()->set('ts-publish.routes.enabled', false);
     config()->set('ts-publish.form_requests.enabled', false);
     config()->set('ts-publish.broadcast_channels.enabled', false);
+    config()->set('ts-publish.broadcast_events.enabled', false);
 
     $this->artisan('ts:publish', ['--preview' => 'true'])
         ->assertSuccessful()
@@ -355,6 +356,7 @@ test('ts:publish --source exits successfully when both config types disabled', f
     config()->set('ts-publish.routes.enabled', false);
     config()->set('ts-publish.form_requests.enabled', false);
     config()->set('ts-publish.broadcast_channels.enabled', false);
+    config()->set('ts-publish.broadcast_events.enabled', false);
 
     $this->artisan('ts:publish', ['--preview' => 'true', '--source' => 'Workbench\App\Enums\Status'])
         ->assertSuccessful()
@@ -501,6 +503,7 @@ test('ts:publish --only-functional warns when all functional options disabled', 
     config()->set('ts-publish.routes.enabled', false);
     config()->set('ts-publish.form_requests.enabled', false);
     config()->set('ts-publish.broadcast_channels.enabled', false);
+    config()->set('ts-publish.broadcast_events.enabled', false);
 
     $this->artisan('ts:publish', ['--preview' => 'true', '--only-functional' => true])
         ->assertSuccessful()
@@ -601,6 +604,60 @@ test('ts:publish broadcast channels disabled in config skips the file', function
         ->assertSuccessful();
 
     expect(file_exists($outputDir.'/broadcast-channels.ts'))->toBeFalse();
+
+    (new Filesystem)->deleteDirectory($outputDir);
+});
+
+test('ts:publish preview shows broadcast events content', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.broadcast_events.enabled', true);
+    config()->set('ts-publish.broadcast_events.echo_augmentation.enabled', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true'])
+        ->assertSuccessful()
+        ->expectsOutputToContain('BroadcastEvent');
+});
+
+test('ts:publish --only-broadcast-events runs successfully', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.broadcast_events.enabled', true);
+    config()->set('ts-publish.broadcast_events.echo_augmentation.enabled', false);
+
+    $this->artisan('ts:publish', ['--only-broadcast-events' => true, '--preview' => 'true'])
+        ->assertSuccessful();
+});
+
+test('ts:publish --only-broadcast-events publishes only the broadcast events files', function () {
+    $outputDir = sys_get_temp_dir().'/ts-publish-be-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.broadcast_events.enabled', true);
+    config()->set('ts-publish.broadcast_events.echo_augmentation.enabled', false);
+
+    $this->artisan('ts:publish', ['--only-broadcast-events' => true, '--preview' => 'false'])
+        ->assertSuccessful();
+
+    expect(file_exists($outputDir.'/broadcast-events.ts'))->toBeTrue()
+        ->and(file_get_contents($outputDir.'/broadcast-events.ts'))
+        ->toContain('export type BroadcastEvent')
+        ->toContain('export const BroadcastEvents');
+
+    // No enum or model files
+    expect(is_dir($outputDir.'/workbench/app/enums'))->toBeFalse();
+
+    (new Filesystem)->deleteDirectory($outputDir);
+});
+
+test('ts:publish broadcast events disabled in config skips the files', function () {
+    $outputDir = sys_get_temp_dir().'/ts-publish-be-disabled-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.broadcast_events.enabled', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'false'])
+        ->assertSuccessful();
+
+    expect(file_exists($outputDir.'/broadcast-events.ts'))->toBeFalse();
 
     (new Filesystem)->deleteDirectory($outputDir);
 });

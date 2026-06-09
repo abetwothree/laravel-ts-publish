@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Analyzers\SurveyorTypeMapper;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Concerns\FiltersRoutes;
+use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsRouteDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use BackedEnum;
@@ -25,7 +26,7 @@ use ReflectionParameter;
 /**
  * @phpstan-import-type RouteActionData from TsRouteDto
  * @phpstan-import-type RouteArgData from TsRouteDto
- * @phpstan-import-type TypesImportMap from \AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable
+ * @phpstan-import-type TypesImportMap from Datable
  *
  * @extends CoreTransformer<object>
  */

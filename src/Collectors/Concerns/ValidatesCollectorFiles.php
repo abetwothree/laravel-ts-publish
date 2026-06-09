@@ -6,6 +6,8 @@ namespace AbeTwoThree\LaravelTsPublish\Collectors\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -87,5 +89,17 @@ trait ValidatesCollectorFiles
         }
 
         return $reflection->isSubclassOf(FormRequest::class) && ! $reflection->isAbstract();
+    }
+
+    /** @param ReflectionClass<object> $reflection */
+    protected function validateBroadcastEvent(ReflectionClass $reflection): bool
+    {
+        if ($this->excluded($reflection)) {
+            return false;
+        }
+
+        return ($reflection->implementsInterface(ShouldBroadcast::class)
+            || $reflection->implementsInterface(ShouldBroadcastNow::class))
+            && ! $reflection->isAbstract();
     }
 }

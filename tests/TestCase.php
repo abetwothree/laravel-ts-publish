@@ -117,6 +117,7 @@ class TestCase extends Orchestra
             ],
             'ts-publish.resources.additional_directories' => $modules,
             'ts-publish.form_requests.additional_directories' => $modules,
+            'ts-publish.broadcast_events.additional_directories' => $modules,
         ]);
     }
 }

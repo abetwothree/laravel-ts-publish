@@ -3,16 +3,19 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastChannelsCollector;
+use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastEventsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\FormRequestsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ResourcesCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\RoutesCollector;
+use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
+use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\FormRequestTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
@@ -20,6 +23,9 @@ use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\BroadcastChannelsWriter;
+use AbeTwoThree\LaravelTsPublish\Writers\BroadcastEventsEchoWriter;
+use AbeTwoThree\LaravelTsPublish\Writers\BroadcastEventsIndexWriter;
+use AbeTwoThree\LaravelTsPublish\Writers\BroadcastEventWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\EnumWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\FormRequestWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
@@ -329,6 +335,56 @@ return [
         'collector_class' => BroadcastChannelsCollector::class,
         'writer_class' => BroadcastChannelsWriter::class,
         'template' => 'laravel-ts-publish::broadcast-channels',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Broadcast Event Types
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, generates one TypeScript interface file per ShouldBroadcast
+    | event class (modular, namespace-based), a broadcast-events.ts index file
+    | with a BroadcastEvent union type and flat BroadcastEvents const, and
+    | optionally an echo-broadcast-events.d.ts Echo module augmentation file.
+    |
+    | 'output_path': Override the base output directory for broadcast event files.
+    |     (Per-event interfaces + index; the Echo augmentation file falls back to this unless echo_augmentation.output_path is set.)
+    | 'index_filename': Filename for the master index. Defaults to 'broadcast-events.ts'.
+    | 'additional_directories': Extra directories to scan beyond app/Events.
+    | 'included': Allow-list of FQCN patterns (empty = all).
+    | 'excluded': Deny-list of FQCN patterns.
+    |
+    | echo_augmentation:
+    |   'enabled': Generate echo-broadcast-events.d.ts when true.
+    |   'echo_package': npm package to augment. null = auto-detect from package.json
+    |       (prefers @laravel/echo-vue / @laravel/echo-react / @laravel/echo-svelte, falls back to @laravel/echo).
+    |   'filename': Output filename. Defaults to 'echo-broadcast-events.d.ts'.
+    |   'output_path': Override output directory for the echo file.
+    */
+
+    'broadcast_events' => [
+        'enabled' => true,
+        'output_path' => null,
+        'index_filename' => 'broadcast-events.ts',
+        'collector_class' => BroadcastEventsCollector::class,
+        'generator_class' => BroadcastEventGenerator::class,
+        'transformer_class' => BroadcastEventTransformer::class,
+        'writer_class' => BroadcastEventWriter::class,
+        'template' => 'laravel-ts-publish::broadcast-event',
+        'index_writer_class' => BroadcastEventsIndexWriter::class,
+        'index_template' => 'laravel-ts-publish::broadcast-events-index',
+        'additional_directories' => [],
+        'included' => [],
+        'excluded' => [],
+
+        'echo_augmentation' => [
+            'enabled' => true,
+            'echo_package' => null,
+            'filename' => 'echo-broadcast-events.d.ts',
+            'output_path' => null,
+            'writer_class' => BroadcastEventsEchoWriter::class,
+            'template' => 'laravel-ts-publish::echo-broadcast-events',
+        ],
     ],
 
     /*

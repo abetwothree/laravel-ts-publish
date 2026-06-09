@@ -113,4 +113,46 @@ declare global {
     }
 @endif
 @endforeach
+@foreach ($groupedFormRequests as $namespace => $transformers)
+@if ($transformers->count() > 0)
+    export namespace {{ $namespace }} {
+@foreach ($transformers as $transformer)
+@if($transformer->isDynamic)
+        export type {{ $transformer->typeName }} = Record<string, unknown>;
+@else
+        export interface {{ $transformer->typeName }} {
+@foreach ($transformer->fields as $field)
+@if(!$field['isProhibited'])
+@php
+$fieldType = $field['tsType'];
+if ($field['isNullable']) {
+    $fieldType .= ' | null';
+}
+$optional = ! $field['isRequired'] ? '?' : '';
+@endphp
+            {!! LaravelTsPublish::validJsObjectKey($field['fieldPath']) !!}{{ $optional }}: {!! $fieldType !!};
+@endif
+@endforeach
+        }
+@endif
+@endforeach
+    }
+@endif
+@endforeach
+@foreach ($groupedBroadcastEvents as $namespace => $transformers)
+@if ($transformers->count() > 0)
+    export namespace {{ $namespace }} {
+@foreach ($transformers as $transformer)
+        export interface {{ $transformer->eventName }} {
+@foreach ($transformer->properties as $name => $prop)
+@php
+$optional = $prop['optional'] ? '?' : '';
+@endphp
+            {!! LaravelTsPublish::validJsObjectKey($name) !!}{{ $optional }}: {!! LaravelTsPublish::qualifyGlobalType($prop['type'], $globalTypesByNamespace, $namespace, $transformer->globalTypeReferenceMap()) !!};
+@endforeach
+        }
+@endforeach
+    }
+@endif
+@endforeach
 }

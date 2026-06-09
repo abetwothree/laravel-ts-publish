@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
@@ -63,7 +64,7 @@ test('throws for non-existent class', function () {
 test('throws for class that is not enum or model', function () {
     $runner = new RunnerForSource(RunnerForSource::class);
     $runner->run();
-})->throws(InvalidArgumentException::class, 'not a publishable enum, model, resource, controller, or form request');
+})->throws(InvalidArgumentException::class, 'not a publishable enum, model, resource, controller, form request, or broadcast event');
 
 test('throws for file that does not contain a class', function () {
     $runner = new RunnerForSource(workbench_path('routes/web.php'));
@@ -157,4 +158,31 @@ test('throws when route publishing is disabled', function () {
 test('throws for controller with TsExclude attribute', function () {
     $runner = new RunnerForSource('Workbench\App\Http\Controllers\ExcludedController');
     $runner->run();
-})->throws(InvalidArgumentException::class, 'not a publishable enum, model, resource, controller, or form request');
+})->throws(InvalidArgumentException::class, 'not a publishable enum, model, resource, controller, form request, or broadcast event');
+
+test('generates single broadcast event from FQCN', function () {
+    $runner = new RunnerForSource('Workbench\App\Events\OrderShipped');
+    $runner->run();
+
+    expect($runner->broadcastEventGenerators)->toHaveCount(1)
+        ->and($runner->broadcastEventGenerators->first())->toBeInstanceOf(BroadcastEventGenerator::class)
+        ->and($runner->broadcastEventGenerators->first()->transformer->eventName)->toBe('OrderShipped')
+        ->and($runner->enumGenerators)->toHaveCount(0)
+        ->and($runner->modelGenerators)->toHaveCount(0);
+});
+
+test('generates single broadcast event from file path', function () {
+    $filePath = workbench_path('app/Events/OrderShipped.php');
+
+    $runner = new RunnerForSource($filePath);
+    $runner->run();
+
+    expect($runner->broadcastEventGenerators)->toHaveCount(1)
+        ->and($runner->broadcastEventGenerators->first()->transformer->eventName)->toBe('OrderShipped');
+});
+
+test('throws when broadcast event publishing is disabled', function () {
+    $runner = new RunnerForSource('Workbench\App\Events\OrderShipped');
+    $runner->shouldPublishBroadcastEvents = false;
+    $runner->run();
+})->throws(InvalidArgumentException::class, 'Broadcast event publishing is disabled');

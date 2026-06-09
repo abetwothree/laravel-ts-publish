@@ -80,6 +80,8 @@ test('watcher json excludes enums when publish_enums config is false', function 
     config()->set('ts-publish.models.enabled', true);
     config()->set('ts-publish.resources.enabled', false);
     config()->set('ts-publish.routes.enabled', false);
+    config()->set('ts-publish.form_requests.enabled', false);
+    config()->set('ts-publish.broadcast_events.enabled', false);
 
     $writer = new WatcherJsonWriter(new Filesystem);
     $content = $writer->write();
@@ -98,6 +100,8 @@ test('watcher json excludes models when publish_models config is false', functio
     config()->set('ts-publish.models.enabled', false);
     config()->set('ts-publish.resources.enabled', false);
     config()->set('ts-publish.routes.enabled', false);
+    config()->set('ts-publish.form_requests.enabled', false);
+    config()->set('ts-publish.broadcast_events.enabled', false);
 
     $writer = new WatcherJsonWriter(new Filesystem);
     $content = $writer->write();
@@ -152,4 +156,80 @@ test('watcher json excludes resources when publish_resources is false', function
     $paths = collect($decoded);
 
     expect($paths->contains(fn ($p) => str_contains($p, 'Resources/')))->toBeFalse();
+});
+
+test('watcher json includes form request paths when form_requests is enabled', function () {
+    config()->set('ts-publish.watcher.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.enums.enabled', false);
+    config()->set('ts-publish.models.enabled', false);
+    config()->set('ts-publish.resources.enabled', false);
+    config()->set('ts-publish.routes.enabled', false);
+    config()->set('ts-publish.form_requests.enabled', true);
+    config()->set('ts-publish.broadcast_events.enabled', false);
+
+    $writer = new WatcherJsonWriter(new Filesystem);
+    $content = $writer->write();
+
+    $decoded = json_decode($content, true);
+    $paths = collect($decoded);
+
+    expect($paths->contains(fn ($p) => str_contains($p, 'Requests/')))->toBeTrue();
+});
+
+test('watcher json excludes form request paths when form_requests is disabled', function () {
+    config()->set('ts-publish.watcher.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.enums.enabled', false);
+    config()->set('ts-publish.models.enabled', false);
+    config()->set('ts-publish.resources.enabled', false);
+    config()->set('ts-publish.routes.enabled', false);
+    config()->set('ts-publish.form_requests.enabled', false);
+    config()->set('ts-publish.broadcast_events.enabled', false);
+
+    $writer = new WatcherJsonWriter(new Filesystem);
+    $content = $writer->write();
+
+    $decoded = json_decode($content, true);
+    $paths = collect($decoded);
+
+    expect($paths->contains(fn ($p) => str_contains($p, 'Requests/')))->toBeFalse();
+});
+
+test('watcher json includes broadcast event paths when broadcast_events is enabled', function () {
+    config()->set('ts-publish.watcher.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.enums.enabled', false);
+    config()->set('ts-publish.models.enabled', false);
+    config()->set('ts-publish.resources.enabled', false);
+    config()->set('ts-publish.routes.enabled', false);
+    config()->set('ts-publish.form_requests.enabled', false);
+    config()->set('ts-publish.broadcast_events.enabled', true);
+
+    $writer = new WatcherJsonWriter(new Filesystem);
+    $content = $writer->write();
+
+    $decoded = json_decode($content, true);
+    $paths = collect($decoded);
+
+    expect($paths->contains(fn ($p) => str_contains($p, 'Events/')))->toBeTrue();
+});
+
+test('watcher json excludes broadcast event paths when broadcast_events is disabled', function () {
+    config()->set('ts-publish.watcher.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.enums.enabled', false);
+    config()->set('ts-publish.models.enabled', false);
+    config()->set('ts-publish.resources.enabled', false);
+    config()->set('ts-publish.routes.enabled', false);
+    config()->set('ts-publish.form_requests.enabled', false);
+    config()->set('ts-publish.broadcast_events.enabled', false);
+
+    $writer = new WatcherJsonWriter(new Filesystem);
+    $content = $writer->write();
+
+    $decoded = json_decode($content, true);
+    $paths = collect($decoded);
+
+    expect($paths->contains(fn ($p) => str_contains($p, 'Events/')))->toBeFalse();
 });

@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Transformers\Concerns;
 
+use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 
 /**
  * Shared helpers for building TypeScript import maps in both transformers.
  *
- * @phpstan-import-type TypesImportMap from \AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable
+ * @phpstan-import-type TypesImportMap from Datable
  */
 trait BuildsImportMaps
 {

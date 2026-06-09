@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Runners;
 
+use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
@@ -72,6 +73,18 @@ abstract class BaseRunner
     public protected(set) string $broadcastChannelsContent = '';
 
     public bool $shouldPublishBroadcastChannels = true;
+
+    /** @var Collection<int, BroadcastEventGenerator> */
+    public protected(set) Collection $broadcastEventGenerators;
+
+    /** @var array<string, string> Barrel contents keyed by namespace path */
+    public protected(set) array $broadcastEventModularBarrels = [];
+
+    public protected(set) string $broadcastEventsIndexContent = '';
+
+    public protected(set) string $broadcastEventsEchoContent = '';
+
+    public bool $shouldPublishBroadcastEvents = true;
 
     abstract public function run(): void;
 }

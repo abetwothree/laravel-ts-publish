@@ -398,3 +398,39 @@ test('runner skips broadcast channels when shouldPublishBroadcastChannels is fal
 
     expect($runner->broadcastChannelsContent)->toBe('');
 });
+
+test('runner generates broadcast events content when enabled', function () {
+    config()->set('ts-publish.broadcast_events.enabled', true);
+    config()->set('ts-publish.broadcast_events.echo_augmentation.enabled', false);
+
+    $runner = new Runner;
+    $runner->run();
+
+    expect($runner->broadcastEventsIndexContent)
+        ->toContain('export type BroadcastEvent')
+        ->toContain('export const BroadcastEvents')
+        ->toContain('OrderShipped')
+        ->toContain('server.created');
+
+    expect(count($runner->broadcastEventGenerators))->toBeGreaterThanOrEqual(4);
+});
+
+test('runner skips broadcast events when disabled', function () {
+    config()->set('ts-publish.broadcast_events.enabled', false);
+
+    $runner = new Runner;
+    $runner->run();
+
+    expect($runner->broadcastEventsIndexContent)->toBe('');
+    expect(count($runner->broadcastEventGenerators))->toBe(0);
+});
+
+test('runner skips broadcast events when shouldPublishBroadcastEvents is false', function () {
+    config()->set('ts-publish.broadcast_events.enabled', true);
+
+    $runner = new Runner;
+    $runner->shouldPublishBroadcastEvents = false;
+    $runner->run();
+
+    expect($runner->broadcastEventsIndexContent)->toBe('');
+});
