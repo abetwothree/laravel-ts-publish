@@ -216,7 +216,11 @@ class Runner extends BaseRunner
 
         $this->formRequestGenerators = $formRequestGenerators;
 
-        $this->formRequestModularBarrels = $this->barrelWriter->writeModular($this->formRequestGenerators);
+        $formRequestOutputPath = config('ts-publish.form_requests.output_path');
+        $this->formRequestModularBarrels = $this->barrelWriter->writeModular(
+            $this->formRequestGenerators,
+            is_string($formRequestOutputPath) ? $formRequestOutputPath : null,
+        );
     }
 
     protected function generateBroadcastChannels(): void
@@ -272,7 +276,11 @@ class Runner extends BaseRunner
 
         $this->broadcastEventGenerators = $broadcastEventGenerators;
 
-        $this->broadcastEventModularBarrels = $this->barrelWriter->writeModular($this->broadcastEventGenerators);
+        $broadcastEventsOutputPath = config('ts-publish.broadcast_events.output_path');
+        $this->broadcastEventModularBarrels = $this->barrelWriter->writeModular(
+            $this->broadcastEventGenerators,
+            is_string($broadcastEventsOutputPath) ? $broadcastEventsOutputPath : null,
+        );
 
         /** @var BroadcastEventsIndexWriter $indexWriter */
         $indexWriter = resolve(config()->string('ts-publish.broadcast_events.index_writer_class'));

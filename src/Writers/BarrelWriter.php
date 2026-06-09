@@ -52,9 +52,10 @@ class BarrelWriter
      * an index.ts barrel file for each unique namespace directory.
      *
      * @param  Collection<int, BroadcastEventGenerator>|Collection<int, EnumGenerator>|Collection<int, FormRequestGenerator>|Collection<int, ModelGenerator>|Collection<int, ResourceGenerator>  $generators
+     * @param  string|null  $outputBase  Base output directory for the barrel files. Falls back to the global output_directory when null/empty. This must match the directory the corresponding per-file writer targets so the modular export structure stays intact.
      * @return array<string, string> Barrel contents keyed by namespace path
      */
-    public function writeModular(Collection $generators): array
+    public function writeModular(Collection $generators, ?string $outputBase = null): array
     {
         /** @var array<string, list<string>> $grouped */
         $grouped = [];
@@ -64,6 +65,10 @@ class BarrelWriter
             $filename = $generator->filename();
             $grouped[$namespacePath][] = $filename;
         }
+
+        $base = is_string($outputBase) && $outputBase !== ''
+            ? $outputBase
+            : config()->string('ts-publish.output_directory');
 
         /** @var array<string, string> $results */
         $results = [];
@@ -76,7 +81,7 @@ class BarrelWriter
                 ->implode("\n");
 
             if (config()->boolean('ts-publish.output_to_files')) {
-                $outputPath = config()->string('ts-publish.output_directory').'/'.$namespacePath;
+                $outputPath = $base.'/'.$namespacePath;
                 $this->filesystem->ensureDirectoryExists($outputPath);
                 $this->filesystem->put("$outputPath/index.ts", $content);
             }
