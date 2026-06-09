@@ -21,13 +21,13 @@ class BroadcastEventGenerator extends CoreGenerator
     public function generate(): string
     {
         /** @var BroadcastEventTransformer $transformer */
-        $transformer = resolve(Config::string('ts-publish.broadcast_events.transformer_class'), [
+        $transformer = resolve(Config::string('ts-publish.broadcast_events.transformer_class', BroadcastEventTransformer::class), [
             'findable' => $this->findable,
         ]);
         $this->transformer = $transformer;
 
         /** @var BroadcastEventWriter $writer */
-        $writer = resolve(Config::string('ts-publish.broadcast_events.writer_class'));
+        $writer = resolve(Config::string('ts-publish.broadcast_events.writer_class', BroadcastEventWriter::class));
 
         return $this->content = $writer->write($this->transformer);
     }

@@ -22,13 +22,13 @@ class FormRequestGenerator extends CoreGenerator
     {
         /** @var FormRequestTransformer $transformer */
         $transformer = resolve(
-            Config::string('ts-publish.form_requests.transformer_class'),
+            Config::string('ts-publish.form_requests.transformer_class', FormRequestTransformer::class),
             ['findable' => $this->findable],
         );
         $this->transformer = $transformer;
 
         /** @var FormRequestWriter $writer */
-        $writer = resolve(Config::string('ts-publish.form_requests.writer_class'));
+        $writer = resolve(Config::string('ts-publish.form_requests.writer_class', FormRequestWriter::class));
 
         return $this->content = $writer->write($this->transformer);
     }

@@ -66,7 +66,7 @@ class WatcherJsonWriter
         }
 
         /** @var EnumsCollector $collector */
-        $collector = resolve(Config::string('ts-publish.enums.collector_class'));
+        $collector = resolve(Config::string('ts-publish.enums.collector_class', EnumsCollector::class));
 
         return array_values(
             $collector->collect()
@@ -90,7 +90,7 @@ class WatcherJsonWriter
         }
 
         /** @var ModelsCollector $collector */
-        $collector = resolve(Config::string('ts-publish.models.collector_class'));
+        $collector = resolve(Config::string('ts-publish.models.collector_class', ModelsCollector::class));
 
         return array_values(
             $collector->collect()
@@ -114,7 +114,7 @@ class WatcherJsonWriter
         }
 
         /** @var ResourcesCollector $collector */
-        $collector = resolve(Config::string('ts-publish.resources.collector_class'));
+        $collector = resolve(Config::string('ts-publish.resources.collector_class', ResourcesCollector::class));
 
         return array_values(
             $collector->collect()
@@ -137,7 +137,7 @@ class WatcherJsonWriter
         }
 
         /** @var RoutesCollector $collector */
-        $collector = resolve(Config::string('ts-publish.routes.collector_class'));
+        $collector = resolve(Config::string('ts-publish.routes.collector_class', RoutesCollector::class));
 
         return array_values(
             $collector->collect()
@@ -160,7 +160,7 @@ class WatcherJsonWriter
         }
 
         /** @var FormRequestsCollector $collector */
-        $collector = resolve(Config::string('ts-publish.form_requests.collector_class'));
+        $collector = resolve(Config::string('ts-publish.form_requests.collector_class', FormRequestsCollector::class));
 
         return array_values(
             $collector->collect()
@@ -183,7 +183,7 @@ class WatcherJsonWriter
         }
 
         /** @var BroadcastEventsCollector $collector */
-        $collector = resolve(Config::string('ts-publish.broadcast_events.collector_class'));
+        $collector = resolve(Config::string('ts-publish.broadcast_events.collector_class', BroadcastEventsCollector::class));
 
         return array_values(
             $collector->collect()

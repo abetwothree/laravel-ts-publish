@@ -119,7 +119,7 @@ class RunnerForSource extends BaseRunner
     {
         /** @var EnumGenerator $generator */
         $generator = resolve(
-            Config::string('ts-publish.enums.generator_class'),
+            Config::string('ts-publish.enums.generator_class', EnumGenerator::class),
             ['findable' => $fqcn],
         );
 
@@ -130,7 +130,7 @@ class RunnerForSource extends BaseRunner
     {
         /** @var ModelGenerator $generator */
         $generator = resolve(
-            Config::string('ts-publish.models.generator_class'),
+            Config::string('ts-publish.models.generator_class', ModelGenerator::class),
             ['findable' => $fqcn],
         );
 
@@ -141,7 +141,7 @@ class RunnerForSource extends BaseRunner
     {
         /** @var ResourceGenerator $generator */
         $generator = resolve(
-            Config::string('ts-publish.resources.generator_class'),
+            Config::string('ts-publish.resources.generator_class', ResourceGenerator::class),
             ['findable' => $fqcn],
         );
 
@@ -160,7 +160,7 @@ class RunnerForSource extends BaseRunner
     {
         /** @var RouteGenerator $generator */
         $generator = resolve(
-            Config::string('ts-publish.routes.generator_class'),
+            Config::string('ts-publish.routes.generator_class', RouteGenerator::class),
             ['findable' => $fqcn],
         );
 
@@ -176,7 +176,7 @@ class RunnerForSource extends BaseRunner
     {
         /** @var FormRequestGenerator $generator */
         $generator = resolve(
-            Config::string('ts-publish.form_requests.generator_class'),
+            Config::string('ts-publish.form_requests.generator_class', FormRequestGenerator::class),
             ['findable' => $fqcn],
         );
 
@@ -192,7 +192,7 @@ class RunnerForSource extends BaseRunner
     {
         /** @var BroadcastEventGenerator $generator */
         $generator = resolve(
-            Config::string('ts-publish.broadcast_events.generator_class'),
+            Config::string('ts-publish.broadcast_events.generator_class', BroadcastEventGenerator::class),
             ['findable' => $fqcn],
         );
 

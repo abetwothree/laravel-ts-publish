@@ -9,8 +9,8 @@ use Illuminate\Events\Dispatcher;
 
 test('service provider configures package correctly', function () {
     expect(config('ts-publish'))->toBeArray()
-        ->and(config('ts-publish.models.writer_class'))->not->toBeNull()
-        ->and(config('ts-publish.enums.writer_class'))->not->toBeNull();
+        ->and(config('ts-publish.models'))->toBeArray()
+        ->and(config('ts-publish.enums'))->toBeArray();
 });
 
 test('service provider registers the ts:publish command', function () {

@@ -2,39 +2,6 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastChannelsCollector;
-use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastEventsCollector;
-use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
-use AbeTwoThree\LaravelTsPublish\Collectors\FormRequestsCollector;
-use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
-use AbeTwoThree\LaravelTsPublish\Collectors\ResourcesCollector;
-use AbeTwoThree\LaravelTsPublish\Collectors\RoutesCollector;
-use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
-use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
-use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
-use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
-use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
-use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
-use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
-use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
-use AbeTwoThree\LaravelTsPublish\Transformers\FormRequestTransformer;
-use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
-use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
-use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
-use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\BroadcastChannelsWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\BroadcastEventsEchoWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\BroadcastEventsIndexWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\BroadcastEventWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\EnumWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\FormRequestWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\JsonWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\ModelWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\RouteWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\WatcherJsonWriter;
-
 return [
     /*
     |--------------------------------------------------------------------------
@@ -151,7 +118,7 @@ return [
     | types from each file category.
     */
 
-    'barrel_writer_class' => BarrelWriter::class,
+    // 'barrel_writer_class' => BarrelWriter::class,
 
     /*
     |--------------------------------------------------------------------------
@@ -164,7 +131,7 @@ return [
 
     'watcher' => [
         'enabled' => true,
-        'writer_class' => WatcherJsonWriter::class,
+        // 'writer_class' => WatcherJsonWriter::class,
         'filename' => 'laravel-ts-collected-files.json',
         /* Defaults to output_directory setting */
         'output_directory' => '',
@@ -192,10 +159,10 @@ return [
         'auto_include_static_methods' => false,
         'method_case' => 'camel',
         'namespace' => 'enums',
-        'collector_class' => EnumsCollector::class,
-        'generator_class' => EnumGenerator::class,
-        'transformer_class' => EnumTransformer::class,
-        'writer_class' => EnumWriter::class,
+        // 'collector_class' => EnumsCollector::class,
+        // 'generator_class' => EnumGenerator::class,
+        // 'transformer_class' => EnumTransformer::class,
+        // 'writer_class' => EnumWriter::class,
         'template' => 'laravel-ts-publish::enum',
         'additional_directories' => [],
         'included' => [],
@@ -222,10 +189,10 @@ return [
             // \Illuminate\Database\Eloquent\Relations\HasOne::class    => 'never',
         ],
         'namespace' => 'models',
-        'collector_class' => ModelsCollector::class,
-        'generator_class' => ModelGenerator::class,
-        'transformer_class' => ModelTransformer::class,
-        'writer_class' => ModelWriter::class,
+        // 'collector_class' => ModelsCollector::class,
+        // 'generator_class' => ModelGenerator::class,
+        // 'transformer_class' => ModelTransformer::class,
+        // 'writer_class' => ModelWriter::class,
         'template' => 'laravel-ts-publish::model-split',
         'additional_directories' => [],
         'included' => [],
@@ -243,10 +210,10 @@ return [
     'resources' => [
         'enabled' => true,
         'namespace' => 'resources',
-        'collector_class' => ResourcesCollector::class,
-        'generator_class' => ResourceGenerator::class,
-        'transformer_class' => ResourceTransformer::class,
-        'writer_class' => ResourceWriter::class,
+        // 'collector_class' => ResourcesCollector::class,
+        // 'generator_class' => ResourceGenerator::class,
+        // 'transformer_class' => ResourceTransformer::class,
+        // 'writer_class' => ResourceWriter::class,
         'template' => 'laravel-ts-publish::resource',
         'additional_directories' => [],
         'included' => [],
@@ -277,10 +244,10 @@ return [
         'except' => [],
         'exclude_middleware' => [],
         'only_named' => false,
-        'collector_class' => RoutesCollector::class,
-        'generator_class' => RouteGenerator::class,
-        'transformer_class' => RouteTransformer::class,
-        'writer_class' => RouteWriter::class,
+        // 'collector_class' => RoutesCollector::class,
+        // 'generator_class' => RouteGenerator::class,
+        // 'transformer_class' => RouteTransformer::class,
+        // 'writer_class' => RouteWriter::class,
         'template' => 'laravel-ts-publish::route',
     ],
 
@@ -304,10 +271,10 @@ return [
         'enabled' => true,
         'namespace' => 'form-requests',
         'output_path' => '',
-        'collector_class' => FormRequestsCollector::class,
-        'generator_class' => FormRequestGenerator::class,
-        'transformer_class' => FormRequestTransformer::class,
-        'writer_class' => FormRequestWriter::class,
+        // 'collector_class' => FormRequestsCollector::class,
+        // 'generator_class' => FormRequestGenerator::class,
+        // 'transformer_class' => FormRequestTransformer::class,
+        // 'writer_class' => FormRequestWriter::class,
         'template' => 'laravel-ts-publish::form-request',
         'additional_directories' => [],
         'included' => [],
@@ -332,8 +299,8 @@ return [
         'enabled' => true,
         'output_path' => '',
         'filename' => 'broadcast-channels.ts',
-        'collector_class' => BroadcastChannelsCollector::class,
-        'writer_class' => BroadcastChannelsWriter::class,
+        // 'collector_class' => BroadcastChannelsCollector::class,
+        // 'writer_class' => BroadcastChannelsWriter::class,
         'template' => 'laravel-ts-publish::broadcast-channels',
     ],
 
@@ -364,25 +331,25 @@ return [
 
     'broadcast_events' => [
         'enabled' => true,
+        // 'collector_class' => BroadcastEventsCollector::class,
+        // 'generator_class' => BroadcastEventGenerator::class,
+        // 'transformer_class' => BroadcastEventTransformer::class,
+        // 'writer_class' => BroadcastEventWriter::class,
+        // 'index_writer_class' => BroadcastEventsIndexWriter::class,
         'output_path' => '',
         'index_filename' => 'broadcast-events.ts',
-        'collector_class' => BroadcastEventsCollector::class,
-        'generator_class' => BroadcastEventGenerator::class,
-        'transformer_class' => BroadcastEventTransformer::class,
-        'writer_class' => BroadcastEventWriter::class,
-        'template' => 'laravel-ts-publish::broadcast-event',
-        'index_writer_class' => BroadcastEventsIndexWriter::class,
         'index_template' => 'laravel-ts-publish::broadcast-events-index',
+        'template' => 'laravel-ts-publish::broadcast-event',
         'additional_directories' => [],
         'included' => [],
         'excluded' => [],
 
         'echo_augmentation' => [
             'enabled' => true,
+            // 'writer_class' => BroadcastEventsEchoWriter::class,
             'echo_package' => null,
             'filename' => 'echo-broadcast-events.d.ts',
             'output_path' => '',
-            'writer_class' => BroadcastEventsEchoWriter::class,
             'template' => 'laravel-ts-publish::echo-broadcast-events',
         ],
     ],
@@ -425,7 +392,7 @@ return [
 
     'globals' => [
         'enabled' => false,
-        'writer_class' => GlobalsWriter::class,
+        // 'writer_class' => GlobalsWriter::class,
         'filename' => 'laravel-ts-global.ts',
         /* Defaults to output_directory setting */
         'output_directory' => '',
@@ -443,7 +410,7 @@ return [
 
     'json' => [
         'enabled' => false,
-        'writer_class' => JsonWriter::class,
+        // 'writer_class' => JsonWriter::class,
         'filename' => 'laravel-ts-definitions.json',
         /* Defaults to output_directory setting */
         'output_directory' => '',

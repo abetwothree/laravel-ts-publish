@@ -37,7 +37,7 @@ class Runner extends BaseRunner
     public function run(): void
     {
         /** @var BarrelWriter $barrelWriter */
-        $barrelWriter = resolve(Config::string('ts-publish.barrel_writer_class'));
+        $barrelWriter = resolve(Config::string('ts-publish.barrel_writer_class', BarrelWriter::class));
         $this->barrelWriter = $barrelWriter;
 
         $this->generateEnums();
@@ -66,7 +66,7 @@ class Runner extends BaseRunner
         }
 
         /** @var EnumsCollector $collector */
-        $collector = resolve(Config::string('ts-publish.enums.collector_class'));
+        $collector = resolve(Config::string('ts-publish.enums.collector_class', EnumsCollector::class));
 
         /** @var Collection<int, EnumGenerator> $enumGenerators */
         $enumGenerators = collect();
@@ -74,7 +74,7 @@ class Runner extends BaseRunner
         foreach ($collector->collect() as $enumClass) {
             /** @var EnumGenerator $generator */
             $generator = resolve(
-                Config::string('ts-publish.enums.generator_class'),
+                Config::string('ts-publish.enums.generator_class', EnumGenerator::class),
                 ['findable' => $enumClass],
             );
 
@@ -97,7 +97,7 @@ class Runner extends BaseRunner
         }
 
         /** @var ModelsCollector $collector */
-        $collector = resolve(Config::string('ts-publish.models.collector_class'));
+        $collector = resolve(Config::string('ts-publish.models.collector_class', ModelsCollector::class));
 
         /** @var list<class-string> $modelClasses */
         $modelClasses = $collector->collect()->all();
@@ -112,7 +112,7 @@ class Runner extends BaseRunner
         foreach ($modelClasses as $modelClass) {
             /** @var ModelGenerator $generator */
             $generator = resolve(
-                Config::string('ts-publish.models.generator_class'),
+                Config::string('ts-publish.models.generator_class', ModelGenerator::class),
                 ['findable' => $modelClass],
             );
 
@@ -135,7 +135,7 @@ class Runner extends BaseRunner
         }
 
         /** @var ResourcesCollector $collector */
-        $collector = resolve(Config::string('ts-publish.resources.collector_class'));
+        $collector = resolve(Config::string('ts-publish.resources.collector_class', ResourcesCollector::class));
 
         /** @var Collection<int, ResourceGenerator> $resourceGenerators */
         $resourceGenerators = collect();
@@ -143,7 +143,7 @@ class Runner extends BaseRunner
         foreach ($collector->collect() as $resourceClass) {
             /** @var ResourceGenerator $generator */
             $generator = resolve(
-                Config::string('ts-publish.resources.generator_class'),
+                Config::string('ts-publish.resources.generator_class', ResourceGenerator::class),
                 ['findable' => $resourceClass],
             );
 
@@ -200,7 +200,7 @@ class Runner extends BaseRunner
         }
 
         /** @var FormRequestsCollector $collector */
-        $collector = resolve(Config::string('ts-publish.form_requests.collector_class'));
+        $collector = resolve(Config::string('ts-publish.form_requests.collector_class', FormRequestsCollector::class));
 
         /** @var Collection<int, FormRequestGenerator> $formRequestGenerators */
         $formRequestGenerators = collect();
@@ -208,7 +208,7 @@ class Runner extends BaseRunner
         foreach ($collector->collect() as $formRequestClass) {
             /** @var FormRequestGenerator $generator */
             $generator = resolve(
-                Config::string('ts-publish.form_requests.generator_class'),
+                Config::string('ts-publish.form_requests.generator_class', FormRequestGenerator::class),
                 ['findable' => $formRequestClass],
             );
 
@@ -233,10 +233,10 @@ class Runner extends BaseRunner
         }
 
         /** @var BroadcastChannelsCollector $collector */
-        $collector = resolve(Config::string('ts-publish.broadcast_channels.collector_class'));
+        $collector = resolve(Config::string('ts-publish.broadcast_channels.collector_class', BroadcastChannelsCollector::class));
 
         /** @var BroadcastChannelsWriter $writer */
-        $writer = resolve(Config::string('ts-publish.broadcast_channels.writer_class'));
+        $writer = resolve(Config::string('ts-publish.broadcast_channels.writer_class', BroadcastChannelsWriter::class));
 
         $this->broadcastChannelsContent = $writer->write($collector->collect());
     }
@@ -263,7 +263,7 @@ class Runner extends BaseRunner
         }
 
         /** @var BroadcastEventsCollector $collector */
-        $collector = resolve(Config::string('ts-publish.broadcast_events.collector_class'));
+        $collector = resolve(Config::string('ts-publish.broadcast_events.collector_class', BroadcastEventsCollector::class));
 
         /** @var Collection<int, BroadcastEventGenerator> $broadcastEventGenerators */
         $broadcastEventGenerators = collect();
@@ -271,7 +271,7 @@ class Runner extends BaseRunner
         foreach ($collector->collect() as $eventClass) {
             /** @var BroadcastEventGenerator $generator */
             $generator = resolve(
-                Config::string('ts-publish.broadcast_events.generator_class'),
+                Config::string('ts-publish.broadcast_events.generator_class', BroadcastEventGenerator::class),
                 ['findable' => $eventClass],
             );
 
@@ -287,11 +287,11 @@ class Runner extends BaseRunner
         );
 
         /** @var BroadcastEventsIndexWriter $indexWriter */
-        $indexWriter = resolve(Config::string('ts-publish.broadcast_events.index_writer_class'));
+        $indexWriter = resolve(Config::string('ts-publish.broadcast_events.index_writer_class', BroadcastEventsIndexWriter::class));
         $this->broadcastEventsIndexContent = $indexWriter->write($this->broadcastEventGenerators);
 
         /** @var BroadcastEventsEchoWriter $echoWriter */
-        $echoWriter = resolve(Config::string('ts-publish.broadcast_events.echo_augmentation.writer_class'));
+        $echoWriter = resolve(Config::string('ts-publish.broadcast_events.echo_augmentation.writer_class', BroadcastEventsEchoWriter::class));
         $this->broadcastEventsEchoContent = $echoWriter->write($this->broadcastEventGenerators);
     }
 
@@ -307,7 +307,7 @@ class Runner extends BaseRunner
         }
 
         /** @var RoutesCollector $collector */
-        $collector = resolve(Config::string('ts-publish.routes.collector_class'));
+        $collector = resolve(Config::string('ts-publish.routes.collector_class', RoutesCollector::class));
 
         /** @var Collection<int, RouteGenerator> $routeGenerators */
         $routeGenerators = collect();
@@ -315,7 +315,7 @@ class Runner extends BaseRunner
         foreach ($collector->collect() as $controllerClass) {
             /** @var RouteGenerator $generator */
             $generator = resolve(
-                Config::string('ts-publish.routes.generator_class'),
+                Config::string('ts-publish.routes.generator_class', RouteGenerator::class),
                 ['findable' => $controllerClass],
             );
 
@@ -325,7 +325,7 @@ class Runner extends BaseRunner
         $this->routeGenerators = $routeGenerators;
 
         /** @var RouteWriter $routeWriter */
-        $routeWriter = resolve(Config::string('ts-publish.routes.writer_class'));
+        $routeWriter = resolve(Config::string('ts-publish.routes.writer_class', RouteWriter::class));
 
         $this->routeModularBarrels = $routeWriter->writeRouteBarrels($this->routeGenerators);
     }
@@ -333,7 +333,7 @@ class Runner extends BaseRunner
     protected function generateGlobals(): void
     {
         /** @var GlobalsWriter $globalsWriter */
-        $globalsWriter = resolve(Config::string('ts-publish.globals.writer_class'));
+        $globalsWriter = resolve(Config::string('ts-publish.globals.writer_class', GlobalsWriter::class));
         $this->globalsWriter = $globalsWriter;
 
         $this->globalsContent = $globalsWriter->write($this);
@@ -342,7 +342,7 @@ class Runner extends BaseRunner
     protected function generateJson(): void
     {
         /** @var JsonWriter $jsonWriter */
-        $jsonWriter = resolve(Config::string('ts-publish.json.writer_class'));
+        $jsonWriter = resolve(Config::string('ts-publish.json.writer_class', JsonWriter::class));
 
         $this->jsonContent = $jsonWriter->write($this);
     }
@@ -361,7 +361,7 @@ class Runner extends BaseRunner
     protected function generateWatcherJson(): void
     {
         /** @var WatcherJsonWriter $jsonWriter */
-        $jsonWriter = resolve(Config::string('ts-publish.watcher.writer_class'));
+        $jsonWriter = resolve(Config::string('ts-publish.watcher.writer_class', WatcherJsonWriter::class));
 
         $this->watcherJsonContent = $jsonWriter->write();
     }

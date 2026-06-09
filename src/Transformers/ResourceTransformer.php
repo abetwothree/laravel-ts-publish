@@ -342,7 +342,7 @@ class ResourceTransformer extends CoreTransformer
         }
 
         /** @var ModelsCollector $collector */
-        $collector = resolve(Config::string('ts-publish.models.collector_class'));
+        $collector = resolve(Config::string('ts-publish.models.collector_class', ModelsCollector::class));
 
         foreach ($collector->collect() as $modelClass) {
             $reflection = new ReflectionClass($modelClass);
