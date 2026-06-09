@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\FormRequestTransformer;
+use Illuminate\Support\Facades\Config;
 use Override;
 
 /**
@@ -23,7 +24,7 @@ class FormRequestWriter extends CoreWriter
         $data = $transformer->data();
 
         /** @var view-string $template */
-        $template = config()->string('ts-publish.form_requests.template');
+        $template = Config::string('ts-publish.form_requests.template');
 
         $content = view(
             $template,
@@ -33,7 +34,7 @@ class FormRequestWriter extends CoreWriter
             ]
         )->render();
 
-        if (config()->boolean('ts-publish.output_to_files')) {
+        if (Config::boolean('ts-publish.output_to_files')) {
             $this->writeFormRequestFile($filename, $content, $transformer->namespacePath);
         }
 
@@ -50,10 +51,10 @@ class FormRequestWriter extends CoreWriter
 
     protected function resolveOutputPath(string $namespacePath): string
     {
-        $outputPath = config('ts-publish.form_requests.output_path');
-        $outputBase = is_string($outputPath) && $outputPath !== ''
+        $outputPath = Config::string('ts-publish.form_requests.output_path');
+        $outputBase = ! empty($outputPath)
             ? $outputPath
-            : config()->string('ts-publish.output_directory');
+            : Config::string('ts-publish.output_directory');
 
         return $outputBase.'/'.$namespacePath;
     }

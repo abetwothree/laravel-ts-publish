@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Facades\Config;
 
 class GlobalsWriter
 {
@@ -21,12 +22,12 @@ class GlobalsWriter
 
     public function write(Runner $runner): string
     {
-        if (! config()->boolean('ts-publish.globals.enabled')) {
+        if (! Config::boolean('ts-publish.globals.enabled')) {
             return '';
         }
 
         /** @var view-string $template */
-        $template = config()->string('ts-publish.globals.template');
+        $template = Config::string('ts-publish.globals.template');
 
         // Build a map of global namespace → type names it owns, used for cross-namespace qualification.
         // Each key is a dot-separated namespace path, e.g. 'app.enums' => [...], 'app.models' => [...].
@@ -161,10 +162,10 @@ class GlobalsWriter
 
         $content = view($template, $viewData)->render();
 
-        if (config()->boolean('ts-publish.output_to_files')) {
-            $globalDir = config('ts-publish.globals.output_directory');
-            $outputPath = is_string($globalDir) ? $globalDir : config()->string('ts-publish.output_directory');
-            $filename = config()->string('ts-publish.globals.filename');
+        if (Config::boolean('ts-publish.output_to_files')) {
+            $globalDir = Config::string('ts-publish.globals.output_directory');
+            $outputPath = ! empty($globalDir) ? $globalDir : Config::string('ts-publish.output_directory');
+            $filename = Config::string('ts-publish.globals.filename');
 
             $this->filesystem->ensureDirectoryExists($outputPath);
             $this->filesystem->put("$outputPath/$filename", $content);

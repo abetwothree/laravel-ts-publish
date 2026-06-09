@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
+use Illuminate\Support\Facades\Config;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -2594,7 +2595,7 @@ class ResourceAstAnalyzer
             return ['type' => 'Record<string, unknown>', 'optional' => false];
         }
 
-        $useTolki = config()->boolean('ts-publish.enums.use_tolki_package');
+        $useTolki = Config::boolean('ts-publish.enums.use_tolki_package');
 
         $parts = array_map(function (array $prop) use ($analysis, $useTolki): string {
             $key = LaravelTsPublish::validJsObjectKey($prop['name']);

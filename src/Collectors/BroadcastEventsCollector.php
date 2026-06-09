@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Collectors;
 
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
+use Illuminate\Support\Facades\Config;
 use ReflectionClass;
 
 /**
@@ -44,9 +45,9 @@ class BroadcastEventsCollector extends CoreCollector
     protected function finderSettings(): array
     {
         return [
-            'included' => $this->sanitizeAllowSetting(config()->array('ts-publish.broadcast_events.included', [])),
-            'excluded' => $this->sanitizeAllowSetting(config()->array('ts-publish.broadcast_events.excluded', [])),
-            'additional_directories' => $this->sanitizeAllowSetting(config()->array('ts-publish.broadcast_events.additional_directories', [])),
+            'included' => $this->sanitizeAllowSetting(Config::array('ts-publish.broadcast_events.included', [])),
+            'excluded' => $this->sanitizeAllowSetting(Config::array('ts-publish.broadcast_events.excluded', [])),
+            'additional_directories' => $this->sanitizeAllowSetting(Config::array('ts-publish.broadcast_events.additional_directories', [])),
         ];
     }
 }

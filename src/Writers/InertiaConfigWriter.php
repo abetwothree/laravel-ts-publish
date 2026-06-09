@@ -28,7 +28,7 @@ class InertiaConfigWriter
     {
         $content = view('laravel-ts-publish::inertia-config', $sharedData)->render();
 
-        if (config()->boolean('ts-publish.output_to_files')) {
+        if (Config::boolean('ts-publish.output_to_files')) {
             $this->writeFile($content);
         }
 
@@ -52,18 +52,18 @@ class InertiaConfigWriter
      */
     protected function resolveOutputPath(): string
     {
-        $inertiaOutputPath = config('ts-publish.inertia.output_path');
+        $inertiaOutputPath = Config::string('ts-publish.inertia.output_path');
 
-        if (is_string($inertiaOutputPath)) {
+        if (! empty($inertiaOutputPath)) {
             return $inertiaOutputPath;
         }
 
-        $routesOutputPath = config('ts-publish.routes.output_path');
+        $routesOutputPath = Config::string('ts-publish.routes.output_path');
 
-        if (is_string($routesOutputPath)) {
+        if (! empty($routesOutputPath)) {
             return $routesOutputPath;
         }
 
-        return config()->string('ts-publish.output_directory');
+        return Config::string('ts-publish.output_directory');
     }
 }

@@ -30,13 +30,14 @@ use AbeTwoThree\LaravelTsPublish\Writers\RouteWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\ViteEnvWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\WatcherJsonWriter;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Config;
 
 class Runner extends BaseRunner
 {
     public function run(): void
     {
         /** @var BarrelWriter $barrelWriter */
-        $barrelWriter = resolve(config()->string('ts-publish.barrel_writer_class'));
+        $barrelWriter = resolve(Config::string('ts-publish.barrel_writer_class'));
         $this->barrelWriter = $barrelWriter;
 
         $this->generateEnums();
@@ -65,7 +66,7 @@ class Runner extends BaseRunner
         }
 
         /** @var EnumsCollector $collector */
-        $collector = resolve(config()->string('ts-publish.enums.collector_class'));
+        $collector = resolve(Config::string('ts-publish.enums.collector_class'));
 
         /** @var Collection<int, EnumGenerator> $enumGenerators */
         $enumGenerators = collect();
@@ -73,7 +74,7 @@ class Runner extends BaseRunner
         foreach ($collector->collect() as $enumClass) {
             /** @var EnumGenerator $generator */
             $generator = resolve(
-                config()->string('ts-publish.enums.generator_class'),
+                Config::string('ts-publish.enums.generator_class'),
                 ['findable' => $enumClass],
             );
 
@@ -96,7 +97,7 @@ class Runner extends BaseRunner
         }
 
         /** @var ModelsCollector $collector */
-        $collector = resolve(config()->string('ts-publish.models.collector_class'));
+        $collector = resolve(Config::string('ts-publish.models.collector_class'));
 
         /** @var list<class-string> $modelClasses */
         $modelClasses = $collector->collect()->all();
@@ -111,7 +112,7 @@ class Runner extends BaseRunner
         foreach ($modelClasses as $modelClass) {
             /** @var ModelGenerator $generator */
             $generator = resolve(
-                config()->string('ts-publish.models.generator_class'),
+                Config::string('ts-publish.models.generator_class'),
                 ['findable' => $modelClass],
             );
 
@@ -134,7 +135,7 @@ class Runner extends BaseRunner
         }
 
         /** @var ResourcesCollector $collector */
-        $collector = resolve(config()->string('ts-publish.resources.collector_class'));
+        $collector = resolve(Config::string('ts-publish.resources.collector_class'));
 
         /** @var Collection<int, ResourceGenerator> $resourceGenerators */
         $resourceGenerators = collect();
@@ -142,7 +143,7 @@ class Runner extends BaseRunner
         foreach ($collector->collect() as $resourceClass) {
             /** @var ResourceGenerator $generator */
             $generator = resolve(
-                config()->string('ts-publish.resources.generator_class'),
+                Config::string('ts-publish.resources.generator_class'),
                 ['findable' => $resourceClass],
             );
 
@@ -162,11 +163,11 @@ class Runner extends BaseRunner
      */
     protected function generateInertiaConfig(): void
     {
-        if (! config()->boolean('ts-publish.inertia.enabled')) {
+        if (! Config::boolean('ts-publish.inertia.enabled')) {
             return;
         }
 
-        $middlewarePath = config()->get('ts-publish.inertia.inertia_middleware_path');
+        $middlewarePath = Config::get('ts-publish.inertia.inertia_middleware_path');
         if (! is_string($middlewarePath) || ! is_dir($middlewarePath)) {
             $middlewarePath = app_path();
         }
@@ -192,14 +193,14 @@ class Runner extends BaseRunner
         /** @var Collection<int, FormRequestGenerator> $empty */
         $empty = collect();
 
-        if (! $this->shouldPublishFormRequests || ! config()->boolean('ts-publish.form_requests.enabled')) {
+        if (! $this->shouldPublishFormRequests || ! Config::boolean('ts-publish.form_requests.enabled')) {
             $this->formRequestGenerators = $empty;
 
             return;
         }
 
         /** @var FormRequestsCollector $collector */
-        $collector = resolve(config()->string('ts-publish.form_requests.collector_class'));
+        $collector = resolve(Config::string('ts-publish.form_requests.collector_class'));
 
         /** @var Collection<int, FormRequestGenerator> $formRequestGenerators */
         $formRequestGenerators = collect();
@@ -207,7 +208,7 @@ class Runner extends BaseRunner
         foreach ($collector->collect() as $formRequestClass) {
             /** @var FormRequestGenerator $generator */
             $generator = resolve(
-                config()->string('ts-publish.form_requests.generator_class'),
+                Config::string('ts-publish.form_requests.generator_class'),
                 ['findable' => $formRequestClass],
             );
 
@@ -216,7 +217,7 @@ class Runner extends BaseRunner
 
         $this->formRequestGenerators = $formRequestGenerators;
 
-        $formRequestOutputPath = config('ts-publish.form_requests.output_path');
+        $formRequestOutputPath = Config::get('ts-publish.form_requests.output_path');
         $this->formRequestModularBarrels = $this->barrelWriter->writeModular(
             $this->formRequestGenerators,
             is_string($formRequestOutputPath) ? $formRequestOutputPath : null,
@@ -225,17 +226,17 @@ class Runner extends BaseRunner
 
     protected function generateBroadcastChannels(): void
     {
-        if (! $this->shouldPublishBroadcastChannels || ! config()->boolean('ts-publish.broadcast_channels.enabled')) {
+        if (! $this->shouldPublishBroadcastChannels || ! Config::boolean('ts-publish.broadcast_channels.enabled')) {
             $this->broadcastChannelsContent = '';
 
             return;
         }
 
         /** @var BroadcastChannelsCollector $collector */
-        $collector = resolve(config()->string('ts-publish.broadcast_channels.collector_class'));
+        $collector = resolve(Config::string('ts-publish.broadcast_channels.collector_class'));
 
         /** @var BroadcastChannelsWriter $writer */
-        $writer = resolve(config()->string('ts-publish.broadcast_channels.writer_class'));
+        $writer = resolve(Config::string('ts-publish.broadcast_channels.writer_class'));
 
         $this->broadcastChannelsContent = $writer->write($collector->collect());
     }
@@ -252,7 +253,7 @@ class Runner extends BaseRunner
         /** @var Collection<int, BroadcastEventGenerator> $empty */
         $empty = collect();
 
-        if (! $this->shouldPublishBroadcastEvents || ! config()->boolean('ts-publish.broadcast_events.enabled')) {
+        if (! $this->shouldPublishBroadcastEvents || ! Config::boolean('ts-publish.broadcast_events.enabled')) {
             $this->broadcastEventGenerators = $empty;
             $this->broadcastEventModularBarrels = [];
             $this->broadcastEventsIndexContent = '';
@@ -262,7 +263,7 @@ class Runner extends BaseRunner
         }
 
         /** @var BroadcastEventsCollector $collector */
-        $collector = resolve(config()->string('ts-publish.broadcast_events.collector_class'));
+        $collector = resolve(Config::string('ts-publish.broadcast_events.collector_class'));
 
         /** @var Collection<int, BroadcastEventGenerator> $broadcastEventGenerators */
         $broadcastEventGenerators = collect();
@@ -270,7 +271,7 @@ class Runner extends BaseRunner
         foreach ($collector->collect() as $eventClass) {
             /** @var BroadcastEventGenerator $generator */
             $generator = resolve(
-                config()->string('ts-publish.broadcast_events.generator_class'),
+                Config::string('ts-publish.broadcast_events.generator_class'),
                 ['findable' => $eventClass],
             );
 
@@ -279,18 +280,18 @@ class Runner extends BaseRunner
 
         $this->broadcastEventGenerators = $broadcastEventGenerators;
 
-        $broadcastEventsOutputPath = config('ts-publish.broadcast_events.output_path');
+        $broadcastEventsOutputPath = Config::get('ts-publish.broadcast_events.output_path');
         $this->broadcastEventModularBarrels = $this->barrelWriter->writeModular(
             $this->broadcastEventGenerators,
             is_string($broadcastEventsOutputPath) ? $broadcastEventsOutputPath : null,
         );
 
         /** @var BroadcastEventsIndexWriter $indexWriter */
-        $indexWriter = resolve(config()->string('ts-publish.broadcast_events.index_writer_class'));
+        $indexWriter = resolve(Config::string('ts-publish.broadcast_events.index_writer_class'));
         $this->broadcastEventsIndexContent = $indexWriter->write($this->broadcastEventGenerators);
 
         /** @var BroadcastEventsEchoWriter $echoWriter */
-        $echoWriter = resolve(config()->string('ts-publish.broadcast_events.echo_augmentation.writer_class'));
+        $echoWriter = resolve(Config::string('ts-publish.broadcast_events.echo_augmentation.writer_class'));
         $this->broadcastEventsEchoContent = $echoWriter->write($this->broadcastEventGenerators);
     }
 
@@ -299,14 +300,14 @@ class Runner extends BaseRunner
         /** @var Collection<int, RouteGenerator> $empty */
         $empty = collect();
 
-        if (! $this->shouldPublishRoutes || ! config()->boolean('ts-publish.routes.enabled')) {
+        if (! $this->shouldPublishRoutes || ! Config::boolean('ts-publish.routes.enabled')) {
             $this->routeGenerators = $empty;
 
             return;
         }
 
         /** @var RoutesCollector $collector */
-        $collector = resolve(config()->string('ts-publish.routes.collector_class'));
+        $collector = resolve(Config::string('ts-publish.routes.collector_class'));
 
         /** @var Collection<int, RouteGenerator> $routeGenerators */
         $routeGenerators = collect();
@@ -314,7 +315,7 @@ class Runner extends BaseRunner
         foreach ($collector->collect() as $controllerClass) {
             /** @var RouteGenerator $generator */
             $generator = resolve(
-                config()->string('ts-publish.routes.generator_class'),
+                Config::string('ts-publish.routes.generator_class'),
                 ['findable' => $controllerClass],
             );
 
@@ -324,7 +325,7 @@ class Runner extends BaseRunner
         $this->routeGenerators = $routeGenerators;
 
         /** @var RouteWriter $routeWriter */
-        $routeWriter = resolve(config()->string('ts-publish.routes.writer_class'));
+        $routeWriter = resolve(Config::string('ts-publish.routes.writer_class'));
 
         $this->routeModularBarrels = $routeWriter->writeRouteBarrels($this->routeGenerators);
     }
@@ -332,7 +333,7 @@ class Runner extends BaseRunner
     protected function generateGlobals(): void
     {
         /** @var GlobalsWriter $globalsWriter */
-        $globalsWriter = resolve(config()->string('ts-publish.globals.writer_class'));
+        $globalsWriter = resolve(Config::string('ts-publish.globals.writer_class'));
         $this->globalsWriter = $globalsWriter;
 
         $this->globalsContent = $globalsWriter->write($this);
@@ -341,7 +342,7 @@ class Runner extends BaseRunner
     protected function generateJson(): void
     {
         /** @var JsonWriter $jsonWriter */
-        $jsonWriter = resolve(config()->string('ts-publish.json.writer_class'));
+        $jsonWriter = resolve(Config::string('ts-publish.json.writer_class'));
 
         $this->jsonContent = $jsonWriter->write($this);
     }
@@ -360,7 +361,7 @@ class Runner extends BaseRunner
     protected function generateWatcherJson(): void
     {
         /** @var WatcherJsonWriter $jsonWriter */
-        $jsonWriter = resolve(config()->string('ts-publish.watcher.writer_class'));
+        $jsonWriter = resolve(Config::string('ts-publish.watcher.writer_class'));
 
         $this->watcherJsonContent = $jsonWriter->write();
     }

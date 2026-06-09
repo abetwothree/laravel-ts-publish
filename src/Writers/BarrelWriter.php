@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Config;
 
 /**
  * Generate a barrel list of export files for a .d.ts or .ts file that re-exports all generated types and enums.
@@ -36,8 +37,8 @@ class BarrelWriter
             ->map(fn (string $file) => "export * from './{$file}';")
             ->implode("\n");
 
-        if (config()->boolean('ts-publish.output_to_files')) {
-            $outputPath = config()->string('ts-publish.output_directory')."/$outputDirectory";
+        if (Config::boolean('ts-publish.output_to_files')) {
+            $outputPath = Config::string('ts-publish.output_directory')."/$outputDirectory";
             $this->filesystem->ensureDirectoryExists($outputPath);
             $this->filesystem->put("$outputPath/$filename.ts", $content);
         }
@@ -68,7 +69,7 @@ class BarrelWriter
 
         $base = is_string($outputBase) && $outputBase !== ''
             ? $outputBase
-            : config()->string('ts-publish.output_directory');
+            : Config::string('ts-publish.output_directory');
 
         /** @var array<string, string> $results */
         $results = [];
@@ -80,7 +81,7 @@ class BarrelWriter
                 ->map(fn (string $file) => "export * from './{$file}';")
                 ->implode("\n");
 
-            if (config()->boolean('ts-publish.output_to_files')) {
+            if (Config::boolean('ts-publish.output_to_files')) {
                 $outputPath = $base.'/'.$namespacePath;
                 $this->filesystem->ensureDirectoryExists($outputPath);
                 $this->filesystem->put("$outputPath/index.ts", $content);

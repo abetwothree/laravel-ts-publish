@@ -167,7 +167,7 @@ return [
         'writer_class' => WatcherJsonWriter::class,
         'filename' => 'laravel-ts-collected-files.json',
         /* Defaults to output_directory setting */
-        'output_directory' => null,
+        'output_directory' => '',
     ],
 
     /*
@@ -272,7 +272,7 @@ return [
     'routes' => [
         'enabled' => true,
         'method_casing' => 'camel',
-        'output_path' => null,
+        'output_path' => '',
         'only' => [],
         'except' => [],
         'exclude_middleware' => [],
@@ -303,7 +303,7 @@ return [
     'form_requests' => [
         'enabled' => true,
         'namespace' => 'form-requests',
-        'output_path' => null,
+        'output_path' => '',
         'collector_class' => FormRequestsCollector::class,
         'generator_class' => FormRequestGenerator::class,
         'transformer_class' => FormRequestTransformer::class,
@@ -330,7 +330,7 @@ return [
 
     'broadcast_channels' => [
         'enabled' => true,
-        'output_path' => null,
+        'output_path' => '',
         'filename' => 'broadcast-channels.ts',
         'collector_class' => BroadcastChannelsCollector::class,
         'writer_class' => BroadcastChannelsWriter::class,
@@ -364,7 +364,7 @@ return [
 
     'broadcast_events' => [
         'enabled' => true,
-        'output_path' => null,
+        'output_path' => '',
         'index_filename' => 'broadcast-events.ts',
         'collector_class' => BroadcastEventsCollector::class,
         'generator_class' => BroadcastEventGenerator::class,
@@ -381,7 +381,7 @@ return [
             'enabled' => true,
             'echo_package' => null,
             'filename' => 'echo-broadcast-events.d.ts',
-            'output_path' => null,
+            'output_path' => '',
             'writer_class' => BroadcastEventsEchoWriter::class,
             'template' => 'laravel-ts-publish::echo-broadcast-events',
         ],
@@ -412,7 +412,7 @@ return [
         'component_casing' => 'camel',
         'inertia_middleware_path' => null,
         'augmentation_filename' => 'inertia-config.d.ts',
-        'output_path' => null,
+        'output_path' => '',
     ],
 
     /*
@@ -428,7 +428,7 @@ return [
         'writer_class' => GlobalsWriter::class,
         'filename' => 'laravel-ts-global.ts',
         /* Defaults to output_directory setting */
-        'output_directory' => null,
+        'output_directory' => '',
         'template' => 'laravel-ts-publish::globals',
     ],
 
@@ -446,7 +446,7 @@ return [
         'writer_class' => JsonWriter::class,
         'filename' => 'laravel-ts-definitions.json',
         /* Defaults to output_directory setting */
-        'output_directory' => null,
+        'output_directory' => '',
     ],
 
     /*
@@ -465,7 +465,7 @@ return [
     'vite_env' => [
         'enabled' => false,
         'filename' => 'vite-env.d.ts',
-        'output_path' => null,
+        'output_path' => '',
         'source_file' => null,
     ],
 ];

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Facades\Config;
 
 /**
  * Reads a configured source file, .env, or .env.example for VITE_-prefixed variables
@@ -25,7 +26,7 @@ class ViteEnvWriter
      */
     public function write(): string
     {
-        if (! config()->boolean('ts-publish.vite_env.enabled')) {
+        if (! Config::boolean('ts-publish.vite_env.enabled')) {
             return '';
         }
 
@@ -39,7 +40,7 @@ class ViteEnvWriter
             'variables' => $variables,
         ])->render();
 
-        if (config()->boolean('ts-publish.output_to_files')) {
+        if (Config::boolean('ts-publish.output_to_files')) {
             $this->writeToDisk($content);
         }
 
@@ -125,9 +126,9 @@ class ViteEnvWriter
         $outputPath = config('ts-publish.vite_env.output_path');
         $outputDir = is_string($outputPath) && $outputPath !== ''
             ? $outputPath
-            : config()->string('ts-publish.output_directory');
+            : Config::string('ts-publish.output_directory');
 
-        $filename = config()->string('ts-publish.vite_env.filename', 'vite-env.d.ts');
+        $filename = Config::string('ts-publish.vite_env.filename', 'vite-env.d.ts');
 
         $this->filesystem->ensureDirectoryExists($outputDir);
         $this->filesystem->put("$outputDir/$filename", $content);

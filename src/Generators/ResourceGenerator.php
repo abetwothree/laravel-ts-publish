@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Generators;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Config;
 use Override;
 
 /**
@@ -20,13 +21,13 @@ class ResourceGenerator extends CoreGenerator
     public function generate(): string
     {
         /** @var ResourceTransformer $transformer */
-        $transformer = resolve(config()->string('ts-publish.resources.transformer_class'), [
+        $transformer = resolve(Config::string('ts-publish.resources.transformer_class'), [
             'findable' => $this->findable,
         ]);
         $this->transformer = $transformer;
 
         /** @var ResourceWriter $writer */
-        $writer = resolve(config()->string('ts-publish.resources.writer_class'));
+        $writer = resolve(Config::string('ts-publish.resources.writer_class'));
 
         return $this->content = $writer->write($this->transformer);
     }

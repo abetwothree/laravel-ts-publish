@@ -8,7 +8,7 @@ use Illuminate\Filesystem\Filesystem;
 beforeEach(function () {
     config()->set('ts-publish.output_to_files', false);
     config()->set('ts-publish.broadcast_channels.enabled', true);
-    config()->set('ts-publish.broadcast_channels.output_path', null);
+    config()->set('ts-publish.broadcast_channels.output_path', '');
     config()->set('ts-publish.broadcast_channels.filename', 'broadcast-channels.ts');
     config()->set('ts-publish.broadcast_channels.template', 'laravel-ts-publish::broadcast-channels');
 });

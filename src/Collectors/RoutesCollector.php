@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Concerns\FiltersRoutes;
 use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Config;
 use ReflectionClass;
 
 class RoutesCollector
@@ -33,10 +34,10 @@ class RoutesCollector
      */
     public function collect(): Collection
     {
-        $only = array_values(array_filter(config()->array('ts-publish.routes.only', []), 'is_string'));
-        $except = array_values(array_filter(config()->array('ts-publish.routes.except', []), 'is_string'));
-        $onlyNamed = config()->boolean('ts-publish.routes.only_named', false);
-        $excludeMiddleware = array_values(array_filter(config()->array('ts-publish.routes.exclude_middleware', []), 'is_string'));
+        $only = array_values(array_filter(Config::array('ts-publish.routes.only', []), 'is_string'));
+        $except = array_values(array_filter(Config::array('ts-publish.routes.except', []), 'is_string'));
+        $onlyNamed = Config::boolean('ts-publish.routes.only_named', false);
+        $excludeMiddleware = array_values(array_filter(Config::array('ts-publish.routes.exclude_middleware', []), 'is_string'));
 
         /** @var Collection<int, class-string> $controllers */
         $controllers = collect($this->router->getRoutes()->getRoutes())

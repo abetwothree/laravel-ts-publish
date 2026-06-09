@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Collectors;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\Config;
 use ReflectionClass;
 
 /**
@@ -26,9 +27,9 @@ class FormRequestsCollector extends CoreCollector
     protected function finderSettings(): array
     {
         return [
-            'included' => $this->sanitizeAllowSetting(config()->array('ts-publish.form_requests.included')),
-            'excluded' => $this->sanitizeAllowSetting(config()->array('ts-publish.form_requests.excluded')),
-            'additional_directories' => $this->sanitizeAllowSetting(config()->array('ts-publish.form_requests.additional_directories')),
+            'included' => $this->sanitizeAllowSetting(Config::array('ts-publish.form_requests.included')),
+            'excluded' => $this->sanitizeAllowSetting(Config::array('ts-publish.form_requests.excluded')),
+            'additional_directories' => $this->sanitizeAllowSetting(Config::array('ts-publish.form_requests.additional_directories')),
         ];
     }
 }

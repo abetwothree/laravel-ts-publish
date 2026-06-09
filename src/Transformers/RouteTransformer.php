@@ -121,7 +121,7 @@ class RouteTransformer extends CoreTransformer
      */
     protected function initInertiaAnalyzer(): self
     {
-        if (config()->boolean('ts-publish.inertia.enabled')) {
+        if (Config::boolean('ts-publish.inertia.enabled')) {
             $this->inertiaPageAnalyzer = resolve(InertiaPageAnalyzer::class);
         }
 
@@ -174,11 +174,11 @@ class RouteTransformer extends CoreTransformer
         /** @var array<string, RouteActionData> $actionsByMethod Actions keyed by method name to deduplicate */
         $actionsByMethod = [];
 
-        $only = array_values(array_filter(config()->array('ts-publish.routes.only', []), 'is_string'));
-        $except = array_values(array_filter(config()->array('ts-publish.routes.except', []), 'is_string'));
-        $excludeMiddleware = array_values(array_filter(config()->array('ts-publish.routes.exclude_middleware', []), 'is_string'));
-        $onlyNamed = config()->boolean('ts-publish.routes.only_named', false);
-        $methodCasing = config()->string('ts-publish.routes.method_casing', 'camel');
+        $only = array_values(array_filter(Config::array('ts-publish.routes.only', []), 'is_string'));
+        $except = array_values(array_filter(Config::array('ts-publish.routes.except', []), 'is_string'));
+        $excludeMiddleware = array_values(array_filter(Config::array('ts-publish.routes.exclude_middleware', []), 'is_string'));
+        $onlyNamed = Config::boolean('ts-publish.routes.only_named', false);
+        $methodCasing = Config::string('ts-publish.routes.method_casing', 'camel');
 
         foreach ($router->getRoutes()->getRoutes() as $route) {
             /** @var Route $route */
@@ -738,7 +738,7 @@ class RouteTransformer extends CoreTransformer
             return $component;
         }
 
-        $casing = config()->string('ts-publish.inertia.component_casing', 'camel');
+        $casing = Config::string('ts-publish.inertia.component_casing', 'camel');
         $paths = $component;
         $keyMap = $this->computeUniqueComponentKeys($paths, $casing);
         $normalized = [];
@@ -768,7 +768,7 @@ class RouteTransformer extends CoreTransformer
             return is_string($pageType) ? $pageType : $pageType[0];
         }
 
-        $casing = config()->string('ts-publish.inertia.component_casing', 'camel');
+        $casing = Config::string('ts-publish.inertia.component_casing', 'camel');
         $paths = $component;
         $types = is_array($pageType) ? $pageType : [$pageType];
         $keyMap = $this->computeUniqueComponentKeys($paths, $casing);

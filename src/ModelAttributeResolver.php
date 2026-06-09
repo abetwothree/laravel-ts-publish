@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Config;
 use ReflectionClass;
 use Throwable;
 
@@ -142,7 +143,7 @@ class ModelAttributeResolver
                 $type = 'unknown';
             }
 
-            $nullableRelations = config()->boolean('ts-publish.models.nullable_relations');
+            $nullableRelations = Config::boolean('ts-publish.models.nullable_relations');
 
             if ($nullableRelations && $ctx['relationNullable']->isNullable($relation)) {
                 $type .= ' | null';
@@ -159,7 +160,7 @@ class ModelAttributeResolver
         }
 
         $type = $relatedModel;
-        $nullableRelations = config()->boolean('ts-publish.models.nullable_relations');
+        $nullableRelations = Config::boolean('ts-publish.models.nullable_relations');
 
         if ($nullableRelations && $ctx['relationNullable']->isNullable($relation)) {
             $type .= ' | null';

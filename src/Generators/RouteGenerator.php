@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Generators;
 
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\RouteWriter;
+use Illuminate\Support\Facades\Config;
 use Override;
 
 /**
@@ -19,13 +20,13 @@ class RouteGenerator extends CoreGenerator
     public function generate(): string
     {
         /** @var RouteTransformer $transformer */
-        $transformer = resolve(config()->string('ts-publish.routes.transformer_class'), [
+        $transformer = resolve(Config::string('ts-publish.routes.transformer_class'), [
             'findable' => $this->findable,
         ]);
         $this->transformer = $transformer;
 
         /** @var RouteWriter $writer */
-        $writer = resolve(config()->string('ts-publish.routes.writer_class'));
+        $writer = resolve(Config::string('ts-publish.routes.writer_class'));
 
         return $this->content = $writer->write($this->transformer);
     }

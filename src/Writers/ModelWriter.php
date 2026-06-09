@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
+use Illuminate\Support\Facades\Config;
 use Override;
 
 /**
@@ -22,7 +23,7 @@ class ModelWriter extends CoreWriter
         $filename = $transformer->filename();
 
         /** @var view-string $template */
-        $template = config()->string('ts-publish.models.template');
+        $template = Config::string('ts-publish.models.template');
 
         $data = $transformer->data();
 
@@ -30,13 +31,13 @@ class ModelWriter extends CoreWriter
             $template,
             [
                 'filename' => $filename,
-                'metadataEnabled' => config()->boolean('ts-publish.enums.metadata_enabled'),
-                'usesTolkiPackage' => config()->boolean('ts-publish.enums.use_tolki_package'),
+                'metadataEnabled' => Config::boolean('ts-publish.enums.metadata_enabled'),
+                'usesTolkiPackage' => Config::boolean('ts-publish.enums.use_tolki_package'),
                 'data' => $data,
             ]
         )->render();
 
-        if (config()->boolean('ts-publish.output_to_files')) {
+        if (Config::boolean('ts-publish.output_to_files')) {
             $this->writeModelFile($filename, $content, $transformer->namespacePath);
         }
 
@@ -45,7 +46,7 @@ class ModelWriter extends CoreWriter
 
     protected function writeModelFile(string $filename, string $content, string $namespacePath): void
     {
-        $outputBase = config()->string('ts-publish.output_directory');
+        $outputBase = Config::string('ts-publish.output_directory');
         $outputPath = $outputBase.'/'.$namespacePath;
 
         $this->filesystem->ensureDirectoryExists($outputPath);

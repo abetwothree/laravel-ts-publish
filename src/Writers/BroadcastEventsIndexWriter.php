@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\ResolvesEventNameConflicts;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Config;
 
 /**
  * Writes the broadcast-events.ts index file from all generated broadcast event interfaces.
@@ -29,7 +30,7 @@ class BroadcastEventsIndexWriter
         protected Filesystem $filesystem,
     ) {
         /** @var view-string $template */
-        $template = config()->string('ts-publish.broadcast_events.index_template');
+        $template = Config::string('ts-publish.broadcast_events.index_template');
         $this->template = $template;
     }
 
@@ -51,7 +52,7 @@ class BroadcastEventsIndexWriter
             $content = $this->renderContent($generators);
         }
 
-        if (config()->boolean('ts-publish.output_to_files')) {
+        if (Config::boolean('ts-publish.output_to_files')) {
             $this->writeFile($content);
         }
 
@@ -125,7 +126,7 @@ class BroadcastEventsIndexWriter
     protected function writeFile(string $content): void
     {
         $outputPath = $this->resolveOutputPath();
-        $filename = config()->string('ts-publish.broadcast_events.index_filename', 'broadcast-events.ts');
+        $filename = Config::string('ts-publish.broadcast_events.index_filename', 'broadcast-events.ts');
 
         $this->filesystem->ensureDirectoryExists($outputPath);
         $this->filesystem->put("{$outputPath}/{$filename}", $content);
@@ -136,12 +137,12 @@ class BroadcastEventsIndexWriter
      */
     protected function resolveOutputPath(): string
     {
-        $outputPath = config('ts-publish.broadcast_events.output_path');
+        $outputPath = Config::string('ts-publish.broadcast_events.output_path');
 
-        if (is_string($outputPath)) {
+        if (! empty($outputPath)) {
             return $outputPath;
         }
 
-        return config()->string('ts-publish.output_directory');
+        return Config::string('ts-publish.output_directory');
     }
 }

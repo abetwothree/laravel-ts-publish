@@ -25,7 +25,7 @@ describe('BroadcastEventsIndexWriter', function () {
         config()->set('ts-publish.broadcast_events.generator_class', BroadcastEventGenerator::class);
         config()->set('ts-publish.broadcast_events.index_writer_class', BroadcastEventsIndexWriter::class);
         config()->set('ts-publish.broadcast_events.index_template', 'laravel-ts-publish::broadcast-events-index');
-        config()->set('ts-publish.broadcast_events.output_path', null);
+        config()->set('ts-publish.broadcast_events.output_path', '');
         config()->set('ts-publish.broadcast_events.index_filename', 'broadcast-events.ts');
     });
 

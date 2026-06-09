@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Writers;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastChannelsTransformer;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Config;
 
 class BroadcastChannelsWriter
 {
@@ -25,10 +26,10 @@ class BroadcastChannelsWriter
         $dto = $this->transformer->transform($channels);
 
         /** @var view-string $template */
-        $template = config()->string('ts-publish.broadcast_channels.template');
+        $template = Config::string('ts-publish.broadcast_channels.template');
         $content = view($template, ['data' => $dto])->render();
 
-        if (config()->boolean('ts-publish.output_to_files')) {
+        if (Config::boolean('ts-publish.output_to_files')) {
             $this->writeFile($content);
         }
 
@@ -41,7 +42,7 @@ class BroadcastChannelsWriter
     protected function writeFile(string $content): void
     {
         $outputPath = $this->resolveOutputPath();
-        $filename = config()->string('ts-publish.broadcast_channels.filename', 'broadcast-channels.ts');
+        $filename = Config::string('ts-publish.broadcast_channels.filename', 'broadcast-channels.ts');
 
         $this->filesystem->ensureDirectoryExists($outputPath);
         $this->filesystem->put("{$outputPath}/{$filename}", $content);
@@ -52,12 +53,12 @@ class BroadcastChannelsWriter
      */
     protected function resolveOutputPath(): string
     {
-        $channelsOutputPath = config('ts-publish.broadcast_channels.output_path');
+        $channelsOutputPath = Config::string('ts-publish.broadcast_channels.output_path');
 
-        if (is_string($channelsOutputPath)) {
+        if (! empty($channelsOutputPath)) {
             return $channelsOutputPath;
         }
 
-        return config()->string('ts-publish.output_directory');
+        return Config::string('ts-publish.output_directory');
     }
 }

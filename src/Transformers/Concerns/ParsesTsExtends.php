@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Transformers\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExtends;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 use ReflectionClass;
 
@@ -72,7 +73,7 @@ trait ParsesTsExtends
         // Config-level extends
         /** @var list<string|array{extends: string, import?: string, types?: list<string>}> $configEntries */
         $configEntries = array_values(array_filter(
-            config()->array("ts-publish.ts_extends.{$scope}", []),
+            Config::array("ts-publish.ts_extends.{$scope}", []),
             fn (mixed $v): bool => is_string($v) || is_array($v),
         ));
 

@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Generators;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ModelWriter;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Config;
 use Override;
 
 /**
@@ -20,13 +21,13 @@ class ModelGenerator extends CoreGenerator
     public function generate(): string
     {
         /** @var ModelTransformer $transformer */
-        $transformer = resolve(config()->string('ts-publish.models.transformer_class'), [
+        $transformer = resolve(Config::string('ts-publish.models.transformer_class'), [
             'findable' => $this->findable,
         ]);
         $this->transformer = $transformer;
 
         /** @var ModelWriter $writer */
-        $writer = resolve(config()->string('ts-publish.models.writer_class'));
+        $writer = resolve(Config::string('ts-publish.models.writer_class'));
 
         return $this->content = $writer->write($this->transformer);
     }

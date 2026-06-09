@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\FormRequest\FormRequestRulesAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsFormRequestDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 use Override;
 use ReflectionClass;
@@ -99,7 +100,7 @@ class FormRequestTransformer extends CoreTransformer
     protected function analyzeRules(): self
     {
         /** @var FormRequestRulesAnalyzer $analyzer */
-        $analyzer = resolve(config()->string('ts-publish.form_requests.analyzer_class', FormRequestRulesAnalyzer::class));
+        $analyzer = resolve(Config::string('ts-publish.form_requests.analyzer_class', FormRequestRulesAnalyzer::class));
 
         $nodes = $analyzer->analyze($this->findable);
         $this->isDynamic = $analyzer->isDynamic;

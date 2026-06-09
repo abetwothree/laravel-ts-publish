@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Collectors;
 
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Config;
 use ReflectionClass;
 
 /**
@@ -26,9 +27,9 @@ class ResourcesCollector extends CoreCollector
     protected function finderSettings(): array
     {
         return [
-            'included' => $this->sanitizeAllowSetting(config()->array('ts-publish.resources.included')),
-            'excluded' => $this->sanitizeAllowSetting(config()->array('ts-publish.resources.excluded')),
-            'additional_directories' => $this->sanitizeAllowSetting(config()->array('ts-publish.resources.additional_directories')),
+            'included' => $this->sanitizeAllowSetting(Config::array('ts-publish.resources.included')),
+            'excluded' => $this->sanitizeAllowSetting(Config::array('ts-publish.resources.excluded')),
+            'additional_directories' => $this->sanitizeAllowSetting(Config::array('ts-publish.resources.additional_directories')),
         ];
     }
 }

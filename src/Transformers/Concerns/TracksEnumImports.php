@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Transformers\Concerns;
 
+use Illuminate\Support\Facades\Config;
+
 /**
  * Shared enum FQCN/const tracking properties for transformers.
  */
@@ -23,8 +25,7 @@ trait TracksEnumImports
      */
     protected function shouldGenerateHasEnums(): bool
     {
-        return config()->boolean('ts-publish.enums.use_tolki_package')
-            && $this->enumProperties() !== [];
+        return Config::boolean('ts-publish.enums.use_tolki_package') && $this->enumProperties() !== [];
     }
 
     /**

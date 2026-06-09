@@ -93,7 +93,7 @@ class TsPublishCommand extends Command
     protected function runAll(): int
     {
         $preview = filter_var($this->option('preview'), FILTER_VALIDATE_BOOLEAN);
-        config()->set('ts-publish.output_to_files', ! $preview);
+        Config::set('ts-publish.output_to_files', ! $preview);
 
         if (! $this->output->isQuiet()) {
             intro('ts:publish');
@@ -157,7 +157,7 @@ class TsPublishCommand extends Command
     protected function runSource(string $source): int
     {
         $preview = filter_var($this->option('preview'), FILTER_VALIDATE_BOOLEAN);
-        config()->set('ts-publish.output_to_files', ! $preview);
+        Config::set('ts-publish.output_to_files', ! $preview);
 
         if (! $this->output->isQuiet()) {
             intro('ts:publish --source');
@@ -215,13 +215,13 @@ class TsPublishCommand extends Command
      */
     protected function resolvePublishFlags(): ?array
     {
-        $configEnums = config()->boolean('ts-publish.enums.enabled');
-        $configModels = config()->boolean('ts-publish.models.enabled');
-        $configResources = config()->boolean('ts-publish.resources.enabled');
-        $configRoutes = config()->boolean('ts-publish.routes.enabled');
-        $configFormRequests = config()->boolean('ts-publish.form_requests.enabled');
-        $configBroadcastChannels = config()->boolean('ts-publish.broadcast_channels.enabled');
-        $configBroadcastEvents = config()->boolean('ts-publish.broadcast_events.enabled');
+        $configEnums = Config::boolean('ts-publish.enums.enabled');
+        $configModels = Config::boolean('ts-publish.models.enabled');
+        $configResources = Config::boolean('ts-publish.resources.enabled');
+        $configRoutes = Config::boolean('ts-publish.routes.enabled');
+        $configFormRequests = Config::boolean('ts-publish.form_requests.enabled');
+        $configBroadcastChannels = Config::boolean('ts-publish.broadcast_channels.enabled');
+        $configBroadcastEvents = Config::boolean('ts-publish.broadcast_events.enabled');
         $onlyEnums = (bool) $this->option('only-enums');
         $onlyModels = (bool) $this->option('only-models');
         $onlyResources = (bool) $this->option('only-resources');
@@ -517,7 +517,7 @@ class TsPublishCommand extends Command
         }
 
         if (! empty($runner->viteEnvContent)) {
-            $viteEnvFilename = config()->string('ts-publish.vite_env.filename', 'vite-env.d.ts');
+            $viteEnvFilename = Config::string('ts-publish.vite_env.filename', 'vite-env.d.ts');
             $this->newLine();
             $this->comment('Vite Env:');
             $this->newLine();
@@ -536,7 +536,7 @@ class TsPublishCommand extends Command
         }
 
         if (! empty($runner->broadcastChannelsContent)) {
-            $filename = config()->string('ts-publish.broadcast_channels.filename', 'broadcast-channels.ts');
+            $filename = Config::string('ts-publish.broadcast_channels.filename', 'broadcast-channels.ts');
             $this->newLine();
             $this->comment('Broadcast Channels:');
             $this->newLine();
@@ -545,7 +545,7 @@ class TsPublishCommand extends Command
         }
 
         if (! empty($runner->broadcastEventsIndexContent)) {
-            $filename = config()->string('ts-publish.broadcast_events.index_filename', 'broadcast-events.ts');
+            $filename = Config::string('ts-publish.broadcast_events.index_filename', 'broadcast-events.ts');
             $this->newLine();
             $this->comment('Broadcast Events:');
             $this->newLine();
@@ -573,7 +573,7 @@ class TsPublishCommand extends Command
         }
 
         if (! empty($runner->broadcastEventsEchoContent)) {
-            $filename = config()->string('ts-publish.broadcast_events.echo_augmentation.filename', 'echo-broadcast-events.d.ts');
+            $filename = Config::string('ts-publish.broadcast_events.echo_augmentation.filename', 'echo-broadcast-events.d.ts');
             $this->newLine();
             $this->comment('Echo Broadcast Events:');
             $this->newLine();
@@ -584,7 +584,7 @@ class TsPublishCommand extends Command
 
     protected function createPublishedFilesList(Runner|RunnerForSource $runner): void
     {
-        $outputDirectory = config()->string('ts-publish.output_directory');
+        $outputDirectory = Config::string('ts-publish.output_directory');
 
         info("Published to: {$outputDirectory}");
 
@@ -745,13 +745,13 @@ class TsPublishCommand extends Command
             $runner->viteEnvContent ? ['Vite Env', Config::string('ts-publish.vite_env.filename', 'vite-env.d.ts')] : null,
             $runner->inertiaConfigContent ? ['Inertia Config', Config::string('ts-publish.inertia.augmentation_filename')] : null,
             $runner->broadcastChannelsContent !== ''
-                ? ['Broadcast Channels', config()->string('ts-publish.broadcast_channels.filename', 'broadcast-channels.ts')]
+                ? ['Broadcast Channels', Config::string('ts-publish.broadcast_channels.filename', 'broadcast-channels.ts')]
                 : null,
             $runner->broadcastEventsIndexContent !== ''
-                ? ['Broadcast Events', config()->string('ts-publish.broadcast_events.index_filename', 'broadcast-events.ts')]
+                ? ['Broadcast Events', Config::string('ts-publish.broadcast_events.index_filename', 'broadcast-events.ts')]
                 : null,
             $runner->broadcastEventsEchoContent !== ''
-                ? ['Echo Broadcast Events', config()->string('ts-publish.broadcast_events.echo_augmentation.filename', 'echo-broadcast-events.d.ts')]
+                ? ['Echo Broadcast Events', Config::string('ts-publish.broadcast_events.echo_augmentation.filename', 'echo-broadcast-events.d.ts')]
                 : null,
             $runner->jsonContent ? ['JSON', Config::string('ts-publish.json.filename')] : null,
         ]);

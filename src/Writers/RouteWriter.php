@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Config;
 use Override;
 
 /**
@@ -25,10 +26,10 @@ class RouteWriter extends CoreWriter
         $filename = $transformer->filename();
 
         /** @var view-string $template */
-        $template = config()->string('ts-publish.routes.template');
+        $template = Config::string('ts-publish.routes.template');
         $content = view($template, ['data' => $transformer->data()])->render();
 
-        if (config()->boolean('ts-publish.output_to_files')) {
+        if (Config::boolean('ts-publish.output_to_files')) {
             $this->writeRouteFile($filename, $content, $transformer->namespacePath);
         }
 
@@ -37,10 +38,10 @@ class RouteWriter extends CoreWriter
 
     protected function writeRouteFile(string $filename, string $content, string $namespacePath): void
     {
-        $routesOutputPath = config('ts-publish.routes.output_path');
-        $outputBase = is_string($routesOutputPath)
+        $routesOutputPath = Config::string('ts-publish.routes.output_path');
+        $outputBase = ! empty($routesOutputPath)
             ? $routesOutputPath
-            : config()->string('ts-publish.output_directory');
+            : Config::string('ts-publish.output_directory');
 
         $outputPath = $outputBase.'/'.$namespacePath;
 
@@ -83,11 +84,11 @@ class RouteWriter extends CoreWriter
                 ))
                 ->implode("\n");
 
-            if (config()->boolean('ts-publish.output_to_files')) {
-                $routesOutputPath = config('ts-publish.routes.output_path');
-                $outputBase = is_string($routesOutputPath)
+            if (Config::boolean('ts-publish.output_to_files')) {
+                $routesOutputPath = Config::string('ts-publish.routes.output_path');
+                $outputBase = ! empty($routesOutputPath)
                     ? $routesOutputPath
-                    : config()->string('ts-publish.output_directory');
+                    : Config::string('ts-publish.output_directory');
 
                 $outputPath = $outputBase.'/'.$namespacePath;
                 $this->filesystem->ensureDirectoryExists($outputPath);

@@ -7,8 +7,8 @@ use Illuminate\Filesystem\Filesystem;
 
 beforeEach(function () {
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.inertia.output_path', null);
-    config()->set('ts-publish.routes.output_path', null);
+    config()->set('ts-publish.inertia.output_path', '');
+    config()->set('ts-publish.routes.output_path', '');
 });
 
 // ─── write() rendering ───────────────────────────────────────────
@@ -80,7 +80,7 @@ test('writes file to disk when output_to_files is enabled with inertia output_pa
 test('falls back to routes output_path when inertia output_path is null', function () {
     $outputDir = sys_get_temp_dir().'/laravel-ts-publish-inertia-route-test-'.uniqid();
     config()->set('ts-publish.output_to_files', true);
-    config()->set('ts-publish.inertia.output_path', null);
+    config()->set('ts-publish.inertia.output_path', '');
     config()->set('ts-publish.routes.output_path', $outputDir);
 
     $writer = resolve(InertiaConfigWriter::class);
@@ -98,8 +98,8 @@ test('falls back to routes output_path when inertia output_path is null', functi
 test('falls back to output_directory when both inertia and routes output_path are null', function () {
     $outputDir = sys_get_temp_dir().'/laravel-ts-publish-inertia-default-test-'.uniqid();
     config()->set('ts-publish.output_to_files', true);
-    config()->set('ts-publish.inertia.output_path', null);
-    config()->set('ts-publish.routes.output_path', null);
+    config()->set('ts-publish.inertia.output_path', '');
+    config()->set('ts-publish.routes.output_path', '');
     config()->set('ts-publish.output_directory', $outputDir);
 
     $writer = resolve(InertiaConfigWriter::class);

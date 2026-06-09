@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Transformers\Concerns;
 
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 
 /**
@@ -62,7 +63,7 @@ trait ResolvesImportConflicts
     {
         $namespace = Str::beforeLast($fqcn, '\\');
 
-        $prefix = config()->string('ts-publish.namespace_strip_prefix', '');
+        $prefix = Config::string('ts-publish.namespace_strip_prefix', '');
 
         if ($prefix !== '' && str_starts_with($namespace, $prefix)) {
             $namespace = substr($namespace, strlen($prefix));

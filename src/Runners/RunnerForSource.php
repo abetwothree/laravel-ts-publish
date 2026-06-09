@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Config;
 use InvalidArgumentException;
 use ReflectionClass;
 
@@ -118,7 +119,7 @@ class RunnerForSource extends BaseRunner
     {
         /** @var EnumGenerator $generator */
         $generator = resolve(
-            config()->string('ts-publish.enums.generator_class'),
+            Config::string('ts-publish.enums.generator_class'),
             ['findable' => $fqcn],
         );
 
@@ -129,7 +130,7 @@ class RunnerForSource extends BaseRunner
     {
         /** @var ModelGenerator $generator */
         $generator = resolve(
-            config()->string('ts-publish.models.generator_class'),
+            Config::string('ts-publish.models.generator_class'),
             ['findable' => $fqcn],
         );
 
@@ -140,7 +141,7 @@ class RunnerForSource extends BaseRunner
     {
         /** @var ResourceGenerator $generator */
         $generator = resolve(
-            config()->string('ts-publish.resources.generator_class'),
+            Config::string('ts-publish.resources.generator_class'),
             ['findable' => $fqcn],
         );
 
@@ -159,7 +160,7 @@ class RunnerForSource extends BaseRunner
     {
         /** @var RouteGenerator $generator */
         $generator = resolve(
-            config()->string('ts-publish.routes.generator_class'),
+            Config::string('ts-publish.routes.generator_class'),
             ['findable' => $fqcn],
         );
 
@@ -175,7 +176,7 @@ class RunnerForSource extends BaseRunner
     {
         /** @var FormRequestGenerator $generator */
         $generator = resolve(
-            config()->string('ts-publish.form_requests.generator_class'),
+            Config::string('ts-publish.form_requests.generator_class'),
             ['findable' => $fqcn],
         );
 
@@ -191,7 +192,7 @@ class RunnerForSource extends BaseRunner
     {
         /** @var BroadcastEventGenerator $generator */
         $generator = resolve(
-            config()->string('ts-publish.broadcast_events.generator_class'),
+            Config::string('ts-publish.broadcast_events.generator_class'),
             ['findable' => $fqcn],
         );
 

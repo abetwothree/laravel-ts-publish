@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Facades\Config;
 
 /**
  * @phpstan-import-type CasesList from EnumTransformer
@@ -32,16 +33,16 @@ class JsonWriter
 
     public function write(Runner $runner): string
     {
-        if (! config()->boolean('ts-publish.json.enabled')) {
+        if (! Config::boolean('ts-publish.json.enabled')) {
             return '';
         }
 
         $content = $this->createJsonContent($runner);
 
-        if (config()->boolean('ts-publish.output_to_files')) {
-            $jsonDir = config('ts-publish.json.output_directory');
-            $outputPath = is_string($jsonDir) ? $jsonDir : config()->string('ts-publish.output_directory');
-            $filename = config()->string('ts-publish.json.filename');
+        if (Config::boolean('ts-publish.output_to_files')) {
+            $jsonDir = Config::string('ts-publish.json.output_directory');
+            $outputPath = ! empty($jsonDir) ? $jsonDir : Config::string('ts-publish.output_directory');
+            $filename = Config::string('ts-publish.json.filename');
 
             $this->filesystem->ensureDirectoryExists($outputPath);
             $this->filesystem->put("$outputPath/$filename", $content);

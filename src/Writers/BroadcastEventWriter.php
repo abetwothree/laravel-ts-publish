@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
+use Illuminate\Support\Facades\Config;
 use Override;
 
 /**
@@ -30,14 +31,14 @@ class BroadcastEventWriter extends CoreWriter
         $data = $transformer->data();
 
         /** @var view-string $template */
-        $template = config()->string('ts-publish.broadcast_events.template');
+        $template = Config::string('ts-publish.broadcast_events.template');
 
         $content = view($template, [
             'filename' => $filename,
             'data' => $data,
         ])->render();
 
-        if (config()->boolean('ts-publish.output_to_files')) {
+        if (Config::boolean('ts-publish.output_to_files')) {
             $this->writeEventFile($filename, $content, $transformer->namespacePath);
         }
 
@@ -49,9 +50,9 @@ class BroadcastEventWriter extends CoreWriter
      */
     protected function writeEventFile(string $filename, string $content, string $namespacePath): void
     {
-        $outputBase = config('ts-publish.broadcast_events.output_path');
-        if (! is_string($outputBase)) {
-            $outputBase = config()->string('ts-publish.output_directory');
+        $outputBase = Config::string('ts-publish.broadcast_events.output_path');
+        if (empty($outputBase)) {
+            $outputBase = Config::string('ts-publish.output_directory');
         }
 
         $outputPath = $outputBase.'/'.$namespacePath;

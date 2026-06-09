@@ -20,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\TracksEnumImports;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 use Override;
 use ReflectionClass;
@@ -341,7 +342,7 @@ class ResourceTransformer extends CoreTransformer
         }
 
         /** @var ModelsCollector $collector */
-        $collector = resolve(config()->string('ts-publish.models.collector_class'));
+        $collector = resolve(Config::string('ts-publish.models.collector_class'));
 
         foreach ($collector->collect() as $modelClass) {
             $reflection = new ReflectionClass($modelClass);
@@ -582,7 +583,7 @@ class ResourceTransformer extends CoreTransformer
      */
     protected function rewriteEnumResourceTypes(): self
     {
-        if (! config()->boolean('ts-publish.enums.use_tolki_package')) {
+        if (! Config::boolean('ts-publish.enums.use_tolki_package')) {
             return $this;
         }
 
@@ -1017,7 +1018,7 @@ class ResourceTransformer extends CoreTransformer
      */
     protected function shouldGenerateHasEnums(): bool
     {
-        if (! config()->boolean('ts-publish.enums.use_tolki_package')) {
+        if (! Config::boolean('ts-publish.enums.use_tolki_package')) {
             return false;
         }
 

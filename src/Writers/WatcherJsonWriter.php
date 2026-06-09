@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use BackedEnum;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Facades\Config;
 use ReflectionClass;
 use ReflectionEnum;
 use UnitEnum;
@@ -26,7 +27,7 @@ class WatcherJsonWriter
 
     public function write(): string
     {
-        if (! config()->boolean('ts-publish.watcher.enabled')) {
+        if (! Config::boolean('ts-publish.watcher.enabled')) {
             return '';
         }
 
@@ -43,10 +44,10 @@ class WatcherJsonWriter
 
         $content = (string) json_encode($paths, JSON_PRETTY_PRINT);
 
-        if (config()->boolean('ts-publish.output_to_files')) {
-            $watcherDir = config('ts-publish.watcher.output_directory');
-            $outputPath = is_string($watcherDir) ? $watcherDir : config()->string('ts-publish.output_directory');
-            $filename = config()->string('ts-publish.watcher.filename');
+        if (Config::boolean('ts-publish.output_to_files')) {
+            $watcherDir = Config::string('ts-publish.watcher.output_directory');
+            $outputPath = ! empty($watcherDir) ? $watcherDir : Config::string('ts-publish.output_directory');
+            $filename = Config::string('ts-publish.watcher.filename');
 
             $this->filesystem->ensureDirectoryExists($outputPath);
             $this->filesystem->put("$outputPath/$filename", $content);
@@ -60,12 +61,12 @@ class WatcherJsonWriter
      */
     protected function collectEnumPaths(): array
     {
-        if (! config()->boolean('ts-publish.enums.enabled')) {
+        if (! Config::boolean('ts-publish.enums.enabled')) {
             return [];
         }
 
         /** @var EnumsCollector $collector */
-        $collector = resolve(config()->string('ts-publish.enums.collector_class'));
+        $collector = resolve(Config::string('ts-publish.enums.collector_class'));
 
         return array_values(
             $collector->collect()
@@ -84,12 +85,12 @@ class WatcherJsonWriter
      */
     protected function collectModelPaths(): array
     {
-        if (! config()->boolean('ts-publish.models.enabled')) {
+        if (! Config::boolean('ts-publish.models.enabled')) {
             return [];
         }
 
         /** @var ModelsCollector $collector */
-        $collector = resolve(config()->string('ts-publish.models.collector_class'));
+        $collector = resolve(Config::string('ts-publish.models.collector_class'));
 
         return array_values(
             $collector->collect()
@@ -108,12 +109,12 @@ class WatcherJsonWriter
      */
     protected function collectResourcePaths(): array
     {
-        if (! config()->boolean('ts-publish.resources.enabled')) {
+        if (! Config::boolean('ts-publish.resources.enabled')) {
             return [];
         }
 
         /** @var ResourcesCollector $collector */
-        $collector = resolve(config()->string('ts-publish.resources.collector_class'));
+        $collector = resolve(Config::string('ts-publish.resources.collector_class'));
 
         return array_values(
             $collector->collect()
@@ -131,12 +132,12 @@ class WatcherJsonWriter
      */
     protected function collectRoutePaths(): array
     {
-        if (! config()->boolean('ts-publish.routes.enabled')) {
+        if (! Config::boolean('ts-publish.routes.enabled')) {
             return [];
         }
 
         /** @var RoutesCollector $collector */
-        $collector = resolve(config()->string('ts-publish.routes.collector_class'));
+        $collector = resolve(Config::string('ts-publish.routes.collector_class'));
 
         return array_values(
             $collector->collect()
@@ -154,12 +155,12 @@ class WatcherJsonWriter
      */
     protected function collectFormRequestPaths(): array
     {
-        if (! config()->boolean('ts-publish.form_requests.enabled')) {
+        if (! Config::boolean('ts-publish.form_requests.enabled')) {
             return [];
         }
 
         /** @var FormRequestsCollector $collector */
-        $collector = resolve(config()->string('ts-publish.form_requests.collector_class'));
+        $collector = resolve(Config::string('ts-publish.form_requests.collector_class'));
 
         return array_values(
             $collector->collect()
@@ -177,12 +178,12 @@ class WatcherJsonWriter
      */
     protected function collectBroadcastEventPaths(): array
     {
-        if (! config()->boolean('ts-publish.broadcast_events.enabled')) {
+        if (! Config::boolean('ts-publish.broadcast_events.enabled')) {
             return [];
         }
 
         /** @var BroadcastEventsCollector $collector */
-        $collector = resolve(config()->string('ts-publish.broadcast_events.collector_class'));
+        $collector = resolve(Config::string('ts-publish.broadcast_events.collector_class'));
 
         return array_values(
             $collector->collect()

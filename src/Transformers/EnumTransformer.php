@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsEnumDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use BackedEnum;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 use Override;
 use ReflectionEnum;
@@ -200,8 +201,8 @@ class EnumTransformer extends CoreTransformer
 
     protected function transformMethods(): self
     {
-        $autoInclude = config('ts-publish.enums.auto_include_methods');
-        $caseFormatting = config()->string('ts-publish.enums.method_case');
+        $autoInclude = Config::boolean('ts-publish.enums.auto_include_methods');
+        $caseFormatting = Config::string('ts-publish.enums.method_case');
 
         foreach ($this->reflectionEnum->getMethods() as $method) {
             $methodName = $method->getName();
@@ -261,8 +262,8 @@ class EnumTransformer extends CoreTransformer
 
     protected function transformStaticMethods(): self
     {
-        $autoInclude = config('ts-publish.enums.auto_include_static_methods');
-        $caseFormatting = config()->string('ts-publish.enums.method_case');
+        $autoInclude = Config::boolean('ts-publish.enums.auto_include_static_methods');
+        $caseFormatting = Config::string('ts-publish.enums.method_case');
 
         foreach ($this->reflectionEnum->getMethods() as $method) {
             $methodName = $method->getName();

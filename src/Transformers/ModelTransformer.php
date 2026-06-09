@@ -20,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\TracksEnumImports;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 use Override;
 use ReflectionClass;
@@ -367,13 +368,13 @@ class ModelTransformer extends CoreTransformer
         $allRelations = $this->modelInspect->relations;
 
         /** @var list<string> $includedModels */
-        $includedModels = array_values(array_filter(config()->array('ts-publish.models.included', []), 'is_string'));
+        $includedModels = array_values(array_filter(Config::array('ts-publish.models.included', []), 'is_string'));
 
         /** @var list<string> $excludedModels */
-        $excludedModels = array_values(array_filter(config()->array('ts-publish.models.excluded', []), 'is_string'));
+        $excludedModels = array_values(array_filter(Config::array('ts-publish.models.excluded', []), 'is_string'));
 
-        $case = config()->string('ts-publish.models.relationship_case');
-        $nullableRelations = config()->boolean('ts-publish.models.nullable_relations');
+        $case = Config::string('ts-publish.models.relationship_case');
+        $nullableRelations = Config::boolean('ts-publish.models.nullable_relations');
 
         $isMorphToRelation = static function (array $relation): bool {
             /** @var string $type */
@@ -629,7 +630,7 @@ class ModelTransformer extends CoreTransformer
         // a basename → alias list scoped to that specific relation.
         // Multiple FQCNs can share the same basename (e.g. App\User & Crm\User),
         // so we track an array of aliases per basename and consume them in order.
-        $case = config()->string('ts-publish.models.relationship_case');
+        $case = Config::string('ts-publish.models.relationship_case');
         if ($fqcnToAlias !== []) {
             /** @var array<string, array<string, list<string>>> $relationAliases relation_key => [basename => [alias, ...]] */
             $relationAliases = [];

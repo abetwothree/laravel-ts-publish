@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\ResolvesEventNameConflicts;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Config;
 
 /**
  * Writes an echo-broadcast-events.d.ts module augmentation file for Laravel Echo.
@@ -38,7 +39,7 @@ class BroadcastEventsEchoWriter
      */
     public function write(Collection $generators): string
     {
-        if (! config()->boolean('ts-publish.broadcast_events.echo_augmentation.enabled')) {
+        if (! Config::boolean('ts-publish.broadcast_events.echo_augmentation.enabled')) {
             return '';
         }
 
@@ -50,7 +51,7 @@ class BroadcastEventsEchoWriter
 
         $content = $this->renderContent($generators, $echoPackage);
 
-        if (config()->boolean('ts-publish.output_to_files')) {
+        if (Config::boolean('ts-publish.output_to_files')) {
             $this->writeFile($content);
         }
 
@@ -85,7 +86,7 @@ class BroadcastEventsEchoWriter
         )->values();
 
         /** @var view-string $template */
-        $template = config()->string('ts-publish.broadcast_events.echo_augmentation.template');
+        $template = Config::string('ts-publish.broadcast_events.echo_augmentation.template');
 
         return view($template, [
             'echoPackage' => $echoPackage,
@@ -153,7 +154,7 @@ class BroadcastEventsEchoWriter
     protected function writeFile(string $content): void
     {
         $outputPath = $this->resolveOutputPath();
-        $filename = config()->string('ts-publish.broadcast_events.echo_augmentation.filename', 'echo-broadcast-events.d.ts');
+        $filename = Config::string('ts-publish.broadcast_events.echo_augmentation.filename', 'echo-broadcast-events.d.ts');
 
         $this->filesystem->ensureDirectoryExists($outputPath);
         $this->filesystem->put("{$outputPath}/{$filename}", $content);
@@ -166,16 +167,16 @@ class BroadcastEventsEchoWriter
      */
     protected function resolveOutputPath(): string
     {
-        $echoOutputPath = config('ts-publish.broadcast_events.echo_augmentation.output_path');
-        if (is_string($echoOutputPath)) {
+        $echoOutputPath = Config::string('ts-publish.broadcast_events.echo_augmentation.output_path');
+        if (! empty($echoOutputPath)) {
             return $echoOutputPath;
         }
 
-        $eventsOutputPath = config('ts-publish.broadcast_events.output_path');
-        if (is_string($eventsOutputPath)) {
+        $eventsOutputPath = Config::string('ts-publish.broadcast_events.output_path');
+        if (! empty($eventsOutputPath)) {
             return $eventsOutputPath;
         }
 
-        return config()->string('ts-publish.output_directory');
+        return Config::string('ts-publish.output_directory');
     }
 }
