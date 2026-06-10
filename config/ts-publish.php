@@ -131,10 +131,10 @@ return [
 
     'watcher' => [
         'enabled' => true,
-        // 'writer_class' => WatcherJsonWriter::class,
         'filename' => 'laravel-ts-collected-files.json',
         /* Defaults to output_directory setting */
         'output_directory' => '',
+        // 'writer_class' => WatcherJsonWriter::class,
     ],
 
     /*
@@ -159,14 +159,14 @@ return [
         'auto_include_static_methods' => false,
         'method_case' => 'camel',
         'namespace' => 'enums',
-        // 'collector_class' => EnumsCollector::class,
-        // 'generator_class' => EnumGenerator::class,
-        // 'transformer_class' => EnumTransformer::class,
-        // 'writer_class' => EnumWriter::class,
         'template' => 'laravel-ts-publish::enum',
         'additional_directories' => [],
         'included' => [],
         'excluded' => [],
+        // 'collector_class' => EnumsCollector::class,
+        // 'generator_class' => EnumGenerator::class,
+        // 'transformer_class' => EnumTransformer::class,
+        // 'writer_class' => EnumWriter::class,
     ],
 
     /*
@@ -189,14 +189,14 @@ return [
             // \Illuminate\Database\Eloquent\Relations\HasOne::class    => 'never',
         ],
         'namespace' => 'models',
-        // 'collector_class' => ModelsCollector::class,
-        // 'generator_class' => ModelGenerator::class,
-        // 'transformer_class' => ModelTransformer::class,
-        // 'writer_class' => ModelWriter::class,
         'template' => 'laravel-ts-publish::model-split',
         'additional_directories' => [],
         'included' => [],
         'excluded' => [],
+        // 'collector_class' => ModelsCollector::class,
+        // 'generator_class' => ModelGenerator::class,
+        // 'transformer_class' => ModelTransformer::class,
+        // 'writer_class' => ModelWriter::class,
     ],
 
     /*
@@ -210,14 +210,14 @@ return [
     'resources' => [
         'enabled' => true,
         'namespace' => 'resources',
-        // 'collector_class' => ResourcesCollector::class,
-        // 'generator_class' => ResourceGenerator::class,
-        // 'transformer_class' => ResourceTransformer::class,
-        // 'writer_class' => ResourceWriter::class,
         'template' => 'laravel-ts-publish::resource',
         'additional_directories' => [],
         'included' => [],
         'excluded' => [],
+        // 'collector_class' => ResourcesCollector::class,
+        // 'generator_class' => ResourceGenerator::class,
+        // 'transformer_class' => ResourceTransformer::class,
+        // 'writer_class' => ResourceWriter::class,
     ],
 
     /*
@@ -240,15 +240,15 @@ return [
         'enabled' => true,
         'method_casing' => 'camel',
         'output_path' => '',
+        'only_named' => false,
+        'template' => 'laravel-ts-publish::route',
         'only' => [],
         'except' => [],
         'exclude_middleware' => [],
-        'only_named' => false,
         // 'collector_class' => RoutesCollector::class,
         // 'generator_class' => RouteGenerator::class,
         // 'transformer_class' => RouteTransformer::class,
         // 'writer_class' => RouteWriter::class,
-        'template' => 'laravel-ts-publish::route',
     ],
 
     /*
@@ -271,14 +271,14 @@ return [
         'enabled' => true,
         'namespace' => 'form-requests',
         'output_path' => '',
-        // 'collector_class' => FormRequestsCollector::class,
-        // 'generator_class' => FormRequestGenerator::class,
-        // 'transformer_class' => FormRequestTransformer::class,
-        // 'writer_class' => FormRequestWriter::class,
         'template' => 'laravel-ts-publish::form-request',
         'additional_directories' => [],
         'included' => [],
         'excluded' => [],
+        // 'collector_class' => FormRequestsCollector::class,
+        // 'generator_class' => FormRequestGenerator::class,
+        // 'transformer_class' => FormRequestTransformer::class,
+        // 'writer_class' => FormRequestWriter::class,
     ],
 
     /*
@@ -299,9 +299,9 @@ return [
         'enabled' => true,
         'output_path' => '',
         'filename' => 'broadcast-channels.ts',
+        'template' => 'laravel-ts-publish::broadcast-channels',
         // 'collector_class' => BroadcastChannelsCollector::class,
         // 'writer_class' => BroadcastChannelsWriter::class,
-        'template' => 'laravel-ts-publish::broadcast-channels',
     ],
 
     /*
@@ -331,11 +331,6 @@ return [
 
     'broadcast_events' => [
         'enabled' => true,
-        // 'collector_class' => BroadcastEventsCollector::class,
-        // 'generator_class' => BroadcastEventGenerator::class,
-        // 'transformer_class' => BroadcastEventTransformer::class,
-        // 'writer_class' => BroadcastEventWriter::class,
-        // 'index_writer_class' => BroadcastEventsIndexWriter::class,
         'output_path' => '',
         'index_filename' => 'broadcast-events.ts',
         'index_template' => 'laravel-ts-publish::broadcast-events-index',
@@ -343,14 +338,19 @@ return [
         'additional_directories' => [],
         'included' => [],
         'excluded' => [],
+        // 'collector_class' => BroadcastEventsCollector::class,
+        // 'generator_class' => BroadcastEventGenerator::class,
+        // 'transformer_class' => BroadcastEventTransformer::class,
+        // 'writer_class' => BroadcastEventWriter::class,
+        // 'index_writer_class' => BroadcastEventsIndexWriter::class,
 
         'echo_augmentation' => [
             'enabled' => true,
-            // 'writer_class' => BroadcastEventsEchoWriter::class,
             'echo_package' => null,
             'filename' => 'echo-broadcast-events.d.ts',
             'output_path' => '',
             'template' => 'laravel-ts-publish::echo-broadcast-events',
+            // 'writer_class' => BroadcastEventsEchoWriter::class,
         ],
     ],
 
@@ -375,45 +375,11 @@ return [
     */
 
     'inertia' => [
-        'enabled' => false,
+        'enabled' => true,
         'component_casing' => 'camel',
         'inertia_middleware_path' => null,
         'augmentation_filename' => 'inertia-config.d.ts',
         'output_path' => '',
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Globals Declaration Types
-    |--------------------------------------------------------------------------
-    |
-    | Specifies whether to create a "global.ts" file with a global namespace containing all generated types.
-    */
-
-    'globals' => [
-        'enabled' => false,
-        // 'writer_class' => GlobalsWriter::class,
-        'filename' => 'laravel-ts-global.ts',
-        /* Defaults to output_directory setting */
-        'output_directory' => '',
-        'template' => 'laravel-ts-publish::globals',
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | JSON Output
-    |--------------------------------------------------------------------------
-    |
-    | Specifies whether to output the generated TypeScript definitions in a JSON file.
-    | This can be in addition to or instead of outputting to .d.ts files, depending on the "output_to_files" option.
-    */
-
-    'json' => [
-        'enabled' => false,
-        // 'writer_class' => JsonWriter::class,
-        'filename' => 'laravel-ts-definitions.json',
-        /* Defaults to output_directory setting */
-        'output_directory' => '',
     ],
 
     /*
@@ -430,9 +396,43 @@ return [
     */
 
     'vite_env' => [
-        'enabled' => false,
+        'enabled' => true,
         'filename' => 'vite-env.d.ts',
-        'output_path' => '',
         'source_file' => null,
+        'output_path' => '',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Globals Declaration Types
+    |--------------------------------------------------------------------------
+    |
+    | Specifies whether to create a "global.ts" file with a global namespace containing all generated types.
+    */
+
+    'globals' => [
+        'enabled' => false,
+        'filename' => 'laravel-ts-global.ts',
+        /* Defaults to output_directory setting */
+        'output_directory' => '',
+        'template' => 'laravel-ts-publish::globals',
+        // 'writer_class' => GlobalsWriter::class,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | JSON Output
+    |--------------------------------------------------------------------------
+    |
+    | Specifies whether to output the generated TypeScript definitions in a JSON file.
+    | This can be in addition to or instead of outputting to .d.ts files, depending on the "output_to_files" option.
+    */
+
+    'json' => [
+        'enabled' => false,
+        'filename' => 'laravel-ts-definitions.json',
+        /* Defaults to output_directory setting */
+        'output_directory' => '',
+        // 'writer_class' => JsonWriter::class,
     ],
 ];
