@@ -96,6 +96,9 @@ class BroadcastEventTransformer extends CoreTransformer
      */
     protected array $enumConstMap = [];
 
+    /** Surveyor class analysis result used across transformation steps. */
+    protected ClassResult $analyzed;
+
     /**
      * @param  class-string<ShouldBroadcast>  $findable
      */
@@ -109,18 +112,58 @@ class BroadcastEventTransformer extends CoreTransformer
     #[Override]
     public function transform(): self
     {
+        $this->runAnalysis()
+            ->initEventData()
+            ->transformBroadcastName()
+            ->transformProperties()
+            ->resolveImportConflicts()
+            ->buildTypeImports();
+
+        return $this;
+    }
+
+    /**
+     * Run the Surveyor analyzer and store the result for subsequent steps.
+     */
+    protected function runAnalysis(): self
+    {
         $this->analyzer->analyzeClass($this->findable);
 
-        /** @var ClassResult $analyzed */
-        $analyzed = $this->analyzer->result();
+        /** @var ClassResult $result */
+        $result = $this->analyzer->result();
+        $this->analyzed = $result;
 
+        return $this;
+    }
+
+    /**
+     * Initialize core event metadata from the analyzer result and reflection.
+     */
+    protected function initEventData(): self
+    {
         $this->eventName = (new ReflectionClass($this->findable))->getShortName();
-        $this->filePath = $analyzed->filePath();
+        $this->filePath = $this->analyzed->filePath();
         $this->namespacePath = LaravelTsPublish::namespaceToPath($this->findable);
-        $this->broadcastName = $this->resolveBroadcastName($analyzed);
-        $this->properties = $this->resolveProperties($analyzed);
-        $this->resolveImportConflicts();
-        $this->typeImports = $this->buildTypeImports();
+
+        return $this;
+    }
+
+    /**
+     * Resolve and store the Echo broadcast event string.
+     */
+    protected function transformBroadcastName(): self
+    {
+        $this->broadcastName = $this->resolveBroadcastName($this->analyzed);
+
+        return $this;
+    }
+
+    /**
+     * Resolve and store the payload property map.
+     */
+    protected function transformProperties(): self
+    {
+        $this->properties = $this->resolveProperties($this->analyzed);
 
         return $this;
     }
@@ -412,14 +455,13 @@ class BroadcastEventTransformer extends CoreTransformer
     }
 
     /**
-     * Build the TypeScript type import map from tracked model and enum FQCNs.
+     * Build the TypeScript type import map from tracked model and enum FQCNs
+     * and store the result in $this->typeImports.
      *
      * Uses LaravelTsPublish::namespaceToPath() and relativeImportPath() to compute
      * the correct relative path from this event's namespace to each dependency.
-     *
-     * @return TypesImportMap
      */
-    protected function buildTypeImports(): array
+    protected function buildTypeImports(): self
     {
         /** @var TypesImportMap $imports */
         $imports = [];
@@ -442,7 +484,9 @@ class BroadcastEventTransformer extends CoreTransformer
             $imports[$path] = $unique;
         }
 
-        return LaravelTsPublish::sortImportPaths($imports);
+        $this->typeImports = LaravelTsPublish::sortImportPaths($imports);
+
+        return $this;
     }
 
     /**
