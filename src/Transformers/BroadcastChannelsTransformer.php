@@ -26,6 +26,16 @@ class BroadcastChannelsTransformer
 {
     private const PARAM_PATTERN = '/\{([^\}]+)\}/';
 
+    /** @var Collection<int, string> */
+    private Collection $channels;
+
+    private string $typeUnion = '';
+
+    /** @var array<string, ChannelFlatEntry> */
+    private array $flatMap = [];
+
+    private string $constBody = '';
+
     /**
      * Transform a collection of channel names into a DTO ready for TypeScript rendering.
      *
@@ -41,43 +51,71 @@ class BroadcastChannelsTransformer
             );
         }
 
-        /** @var list<string> $typeUnionMembers */
-        $typeUnionMembers = array_values($channels->map(fn (string $name) => $this->toTypeUnionMember($name))->all());
-        $typeUnion = $this->buildTypeUnion($typeUnionMembers);
+        $this->channels = $channels;
 
-        /** @var array<string, ChannelFlatEntry> $flatMap */
-        $flatMap = [];
+        $this->transformTypeUnion()
+            ->buildChannelFlatMap()
+            ->buildConstBody();
 
-        foreach ($channels as $name) {
+        return new TsBroadcastChannelsDto(
+            typeUnion: $this->typeUnion,
+            constBody: $this->constBody,
+            isEmpty: false,
+        );
+    }
+
+    /**
+     * Build the TypeScript type union string from the channel collection.
+     */
+    private function transformTypeUnion(): self
+    {
+        /** @var list<string> $members */
+        $members = array_values($this->channels->map(fn (string $name) => $this->toTypeUnionMember($name))->all());
+        $this->typeUnion = $this->buildTypeUnion($members);
+
+        return $this;
+    }
+
+    /**
+     * Build the flat dot-notation map from all channel names.
+     */
+    private function buildChannelFlatMap(): self
+    {
+        $this->flatMap = [];
+
+        foreach ($this->channels as $name) {
             foreach ($this->toFlatMapEntries($name) as $key => $entry) {
-                if (isset($flatMap[$key])) {
-                    $existingParams = $flatMap[$key]['__meta']['params'] ?? [];
+                if (isset($this->flatMap[$key])) {
+                    $existingParams = $this->flatMap[$key]['__meta']['params'] ?? [];
                     $newParams = $entry['__meta']['params'] ?? [];
                     if ($existingParams !== $newParams) {
                         throw new InvalidArgumentException("Broadcast channel segment [{$key}] has conflicting parameter names.");
                     }
                     // Propagate selfChannel when the incoming entry marks this segment as a
                     // terminal channel (i.e. the channel name ends at this static segment).
-                    if (isset($entry['__meta']['selfChannel']) && ! isset($flatMap[$key]['__meta']['selfChannel'])) {
-                        $flatMap[$key]['__meta']['selfChannel'] = $entry['__meta']['selfChannel'];
+                    if (isset($entry['__meta']['selfChannel']) && ! isset($this->flatMap[$key]['__meta']['selfChannel'])) {
+                        $this->flatMap[$key]['__meta']['selfChannel'] = $entry['__meta']['selfChannel'];
                     }
 
                     continue;
                 }
-                $flatMap[$key] = $entry;
+                $this->flatMap[$key] = $entry;
             }
         }
 
+        return $this;
+    }
+
+    /**
+     * Render the TypeScript const body from the flat map.
+     */
+    private function buildConstBody(): self
+    {
         /** @var array<string, mixed> $tree */
-        $tree = Arr::undot($flatMap);
+        $tree = Arr::undot($this->flatMap);
+        $this->constBody = $this->renderTree($tree, 0);
 
-        $constBody = $this->renderTree($tree, 0);
-
-        return new TsBroadcastChannelsDto(
-            typeUnion: $typeUnion,
-            constBody: $constBody,
-            isEmpty: false,
-        );
+        return $this;
     }
 
     /**
