@@ -183,12 +183,12 @@ return [
         'enabled' => true,
         'relationship_case' => 'snake',
         'nullable_relations' => true,
+        'namespace' => 'models',
+        'template' => 'laravel-ts-publish::model-split',
         'relation_nullability_map' => [
             // \Illuminate\Database\Eloquent\Relations\BelongsTo::class => 'nullable',
             // \Illuminate\Database\Eloquent\Relations\HasOne::class    => 'never',
         ],
-        'namespace' => 'models',
-        'template' => 'laravel-ts-publish::model-split',
         'additional_directories' => [],
         'included' => [],
         'excluded' => [],
@@ -224,15 +224,8 @@ return [
     | Routes
     |--------------------------------------------------------------------------
     |
-    | When enabled, TypeScript files are generated for each controller group
-    | found in the router. Each file exports a defineRoute() call per action.
-    |
-    | 'method_casing': Case style for generated JS export names ('camel', 'snake', or 'pascal').
-    | 'output_directory': Output directory for generated route files. Defaults to {output_directory} when null.
-    | 'only': Pattern list - only publish routes matching any pattern (supports wildcards).
-    | 'except': Pattern list - skip routes matching any pattern (supports wildcards and ! negation).
-    | 'exclude_middleware': Skip routes behind any of these middleware.
-    | 'only_named': When true, only publish named routes.
+    | When enabled, TypeScript files are generated for each controller found
+    | in your application. Each file exports a defineRoute() call per method.
     */
 
     'routes' => [
@@ -258,12 +251,6 @@ return [
     | When enabled, generates a TypeScript interface for each FormRequest class
     | found in the application. Rules are resolved statically where possible;
     | requests with dynamic rules fall back to `Record<string, unknown>`.
-    |
-    | 'namespace': Sub-directory namespace under the output_directory for the generated files.
-    | 'output_directory': Override the base output directory for form-request files only.
-    | 'additional_directories': Extra directories to scan beyond app/Http/Requests.
-    | 'included': Allow-list of FQCN patterns (empty = all).
-    | 'excluded': Deny-list of FQCN patterns.
     */
 
     'form_requests' => [
@@ -289,9 +276,6 @@ return [
     |   - A BroadcastChannel union type (template literal union of all channel names).
     |   - A BroadcastChannels const with nested accessor functions matching the
     |     dot-notation structure of each channel name.
-    |
-    | 'output_directory': Override the output directory for the file. Defaults to output_directory.
-    | 'filename': Output filename. Defaults to 'broadcast-channels.ts'.
     */
 
     'broadcast_channels' => [
@@ -309,23 +293,12 @@ return [
     |--------------------------------------------------------------------------
     |
     | When enabled, generates one TypeScript interface file per ShouldBroadcast
-    | event class (modular, namespace-based), a broadcast-events.ts index file
-    | with a BroadcastEvent union type and flat BroadcastEvents const, and
-    | optionally an echo-broadcast-events.d.ts Echo module augmentation file.
+    | event class, a broadcast-events.ts index file with a BroadcastEvent union
+    | type and flat BroadcastEvents const.
     |
-    | 'output_directory': Override the base output directory for broadcast event files.
-    |     (Per-event interfaces + index; the Echo augmentation file falls back to this unless echo_augmentation.output_directory is set.)
-    | 'index_filename': Filename for the master index. Defaults to 'broadcast-events.ts'.
-    | 'additional_directories': Extra directories to scan beyond app/Events.
-    | 'included': Allow-list of FQCN patterns (empty = all).
-    | 'excluded': Deny-list of FQCN patterns.
-    |
-    | echo_augmentation:
-    |   'enabled': Generate echo-broadcast-events.d.ts when true.
-    |   'echo_package': npm package to augment. null = auto-detect from package.json
-    |       (prefers @laravel/echo-vue / @laravel/echo-react / @laravel/echo-svelte, falls back to @laravel/echo).
-    |   'filename': Output filename. Defaults to 'echo-broadcast-events.d.ts'.
-    |   'output_directory': Override output directory for the echo file.
+    | Optionally, you can also generate an echo-broadcast-events.d.ts Echo module
+    | TypeScript augmentation file. Only works if you're using the any of the
+    | npm `@laravel/echo-{vue,react,svelte}` packages for broadcast events.
     */
 
     'broadcast_events' => [
@@ -358,19 +331,8 @@ return [
     | Inertia Page Types
     |--------------------------------------------------------------------------
     |
-    | When enabled, generates TypeScript page-prop types for each Inertia
-    | component detected via laravel/ranger static analysis, and a TypeScript Declaration
-    | module augmentation file for @inertiajs/core.
-    |
-    | Requires inertiajs/inertia-laravel:^3 to be installed.
-    | Static analysis also relies on laravel/ranger (and its transitive dependencies
-    | laravel/surveyor and spatie/php-structure-discoverer), which is already
-    | declared as a package dependency.
-    |
-    | 'component_casing': Case style for generated component map keys ('camel', 'snake', or 'pascal').
-    | 'inertia_middleware_path': Optional path to scan for Inertia middleware. Defaults to app/ if not set or invalid.
-    | 'augmentation_filename': Filename for the generated module augmentation file. Defaults to inertia-config.d.ts.
-    | 'output_directory': Directory for the declaration file. Defaults to routes output_directory.
+    | When enabled, generates TypeScript page-prop types for each Inertia component
+    | and a TypeScript Declaration module augmentation file for @inertiajs/core.
     */
 
     'inertia' => [
@@ -406,7 +368,8 @@ return [
     | Globals Declaration Types
     |--------------------------------------------------------------------------
     |
-    | Specifies whether to create a "global.ts" file with a global namespace containing all generated types.
+    | Specifies whether to create a "global.ts" file with a global namespace
+    | which will contain all generated types for individually generated interfaces.
     */
 
     'globals' => [
@@ -423,7 +386,6 @@ return [
     |--------------------------------------------------------------------------
     |
     | Specifies whether to output the generated TypeScript definitions in a JSON file.
-    | This can be in addition to or instead of outputting to .d.ts files, depending on the "output_to_files" option.
     */
 
     'json' => [
