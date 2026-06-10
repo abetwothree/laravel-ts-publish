@@ -53,7 +53,7 @@ class BroadcastChannelsWriter
      */
     protected function resolveOutputPath(): string
     {
-        $channelsOutputPath = Config::string('ts-publish.broadcast_channels.output_path');
+        $channelsOutputPath = Config::string('ts-publish.broadcast_channels.output_directory');
 
         if (! empty($channelsOutputPath)) {
             return $channelsOutputPath;

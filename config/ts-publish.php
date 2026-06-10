@@ -132,7 +132,6 @@ return [
     'watcher' => [
         'enabled' => true,
         'filename' => 'laravel-ts-collected-files.json',
-        /* Defaults to output_directory setting */
         'output_directory' => '',
         // 'writer_class' => WatcherJsonWriter::class,
     ],
@@ -229,7 +228,7 @@ return [
     | found in the router. Each file exports a defineRoute() call per action.
     |
     | 'method_casing': Case style for generated JS export names ('camel', 'snake', or 'pascal').
-    | 'output_path': Output directory for generated route files. Defaults to {output_directory} when null.
+    | 'output_directory': Output directory for generated route files. Defaults to {output_directory} when null.
     | 'only': Pattern list - only publish routes matching any pattern (supports wildcards).
     | 'except': Pattern list - skip routes matching any pattern (supports wildcards and ! negation).
     | 'exclude_middleware': Skip routes behind any of these middleware.
@@ -239,9 +238,9 @@ return [
     'routes' => [
         'enabled' => true,
         'method_casing' => 'camel',
-        'output_path' => '',
         'only_named' => false,
         'template' => 'laravel-ts-publish::route',
+        'output_directory' => '',
         'only' => [],
         'except' => [],
         'exclude_middleware' => [],
@@ -261,7 +260,7 @@ return [
     | requests with dynamic rules fall back to `Record<string, unknown>`.
     |
     | 'namespace': Sub-directory namespace under the output_directory for the generated files.
-    | 'output_path': Override the base output directory for form-request files only.
+    | 'output_directory': Override the base output directory for form-request files only.
     | 'additional_directories': Extra directories to scan beyond app/Http/Requests.
     | 'included': Allow-list of FQCN patterns (empty = all).
     | 'excluded': Deny-list of FQCN patterns.
@@ -270,8 +269,8 @@ return [
     'form_requests' => [
         'enabled' => true,
         'namespace' => 'form-requests',
-        'output_path' => '',
         'template' => 'laravel-ts-publish::form-request',
+        'output_directory' => '',
         'additional_directories' => [],
         'included' => [],
         'excluded' => [],
@@ -291,15 +290,15 @@ return [
     |   - A BroadcastChannels const with nested accessor functions matching the
     |     dot-notation structure of each channel name.
     |
-    | 'output_path': Override the output directory for the file. Defaults to output_directory.
+    | 'output_directory': Override the output directory for the file. Defaults to output_directory.
     | 'filename': Output filename. Defaults to 'broadcast-channels.ts'.
     */
 
     'broadcast_channels' => [
         'enabled' => true,
-        'output_path' => '',
         'filename' => 'broadcast-channels.ts',
         'template' => 'laravel-ts-publish::broadcast-channels',
+        'output_directory' => '',
         // 'collector_class' => BroadcastChannelsCollector::class,
         // 'writer_class' => BroadcastChannelsWriter::class,
     ],
@@ -314,8 +313,8 @@ return [
     | with a BroadcastEvent union type and flat BroadcastEvents const, and
     | optionally an echo-broadcast-events.d.ts Echo module augmentation file.
     |
-    | 'output_path': Override the base output directory for broadcast event files.
-    |     (Per-event interfaces + index; the Echo augmentation file falls back to this unless echo_augmentation.output_path is set.)
+    | 'output_directory': Override the base output directory for broadcast event files.
+    |     (Per-event interfaces + index; the Echo augmentation file falls back to this unless echo_augmentation.output_directory is set.)
     | 'index_filename': Filename for the master index. Defaults to 'broadcast-events.ts'.
     | 'additional_directories': Extra directories to scan beyond app/Events.
     | 'included': Allow-list of FQCN patterns (empty = all).
@@ -326,15 +325,15 @@ return [
     |   'echo_package': npm package to augment. null = auto-detect from package.json
     |       (prefers @laravel/echo-vue / @laravel/echo-react / @laravel/echo-svelte, falls back to @laravel/echo).
     |   'filename': Output filename. Defaults to 'echo-broadcast-events.d.ts'.
-    |   'output_path': Override output directory for the echo file.
+    |   'output_directory': Override output directory for the echo file.
     */
 
     'broadcast_events' => [
         'enabled' => true,
-        'output_path' => '',
         'index_filename' => 'broadcast-events.ts',
         'index_template' => 'laravel-ts-publish::broadcast-events-index',
         'template' => 'laravel-ts-publish::broadcast-event',
+        'output_directory' => '',
         'additional_directories' => [],
         'included' => [],
         'excluded' => [],
@@ -348,8 +347,8 @@ return [
             'enabled' => true,
             'echo_package' => null,
             'filename' => 'echo-broadcast-events.d.ts',
-            'output_path' => '',
             'template' => 'laravel-ts-publish::echo-broadcast-events',
+            'output_directory' => '',
             // 'writer_class' => BroadcastEventsEchoWriter::class,
         ],
     ],
@@ -371,7 +370,7 @@ return [
     | 'component_casing': Case style for generated component map keys ('camel', 'snake', or 'pascal').
     | 'inertia_middleware_path': Optional path to scan for Inertia middleware. Defaults to app/ if not set or invalid.
     | 'augmentation_filename': Filename for the generated module augmentation file. Defaults to inertia-config.d.ts.
-    | 'output_path': Directory for the declaration file. Defaults to routes output_path.
+    | 'output_directory': Directory for the declaration file. Defaults to routes output_directory.
     */
 
     'inertia' => [
@@ -379,7 +378,7 @@ return [
         'component_casing' => 'camel',
         'inertia_middleware_path' => null,
         'augmentation_filename' => 'inertia-config.d.ts',
-        'output_path' => '',
+        'output_directory' => '',
     ],
 
     /*
@@ -399,7 +398,7 @@ return [
         'enabled' => true,
         'filename' => 'vite-env.d.ts',
         'source_file' => null,
-        'output_path' => '',
+        'output_directory' => '',
     ],
 
     /*
@@ -413,9 +412,8 @@ return [
     'globals' => [
         'enabled' => false,
         'filename' => 'laravel-ts-global.ts',
-        /* Defaults to output_directory setting */
-        'output_directory' => '',
         'template' => 'laravel-ts-publish::globals',
+        'output_directory' => '',
         // 'writer_class' => GlobalsWriter::class,
     ],
 
@@ -431,7 +429,6 @@ return [
     'json' => [
         'enabled' => false,
         'filename' => 'laravel-ts-definitions.json',
-        /* Defaults to output_directory setting */
         'output_directory' => '',
         // 'writer_class' => JsonWriter::class,
     ],

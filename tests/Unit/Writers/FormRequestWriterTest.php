@@ -74,7 +74,7 @@ describe('FormRequestWriter', function () {
 
         config()->set('ts-publish.output_to_files', true);
         config()->set('ts-publish.output_directory', '/tmp/ts-test');
-        config()->set('ts-publish.form_requests.output_path', '');
+        config()->set('ts-publish.form_requests.output_directory', '');
 
         $writer = new FormRequestWriter($filesystem);
         $transformer = new FormRequestTransformer(StorePostRequest::class);
@@ -92,7 +92,7 @@ describe('FormRequestWriter', function () {
 
         config()->set('ts-publish.output_to_files', true);
         config()->set('ts-publish.output_directory', '/tmp/ts-fallback');
-        config()->set('ts-publish.form_requests.output_path', '');
+        config()->set('ts-publish.form_requests.output_directory', '');
 
         (new FormRequestWriter($filesystem))->write(
             new FormRequestTransformer(StorePostRequest::class)

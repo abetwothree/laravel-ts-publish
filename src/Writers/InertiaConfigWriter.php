@@ -52,13 +52,13 @@ class InertiaConfigWriter
      */
     protected function resolveOutputPath(): string
     {
-        $inertiaOutputPath = Config::string('ts-publish.inertia.output_path');
+        $inertiaOutputPath = Config::string('ts-publish.inertia.output_directory');
 
         if (! empty($inertiaOutputPath)) {
             return $inertiaOutputPath;
         }
 
-        $routesOutputPath = Config::string('ts-publish.routes.output_path');
+        $routesOutputPath = Config::string('ts-publish.routes.output_directory');
 
         if (! empty($routesOutputPath)) {
             return $routesOutputPath;

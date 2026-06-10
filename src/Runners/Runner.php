@@ -217,7 +217,7 @@ class Runner extends BaseRunner
 
         $this->formRequestGenerators = $formRequestGenerators;
 
-        $formRequestOutputPath = Config::get('ts-publish.form_requests.output_path');
+        $formRequestOutputPath = Config::get('ts-publish.form_requests.output_directory');
         $this->formRequestModularBarrels = $this->barrelWriter->writeModular(
             $this->formRequestGenerators,
             is_string($formRequestOutputPath) ? $formRequestOutputPath : null,
@@ -280,7 +280,7 @@ class Runner extends BaseRunner
 
         $this->broadcastEventGenerators = $broadcastEventGenerators;
 
-        $broadcastEventsOutputPath = Config::get('ts-publish.broadcast_events.output_path');
+        $broadcastEventsOutputPath = Config::get('ts-publish.broadcast_events.output_directory');
         $this->broadcastEventModularBarrels = $this->barrelWriter->writeModular(
             $this->broadcastEventGenerators,
             is_string($broadcastEventsOutputPath) ? $broadcastEventsOutputPath : null,

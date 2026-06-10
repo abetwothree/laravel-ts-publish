@@ -128,7 +128,7 @@ test('route writer includes @see reference to controller FQCN', function () {
 test('route writer writes file to disk when output_to_files is enabled', function () {
     $outputDir = sys_get_temp_dir().'/laravel-ts-publish-route-test-'.uniqid();
     config()->set('ts-publish.output_to_files', true);
-    config()->set('ts-publish.routes.output_path', $outputDir.'/routes');
+    config()->set('ts-publish.routes.output_directory', $outputDir.'/routes');
 
     $generator = resolve(RouteGenerator::class, ['findable' => PostController::class]);
 
@@ -213,7 +213,7 @@ test('explicit key binding arg includes _routeKey slug in output', function () {
 test('nested controller barrel writes to nested path', function () {
     $outputDir = sys_get_temp_dir().'/laravel-ts-publish-route-test-'.uniqid();
     config()->set('ts-publish.output_to_files', true);
-    config()->set('ts-publish.routes.output_path', $outputDir.'/routes');
+    config()->set('ts-publish.routes.output_directory', $outputDir.'/routes');
 
     resolve(RouteGenerator::class, ['findable' => NestedController::class]);
 
@@ -367,7 +367,7 @@ test('PascalCase controller name matching lowercase keyword is unchanged — onl
 test('route barrel writer writes barrel files to disk when output_to_files enabled', function () {
     $outputDir = sys_get_temp_dir().'/laravel-ts-publish-barrel-write-'.uniqid();
     config()->set('ts-publish.output_to_files', true);
-    config()->set('ts-publish.routes.output_path', $outputDir.'/routes');
+    config()->set('ts-publish.routes.output_directory', $outputDir.'/routes');
 
     $writer = resolve(RouteWriter::class);
 

@@ -8,7 +8,7 @@ use Illuminate\Filesystem\Filesystem;
 beforeEach(function () {
     config()->set('ts-publish.output_to_files', false);
     config()->set('ts-publish.broadcast_channels.enabled', true);
-    config()->set('ts-publish.broadcast_channels.output_path', '');
+    config()->set('ts-publish.broadcast_channels.output_directory', '');
     config()->set('ts-publish.broadcast_channels.filename', 'broadcast-channels.ts');
     config()->set('ts-publish.broadcast_channels.template', 'laravel-ts-publish::broadcast-channels');
 });
@@ -62,7 +62,7 @@ test('write writes broadcast-channels.ts when output_to_files is true', function
 test('write respects broadcast_channels.output_path config override', function () {
     $outputDir = sys_get_temp_dir().'/bc-writer-output-'.uniqid();
     config()->set('ts-publish.output_to_files', true);
-    config()->set('ts-publish.broadcast_channels.output_path', $outputDir);
+    config()->set('ts-publish.broadcast_channels.output_directory', $outputDir);
 
     $writer = resolve(BroadcastChannelsWriter::class);
     $writer->write(collect(['public-announcements']));

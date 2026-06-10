@@ -50,7 +50,7 @@ class BroadcastEventWriter extends CoreWriter
      */
     protected function writeEventFile(string $filename, string $content, string $namespacePath): void
     {
-        $outputBase = Config::string('ts-publish.broadcast_events.output_path');
+        $outputBase = Config::string('ts-publish.broadcast_events.output_directory');
         if (empty($outputBase)) {
             $outputBase = Config::string('ts-publish.output_directory');
         }

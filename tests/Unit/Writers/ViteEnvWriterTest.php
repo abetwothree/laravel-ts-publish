@@ -154,7 +154,7 @@ test('uses custom output_path when configured', function () {
 
     config()->set('ts-publish.vite_env.enabled', true);
     config()->set('ts-publish.vite_env.source_file', "$tmpDir/.env.example");
-    config()->set('ts-publish.vite_env.output_path', $customOut);
+    config()->set('ts-publish.vite_env.output_directory', $customOut);
     config()->set('ts-publish.output_to_files', true);
 
     $writer = new ViteEnvWriter(new Filesystem);

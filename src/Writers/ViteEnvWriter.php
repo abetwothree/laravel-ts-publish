@@ -123,7 +123,7 @@ class ViteEnvWriter
      */
     protected function writeToDisk(string $content): void
     {
-        $outputPath = config('ts-publish.vite_env.output_path');
+        $outputPath = config('ts-publish.vite_env.output_directory');
         $outputDir = is_string($outputPath) && $outputPath !== ''
             ? $outputPath
             : Config::string('ts-publish.output_directory');

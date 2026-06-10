@@ -38,7 +38,7 @@ class RouteWriter extends CoreWriter
 
     protected function writeRouteFile(string $filename, string $content, string $namespacePath): void
     {
-        $routesOutputPath = Config::string('ts-publish.routes.output_path');
+        $routesOutputPath = Config::string('ts-publish.routes.output_directory');
         $outputBase = ! empty($routesOutputPath)
             ? $routesOutputPath
             : Config::string('ts-publish.output_directory');
@@ -85,7 +85,7 @@ class RouteWriter extends CoreWriter
                 ->implode("\n");
 
             if (Config::boolean('ts-publish.output_to_files')) {
-                $routesOutputPath = Config::string('ts-publish.routes.output_path');
+                $routesOutputPath = Config::string('ts-publish.routes.output_directory');
                 $outputBase = ! empty($routesOutputPath)
                     ? $routesOutputPath
                     : Config::string('ts-publish.output_directory');

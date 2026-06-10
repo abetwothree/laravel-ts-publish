@@ -167,12 +167,12 @@ class BroadcastEventsEchoWriter
      */
     protected function resolveOutputPath(): string
     {
-        $echoOutputPath = Config::string('ts-publish.broadcast_events.echo_augmentation.output_path');
+        $echoOutputPath = Config::string('ts-publish.broadcast_events.echo_augmentation.output_directory');
         if (! empty($echoOutputPath)) {
             return $echoOutputPath;
         }
 
-        $eventsOutputPath = Config::string('ts-publish.broadcast_events.output_path');
+        $eventsOutputPath = Config::string('ts-publish.broadcast_events.output_directory');
         if (! empty($eventsOutputPath)) {
             return $eventsOutputPath;
         }

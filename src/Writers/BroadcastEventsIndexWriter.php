@@ -137,7 +137,7 @@ class BroadcastEventsIndexWriter
      */
     protected function resolveOutputPath(): string
     {
-        $outputPath = Config::string('ts-publish.broadcast_events.output_path');
+        $outputPath = Config::string('ts-publish.broadcast_events.output_directory');
 
         if (! empty($outputPath)) {
             return $outputPath;
