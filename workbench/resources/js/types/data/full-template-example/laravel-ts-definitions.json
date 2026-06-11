@@ -160,7 +160,7 @@
                 {
                     "name": "metadata",
                     "type": "Record<string, unknown>",
-                    "optional": false
+                    "optional": true
                 }
             ]
         },

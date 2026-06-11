@@ -1539,14 +1539,14 @@ protected function includeProfile(): array
 }
 ```
 
-Another option for defining the return types of a trait method is to use the `#[TsResourceCasts]` attribute on the trait method itself with the same syntax as the `#[TsCasts]` attribute for models:
+Another option for defining the return types of a trait method is to use the `#[TsCasts]` attribute on the trait method itself with the same syntax as the `#[TsCasts]` attribute for models:
 
 ```php
-use AbeTwoThree\LaravelTsPublish\Attributes\TsResourceCasts;
+use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 
 trait IncludesExtras
 {
-    #[TsResourceCasts([
+    #[TsCasts([
         'location' => ['type' => 'GeoPoint', 'import' => '@/types/geo'],
         'flag' => ['type' => 'string | null', 'optional' => true],
         'extra' => 'Record<string, unknown>',
@@ -1565,7 +1565,7 @@ trait IncludesExtras
 > Trait spreads also flow through parent inheritance. If a parent resource spreads a trait method and a child extends it with `...parent::toArray($request)`, the child inherits the trait-contributed properties.
 
 > [!NOTE]
-> When a trait method has no `@return array{...}` PHPDoc or `#[TsResourceCasts]` attribute, its properties will be typed as `unknown`.
+> When a trait method has no `@return array{...}` PHPDoc or `#[TsCasts]` attribute, its properties will be typed as `unknown`.
 
 #### JsonResource Base Delegation
 
@@ -1755,7 +1755,7 @@ Three attributes are available for configuring resource TypeScript generation:
 | Attribute            | Target                    | Description                                                                  |
 |----------------------|---------------------------|------------------------------------------------------------------------------|
 | `#[TsResource]`      | Resource class            | Override the interface name, specify the backing model, or add a description |
-| `#[TsResourceCasts]` | Resource class or method  | Override or add property types with custom TypeScript types                  |
+| `#[TsCasts]` | Resource class or method  | Override or add property types with custom TypeScript types                  |
 | `#[TsExclude]`       | Resource class            | Exclude the entire resource from the TypeScript output.                      |
 
 See [Excluding with TsExclude](#excluding-with-tsexclude)
@@ -1784,14 +1784,14 @@ class UserResource extends JsonResource
 > [!TIP]
 > When `name` is set, it also affects the output filename. For example, `#[TsResource(name: 'Address')]` generates `address.ts` instead of `address-resource.ts`.
 
-#### `#[TsResourceCasts]` — Override Property Types
+#### `#[TsCasts]` — Override Property Types
 
 Use this attribute to override inferred types or add virtual properties with custom TypeScript types:
 
 ```php
-use AbeTwoThree\LaravelTsPublish\Attributes\TsResourceCasts;
+use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 
-#[TsResourceCasts([
+#[TsCasts([
     'metadata' => 'Record<string, unknown>',
     'coordinates' => ['type' => 'GeoPoint', 'import' => '@/types/geo'],
     'flagged_at' => ['type' => 'string | null', 'optional' => true],
@@ -1810,7 +1810,7 @@ Each entry can be:
 | Array with `import`   | `['type' => 'GeoPoint', 'import' => '@/types/geo']` | Custom type with an import statement   |
 | Array with `optional` | `['type' => 'string', 'optional' => true]`          | Override the type and mark as optional |
 
-Properties defined in `#[TsResourceCasts]` that don't exist in `toArray()` are appended to the generated interface. Properties that do exist have their types overridden.
+Properties defined in `#[TsCasts]` that don't exist in `toArray()` are appended to the generated interface. Properties that do exist have their types overridden.
 
 Generated TypeScript with the `coordinates` example:
 
@@ -1832,14 +1832,14 @@ export interface CommentResource
 
 ##### On Trait Methods
 
-`#[TsResourceCasts]` can also be applied to **trait methods** that are spread into `toArray()`. This lets you control types for trait-contributed properties without modifying the resource class:
+`#[TsCasts]` can also be applied to **trait methods** that are spread into `toArray()`. This lets you control types for trait-contributed properties without modifying the resource class:
 
 ```php
-use AbeTwoThree\LaravelTsPublish\Attributes\TsResourceCasts;
+use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 
 trait IncludesLocation
 {
-    #[TsResourceCasts([
+    #[TsCasts([
         'location' => ['type' => 'GeoPoint', 'import' => '@/types/geo'],
         'flag' => ['type' => 'string | null', 'optional' => true],
         'extra' => 'Record<string, unknown>',
@@ -1855,6 +1855,9 @@ trait IncludesLocation
 ```
 
 The attribute works identically to the class-level version — overriding types, marking properties optional, adding imports, and appending new properties. Properties defined in the attribute that don't exist in the method's return array (like `extra` above) are appended.
+
+> [!NOTE]
+> `#[TsCasts]` replaces the former `#[TsResourceCasts]` attribute, which was removed. If you were using `TsResourceCasts`, replace it with `TsCasts` — the syntax is identical.
 
 ### Nullable Relations
 

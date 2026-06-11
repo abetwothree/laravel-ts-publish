@@ -7,7 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Analyzers;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\FiltersModelAttributes;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ResolvesModelTypes;
-use AbeTwoThree\LaravelTsPublish\Attributes\TsResourceCasts;
+use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesClassNames;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
@@ -171,7 +171,7 @@ class ResourceAstAnalyzer
 
         if ($branchAnalysis !== null) {
             if ($this->resourceReflection->hasMethod('toArray')) {
-                $this->applyTsResourceCastsFromMethod($this->resourceReflection->getMethod('toArray'), $branchAnalysis);
+                $this->applyTsCastsFromMethod($this->resourceReflection->getMethod('toArray'), $branchAnalysis);
             }
 
             return $branchAnalysis;
@@ -1582,8 +1582,8 @@ class ResourceAstAnalyzer
             unset($prop);
         }
 
-        // Apply #[TsResourceCasts] attribute overrides from the method
-        $this->applyTsResourceCastsFromMethod($method, $analysis);
+        // Apply #[TsCasts] attribute overrides from the method
+        $this->applyTsCastsFromMethod($method, $analysis);
 
         return $analysis;
     }
@@ -1951,16 +1951,16 @@ class ResourceAstAnalyzer
     }
 
     /**
-     * Apply #[TsResourceCasts] attribute overrides declared on a reflection method to
+     * Apply #[TsCasts] attribute overrides declared on a reflection method to
      * the given ResourceAnalysis, updating or injecting property types as directed.
      *
      * Used both by analyzeThisMethodSpread() for trait/helper methods and by analyze()
-     * for the toArray() method itself, allowing #[TsResourceCasts] to be placed directly
+     * for the toArray() method itself, allowing #[TsCasts] to be placed directly
      * on toArray() as a lightweight override mechanism.
      */
-    private function applyTsResourceCastsFromMethod(ReflectionMethod $method, ResourceAnalysis $analysis): void
+    private function applyTsCastsFromMethod(ReflectionMethod $method, ResourceAnalysis $analysis): void
     {
-        foreach ($method->getAttributes(TsResourceCasts::class) as $attr) {
+        foreach ($method->getAttributes(TsCasts::class) as $attr) {
             $instance = $attr->newInstance();
 
             foreach ($instance->types as $property => $value) {

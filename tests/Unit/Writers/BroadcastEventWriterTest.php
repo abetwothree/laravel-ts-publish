@@ -29,7 +29,7 @@ describe('BroadcastEventWriter', function () {
         expect($content)->toContain('orderId: number');
         expect($content)->toContain('trackingNumber: `${string}-${string}-${string}`');
         expect($content)->toContain('carrier: string');
-        expect($content)->toContain('metadata: Record<string, unknown>');
+        expect($content)->toContain('metadata?: Record<string, unknown>');
     });
 
     it('includes a @see jsdoc for the FQCN', function () {

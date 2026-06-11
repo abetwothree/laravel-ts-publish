@@ -84,6 +84,9 @@ class ModelTransformer extends CoreTransformer
     /** @var TsTypeOverrides */
     public protected(set) array $tsTypeOverrides = [];
 
+    /** @var array<string, bool> */
+    protected array $optionalOverrides = [];
+
     protected RelationNullable $relationNullable;
 
     /** @var array<string, string> FQCN => TypeScript short name */
@@ -207,6 +210,7 @@ class ModelTransformer extends CoreTransformer
         $result = $this->parseTsCastsFromReflection($this->reflectionModel);
 
         $this->tsTypeOverrides = $result['overrides'];
+        $this->optionalOverrides = $result['optionalOverrides'];
 
         foreach ($result['importPaths'] as $column => $importPath) {
             foreach (LaravelTsPublish::extractImportableTypes($result['overrides'][$column]) as $importName) {
@@ -231,7 +235,7 @@ class ModelTransformer extends CoreTransformer
 
             // #[TsCasts] override takes priority over automatic type resolution
             if (isset($this->tsTypeOverrides[$name])) {
-                $this->columns[$name] = ['type' => $this->tsTypeOverrides[$name], 'description' => ''];
+                $this->columns[$name] = ['type' => $this->tsTypeOverrides[$name], 'description' => '', 'optional' => $this->optionalOverrides[$name] ?? false];
 
                 continue;
             }
@@ -256,7 +260,7 @@ class ModelTransformer extends CoreTransformer
                 $type .= ' | null';
             }
 
-            $this->columns[$name] = ['type' => $type, 'description' => $this->resolveAccessorDescription($name)];
+            $this->columns[$name] = ['type' => $type, 'description' => $this->resolveAccessorDescription($name), 'optional' => $this->optionalOverrides[$name] ?? false];
 
             foreach ($typings['enumFqcns'] as $i => $fqcn) {
                 $this->enumFqcnMap[$fqcn] = $typings['enumTypes'][$i];
@@ -304,9 +308,9 @@ class ModelTransformer extends CoreTransformer
             // #[TsCasts] override takes priority
             if (isset($this->tsTypeOverrides[$name])) {
                 if ($isAppended) {
-                    $this->appends[$name] = ['type' => $this->tsTypeOverrides[$name], 'description' => ''];
+                    $this->appends[$name] = ['type' => $this->tsTypeOverrides[$name], 'description' => '', 'optional' => $this->optionalOverrides[$name] ?? false];
                 } else {
-                    $this->mutators[$name] = ['type' => $this->tsTypeOverrides[$name], 'description' => ''];
+                    $this->mutators[$name] = ['type' => $this->tsTypeOverrides[$name], 'description' => '', 'optional' => $this->optionalOverrides[$name] ?? false];
                 }
 
                 continue;
@@ -315,9 +319,9 @@ class ModelTransformer extends CoreTransformer
             $resolved = $this->resolveMutatorType($name);
 
             if ($isAppended) {
-                $this->appends[$name] = ['type' => $resolved['type'], 'description' => $this->resolveAccessorDescription($name)];
+                $this->appends[$name] = ['type' => $resolved['type'], 'description' => $this->resolveAccessorDescription($name), 'optional' => $this->optionalOverrides[$name] ?? false];
             } else {
-                $this->mutators[$name] = ['type' => $resolved['type'], 'description' => $this->resolveAccessorDescription($name)];
+                $this->mutators[$name] = ['type' => $resolved['type'], 'description' => $this->resolveAccessorDescription($name), 'optional' => $this->optionalOverrides[$name] ?? false];
             }
 
             foreach ($resolved['enumFqcns'] as $i => $fqcn) {

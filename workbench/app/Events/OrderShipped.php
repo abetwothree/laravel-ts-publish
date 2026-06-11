@@ -11,7 +11,7 @@ use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 
 #[TsCasts([
     'trackingNumber' => '`${string}-${string}-${string}`',
-    'metadata' => 'Record<string, unknown>',
+    'metadata' => ['type' => 'Record<string, unknown>', 'optional' => true],
 ])]
 class OrderShipped implements ShouldBroadcast
 {

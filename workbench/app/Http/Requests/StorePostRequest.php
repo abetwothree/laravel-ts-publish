@@ -9,7 +9,7 @@ use Illuminate\Foundation\Http\FormRequest;
 
 #[TsCasts([
     'tags' => 'string[]',
-    'rating' => 'number | bigint',
+    'rating' => ['type' => 'number | bigint', 'optional' => true],
 ])]
 class StorePostRequest extends FormRequest
 {

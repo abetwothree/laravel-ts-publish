@@ -13,7 +13,7 @@ export interface Address
     state: string | null;
     postal_code: string;
     country_code: string;
-    latitude: number | null;
+    latitude?: number | null;
     longitude: number | null;
     is_default: boolean;
     created_at: string | null;

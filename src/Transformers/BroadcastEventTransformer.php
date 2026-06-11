@@ -115,6 +115,13 @@ class BroadcastEventTransformer extends CoreTransformer
     protected array $tsCastsImportPaths = [];
 
     /**
+     * Optional overrides from #[TsCasts]: property name => optional flag.
+     *
+     * @var array<string, bool>
+     */
+    protected array $optionalOverrides = [];
+
+    /**
      * TypeScript extends clauses parsed from #[TsExtends] attributes and config.
      *
      * @var list<string>
@@ -229,6 +236,7 @@ class BroadcastEventTransformer extends CoreTransformer
 
         $this->tsTypeOverrides = $result['overrides'];
         $this->tsCastsImportPaths = $result['importPaths'];
+        $this->optionalOverrides = $result['optionalOverrides'];
 
         return $this;
     }
@@ -300,7 +308,7 @@ class BroadcastEventTransformer extends CoreTransformer
             if (isset($this->tsTypeOverrides[$propName])) {
                 $result[$propName] = [
                     'type' => $this->tsTypeOverrides[$propName],
-                    'optional' => $type->isOptional(),
+                    'optional' => $this->optionalOverrides[$propName] ?? $type->isOptional(),
                 ];
 
                 continue;

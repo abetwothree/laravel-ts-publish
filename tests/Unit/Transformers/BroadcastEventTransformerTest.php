@@ -35,8 +35,13 @@ describe('BroadcastEventTransformer', function () {
                 'orderId' => ['type' => 'number', 'optional' => false],
                 'trackingNumber' => ['type' => '`${string}-${string}-${string}`', 'optional' => false],
                 'carrier' => ['type' => 'string', 'optional' => false],
-                'metadata' => ['type' => 'Record<string, unknown>', 'optional' => false],
+                'metadata' => ['type' => 'Record<string, unknown>', 'optional' => true],
             ]);
+        });
+
+        it('applies TsCasts optional override to make metadata optional', function () {
+            $transformer = app(BroadcastEventTransformer::class, ['findable' => OrderShipped::class]);
+            expect($transformer->properties['metadata']['optional'])->toBeTrue();
         });
 
         it('sets the filename to the short class name', function () {
@@ -302,7 +307,7 @@ describe('TsCasts overrides', function () {
 
         it('marks optional state correctly even when overridden', function () {
             $transformer = app(BroadcastEventTransformer::class, ['findable' => OrderShipped::class]);
-            expect($transformer->properties['metadata']['optional'])->toBeFalse();
+            expect($transformer->properties['metadata']['optional'])->toBeTrue();
             expect($transformer->properties['trackingNumber']['optional'])->toBeFalse();
         });
     });

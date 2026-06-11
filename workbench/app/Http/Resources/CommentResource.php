@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Workbench\App\Http\Resources;
 
-use AbeTwoThree\LaravelTsPublish\Attributes\TsResourceCasts;
+use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Enums\Status;
@@ -13,7 +13,7 @@ use Workbench\App\Models\Comment;
 /**
  * @mixin Comment
  */
-#[TsResourceCasts([
+#[TsCasts([
     'metadata' => 'Record<string, unknown>',
     'flagged_at' => ['type' => 'string | null', 'optional' => true],
 ])]

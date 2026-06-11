@@ -77,6 +77,14 @@ describe('TsCasts overrides', function () {
             expect($field['tsType'])->toBe('number | bigint');
         });
 
+        it('applies TsCasts optional override to set rating isRequired to false', function () {
+            $transformer = new FormRequestTransformer(StorePostRequest::class);
+
+            $field = collect($transformer->fields)->firstWhere('fieldPath', 'rating');
+            expect($field)->not->toBeNull();
+            expect($field['isRequired'])->toBeFalse();
+        });
+
         it('does not add typeImports for plain string TsCasts overrides', function () {
             $transformer = new FormRequestTransformer(StorePostRequest::class);
 

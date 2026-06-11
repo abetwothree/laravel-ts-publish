@@ -587,11 +587,11 @@ class InertiaPageAnalyzer
         foreach ($tsCasts->types as $prop => $value) {
             if (is_array($value)) {
                 $overrides[$prop] = $value['type'];
-                /** @var string $importPath */
-                $importPath = $value['import'];
 
-                foreach (LaravelTsPublish::extractImportableTypes($value['type']) as $typeName) {
-                    $importMap[$importPath][] = $typeName;
+                if (isset($value['import'])) {
+                    foreach (LaravelTsPublish::extractImportableTypes($value['type']) as $typeName) {
+                        $importMap[$value['import']][] = $typeName;
+                    }
                 }
             } else {
                 $overrides[$prop] = $value;

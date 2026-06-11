@@ -13,12 +13,12 @@ use JsonSerializable;
  * @phpstan-import-type TypesImportMap from Datable
  * @phpstan-import-type ValuesImportMap from Datable
  *
- * @phpstan-type ColumnsList = array<string, array{type: string, description: string}>
- * @phpstan-type MutatorsList = array<string, array{type: string, description: string}>
+ * @phpstan-type ColumnsList = array<string, array{type: string, description: string, optional: bool}>
+ * @phpstan-type MutatorsList = array<string, array{type: string, description: string, optional: bool}>
  * @phpstan-type RelationsList = array<string, array{type: string, description: string}>
  * @phpstan-type EnumPropertyInfo = array{constName: string, nullable: bool}
  * @phpstan-type EnumPropertiesList = array<string, EnumPropertyInfo>
- * @phpstan-type AppendsList = array<string, array{type: string, description: string}>
+ * @phpstan-type AppendsList = array<string, array{type: string, description: string, optional: bool}>
  * @phpstan-type ModelData = array{
  *    modelName: string,
  *    description: string,

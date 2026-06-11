@@ -135,6 +135,13 @@ describe('ModelTransformer with Address model that has class-level TsCasts', fun
             ->and($data->columns['longitude']['type'])->toBe('number | null');
     });
 
+    test('applies TsCasts optional override to latitude column', function () {
+        $data = (new ModelTransformer(Address::class))->data();
+
+        expect($data->columns['latitude']['optional'])->toBeTrue();
+        expect($data->columns['longitude']['optional'])->toBeFalse();
+    });
+
     test('transforms Address model mutators', function () {
         $data = (new ModelTransformer(Address::class))->data();
 

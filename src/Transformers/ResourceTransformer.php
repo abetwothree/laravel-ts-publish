@@ -7,7 +7,6 @@ namespace AbeTwoThree\LaravelTsPublish\Transformers;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
-use AbeTwoThree\LaravelTsPublish\Attributes\TsResourceCasts;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesClassNames;
@@ -123,6 +122,9 @@ class ResourceTransformer extends CoreTransformer
     /** @var array<string, string> property name => import path from model's #[TsCasts] */
     protected array $modelTsCastsImportPaths = [];
 
+    /** @var array<string, bool> property name => optional flag from model's #[TsCasts] */
+    protected array $modelTsCastsOptionalOverrides = [];
+
     /** @var list<string> TypeScript extends clauses */
     public protected(set) array $tsExtends = [];
 
@@ -136,7 +138,7 @@ class ResourceTransformer extends CoreTransformer
             ->parseTsExtends()
             ->resolveModelClass()
             ->parseModelTsCastsOverrides()
-            ->parseTsResourceCastsOverrides()
+            ->parseResourceTsCastsOverrides()
             ->runAstAnalysis()
             ->applyOverrides()
             ->resolveMultiClassAccessorFqcns()
@@ -369,35 +371,34 @@ class ResourceTransformer extends CoreTransformer
 
         $this->modelTsCastsOverrides = $result['overrides'];
         $this->modelTsCastsImportPaths = $result['importPaths'];
+        $this->modelTsCastsOptionalOverrides = $result['optionalOverrides'];
 
         return $this;
     }
 
     /**
-     * Parse #[TsResourceCasts] attributes for type overrides.
+     * Parse #[TsCasts] attributes on the resource class for type overrides.
      */
-    protected function parseTsResourceCastsOverrides(): self
+    protected function parseResourceTsCastsOverrides(): self
     {
-        foreach ($this->reflectionResource->getAttributes(TsResourceCasts::class) as $attr) {
-            $instance = $attr->newInstance();
+        $result = $this->parseTsCastsFromReflection($this->reflectionResource);
 
-            foreach ($instance->types as $property => $value) {
-                if (is_array($value)) {
-                    $this->tsTypeOverrides[$property] = $value['type'];
+        foreach ($result['overrides'] as $property => $type) {
+            $this->tsTypeOverrides[$property] = $type;
+        }
 
-                    if (isset($value['import'])) {
-                        foreach (LaravelTsPublish::extractImportableTypes($value['type']) as $importName) {
-                            $this->customImports[$value['import']][] = $importName;
-                        }
-                    }
+        foreach ($result['importPaths'] as $property => $importPath) {
+            $type = $result['overrides'][$property] ?? null;
 
-                    if (isset($value['optional'])) {
-                        $this->optionalOverrides[$property] = $value['optional'];
-                    }
-                } else {
-                    $this->tsTypeOverrides[$property] = $value;
+            if ($type !== null) {
+                foreach (LaravelTsPublish::extractImportableTypes($type) as $importName) {
+                    $this->customImports[$importPath][] = $importName;
                 }
             }
+        }
+
+        foreach ($result['optionalOverrides'] as $property => $optional) {
+            $this->optionalOverrides[$property] = $optional;
         }
 
         return $this;
@@ -501,7 +502,7 @@ class ResourceTransformer extends CoreTransformer
             $this->multiEnumResourceProperties[$propName] = $fqcns;
         }
 
-        // Merge custom imports from trait method #[TsResourceCasts] attributes
+        // Merge custom imports from trait method #[TsCasts] attributes
         foreach ($analysis->customImports as $importPath => $types) {
             $this->customImports[$importPath] = [...($this->customImports[$importPath] ?? []), ...$types];
         }
@@ -510,11 +511,11 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * Apply model #[TsCasts] then #[TsResourceCasts] overrides on top of AST-inferred properties.
+     * Apply model #[TsCasts] then resource #[TsCasts] overrides on top of AST-inferred properties.
      */
     protected function applyOverrides(): self
     {
-        // Apply model TsCasts overrides (only for properties already in toArray, not overridden by TsResourceCasts)
+        // Apply model TsCasts overrides (only for properties already in toArray, not overridden by resource TsCasts)
         foreach ($this->modelTsCastsOverrides as $property => $type) {
             if (isset($this->properties[$property]) && ! isset($this->tsTypeOverrides[$property])) {
                 $this->properties[$property]['type'] = $type;
@@ -524,10 +525,14 @@ class ResourceTransformer extends CoreTransformer
                         $this->customImports[$this->modelTsCastsImportPaths[$property]][] = $importName;
                     }
                 }
+
+                if (isset($this->modelTsCastsOptionalOverrides[$property])) {
+                    $this->properties[$property]['optional'] = $this->modelTsCastsOptionalOverrides[$property];
+                }
             }
         }
 
-        // Apply TsResourceCasts overrides (highest priority, can add new properties)
+        // Apply resource TsCasts overrides (highest priority, can add new properties)
         foreach ($this->tsTypeOverrides as $property => $type) {
             if (isset($this->properties[$property])) {
                 $this->properties[$property]['type'] = $type;

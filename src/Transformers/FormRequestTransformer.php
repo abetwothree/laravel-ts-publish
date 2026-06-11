@@ -55,6 +55,13 @@ class FormRequestTransformer extends CoreTransformer
     protected array $tsCastsImportPaths = [];
 
     /**
+     * Optional overrides from #[TsCasts]: field path => optional flag.
+     *
+     * @var array<string, bool>
+     */
+    protected array $optionalOverrides = [];
+
+    /**
      * Resolved type imports: import path => list of type names.
      *
      * @var TypesImportMap
@@ -174,7 +181,8 @@ class FormRequestTransformer extends CoreTransformer
      * Apply #[TsCasts] type overrides to already-analyzed fields.
      *
      * Iterates the resolved fields and replaces tsType for any field whose
-     * fieldPath has an entry in $this->tsTypeOverrides.
+     * fieldPath has an entry in $this->tsTypeOverrides. Also applies optional
+     * overrides, mapping optional: true to isRequired: false and vice versa.
      */
     protected function applyTsCastsOverrides(): self
     {
@@ -183,6 +191,10 @@ class FormRequestTransformer extends CoreTransformer
 
             if (isset($this->tsTypeOverrides[$path])) {
                 $field['tsType'] = $this->tsTypeOverrides[$path];
+            }
+
+            if (isset($this->optionalOverrides[$path])) {
+                $field['isRequired'] = ! $this->optionalOverrides[$path];
             }
 
             return $field;
@@ -250,6 +262,7 @@ class FormRequestTransformer extends CoreTransformer
 
         $this->tsTypeOverrides = $result['overrides'];
         $this->tsCastsImportPaths = $result['importPaths'];
+        $this->optionalOverrides = $result['optionalOverrides'];
 
         return $this;
     }

@@ -28,7 +28,7 @@ export interface {{ $data->modelName }}{!! count($data->tsExtends) > 0 ? ' exten
 @if($column['description'])
 {!! LaravelTsPublish::formatJsDoc($column['description'], 4) !!}
 @endif
-    {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $column['type'] !!};
+    {!! LaravelTsPublish::validJsObjectKey($name) !!}{{ $column['optional'] ? '?' : '' }}: {!!  $column['type'] !!};
 @endforeach
 @endif
 @if (count($data->mutators) > 0 || count($data->appends) > 0)
@@ -37,13 +37,13 @@ export interface {{ $data->modelName }}{!! count($data->tsExtends) > 0 ? ' exten
 @if($mutator['description'])
 {!! LaravelTsPublish::formatJsDoc($mutator['description'], 4) !!}
 @endif
-    {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $mutator['type'] !!};
+    {!! LaravelTsPublish::validJsObjectKey($name) !!}{{ $mutator['optional'] ? '?' : '' }}: {!!  $mutator['type'] !!};
 @endforeach
 @foreach ($data->appends as $name => $append)
 @if($append['description'])
 {!! LaravelTsPublish::formatJsDoc($append['description'], 4) !!}
 @endif
-    {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $append['type'] !!};
+    {!! LaravelTsPublish::validJsObjectKey($name) !!}{{ $append['optional'] ? '?' : '' }}: {!!  $append['type'] !!};
 @endforeach
 @endif
 @if (count($data->relations) > 0)

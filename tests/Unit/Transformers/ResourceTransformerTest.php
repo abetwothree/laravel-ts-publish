@@ -309,13 +309,13 @@ describe('ResourceTransformer with CommentResource', function () {
         expect($data->modelClass)->toBe(Comment::class);
     });
 
-    test('applies TsResourceCasts type overrides', function () {
+    test('applies TsCasts type overrides', function () {
         $data = (new ResourceTransformer(CommentResource::class))->data();
 
         expect($data->properties['metadata']['type'])->toBe('Record<string, unknown>');
     });
 
-    test('applies TsResourceCasts optional override', function () {
+    test('applies TsCasts optional override', function () {
         $data = (new ResourceTransformer(CommentResource::class))->data();
 
         expect($data->properties['flagged_at']['type'])->toBe('string | null');
@@ -510,7 +510,7 @@ describe('ResourceTransformer with CommentResource', function () {
     });
 });
 
-describe('ResourceTransformer with ToArrayCastsResource — #[TsResourceCasts] on toArray() method', function () {
+describe('ResourceTransformer with ToArrayCastsResource — #[TsCasts] on toArray() method', function () {
     test('overrides property type — role becomes string', function () {
         $data = (new ResourceTransformer(ToArrayCastsResource::class))->data();
 
@@ -733,7 +733,7 @@ describe('ResourceTransformer with AddressResource', function () {
         expect($data->description)->toBe('Mailing address resource');
     });
 
-    test('applies TsResourceCasts with custom import', function () {
+    test('applies TsCasts with custom import', function () {
         $data = (new ResourceTransformer(AddressResource::class))->data();
 
         expect($data->properties)->toHaveKey('coordinates')
@@ -843,12 +843,12 @@ describe('ResourceTransformer TsCasts waterfall from model', function () {
         expect($data->properties)->not->toHaveKey('full_address');
     });
 
-    test('TsResourceCasts overrides model TsCasts for same property', function () {
+    test('TsCasts overrides model TsCasts for same property', function () {
         $data = (new ResourceTransformer(CommentResource::class))->data();
 
         // Comment model has #[TsCasts(['metadata' => 'Record<string, unknown>'])] on casts() method
-        // CommentResource has #[TsResourceCasts(['metadata' => 'Record<string, unknown>'])]
-        // TsResourceCasts should take priority (same value here, but pipeline precedence is verified)
+        // CommentResource has #[TsCasts(['metadata' => 'Record<string, unknown>'])]
+        // TsCasts should take priority (same value here, but pipeline precedence is verified)
         expect($data->properties['metadata']['type'])->toBe('Record<string, unknown>');
     });
 
@@ -870,12 +870,12 @@ describe('ResourceTransformer TsCasts waterfall from model', function () {
             ->and($data->typeImports['@js/types/product'])->toContain('ProductMetadata');
     });
 
-    test('AddressResource TsResourceCasts coordinates still applies', function () {
+    test('AddressResource TsCasts coordinates still applies', function () {
         $data = (new ResourceTransformer(AddressResource::class))->data();
 
-        // TsResourceCasts adds 'coordinates' with GeoPoint type and import (not in toArray)
+        // TsCasts adds 'coordinates' with GeoPoint type and import (not in toArray)
         expect($data->properties['coordinates']['type'])->toBe('GeoPoint');
-        // TsResourceCasts adds 'bounds' with GeoBounds type from the same import path
+        // TsCasts adds 'bounds' with GeoBounds type from the same import path
         expect($data->properties['bounds']['type'])->toBe('GeoBounds');
         expect($data->typeImports)->toHaveKey('@/types/geo');
         expect($data->typeImports['@/types/geo'])->toContain('GeoPoint')
@@ -1121,22 +1121,22 @@ describe('ResourceTransformer with trait method spread', function () {
     });
 });
 
-describe('ResourceTransformer with trait TsResourceCasts', function () {
-    test('applies TsResourceCasts type override from trait method', function () {
+describe('ResourceTransformer with trait TsCasts', function () {
+    test('applies TsCasts type override from trait method', function () {
         $data = (new ResourceTransformer(TraitSpreadCoverageResource::class))->data();
 
         expect($data->properties)->toHaveKey('location')
             ->and($data->properties['location']['type'])->toBe('GeoPoint');
     });
 
-    test('generates import from TsResourceCasts on trait method', function () {
+    test('generates import from TsCasts on trait method', function () {
         $data = (new ResourceTransformer(TraitSpreadCoverageResource::class))->data();
 
         expect($data->typeImports)->toHaveKey('@/types/geo')
             ->and($data->typeImports['@/types/geo'])->toContain('GeoPoint');
     });
 
-    test('adds new property from TsResourceCasts on trait method', function () {
+    test('adds new property from TsCasts on trait method', function () {
         $data = (new ResourceTransformer(TraitSpreadCoverageResource::class))->data();
 
         expect($data->properties)->toHaveKey('extra')
@@ -1335,7 +1335,7 @@ describe('ResourceTransformer with ApiArticleResource (abstract parent + trait s
             ->and($data->properties['author']['type'])->toBe('User');
     });
 
-    test('includes custom import from parent TsResourceCasts trait', function () {
+    test('includes custom import from parent TsCasts trait', function () {
         $data = (new ResourceTransformer(ApiArticleResource::class))->data();
 
         $allTypes = array_merge(...array_values($data->typeImports));

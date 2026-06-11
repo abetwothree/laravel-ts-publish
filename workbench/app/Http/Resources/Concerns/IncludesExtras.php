@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Workbench\App\Http\Resources\Concerns;
 
-use AbeTwoThree\LaravelTsPublish\Attributes\TsResourceCasts;
+use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 
 trait IncludesExtras
 {
@@ -50,8 +50,7 @@ trait IncludesExtras
         ];
     }
 
-    /** @param array<string, string|array{type: string, import?: string, optional?: bool}> $types */
-    #[TsResourceCasts([
+    #[TsCasts([
         'location' => ['type' => 'GeoPoint', 'import' => '@/types/geo'],
         'flag' => ['type' => 'string | null', 'optional' => true],
         'extra' => 'Record<string, unknown>',

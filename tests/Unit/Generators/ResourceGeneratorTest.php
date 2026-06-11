@@ -71,7 +71,7 @@ test('generates UserResource with optional properties', function () {
         ->toContain('comments_count?: number');
 });
 
-test('generates CommentResource with TsResourceCasts overrides', function () {
+test('generates CommentResource with TsCasts overrides', function () {
     config()->set('ts-publish.output_to_files', false);
 
     $generator = resolve(ResourceGenerator::class, ['findable' => CommentResource::class]);

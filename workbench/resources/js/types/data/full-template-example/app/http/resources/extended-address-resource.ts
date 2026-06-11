@@ -1,7 +1,7 @@
 import type { GeoPoint } from '@/types/geo';
 
 /**
- * Exercises: parent spread inheriting customImports from parent trait TsResourceCasts.
+ * Exercises: parent spread inheriting customImports from parent trait TsCasts.
  *
  * @see Workbench\App\Http\Resources\ExtendedAddressResource
  */

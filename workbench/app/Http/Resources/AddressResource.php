@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Workbench\App\Http\Resources;
 
+use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
-use AbeTwoThree\LaravelTsPublish\Attributes\TsResourceCasts;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Http\Resources\Concerns\IncludesMorphValue;
@@ -13,12 +13,12 @@ use Workbench\App\Models\Address;
 
 /**
  * Exercises: multiple whenNotNull on different nullable fields,
- * TsResource with explicit name/description, TsResourceCasts with import.
+ * TsResource with explicit name/description, TsCasts with import.
  *
  * @mixin Address
  */
 #[TsResource(name: 'Address', description: 'Mailing address resource')]
-#[TsResourceCasts([
+#[TsCasts([
     'coordinates' => ['type' => 'GeoPoint', 'import' => '@/types/geo'],
     'bounds' => ['type' => 'GeoBounds', 'import' => '@/types/geo'],
 ])]

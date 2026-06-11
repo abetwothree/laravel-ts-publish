@@ -1387,7 +1387,7 @@ describe('ResourceAstAnalyzer with parent::toArray spread', function () {
             ->toHaveKey('priority_new');
     });
 
-    test('inherits customImports from parent trait TsResourceCasts', function () {
+    test('inherits customImports from parent trait TsCasts', function () {
         $reflection = new ReflectionClass(ExtendedAddressResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection, User::class);
         $analysis = $analyzer->analyze();
@@ -1516,20 +1516,21 @@ describe('ResourceAstAnalyzer trait spread doc type branches', function () {
             ->and($isActive['type'])->toBe('boolean');
     });
 
-    test('applies TsResourceCasts type overrides on trait methods', function () {
+    test('applies TsCasts type overrides on trait methods', function () {
         $location = collect($this->analysis->properties)->firstWhere('name', 'location');
 
         expect($location['type'])->toBe('GeoPoint');
     });
 
     test('applies TsResourceCasts optional flag on trait methods', function () {
+    test('applies TsCasts optional flag on trait methods', function () {
         $flag = collect($this->analysis->properties)->firstWhere('name', 'flag');
 
         expect($flag['type'])->toBe('string | null')
             ->and($flag['optional'])->toBeTrue();
     });
 
-    test('adds new properties from TsResourceCasts on trait methods', function () {
+    test('adds new properties from TsCasts on trait methods', function () {
         $extra = collect($this->analysis->properties)->firstWhere('name', 'extra');
 
         expect($extra)->not->toBeNull()
@@ -1537,7 +1538,7 @@ describe('ResourceAstAnalyzer trait spread doc type branches', function () {
             ->and($extra['optional'])->toBeFalse();
     });
 
-    test('populates customImports from TsResourceCasts import paths', function () {
+    test('populates customImports from TsCasts import paths', function () {
         expect($this->analysis->customImports)->toBe(['@/types/geo' => ['GeoPoint']]);
     });
 });
@@ -1923,7 +1924,7 @@ describe('ResourceAstAnalyzer with bare function call spread', function () {
             ->and($isActive['type'])->toBe('boolean');
     });
 
-    test('resolves TsResourceCasts from bare function call spreads', function () {
+    test('resolves TsCasts from bare function call spreads', function () {
         $reflection = new ReflectionClass(BareFuncCallResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection, Comment::class);
         $analysis = $analyzer->analyze();
@@ -3178,7 +3179,7 @@ describe('ResourceAstAnalyzer with CommentResource — nullsafe chains and closu
     });
 });
 
-describe('ResourceAstAnalyzer with ToArrayCastsResource — #[TsResourceCasts] on toArray() method', function () {
+describe('ResourceAstAnalyzer with ToArrayCastsResource — #[TsCasts] on toArray() method', function () {
     beforeEach(function () {
         $reflection = new ReflectionClass(ToArrayCastsResource::class);
         $this->analysis = (new ResourceAstAnalyzer($reflection, User::class))->analyze();
@@ -3208,7 +3209,7 @@ describe('ResourceAstAnalyzer with ToArrayCastsResource — #[TsResourceCasts] o
             ->and($prop['optional'])->toBeFalse();
     });
 
-    test('registers custom import from method-level TsResourceCasts', function () {
+    test('registers custom import from method-level TsCasts', function () {
         expect($this->analysis->customImports)->toHaveKey('@/types/geo')
             ->and($this->analysis->customImports['@/types/geo'])->toContain('GeoPoint');
     });

@@ -14,6 +14,7 @@ use ReflectionClass;
  * @phpstan-type TsCastsResult = array{
  *     overrides: array<string, string>,
  *     importPaths: array<string, string>,
+ *     optionalOverrides: array<string, bool>,
  * }
  */
 trait ParsesTsCasts
@@ -56,17 +57,25 @@ trait ParsesTsCasts
 
         $overrides = [];
         $importPaths = [];
+        $optionalOverrides = [];
 
         foreach ($merged as $column => $value) {
             if (is_array($value)) {
-                /** @var array{type: string, import: string} $value */
+                /** @var array{type: string, import?: string, optional?: bool} $value */
                 $overrides[$column] = $value['type'];
-                $importPaths[$column] = $value['import'];
+
+                if (isset($value['import'])) {
+                    $importPaths[$column] = $value['import'];
+                }
+
+                if (isset($value['optional'])) {
+                    $optionalOverrides[$column] = $value['optional'];
+                }
             } else {
                 $overrides[$column] = $value;
             }
         }
 
-        return ['overrides' => $overrides, 'importPaths' => $importPaths];
+        return ['overrides' => $overrides, 'importPaths' => $importPaths, 'optionalOverrides' => $optionalOverrides];
     }
 }

@@ -366,7 +366,7 @@ declare global {
             state: string | null;
             postal_code: string;
             country_code: string;
-            latitude: number | null;
+            latitude?: number | null;
             longitude: number | null;
             is_default: boolean;
             created_at: string | null;
@@ -1646,7 +1646,7 @@ declare global {
             products?: ProductResource[];
         }
         /**
-         * Fixture resource used to test #[TsResourceCasts] placed on the toArray() method
+         * Fixture resource used to test #[TsCasts] placed on the toArray() method
          * rather than on the class. No class-level annotation is present on purpose so that
          * method-level behavior is tested in isolation.
          */
@@ -1860,7 +1860,7 @@ declare global {
             parent_when_self?: CategoryResource;
             parent_when_resource_self?: CategoryResource;
         }
-        /** Exercises: parent spread inheriting customImports from parent trait TsResourceCasts. */
+        /** Exercises: parent spread inheriting customImports from parent trait TsCasts. */
         export interface ExtendedAddressResource {
             id: number;
             computed: string;
@@ -2775,7 +2775,7 @@ declare global {
             orderId: number;
             trackingNumber: `${string}-${string}-${string}`;
             carrier: string;
-            metadata: Record<string, unknown>;
+            metadata?: Record<string, unknown>;
         }
         export interface TeamMessageSent {
             teamId: number;
