@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\FormRequest\FormRequestRuleNode;
 use AbeTwoThree\LaravelTsPublish\Analyzers\FormRequest\FormRequestRulesAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsFormRequestDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Foundation\Http\FormRequest;
@@ -16,11 +17,14 @@ use ReflectionClass;
 
 /**
  * @phpstan-import-type FormRequestFieldData from TsFormRequestDto
+ * @phpstan-import-type TypesImportMap from TsFormRequestDto
  *
  * @extends CoreTransformer<FormRequest>
  */
 class FormRequestTransformer extends CoreTransformer
 {
+    use ParsesTsCasts;
+
     public protected(set) string $typeName;
 
     public protected(set) string $description = '';
@@ -34,11 +38,35 @@ class FormRequestTransformer extends CoreTransformer
     /** @var list<FormRequestFieldData> */
     public protected(set) array $fields = [];
 
+    /**
+     * TsCasts attribute overrides: field path => TypeScript type string.
+     *
+     * @var array<string, string>
+     */
+    protected array $tsTypeOverrides = [];
+
+    /**
+     * Import paths declared alongside TsCasts overrides: field path => import path.
+     *
+     * @var array<string, string>
+     */
+    protected array $tsCastsImportPaths = [];
+
+    /**
+     * Resolved type imports: import path => list of type names.
+     *
+     * @var TypesImportMap
+     */
+    public protected(set) array $typeImports = [];
+
     #[Override]
     public function transform(): self
     {
         $this->initReflection()
-            ->analyzeRules();
+            ->parseTsCasts()
+            ->analyzeRules()
+            ->applyTsCastsOverrides()
+            ->buildTypeImports();
 
         return $this;
     }
@@ -60,6 +88,7 @@ class FormRequestTransformer extends CoreTransformer
             description: $this->description,
             fields: $this->fields,
             isDynamic: $this->isDynamic,
+            typeImports: $this->typeImports,
         );
     }
 
@@ -116,6 +145,72 @@ class FormRequestTransformer extends CoreTransformer
             ],
             $nodes,
         );
+
+        return $this;
+    }
+
+    /**
+     * Apply #[TsCasts] type overrides to already-analyzed fields.
+     *
+     * Iterates the resolved fields and replaces tsType for any field whose
+     * fieldPath has an entry in $this->tsTypeOverrides.
+     */
+    protected function applyTsCastsOverrides(): self
+    {
+        $this->fields = array_map(function (array $field): array {
+            $path = $field['fieldPath'];
+
+            if (isset($this->tsTypeOverrides[$path])) {
+                $field['tsType'] = $this->tsTypeOverrides[$path];
+            }
+
+            return $field;
+        }, $this->fields);
+
+        return $this;
+    }
+
+    /**
+     * Build the TypeScript type import map from TsCasts import-path overrides
+     * and store the result in $this->typeImports.
+     */
+    protected function buildTypeImports(): self
+    {
+        /** @var TypesImportMap $imports */
+        $imports = [];
+
+        foreach ($this->tsCastsImportPaths as $field => $importPath) {
+            $type = $this->tsTypeOverrides[$field] ?? null;
+
+            if ($type !== null) {
+                foreach (LaravelTsPublish::extractImportableTypes($type) as $importName) {
+                    $imports[$importPath][] = $importName;
+                }
+            }
+        }
+
+        foreach ($imports as $path => $types) {
+            $unique = array_values(array_unique($types));
+            sort($unique);
+            $imports[$path] = $unique;
+        }
+
+        $this->typeImports = LaravelTsPublish::sortImportPaths($imports);
+
+        return $this;
+    }
+
+    /**
+     * Parse #[TsCasts] attribute overrides from the form request class.
+     */
+    protected function parseTsCasts(): self
+    {
+        /** @var ReflectionClass<FormRequest> $reflection */
+        $reflection = new ReflectionClass($this->findable);
+        $result = $this->parseTsCastsFromReflection($reflection);
+
+        $this->tsTypeOverrides = $result['overrides'];
+        $this->tsCastsImportPaths = $result['importPaths'];
 
         return $this;
     }

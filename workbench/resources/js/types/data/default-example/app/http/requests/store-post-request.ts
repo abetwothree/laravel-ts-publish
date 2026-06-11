@@ -3,7 +3,7 @@ export interface StorePostRequest {
     title: string;
     body: string;
     published?: boolean;
-    rating?: number | null;
+    rating?: number | bigint | null;
     /** @format email */
     email: string;
     tags?: string[];

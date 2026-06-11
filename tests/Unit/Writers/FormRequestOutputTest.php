@@ -44,7 +44,7 @@ describe('StorePostRequest output', function () {
     });
 
     it('marks nullable optional fields with ? and | null', function () {
-        expect($this->content)->toContain('rating?: number | null;');
+        expect($this->content)->toContain('rating?: number | bigint | null;');
     });
 
     it('includes @format email annotation before email field', function () {

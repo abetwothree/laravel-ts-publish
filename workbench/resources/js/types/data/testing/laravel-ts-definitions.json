@@ -149,12 +149,17 @@
                 },
                 {
                     "name": "trackingNumber",
-                    "type": "string",
+                    "type": "`${string}-${string}-${string}`",
                     "optional": false
                 },
                 {
                     "name": "carrier",
                     "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "metadata",
+                    "type": "Record<string, unknown>",
                     "optional": false
                 }
             ]
@@ -213,7 +218,7 @@
             "properties": [
                 {
                     "name": "post",
-                    "type": "Partial<Post>",
+                    "type": "PostSnapshot",
                     "optional": false
                 },
                 {
@@ -1448,7 +1453,7 @@
                 },
                 {
                     "fieldPath": "rating",
-                    "tsType": "number",
+                    "tsType": "number | bigint",
                     "isRequired": false,
                     "isNullable": true,
                     "isProhibited": false,
@@ -2089,6 +2094,14 @@
                     "tsType": "number",
                     "isRequired": false,
                     "isNullable": true,
+                    "isProhibited": false,
+                    "jsDocMetadata": []
+                },
+                {
+                    "fieldPath": "attributes",
+                    "tsType": "PostAttributes",
+                    "isRequired": false,
+                    "isNullable": false,
                     "isProhibited": false,
                     "jsDocMetadata": []
                 }

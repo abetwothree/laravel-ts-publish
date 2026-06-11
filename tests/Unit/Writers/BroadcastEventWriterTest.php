@@ -27,8 +27,9 @@ describe('BroadcastEventWriter', function () {
 
         expect($content)->toContain('export interface OrderShipped');
         expect($content)->toContain('orderId: number');
-        expect($content)->toContain('trackingNumber: string');
+        expect($content)->toContain('trackingNumber: `${string}-${string}-${string}`');
         expect($content)->toContain('carrier: string');
+        expect($content)->toContain('metadata: Record<string, unknown>');
     });
 
     it('includes a @see jsdoc for the FQCN', function () {

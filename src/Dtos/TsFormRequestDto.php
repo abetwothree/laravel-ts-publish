@@ -10,6 +10,8 @@ use Illuminate\Contracts\Support\Jsonable;
 use JsonSerializable;
 
 /**
+ * @phpstan-import-type TypesImportMap from Datable
+ *
  * @phpstan-type FormRequestFieldData = array{
  *     fieldPath: string,
  *     tsType: string,
@@ -26,6 +28,7 @@ use JsonSerializable;
  *     description: string,
  *     fields: list<FormRequestFieldData>,
  *     isDynamic: bool,
+ *     typeImports: TypesImportMap,
  * }
  *
  * @implements Arrayable<string, mixed>
@@ -34,6 +37,7 @@ final readonly class TsFormRequestDto implements Arrayable, Datable, Jsonable, J
 {
     /**
      * @param  list<FormRequestFieldData>  $fields
+     * @param  TypesImportMap  $typeImports
      */
     public function __construct(
         public string $fqcn,
@@ -43,6 +47,7 @@ final readonly class TsFormRequestDto implements Arrayable, Datable, Jsonable, J
         public string $description,
         public array $fields,
         public bool $isDynamic = false,
+        public array $typeImports = [],
     ) {}
 
     /** @return FormRequestData */
@@ -56,6 +61,7 @@ final readonly class TsFormRequestDto implements Arrayable, Datable, Jsonable, J
             'description' => $this->description,
             'fields' => $this->fields,
             'isDynamic' => $this->isDynamic,
+            'typeImports' => $this->typeImports,
         ];
     }
 

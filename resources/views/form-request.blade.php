@@ -1,4 +1,10 @@
 @use('AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish')
+@foreach ($data->typeImports as $path => $types)
+import type { {{ implode(', ', $types) }} } from '{{ $path }}';
+@endforeach
+@if(count($data->typeImports) > 0)
+
+@endif
 @php
 $formRequestDoc = $data->description !== '' ? $data->description . "\n\n" : '';
 $formRequestDoc .= "@see {$data->fqcn}";

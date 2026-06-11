@@ -1,3 +1,5 @@
+import type { PostAttributes } from '@js/types/posts';
+
 /** @see Workbench\App\Http\Requests\UpdatePostRequest */
 export interface UpdatePostRequest {
     title?: string;
@@ -5,4 +7,5 @@ export interface UpdatePostRequest {
     /** @constraint exists */
     category_id: number;
     priority?: number | null;
+    attributes?: PostAttributes;
 }

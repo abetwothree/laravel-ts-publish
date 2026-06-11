@@ -34,7 +34,7 @@ describe('StorePostRequest fields', function () {
         $field = collect($this->transformer->fields)->firstWhere('fieldPath', 'rating');
 
         expect($field)->not->toBeNull()
-            ->and($field['tsType'])->toBe('number')
+            ->and($field['tsType'])->toBe('number | bigint')
             ->and($field['isRequired'])->toBeFalse()
             ->and($field['isNullable'])->toBeTrue();
     });

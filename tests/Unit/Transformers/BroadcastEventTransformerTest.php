@@ -29,12 +29,13 @@ describe('BroadcastEventTransformer', function () {
             expect($transformer->broadcastName)->toBe('.Workbench.App.Events.OrderShipped');
         });
 
-        it('resolves all public properties', function () {
+        it('resolves all public properties with TsCasts overrides applied', function () {
             $transformer = app(BroadcastEventTransformer::class, ['findable' => OrderShipped::class]);
             expect($transformer->properties)->toMatchArray([
                 'orderId' => ['type' => 'number', 'optional' => false],
-                'trackingNumber' => ['type' => 'string', 'optional' => false],
+                'trackingNumber' => ['type' => '`${string}-${string}-${string}`', 'optional' => false],
                 'carrier' => ['type' => 'string', 'optional' => false],
+                'metadata' => ['type' => 'Record<string, unknown>', 'optional' => false],
             ]);
         });
 
@@ -172,21 +173,30 @@ describe('EnumBroadcastEvent (Status int-backed + Color string-backed)', functio
 });
 
 describe('MixedTypesEvent (Post model + Status enum + string)', function () {
-    it('resolves mixed payload correctly', function () {
+    it('overrides post type via TsCasts', function () {
         $transformer = app(BroadcastEventTransformer::class, ['findable' => MixedTypesEvent::class]);
-        expect($transformer->properties['post']['type'])->toBe('Partial<Post>');
+        expect($transformer->properties['post']['type'])->toBe('PostSnapshot');
+    });
+
+    it('still resolves non-overridden properties normally', function () {
+        $transformer = app(BroadcastEventTransformer::class, ['findable' => MixedTypesEvent::class]);
         expect($transformer->properties['status']['type'])->toBe('StatusType');
         expect($transformer->properties['message']['type'])->toBe('string');
     });
 
-    it('has imports for both Post model and StatusType enum', function () {
+    it('does not add a model import for the TsCasts-overridden post property', function () {
         $transformer = app(BroadcastEventTransformer::class, ['findable' => MixedTypesEvent::class]);
         $allTypes = array_merge(...array_values($transformer->typeImports));
-        expect($allTypes)->toContain('Post');
-        expect($allTypes)->toContain('StatusType');
+        expect($allTypes)->not->toContain('Post');
     });
 
-    it('has two distinct import paths (models dir + enums dir)', function () {
+    it('includes the TsCasts import path for PostSnapshot', function () {
+        $transformer = app(BroadcastEventTransformer::class, ['findable' => MixedTypesEvent::class]);
+        expect($transformer->typeImports)->toHaveKey('@js/types/snapshots');
+        expect($transformer->typeImports['@js/types/snapshots'])->toContain('PostSnapshot');
+    });
+
+    it('has two distinct import paths (casts import + enums dir)', function () {
         $transformer = app(BroadcastEventTransformer::class, ['findable' => MixedTypesEvent::class]);
         expect(count($transformer->typeImports))->toBe(2);
     });
@@ -263,5 +273,68 @@ describe('StatusSynced (two Status enums from different namespaces — import al
         $transformer = app(BroadcastEventTransformer::class, ['findable' => StatusSynced::class]);
         $allTypes = array_merge(...array_values($transformer->typeImports));
         expect(array_filter($allTypes, fn ($t) => $t === 'StatusType'))->toBeEmpty();
+    });
+});
+
+describe('TsCasts overrides', function () {
+    describe('OrderShipped (simple string overrides)', function () {
+        it('applies #[TsCasts] string override for trackingNumber', function () {
+            $transformer = app(BroadcastEventTransformer::class, ['findable' => OrderShipped::class]);
+            expect($transformer->properties['trackingNumber']['type'])
+                ->toBe('`${string}-${string}-${string}`');
+        });
+
+        it('applies #[TsCasts] string override for metadata', function () {
+            $transformer = app(BroadcastEventTransformer::class, ['findable' => OrderShipped::class]);
+            expect($transformer->properties['metadata']['type'])->toBe('Record<string, unknown>');
+        });
+
+        it('does not add any typeImports for plain string TsCasts overrides', function () {
+            $transformer = app(BroadcastEventTransformer::class, ['findable' => OrderShipped::class]);
+            expect($transformer->typeImports)->toBeEmpty();
+        });
+
+        it('leaves non-overridden properties unchanged', function () {
+            $transformer = app(BroadcastEventTransformer::class, ['findable' => OrderShipped::class]);
+            expect($transformer->properties['orderId']['type'])->toBe('number');
+            expect($transformer->properties['carrier']['type'])->toBe('string');
+        });
+
+        it('marks optional state correctly even when overridden', function () {
+            $transformer = app(BroadcastEventTransformer::class, ['findable' => OrderShipped::class]);
+            expect($transformer->properties['metadata']['optional'])->toBeFalse();
+            expect($transformer->properties['trackingNumber']['optional'])->toBeFalse();
+        });
+    });
+
+    describe('MixedTypesEvent (array override with import path)', function () {
+        it('applies #[TsCasts] array override with import for post', function () {
+            $transformer = app(BroadcastEventTransformer::class, ['findable' => MixedTypesEvent::class]);
+            expect($transformer->properties['post']['type'])->toBe('PostSnapshot');
+        });
+
+        it('adds the declared import path to typeImports', function () {
+            $transformer = app(BroadcastEventTransformer::class, ['findable' => MixedTypesEvent::class]);
+            expect($transformer->typeImports)->toHaveKey('@js/types/snapshots');
+            expect($transformer->typeImports['@js/types/snapshots'])->toContain('PostSnapshot');
+        });
+
+        it('does not include the model import for the overridden post property', function () {
+            $transformer = app(BroadcastEventTransformer::class, ['findable' => MixedTypesEvent::class]);
+            $allTypes = array_merge(...array_values($transformer->typeImports));
+            expect($allTypes)->not->toContain('Post');
+        });
+
+        it('still resolves non-overridden properties via Surveyor', function () {
+            $transformer = app(BroadcastEventTransformer::class, ['findable' => MixedTypesEvent::class]);
+            expect($transformer->properties['status']['type'])->toBe('StatusType');
+            expect($transformer->properties['message']['type'])->toBe('string');
+        });
+
+        it('includes the enum import for StatusType alongside the casts import', function () {
+            $transformer = app(BroadcastEventTransformer::class, ['findable' => MixedTypesEvent::class]);
+            $allTypes = array_merge(...array_values($transformer->typeImports));
+            expect($allTypes)->toContain('StatusType');
+        });
     });
 });

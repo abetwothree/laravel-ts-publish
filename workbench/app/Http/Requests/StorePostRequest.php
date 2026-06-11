@@ -4,8 +4,13 @@ declare(strict_types=1);
 
 namespace Workbench\App\Http\Requests;
 
+use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use Illuminate\Foundation\Http\FormRequest;
 
+#[TsCasts([
+    'tags' => 'string[]',
+    'rating' => 'number | bigint',
+])]
 class StorePostRequest extends FormRequest
 {
     /**

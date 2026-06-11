@@ -8,6 +8,7 @@ export {}
 
 import type { ProductMetadata, ProductJsonMetaData } from '@js/types/product';
 import type { MenuSettingsType } from '@js/types/settings';
+import type { PostSnapshot } from '@js/types/snapshots';
 import type { Auditable } from '@/types/audit';
 import type { BaseResource } from '@/types/base';
 import type { HasTimestamps } from '@/types/common';
@@ -2492,7 +2493,7 @@ declare global {
             title: string;
             body: string;
             published?: boolean;
-            rating?: number | null;
+            rating?: number | bigint | null;
             email: string;
             tags?: string[];
             "tags.*"?: string;
@@ -2575,6 +2576,7 @@ declare global {
             status: 'draft' | 'published' | 'archived';
             category_id: number;
             priority?: number | null;
+            attributes?: PostAttributes;
         }
         export interface ArrayRulesRequest {
             tags?: string[];
@@ -2770,8 +2772,9 @@ declare global {
         }
         export interface OrderShipped {
             orderId: number;
-            trackingNumber: string;
+            trackingNumber: `${string}-${string}-${string}`;
             carrier: string;
+            metadata: Record<string, unknown>;
         }
         export interface TeamMessageSent {
             teamId: number;
@@ -2786,7 +2789,7 @@ declare global {
             action: string;
         }
         export interface MixedTypesEvent {
-            post: Partial<workbench.app.models.Post>;
+            post: PostSnapshot;
             status: workbench.app.enums.StatusType;
             message: string;
         }

@@ -1,9 +1,9 @@
+import type { PostSnapshot } from '@js/types/snapshots';
 import type { StatusType } from '../enums';
-import type { Post } from '../models';
 
 /** @see Workbench\App\Events\MixedTypesEvent */
 export interface MixedTypesEvent {
-    post: Partial<Post>;
+    post: PostSnapshot;
     status: StatusType;
     message: string;
 }

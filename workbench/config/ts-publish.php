@@ -2,39 +2,6 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastChannelsCollector;
-use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastEventsCollector;
-use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
-use AbeTwoThree\LaravelTsPublish\Collectors\FormRequestsCollector;
-use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
-use AbeTwoThree\LaravelTsPublish\Collectors\ResourcesCollector;
-use AbeTwoThree\LaravelTsPublish\Collectors\RoutesCollector;
-use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
-use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
-use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
-use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
-use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
-use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
-use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
-use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
-use AbeTwoThree\LaravelTsPublish\Transformers\FormRequestTransformer;
-use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
-use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
-use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
-use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\BroadcastChannelsWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\BroadcastEventsEchoWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\BroadcastEventsIndexWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\BroadcastEventWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\EnumWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\FormRequestWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\JsonWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\ModelWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\RouteWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\WatcherJsonWriter;
-
 return [
     /*
     |--------------------------------------------------------------------------
@@ -151,7 +118,7 @@ return [
     | types from each file category.
     */
 
-    'barrel_writer_class' => BarrelWriter::class,
+    // 'barrel_writer_class' => BarrelWriter::class,
 
     /*
     |--------------------------------------------------------------------------
@@ -164,10 +131,9 @@ return [
 
     'watcher' => [
         'enabled' => true,
-        'writer_class' => WatcherJsonWriter::class,
         'filename' => 'laravel-ts-collected-files.json',
-        /* Defaults to output_directory setting */
         'output_directory' => '',
+        // 'writer_class' => WatcherJsonWriter::class,
     ],
 
     /*
@@ -192,14 +158,14 @@ return [
         'auto_include_static_methods' => false,
         'method_case' => 'camel',
         'namespace' => 'enums',
-        'collector_class' => EnumsCollector::class,
-        'generator_class' => EnumGenerator::class,
-        'transformer_class' => EnumTransformer::class,
-        'writer_class' => EnumWriter::class,
         'template' => 'laravel-ts-publish::enum',
         'additional_directories' => [],
         'included' => [],
         'excluded' => [],
+        // 'collector_class' => EnumsCollector::class,
+        // 'generator_class' => EnumGenerator::class,
+        // 'transformer_class' => EnumTransformer::class,
+        // 'writer_class' => EnumWriter::class,
     ],
 
     /*
@@ -217,19 +183,19 @@ return [
         'enabled' => true,
         'relationship_case' => 'snake',
         'nullable_relations' => true,
+        'namespace' => 'models',
+        'template' => 'laravel-ts-publish::model-split',
         'relation_nullability_map' => [
             // \Illuminate\Database\Eloquent\Relations\BelongsTo::class => 'nullable',
             // \Illuminate\Database\Eloquent\Relations\HasOne::class    => 'never',
         ],
-        'namespace' => 'models',
-        'collector_class' => ModelsCollector::class,
-        'generator_class' => ModelGenerator::class,
-        'transformer_class' => ModelTransformer::class,
-        'writer_class' => ModelWriter::class,
-        'template' => 'laravel-ts-publish::model-split',
         'additional_directories' => [],
         'included' => [],
         'excluded' => [],
+        // 'collector_class' => ModelsCollector::class,
+        // 'generator_class' => ModelGenerator::class,
+        // 'transformer_class' => ModelTransformer::class,
+        // 'writer_class' => ModelWriter::class,
     ],
 
     /*
@@ -243,14 +209,14 @@ return [
     'resources' => [
         'enabled' => true,
         'namespace' => 'resources',
-        'collector_class' => ResourcesCollector::class,
-        'generator_class' => ResourceGenerator::class,
-        'transformer_class' => ResourceTransformer::class,
-        'writer_class' => ResourceWriter::class,
         'template' => 'laravel-ts-publish::resource',
         'additional_directories' => [],
         'included' => [],
         'excluded' => [],
+        // 'collector_class' => ResourcesCollector::class,
+        // 'generator_class' => ResourceGenerator::class,
+        // 'transformer_class' => ResourceTransformer::class,
+        // 'writer_class' => ResourceWriter::class,
     ],
 
     /*
@@ -258,30 +224,23 @@ return [
     | Routes
     |--------------------------------------------------------------------------
     |
-    | When enabled, TypeScript files are generated for each controller group
-    | found in the router. Each file exports a defineRoute() call per action.
-    |
-    | 'method_casing': Case style for generated JS export names ('camel', 'snake', or 'pascal').
-    | 'output_path': Output directory for generated route files. Defaults to {output_directory} when null.
-    | 'only': Pattern list - only publish routes matching any pattern (supports wildcards).
-    | 'except': Pattern list - skip routes matching any pattern (supports wildcards and ! negation).
-    | 'exclude_middleware': Skip routes behind any of these middleware.
-    | 'only_named': When true, only publish named routes.
+    | When enabled, TypeScript files are generated for each controller found
+    | in your application. Each file exports a defineRoute() call per method.
     */
 
     'routes' => [
         'enabled' => true,
         'method_casing' => 'camel',
-        'output_path' => '',
+        'only_named' => false,
+        'template' => 'laravel-ts-publish::route',
+        'output_directory' => '',
         'only' => [],
         'except' => [],
         'exclude_middleware' => [],
-        'only_named' => false,
-        'collector_class' => RoutesCollector::class,
-        'generator_class' => RouteGenerator::class,
-        'transformer_class' => RouteTransformer::class,
-        'writer_class' => RouteWriter::class,
-        'template' => 'laravel-ts-publish::route',
+        // 'collector_class' => RoutesCollector::class,
+        // 'generator_class' => RouteGenerator::class,
+        // 'transformer_class' => RouteTransformer::class,
+        // 'writer_class' => RouteWriter::class,
     ],
 
     /*
@@ -292,26 +251,20 @@ return [
     | When enabled, generates a TypeScript interface for each FormRequest class
     | found in the application. Rules are resolved statically where possible;
     | requests with dynamic rules fall back to `Record<string, unknown>`.
-    |
-    | 'namespace': Sub-directory namespace under the output_directory for the generated files.
-    | 'output_path': Override the base output directory for form-request files only.
-    | 'additional_directories': Extra directories to scan beyond app/Http/Requests.
-    | 'included': Allow-list of FQCN patterns (empty = all).
-    | 'excluded': Deny-list of FQCN patterns.
     */
 
     'form_requests' => [
         'enabled' => true,
         'namespace' => 'form-requests',
-        'output_path' => '',
-        'collector_class' => FormRequestsCollector::class,
-        'generator_class' => FormRequestGenerator::class,
-        'transformer_class' => FormRequestTransformer::class,
-        'writer_class' => FormRequestWriter::class,
         'template' => 'laravel-ts-publish::form-request',
+        'output_directory' => '',
         'additional_directories' => [],
         'included' => [],
         'excluded' => [],
+        // 'collector_class' => FormRequestsCollector::class,
+        // 'generator_class' => FormRequestGenerator::class,
+        // 'transformer_class' => FormRequestTransformer::class,
+        // 'writer_class' => FormRequestWriter::class,
     ],
 
     /*
@@ -323,18 +276,15 @@ return [
     |   - A BroadcastChannel union type (template literal union of all channel names).
     |   - A BroadcastChannels const with nested accessor functions matching the
     |     dot-notation structure of each channel name.
-    |
-    | 'output_path': Override the output directory for the file. Defaults to output_directory.
-    | 'filename': Output filename. Defaults to 'broadcast-channels.ts'.
     */
 
     'broadcast_channels' => [
         'enabled' => true,
-        'output_path' => '',
         'filename' => 'broadcast-channels.ts',
-        'collector_class' => BroadcastChannelsCollector::class,
-        'writer_class' => BroadcastChannelsWriter::class,
         'template' => 'laravel-ts-publish::broadcast-channels',
+        'output_directory' => '',
+        // 'collector_class' => BroadcastChannelsCollector::class,
+        // 'writer_class' => BroadcastChannelsWriter::class,
     ],
 
     /*
@@ -343,47 +293,36 @@ return [
     |--------------------------------------------------------------------------
     |
     | When enabled, generates one TypeScript interface file per ShouldBroadcast
-    | event class (modular, namespace-based), a broadcast-events.ts index file
-    | with a BroadcastEvent union type and flat BroadcastEvents const, and
-    | optionally an echo-broadcast-events.d.ts Echo module augmentation file.
+    | event class, a broadcast-events.ts index file with a BroadcastEvent union
+    | type and flat BroadcastEvents const.
     |
-    | 'output_path': Override the base output directory for broadcast event files.
-    |     (Per-event interfaces + index; the Echo augmentation file falls back to this unless echo_augmentation.output_path is set.)
-    | 'index_filename': Filename for the master index. Defaults to 'broadcast-events.ts'.
-    | 'additional_directories': Extra directories to scan beyond app/Events.
-    | 'included': Allow-list of FQCN patterns (empty = all).
-    | 'excluded': Deny-list of FQCN patterns.
-    |
-    | echo_augmentation:
-    |   'enabled': Generate echo-broadcast-events.d.ts when true.
-    |   'echo_package': npm package to augment. null = auto-detect from package.json
-    |       (prefers @laravel/echo-vue / @laravel/echo-react / @laravel/echo-svelte, falls back to @laravel/echo).
-    |   'filename': Output filename. Defaults to 'echo-broadcast-events.d.ts'.
-    |   'output_path': Override output directory for the echo file.
+    | Optionally, you can also generate an echo-broadcast-events.d.ts Echo module
+    | TypeScript augmentation file. Only works if you're using the any of the
+    | npm `@laravel/echo-{vue,react,svelte}` packages for broadcast events.
     */
 
     'broadcast_events' => [
         'enabled' => true,
-        'output_path' => '',
         'index_filename' => 'broadcast-events.ts',
-        'collector_class' => BroadcastEventsCollector::class,
-        'generator_class' => BroadcastEventGenerator::class,
-        'transformer_class' => BroadcastEventTransformer::class,
-        'writer_class' => BroadcastEventWriter::class,
-        'template' => 'laravel-ts-publish::broadcast-event',
-        'index_writer_class' => BroadcastEventsIndexWriter::class,
         'index_template' => 'laravel-ts-publish::broadcast-events-index',
+        'template' => 'laravel-ts-publish::broadcast-event',
+        'output_directory' => '',
         'additional_directories' => [],
         'included' => [],
         'excluded' => [],
+        // 'collector_class' => BroadcastEventsCollector::class,
+        // 'generator_class' => BroadcastEventGenerator::class,
+        // 'transformer_class' => BroadcastEventTransformer::class,
+        // 'writer_class' => BroadcastEventWriter::class,
+        // 'index_writer_class' => BroadcastEventsIndexWriter::class,
 
         'echo_augmentation' => [
             'enabled' => true,
             'echo_package' => null,
             'filename' => 'echo-broadcast-events.d.ts',
-            'output_path' => '',
-            'writer_class' => BroadcastEventsEchoWriter::class,
             'template' => 'laravel-ts-publish::echo-broadcast-events',
+            'output_directory' => '',
+            // 'writer_class' => BroadcastEventsEchoWriter::class,
         ],
     ],
 
@@ -392,60 +331,15 @@ return [
     | Inertia Page Types
     |--------------------------------------------------------------------------
     |
-    | When enabled, generates TypeScript page-prop types for each Inertia
-    | component detected via laravel/ranger static analysis, and a TypeScript Declaration
-    | module augmentation file for @inertiajs/core.
-    |
-    | Requires inertiajs/inertia-laravel:^3 to be installed.
-    | Static analysis also relies on laravel/ranger (and its transitive dependencies
-    | laravel/surveyor and spatie/php-structure-discoverer), which is already
-    | declared as a package dependency.
-    |
-    | 'component_casing': Case style for generated component map keys ('camel', 'snake', or 'pascal').
-    | 'inertia_middleware_path': Optional path to scan for Inertia middleware. Defaults to app/ if not set or invalid.
-    | 'augmentation_filename': Filename for the generated module augmentation file. Defaults to inertia-config.d.ts.
-    | 'output_path': Directory for the declaration file. Defaults to routes output_path.
+    | When enabled, generates TypeScript page-prop types for each Inertia component
+    | and a TypeScript Declaration module augmentation file for @inertiajs/core.
     */
 
     'inertia' => [
-        'enabled' => false,
+        'enabled' => true,
         'component_casing' => 'camel',
         'inertia_middleware_path' => null,
         'augmentation_filename' => 'inertia-config.d.ts',
-        'output_path' => '',
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Globals Declaration Types
-    |--------------------------------------------------------------------------
-    |
-    | Specifies whether to create a "global.ts" file with a global namespace containing all generated types.
-    */
-
-    'globals' => [
-        'enabled' => false,
-        'writer_class' => GlobalsWriter::class,
-        'filename' => 'laravel-ts-global.ts',
-        /* Defaults to output_directory setting */
-        'output_directory' => '',
-        'template' => 'laravel-ts-publish::globals',
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | JSON Output
-    |--------------------------------------------------------------------------
-    |
-    | Specifies whether to output the generated TypeScript definitions in a JSON file.
-    | This can be in addition to or instead of outputting to .d.ts files, depending on the "output_to_files" option.
-    */
-
-    'json' => [
-        'enabled' => false,
-        'writer_class' => JsonWriter::class,
-        'filename' => 'laravel-ts-definitions.json',
-        /* Defaults to output_directory setting */
         'output_directory' => '',
     ],
 
@@ -463,9 +357,41 @@ return [
     */
 
     'vite_env' => [
-        'enabled' => false,
+        'enabled' => true,
         'filename' => 'vite-env.d.ts',
-        'output_path' => '',
         'source_file' => null,
+        'output_directory' => '',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Globals Declaration Types
+    |--------------------------------------------------------------------------
+    |
+    | Specifies whether to create a "global.ts" file with a global namespace
+    | which will contain all generated types for individually generated interfaces.
+    */
+
+    'globals' => [
+        'enabled' => false,
+        'filename' => 'laravel-ts-global.ts',
+        'template' => 'laravel-ts-publish::globals',
+        'output_directory' => '',
+        // 'writer_class' => GlobalsWriter::class,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | JSON Output
+    |--------------------------------------------------------------------------
+    |
+    | Specifies whether to output the generated TypeScript definitions in a JSON file.
+    */
+
+    'json' => [
+        'enabled' => false,
+        'filename' => 'laravel-ts-definitions.json',
+        'output_directory' => '',
+        // 'writer_class' => JsonWriter::class,
     ],
 ];

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\SurveyorTypeMapper;
+use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -35,6 +36,7 @@ use UnitEnum;
  */
 class BroadcastEventTransformer extends CoreTransformer
 {
+    use ParsesTsCasts;
     use ResolvesImportConflicts;
 
     /** Short PHP class name, e.g. 'OrderShipped'. */
@@ -96,6 +98,20 @@ class BroadcastEventTransformer extends CoreTransformer
      */
     protected array $enumConstMap = [];
 
+    /**
+     * TsCasts attribute overrides: property name => TypeScript type string.
+     *
+     * @var array<string, string>
+     */
+    protected array $tsTypeOverrides = [];
+
+    /**
+     * Import paths declared alongside TsCasts overrides: property name => import path.
+     *
+     * @var array<string, string>
+     */
+    protected array $tsCastsImportPaths = [];
+
     /** Surveyor class analysis result used across transformation steps. */
     protected ClassResult $analyzed;
 
@@ -114,6 +130,7 @@ class BroadcastEventTransformer extends CoreTransformer
     {
         $this->runAnalysis()
             ->initEventData()
+            ->parseTsCasts()
             ->transformBroadcastName()
             ->transformProperties()
             ->resolveImportConflicts()
@@ -168,6 +185,20 @@ class BroadcastEventTransformer extends CoreTransformer
         return $this;
     }
 
+    /**
+     * Parse #[TsCasts] attribute overrides from the event class.
+     */
+    protected function parseTsCasts(): self
+    {
+        $reflection = new ReflectionClass($this->findable);
+        $result = $this->parseTsCastsFromReflection($reflection);
+
+        $this->tsTypeOverrides = $result['overrides'];
+        $this->tsCastsImportPaths = $result['importPaths'];
+
+        return $this;
+    }
+
     #[Override]
     public function filename(): string
     {
@@ -212,6 +243,8 @@ class BroadcastEventTransformer extends CoreTransformer
     /**
      * Resolve the payload properties from broadcastWith() or public constructor props.
      *
+     * TsCasts overrides take priority over Surveyor-inferred types.
+     *
      * @return PropertiesList
      */
     protected function resolveProperties(ClassResult $analyzed): array
@@ -227,6 +260,16 @@ class BroadcastEventTransformer extends CoreTransformer
             }
 
             $propName = (string) $name;
+
+            // TsCasts override takes priority over Surveyor-inferred type
+            if (isset($this->tsTypeOverrides[$propName])) {
+                $result[$propName] = [
+                    'type' => $this->tsTypeOverrides[$propName],
+                    'optional' => $type->isOptional(),
+                ];
+
+                continue;
+            }
 
             $result[$propName] = [
                 'type' => $this->convertType($type),
@@ -460,6 +503,7 @@ class BroadcastEventTransformer extends CoreTransformer
      *
      * Uses LaravelTsPublish::namespaceToPath() and relativeImportPath() to compute
      * the correct relative path from this event's namespace to each dependency.
+     * Also includes any import paths declared via TsCasts overrides.
      */
     protected function buildTypeImports(): self
     {
@@ -476,6 +520,17 @@ class BroadcastEventTransformer extends CoreTransformer
             $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
             $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
             $imports[$importPath][] = $this->formatImportName($fqcn, $typeName);
+        }
+
+        // Include import paths declared via TsCasts overrides
+        foreach ($this->tsCastsImportPaths as $property => $importPath) {
+            $type = $this->tsTypeOverrides[$property] ?? null;
+
+            if ($type !== null) {
+                foreach (LaravelTsPublish::extractImportableTypes($type) as $importName) {
+                    $imports[$importPath][] = $importName;
+                }
+            }
         }
 
         foreach ($imports as $path => $types) {
