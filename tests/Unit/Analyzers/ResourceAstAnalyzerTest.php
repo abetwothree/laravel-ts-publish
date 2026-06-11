@@ -1522,7 +1522,6 @@ describe('ResourceAstAnalyzer trait spread doc type branches', function () {
         expect($location['type'])->toBe('GeoPoint');
     });
 
-    test('applies TsResourceCasts optional flag on trait methods', function () {
     test('applies TsCasts optional flag on trait methods', function () {
         $flag = collect($this->analysis->properties)->firstWhere('name', 'flag');
 
