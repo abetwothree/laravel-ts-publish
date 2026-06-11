@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Workbench\App\Http\Requests;
 
+use AbeTwoThree\LaravelTsPublish\Attributes\TsExtends;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Workbench\App\Enums\MediaType;
@@ -16,6 +17,7 @@ use Workbench\App\Enums\MediaType;
  * lowercase, mac_address, max, min, not_in, not_regex, regex,
  * same, size, starts_with, string, uppercase, url, ulid, uuid.
  */
+#[TsExtends('FormRequestBase', '@/types/requests')]
 class StringRulesRequest extends FormRequest
 {
     /**

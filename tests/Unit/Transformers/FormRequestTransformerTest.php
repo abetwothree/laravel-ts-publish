@@ -5,7 +5,9 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Dtos\TsFormRequestDto;
 use AbeTwoThree\LaravelTsPublish\Transformers\FormRequestTransformer;
 use Workbench\App\Http\Requests\DynamicRequest;
+use Workbench\App\Http\Requests\NumberRulesRequest;
 use Workbench\App\Http\Requests\StorePostRequest;
+use Workbench\App\Http\Requests\StringRulesRequest;
 use Workbench\App\Http\Requests\UpdatePostRequest;
 
 describe('FormRequestTransformer', function () {
@@ -142,6 +144,88 @@ describe('TsCasts overrides', function () {
             $dto = $transformer->data();
 
             expect($dto->typeImports)->toHaveKey('@js/types/posts');
+        });
+    });
+});
+
+describe('TsExtends on FormRequestTransformer', function () {
+    describe('StringRulesRequest (direct #[TsExtends] on class)', function () {
+        it('stores the extends clause on the transformer', function () {
+            $transformer = new FormRequestTransformer(StringRulesRequest::class);
+            expect($transformer->tsExtends)->toBe(['FormRequestBase']);
+        });
+
+        it('adds the import path from the attribute to typeImports', function () {
+            $transformer = new FormRequestTransformer(StringRulesRequest::class);
+            expect($transformer->typeImports)->toHaveKey('@/types/requests');
+            expect($transformer->typeImports['@/types/requests'])->toContain('FormRequestBase');
+        });
+
+        it('passes tsExtends through to the DTO', function () {
+            $transformer = new FormRequestTransformer(StringRulesRequest::class);
+            $dto = $transformer->data();
+            expect($dto)->toBeInstanceOf(TsFormRequestDto::class);
+            expect($dto->tsExtends)->toBe(['FormRequestBase']);
+        });
+
+        it('renders the extends clause in the blade template output', function () {
+            $transformer = new FormRequestTransformer(StringRulesRequest::class);
+            $output = view('laravel-ts-publish::form-request', ['data' => $transformer->data()])->render();
+            expect($output)->toContain('export interface StringRulesRequest extends FormRequestBase {');
+        });
+    });
+
+    describe('NumberRulesRequest (trait-based #[TsExtends])', function () {
+        it('stores the extends clause propagated from the trait', function () {
+            $transformer = new FormRequestTransformer(NumberRulesRequest::class);
+            expect($transformer->tsExtends)->toBe(['HasValidationMeta']);
+        });
+
+        it('adds the import path from the trait attribute to typeImports', function () {
+            $transformer = new FormRequestTransformer(NumberRulesRequest::class);
+            expect($transformer->typeImports)->toHaveKey('@/types/validation');
+            expect($transformer->typeImports['@/types/validation'])->toContain('HasValidationMeta');
+        });
+
+        it('passes tsExtends through to the DTO', function () {
+            $transformer = new FormRequestTransformer(NumberRulesRequest::class);
+            $dto = $transformer->data();
+            expect($dto->tsExtends)->toBe(['HasValidationMeta']);
+        });
+
+        it('renders the extends clause from the trait in the blade output', function () {
+            $transformer = new FormRequestTransformer(NumberRulesRequest::class);
+            $output = view('laravel-ts-publish::form-request', ['data' => $transformer->data()])->render();
+            expect($output)->toContain('export interface NumberRulesRequest extends HasValidationMeta {');
+        });
+    });
+
+    describe('requests without #[TsExtends]', function () {
+        it('has an empty tsExtends array', function () {
+            $transformer = new FormRequestTransformer(StorePostRequest::class);
+            expect($transformer->tsExtends)->toBeEmpty();
+        });
+
+        it('does not render an extends clause in the blade output', function () {
+            $transformer = new FormRequestTransformer(StorePostRequest::class);
+            $output = view('laravel-ts-publish::form-request', ['data' => $transformer->data()])->render();
+            expect($output)->toContain('export interface StorePostRequest {');
+            expect($output)->not->toContain('extends');
+        });
+    });
+
+    describe('global config ts_extends.form_requests', function () {
+        it('applies a globally configured extends clause to all form requests', function () {
+            config(['ts-publish.ts_extends.form_requests' => ['GlobalFormBase']]);
+            $transformer = new FormRequestTransformer(StorePostRequest::class);
+            expect($transformer->tsExtends)->toContain('GlobalFormBase');
+        });
+
+        it('merges global config extends with class-level #[TsExtends]', function () {
+            config(['ts-publish.ts_extends.form_requests' => ['GlobalFormBase']]);
+            $transformer = new FormRequestTransformer(StringRulesRequest::class);
+            expect($transformer->tsExtends)->toContain('GlobalFormBase');
+            expect($transformer->tsExtends)->toContain('FormRequestBase');
         });
     });
 });

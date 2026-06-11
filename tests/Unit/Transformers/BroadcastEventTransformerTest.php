@@ -338,3 +338,85 @@ describe('TsCasts overrides', function () {
         });
     });
 });
+
+describe('TsExtends on BroadcastEventTransformer', function () {
+    describe('ServerCreated (direct #[TsExtends] on class)', function () {
+        it('stores the extends clause on the transformer', function () {
+            $transformer = app(BroadcastEventTransformer::class, ['findable' => ServerCreated::class]);
+            expect($transformer->tsExtends)->toBe(['BroadcastableEvent']);
+        });
+
+        it('adds the import path from the attribute to typeImports', function () {
+            $transformer = app(BroadcastEventTransformer::class, ['findable' => ServerCreated::class]);
+            expect($transformer->typeImports)->toHaveKey('@/types/broadcast');
+            expect($transformer->typeImports['@/types/broadcast'])->toContain('BroadcastableEvent');
+        });
+
+        it('passes tsExtends through to the DTO', function () {
+            $transformer = app(BroadcastEventTransformer::class, ['findable' => ServerCreated::class]);
+            $dto = $transformer->data();
+            expect($dto)->toBeInstanceOf(TsBroadcastEventDto::class);
+            expect($dto->tsExtends)->toBe(['BroadcastableEvent']);
+        });
+
+        it('renders the extends clause in the blade template output', function () {
+            $transformer = app(BroadcastEventTransformer::class, ['findable' => ServerCreated::class]);
+            $output = view('laravel-ts-publish::broadcast-event', ['data' => $transformer->data()])->render();
+            expect($output)->toContain('export interface ServerCreated extends BroadcastableEvent {');
+        });
+    });
+
+    describe('UserNotification (trait-based #[TsExtends])', function () {
+        it('stores the extends clause propagated from the trait', function () {
+            $transformer = app(BroadcastEventTransformer::class, ['findable' => UserNotification::class]);
+            expect($transformer->tsExtends)->toBe(['HasTimestamps']);
+        });
+
+        it('adds the import path from the trait attribute to typeImports', function () {
+            $transformer = app(BroadcastEventTransformer::class, ['findable' => UserNotification::class]);
+            expect($transformer->typeImports)->toHaveKey('@/types/common');
+            expect($transformer->typeImports['@/types/common'])->toContain('HasTimestamps');
+        });
+
+        it('passes tsExtends through to the DTO', function () {
+            $transformer = app(BroadcastEventTransformer::class, ['findable' => UserNotification::class]);
+            $dto = $transformer->data();
+            expect($dto->tsExtends)->toBe(['HasTimestamps']);
+        });
+
+        it('renders the extends clause from the trait in the blade output', function () {
+            $transformer = app(BroadcastEventTransformer::class, ['findable' => UserNotification::class]);
+            $output = view('laravel-ts-publish::broadcast-event', ['data' => $transformer->data()])->render();
+            expect($output)->toContain('export interface UserNotification extends HasTimestamps {');
+        });
+    });
+
+    describe('events without #[TsExtends]', function () {
+        it('has an empty tsExtends array', function () {
+            $transformer = app(BroadcastEventTransformer::class, ['findable' => OrderShipped::class]);
+            expect($transformer->tsExtends)->toBeEmpty();
+        });
+
+        it('does not render an extends clause in the blade output', function () {
+            $transformer = app(BroadcastEventTransformer::class, ['findable' => OrderShipped::class]);
+            $output = view('laravel-ts-publish::broadcast-event', ['data' => $transformer->data()])->render();
+            expect($output)->toContain('export interface OrderShipped {');
+            expect($output)->not->toContain('extends');
+        });
+    });
+
+    describe('global config ts_extends.broadcast_events', function () {
+        it('applies a globally configured extends clause to all broadcast events', function () {
+            config(['ts-publish.ts_extends.broadcast_events' => ['GlobalBase']]);
+            $transformer = app(BroadcastEventTransformer::class, ['findable' => OrderShipped::class]);
+            expect($transformer->tsExtends)->toContain('GlobalBase');
+        });
+
+        it('merges global config extends with class-level #[TsExtends]', function () {
+            config(['ts-publish.ts_extends.broadcast_events' => ['GlobalBase']]);
+            $transformer = app(BroadcastEventTransformer::class, ['findable' => ServerCreated::class]);
+            expect($transformer->tsExtends)->toContain('GlobalBase');
+            expect($transformer->tsExtends)->toContain('BroadcastableEvent');
+        });
+    });
+});

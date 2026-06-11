@@ -35,7 +35,7 @@ trait ParsesTsExtends
      * @template T of object
      *
      * @param  ReflectionClass<T>  $reflection
-     * @param  'models'|'resources'  $scope
+     * @param  'broadcast_events'|'form_requests'|'models'|'resources'  $scope
      * @return TsExtendsResult
      */
     protected function parseTsExtendsFromReflection(ReflectionClass $reflection, string $scope): array

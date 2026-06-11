@@ -1,9 +1,11 @@
+import type { HasValidationMeta } from '@/types/validation';
+
 /**
  * Get the validation rules that apply to the request.
  *
  * @see Workbench\App\Http\Requests\NumberRulesRequest
  */
-export interface NumberRulesRequest {
+export interface NumberRulesRequest extends HasValidationMeta {
     score: number;
     price: number;
     exchange_rate: number;

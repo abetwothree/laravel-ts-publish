@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Workbench\App\Events;
 
+use AbeTwoThree\LaravelTsPublish\Attributes\TsExtends;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 
+#[TsExtends('BroadcastableEvent', '@/types/broadcast')]
 class ServerCreated implements ShouldBroadcast
 {
     public function __construct(

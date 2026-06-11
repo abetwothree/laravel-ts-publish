@@ -18,7 +18,7 @@ if ($data->isDynamic) {
 export type {{ $data->typeName }} = Record<string, unknown>;
 @else
 {!! LaravelTsPublish::formatJsDoc($formRequestDoc) !!}
-export interface {{ $data->typeName }} {
+export interface {{ $data->typeName }}{!! count($data->tsExtends) > 0 ? ' extends ' . implode(', ', $data->tsExtends) : '' !!} {
 @foreach ($data->fields as $field)
 @if($field['isProhibited'])
 @else

@@ -11,6 +11,7 @@ import type { MenuSettingsType } from '@js/types/settings';
 import type { PostSnapshot } from '@js/types/snapshots';
 import type { Auditable } from '@/types/audit';
 import type { BaseResource } from '@/types/base';
+import type { BroadcastableEvent } from '@/types/broadcast';
 import type { HasTimestamps } from '@/types/common';
 import type { GeoPoint, GeoBounds } from '@/types/geo';
 import type { ParentModelInterface } from '@/types/model-parent';

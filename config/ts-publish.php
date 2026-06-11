@@ -101,6 +101,12 @@ return [
     */
 
     'ts_extends' => [
+        'broadcast_events' => [
+            //
+        ],
+        'form_requests' => [
+            //
+        ],
         'models' => [
             //
         ],

@@ -29,6 +29,7 @@ use JsonSerializable;
  *     fields: list<FormRequestFieldData>,
  *     isDynamic: bool,
  *     typeImports: TypesImportMap,
+ *     tsExtends: list<string>,
  * }
  *
  * @implements Arrayable<string, mixed>
@@ -38,6 +39,7 @@ final readonly class TsFormRequestDto implements Arrayable, Datable, Jsonable, J
     /**
      * @param  list<FormRequestFieldData>  $fields
      * @param  TypesImportMap  $typeImports
+     * @param  list<string>  $tsExtends  TypeScript extends clauses
      */
     public function __construct(
         public string $fqcn,
@@ -48,6 +50,7 @@ final readonly class TsFormRequestDto implements Arrayable, Datable, Jsonable, J
         public array $fields,
         public bool $isDynamic = false,
         public array $typeImports = [],
+        public array $tsExtends = [],
     ) {}
 
     /** @return FormRequestData */
@@ -62,6 +65,7 @@ final readonly class TsFormRequestDto implements Arrayable, Datable, Jsonable, J
             'fields' => $this->fields,
             'isDynamic' => $this->isDynamic,
             'typeImports' => $this->typeImports,
+            'tsExtends' => $this->tsExtends,
         ];
     }
 

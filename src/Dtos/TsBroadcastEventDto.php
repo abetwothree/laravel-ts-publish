@@ -23,6 +23,7 @@ use JsonSerializable;
  *     namespacePath: string,
  *     properties: PropertiesList,
  *     typeImports: TypesImportMap,
+ *     tsExtends: list<string>,
  * }
  *
  * @implements Arrayable<string, mixed>
@@ -32,6 +33,7 @@ final readonly class TsBroadcastEventDto implements Arrayable, Datable, Jsonable
     /**
      * @param  PropertiesList  $properties  Map of property name → ['type' => 'number', 'optional' => false]
      * @param  TypesImportMap  $typeImports  Map of import path → list of type names to import
+     * @param  list<string>  $tsExtends  TypeScript extends clauses
      */
     public function __construct(
         public string $eventName,
@@ -42,6 +44,7 @@ final readonly class TsBroadcastEventDto implements Arrayable, Datable, Jsonable
         public string $namespacePath,
         public array $properties,
         public array $typeImports,
+        public array $tsExtends = [],
     ) {}
 
     /** @return BroadcastEventData */
@@ -56,6 +59,7 @@ final readonly class TsBroadcastEventDto implements Arrayable, Datable, Jsonable
             'namespacePath' => $this->namespacePath,
             'properties' => $this->properties,
             'typeImports' => $this->typeImports,
+            'tsExtends' => $this->tsExtends,
         ];
     }
 

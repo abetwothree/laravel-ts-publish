@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Workbench\App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Workbench\App\Http\Requests\Concerns\HasValidationTimestamps;
 
 /**
  * Exercises all number-category validation rules:
@@ -14,6 +15,8 @@ use Illuminate\Foundation\Http\FormRequest;
  */
 class NumberRulesRequest extends FormRequest
 {
+    use HasValidationTimestamps;
+
     /**
      * Get the validation rules that apply to the request.
      *

@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\FormRequest\FormRequestRulesAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsFormRequestDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
@@ -24,6 +25,7 @@ use ReflectionClass;
 class FormRequestTransformer extends CoreTransformer
 {
     use ParsesTsCasts;
+    use ParsesTsExtends;
 
     public protected(set) string $typeName;
 
@@ -59,10 +61,29 @@ class FormRequestTransformer extends CoreTransformer
      */
     public protected(set) array $typeImports = [];
 
+    /**
+     * TypeScript extends clauses parsed from #[TsExtends] attributes and config.
+     *
+     * @var list<string>
+     */
+    public protected(set) array $tsExtends = [];
+
+    /**
+     * Import entries from TsExtends to be merged into typeImports.
+     *
+     * @var array<string, list<string>>
+     */
+    protected array $tsExtendsImports = [];
+
+    /** Reflection of the form request class, shared across transformation steps. */
+    /** @var ReflectionClass<FormRequest> */
+    protected ReflectionClass $reflection;
+
     #[Override]
     public function transform(): self
     {
         $this->initReflection()
+            ->parseTsExtends()
             ->parseTsCasts()
             ->analyzeRules()
             ->applyTsCastsOverrides()
@@ -89,6 +110,7 @@ class FormRequestTransformer extends CoreTransformer
             fields: $this->fields,
             isDynamic: $this->isDynamic,
             typeImports: $this->typeImports,
+            tsExtends: $this->tsExtends,
         );
     }
 
@@ -97,10 +119,9 @@ class FormRequestTransformer extends CoreTransformer
      */
     protected function initReflection(): self
     {
-        /** @var ReflectionClass<FormRequest> $reflection */
-        $reflection = new ReflectionClass($this->findable);
+        $this->reflection = new ReflectionClass($this->findable);
 
-        $shortName = $reflection->getShortName();
+        $shortName = $this->reflection->getShortName();
 
         $this->typeName = $shortName;
         $this->filename = Str::kebab($shortName);
@@ -108,14 +129,14 @@ class FormRequestTransformer extends CoreTransformer
 
         $description = '';
 
-        if ($reflection->hasMethod('rules')) {
+        if ($this->reflection->hasMethod('rules')) {
             $description = LaravelTsPublish::parseDocBlockDescription(
-                $reflection->getMethod('rules')->getDocComment()
+                $this->reflection->getMethod('rules')->getDocComment()
             );
         }
 
         if ($description === '') {
-            $description = LaravelTsPublish::parseDocBlockDescription($reflection->getDocComment());
+            $description = LaravelTsPublish::parseDocBlockDescription($this->reflection->getDocComment());
         }
 
         $this->description = $description;
@@ -189,6 +210,13 @@ class FormRequestTransformer extends CoreTransformer
             }
         }
 
+        // Include import paths declared via TsExtends attributes and config
+        foreach ($this->tsExtendsImports as $importPath => $typeNames) {
+            foreach ($typeNames as $typeName) {
+                $imports[$importPath][] = $typeName;
+            }
+        }
+
         foreach ($imports as $path => $types) {
             $unique = array_values(array_unique($types));
             sort($unique);
@@ -201,13 +229,24 @@ class FormRequestTransformer extends CoreTransformer
     }
 
     /**
+     * Parse #[TsExtends] attribute extends clauses and their import entries from the form request class.
+     */
+    protected function parseTsExtends(): self
+    {
+        $result = $this->parseTsExtendsFromReflection($this->reflection, 'form_requests');
+
+        $this->tsExtends = $result['extends'];
+        $this->tsExtendsImports = $result['imports'];
+
+        return $this;
+    }
+
+    /**
      * Parse #[TsCasts] attribute overrides from the form request class.
      */
     protected function parseTsCasts(): self
     {
-        /** @var ReflectionClass<FormRequest> $reflection */
-        $reflection = new ReflectionClass($this->findable);
-        $result = $this->parseTsCastsFromReflection($reflection);
+        $result = $this->parseTsCastsFromReflection($this->reflection);
 
         $this->tsTypeOverrides = $result['overrides'];
         $this->tsCastsImportPaths = $result['importPaths'];

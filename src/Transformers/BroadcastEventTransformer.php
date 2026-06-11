@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Database\Eloquent\Model;
@@ -37,6 +38,7 @@ use UnitEnum;
 class BroadcastEventTransformer extends CoreTransformer
 {
     use ParsesTsCasts;
+    use ParsesTsExtends;
     use ResolvesImportConflicts;
 
     /** Short PHP class name, e.g. 'OrderShipped'. */
@@ -112,8 +114,26 @@ class BroadcastEventTransformer extends CoreTransformer
      */
     protected array $tsCastsImportPaths = [];
 
+    /**
+     * TypeScript extends clauses parsed from #[TsExtends] attributes and config.
+     *
+     * @var list<string>
+     */
+    public protected(set) array $tsExtends = [];
+
+    /**
+     * Import entries from TsExtends to be merged into typeImports.
+     *
+     * @var array<string, list<string>>
+     */
+    protected array $tsExtendsImports = [];
+
     /** Surveyor class analysis result used across transformation steps. */
     protected ClassResult $analyzed;
+
+    /** Reflection of the event class, shared across transformation steps. */
+    /** @var ReflectionClass<ShouldBroadcast> */
+    protected ReflectionClass $reflection;
 
     /**
      * @param  class-string<ShouldBroadcast>  $findable
@@ -130,6 +150,7 @@ class BroadcastEventTransformer extends CoreTransformer
     {
         $this->runAnalysis()
             ->initEventData()
+            ->parseTsExtends()
             ->parseTsCasts()
             ->transformBroadcastName()
             ->transformProperties()
@@ -158,7 +179,8 @@ class BroadcastEventTransformer extends CoreTransformer
      */
     protected function initEventData(): self
     {
-        $this->eventName = (new ReflectionClass($this->findable))->getShortName();
+        $this->reflection = new ReflectionClass($this->findable);
+        $this->eventName = $this->reflection->getShortName();
         $this->filePath = $this->analyzed->filePath();
         $this->namespacePath = LaravelTsPublish::namespaceToPath($this->findable);
 
@@ -186,12 +208,24 @@ class BroadcastEventTransformer extends CoreTransformer
     }
 
     /**
+     * Parse #[TsExtends] attribute extends clauses and their import entries from the event class.
+     */
+    protected function parseTsExtends(): self
+    {
+        $result = $this->parseTsExtendsFromReflection($this->reflection, 'broadcast_events');
+
+        $this->tsExtends = $result['extends'];
+        $this->tsExtendsImports = $result['imports'];
+
+        return $this;
+    }
+
+    /**
      * Parse #[TsCasts] attribute overrides from the event class.
      */
     protected function parseTsCasts(): self
     {
-        $reflection = new ReflectionClass($this->findable);
-        $result = $this->parseTsCastsFromReflection($reflection);
+        $result = $this->parseTsCastsFromReflection($this->reflection);
 
         $this->tsTypeOverrides = $result['overrides'];
         $this->tsCastsImportPaths = $result['importPaths'];
@@ -217,6 +251,7 @@ class BroadcastEventTransformer extends CoreTransformer
             namespacePath: $this->namespacePath,
             properties: $this->properties,
             typeImports: $this->typeImports,
+            tsExtends: $this->tsExtends,
         );
     }
 
@@ -530,6 +565,13 @@ class BroadcastEventTransformer extends CoreTransformer
                 foreach (LaravelTsPublish::extractImportableTypes($type) as $importName) {
                     $imports[$importPath][] = $importName;
                 }
+            }
+        }
+
+        // Include import paths declared via TsExtends attributes and config
+        foreach ($this->tsExtendsImports as $importPath => $typeNames) {
+            foreach ($typeNames as $typeName) {
+                $imports[$importPath][] = $typeName;
             }
         }
 

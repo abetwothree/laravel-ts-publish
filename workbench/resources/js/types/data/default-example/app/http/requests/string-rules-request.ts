@@ -1,9 +1,11 @@
+import type { FormRequestBase } from '@/types/requests';
+
 /**
  * Get the validation rules that apply to the request.
  *
  * @see Workbench\App\Http\Requests\StringRulesRequest
  */
-export interface StringRulesRequest {
+export interface StringRulesRequest extends FormRequestBase {
     /** @format active_url */
     website: string;
     first_name: string;

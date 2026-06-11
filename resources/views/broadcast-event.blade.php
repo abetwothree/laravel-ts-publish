@@ -6,7 +6,7 @@ import type { {{ implode(', ', $types) }} } from '{{ $path }}';
 
 @endif
 {!! LaravelTsPublish::formatJsDoc($data->description) !!}
-export interface {{ $data->eventName }} {
+export interface {{ $data->eventName }}{!! count($data->tsExtends) > 0 ? ' extends ' . implode(', ', $data->tsExtends) : '' !!} {
 @foreach ($data->properties as $name => $prop)
 @php
     $tsType = $prop['type'];
