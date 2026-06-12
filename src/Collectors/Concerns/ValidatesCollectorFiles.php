@@ -98,8 +98,7 @@ trait ValidatesCollectorFiles
             return false;
         }
 
-        return ($reflection->implementsInterface(ShouldBroadcast::class)
-            || $reflection->implementsInterface(ShouldBroadcastNow::class))
+        return ($reflection->implementsInterface(ShouldBroadcast::class) || $reflection->implementsInterface(ShouldBroadcastNow::class))
             && ! $reflection->isAbstract();
     }
 }

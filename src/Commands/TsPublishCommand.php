@@ -30,14 +30,14 @@ class TsPublishCommand extends Command
     protected $signature = 'ts:publish
         {--preview=false : Output generated TypeScript declarations to the console instead of writing to files}
         {--source= : FQCN or file path of a specific supported class to republish}
+        {--only-broadcast-channels : Only publish broadcast channel types (ignoring all other types)}
+        {--only-broadcast-events : Only publish broadcast event types (ignoring all other types)}
+        {--only-form-requests : Only publish form requests (ignoring enums, models, resources, and routes)}
+        {--only-functional : Only publish enabled functional content like routes & enums}
         {--only-enums : Only publish enums (ignoring models, resources, and routes)}
         {--only-models : Only publish models (ignoring enums, resources, and routes)}
         {--only-resources : Only publish resources (ignoring enums, models, and routes)}
-        {--only-routes : Only publish routes (ignoring enums, models, and resources)}
-        {--only-form-requests : Only publish form requests (ignoring enums, models, resources, and routes)}
-        {--only-broadcast-channels : Only publish broadcast channel types (ignoring all other types)}
-        {--only-broadcast-events : Only publish broadcast event types (ignoring all other types)}
-        {--only-functional : Only publish enabled functional content like routes & enums}';
+        {--only-routes : Only publish routes (ignoring enums, models, and resources)}';
 
     protected $description = 'Publish TypeScript files from enums, models, resources, routes, form requests, broadcast channels, and broadcast events';
 
@@ -215,44 +215,33 @@ class TsPublishCommand extends Command
      */
     protected function resolvePublishFlags(): ?array
     {
-        $configEnums = Config::boolean('ts-publish.enums.enabled');
-        $configModels = Config::boolean('ts-publish.models.enabled');
-        $configResources = Config::boolean('ts-publish.resources.enabled');
-        $configRoutes = Config::boolean('ts-publish.routes.enabled');
-        $configFormRequests = Config::boolean('ts-publish.form_requests.enabled');
-        $configBroadcastChannels = Config::boolean('ts-publish.broadcast_channels.enabled');
-        $configBroadcastEvents = Config::boolean('ts-publish.broadcast_events.enabled');
-        $onlyEnums = (bool) $this->option('only-enums');
-        $onlyModels = (bool) $this->option('only-models');
-        $onlyResources = (bool) $this->option('only-resources');
-        $onlyRoutes = (bool) $this->option('only-routes');
-        $onlyFormRequests = (bool) $this->option('only-form-requests');
-        $onlyBroadcastChannels = (bool) $this->option('only-broadcast-channels');
-        $onlyBroadcastEvents = (bool) $this->option('only-broadcast-events');
         $onlyFunctional = (bool) $this->option('only-functional');
 
-        $shouldPublishEnums = $configEnums;
-        $shouldPublishRoutes = $configRoutes;
-        $shouldPublishFormRequests = $configFormRequests;
-        $shouldPublishBroadcastChannels = $configBroadcastChannels;
-        $shouldPublishBroadcastEvents = $configBroadcastEvents;
-        $shouldPublishModels = $onlyFunctional ? false : $configModels;
-        $shouldPublishResources = $onlyFunctional ? false : $configResources;
+        // Publish-type registry in return-array order.
+        // 'functional' controls inclusion under --only-functional (models/resources are excluded).
+        /** @var array<string, array{config: string, option: string, label: string, functional: bool}> $types */
+        $types = [
+            'broadcast_channels' => ['config' => 'ts-publish.broadcast_channels.enabled', 'option' => 'only-broadcast-channels', 'label' => 'broadcast channels', 'functional' => true],
+            'broadcast_events' => ['config' => 'ts-publish.broadcast_events.enabled', 'option' => 'only-broadcast-events', 'label' => 'broadcast events', 'functional' => true],
+            'form_requests' => ['config' => 'ts-publish.form_requests.enabled', 'option' => 'only-form-requests', 'label' => 'form requests', 'functional' => true],
+            'enums' => ['config' => 'ts-publish.enums.enabled', 'option' => 'only-enums', 'label' => 'enums', 'functional' => true],
+            'models' => ['config' => 'ts-publish.models.enabled', 'option' => 'only-models', 'label' => 'models', 'functional' => false],
+            'resources' => ['config' => 'ts-publish.resources.enabled', 'option' => 'only-resources', 'label' => 'resources', 'functional' => false],
+            'routes' => ['config' => 'ts-publish.routes.enabled', 'option' => 'only-routes', 'label' => 'routes', 'functional' => true],
+        ];
+
+        // Build initial flags from config; --only-functional forces non-functional types off.
+        /** @var array<string, bool> $flags */
+        $flags = [];
+
+        foreach ($types as $key => $type) {
+            $flags[$key] = ($onlyFunctional && ! $type['functional'])
+                ? false
+                : Config::boolean($type['config']);
+        }
 
         if ($onlyFunctional) {
-            $responseSettings = [
-                $shouldPublishEnums,
-                $shouldPublishModels,
-                $shouldPublishResources,
-                $shouldPublishRoutes,
-                $shouldPublishFormRequests,
-                $shouldPublishBroadcastChannels,
-                $shouldPublishBroadcastEvents,
-            ];
-
-            $enabledFlags = array_filter($responseSettings, fn (bool $v) => $v === true);
-
-            if (count($enabledFlags) === 0) {
+            if (! in_array(true, $flags, true)) {
                 if (! $this->output->isQuiet()) {
                     warning('All functional options are disabled in config. Nothing to publish.');
                 }
@@ -260,131 +249,38 @@ class TsPublishCommand extends Command
                 return null;
             }
 
-            return $responseSettings;
+            return [$flags['enums'], $flags['models'], $flags['resources'], $flags['routes'], $flags['form_requests'], $flags['broadcast_channels'], $flags['broadcast_events']];
         }
 
-        if ($onlyEnums) {
-            $shouldPublishModels = false;
-            $shouldPublishResources = false;
-            $shouldPublishRoutes = false;
-            $shouldPublishFormRequests = false;
-            $shouldPublishBroadcastChannels = false;
-            $shouldPublishBroadcastEvents = false;
+        // Find the active --only-* key, if any (validateOnlyOptions enforces at most one).
+        $onlyKey = null;
 
-            if (! $configEnums) {
-                $shouldPublishEnums = $this->promptConfigOverride('enums');
+        foreach ($types as $key => $type) {
+            if ((bool) $this->option($type['option'])) {
+                $onlyKey = $key;
+                break;
+            }
+        }
 
-                if (! $shouldPublishEnums) {
+        if ($onlyKey !== null) {
+            $activeType = $types[$onlyKey];
+
+            foreach (array_keys($flags) as $k) {
+                $flags[$k] = false;
+            }
+
+            if (Config::boolean($activeType['config'])) {
+                $flags[$onlyKey] = true;
+            } else {
+                $flags[$onlyKey] = $this->promptConfigOverride($activeType['label']);
+
+                if (! $flags[$onlyKey]) {
                     return null;
                 }
             }
         }
 
-        if ($onlyModels) {
-            $shouldPublishEnums = false;
-            $shouldPublishResources = false;
-            $shouldPublishRoutes = false;
-            $shouldPublishFormRequests = false;
-            $shouldPublishBroadcastChannels = false;
-            $shouldPublishBroadcastEvents = false;
-
-            if (! $configModels) {
-                $shouldPublishModels = $this->promptConfigOverride('models');
-
-                if (! $shouldPublishModels) {
-                    return null;
-                }
-            }
-        }
-
-        if ($onlyResources) {
-            $shouldPublishEnums = false;
-            $shouldPublishModels = false;
-            $shouldPublishRoutes = false;
-            $shouldPublishFormRequests = false;
-            $shouldPublishBroadcastChannels = false;
-            $shouldPublishBroadcastEvents = false;
-
-            if (! $configResources) {
-                $shouldPublishResources = $this->promptConfigOverride('resources');
-
-                if (! $shouldPublishResources) {
-                    return null;
-                }
-            }
-        }
-
-        if ($onlyRoutes) {
-            $shouldPublishEnums = false;
-            $shouldPublishModels = false;
-            $shouldPublishResources = false;
-            $shouldPublishFormRequests = false;
-            $shouldPublishBroadcastChannels = false;
-            $shouldPublishBroadcastEvents = false;
-
-            if (! $configRoutes) {
-                $shouldPublishRoutes = $this->promptConfigOverride('routes');
-
-                if (! $shouldPublishRoutes) {
-                    return null;
-                }
-            }
-        }
-
-        if ($onlyFormRequests) {
-            $shouldPublishEnums = false;
-            $shouldPublishModels = false;
-            $shouldPublishResources = false;
-            $shouldPublishRoutes = false;
-            $shouldPublishBroadcastChannels = false;
-            $shouldPublishBroadcastEvents = false;
-
-            if (! $configFormRequests) {
-                $shouldPublishFormRequests = $this->promptConfigOverride('form requests');
-
-                if (! $shouldPublishFormRequests) {
-                    return null;
-                }
-            }
-        }
-
-        if ($onlyBroadcastChannels) {
-            $shouldPublishEnums = false;
-            $shouldPublishModels = false;
-            $shouldPublishResources = false;
-            $shouldPublishRoutes = false;
-            $shouldPublishFormRequests = false;
-            $shouldPublishBroadcastEvents = false;
-
-            if (! $configBroadcastChannels) {
-                $shouldPublishBroadcastChannels = $this->promptConfigOverride('broadcast channels');
-
-                if (! $shouldPublishBroadcastChannels) {
-                    return null;
-                }
-            }
-        }
-
-        if ($onlyBroadcastEvents) {
-            $shouldPublishEnums = false;
-            $shouldPublishModels = false;
-            $shouldPublishResources = false;
-            $shouldPublishRoutes = false;
-            $shouldPublishFormRequests = false;
-            $shouldPublishBroadcastChannels = false;
-
-            if (! $configBroadcastEvents) {
-                $shouldPublishBroadcastEvents = $this->promptConfigOverride('broadcast events');
-
-                if (! $shouldPublishBroadcastEvents) {
-                    return null;
-                }
-            }
-        }
-
-        if (! $shouldPublishEnums && ! $shouldPublishModels && ! $shouldPublishResources
-            && ! $shouldPublishRoutes && ! $shouldPublishFormRequests && ! $shouldPublishBroadcastChannels
-            && ! $shouldPublishBroadcastEvents) {
+        if (! in_array(true, $flags, true)) {
             if (! $this->output->isQuiet()) {
                 warning('Enums, models, resources, routes, form requests, broadcast channels, and broadcast events are all disabled in config. Nothing to publish.');
             }
@@ -392,15 +288,7 @@ class TsPublishCommand extends Command
             return null;
         }
 
-        return [
-            $shouldPublishEnums,
-            $shouldPublishModels,
-            $shouldPublishResources,
-            $shouldPublishRoutes,
-            $shouldPublishFormRequests,
-            $shouldPublishBroadcastChannels,
-            $shouldPublishBroadcastEvents,
-        ];
+        return [$flags['enums'], $flags['models'], $flags['resources'], $flags['routes'], $flags['form_requests'], $flags['broadcast_channels'], $flags['broadcast_events']];
     }
 
     protected function promptConfigOverride(string $type): bool
