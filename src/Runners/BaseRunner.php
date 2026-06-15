@@ -16,49 +16,13 @@ use Illuminate\Support\Collection;
 
 abstract class BaseRunner
 {
+    /** Services */
+
     protected BarrelWriter $barrelWriter;
 
     protected GlobalsWriter $globalsWriter;
 
-    /** @var Collection<int, EnumGenerator> */
-    public protected(set) Collection $enumGenerators;
-
-    /** @var Collection<int, ModelGenerator> */
-    public protected(set) Collection $modelGenerators;
-
-    /** @var Collection<int, ResourceGenerator> */
-    public protected(set) Collection $resourceGenerators;
-
-    /** @var array<string, string> Barrel contents keyed by namespace path */
-    public protected(set) array $enumModularBarrels = [];
-
-    /** @var array<string, string> Barrel contents keyed by namespace path */
-    public protected(set) array $modelModularBarrels = [];
-
-    /** @var array<string, string> Barrel contents keyed by namespace path */
-    public protected(set) array $resourceModularBarrels = [];
-
-    public protected(set) string $globalsContent = '';
-
-    public protected(set) string $jsonContent = '';
-
-    public protected(set) string $watcherJsonContent = '';
-
-    public protected(set) string $viteEnvContent = '';
-
-    public protected(set) string $inertiaConfigContent = '';
-
-    /** @var Collection<int, RouteGenerator> */
-    public protected(set) Collection $routeGenerators;
-
-    /** @var array<string, string> Barrel contents keyed by namespace path */
-    public protected(set) array $routeModularBarrels = [];
-
-    /** @var Collection<int, FormRequestGenerator> */
-    public protected(set) Collection $formRequestGenerators;
-
-    /** @var array<string, string> Barrel contents keyed by namespace path */
-    public protected(set) array $formRequestModularBarrels = [];
+    /** Control flags (set by TsPublishCommand before run()) */
 
     public bool $shouldPublishEnums = true;
 
@@ -70,9 +34,55 @@ abstract class BaseRunner
 
     public bool $shouldPublishFormRequests = true;
 
+    public bool $shouldPublishBroadcastChannels = true;
+
+    public bool $shouldPublishBroadcastEvents = true;
+
+    /** Enums */
+
+    /** @var Collection<int, EnumGenerator> */
+    public protected(set) Collection $enumGenerators;
+
+    /** @var array<string, string> Barrel contents keyed by namespace path */
+    public protected(set) array $enumModularBarrels = [];
+
+    /** Models */
+
+    /** @var Collection<int, ModelGenerator> */
+    public protected(set) Collection $modelGenerators;
+
+    /** @var array<string, string> Barrel contents keyed by namespace path */
+    public protected(set) array $modelModularBarrels = [];
+
+    /** Resources */
+
+    /** @var Collection<int, ResourceGenerator> */
+    public protected(set) Collection $resourceGenerators;
+
+    /** @var array<string, string> Barrel contents keyed by namespace path */
+    public protected(set) array $resourceModularBarrels = [];
+
+    /** Routes */
+
+    /** @var Collection<int, RouteGenerator> */
+    public protected(set) Collection $routeGenerators;
+
+    /** @var array<string, string> Barrel contents keyed by namespace path */
+    public protected(set) array $routeModularBarrels = [];
+
+    /** Form Requests */
+
+    /** @var Collection<int, FormRequestGenerator> */
+    public protected(set) Collection $formRequestGenerators;
+
+    /** @var array<string, string> Barrel contents keyed by namespace path */
+    public protected(set) array $formRequestModularBarrels = [];
+
+    /** Broadcast Channels */
+
     public protected(set) string $broadcastChannelsContent = '';
 
-    public bool $shouldPublishBroadcastChannels = true;
+    /** Broadcast Events */
 
     /** @var Collection<int, BroadcastEventGenerator> */
     public protected(set) Collection $broadcastEventGenerators;
@@ -84,7 +94,17 @@ abstract class BaseRunner
 
     public protected(set) string $broadcastEventsEchoContent = '';
 
-    public bool $shouldPublishBroadcastEvents = true;
+    /** Cross-cutting outputs */
+
+    public protected(set) string $globalsContent = '';
+
+    public protected(set) string $jsonContent = '';
+
+    public protected(set) string $watcherJsonContent = '';
+
+    public protected(set) string $viteEnvContent = '';
+
+    public protected(set) string $inertiaConfigContent = '';
 
     abstract public function run(): void;
 }
