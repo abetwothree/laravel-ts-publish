@@ -17,13 +17,11 @@ use Illuminate\Support\Collection;
 abstract class BaseRunner
 {
     /** Services */
-
     protected BarrelWriter $barrelWriter;
 
     protected GlobalsWriter $globalsWriter;
 
     /** Control flags (set by TsPublishCommand before run()) */
-
     public bool $shouldPublishEnums = true;
 
     public bool $shouldPublishModels = true;
@@ -79,7 +77,6 @@ abstract class BaseRunner
     public protected(set) array $formRequestModularBarrels = [];
 
     /** Broadcast Channels */
-
     public protected(set) string $broadcastChannelsContent = '';
 
     /** Broadcast Events */
@@ -95,7 +92,6 @@ abstract class BaseRunner
     public protected(set) string $broadcastEventsEchoContent = '';
 
     /** Cross-cutting outputs */
-
     public protected(set) string $globalsContent = '';
 
     public protected(set) string $jsonContent = '';
