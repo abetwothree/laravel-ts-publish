@@ -917,3 +917,9 @@ test('InertiaFormRequestController create action has pageType but no requestFqcn
         ->toHaveKey('pageType')
         ->not->toHaveKey('requestFqcn');
 });
+
+test('isInvokable is true for invokable controllers and false otherwise', function () {
+    expect((new RouteTransformer(InvokableController::class))->data()->isInvokable)->toBeTrue()
+        ->and((new RouteTransformer(InvokableModelBoundPlusController::class))->data()->isInvokable)->toBeTrue()
+        ->and((new RouteTransformer(PostController::class))->data()->isInvokable)->toBeFalse();
+});

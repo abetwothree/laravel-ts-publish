@@ -70,12 +70,16 @@ class RouteTransformer extends CoreTransformer
     /** Whether any actions have FormRequest params that require the annotateRequestPayload import. */
     protected bool $hasRequestTypes = false;
 
+    /** Whether this controller is invokable (an action maps to __invoke). */
+    protected bool $isInvokable = false;
+
     #[Override]
     public function transform(): self
     {
         $this->initReflection()
             ->initInertiaAnalyzer()
             ->initActions()
+            ->detectInvokable()
             ->buildTypeImports();
 
         return $this;
@@ -93,6 +97,7 @@ class RouteTransformer extends CoreTransformer
             typeImports: $this->typeImports,
             hasPageTypes: $this->hasPageTypes,
             hasRequestTypes: $this->hasRequestTypes,
+            isInvokable: $this->isInvokable,
         );
     }
 
@@ -134,6 +139,22 @@ class RouteTransformer extends CoreTransformer
     protected function initActions(): self
     {
         $this->actions = $this->collectActions();
+
+        return $this;
+    }
+
+    /**
+     * Determine whether this controller is invokable based on collected actions.
+     */
+    protected function detectInvokable(): self
+    {
+        foreach ($this->actions as $action) {
+            if ($action['originalMethodName'] === self::INVOKE) {
+                $this->isInvokable = true;
+
+                break;
+            }
+        }
 
         return $this;
     }
