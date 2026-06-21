@@ -731,7 +731,7 @@ test('route writer wraps verify action with annotateRequestPayload<VerifyTwoFact
     $generator = resolve(RouteGenerator::class, ['findable' => TwoFactorController::class]);
 
     expect($generator->content)
-        ->toContain('export const _2faVerify = annotateRequestPayload<VerifyTwoFactorRequest>()(defineRoute(');
+        ->toContain('export const verify = annotateRequestPayload<VerifyTwoFactorRequest>()(defineRoute(');
 });
 
 test('route writer includes VerifyTwoFactorRequest import type for TwoFactorController', function () {
@@ -746,8 +746,8 @@ test('route writer does not wrap setup action with annotateRequestPayload', func
 
     // setup is a GET with no FormRequest — must use plain defineRoute, not annotateRequestPayload
     expect($generator->content)
-        ->toContain('export const _2faSetup = defineRoute(')
-        ->not->toContain('_2faSetup = annotateRequestPayload');
+        ->toContain('export const setup = defineRoute(')
+        ->not->toContain('export const setup = annotateRequestPayload');
 });
 
 test('route writer index action uses plain defineRoute without annotateRequestPayload', function () {
