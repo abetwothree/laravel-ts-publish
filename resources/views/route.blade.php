@@ -91,6 +91,29 @@ $controllerDescription = $data->description ? $data->description . "\n\n" : '';
 $controllerDescription .= "@see {$data->fqcn}";
 @endphp
 {!! LaravelTsPublish::formatJsDoc($controllerDescription) !!}
+@if($data->isInvokable)
+@php
+$invokeMethodName = 'invoke';
+$extraMethodNames = [];
+
+foreach ($data->actions as $routeAction) {
+    if ($routeAction['originalMethodName'] === '__invoke') {
+        $invokeMethodName = $routeAction['methodName'];
+    } else {
+        $extraMethodNames[] = $routeAction['methodName'];
+    }
+}
+@endphp
+@if(count($extraMethodNames) > 0)
+const {!! $controllerName !!} = Object.assign({!! LaravelTsPublish::validJsObjectKey($invokeMethodName) !!}, {
+@foreach($extraMethodNames as $extraMethodName)
+    {!! LaravelTsPublish::validJsObjectKey($extraMethodName) !!},
+@endforeach
+});
+@else
+const {!! $controllerName !!} = {!! LaravelTsPublish::validJsObjectKey($invokeMethodName) !!};
+@endif
+@else
 const {!! $controllerName !!} = {
 @foreach ($data->actions as $action)
 @if($action['originalMethodName'] === $action['methodName'])
@@ -100,6 +123,7 @@ const {!! $controllerName !!} = {
 @endif
 @endforeach
 };
+@endif
 
 export default {!! $controllerName !!};
 @endif
