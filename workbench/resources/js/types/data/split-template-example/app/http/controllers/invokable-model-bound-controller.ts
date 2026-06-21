@@ -8,8 +8,6 @@ export const invoke = defineRoute({
 });
 
 /** @see Workbench\App\Http\Controllers\InvokableModelBoundController */
-const InvokableModelBoundController = {
-    '__invoke': invoke,
-};
+const InvokableModelBoundController = invoke;
 
 export default InvokableModelBoundController;

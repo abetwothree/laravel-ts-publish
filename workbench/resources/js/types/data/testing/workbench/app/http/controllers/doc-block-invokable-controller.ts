@@ -12,8 +12,6 @@ export const invoke = defineRoute({
  *
  * @see Workbench\App\Http\Controllers\DocBlockInvokableController
  */
-const DocBlockInvokableController = {
-    '__invoke': invoke,
-};
+const DocBlockInvokableController = invoke;
 
 export default DocBlockInvokableController;
