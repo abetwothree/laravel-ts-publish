@@ -64,3 +64,32 @@ test('jsonSerialize returns array matching toArray', function () {
 
     expect($dto->jsonSerialize())->toBe($dto->toArray());
 });
+
+test('TsRouteDto exposes isInvokable and includes it in toArray', function () {
+    $dto = new TsRouteDto(
+        controllerName: 'InvokableController',
+        filePath: 'app/http/controllers/invokable-controller',
+        fqcn: 'Workbench\\App\\Http\\Controllers\\InvokableController',
+        description: null,
+        actions: [],
+        typeImports: [],
+        hasPageTypes: false,
+        hasRequestTypes: false,
+        isInvokable: true,
+    );
+
+    expect($dto->isInvokable)->toBeTrue()
+        ->and($dto->toArray())->toHaveKey('isInvokable', true);
+});
+
+test('TsRouteDto isInvokable defaults to false', function () {
+    $dto = new TsRouteDto(
+        controllerName: 'PostController',
+        filePath: 'app/http/controllers/post-controller',
+        fqcn: 'Workbench\\App\\Http\\Controllers\\PostController',
+        description: null,
+        actions: [],
+    );
+
+    expect($dto->isInvokable)->toBeFalse();
+});

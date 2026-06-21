@@ -47,6 +47,7 @@ use JsonSerializable;
  *     typeImports: TypesImportMap,
  *     hasPageTypes: bool,
  *     hasRequestTypes: bool,
+ *     isInvokable: bool,
  * }
  *
  * @implements Arrayable<string, mixed>
@@ -66,6 +67,7 @@ final readonly class TsRouteDto implements Arrayable, Datable, Jsonable, JsonSer
         public array $typeImports = [],
         public bool $hasPageTypes = false,
         public bool $hasRequestTypes = false,
+        public bool $isInvokable = false,
     ) {}
 
     /** @return RouteData */
@@ -80,6 +82,7 @@ final readonly class TsRouteDto implements Arrayable, Datable, Jsonable, JsonSer
             'typeImports' => $this->typeImports,
             'hasPageTypes' => $this->hasPageTypes,
             'hasRequestTypes' => $this->hasRequestTypes,
+            'isInvokable' => $this->isInvokable,
         ];
     }
 
