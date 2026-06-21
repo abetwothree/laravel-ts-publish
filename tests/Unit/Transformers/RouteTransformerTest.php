@@ -375,13 +375,13 @@ test('model with overridden getKeyName emits correct _routeKey', function () {
         ->and($show['args'][0]['_routeKey'])->toBe('custom_key');
 });
 
-test('digit-leading route name segment is prefixed with underscore', function () {
+test('method name is derived from the controller method, not the route name', function () {
     $transformer = new RouteTransformer(TwoFactorController::class);
     $setup = collect($transformer->actions)->firstWhere('originalMethodName', 'setup');
     $verify = collect($transformer->actions)->firstWhere('originalMethodName', 'verify');
 
-    expect($setup['methodName'])->toBe('_2faSetup')
-        ->and($verify['methodName'])->toBe('_2faVerify');
+    expect($setup['methodName'])->toBe('setup')
+        ->and($verify['methodName'])->toBe('verify');
 });
 
 test('inertia actions do not include component or pageType when inertia is disabled', function () {

@@ -203,7 +203,7 @@ class RouteTransformer extends CoreTransformer
                 continue;
             }
 
-            $methodName = $this->resolveMethodName($actionMethod, $routeName, $methodCasing);
+            $methodName = $this->resolveMethodName($actionMethod, $methodCasing);
 
             // When multiple routes map to the same controller method, keep the one with a name
             // (or the first one seen if none have a name).
@@ -358,51 +358,21 @@ class RouteTransformer extends CoreTransformer
 
     /**
      * Resolve the JavaScript export name for a route action.
-     *
-     * Route name segments (e.g. 'auth.2fa' → '2fa') can start with a digit,
-     * which is invalid for JS/TS identifiers used in `export const`. Those are
-     * prefixed with an underscore (e.g. '2fa' → '_2fa').
      */
-    protected function resolveMethodName(string $actionMethod, ?string $routeName, string $casing): string
+    protected function resolveMethodName(string $actionMethod, string $casing): string
     {
-        // __invoke always maps to 'invoke', regardless of the route name
+        // __invoke maps to 'invoke' at the action level; the blade renders the
+        // emitted const using the controller short name (see route.blade.php).
         if ($actionMethod === self::INVOKE) {
             return 'invoke';
         }
 
-        // Prefer last segment of the named route name (e.g. 'posts.index' → 'index')
-        if ($routeName !== null) {
-            $lastSegment = Str::afterLast($routeName, '.');
-            if ($lastSegment !== '' && $lastSegment !== $routeName) {
-                return $this->ensureValidIdentifier(
-                    LaravelTsPublish::safeJsIdentifier(
-                        LaravelTsPublish::keyCase($lastSegment, $casing),
-                        'Method'
-                    )
-                );
-            }
-        }
-
+        // Mirror Wayfinder: the export name is the controller action method name,
+        // never the route name.
         return LaravelTsPublish::safeJsIdentifier(
             LaravelTsPublish::keyCase($actionMethod, $casing),
             'Method'
         );
-    }
-
-    /**
-     * Ensure a resolved method name is a valid JS/TS identifier.
-     *
-     * Route name segments can start with a digit (e.g. '2fa'), which passes
-     * through keyCase and safeJsIdentifier unchanged but is invalid as a bare
-     * identifier in `export const` declarations. Prefix with underscore.
-     */
-    protected function ensureValidIdentifier(string $name): string
-    {
-        if ($name !== '' && ctype_digit($name[0])) {
-            return '_'.$name;
-        }
-
-        return $name;
     }
 
     /**
