@@ -66,6 +66,7 @@ describe('FormRequestWriter', function () {
     it('writes file to disk when output_to_files is enabled', function () {
         $filesystem = Mockery::mock(Filesystem::class);
         $filesystem->shouldReceive('ensureDirectoryExists')->once();
+        $filesystem->shouldReceive('exists')->once()->andReturn(false);
         $filesystem->shouldReceive('put')->once()
             ->withArgs(function (string $path, string $content) {
                 return str_ends_with($path, 'store-post-request.ts')
@@ -85,6 +86,7 @@ describe('FormRequestWriter', function () {
     it('falls back to output_directory when output_path config is empty string', function () {
         $filesystem = Mockery::mock(Filesystem::class);
         $filesystem->shouldReceive('ensureDirectoryExists')->once();
+        $filesystem->shouldReceive('exists')->once()->andReturn(false);
         $filesystem->shouldReceive('put')->once()
             ->withArgs(function (string $path, string $content) {
                 return str_starts_with($path, '/tmp/ts-fallback/');

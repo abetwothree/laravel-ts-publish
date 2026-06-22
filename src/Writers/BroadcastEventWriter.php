@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
+use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
 use Illuminate\Support\Facades\Config;
 use Override;
 
@@ -19,6 +20,8 @@ use Override;
  */
 class BroadcastEventWriter extends CoreWriter
 {
+    use WritesGeneratedFiles;
+
     /**
      * Render the TypeScript interface for a single broadcast event and optionally write to disk.
      *
@@ -58,6 +61,6 @@ class BroadcastEventWriter extends CoreWriter
         $outputPath = $outputBase.'/'.$namespacePath;
 
         $this->filesystem->ensureDirectoryExists($outputPath);
-        $this->filesystem->put("{$outputPath}/{$filename}.ts", $content);
+        $this->putIfChanged("{$outputPath}/{$filename}.ts", $content);
     }
 }

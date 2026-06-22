@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
+use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
@@ -19,6 +20,8 @@ use Illuminate\Support\Facades\Config;
  */
 class BarrelWriter
 {
+    use WritesGeneratedFiles;
+
     public function __construct(
         protected Filesystem $filesystem,
     ) {}
@@ -40,7 +43,7 @@ class BarrelWriter
         if (Config::boolean('ts-publish.output_to_files')) {
             $outputPath = Config::string('ts-publish.output_directory')."/$outputDirectory";
             $this->filesystem->ensureDirectoryExists($outputPath);
-            $this->filesystem->put("$outputPath/$filename.ts", $content);
+            $this->putIfChanged("$outputPath/$filename.ts", $content);
         }
 
         return $content;
@@ -84,7 +87,7 @@ class BarrelWriter
             if (Config::boolean('ts-publish.output_to_files')) {
                 $outputPath = $base.'/'.$namespacePath;
                 $this->filesystem->ensureDirectoryExists($outputPath);
-                $this->filesystem->put("$outputPath/index.ts", $content);
+                $this->putIfChanged("$outputPath/index.ts", $content);
             }
 
             $results[$namespacePath] = $content;

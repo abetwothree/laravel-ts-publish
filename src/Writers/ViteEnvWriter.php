@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Writers;
 
+use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Config;
 
@@ -15,6 +16,8 @@ use Illuminate\Support\Facades\Config;
  */
 class ViteEnvWriter
 {
+    use WritesGeneratedFiles;
+
     public function __construct(
         protected Filesystem $filesystem,
     ) {}
@@ -131,6 +134,6 @@ class ViteEnvWriter
         $filename = Config::string('ts-publish.vite_env.filename', 'vite-env.d.ts');
 
         $this->filesystem->ensureDirectoryExists($outputDir);
-        $this->filesystem->put("$outputDir/$filename", $content);
+        $this->putIfChanged("$outputDir/$filename", $content);
     }
 }

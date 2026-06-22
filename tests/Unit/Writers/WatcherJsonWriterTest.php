@@ -46,6 +46,7 @@ test('writes watcher json file to disk when output_to_files is enabled', functio
 
     $filesystem = Mockery::mock(Filesystem::class);
     $filesystem->shouldReceive('ensureDirectoryExists')->once();
+    $filesystem->shouldReceive('exists')->once()->andReturn(false);
     $filesystem->shouldReceive('put')->once()
         ->withArgs(function (string $path, string $content) {
             return str_contains($path, 'laravel-ts-collected-files.json');

@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\ResolvesEventNameConflicts;
+use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
@@ -22,6 +23,7 @@ use Illuminate\Support\Facades\Config;
 class BroadcastEventsIndexWriter
 {
     use ResolvesEventNameConflicts;
+    use WritesGeneratedFiles;
 
     /** @var view-string */
     protected string $template;
@@ -129,7 +131,7 @@ class BroadcastEventsIndexWriter
         $filename = Config::string('ts-publish.broadcast_events.index_filename', 'broadcast-events.ts');
 
         $this->filesystem->ensureDirectoryExists($outputPath);
-        $this->filesystem->put("{$outputPath}/{$filename}", $content);
+        $this->putIfChanged("{$outputPath}/{$filename}", $content);
     }
 
     /**
