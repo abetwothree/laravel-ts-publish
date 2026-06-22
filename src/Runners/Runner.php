@@ -72,13 +72,10 @@ class Runner extends BaseRunner
         $enumGenerators = collect();
 
         foreach ($collector->collect() as $enumClass) {
-            /** @var EnumGenerator $generator */
-            $generator = resolve(
-                Config::string('ts-publish.enums.generator_class', EnumGenerator::class),
-                ['findable' => $enumClass],
-            );
+            /** @var class-string<EnumGenerator> $generatorClass */
+            $generatorClass = Config::string('ts-publish.enums.generator_class', EnumGenerator::class);
 
-            $enumGenerators->push($generator);
+            $enumGenerators->push($this->cachedGenerate($enumClass, $generatorClass));
         }
 
         $this->enumGenerators = $enumGenerators;
@@ -110,13 +107,10 @@ class Runner extends BaseRunner
         $modelGenerators = collect();
 
         foreach ($modelClasses as $modelClass) {
-            /** @var ModelGenerator $generator */
-            $generator = resolve(
-                Config::string('ts-publish.models.generator_class', ModelGenerator::class),
-                ['findable' => $modelClass],
-            );
+            /** @var class-string<ModelGenerator> $generatorClass */
+            $generatorClass = Config::string('ts-publish.models.generator_class', ModelGenerator::class);
 
-            $modelGenerators->push($generator);
+            $modelGenerators->push($this->cachedGenerate($modelClass, $generatorClass));
         }
 
         $this->modelGenerators = $modelGenerators;
@@ -141,13 +135,10 @@ class Runner extends BaseRunner
         $resourceGenerators = collect();
 
         foreach ($collector->collect() as $resourceClass) {
-            /** @var ResourceGenerator $generator */
-            $generator = resolve(
-                Config::string('ts-publish.resources.generator_class', ResourceGenerator::class),
-                ['findable' => $resourceClass],
-            );
+            /** @var class-string<ResourceGenerator> $generatorClass */
+            $generatorClass = Config::string('ts-publish.resources.generator_class', ResourceGenerator::class);
 
-            $resourceGenerators->push($generator);
+            $resourceGenerators->push($this->cachedGenerate($resourceClass, $generatorClass));
         }
 
         $this->resourceGenerators = $resourceGenerators;
@@ -206,13 +197,10 @@ class Runner extends BaseRunner
         $formRequestGenerators = collect();
 
         foreach ($collector->collect() as $formRequestClass) {
-            /** @var FormRequestGenerator $generator */
-            $generator = resolve(
-                Config::string('ts-publish.form_requests.generator_class', FormRequestGenerator::class),
-                ['findable' => $formRequestClass],
-            );
+            /** @var class-string<FormRequestGenerator> $generatorClass */
+            $generatorClass = Config::string('ts-publish.form_requests.generator_class', FormRequestGenerator::class);
 
-            $formRequestGenerators->push($generator);
+            $formRequestGenerators->push($this->cachedGenerate($formRequestClass, $generatorClass));
         }
 
         $this->formRequestGenerators = $formRequestGenerators;
@@ -269,13 +257,10 @@ class Runner extends BaseRunner
         $broadcastEventGenerators = collect();
 
         foreach ($collector->collect() as $eventClass) {
-            /** @var BroadcastEventGenerator $generator */
-            $generator = resolve(
-                Config::string('ts-publish.broadcast_events.generator_class', BroadcastEventGenerator::class),
-                ['findable' => $eventClass],
-            );
+            /** @var class-string<BroadcastEventGenerator> $generatorClass */
+            $generatorClass = Config::string('ts-publish.broadcast_events.generator_class', BroadcastEventGenerator::class);
 
-            $broadcastEventGenerators->push($generator);
+            $broadcastEventGenerators->push($this->cachedGenerate($eventClass, $generatorClass));
         }
 
         $this->broadcastEventGenerators = $broadcastEventGenerators;
@@ -313,13 +298,10 @@ class Runner extends BaseRunner
         $routeGenerators = collect();
 
         foreach ($collector->collect() as $controllerClass) {
-            /** @var RouteGenerator $generator */
-            $generator = resolve(
-                Config::string('ts-publish.routes.generator_class', RouteGenerator::class),
-                ['findable' => $controllerClass],
-            );
+            /** @var class-string<RouteGenerator> $generatorClass */
+            $generatorClass = Config::string('ts-publish.routes.generator_class', RouteGenerator::class);
 
-            $routeGenerators->push($generator);
+            $routeGenerators->push($this->cachedGenerate($controllerClass, $generatorClass));
         }
 
         $this->routeGenerators = $routeGenerators;
