@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Generators;
 
+use AbeTwoThree\LaravelTsPublish\Generators\Concerns\RehydratesFromCache;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -15,6 +16,8 @@ use Override;
  */
 class ResourceGenerator extends CoreGenerator
 {
+    use RehydratesFromCache;
+
     public protected(set) ResourceTransformer $transformer;
 
     #[Override]
@@ -35,6 +38,6 @@ class ResourceGenerator extends CoreGenerator
     #[Override]
     public function filename(): string
     {
-        return $this->transformer->filename();
+        return $this->cachedFilename ?? $this->transformer->filename();
     }
 }

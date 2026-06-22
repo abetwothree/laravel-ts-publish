@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Generators;
 
+use AbeTwoThree\LaravelTsPublish\Generators\Concerns\RehydratesFromCache;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\RouteWriter;
 use Illuminate\Support\Facades\Config;
@@ -14,6 +15,8 @@ use Override;
  */
 class RouteGenerator extends CoreGenerator
 {
+    use RehydratesFromCache;
+
     public protected(set) RouteTransformer $transformer;
 
     #[Override]
@@ -34,6 +37,6 @@ class RouteGenerator extends CoreGenerator
     #[Override]
     public function filename(): string
     {
-        return $this->transformer->filename();
+        return $this->cachedFilename ?? $this->transformer->filename();
     }
 }

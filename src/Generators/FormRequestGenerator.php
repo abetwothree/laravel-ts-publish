@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Generators;
 
+use AbeTwoThree\LaravelTsPublish\Generators\Concerns\RehydratesFromCache;
 use AbeTwoThree\LaravelTsPublish\Transformers\FormRequestTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\FormRequestWriter;
 use Illuminate\Foundation\Http\FormRequest;
@@ -15,6 +16,8 @@ use Override;
  */
 class FormRequestGenerator extends CoreGenerator
 {
+    use RehydratesFromCache;
+
     public protected(set) FormRequestTransformer $transformer;
 
     #[Override]
@@ -36,6 +39,6 @@ class FormRequestGenerator extends CoreGenerator
     #[Override]
     public function filename(): string
     {
-        return $this->transformer->filename();
+        return $this->cachedFilename ?? $this->transformer->filename();
     }
 }
