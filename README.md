@@ -2687,6 +2687,9 @@ This flushes the cache, regenerates everything, and writes a fresh cache. It is 
 > [!NOTE]
 > The cache keys off your PHP source files. If you **manually edit a generated `.ts` file** without changing its source, the cache will not detect the edit and won't overwrite it — run `php artisan ts:publish --fresh` (or delete the generated file) to restore it.
 
+> [!NOTE]
+> **Database schema changes** (migrations) are not part of the fingerprint either — a model's columns are read from the live database, not from a source file. The automatic [post-migration republish](#automatic-publishing-after-migrations) runs with `--fresh`, so it always reflects schema changes. If you change the schema another way, run `php artisan ts:publish --fresh`.
+
 ## Configuration Reference
 
 Below is a quick reference of all available configuration options:

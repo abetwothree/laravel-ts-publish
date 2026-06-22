@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
 use Illuminate\Support\Collection;
+use Throwable;
 
 abstract class BaseRunner
 {
@@ -192,13 +193,23 @@ abstract class BaseRunner
         /** @var CoreTransformer<mixed> $transformer */
         $transformer = $generator->transformer; // @phpstan-ignore property.notFound
 
+        try {
+            $snapshot = base64_encode(serialize($transformer));
+        } catch (Throwable) {
+            // A transformer holding a non-serializable value cannot be cached;
+            // skip recording it (this class simply rebuilds next run) rather than
+            // crashing the publish. Caching is best-effort and must never break
+            // generation.
+            return $generator;
+        }
+
         $this->manifest->record(
             $fqcn,
             Fingerprinter::fromPaths($deps),
             $generator->filename(),
             $deps,
             $outputs,
-            base64_encode(serialize($transformer)),
+            $snapshot,
         );
 
         return $generator;
