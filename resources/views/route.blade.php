@@ -94,20 +94,27 @@ $controllerDescription .= "@see {$data->fqcn}";
 @if($data->isInvokable)
 @php
 $invokeMethodName = 'invoke';
-$extraMethodNames = [];
+$extraMethods = [];
 
 foreach ($data->actions as $routeAction) {
     if ($routeAction['originalMethodName'] === '__invoke') {
         $invokeMethodName = $routeAction['methodName'];
     } else {
-        $extraMethodNames[] = $routeAction['methodName'];
+        $extraMethods[] = [
+            'originalMethodName' => $routeAction['originalMethodName'],
+            'methodName' => $routeAction['methodName'],
+        ];
     }
 }
 @endphp
-@if(count($extraMethodNames) > 0)
+@if(count($extraMethods) > 0)
 const {!! $controllerName !!} = Object.assign({!! LaravelTsPublish::validJsObjectKey($invokeMethodName) !!}, {
-@foreach($extraMethodNames as $extraMethodName)
-    {!! LaravelTsPublish::validJsObjectKey($extraMethodName) !!},
+@foreach($extraMethods as $extraAction)
+@if($extraAction['originalMethodName'] === $extraAction['methodName'])
+    {!! LaravelTsPublish::validJsObjectKey($extraAction['methodName']) !!},
+@else
+    {!! LaravelTsPublish::toJsLiteral($extraAction['originalMethodName']) !!}: {!! LaravelTsPublish::validJsObjectKey($extraAction['methodName']) !!},
+@endif
 @endforeach
 });
 @else
