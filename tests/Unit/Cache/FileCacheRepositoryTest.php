@@ -48,7 +48,7 @@ it('rejects tampered payloads when a signing key is set', function () {
     $repo = new FileCacheRepository($this->dir, 'secret-key');
     $repo->put('signed', ['x' => 1]);
 
-    $file = $this->dir.'/'.md5('signed').'.cache';
+    $file = $this->dir.'/'.hash('xxh128', 'signed').'.cache';
     file_put_contents($file, 'deadbeef:'.serialize(['mtime' => 0]));
 
     expect($repo->get('signed'))->toBeNull();

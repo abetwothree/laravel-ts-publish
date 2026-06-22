@@ -138,7 +138,7 @@ class FileCacheRepository implements CacheRepository
      */
     protected function path(string $key): string
     {
-        return $this->directory.'/'.md5($key).'.cache';
+        return $this->directory.'/'.hash('xxh128', $key).'.cache';
     }
 
     /**
