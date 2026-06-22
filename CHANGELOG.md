@@ -2,6 +2,12 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## Unreleased
+
+### What's Changed
+
+* **Generation cache** — after the first full run, `ts:publish` skips re-generating classes whose source files (and their dependencies) have not changed, making repeated publishing significantly faster. The cache busts automatically when the package version or output-affecting config changes, can be forced fresh with `php artisan ts:publish --fresh`, is bypassed by `--source`/`--preview` runs, and is configurable via the new `cache.*` config (file-based by default, or any Laravel cache store). See the [Generation Cache](README.md#generation-cache) docs.
+
 ## v1.5.0 - 2026-05-23
 
 ### What's Changed

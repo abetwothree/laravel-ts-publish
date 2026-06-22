@@ -31,7 +31,7 @@ class TsPublishCommand extends Command
     protected $signature = 'ts:publish
         {--preview=false : Output generated TypeScript declarations to the console instead of writing to files}
         {--source= : FQCN or file path of a specific supported class to republish}
-        {--fresh : Ignore and rebuild the generation cache from scratch}
+        {--fresh : Ignore and rebuild the generation cache from scratch (no-op with --source or --preview)}
         {--only-broadcast-channels : Only publish broadcast channel types (ignoring all other types)}
         {--only-broadcast-events : Only publish broadcast event types (ignoring all other types)}
         {--only-form-requests : Only publish form requests (ignoring enums, models, resources, and routes)}
