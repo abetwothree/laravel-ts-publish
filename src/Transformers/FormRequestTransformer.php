@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsFormRequestDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
+use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
@@ -26,6 +27,7 @@ class FormRequestTransformer extends CoreTransformer
 {
     use ParsesTsCasts;
     use ParsesTsExtends;
+    use SnapshotsTransformerState;
 
     public protected(set) string $typeName;
 
@@ -85,6 +87,12 @@ class FormRequestTransformer extends CoreTransformer
     /** Reflection of the form request class, shared across transformation steps. */
     /** @var ReflectionClass<FormRequest> */
     protected ReflectionClass $reflection;
+
+    /** @return list<string> */
+    protected function transientProperties(): array
+    {
+        return ['reflection'];
+    }
 
     #[Override]
     public function transform(): self
