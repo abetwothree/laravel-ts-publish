@@ -1,0 +1,7 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Trait AbeTwoThree\\LaravelTsPublish\\Writers\\Concerns\\WritesGeneratedFiles is used zero times and is not analysed\.$#'
+			identifier: trait.unused
+			count: 1
+			path: src/Writers/Concerns/WritesGeneratedFiles.php
