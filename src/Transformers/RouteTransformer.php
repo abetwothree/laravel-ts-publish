@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Concerns\FiltersRoutes;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsRouteDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
 use BackedEnum;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Http\FormRequest;
@@ -33,6 +34,7 @@ use ReflectionParameter;
 class RouteTransformer extends CoreTransformer
 {
     use FiltersRoutes;
+    use SnapshotsTransformerState;
 
     public protected(set) string $controllerName;
 
@@ -72,6 +74,12 @@ class RouteTransformer extends CoreTransformer
 
     /** Whether this controller is invokable (an action maps to __invoke). */
     protected bool $isInvokable = false;
+
+    /** @return list<string> */
+    protected function transientProperties(): array
+    {
+        return ['reflectionController', 'inertiaPageAnalyzer'];
+    }
 
     #[Override]
     public function transform(): self

@@ -7,8 +7,10 @@ use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\FormRequestTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
+use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
 use Workbench\App\Enums\Status;
 use Workbench\App\Events\OrderShipped;
+use Workbench\App\Http\Controllers\PostController;
 use Workbench\App\Http\Requests\StorePostRequest;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Models\User;
@@ -70,4 +72,14 @@ it('round-trips a broadcast event transformer through serialize without transien
     expect($restored)->toBeInstanceOf(BroadcastEventTransformer::class)
         ->and($restored->properties)->toBe($original->properties)
         ->and($restored->eventName)->toBe($original->eventName);
+});
+
+it('round-trips a route transformer through serialize without transients', function () {
+    $original = new RouteTransformer(PostController::class);
+
+    $restored = unserialize(serialize($original));
+
+    expect($restored)->toBeInstanceOf(RouteTransformer::class)
+        ->and($restored->controllerName)->toBe($original->controllerName)
+        ->and($restored->actions)->toBe($original->actions);
 });
