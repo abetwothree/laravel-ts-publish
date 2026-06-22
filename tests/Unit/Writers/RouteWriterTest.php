@@ -16,6 +16,7 @@ use Workbench\App\Http\Controllers\EnumBoundController;
 use Workbench\App\Http\Controllers\InertiaController;
 use Workbench\App\Http\Controllers\InertiaFormRequestController;
 use Workbench\App\Http\Controllers\InvokableController;
+use Workbench\App\Http\Controllers\InvokableModelBoundPlusController;
 use Workbench\App\Http\Controllers\NamedInvokableController;
 use Workbench\App\Http\Controllers\Nested\NestedController;
 use Workbench\App\Http\Controllers\OptionalParamController;
@@ -173,20 +174,38 @@ test('route content does not include HEAD method', function () {
     expect($generator->content)->not->toContain("'head'");
 });
 
-test('invokable controller output uses __invoke as method name when unnamed', function () {
+test('pure invokable controller references the invoke export as the default', function () {
     $generator = resolve(RouteGenerator::class, ['findable' => InvokableController::class]);
 
     expect($generator->content)
         ->toContain('export const invoke = defineRoute(')
-        ->toContain("    '__invoke': invoke,");
+        ->toContain('const InvokableController = invoke;')
+        ->toContain('export default InvokableController;')
+        ->not->toContain("'__invoke'");
 });
 
-test('named invokable controller output always uses invoke as method name', function () {
+test('named invokable controller references the invoke export as the default', function () {
     $generator = resolve(RouteGenerator::class, ['findable' => NamedInvokableController::class]);
 
     expect($generator->content)
         ->toContain('export const invoke = defineRoute(')
-        ->toContain("name: 'named.invokable'");
+        ->toContain("name: 'named.invokable'")
+        ->toContain('const NamedInvokableController = invoke;')
+        ->toContain('export default NamedInvokableController;');
+});
+
+test('invokable-plus controller wraps the invoke export with Object.assign', function () {
+    $generator = resolve(RouteGenerator::class, ['findable' => InvokableModelBoundPlusController::class]);
+
+    expect($generator->content)
+        ->toContain('export const invoke = defineRoute(')
+        ->toContain('export const extra = defineRoute(')
+        ->toContain('export const surprise = defineRoute(')
+        ->toContain('const InvokableModelBoundPlusController = Object.assign(invoke, {')
+        ->toContain('    extra,')
+        ->toContain('    surprise,')
+        ->toContain('export default InvokableModelBoundPlusController;')
+        ->not->toContain("'__invoke'");
 });
 
 test('optional param arg includes required false in output', function () {
@@ -731,7 +750,7 @@ test('route writer wraps verify action with annotateRequestPayload<VerifyTwoFact
     $generator = resolve(RouteGenerator::class, ['findable' => TwoFactorController::class]);
 
     expect($generator->content)
-        ->toContain('export const _2faVerify = annotateRequestPayload<VerifyTwoFactorRequest>()(defineRoute(');
+        ->toContain('export const verify = annotateRequestPayload<VerifyTwoFactorRequest>()(defineRoute(');
 });
 
 test('route writer includes VerifyTwoFactorRequest import type for TwoFactorController', function () {
@@ -746,8 +765,8 @@ test('route writer does not wrap setup action with annotateRequestPayload', func
 
     // setup is a GET with no FormRequest — must use plain defineRoute, not annotateRequestPayload
     expect($generator->content)
-        ->toContain('export const _2faSetup = defineRoute(')
-        ->not->toContain('_2faSetup = annotateRequestPayload');
+        ->toContain('export const setup = defineRoute(')
+        ->not->toContain('export const setup = annotateRequestPayload');
 });
 
 test('route writer index action uses plain defineRoute without annotateRequestPayload', function () {

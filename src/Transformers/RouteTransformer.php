@@ -70,12 +70,16 @@ class RouteTransformer extends CoreTransformer
     /** Whether any actions have FormRequest params that require the annotateRequestPayload import. */
     protected bool $hasRequestTypes = false;
 
+    /** Whether this controller is invokable (an action maps to __invoke). */
+    protected bool $isInvokable = false;
+
     #[Override]
     public function transform(): self
     {
         $this->initReflection()
             ->initInertiaAnalyzer()
             ->initActions()
+            ->detectInvokable()
             ->buildTypeImports();
 
         return $this;
@@ -93,6 +97,7 @@ class RouteTransformer extends CoreTransformer
             typeImports: $this->typeImports,
             hasPageTypes: $this->hasPageTypes,
             hasRequestTypes: $this->hasRequestTypes,
+            isInvokable: $this->isInvokable,
         );
     }
 
@@ -134,6 +139,22 @@ class RouteTransformer extends CoreTransformer
     protected function initActions(): self
     {
         $this->actions = $this->collectActions();
+
+        return $this;
+    }
+
+    /**
+     * Determine whether this controller is invokable based on collected actions.
+     */
+    protected function detectInvokable(): self
+    {
+        foreach ($this->actions as $action) {
+            if ($action['originalMethodName'] === self::INVOKE) {
+                $this->isInvokable = true;
+
+                break;
+            }
+        }
 
         return $this;
     }
@@ -203,7 +224,7 @@ class RouteTransformer extends CoreTransformer
                 continue;
             }
 
-            $methodName = $this->resolveMethodName($actionMethod, $routeName, $methodCasing);
+            $methodName = $this->resolveMethodName($actionMethod, $methodCasing);
 
             // When multiple routes map to the same controller method, keep the one with a name
             // (or the first one seen if none have a name).
@@ -358,51 +379,21 @@ class RouteTransformer extends CoreTransformer
 
     /**
      * Resolve the JavaScript export name for a route action.
-     *
-     * Route name segments (e.g. 'auth.2fa' → '2fa') can start with a digit,
-     * which is invalid for JS/TS identifiers used in `export const`. Those are
-     * prefixed with an underscore (e.g. '2fa' → '_2fa').
      */
-    protected function resolveMethodName(string $actionMethod, ?string $routeName, string $casing): string
+    protected function resolveMethodName(string $actionMethod, string $casing): string
     {
-        // __invoke always maps to 'invoke', regardless of the route name
+        // __invoke maps to 'invoke' at the action level; the blade renders the
+        // emitted const using the controller short name (see route.blade.php).
         if ($actionMethod === self::INVOKE) {
             return 'invoke';
         }
 
-        // Prefer last segment of the named route name (e.g. 'posts.index' → 'index')
-        if ($routeName !== null) {
-            $lastSegment = Str::afterLast($routeName, '.');
-            if ($lastSegment !== '' && $lastSegment !== $routeName) {
-                return $this->ensureValidIdentifier(
-                    LaravelTsPublish::safeJsIdentifier(
-                        LaravelTsPublish::keyCase($lastSegment, $casing),
-                        'Method'
-                    )
-                );
-            }
-        }
-
+        // Mirror Wayfinder: the export name is the controller action method name,
+        // never the route name.
         return LaravelTsPublish::safeJsIdentifier(
             LaravelTsPublish::keyCase($actionMethod, $casing),
             'Method'
         );
-    }
-
-    /**
-     * Ensure a resolved method name is a valid JS/TS identifier.
-     *
-     * Route name segments can start with a digit (e.g. '2fa'), which passes
-     * through keyCase and safeJsIdentifier unchanged but is invalid as a bare
-     * identifier in `export const` declarations. Prefix with underscore.
-     */
-    protected function ensureValidIdentifier(string $name): string
-    {
-        if ($name !== '' && ctype_digit($name[0])) {
-            return '_'.$name;
-        }
-
-        return $name;
     }
 
     /**

@@ -12,9 +12,9 @@ export const resourcePaginatedCollection = annotatePageProps<ResourcePaginatedCo
     component: 'Resource/SharedTemplate',
 }));
 
-export type ResourceAnonCollectionPageProps = Inertia.SharedData & { warehouse_get: AnonymousResourceCollection<WarehouseResource>, warehouse_all: AnonymousResourceCollection<WarehouseResource> };
+export type ResourceAnonymousCollectionPageProps = Inertia.SharedData & { warehouse_get: AnonymousResourceCollection<WarehouseResource>, warehouse_all: AnonymousResourceCollection<WarehouseResource> };
 
-export const resourceAnonCollection = annotatePageProps<ResourceAnonCollectionPageProps>()(defineRoute({
+export const resourceAnonymousCollection = annotatePageProps<ResourceAnonymousCollectionPageProps>()(defineRoute({
     name: 'same-template.resource-anon-collection',
     url: '/same-template/resource-anon-collection',
     methods: ['get'] as const,
@@ -40,7 +40,7 @@ export const resource = annotatePageProps<ResourcePageProps>()(defineRoute({
  */
 const InertiaResourceSharedTemplate = {
     resourcePaginatedCollection,
-    'resourceAnonymousCollection': resourceAnonCollection,
+    resourceAnonymousCollection,
     resource,
 };
 

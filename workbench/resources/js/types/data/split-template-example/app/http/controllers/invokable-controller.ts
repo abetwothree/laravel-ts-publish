@@ -6,8 +6,6 @@ export const invoke = defineRoute({
 });
 
 /** @see Workbench\App\Http\Controllers\InvokableController */
-const InvokableController = {
-    '__invoke': invoke,
-};
+const InvokableController = invoke;
 
 export default InvokableController;

@@ -22,10 +22,9 @@ export const surprise = defineRoute({
 });
 
 /** @see Workbench\App\Http\Controllers\InvokableModelBoundPlusController */
-const InvokableModelBoundPlusController = {
-    '__invoke': invoke,
+const InvokableModelBoundPlusController = Object.assign(invoke, {
     extra,
     surprise,
-};
+});
 
 export default InvokableModelBoundPlusController;

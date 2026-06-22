@@ -10,8 +10,6 @@ export const invoke = annotatePageProps<InvokePageProps>()(defineRoute({
 }));
 
 /** @see Workbench\App\Http\Controllers\InvokableInertiaController */
-const InvokableInertiaController = {
-    '__invoke': invoke,
-};
+const InvokableInertiaController = invoke;
 
 export default InvokableInertiaController;

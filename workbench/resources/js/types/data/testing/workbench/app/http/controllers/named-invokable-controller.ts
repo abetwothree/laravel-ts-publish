@@ -11,8 +11,6 @@ export const invoke = defineRoute({
  *
  * @see Workbench\App\Http\Controllers\NamedInvokableController
  */
-const NamedInvokableController = {
-    '__invoke': invoke,
-};
+const NamedInvokableController = invoke;
 
 export default NamedInvokableController;
