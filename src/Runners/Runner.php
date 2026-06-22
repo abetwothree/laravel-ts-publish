@@ -53,6 +53,8 @@ class Runner extends BaseRunner
         $this->generateViteEnv();
         $this->generateJson();
         $this->generateWatcherJson();
+
+        $this->manifest?->save();
     }
 
     protected function generateEnums(): void
