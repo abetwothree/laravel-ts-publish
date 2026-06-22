@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish;
 
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesAccessorType;
 use AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -151,6 +152,8 @@ class ModelAttributeResolver
 
             return ['type' => $type, 'modelFqcn' => null];
         }
+
+        DependencyRecorder::recordClass($relation['related']);
 
         $relatedModel = class_basename($relation['related']);
         $containsMany = str_contains(strtolower($relation['type']), 'many');
@@ -310,6 +313,8 @@ class ModelAttributeResolver
                 }
 
                 $childFqcn = $relation['related'];
+
+                DependencyRecorder::recordClass($childFqcn);
 
                 if (! isset($map[$childFqcn])) {
                     $map[$childFqcn] = [];

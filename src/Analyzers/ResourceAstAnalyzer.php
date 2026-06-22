@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\FiltersModelAttributes;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ResolvesModelTypes;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesClassNames;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
@@ -142,6 +143,10 @@ class ResourceAstAnalyzer
 
     public function analyze(): ResourceAnalysis
     {
+        if ($this->modelClass !== null) {
+            DependencyRecorder::recordClass($this->modelClass);
+        }
+
         $filePath = (string) $this->resourceReflection->getFileName();
         $source = (string) file_get_contents($filePath);
 
