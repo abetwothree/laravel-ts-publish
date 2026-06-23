@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+use AbeTwoThree\LaravelTsPublish\Cache\Concerns\SignsCachePayloads;
 use AbeTwoThree\LaravelTsPublish\Cache\FileCacheRepository;
 use AbeTwoThree\LaravelTsPublish\Runners\BaseRunner;
 
@@ -21,6 +22,6 @@ arch()->preset()->php();
 // payloads; classes must be allowed here so transformer objects can be rebuilt
 // (unlike the file backend's array payloads which use allowed_classes:false).
 arch()->preset()->security()
-    ->ignoring([FileCacheRepository::class, BaseRunner::class]);
+    ->ignoring([FileCacheRepository::class, SignsCachePayloads::class, BaseRunner::class]);
 
 arch()->preset()->laravel();

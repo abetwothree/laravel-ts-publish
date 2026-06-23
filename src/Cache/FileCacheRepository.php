@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Cache;
 
+use AbeTwoThree\LaravelTsPublish\Cache\Concerns\SignsCachePayloads;
 use AbeTwoThree\LaravelTsPublish\Cache\Contracts\CacheRepository;
-use Throwable;
 
 class FileCacheRepository implements CacheRepository
 {
+    use SignsCachePayloads;
+
     public function __construct(
         protected string $directory,
         protected ?string $key,
@@ -17,8 +19,8 @@ class FileCacheRepository implements CacheRepository
     }
 
     /**
-     * Read and unserialize a payload, verifying the HMAC signature first when a
-     * signing key is configured. Tampered or corrupt files are forgotten.
+     * Read, verify, and unserialize a payload (objects disabled). Tampered or
+     * corrupt files are forgotten so the next run rebuilds cleanly.
      *
      * @return array<string, mixed>|null
      */
@@ -30,44 +32,19 @@ class FileCacheRepository implements CacheRepository
             return null;
         }
 
-        $payload = $this->unwrap((string) file_get_contents($file), $key);
+        $data = $this->readSignedPayload((string) file_get_contents($file), $this->key);
 
-        if ($payload === null) {
-            return null;
-        }
-
-        try {
-            // allowed_classes: false — manifest payloads are plain arrays; never
-            // instantiate objects here (the transformer snapshot is a base64
-            // string that BaseRunner deserializes separately). Closes the
-            // object-injection surface on the unsigned cache path.
-            $data = unserialize($payload, ['allowed_classes' => false]);
-        } catch (Throwable) {
+        if ($data === null) {
             $this->forget($key);
 
             return null;
         }
 
-        if (! is_array($data)) {
-            return null;
-        }
-
-        $typed = [];
-
-        foreach ($data as $k => $v) {
-            if (! is_string($k)) {
-                return null;
-            }
-
-            $typed[$k] = $v;
-        }
-
-        return $typed;
+        return $data;
     }
 
     /**
-     * Serialize and write a payload, prepending an HMAC signature when a signing
-     * key is configured.
+     * Sign and write a payload to disk.
      *
      * @param  array<string, mixed>  $value
      */
@@ -75,13 +52,7 @@ class FileCacheRepository implements CacheRepository
     {
         $this->ensureDirectory();
 
-        $serialized = serialize($value);
-
-        if ($this->key !== null && $this->key !== '') {
-            $serialized = hash_hmac('sha256', $serialized, $this->key).':'.$serialized;
-        }
-
-        file_put_contents($this->path($key), $serialized);
+        file_put_contents($this->path($key), $this->signPayload($value, $this->key));
     }
 
     /**
@@ -113,33 +84,6 @@ class FileCacheRepository implements CacheRepository
     public function commit(): void
     {
         //
-    }
-
-    /**
-     * Verify and strip the HMAC signature, returning the raw serialized payload,
-     * or null (forgetting the key) when the signature is missing or invalid.
-     */
-    protected function unwrap(string $content, string $key): ?string
-    {
-        if ($this->key === null || $this->key === '') {
-            return $content;
-        }
-
-        if (! str_contains($content, ':')) {
-            $this->forget($key);
-
-            return null;
-        }
-
-        [$signature, $serialized] = explode(':', $content, 2);
-
-        if (! hash_equals($signature, hash_hmac('sha256', $serialized, $this->key))) {
-            $this->forget($key);
-
-            return null;
-        }
-
-        return $serialized;
     }
 
     /**
