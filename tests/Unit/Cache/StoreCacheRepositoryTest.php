@@ -56,3 +56,31 @@ it('persists the index on commit so a fresh instance can flush it', function () 
     expect($this->repo->get('a'))->toBeNull()
         ->and($this->repo->get('b'))->toBeNull();
 });
+
+it('rejects an unsigned attacker-written store entry', function () {
+    $repo = new StoreCacheRepository(Cache::store('array'), 'ts-publish', 'signing-secret');
+
+    // The UNHARDENED repository stored/accepted a raw array. An attacker able to
+    // write the store could plant a malicious manifest entry that way; with
+    // signing, get() must refuse a payload that is not a valid signed string.
+    Cache::store('array')->forever('ts-publish:evil', ['snapshot' => 'attacker-controlled']);
+
+    expect($repo->get('evil'))->toBeNull();
+});
+
+it('round-trips a signed payload', function () {
+    $repo = new StoreCacheRepository(Cache::store('array'), 'ts-publish', 'signing-secret');
+
+    $repo->put('entry', ['snapshot' => 'legit']);
+
+    expect($repo->get('entry'))->toBe(['snapshot' => 'legit']);
+});
+
+it('rejects a store entry whose signature does not match', function () {
+    $repo = new StoreCacheRepository(Cache::store('array'), 'ts-publish', 'signing-secret');
+    $repo->put('entry', ['snapshot' => 'legit']);
+
+    Cache::store('array')->forever('ts-publish:entry', 'deadbeef:'.serialize(['snapshot' => 'evil']));
+
+    expect($repo->get('entry'))->toBeNull();
+});

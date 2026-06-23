@@ -29,7 +29,7 @@ class CacheBootstrap
         $store = Config::get('ts-publish.cache.store');
 
         if (is_string($store) && $store !== '') {
-            return new StoreCacheRepository(Cache::store($store), 'ts-publish');
+            return new StoreCacheRepository(Cache::store($store), 'ts-publish', self::signingKey());
         }
 
         $directory = Config::string('ts-publish.cache.directory', storage_path('framework/cache/ts-publish'));

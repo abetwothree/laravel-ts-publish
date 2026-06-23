@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Cache\CacheBootstrap;
 use AbeTwoThree\LaravelTsPublish\Cache\FileCacheRepository;
 use AbeTwoThree\LaravelTsPublish\Cache\StoreCacheRepository;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Config;
 
 it('builds a file repository when no store is configured', function () {
@@ -50,4 +51,26 @@ it('signs file cache payloads with the application key by default', function () 
 
     array_map('unlink', glob($dir.'/*') ?: []);
     @rmdir($dir);
+});
+
+it('signs store cache payloads with the application key by default', function () {
+    Cache::store('array')->clear();
+    Config::set('ts-publish.cache.store', 'array');
+    Config::set('ts-publish.cache.key', null);
+    Config::set('app.key', 'base64:'.base64_encode(random_bytes(32)));
+
+    $repo = CacheBootstrap::repository();
+    $repo->put('signed-store', ['x' => 1]);
+
+    $raw = Cache::store('array')->get('ts-publish:signed-store');
+
+    // The raw stored value must be the signed "<64-hex-hmac>:<serialized>" string,
+    // not a raw array — proving the store backend received the app-key signer.
+    expect($raw)->toBeString();
+
+    [$signature] = explode(':', $raw, 2);
+
+    expect(strlen($signature))->toBe(64)
+        ->and(ctype_xdigit($signature))->toBeTrue()
+        ->and($repo->get('signed-store'))->toBe(['x' => 1]);
 });
