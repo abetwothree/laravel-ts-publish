@@ -33,3 +33,15 @@ it('changes when a dependency is added', function () {
 
     expect(Fingerprinter::fromPaths([$this->a, $this->b]))->not->toBe($before);
 });
+
+it('folds a non-empty extra signature into the fingerprint', function () {
+    $base = Fingerprinter::fromPaths([$this->a]);
+
+    expect(Fingerprinter::fromPaths([$this->a], 'sig-1'))->not->toBe($base)
+        ->and(Fingerprinter::fromPaths([$this->a], 'sig-1'))->toBe(Fingerprinter::fromPaths([$this->a], 'sig-1'))
+        ->and(Fingerprinter::fromPaths([$this->a], 'sig-2'))->not->toBe(Fingerprinter::fromPaths([$this->a], 'sig-1'));
+});
+
+it('treats an empty extra signature as no signature (backward compatible)', function () {
+    expect(Fingerprinter::fromPaths([$this->a], ''))->toBe(Fingerprinter::fromPaths([$this->a]));
+});
