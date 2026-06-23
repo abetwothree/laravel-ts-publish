@@ -26,3 +26,13 @@ it('ignores the cache config slice when fingerprinting', function () {
 
     expect(ConfigFingerprint::compute())->toBe($before);
 });
+
+it('does not throw and forces a rebuild when config holds a non-serializable value', function () {
+    Config::set('ts-publish.routes.transformer_factory', fn () => 'x');
+
+    $first = ConfigFingerprint::compute();
+    $second = ConfigFingerprint::compute();
+
+    expect($first)->toBeString()->not->toBe('')
+        ->and($second)->not->toBe($first); // unique per call → cache safely busts, never crashes
+});

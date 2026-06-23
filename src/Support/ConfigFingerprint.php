@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Support;
 
 use Illuminate\Support\Facades\Config;
+use Throwable;
 
 class ConfigFingerprint
 {
@@ -22,7 +23,15 @@ class ConfigFingerprint
 
         self::ksortRecursive($config);
 
-        return hash('xxh128', serialize($config));
+        try {
+            return hash('xxh128', serialize($config));
+        } catch (Throwable) {
+            // The config holds a non-serializable value (e.g. a closure). The
+            // cache must never crash generation, so fall back to a per-run unique
+            // token: the manifest header will never match a stored one, forcing a
+            // safe full rebuild this run instead of risking stale output.
+            return 'unfingerprintable-'.bin2hex(random_bytes(16));
+        }
     }
 
     /**
