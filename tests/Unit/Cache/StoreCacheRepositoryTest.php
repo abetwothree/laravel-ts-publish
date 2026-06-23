@@ -3,6 +3,9 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Cache\StoreCacheRepository;
+use Illuminate\Cache\FileStore;
+use Illuminate\Cache\Repository;
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Cache;
 
 beforeEach(function () {
@@ -83,4 +86,33 @@ it('rejects a store entry whose signature does not match', function () {
     Cache::store('array')->forever('ts-publish:entry', 'deadbeef:'.serialize(['snapshot' => 'evil']));
 
     expect($repo->get('entry'))->toBeNull();
+});
+
+it('round-trips a signed payload through a serializing cache store', function () {
+    // The `array` store used by the other tests keeps values in memory without
+    // (de)serializing. A FileStore actually serialize()s on write and
+    // unserialize()s on read, so this exercises the real serializing-store path
+    // and proves the signed string payload survives it intact.
+    $dir = sys_get_temp_dir().'/ts-publish-store-fs-'.uniqid();
+    $store = new Repository(new FileStore(new Filesystem, $dir));
+    $repo = new StoreCacheRepository($store, 'ts-publish', 'signing-secret');
+
+    $repo->put('entry', ['snapshot' => 'legit']);
+
+    expect($repo->get('entry'))->toBe(['snapshot' => 'legit']);
+
+    (new Filesystem)->deleteDirectory($dir);
+});
+
+it('rejects a tampered entry through a serializing cache store', function () {
+    $dir = sys_get_temp_dir().'/ts-publish-store-fs-'.uniqid();
+    $store = new Repository(new FileStore(new Filesystem, $dir));
+    $repo = new StoreCacheRepository($store, 'ts-publish', 'signing-secret');
+
+    $repo->put('entry', ['snapshot' => 'legit']);
+    $store->forever('ts-publish:entry', 'deadbeef:'.serialize(['snapshot' => 'evil']));
+
+    expect($repo->get('entry'))->toBeNull();
+
+    (new Filesystem)->deleteDirectory($dir);
 });

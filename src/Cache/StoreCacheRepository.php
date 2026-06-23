@@ -8,6 +8,17 @@ use AbeTwoThree\LaravelTsPublish\Cache\Concerns\SignsCachePayloads;
 use AbeTwoThree\LaravelTsPublish\Cache\Contracts\CacheRepository;
 use Illuminate\Contracts\Cache\Repository as IlluminateCache;
 
+/**
+ * Generation-cache backend that persists the manifest in a Laravel cache store.
+ *
+ * Payloads are HMAC-signed (see SignsCachePayloads) and verified on read, which
+ * protects their integrity. The underlying Laravel store, however, deserializes
+ * its own values on get() — and by default (`cache.serializable_classes` unset) it
+ * does so with PHP classes allowed, BEFORE this layer's HMAC is checked. The signing
+ * is therefore defense-in-depth: for a shared or untrusted store, also set Laravel's
+ * `cache.serializable_classes` to false (or an allowlist) and/or use a trusted store.
+ * The file backend is unaffected — it deserializes with allowed_classes: false.
+ */
 class StoreCacheRepository implements CacheRepository
 {
     use SignsCachePayloads;

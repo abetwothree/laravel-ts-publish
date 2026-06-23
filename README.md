@@ -2681,7 +2681,10 @@ This flushes the cache, regenerates everything, and writes a fresh cache. It is 
 - **`enabled`** — turn the generation cache on or off.
 - **`store`** — `null` (default) keeps the cache on disk under `directory`. Set it to any Laravel cache store name (`redis`, `database`, …) to keep the manifest there instead.
 - **`directory`** — where the file-based cache lives. A `.gitignore` is written into it automatically.
-- **`key`** — HMAC signing key for the cache. When unset, the cache signs payloads with your application key (`app.key`) by default, so **both** the file backend and any configured cache `store` are tamper-detected out of the box — the transformer snapshots restored during a run are never deserialized from an unsigned payload. Set this to use a dedicated key instead. (Rotating the key triggers a one-time full rebuild, which is safe.)
+- **`key`** — HMAC signing key for the cache. When unset, the cache signs payloads with your application key (`app.key`) by default. For the **file backend** this makes cache files tamper-detected out of the box: each payload is HMAC-verified and then unserialized with `allowed_classes: false` before its transformer snapshot is restored. Set this to use a dedicated key instead. (Rotating the key triggers a one-time full rebuild, which is safe.)
+
+> [!WARNING]
+> **Using a cache `store` with an untrusted backend.** When `store` points at a Laravel cache store (`redis`, `database`, `file`, …), that store deserializes its own values on read — and by default (Laravel's `cache.serializable_classes` is unset) it does so with PHP classes allowed, *before* this package's HMAC is checked. The signing still protects payload integrity, but it cannot stop object instantiation at the cache layer. If the store is shared or otherwise not fully trusted, set Laravel's `cache.serializable_classes` to `false` (or an explicit allowlist) and/or use a dedicated, trusted store. The default file backend is unaffected — it deserializes its own payloads with `allowed_classes: false`.
 
 > [!NOTE]
 > The cache keys off your PHP source files. If you **manually edit a generated `.ts` file** without changing its source, the cache will not detect the edit and won't overwrite it — run `php artisan ts:publish --fresh` (or delete the generated file) to restore it.
