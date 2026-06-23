@@ -193,8 +193,6 @@ abstract class BaseRunner
                     }
                 }
             }
-                return $generator;
-            }
         }
 
         // MISS: build normally while recording dependencies + outputs.
