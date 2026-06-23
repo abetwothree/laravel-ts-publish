@@ -107,6 +107,15 @@ class FileCacheRepository implements CacheRepository
     }
 
     /**
+     * No-op: the file backend writes each key eagerly, so there is no buffered
+     * bookkeeping to persist.
+     */
+    public function commit(): void
+    {
+        //
+    }
+
+    /**
      * Verify and strip the HMAC signature, returning the raw serialized payload,
      * or null (forgetting the key) when the signature is missing or invalid.
      */

@@ -11,6 +11,9 @@ class StoreCacheRepository implements CacheRepository
 {
     protected string $indexKey;
 
+    /** @var list<string>|null In-memory key index; null until first loaded from the store. */
+    protected ?array $index = null;
+
     public function __construct(
         protected IlluminateCache $store,
         protected string $prefix,
@@ -36,7 +39,8 @@ class StoreCacheRepository implements CacheRepository
     }
 
     /**
-     * Store a prefixed payload forever and track its key in the index.
+     * Store a prefixed payload forever and track its key in the in-memory index.
+     * The index is persisted once on commit(), not on every put.
      *
      * @param  array<string, mixed>  $value
      */
@@ -47,7 +51,7 @@ class StoreCacheRepository implements CacheRepository
     }
 
     /**
-     * Remove a single prefixed key and untrack it from the index.
+     * Remove a single prefixed key and untrack it from the in-memory index.
      */
     public function forget(string $key): void
     {
@@ -56,18 +60,28 @@ class StoreCacheRepository implements CacheRepository
     }
 
     /**
-     * Remove only this repository's tracked keys, never unrelated store entries.
+     * Remove only this repository's tracked keys, never unrelated store entries,
+     * then reset the in-memory index.
      */
     public function flush(): void
     {
-        /** @var list<string> $keys */
-        $keys = $this->store->get($this->indexKey, []);
-
-        foreach ($keys as $key) {
+        foreach ($this->loadIndex() as $key) {
             $this->store->forget($this->prefixed($key));
         }
 
         $this->store->forget($this->indexKey);
+        $this->index = [];
+    }
+
+    /**
+     * Persist the in-memory key index to the store. Call once after a batch of
+     * writes so the index is rewritten a single time per run instead of per put.
+     */
+    public function commit(): void
+    {
+        if ($this->index !== null) {
+            $this->store->forever($this->indexKey, $this->index);
+        }
     }
 
     /**
@@ -79,28 +93,39 @@ class StoreCacheRepository implements CacheRepository
     }
 
     /**
-     * Add a key to the tracked-key index so flush() can find it later.
+     * The key index, loaded lazily from the store on first access this run.
+     *
+     * @return list<string>
+     */
+    protected function loadIndex(): array
+    {
+        if ($this->index === null) {
+            /** @var list<string> $stored */
+            $stored = $this->store->get($this->indexKey, []);
+            $this->index = $stored;
+        }
+
+        return $this->index;
+    }
+
+    /**
+     * Add a key to the in-memory index (persisted later by commit()).
      */
     protected function trackKey(string $key): void
     {
-        /** @var list<string> $keys */
-        $keys = $this->store->get($this->indexKey, []);
+        $index = $this->loadIndex();
 
-        if (! in_array($key, $keys, true)) {
-            $keys[] = $key;
-            $this->store->forever($this->indexKey, $keys);
+        if (! in_array($key, $index, true)) {
+            $index[] = $key;
+            $this->index = $index;
         }
     }
 
     /**
-     * Remove a key from the tracked-key index.
+     * Remove a key from the in-memory index (persisted later by commit()).
      */
     protected function untrackKey(string $key): void
     {
-        /** @var list<string> $keys */
-        $keys = $this->store->get($this->indexKey, []);
-        $keys = array_values(array_filter($keys, fn (string $k) => $k !== $key));
-
-        $this->store->forever($this->indexKey, $keys);
+        $this->index = array_values(array_filter($this->loadIndex(), fn (string $k) => $k !== $key));
     }
 }

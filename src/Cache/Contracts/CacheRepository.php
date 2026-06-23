@@ -29,4 +29,10 @@ interface CacheRepository
      * Remove every key owned by this repository.
      */
     public function flush(): void;
+
+    /**
+     * Persist any buffered bookkeeping (e.g. the store backend's key index).
+     * Call once after a batch of writes; a no-op for backends that write eagerly.
+     */
+    public function commit(): void;
 }

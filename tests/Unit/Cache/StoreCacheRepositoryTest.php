@@ -33,3 +33,26 @@ it('forgets a single key and flushes only its own keys', function () {
     expect($this->repo->get('b'))->toBeNull()
         ->and(Cache::store('array')->get('unrelated'))->toBe('keep');
 });
+
+it('does not persist the key index on put (only on commit)', function () {
+    $this->repo->put('a', ['x' => 1]);
+
+    expect(Cache::store('array')->get('ts-publish:__index__'))->toBeNull();
+
+    $this->repo->commit();
+
+    expect(Cache::store('array')->get('ts-publish:__index__'))->toBe(['a']);
+});
+
+it('persists the index on commit so a fresh instance can flush it', function () {
+    $this->repo->put('a', ['x' => 1]);
+    $this->repo->put('b', ['x' => 2]);
+    $this->repo->commit();
+
+    // A brand-new instance (empty in-memory index) must still flush prior keys.
+    $fresh = new StoreCacheRepository(Cache::store('array'), 'ts-publish');
+    $fresh->flush();
+
+    expect($this->repo->get('a'))->toBeNull()
+        ->and($this->repo->get('b'))->toBeNull();
+});

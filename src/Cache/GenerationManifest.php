@@ -160,6 +160,10 @@ class GenerationManifest
             'config_hash' => $this->configHash,
             'classes' => array_keys($this->entries),
         ]);
+
+        // Persist the backend's buffered bookkeeping (e.g. the store key index)
+        // once, after all per-entry writes — no-op for the file backend.
+        $this->repository->commit();
     }
 
     /**
