@@ -236,6 +236,15 @@ class ModelAttributeResolver
                 fn (string $fqcn) => is_a($fqcn, Model::class, true),
             ));
 
+            // An accessor-returned model reached here is inlined into a resource's
+            // output when the resource applies ->only()/->except() to it (its
+            // column/cast types become an anonymous object shape). Its source file
+            // is therefore a real cache dependency — record it, mirroring how
+            // resolveRelation() records related models.
+            foreach ($fqcns as $fqcn) {
+                DependencyRecorder::recordClass($fqcn);
+            }
+
             return $fqcns;
         } catch (Throwable) { // @codeCoverageIgnore
             return []; // @codeCoverageIgnore
