@@ -146,8 +146,12 @@ abstract class BaseRunner
      */
     protected function cachedGenerate(string $fqcn, string $generatorClass): CoreGenerator
     {
-        // No cache (disabled or --source): build normally, no recording.
-        if ($this->manifest === null) {
+        // No cache (disabled or --source), or a custom generator that cannot be
+        // rehydrated from a snapshot: build normally, no recording. Guarding on
+        // fromCache() keeps a custom `*.generator_class` that does not use the
+        // RehydratesFromCache trait from fatally calling an undefined
+        // ::fromCache() on a later cache hit.
+        if ($this->manifest === null || ! method_exists($generatorClass, 'fromCache')) {
             /** @var T $generator */
             $generator = resolve($generatorClass, ['findable' => $fqcn]);
 
@@ -171,7 +175,7 @@ abstract class BaseRunner
                 $transformer = unserialize(base64_decode($snapshot));
 
                 /** @var T $generator */
-                $generator = $generatorClass::fromCache($fqcn, $transformer, $filename); // @phpstan-ignore staticMethod.notFound
+                $generator = $generatorClass::fromCache($fqcn, $transformer, $filename);
 
                 return $generator;
             }
