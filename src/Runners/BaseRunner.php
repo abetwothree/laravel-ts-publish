@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Runners;
 
+use AbeTwoThree\LaravelTsPublish\Cache\Contracts\ProvidesCacheSignature;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\Fingerprinter;
 use AbeTwoThree\LaravelTsPublish\Cache\GenerationManifest;
@@ -160,16 +161,23 @@ abstract class BaseRunner
 
         $this->manifest->markSeen($fqcn);
 
-        // HIT: recompute the fingerprint over the previously recorded deps.
+        // Fold a non-file signature (e.g. route definitions read from the router)
+        // into the fingerprint so inputs that live outside any class file still
+        // bust the cache. Empty for generators that do not provide one.
+        $signature = is_subclass_of($generatorClass, ProvidesCacheSignature::class, true)
+            ? $generatorClass::cacheSignature($fqcn)
+            : '';
+
+        // HIT: recompute the fingerprint over the previously recorded deps + signature.
         $storedDeps = $this->manifest->deps($fqcn);
 
-        if ($storedDeps !== [] && $this->manifest->hit($fqcn, Fingerprinter::fromPaths($storedDeps))) {
+        if ($storedDeps !== [] && $this->manifest->hit($fqcn, Fingerprinter::fromPaths($storedDeps, $signature))) {
             $snapshot = $this->manifest->snapshot($fqcn);
             $filename = $this->manifest->filename($fqcn);
 
             if ($snapshot !== null && $filename !== null) {
-                // Snapshot is our own trusted cache payload (optionally HMAC-signed
-                // by the file backend); it restores transformer objects, so classes
+                // Snapshot is our own trusted cache payload (HMAC-signed by the
+                // file backend); it restores transformer objects, so classes
                 // must be allowed here (unlike the file backend's array payloads).
                 /** @var CoreTransformer<mixed> $transformer */
                 $transformer = unserialize(base64_decode($snapshot));
@@ -209,7 +217,7 @@ abstract class BaseRunner
 
         $this->manifest->record(
             $fqcn,
-            Fingerprinter::fromPaths($deps),
+            Fingerprinter::fromPaths($deps, $signature),
             $generator->filename(),
             $deps,
             $outputs,

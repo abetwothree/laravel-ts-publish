@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Route;
+use Workbench\App\Http\Controllers\CacheBustController;
 
 beforeEach(function () {
     $this->out = sys_get_temp_dir().'/ts-publish-out-'.uniqid();
@@ -168,4 +170,40 @@ test('deleted output files are regenerated even with a populated manifest', func
         }
     }
     expect($tsFilesAfter)->not->toBeEmpty('Expected .ts files to be regenerated after cache-miss due to missing outputs');
+});
+
+test('a new route on an already-cached controller busts and regenerates its output', function () {
+    Config::set('ts-publish.routes.enabled', true);
+
+    $concat = function (string $dir): string {
+        if (! is_dir($dir)) {
+            return '';
+        }
+
+        $all = '';
+
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS)) as $f) {
+            if ($f->isFile() && str_ends_with($f->getFilename(), '.ts')) {
+                $all .= (string) file_get_contents($f->getPathname());
+            }
+        }
+
+        return $all;
+    };
+
+    // Ensure CacheBustController is published AND cached on the first run.
+    // Only the 'baseline' action is routed — 'probe' is not yet wired up.
+    Route::get('posts-baseline', [CacheBustController::class, 'baseline'])->name('posts.baseline');
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+        ->and($concat($this->out))->not->toContain('cache-bust-probe');
+
+    // Add a SECOND route to the same, already-cached controller. Only the route
+    // DEFINITION changes — CacheBustController's class file (a recorded dependency)
+    // does not — so a correct cache must detect the change via the route
+    // signature and regenerate. A buggy cache HITs and the probe URI is absent.
+    Route::post('cache-bust-probe', [CacheBustController::class, 'probe'])->name('cache.bust.probe');
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+        ->and($concat($this->out))->toContain('cache-bust-probe');
 });
