@@ -39,8 +39,10 @@ class StoreCacheRepository implements CacheRepository
     /**
      * Fetch and verify a prefixed payload from the store, or null when absent,
      * unreadable, or its signature does not match. Entry payloads are HMAC-signed
-     * and deserialized with objects disabled, so a tampered store entry can never
-     * inject an object into the build.
+     * and deserialized with objects disabled, so a tampered entry cannot inject an
+     * object on this package's read path. (The underlying Laravel store may still
+     * instantiate objects when it deserializes its own value upstream — see the
+     * class-level caveat.)
      *
      * @return array<string, mixed>|null
      */
@@ -93,8 +95,9 @@ class StoreCacheRepository implements CacheRepository
     /**
      * Persist the in-memory key index to the store. Call once after a batch of
      * writes so the index is rewritten a single time per run instead of per put.
-     * The index holds only key names and is never deserialized into objects, so
-     * it is stored as-is without signing.
+     * The index holds only key names, so it is stored as-is without signing —
+     * signing it would not help anyway, since the store deserializes its own raw
+     * bytes upstream of this layer (see the class-level caveat).
      */
     public function commit(): void
     {
