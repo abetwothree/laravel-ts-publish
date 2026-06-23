@@ -2651,6 +2651,8 @@ The cache is safe by design: when a class is reused from the cache, the package 
 
 Each published class is fingerprinted over the content of its own source file plus the files it depends on — its parent classes, traits, and interfaces, the model a resource wraps, related models for a model's relations, and resource/page references discovered while analyzing routes. Editing any of those files changes the fingerprint and forces that class to be regenerated on the next run.
 
+For routes, the fingerprint additionally covers the **route definitions** mapped to each controller — every matching route's URI, HTTP methods, name, domain, action method, and middleware. Because those live in your route files rather than the controller class, adding, removing, or editing a route (e.g. changing a URI) regenerates the affected controller's output on the next run without `--fresh`.
+
 ### Forcing a full rebuild
 
 Pass `--fresh` to ignore and rebuild the cache from scratch:
@@ -2682,13 +2684,16 @@ This flushes the cache, regenerates everything, and writes a fresh cache. It is 
 - **`enabled`** — turn the generation cache on or off.
 - **`store`** — `null` (default) keeps the cache on disk under `directory`. Set it to any Laravel cache store name (`redis`, `database`, …) to keep the manifest there instead.
 - **`directory`** — where the file-based cache lives. A `.gitignore` is written into it automatically.
-- **`key`** — optional HMAC signing key for the file cache; when set, cache files are signed and tamper-detected.
+- **`key`** — HMAC signing key for the file cache. When unset, the cache signs payloads with your application key (`app.key`) by default, so cache files are tamper-detected out of the box; set this to use a dedicated key instead. (Rotating the key triggers a one-time full rebuild, which is safe.)
 
 > [!NOTE]
 > The cache keys off your PHP source files. If you **manually edit a generated `.ts` file** without changing its source, the cache will not detect the edit and won't overwrite it — run `php artisan ts:publish --fresh` (or delete the generated file) to restore it.
 
 > [!NOTE]
 > **Database schema changes** (migrations) are not part of the fingerprint either — a model's columns are read from the live database, not from a source file. The automatic [post-migration republish](#automatic-publishing-after-migrations) runs with `--fresh`, so it always reflects schema changes. If you change the schema another way, run `php artisan ts:publish --fresh`.
+
+> [!NOTE]
+> A custom `*.generator_class` only participates in the cache if it can rehydrate from a snapshot (i.e. uses the `RehydratesFromCache` trait, as the built-in generators do). A generator without it is always rebuilt from scratch — correct, just not cached.
 
 ## Configuration Reference
 
