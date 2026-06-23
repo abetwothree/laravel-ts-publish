@@ -176,15 +176,23 @@ abstract class BaseRunner
             $filename = $this->manifest->filename($fqcn);
 
             if ($snapshot !== null && $filename !== null) {
-                // Snapshot is our own trusted cache payload (HMAC-signed by the
-                // file backend); it restores transformer objects, so classes
-                // must be allowed here (unlike the file backend's array payloads).
-                /** @var CoreTransformer<mixed> $transformer */
-                $transformer = unserialize(base64_decode($snapshot));
+                $decoded = base64_decode($snapshot, true);
 
-                /** @var T $generator */
-                $generator = $generatorClass::fromCache($fqcn, $transformer, $filename);
+                if ($decoded !== false) {
+                    try {
+                        $transformer = unserialize($decoded);
+                    } catch (Throwable) {
+                        $transformer = null;
+                    }
 
+                    if ($transformer instanceof CoreTransformer) {
+                        /** @var T $generator */
+                        $generator = $generatorClass::fromCache($fqcn, $transformer, $filename);
+
+                        return $generator;
+                    }
+                }
+            }
                 return $generator;
             }
         }
@@ -202,9 +210,12 @@ abstract class BaseRunner
         DependencyRecorder::stop();
         OutputRecorder::stop();
 
-        /** @var CoreTransformer<mixed> $transformer */
-        $transformer = $generator->transformer; // @phpstan-ignore property.notFound
+        if (! isset($generator->transformer) || ! $generator->transformer instanceof CoreTransformer) {
+            return $generator;
+        }
 
+        /** @var CoreTransformer<mixed> $transformer */
+        $transformer = $generator->transformer;
         try {
             $snapshot = base64_encode(serialize($transformer));
         } catch (Throwable) {

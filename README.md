@@ -2643,10 +2643,7 @@ public function boot(): void
 
 ## Generation Cache
 
-After the first full `ts:publish` run, the package can skip re-generating any class whose source file — and the files it depends on — have not changed since the last run. The first run is always a full publish; subsequent runs only re-analyze and re-render what actually changed, which makes repeated publishing (and watch-mode workflows) substantially faster on large applications.
-
-The cache is safe by design: when a class is reused from the cache, the package verifies its previously written output files still exist, and the entire cache is busted automatically whenever the package version or your output-affecting configuration changes. Unchanged files are never rewritten, so their modification time is preserved (avoiding spurious rebuilds in tools like Vite).
-
+The cache is safe by design: when a class is reused from the cache, the package verifies its previously written output files still exist, and the entire cache is busted automatically whenever the package version or your output-affecting configuration changes. When using the file backend, cache payloads are HMAC-signed by default (using your app key unless you set `cache.key`); when using a cache-store backend, the store is assumed to be trusted. Unchanged files are never rewritten, so their modification time is preserved (avoiding spurious rebuilds in tools like Vite).
 ### How changes are detected
 
 Each published class is fingerprinted over the content of its own source file plus the files it depends on — its parent classes, traits, and interfaces, the model a resource wraps, related models for a model's relations, and resource/page references discovered while analyzing routes. Editing any of those files changes the fingerprint and forces that class to be regenerated on the next run.
