@@ -2681,7 +2681,7 @@ This flushes the cache, regenerates everything, and writes a fresh cache. It is 
 - **`enabled`** — turn the generation cache on or off.
 - **`store`** — `null` (default) keeps the cache on disk under `directory`. Set it to any Laravel cache store name (`redis`, `database`, …) to keep the manifest there instead.
 - **`directory`** — where the file-based cache lives. A `.gitignore` is written into it automatically.
-- **`key`** — HMAC signing key for the file cache. When unset, the cache signs payloads with your application key (`app.key`) by default, so cache files are tamper-detected out of the box; set this to use a dedicated key instead. (Rotating the key triggers a one-time full rebuild, which is safe.)
+- **`key`** — HMAC signing key for the cache. When unset, the cache signs payloads with your application key (`app.key`) by default, so **both** the file backend and any configured cache `store` are tamper-detected out of the box — the transformer snapshots restored during a run are never deserialized from an unsigned payload. Set this to use a dedicated key instead. (Rotating the key triggers a one-time full rebuild, which is safe.)
 
 > [!NOTE]
 > The cache keys off your PHP source files. If you **manually edit a generated `.ts` file** without changing its source, the cache will not detect the edit and won't overwrite it — run `php artisan ts:publish --fresh` (or delete the generated file) to restore it.
@@ -2823,7 +2823,7 @@ Below is a quick reference of all available configuration options:
 | `cache.enabled`                       | `bool`     | `true`                               | Skip re-generating unchanged classes after the first run             |
 | `cache.store`                         | `?string`  | `null`                               | `null` = file cache under `directory`; or a Laravel cache store name |
 | `cache.directory`                     | `string`   | `storage/framework/cache/ts-publish` | Directory for the file-based cache manifest                          |
-| `cache.key`                           | `?string`  | `null`                               | Optional HMAC signing key for the file cache                         |
+| `cache.key`                           | `?string`  | `null`                               | HMAC signing key for the cache (file and store); defaults to `app.key` |
 
 See the [Generation Cache](#generation-cache) section above for behavior, busting rules, and the `--fresh` flag.
 

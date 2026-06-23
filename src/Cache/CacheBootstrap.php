@@ -51,11 +51,12 @@ class CacheBootstrap
     }
 
     /**
-     * Resolve the HMAC signing key for the file cache. Prefers an explicit
-     * `ts-publish.cache.key`; otherwise falls back to the application key so the
-     * file cache's serialized payloads — including the transformer snapshots that
-     * BaseRunner deserializes with classes allowed — are signed and tamper-detected
-     * by default. Returns null only when neither key is available.
+     * Resolve the HMAC signing key for the generation cache, used by BOTH the
+     * file and store backends. Prefers an explicit `ts-publish.cache.key`;
+     * otherwise falls back to the application key so the cache's serialized
+     * payloads — including the transformer snapshots that BaseRunner deserializes
+     * with classes allowed — are signed and tamper-detected by default. Returns
+     * null only when neither key is available.
      */
     protected static function signingKey(): ?string
     {
