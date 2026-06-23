@@ -33,9 +33,8 @@ class CacheBootstrap
         }
 
         $directory = Config::string('ts-publish.cache.directory', storage_path('framework/cache/ts-publish'));
-        $key = Config::get('ts-publish.cache.key');
 
-        return new FileCacheRepository($directory, is_string($key) && $key !== '' ? $key : null);
+        return new FileCacheRepository($directory, self::signingKey());
     }
 
     /**
@@ -49,5 +48,25 @@ class CacheBootstrap
             PackageVersion::current(),
             ConfigFingerprint::compute(),
         );
+    }
+
+    /**
+     * Resolve the HMAC signing key for the file cache. Prefers an explicit
+     * `ts-publish.cache.key`; otherwise falls back to the application key so the
+     * file cache's serialized payloads — including the transformer snapshots that
+     * BaseRunner deserializes with classes allowed — are signed and tamper-detected
+     * by default. Returns null only when neither key is available.
+     */
+    protected static function signingKey(): ?string
+    {
+        $key = Config::get('ts-publish.cache.key');
+
+        if (is_string($key) && $key !== '') {
+            return $key;
+        }
+
+        $appKey = Config::get('app.key');
+
+        return is_string($appKey) && $appKey !== '' ? $appKey : null;
     }
 }
