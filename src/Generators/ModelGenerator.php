@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Generators;
 
+use AbeTwoThree\LaravelTsPublish\Generators\Concerns\RehydratesFromCache;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ModelWriter;
 use Illuminate\Database\Eloquent\Model;
@@ -15,6 +16,8 @@ use Override;
  */
 class ModelGenerator extends CoreGenerator
 {
+    use RehydratesFromCache;
+
     public protected(set) ModelTransformer $transformer;
 
     #[Override]
@@ -35,6 +38,6 @@ class ModelGenerator extends CoreGenerator
     #[Override]
     public function filename(): string
     {
-        return $this->transformer->filename();
+        return $this->cachedFilename ?? $this->transformer->filename();
     }
 }

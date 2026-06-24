@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Generators;
 
+use AbeTwoThree\LaravelTsPublish\Generators\Concerns\RehydratesFromCache;
 use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\EnumWriter;
 use BackedEnum;
@@ -16,6 +17,8 @@ use UnitEnum;
  */
 class EnumGenerator extends CoreGenerator
 {
+    use RehydratesFromCache;
+
     public protected(set) EnumTransformer $transformer;
 
     #[Override]
@@ -36,6 +39,6 @@ class EnumGenerator extends CoreGenerator
     #[Override]
     public function filename(): string
     {
-        return $this->transformer->filename();
+        return $this->cachedFilename ?? $this->transformer->filename();
     }
 }

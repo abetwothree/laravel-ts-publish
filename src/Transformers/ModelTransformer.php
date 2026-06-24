@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\RelationNullable;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
+use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\TracksEnumImports;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
@@ -48,6 +49,7 @@ class ModelTransformer extends CoreTransformer
     use ParsesTsExtends;
     use ResolvesAccessorType;
     use ResolvesImportConflicts;
+    use SnapshotsTransformerState;
     use TracksEnumImports;
 
     public protected(set) string $modelName;
@@ -768,6 +770,12 @@ class ModelTransformer extends CoreTransformer
         }
 
         return $map;
+    }
+
+    /** @return list<string> */
+    protected function transientProperties(): array
+    {
+        return ['reflectionModel', 'modelInstance', 'relationNullable', 'modelInspect'];
     }
 
     #[Override]

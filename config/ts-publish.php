@@ -32,6 +32,24 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Generation Cache
+    |--------------------------------------------------------------------------
+    |
+    | After the first full publish, ts:publish can skip re-generating classes
+    | whose source files (and their dependencies) have not changed. The cache
+    | is busted automatically when the package version or the output-affecting
+    | config changes, and can be forced fresh with `php artisan ts:publish --fresh`.
+    */
+
+    'cache' => [
+        'enabled' => env('TS_PUBLISH_CACHE_ENABLED', true),
+        'store' => env('TS_PUBLISH_CACHE_STORE'),
+        'directory' => storage_path('framework/cache/ts-publish'),
+        'key' => env('TS_PUBLISH_CACHE_KEY'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Namespace Strip Prefix
     |--------------------------------------------------------------------------
     |

@@ -31,6 +31,7 @@ For examples of the generated TypeScript output, see [these output examples](wor
 - 📂 [Modular Publishing](#modular-publishing)
 - 🔧 [Customizing the Pipeline](#extending--customizing-the-pipeline)
 - ⚡ [Pre-Command Hook](#pre-command-hook)
+- 💾 [Generation Cache](#generation-cache)
 - ⚙️ [Configuration Reference](#configuration-reference)
 
 ## Installation
@@ -2640,6 +2641,60 @@ public function boot(): void
 > [!NOTE]
 > Only one closure can be registered at a time. Calling `callCommandUsing` again will replace the previous closure.
 
+## Generation Cache
+
+The cache is safe by design: when a class is reused from the cache, the package verifies its previously written output files still exist, and the entire cache is busted automatically whenever the package version or your output-affecting configuration changes. When using the file backend, cache payloads are HMAC-signed by default (using your app key unless you set `cache.key`); when using a cache-store backend, the store is assumed to be trusted. Unchanged files are never rewritten, so their modification time is preserved (avoiding spurious rebuilds in tools like Vite).
+### How changes are detected
+
+Each published class is fingerprinted over the content of its own source file plus the files it depends on — its parent classes, traits, and interfaces, the model a resource wraps, related models for a model's relations, and resource/page references discovered while analyzing routes. Editing any of those files changes the fingerprint and forces that class to be regenerated on the next run.
+
+For routes, the fingerprint additionally covers the **route definitions** mapped to each controller — every matching route's URI, HTTP methods, name, domain, action method, and middleware. Because those live in your route files rather than the controller class, adding, removing, or editing a route (e.g. changing a URI) regenerates the affected controller's output on the next run without `--fresh`.
+
+### Forcing a full rebuild
+
+Pass `--fresh` to ignore and rebuild the cache from scratch:
+
+```bash
+php artisan ts:publish --fresh
+```
+
+This flushes the cache, regenerates everything, and writes a fresh cache. It is a no-op under `--source` and `--preview` (see below).
+
+### What bypasses the cache
+
+- **`--source=...` runs** (single-class republishing) always bypass the cache entirely.
+- **`--preview` runs** never use the cache (they write no files).
+- Setting `cache.enabled` to `false` disables it everywhere.
+
+### Configuration
+
+```php
+// config/ts-publish.php
+'cache' => [
+    'enabled' => env('TS_PUBLISH_CACHE_ENABLED', true),
+    'store' => env('TS_PUBLISH_CACHE_STORE'),
+    'directory' => storage_path('framework/cache/ts-publish'),
+    'key' => env('TS_PUBLISH_CACHE_KEY'),
+],
+```
+
+- **`enabled`** — turn the generation cache on or off.
+- **`store`** — `null` (default) keeps the cache on disk under `directory`. Set it to any Laravel cache store name (`redis`, `database`, …) to keep the manifest there instead.
+- **`directory`** — where the file-based cache lives. A `.gitignore` is written into it automatically.
+- **`key`** — HMAC signing key for the cache. When unset, the cache signs payloads with your application key (`app.key`) by default. For the **file backend** this makes cache files tamper-detected out of the box: each payload is HMAC-verified and then unserialized with `allowed_classes: false` before its transformer snapshot is restored. Set this to use a dedicated key instead. (Rotating the key triggers a one-time full rebuild, which is safe.)
+
+> [!WARNING]
+> **Using a cache `store` with an untrusted backend.** When `store` points at a Laravel cache store (`redis`, `database`, `file`, …), that store deserializes its own values on read — and by default (Laravel's `cache.serializable_classes` is unset) it does so with PHP classes allowed, *before* this package's HMAC is checked. The signing still protects payload integrity, but it cannot stop object instantiation at the cache layer. If the store is shared or otherwise not fully trusted, set Laravel's `cache.serializable_classes` to `false` (or an explicit allowlist) and/or use a dedicated, trusted store. The default file backend is unaffected — it deserializes its own payloads with `allowed_classes: false`.
+
+> [!NOTE]
+> The cache keys off your PHP source files. If you **manually edit a generated `.ts` file** without changing its source, the cache will not detect the edit and won't overwrite it — run `php artisan ts:publish --fresh` (or delete the generated file) to restore it.
+
+> [!NOTE]
+> **Database schema changes** (migrations) are not part of the fingerprint either — a model's columns are read from the live database, not from a source file. The automatic [post-migration republish](#automatic-publishing-after-migrations) runs with `--fresh`, so it always reflects schema changes. If you change the schema another way, run `php artisan ts:publish --fresh`.
+
+> [!NOTE]
+> A custom `*.generator_class` only participates in the cache if it can rehydrate from a snapshot (i.e. uses the `RehydratesFromCache` trait, as the built-in generators do). A generator without it is always rebuilt from scratch — correct, just not cached.
+
 ## Configuration Reference
 
 Below is a quick reference of all available configuration options:
@@ -2763,6 +2818,17 @@ Below is a quick reference of all available configuration options:
 | `vite_env.filename`                   | `string`   | `vite-env.d.ts`                      | Filename for the Vite env declaration file                           |
 | `vite_env.output_path`               | `?string`  | `null`                               | Custom output path for the Vite env file                              |
 | `vite_env.source_file`               | `?string`  | `null`                               | Source `.env` file (defaults to `.env`, falls back to `.env.example`) |
+
+### Generation Cache (`cache.*`)
+
+| Config Key                            | Type       | Default                              | Description                                                          |
+|---------------------------------------|------------|--------------------------------------|----------------------------------------------------------------------|
+| `cache.enabled`                       | `bool`     | `true`                               | Skip re-generating unchanged classes after the first run             |
+| `cache.store`                         | `?string`  | `null`                               | `null` = file cache under `directory`; or a Laravel cache store name |
+| `cache.directory`                     | `string`   | `storage/framework/cache/ts-publish` | Directory for the file-based cache manifest                          |
+| `cache.key`                           | `?string`  | `null`                               | HMAC signing key for the cache (file and store); defaults to `app.key` |
+
+See the [Generation Cache](#generation-cache) section above for behavior, busting rules, and the `--fresh` flag.
 
 > [!NOTE]
 > Pipeline class config keys are listed in the [Extending & Customizing the Pipeline](#extending--customizing-the-pipeline) section above and are included in their respective group tables above.

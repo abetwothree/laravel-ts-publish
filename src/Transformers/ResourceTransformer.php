@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
+use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\TracksEnumImports;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -40,6 +41,7 @@ class ResourceTransformer extends CoreTransformer
     use ParsesTsExtends;
     use ResolvesClassNames;
     use ResolvesImportConflicts;
+    use SnapshotsTransformerState;
     use TracksEnumImports {
         shouldGenerateHasEnums as traitShouldGenerateHasEnums;
         enumPropertyFqcns as traitEnumPropertyFqcns;
@@ -1006,6 +1008,12 @@ class ResourceTransformer extends CoreTransformer
         }
 
         return $map;
+    }
+
+    /** @return list<string> */
+    protected function transientProperties(): array
+    {
+        return ['reflectionResource'];
     }
 
     #[Override]

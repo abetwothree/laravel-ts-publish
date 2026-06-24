@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
+use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Database\Eloquent\Model;
 use Laravel\Surveyor\Analyzed\ClassResult;
@@ -40,6 +41,7 @@ class BroadcastEventTransformer extends CoreTransformer
     use ParsesTsCasts;
     use ParsesTsExtends;
     use ResolvesImportConflicts;
+    use SnapshotsTransformerState;
 
     /** Short PHP class name, e.g. 'OrderShipped'. */
     public protected(set) string $eventName;
@@ -141,6 +143,12 @@ class BroadcastEventTransformer extends CoreTransformer
     /** Reflection of the event class, shared across transformation steps. */
     /** @var ReflectionClass<ShouldBroadcast> */
     protected ReflectionClass $reflection;
+
+    /** @return list<string> */
+    protected function transientProperties(): array
+    {
+        return ['reflection', 'analyzed', 'analyzer'];
+    }
 
     /**
      * @param  class-string<ShouldBroadcast>  $findable

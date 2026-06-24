@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Commands;
 
+use AbeTwoThree\LaravelTsPublish\Cache\CacheBootstrap;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
@@ -30,6 +31,7 @@ class TsPublishCommand extends Command
     protected $signature = 'ts:publish
         {--preview=false : Output generated TypeScript declarations to the console instead of writing to files}
         {--source= : FQCN or file path of a specific supported class to republish}
+        {--fresh : Ignore and rebuild the generation cache from scratch (no-op with --source or --preview)}
         {--only-broadcast-channels : Only publish broadcast channel types (ignoring all other types)}
         {--only-broadcast-events : Only publish broadcast event types (ignoring all other types)}
         {--only-form-requests : Only publish form requests (ignoring enums, models, resources, and routes)}
@@ -100,6 +102,20 @@ class TsPublishCommand extends Command
         }
 
         $runner = resolve(Runner::class);
+
+        // Attach the generation cache for real (file-writing) runs only. Preview
+        // runs write nothing, so caching them would record empty outputs and
+        // poison later real runs into skipping files that were never written.
+        if (! $preview && CacheBootstrap::enabled()) {
+            $repository = CacheBootstrap::repository();
+
+            if ($this->option('fresh')) {
+                $repository->flush();
+            }
+
+            $runner->useCache(CacheBootstrap::manifest($repository));
+        }
+
         $flags = $this->resolvePublishFlags();
 
         if ($flags === null) {
@@ -164,6 +180,7 @@ class TsPublishCommand extends Command
         }
 
         try {
+            // --source runs always bypass the generation cache.
             $runner = new RunnerForSource($source);
             $flags = $this->resolvePublishFlags();
 

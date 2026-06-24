@@ -92,6 +92,7 @@ class TestCase extends Orchestra
 
         config()->set([
             'database.default' => 'testing',
+            'ts-publish.cache.enabled' => false,
             'ts-publish.output_directory' => workbench_path('resources/js/types/data/testing/'),
             'ts-publish.globals.enabled' => true,
             'ts-publish.json.enabled' => true,

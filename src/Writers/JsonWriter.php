@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
+use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Config;
 
@@ -27,6 +28,8 @@ use Illuminate\Support\Facades\Config;
  */
 class JsonWriter
 {
+    use WritesGeneratedFiles;
+
     public function __construct(
         protected Filesystem $filesystem,
     ) {}
@@ -45,7 +48,7 @@ class JsonWriter
             $filename = Config::string('ts-publish.json.filename');
 
             $this->filesystem->ensureDirectoryExists($outputPath);
-            $this->filesystem->put("$outputPath/$filename", $content);
+            $this->putIfChanged("$outputPath/$filename", $content);
         }
 
         return $content;

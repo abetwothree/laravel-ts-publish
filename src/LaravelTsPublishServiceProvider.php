@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish;
 
+use AbeTwoThree\LaravelTsPublish\Cache\CacheBootstrap;
+use AbeTwoThree\LaravelTsPublish\Cache\Contracts\CacheRepository;
 use AbeTwoThree\LaravelTsPublish\Commands\TsPublishCommand;
 use AbeTwoThree\LaravelTsPublish\Listeners\PostMigrateRunner;
 use Illuminate\Console\Events\CommandFinished;
@@ -20,6 +22,8 @@ class LaravelTsPublishServiceProvider extends PackageServiceProvider
     public function packageRegistered(): void
     {
         $this->app->singleton(ModelAttributeResolver::class);
+
+        $this->app->bind(CacheRepository::class, fn () => CacheBootstrap::repository());
     }
 
     public function configurePackage(Package $package): void

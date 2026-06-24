@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
+use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
 use Illuminate\Support\Facades\Config;
 use Override;
 
@@ -14,6 +15,8 @@ use Override;
  */
 class EnumWriter extends CoreWriter
 {
+    use WritesGeneratedFiles;
+
     /**
      * @param  EnumTransformer  $transformer
      */
@@ -50,6 +53,6 @@ class EnumWriter extends CoreWriter
         $outputPath = $outputBase.'/'.$namespacePath;
 
         $this->filesystem->ensureDirectoryExists($outputPath);
-        $this->filesystem->put("$outputPath/$filename.ts", $content);
+        $this->putIfChanged("$outputPath/$filename.ts", $content);
     }
 }

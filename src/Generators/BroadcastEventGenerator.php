@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Generators;
 
+use AbeTwoThree\LaravelTsPublish\Generators\Concerns\RehydratesFromCache;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\BroadcastEventWriter;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
@@ -15,6 +16,8 @@ use Override;
  */
 class BroadcastEventGenerator extends CoreGenerator
 {
+    use RehydratesFromCache;
+
     public protected(set) BroadcastEventTransformer $transformer;
 
     #[Override]
@@ -35,6 +38,6 @@ class BroadcastEventGenerator extends CoreGenerator
     #[Override]
     public function filename(): string
     {
-        return $this->transformer->filename();
+        return $this->cachedFilename ?? $this->transformer->filename();
     }
 }

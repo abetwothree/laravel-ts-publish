@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsEnumStaticMethod;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsEnumDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
 use BackedEnum;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
@@ -32,6 +33,8 @@ use UnitEnum;
  */
 class EnumTransformer extends CoreTransformer
 {
+    use SnapshotsTransformerState;
+
     public protected(set) string $enumName;
 
     public protected(set) string $description = '';
@@ -65,6 +68,12 @@ class EnumTransformer extends CoreTransformer
 
     /** @var list<string> */
     private const array BUILT_IN_ENUM_METHODS = ['cases', 'from', 'tryFrom'];
+
+    /** @return list<string> */
+    protected function transientProperties(): array
+    {
+        return ['reflectionEnum'];
+    }
 
     #[Override]
     public function transform(): self

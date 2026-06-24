@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Analyzers\Inertia;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\SurveyorTypeMapper;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection as LaravelResourceCollection;
@@ -374,6 +375,8 @@ class InertiaPageAnalyzer
                 continue;
             }
 
+            DependencyRecorder::recordClass($resourceFqcn);
+
             $reflection = new ReflectionClass($resourceFqcn);
             $baseName = $reflection->getShortName();
             $defaults = $reflection->getDefaultProperties();
@@ -437,6 +440,8 @@ class InertiaPageAnalyzer
                 continue;
             }
 
+            DependencyRecorder::recordClass($resourceFqcn);
+
             $baseName = (new ReflectionClass($resourceFqcn))->getShortName();
 
             // At this point the type string has: `propKey: AnonymousResourceCollection<unknown>`
@@ -480,10 +485,13 @@ class InertiaPageAnalyzer
 
             // Only rewrite concrete ResourceCollection subclasses
             if (! class_exists($fqcn) || ! is_a($fqcn, LaravelResourceCollection::class, true)) {
+                DependencyRecorder::recordClass($fqcn);
                 $rewrittenFqcns[] = $fqcn;
 
                 continue;
             }
+
+            DependencyRecorder::recordClass($fqcn);
 
             $dotNotation = str_replace('\\', '.', $fqcn);
             $collectionName = class_basename($fqcn);
@@ -565,6 +573,8 @@ class InertiaPageAnalyzer
         if (! class_exists($controllerClass)) {
             return ['overrides' => [], 'importMap' => []];
         }
+
+        DependencyRecorder::recordClass($controllerClass);
 
         $reflection = new ReflectionClass($controllerClass);
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish;
 
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesAccessorType;
 use AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -152,6 +153,8 @@ class ModelAttributeResolver
             return ['type' => $type, 'modelFqcn' => null];
         }
 
+        DependencyRecorder::recordClass($relation['related']);
+
         $relatedModel = class_basename($relation['related']);
         $containsMany = str_contains(strtolower($relation['type']), 'many');
 
@@ -233,6 +236,15 @@ class ModelAttributeResolver
                 fn (string $fqcn) => is_a($fqcn, Model::class, true),
             ));
 
+            // An accessor-returned model reached here is inlined into a resource's
+            // output when the resource applies ->only()/->except() to it (its
+            // column/cast types become an anonymous object shape). Its source file
+            // is therefore a real cache dependency — record it, mirroring how
+            // resolveRelation() records related models.
+            foreach ($fqcns as $fqcn) {
+                DependencyRecorder::recordClass($fqcn);
+            }
+
             return $fqcns;
         } catch (Throwable) { // @codeCoverageIgnore
             return []; // @codeCoverageIgnore
@@ -310,6 +322,8 @@ class ModelAttributeResolver
                 }
 
                 $childFqcn = $relation['related'];
+
+                DependencyRecorder::recordClass($childFqcn);
 
                 if (! isset($map[$childFqcn])) {
                     $map[$childFqcn] = [];

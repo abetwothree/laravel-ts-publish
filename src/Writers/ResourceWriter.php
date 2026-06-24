@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
+use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
 use Illuminate\Support\Facades\Config;
 use Override;
 
@@ -14,6 +15,8 @@ use Override;
  */
 class ResourceWriter extends CoreWriter
 {
+    use WritesGeneratedFiles;
+
     /**
      * @param  ResourceTransformer  $transformer
      */
@@ -49,6 +52,6 @@ class ResourceWriter extends CoreWriter
         $outputPath = $outputBase.'/'.$namespacePath;
 
         $this->filesystem->ensureDirectoryExists($outputPath);
-        $this->filesystem->put("$outputPath/$filename.ts", $content);
+        $this->putIfChanged("$outputPath/$filename.ts", $content);
     }
 }

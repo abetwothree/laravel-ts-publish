@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\FormRequestTransformer;
+use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
 use Illuminate\Support\Facades\Config;
 use Override;
 
@@ -14,6 +15,8 @@ use Override;
  */
 class FormRequestWriter extends CoreWriter
 {
+    use WritesGeneratedFiles;
+
     /**
      * @param  FormRequestTransformer  $transformer
      */
@@ -46,7 +49,7 @@ class FormRequestWriter extends CoreWriter
         $outputPath = $this->resolveOutputPath($namespacePath);
 
         $this->filesystem->ensureDirectoryExists($outputPath);
-        $this->filesystem->put("$outputPath/$filename.ts", $content);
+        $this->putIfChanged("$outputPath/$filename.ts", $content);
     }
 
     protected function resolveOutputPath(string $namespacePath): string

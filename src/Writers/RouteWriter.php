@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
+use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
 use Override;
@@ -17,6 +18,8 @@ use Override;
  */
 class RouteWriter extends CoreWriter
 {
+    use WritesGeneratedFiles;
+
     /**
      * @param  RouteTransformer  $transformer
      */
@@ -46,7 +49,7 @@ class RouteWriter extends CoreWriter
         $outputPath = $outputBase.'/'.$namespacePath;
 
         $this->filesystem->ensureDirectoryExists($outputPath);
-        $this->filesystem->put("$outputPath/$filename.ts", $content);
+        $this->putIfChanged("$outputPath/$filename.ts", $content);
     }
 
     /**
@@ -92,7 +95,7 @@ class RouteWriter extends CoreWriter
 
                 $outputPath = $outputBase.'/'.$namespacePath;
                 $this->filesystem->ensureDirectoryExists($outputPath);
-                $this->filesystem->put("$outputPath/index.ts", $content);
+                $this->putIfChanged("$outputPath/index.ts", $content);
             }
 
             $results[$namespacePath] = $content;

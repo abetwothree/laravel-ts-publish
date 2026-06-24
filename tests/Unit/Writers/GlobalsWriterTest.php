@@ -40,6 +40,7 @@ test('writes globals file to disk when output_to_files is enabled', function () 
 
     $filesystem = Mockery::mock(Filesystem::class);
     $filesystem->shouldReceive('ensureDirectoryExists')->once();
+    $filesystem->shouldReceive('exists')->once()->andReturn(false);
     $filesystem->shouldReceive('put')->once()
         ->withArgs(function (string $path, string $content) {
             return str_contains($path, 'laravel-ts-global') && str_contains($content, 'declare global');
