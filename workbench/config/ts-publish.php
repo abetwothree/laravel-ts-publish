@@ -39,12 +39,6 @@ return [
     | whose source files (and their dependencies) have not changed. The cache
     | is busted automatically when the package version or the output-affecting
     | config changes, and can be forced fresh with `php artisan ts:publish --fresh`.
-    |
-    | `store` selects where the manifest is kept:
-    |   - null  → file driver, written under `directory` below
-    |   - 'redis' | 'database' | any Laravel cache store name → that store
-    |
-    | `--source=` runs always bypass the cache.
     */
 
     'cache' => [
