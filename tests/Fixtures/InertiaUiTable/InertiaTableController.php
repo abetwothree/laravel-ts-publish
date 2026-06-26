@@ -42,4 +42,12 @@ class InertiaTableController
     {
         return Inertia::render('Tables/Index', $this->resource->index());
     }
+
+    /**
+     * Sibling form route on the same table-bearing resource (no table prop).
+     */
+    public function serviceCreate(Request $request): Response
+    {
+        return Inertia::render('Tables/Create', $this->resource->create());
+    }
 }

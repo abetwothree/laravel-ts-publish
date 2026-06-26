@@ -44,6 +44,132 @@ class InertiaTableAnalyzer
     private const TABLE_PACKAGES = ['@inertiaui/table-vue', '@inertiaui/table-react'];
 
     /**
+     * Resolve the Inertia component name from a controller action's first
+     * `Inertia::render()` argument without instantiating any objects.
+     *
+     * Returns `null` when the action cannot be found, contains no render call,
+     * or the component argument is not a string literal.
+     */
+    public function resolveComponent(string $uses): ?string
+    {
+        if (! str_contains($uses, '@')) {
+            return null;
+        }
+
+        [$controllerClass, $methodName] = explode('@', $uses, 2);
+
+        if (! class_exists($controllerClass)) {
+            return null;
+        }
+
+        /** @var class-string $controllerClass */
+        $context = $this->methodContext($controllerClass, $methodName);
+
+        if ($context === null) {
+            return null;
+        }
+
+        ['method' => $method, 'finder' => $finder] = $context;
+        $renderCall = $this->findInertiaRenderCall($method, $finder);
+
+        if ($renderCall === null) {
+            return null;
+        }
+
+        return $this->resolveComponentName($renderCall);
+    }
+
+    /**
+     * Determine whether analyzing this route would parse a file containing an
+     * `InertiaUI\Table\Table` subclass reference.
+     *
+     * Two taint sources are checked in order:
+     *   (a) the controller file itself — any `StaticCall`/`New_` rooted at a
+     *       `Table` subclass anywhere in the file taints every action in it;
+     *   (b) any class reached via a `$this->property->method(...)` argument in
+     *       the action's `Inertia::render()` call — if that resource file
+     *       contains a table reference the route is tainted.
+     *
+     * Only `class_exists` and `is_a` are used to test class membership; no
+     * table method is invoked and no `toArray()` is triggered.
+     */
+    public function isTainted(string $uses): bool
+    {
+        if (! str_contains($uses, '@')) {
+            return false;
+        }
+
+        [$controllerClass, $methodName] = explode('@', $uses, 2);
+
+        if (! class_exists($controllerClass)) {
+            return false;
+        }
+
+        /** @var class-string $controllerClass */
+        $context = $this->methodContext($controllerClass, $methodName);
+
+        if ($context === null) {
+            return false;
+        }
+
+        ['reflection' => $reflection, 'method' => $method, 'finder' => $finder] = $context;
+
+        // (a) Taint from the controller file itself — scan all stmts, not just the target method.
+        $controllerFile = $reflection->getFileName();
+
+        if ($controllerFile !== false) {
+            $fileStmts = $this->parseAndResolveAst((string) file_get_contents($controllerFile));
+
+            if ($this->containsTableReference($fileStmts)) {
+                return true;
+            }
+        }
+
+        // (b) Taint from a resource/service class resolved via $this->property->method(...).
+        $renderCall = $this->findInertiaRenderCall($method, $finder);
+
+        if ($renderCall === null) {
+            return false;
+        }
+
+        $secondArg = $renderCall->args[1] ?? null;
+
+        if (! $secondArg instanceof Node\Arg || ! $secondArg->value instanceof MethodCall) {
+            return false;
+        }
+
+        $call = $secondArg->value;
+
+        if (! $call->name instanceof Identifier) {
+            return false;
+        }
+
+        $resourceClass = $this->resolveThisPropertyClass($reflection, $call->var);
+
+        if ($resourceClass === null) {
+            return false;
+        }
+
+        $resourceContext = $this->methodContext($resourceClass, $call->name->toString());
+
+        if ($resourceContext === null) {
+            return false;
+        }
+
+        /** @var ReflectionClass<object> $resourceReflection */
+        $resourceReflection = $resourceContext['reflection'];
+        $resourceFile = $resourceReflection->getFileName();
+
+        if ($resourceFile === false) {
+            return false;
+        }
+
+        $resourceStmts = $this->parseAndResolveAst((string) file_get_contents($resourceFile));
+
+        return $this->containsTableReference($resourceStmts);
+    }
+
+    /**
      * Analyze a controller action for Inertia UI Table props without evaluating
      * the table object or its Arrayable::toArray() method.
      *
@@ -479,5 +605,39 @@ class InertiaTableAnalyzer
         }
 
         return null;
+    }
+
+    /**
+     * Report whether a parsed AST contains any `StaticCall` or `New_` node whose
+     * resolved class name is a subclass of `InertiaUI\Table\Table`.
+     *
+     * Uses only `class_exists` and `is_a` — no table method is invoked.
+     *
+     * @param  array<Node>  $stmts
+     */
+    protected function containsTableReference(array $stmts): bool
+    {
+        $finder = new NodeFinder;
+
+        /** @var array<StaticCall|New_> $candidates */
+        $candidates = $finder->find($stmts, fn (Node $node): bool => $node instanceof StaticCall || $node instanceof New_);
+
+        foreach ($candidates as $node) {
+            $className = null;
+
+            if ($node instanceof StaticCall && $node->class instanceof Name) {
+                $className = $node->class->toString();
+            }
+
+            if ($node instanceof New_ && $node->class instanceof Name) {
+                $className = $node->class->toString();
+            }
+
+            if (is_string($className) && class_exists($className) && is_a($className, self::TABLE_BASE, true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

@@ -18,4 +18,14 @@ class PostTableCrudResource
             'posts' => PostTable::make()->defaultSort('-id'),
         ];
     }
+
+    /**
+     * Sibling form data with no table, matching a CRUD resource's create().
+     *
+     * @return array<string, mixed>
+     */
+    public function create(): array
+    {
+        return ['mode' => 'create'];
+    }
 }
