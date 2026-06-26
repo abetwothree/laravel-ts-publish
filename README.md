@@ -2810,6 +2810,43 @@ Below is a quick reference of all available configuration options:
 | `routes.writer_class`                 | `string`   | `RouteWriter`                        | Writes TypeScript route files                                    |
 | `routes.template`                     | `string`   | `laravel-ts-publish::route`          | Blade template for route output                                  |
 
+#### Inertia UI Table Props
+
+Routes that render an [Inertia UI Table](https://inertiaui.com/inertia-table/docs/basic-usage) can be typed without evaluating the table object's `toArray()` method. This avoids optional vendor integrations (such as Excel exports) being loaded during `ts:publish` and keeps route generation side-effect-light.
+
+```php
+use App\Tables\MerchandiseTable;
+use Inertia\Inertia;
+
+public function index()
+{
+    return Inertia::render('Merchandise/MerchandiseIndex', [
+        'merchandise' => MerchandiseTable::make()->defaultSort('-id'),
+    ]);
+}
+```
+
+When the table declares a static resource model, generated route page props use `TableResource<TModel>` imported directly from the Inertia UI Table package you have installed. The package is auto-detected from your `package.json` (`@inertiaui/table-vue` or `@inertiaui/table-react`):
+
+```typescript
+import type { TableResource } from '@inertiaui/table-vue';
+import type { Merchandise } from '../models';
+
+export type IndexPageProps = Inertia.SharedData & {
+    merchandise: TableResource<Merchandise>;
+};
+```
+
+If you use the React table package, the import is generated as `@inertiaui/table-react` instead. To force a specific package (or use a custom alias), set `ts-publish.inertia.table_package` in `config/ts-publish.php`.
+
+Supported model inference (all read statically, never instantiating the table):
+
+- `protected ?string $resource = Merchandise::class;` — the model is read from the property's **default value**.
+- A `query(): Builder` method returning `Merchandise::query()`, `Merchandise::class`, or a query chain rooted at the model class.
+- Service-layer props where the controller passes `$this->resource->index($request)` and the service method returns an array containing table props.
+
+Dynamic/stateful tables whose model only exists in runtime constructor state are not statically inferable; use `#[TsCasts]` on the controller method for fully custom prop typing.
+
 ### Vite Environment (`vite_env.*`)
 
 | Config Key                            | Type       | Default                              | Description                                                          |
