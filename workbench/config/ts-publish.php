@@ -365,6 +365,11 @@ return [
         'inertia_middleware_path' => null,
         'augmentation_filename' => 'inertia-config.d.ts',
         'output_directory' => '',
+
+        // Inertia UI Table page props import `TableResource` from this package.
+        // When null, auto-detects @inertiaui/table-vue or @inertiaui/table-react
+        // from package.json, defaulting to @inertiaui/table-vue.
+        'table_package' => null,
     ],
 
     /*

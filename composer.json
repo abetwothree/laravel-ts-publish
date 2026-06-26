@@ -48,6 +48,7 @@
     "autoload-dev": {
         "psr-4": {
             "AbeTwoThree\\LaravelTsPublish\\Tests\\": "tests/",
+            "InertiaUI\\Table\\": "tests/Fixtures/InertiaUiTable/",
             "Workbench\\App\\": "workbench/app/",
             "Workbench\\Database\\Factories\\": "workbench/database/factories/",
             "Workbench\\Database\\Seeders\\": "workbench/database/seeders/",
