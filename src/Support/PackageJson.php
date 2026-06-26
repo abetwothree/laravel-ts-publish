@@ -9,9 +9,8 @@ use Illuminate\Support\Facades\File;
 /**
  * Reads the project's package.json to detect installed npm dependencies.
  *
- * Used to choose framework-specific packages (e.g. @inertiaui/table-vue vs
- *
- * @inertiaui/table-react, @laravel/echo-vue vs @laravel/echo-react).
+ * Used to choose framework-specific packages — e.g. `@inertiaui/table-vue` vs
+ * `@inertiaui/table-react`, or `@laravel/echo-vue` vs `@laravel/echo-react`.
  */
 class PackageJson
 {
