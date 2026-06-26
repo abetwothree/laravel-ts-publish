@@ -2847,6 +2847,46 @@ Supported model inference (all read statically, never instantiating the table):
 
 Dynamic/stateful tables whose model only exists in runtime constructor state are not statically inferable; use `#[TsCasts]` on the controller method for fully custom prop typing.
 
+#### Table-Tainted Controllers: Skipping Deep Analysis
+
+When a controller (or the resource it delegates to) renders an Inertia UI Table in **any** of its actions — even a sibling action unrelated to the route being published — the entire controller is considered "table-tainted." To avoid autoloading optional export dependencies such as Excel/PhpSpreadsheet during `ts:publish`, deep static analysis (Ranger/Surveyor) is skipped for every action on that controller.
+
+**Affected routes still get their wayfinder route helpers**, but they receive no auto-generated page-prop type. In your generated output the route will appear as a helper function without a corresponding `PageProps` type export.
+
+##### Opting Back In with `#[TsCasts]`
+
+To get precise page-prop types for a specific method on a table-tainted controller, annotate it with `#[TsCasts([...])]`. This short-circuits the deep analysis for that method and builds the page-prop type directly from your cast map:
+
+```php
+use Internachi\TsPublish\Attributes\TsCasts;
+
+#[TsCasts(['tag' => 'Tag', 'mode' => 'string'])]
+public function create(): \Inertia\Response
+{
+    return Inertia::render('Tags/TagCreate', [
+        'tag'  => new Tag,
+        'mode' => 'create',
+    ]);
+}
+```
+
+This produces:
+
+```typescript
+export type CreatePageProps = Inertia.SharedData & {
+    tag: Tag;
+    mode: string;
+};
+```
+
+##### Removing the Route Entirely with `#[TsExclude]`
+
+If you don't want a route helper generated at all, annotate the method with `#[TsExclude]`. This removes the route from the published output entirely — no route helper and no page-prop type. Use this only when the route should not appear in the TypeScript output.
+
+##### Known Limitation: Taint Detection Depth
+
+Taint is detected through the controller's own file and one level of `$this->property->method(...)` resources that are passed directly as the `Inertia::render()` data argument. Deeper indirection that still reaches a table — for example, a table reached only through a nested array value, an `array_merge(...)`, or a variable-assigned render argument — may not be auto-detected. In those cases `ts:publish` could still fatal when it attempts to evaluate the table. Use `#[TsCasts]` or `#[TsExclude]` on the method as a manual escape hatch.
+
 ### Vite Environment (`vite_env.*`)
 
 | Config Key                            | Type       | Default                              | Description                                                          |
