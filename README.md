@@ -2837,7 +2837,7 @@ export type IndexPageProps = Inertia.SharedData & {
 };
 ```
 
-If you use the React table package, the import is generated as `@inertiaui/table-react` instead. To force a specific package (or use a custom alias), set `ts-publish.inertia.table_package` in `config/ts-publish.php`.
+If you use the React table package, the import is generated as `@inertiaui/table-react` instead. To force a specific package (or use a custom alias), set `ts-publish.inertia.ui_table_package` in `config/ts-publish.php`.
 
 Supported model inference (all read statically, never instantiating the table):
 

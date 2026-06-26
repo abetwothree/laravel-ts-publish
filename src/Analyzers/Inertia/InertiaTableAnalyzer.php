@@ -114,7 +114,7 @@ class InertiaTableAnalyzer
      */
     protected function resolveTablePackage(): string
     {
-        $configured = config('ts-publish.inertia.table_package');
+        $configured = config('ts-publish.inertia.ui_table_package');
 
         if (is_string($configured) && $configured !== '') {
             return $configured;

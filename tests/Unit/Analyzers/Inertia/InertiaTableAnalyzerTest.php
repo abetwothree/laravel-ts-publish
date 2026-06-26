@@ -36,7 +36,7 @@ it('resolves the model from a query() method when $resource has no default', fun
 });
 
 it('uses the configured React table package when set', function () {
-    config()->set('ts-publish.inertia.table_package', '@inertiaui/table-react');
+    config()->set('ts-publish.inertia.ui_table_package', '@inertiaui/table-react');
 
     $result = (new InertiaTableAnalyzer)->analyze(InertiaTableController::class.'@direct');
 
