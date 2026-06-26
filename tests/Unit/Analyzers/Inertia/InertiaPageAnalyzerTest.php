@@ -739,3 +739,32 @@ test('analyze() short-circuits service-layer Inertia UI Table props before Range
         ->and($result['classFqcns'])->toBe([Post::class])
         ->and($result['externalImports'])->toBe(['@inertiaui/table-vue' => ['TableResource']]);
 });
+
+// ─── analyze() taint branch ───────────────────────────────────────
+
+test('analyze() skips Ranger for a tainted sibling route and emits no page type', function () {
+    $mock = Mockery::mock(ResponseCollector::class);
+    $mock->shouldNotReceive('parseResponse');
+
+    $analyzer = new InertiaPageAnalyzer($mock);
+
+    $result = $analyzer->analyze(['uses' => InertiaTableController::class.'@serviceCreate']);
+
+    expect($result)->not->toBeNull()
+        ->and($result['component'])->toBe('Tables/Create')
+        ->and($result['pageType'])->toBeNull()
+        ->and($result['classFqcns'])->toBe([])
+        ->and($result['externalImports'] ?? [])->toBe([]);
+});
+
+test('analyze() builds a page type from #[TsCasts] on a tainted route without Ranger', function () {
+    $mock = Mockery::mock(ResponseCollector::class);
+    $mock->shouldNotReceive('parseResponse');
+
+    $analyzer = new InertiaPageAnalyzer($mock);
+
+    $result = $analyzer->analyze(['uses' => InertiaTableController::class.'@castedCreate']);
+
+    expect($result)->not->toBeNull()
+        ->and($result['pageType'])->toBe('Inertia.SharedData & { mode: string }');
+});

@@ -53,10 +53,48 @@ class InertiaPageAnalyzer
      */
     public function analyze(array $action): ?array
     {
-        $tableData = $this->resolveTableAnalyzer()->analyze($action['uses']);
+        $tableAnalyzer = $this->resolveTableAnalyzer();
+        $tableData = $tableAnalyzer->analyze($action['uses']);
 
         if ($tableData !== null) {
             return $tableData;
+        }
+
+        // Taint branch: the controller file (or a service class it delegates to)
+        // references an Inertia UI Table subclass — loading it through Ranger would
+        // trigger a PhpSpreadsheet fatal on unrelated actions (e.g. a sibling CRUD
+        // form route that shares the file).  Skip parseResponse() entirely and build
+        // the page type statically: either from a #[TsCasts] escape hatch on the
+        // method, or return `pageType: null` so the route helper is emitted without
+        // an auto page-prop type.
+        if (str_contains($action['uses'], '@') && $tableAnalyzer->isTainted($action['uses'])) {
+            $component = $tableAnalyzer->resolveComponent($action['uses']);
+
+            // Dynamic component — can't build a static type; fall through to Ranger.
+            if ($component !== null) {
+                [$controllerClass, $methodName] = explode('@', $action['uses'], 2);
+                $parsed = $this->parseTsCastsFromMethod($controllerClass, $methodName);
+                $castOverrides = $parsed['overrides'];
+                $castImportMap = $parsed['importMap'];
+
+                if ($castOverrides !== []) {
+                    $typeBody = $this->buildTypeStringWithOverrides([], $castOverrides);
+
+                    return [
+                        'component' => $component,
+                        'pageType' => 'Inertia.SharedData & '.$typeBody,
+                        'classFqcns' => [],
+                        'externalImports' => $castImportMap,
+                    ];
+                }
+
+                return [
+                    'component' => $component,
+                    'pageType' => null,
+                    'classFqcns' => [],
+                    'externalImports' => [],
+                ];
+            }
         }
 
         // Reset the InertiaComponents static registry so each analyze() call gets
