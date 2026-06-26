@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 use AbeTwoThree\LaravelTsPublish\Cache\Concerns\SignsCachePayloads;
 use AbeTwoThree\LaravelTsPublish\Cache\FileCacheRepository;
 use AbeTwoThree\LaravelTsPublish\Cache\StoreCacheRepository;
