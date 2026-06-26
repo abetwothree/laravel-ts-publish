@@ -836,6 +836,35 @@ test('route writer combined create action with no request and Inertia pageType u
         ->not->toContain('create = annotateRequestPayload');
 });
 
+test('route output emits Inertia UI Table page prop imports and annotation', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@dashboard')) {
+                return [
+                    'component' => 'Dashboard',
+                    'pageType' => 'Inertia.SharedData & { posts: TableResource<Post> }',
+                    'classFqcns' => ['Workbench\\App\\Models\\Post'],
+                    'externalImports' => ['@inertiaui/table-vue' => ['TableResource']],
+                ];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $generator = resolve(RouteGenerator::class, ['findable' => InertiaController::class]);
+
+    expect($generator->content)
+        ->toContain("import type { TableResource } from '@inertiaui/table-vue';")
+        ->toContain("import type { Post } from '../../models';")
+        ->toContain('export type DashboardPageProps = Inertia.SharedData & { posts: TableResource<Post> };')
+        ->toContain('annotatePageProps<DashboardPageProps>()(defineRoute(');
+});
+
 test('route writer renders multi-line controller description with * prefix on each line', function () {
     $generator = resolve(RouteGenerator::class, ['findable' => InertiaFormRequestController::class]);
 

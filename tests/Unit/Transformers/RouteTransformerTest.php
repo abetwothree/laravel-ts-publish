@@ -703,6 +703,35 @@ test('resolvePageTypeImports merges externalImports from InertiaPageAnalyzer', f
         ->and($transformer->typeImports['../resources'])->toContain('PostCollection');
 });
 
+test('resolvePageTypeImports includes TableResource from externalImports and model import for table props', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@dashboard')) {
+                return [
+                    'component' => 'Dashboard',
+                    'pageType' => 'Inertia.SharedData & { posts: TableResource<Post> }',
+                    'classFqcns' => ['Workbench\\App\\Models\\Post'],
+                    'externalImports' => ['@inertiaui/table-vue' => ['TableResource']],
+                ];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $transformer = new RouteTransformer(InertiaController::class);
+
+    expect($transformer->typeImports)
+        ->toHaveKey('@inertiaui/table-vue')
+        ->and($transformer->typeImports['@inertiaui/table-vue'])->toContain('TableResource')
+        ->and($transformer->typeImports)->toHaveKey('../../models')
+        ->and($transformer->typeImports['../../models'])->toContain('Post');
+});
+
 test('resolvePageTypeImports deduplicates @tolki/types entries from FQCNs and externalImports', function () {
     config()->set('ts-publish.inertia.enabled', true);
 
