@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
+use AbeTwoThree\LaravelTsPublish\Support\PackageJson;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\ResolvesEventNameConflicts;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
 use Illuminate\Filesystem\Filesystem;
@@ -113,41 +114,11 @@ class BroadcastEventsEchoWriter
             return $configured;
         }
 
-        return $this->detectEchoPackageFromPackageJson() ?? '@laravel/echo';
-    }
-
-    /**
-     * Detect the preferred Laravel Echo package (@laravel/echo-vue / @laravel/echo-react / @laravel/echo-svelte)
-     *
-     * Returns the first matching package name, or null if neither is found.
-     */
-    protected function detectEchoPackageFromPackageJson(): ?string
-    {
-        $packageJsonPath = base_path('package.json');
-
-        if (! $this->filesystem->exists($packageJsonPath)) {
-            return null;
-        }
-
-        /** @var array{dependencies?: array<string, string>, devDependencies?: array<string, string>}|null $packageJson */
-        $packageJson = json_decode($this->filesystem->get($packageJsonPath), true);
-
-        if (! is_array($packageJson)) {
-            return null;
-        }
-
-        $allDeps = array_merge(
-            $packageJson['dependencies'] ?? [],
-            $packageJson['devDependencies'] ?? [],
-        );
-
-        foreach (['@laravel/echo-vue', '@laravel/echo-react', '@laravel/echo-svelte'] as $candidate) {
-            if (isset($allDeps[$candidate])) {
-                return $candidate;
-            }
-        }
-
-        return null;
+        return PackageJson::firstInstalled([
+            '@laravel/echo-vue',
+            '@laravel/echo-react',
+            '@laravel/echo-svelte',
+        ]) ?? '@laravel/echo';
     }
 
     /**
