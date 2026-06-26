@@ -2,12 +2,6 @@
 
 declare(strict_types=1);
 
-// require_once __DIR__.'/../../../Fixtures/InertiaUiTable/Table.php';
-// require_once __DIR__.'/../../../Fixtures/InertiaUiTable/PostTable.php';
-// require_once __DIR__.'/../../../Fixtures/InertiaUiTable/PostQueryTable.php';
-// require_once __DIR__.'/../../../Fixtures/InertiaUiTable/PostTableCrudResource.php';
-// require_once __DIR__.'/../../../Fixtures/InertiaUiTable/InertiaTableController.php';
-
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaTableAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaTableController;
 use Workbench\App\Http\Controllers\InertiaController;
