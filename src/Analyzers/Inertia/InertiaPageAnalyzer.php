@@ -32,8 +32,13 @@ use Throwable;
  */
 class InertiaPageAnalyzer
 {
+    /**
+     * Create the analyzer with Ranger's response collector and an optional
+     * static table analyzer override for tests.
+     */
     public function __construct(
         protected ResponseCollector $responseCollector,
+        protected ?InertiaTableAnalyzer $tableAnalyzer = null,
     ) {}
 
     /**
@@ -48,6 +53,12 @@ class InertiaPageAnalyzer
      */
     public function analyze(array $action): ?array
     {
+        $tableData = $this->resolveTableAnalyzer()->analyze($action['uses']);
+
+        if ($tableData !== null) {
+            return $tableData;
+        }
+
         // Reset the InertiaComponents static registry so each analyze() call gets
         // only the props declared in *this* controller method, not accumulated state
         // from previous calls that happened to render the same component name.
@@ -107,6 +118,14 @@ class InertiaPageAnalyzer
             $paginatedResourceProps,
             $paginatedStaticCollectionProps
         );
+    }
+
+    /**
+     * Resolve the static Inertia UI Table analyzer.
+     */
+    protected function resolveTableAnalyzer(): InertiaTableAnalyzer
+    {
+        return $this->tableAnalyzer ??= resolve(InertiaTableAnalyzer::class);
     }
 
     /**

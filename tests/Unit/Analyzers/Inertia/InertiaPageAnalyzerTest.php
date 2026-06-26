@@ -2,7 +2,13 @@
 
 declare(strict_types=1);
 
+require_once __DIR__.'/../../../Fixtures/InertiaUiTable/Table.php';
+require_once __DIR__.'/../../../Fixtures/InertiaUiTable/PostTable.php';
+require_once __DIR__.'/../../../Fixtures/InertiaUiTable/PostTableCrudResource.php';
+require_once __DIR__.'/../../../Fixtures/InertiaUiTable/InertiaTableController.php';
+
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaTableController;
 use Laravel\Ranger\Collectors\Response as ResponseCollector;
 use Laravel\Ranger\Components\JsonResponse;
 use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
@@ -15,6 +21,7 @@ use Workbench\App\Http\Resources\PostCollection;
 use Workbench\App\Http\Resources\PostFlatCollection;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\WarehouseResource;
+use Workbench\App\Models\Post;
 
 // ─── componentToFqn() ─────────────────────────────────────────────
 
@@ -704,4 +711,36 @@ test('analyze() rewrites LengthAwarePaginator generic to model type for PostIner
     expect($result)->not->toBeNull()
         ->and($result['pageType'])->toContain('LengthAwarePaginator<Post>')
         ->and($result['pageType'])->not->toContain('<number, string>');
+});
+
+// ─── Inertia UI Table props ───────────────────────────────────────
+
+test('analyze() short-circuits Inertia UI Table props before Ranger parses the response', function () {
+    $mock = Mockery::mock(ResponseCollector::class);
+    $mock->shouldNotReceive('parseResponse');
+
+    $analyzer = new InertiaPageAnalyzer($mock);
+
+    $result = $analyzer->analyze(['uses' => InertiaTableController::class.'@direct']);
+
+    expect($result)->not->toBeNull()
+        ->and($result['component'])->toBe('Tables/Index')
+        ->and($result['pageType'])->toBe('Inertia.SharedData & { posts: TableResource<Post> }')
+        ->and($result['classFqcns'])->toBe([Post::class])
+        ->and($result['externalImports'])->toBe(['@inertiaui/table-vue' => ['TableResource']]);
+});
+
+test('analyze() short-circuits service-layer Inertia UI Table props before Ranger parses the response', function () {
+    $mock = Mockery::mock(ResponseCollector::class);
+    $mock->shouldNotReceive('parseResponse');
+
+    $analyzer = new InertiaPageAnalyzer($mock);
+
+    $result = $analyzer->analyze(['uses' => InertiaTableController::class.'@service']);
+
+    expect($result)->not->toBeNull()
+        ->and($result['component'])->toBe('Tables/Index')
+        ->and($result['pageType'])->toBe('Inertia.SharedData & { posts: TableResource<Post> }')
+        ->and($result['classFqcns'])->toBe([Post::class])
+        ->and($result['externalImports'])->toBe(['@inertiaui/table-vue' => ['TableResource']]);
 });
