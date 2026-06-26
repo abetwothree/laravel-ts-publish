@@ -2858,7 +2858,7 @@ When a controller (or the resource it delegates to) renders an Inertia UI Table 
 To get precise page-prop types for a specific method on a table-tainted controller, annotate it with `#[TsCasts([...])]`. This short-circuits the deep analysis for that method and builds the page-prop type directly from your cast map:
 
 ```php
-use Internachi\TsPublish\Attributes\TsCasts;
+use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 
 #[TsCasts(['tag' => 'Tag', 'mode' => 'string'])]
 public function create(): \Inertia\Response
