@@ -199,6 +199,10 @@ class InertiaTableAnalyzer
         }
 
         foreach ($reflection->getProperties() as $property) {
+            if ($property->getDeclaringClass()->getName() !== $reflection->getName()) {
+                continue;
+            }
+
             $this->collectClassType($property->getType(), $candidates);
         }
 
