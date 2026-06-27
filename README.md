@@ -2853,6 +2853,21 @@ When a controller (or the resource it delegates to) renders an Inertia UI Table 
 
 **Affected routes still get their wayfinder route helpers**, but they receive no auto-generated page-prop type. In your generated output the route will appear as a helper function without a corresponding `PageProps` type export.
 
+##### Why This Happens (It Is Not the Inertia UI Table Package)
+
+This workaround exists because of a bug in [`phpoffice/phpspreadsheet`](https://github.com/PHPOffice/PhpSpreadsheet) — **not** the Inertia UI Table package, and not your code. The dependency chain is:
+
+- The Inertia UI Table package does **not** require any spreadsheet code. It only *optionally* integrates with [`maatwebsite/excel`](https://github.com/SpartnerNL/Laravel-Excel) — a `suggest`/dev dependency ("To export tables to CSV, Excel, etc.") — so tables can export.
+- If your app installs `maatwebsite/excel` to enable those exports, that package requires `phpoffice/phpspreadsheet`.
+- `phpoffice/phpspreadsheet` ships a `SimpleCache1` cache shim whose `get()` signature is incompatible with the typed `Psr\SimpleCache\CacheInterface::get()` it implements under newer `psr/simple-cache` (v2/v3). The moment PHP *loads* that class it raises an uncatchable compile-time (`E_COMPILE_ERROR`) fatal:
+
+  ```text
+  Declaration of PhpOffice\PhpSpreadsheet\Collection\Memory\SimpleCache1::get($key, $default = null)
+  must be compatible with Psr\SimpleCache\CacheInterface::get(string $key, mixed $default = null): mixed
+  ```
+
+A table's `toArray()` builds its `exports` definition, which reaches that Excel/PhpSpreadsheet code path. So when `ts:publish` statically evaluates a table to type a route, it triggers the class load and the fatal — even on a sibling route that has nothing to do with exports. The taint skip simply prevents `ts:publish` from evaluating tables at all, sidestepping the broken transitive dependency. Once `phpoffice/phpspreadsheet` is fixed for your PHP / `psr/simple-cache` version (or the optional Excel integration is not installed), none of this is necessary.
+
 ##### Opting Back In with `#[TsCasts]`
 
 To get precise page-prop types for a specific method on a table-tainted controller, annotate it with `#[TsCasts([...])]`. This short-circuits the deep analysis for that method and builds the page-prop type directly from your cast map:
@@ -2951,7 +2966,7 @@ Route::resource('merchandise', MerchandiseController::class)->except('index');
 
 With `#[TsExclude]` on the dedicated controller, `ts:publish` skips that route entirely (no route helper, no page-prop type). The remaining CRUD routes — now backed by a table-free resource — type normally. This is the 100% robust fallback: no table class appears in any file that `ts:publish` statically analyzes.
 
-The trade-off is a small per-table restructure: one extra single-action controller per table-rendered page. This is only necessary when the automatic taint skip cannot detect the table dependency. The underlying root cause is an optional-dependency load fatal (PhpSpreadsheet under certain PHP versions); a future fix in `phpoffice/phpspreadsheet` or the Inertia UI Table package would eliminate the need for any of this.
+The trade-off is a small per-table restructure: one extra single-action controller per table-rendered page. This is only necessary when the automatic taint skip cannot detect the table dependency. As explained in **Why This Happens** above, the root cause is the `phpoffice/phpspreadsheet` declaration-compatibility fatal — not the Inertia UI Table package — so fixing it upstream (or not installing the optional Excel export integration) eliminates the need for any of this.
 
 ### Vite Environment (`vite_env.*`)
 
