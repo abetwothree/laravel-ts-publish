@@ -2885,7 +2885,7 @@ If you don't want a route helper generated at all, annotate the method with `#[T
 
 ##### Known Limitation: Taint Detection Depth
 
-Taint is detected through the controller's own file and one level of `$this->property->method(...)` resources that are passed directly as the `Inertia::render()` data argument. Deeper indirection that still reaches a table — for example, a table reached only through a nested array value, an `array_merge(...)`, or a variable-assigned render argument — may not be auto-detected. In those cases `ts:publish` could still fatal when it attempts to evaluate the table. Use `#[TsCasts]` or `#[TsExclude]` on the method as a manual escape hatch.
+Taint is detected when a controller references a table through its own file, through a constructor parameter or typed property whose class file references a table, or through one level of `$this->property->method(...)` resources passed directly as the `Inertia::render()` data argument. Deeper indirection that still reaches a table — for example, a table reached only through `app(...)` / `resolve(...)` inside a method body, a trait method, a global helper, a nested array value, an `array_merge(...)`, or a variable-assigned render argument — may not be auto-detected. In those cases `ts:publish` could still fatal when it attempts to evaluate the table. Use `#[TsCasts]` or `#[TsExclude]` on the method as a manual escape hatch.
 
 ##### Automatic Taint Skip: The Common CRUD Case
 
