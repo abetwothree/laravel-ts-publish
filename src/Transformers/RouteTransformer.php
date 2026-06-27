@@ -75,12 +75,6 @@ class RouteTransformer extends CoreTransformer
     /** Whether this controller is invokable (an action maps to __invoke). */
     protected bool $isInvokable = false;
 
-    /** @return list<string> */
-    protected function transientProperties(): array
-    {
-        return ['reflectionController', 'inertiaPageAnalyzer'];
-    }
-
     #[Override]
     public function transform(): self
     {
@@ -113,6 +107,12 @@ class RouteTransformer extends CoreTransformer
     public function filename(): string
     {
         return Str::kebab($this->controllerName);
+    }
+
+    /** @return list<string> */
+    protected function transientProperties(): array
+    {
+        return ['reflectionController', 'inertiaPageAnalyzer'];
     }
 
     /**

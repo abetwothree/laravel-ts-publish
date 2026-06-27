@@ -37,7 +37,7 @@ class InertiaTableController
     }
 
     /**
-     * Service-layer table prop, matching Sonr CMS's controller/resource split.
+     * Service-layer table prop
      */
     public function service(Request $request): Response
     {

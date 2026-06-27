@@ -68,8 +68,8 @@
         "analyse": "vendor/bin/phpstan analyse --verbose --ansi",
         "test": "vendor/bin/pest --parallel",
         "test-update-shards": "vendor/bin/pest --parallel --update-shards",
-        "test-cov": "export XDEBUG_MODE=coverage && vendor/bin/pest --parallel --coverage --coverage-clover coverage.xml",
-        "test-cov-html": "export XDEBUG_MODE=coverage && vendor/bin/pest --parallel --coverage-html coverage",
+        "test-cov": "export XDEBUG_MODE=coverage && php -d memory_limit=-1 vendor/bin/pest --parallel --coverage --coverage-clover coverage.xml",
+        "test-cov-html": "export XDEBUG_MODE=coverage && php -d memory_limit=-1 vendor/bin/pest --parallel --coverage-html coverage",
         "test-cov-xml": "export XDEBUG_MODE=coverage && vendor/bin/pest --parallel --coverage-xml coverage",
         "format": "vendor/bin/pint",
         "lint": [

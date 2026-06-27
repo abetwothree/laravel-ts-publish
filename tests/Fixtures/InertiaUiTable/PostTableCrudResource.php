@@ -7,7 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable;
 class PostTableCrudResource
 {
     /**
-     * Table prop returned through a service layer, matching Sonr CMS's
+     * Table prop returned through a service layer
      * MerchandiseResource::index() shape.
      *
      * @return array<string, mixed>

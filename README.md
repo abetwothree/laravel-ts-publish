@@ -2812,7 +2812,7 @@ Below is a quick reference of all available configuration options:
 
 #### Inertia UI Table Props
 
-Routes that render an [Inertia UI Table](https://inertiaui.com/inertia-table/docs/basic-usage) can be typed without evaluating the table object's `toArray()` method. This avoids optional vendor integrations (such as Excel exports) being loaded during `ts:publish` and keeps route generation side-effect-light.
+Routes that render an [Inertia UI Table](https://inertiaui.com/) can be typed without evaluating the table object's `toArray()` method. This will auto type the table route props based on the table's static resource model as shown below.
 
 ```php
 use App\Tables\MerchandiseTable;
@@ -2847,9 +2847,9 @@ Supported model inference (all read statically, never instantiating the table):
 
 Dynamic/stateful tables whose model only exists in runtime constructor state are not statically inferable; use `#[TsCasts]` on the controller method for fully custom prop typing.
 
-#### Table-Tainted Controllers: Skipping Deep Analysis
+#### Side Effect Table-Tainted Controllers: Skipping Deep Analysis
 
-When a controller (or the resource it delegates to) renders an Inertia UI Table in **any** of its actions — even a sibling action unrelated to the route being published — the entire controller is considered "table-tainted." To avoid autoloading optional export dependencies such as Excel/PhpSpreadsheet during `ts:publish`, deep static analysis (Ranger/Surveyor) is skipped for every action on that controller.
+When a controller (or the resource it delegates to) renders an Inertia UI Table in **any** of its actions — even a sibling action unrelated to the route being published — the entire controller is considered "table-tainted." To avoid autoloading optional export dependencies such as Excel/PhpSpreadsheet during `ts:publish`, deep static analysis is skipped for every action on that controller.
 
 **Affected routes still get their route helpers**, but they receive no auto-generated page-prop type. In your generated output the route will appear as a helper function without a corresponding `PageProps` type export.
 
@@ -2920,8 +2920,14 @@ class MerchandiseResource
     {
         return [
             'merchandise' => app(MerchandiseTable::class)->make(),
-            'brands'      => Brand::all(),
         ];
+    }
+
+    public function store(Request $request): array
+    {
+        // store merchandise logic here
+
+        return [];
     }
 }
 ```
@@ -2949,11 +2955,11 @@ class MerchandiseIndexController
 // (resource no longer references the table)
 class MerchandiseResource
 {
-    public function index(Request $request): array
+    public function store(Request $request): array
     {
-        return [
-            'brands' => Brand::all(),
-        ];
+        // store merchandise logic here
+
+        return [];
     }
 }
 ```
