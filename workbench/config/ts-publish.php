@@ -365,6 +365,7 @@ return [
         'inertia_middleware_path' => null,
         'augmentation_filename' => 'inertia-config.d.ts',
         'output_directory' => '',
+        'ui_table_package' => null,
     ],
 
     /*

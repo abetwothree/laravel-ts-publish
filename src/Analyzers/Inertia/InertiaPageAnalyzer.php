@@ -32,8 +32,13 @@ use Throwable;
  */
 class InertiaPageAnalyzer
 {
+    /**
+     * Create the analyzer with Ranger's response collector and an optional
+     * static table analyzer override for tests.
+     */
     public function __construct(
         protected ResponseCollector $responseCollector,
+        protected ?InertiaTableAnalyzer $tableAnalyzer = null,
     ) {}
 
     /**
@@ -48,6 +53,53 @@ class InertiaPageAnalyzer
      */
     public function analyze(array $action): ?array
     {
+        $tableAnalyzer = $this->resolveTableAnalyzer();
+        $tableData = $tableAnalyzer->analyze($action['uses']);
+
+        if ($tableData !== null) {
+            return $tableData;
+        }
+
+        // Taint branch: the controller file (or a service class it delegates to)
+        // references an Inertia UI Table subclass — loading it through Ranger would
+        // trigger a PhpSpreadsheet fatal on unrelated actions (e.g. a sibling CRUD
+        // form route that shares the file).  Skip parseResponse() entirely and build
+        // the page type statically: either from a #[TsCasts] escape hatch on the
+        // method, or return `pageType: null` so the route helper is emitted without
+        // an auto page-prop type.
+        if (str_contains($action['uses'], '@') && $tableAnalyzer->isTainted($action['uses'])) {
+            $component = $tableAnalyzer->resolveComponent($action['uses']);
+
+            if ($component !== null) {
+                [$controllerClass, $methodName] = explode('@', $action['uses'], 2);
+                $parsed = $this->parseTsCastsFromMethod($controllerClass, $methodName);
+                $castOverrides = $parsed['overrides'];
+                $castImportMap = $parsed['importMap'];
+
+                if ($castOverrides !== []) {
+                    $typeBody = $this->buildTypeStringWithOverrides([], $castOverrides);
+
+                    return [
+                        'component' => $component,
+                        'pageType' => 'Inertia.SharedData & '.$typeBody,
+                        'classFqcns' => [],
+                        'externalImports' => $castImportMap,
+                    ];
+                }
+
+                return [
+                    'component' => $component,
+                    'pageType' => null,
+                    'classFqcns' => [],
+                    'externalImports' => [],
+                ];
+            }
+
+            // Tainted but no resolvable Inertia component (e.g. a non-Inertia store()/update()):
+            // not an Inertia page — skip Ranger entirely to avoid the table autoload.
+            return null;
+        }
+
         // Reset the InertiaComponents static registry so each analyze() call gets
         // only the props declared in *this* controller method, not accumulated state
         // from previous calls that happened to render the same component name.
@@ -107,6 +159,14 @@ class InertiaPageAnalyzer
             $paginatedResourceProps,
             $paginatedStaticCollectionProps
         );
+    }
+
+    /**
+     * Resolve the static Inertia UI Table analyzer.
+     */
+    protected function resolveTableAnalyzer(): InertiaTableAnalyzer
+    {
+        return $this->tableAnalyzer ??= resolve(InertiaTableAnalyzer::class);
     }
 
     /**

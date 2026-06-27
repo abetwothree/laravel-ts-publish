@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaServiceTableController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaTableController;
 use Laravel\Ranger\Collectors\Response as ResponseCollector;
 use Laravel\Ranger\Components\JsonResponse;
 use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
@@ -15,6 +17,7 @@ use Workbench\App\Http\Resources\PostCollection;
 use Workbench\App\Http\Resources\PostFlatCollection;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\WarehouseResource;
+use Workbench\App\Models\Post;
 
 // ─── componentToFqn() ─────────────────────────────────────────────
 
@@ -704,4 +707,84 @@ test('analyze() rewrites LengthAwarePaginator generic to model type for PostIner
     expect($result)->not->toBeNull()
         ->and($result['pageType'])->toContain('LengthAwarePaginator<Post>')
         ->and($result['pageType'])->not->toContain('<number, string>');
+});
+
+// ─── Inertia UI Table props ───────────────────────────────────────
+
+test('analyze() short-circuits Inertia UI Table props before Ranger parses the response', function () {
+    $mock = Mockery::mock(ResponseCollector::class);
+    $mock->shouldNotReceive('parseResponse');
+
+    $analyzer = new InertiaPageAnalyzer($mock);
+
+    $result = $analyzer->analyze(['uses' => InertiaTableController::class.'@direct']);
+
+    expect($result)->not->toBeNull()
+        ->and($result['component'])->toBe('Tables/Index')
+        ->and($result['pageType'])->toBe('Inertia.SharedData & { posts: TableResource<Post> }')
+        ->and($result['classFqcns'])->toBe([Post::class])
+        ->and($result['externalImports'])->toBe(['@inertiaui/table-vue' => ['TableResource']]);
+});
+
+test('analyze() short-circuits service-layer Inertia UI Table props before Ranger parses the response', function () {
+    $mock = Mockery::mock(ResponseCollector::class);
+    $mock->shouldNotReceive('parseResponse');
+
+    $analyzer = new InertiaPageAnalyzer($mock);
+
+    $result = $analyzer->analyze(['uses' => InertiaTableController::class.'@service']);
+
+    expect($result)->not->toBeNull()
+        ->and($result['component'])->toBe('Tables/Index')
+        ->and($result['pageType'])->toBe('Inertia.SharedData & { posts: TableResource<Post> }')
+        ->and($result['classFqcns'])->toBe([Post::class])
+        ->and($result['externalImports'])->toBe(['@inertiaui/table-vue' => ['TableResource']]);
+});
+
+// ─── analyze() taint branch ───────────────────────────────────────
+
+test('analyze() skips Ranger for a tainted sibling route and emits no page type', function () {
+    $mock = Mockery::mock(ResponseCollector::class);
+    $mock->shouldNotReceive('parseResponse');
+
+    $analyzer = new InertiaPageAnalyzer($mock);
+
+    $result = $analyzer->analyze(['uses' => InertiaTableController::class.'@serviceCreate']);
+
+    expect($result)->not->toBeNull()
+        ->and($result['component'])->toBe('Tables/Create')
+        ->and($result['pageType'])->toBeNull()
+        ->and($result['classFqcns'])->toBe([])
+        ->and($result['externalImports'] ?? [])->toBe([]);
+});
+
+test('analyze() builds a page type from #[TsCasts] on a tainted route without Ranger', function () {
+    $mock = Mockery::mock(ResponseCollector::class);
+    $mock->shouldNotReceive('parseResponse');
+
+    $analyzer = new InertiaPageAnalyzer($mock);
+
+    $result = $analyzer->analyze(['uses' => InertiaTableController::class.'@castedCreate']);
+
+    expect($result)->not->toBeNull()
+        ->and($result['pageType'])->toBe('Inertia.SharedData & { mode: string }');
+});
+
+test('analyze() returns null for a tainted non-Inertia action without calling Ranger', function () {
+    $mock = Mockery::mock(ResponseCollector::class);
+    $mock->shouldNotReceive('parseResponse');
+    $analyzer = new InertiaPageAnalyzer($mock);
+
+    expect($analyzer->analyze(['uses' => InertiaServiceTableController::class.'@store']))->toBeNull();
+});
+
+test('analyze() short-circuits the Inertia index action on a service-backed table controller', function () {
+    $mock = Mockery::mock(ResponseCollector::class);
+    $mock->shouldNotReceive('parseResponse');
+    $analyzer = new InertiaPageAnalyzer($mock);
+
+    $result = $analyzer->analyze(['uses' => InertiaServiceTableController::class.'@index']);
+
+    expect($result)->not->toBeNull()
+        ->and($result['pageType'])->toBe('Inertia.SharedData & { posts: TableResource<Post> }');
 });
