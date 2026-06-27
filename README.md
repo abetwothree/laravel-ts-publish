@@ -2851,7 +2851,7 @@ Dynamic/stateful tables whose model only exists in runtime constructor state are
 
 When a controller (or the resource it delegates to) renders an Inertia UI Table in **any** of its actions — even a sibling action unrelated to the route being published — the entire controller is considered "table-tainted." To avoid autoloading optional export dependencies such as Excel/PhpSpreadsheet during `ts:publish`, deep static analysis (Ranger/Surveyor) is skipped for every action on that controller.
 
-**Affected routes still get their wayfinder route helpers**, but they receive no auto-generated page-prop type. In your generated output the route will appear as a helper function without a corresponding `PageProps` type export.
+**Affected routes still get their route helpers**, but they receive no auto-generated page-prop type. In your generated output the route will appear as a helper function without a corresponding `PageProps` type export.
 
 ##### Why This Happens (It Is Not the Inertia UI Table Package)
 
