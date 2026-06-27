@@ -2898,6 +2898,7 @@ When taint detection cannot reach a table — for example, the table is obtained
 **Example — before (table mixed into CRUD resource, detection may not reach it):**
 
 ```php
+// app/Http/Resources/MerchandiseResource.php
 class MerchandiseResource
 {
     public function index(Request $request): array
@@ -2915,7 +2916,7 @@ class MerchandiseResource
 ```php
 // app/Http/Controllers/Merchandise/MerchandiseIndexController.php
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
-use InertiaUI\Table\Table;
+use App\Tables\MerchandiseTable;
 use Inertia\Inertia;
 
 #[TsExclude]
