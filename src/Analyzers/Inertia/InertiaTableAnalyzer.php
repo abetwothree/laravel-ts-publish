@@ -25,6 +25,7 @@ use PhpParser\Node\Stmt\Return_;
 use PhpParser\NodeFinder;
 use ReflectionClass;
 use ReflectionNamedType;
+use ReflectionType;
 
 /**
  * Statically detects Inertia UI Table props on a controller action and builds
@@ -125,6 +126,14 @@ class InertiaTableAnalyzer
             }
         }
 
+        // (c) Taint from a table-bearing controller dependency (constructor param or
+        // typed property). Ranger parses the whole controller file, including the
+        // constructor's injected resource, so any action on such a controller can reach
+        // the table — even ones with no Inertia::render() (e.g. store()/update()).
+        if ($this->controllerDependsOnTable($reflection)) {
+            return true;
+        }
+
         // (b) Taint from a resource/service class resolved via $this->property->method(...).
         $renderCall = $this->findInertiaRenderCall($method, $finder);
 
@@ -167,6 +176,77 @@ class InertiaTableAnalyzer
         $resourceStmts = $this->parseAndResolveAst((string) file_get_contents($resourceFile));
 
         return $this->containsTableReference($resourceStmts);
+    }
+
+    /**
+     * Whether the controller depends on a table-bearing class via a constructor
+     * parameter type or a typed property — Surveyor resolves these when it parses
+     * the controller file, so they taint every action on the controller.
+     *
+     * @param  ReflectionClass<object>  $reflection
+     */
+    protected function controllerDependsOnTable(ReflectionClass $reflection): bool
+    {
+        /** @var array<class-string, true> $candidates */
+        $candidates = [];
+
+        $constructor = $reflection->getConstructor();
+
+        if ($constructor !== null) {
+            foreach ($constructor->getParameters() as $parameter) {
+                $this->collectClassType($parameter->getType(), $candidates);
+            }
+        }
+
+        foreach ($reflection->getProperties() as $property) {
+            $this->collectClassType($property->getType(), $candidates);
+        }
+
+        foreach (array_keys($candidates) as $class) {
+            if ($this->classFileContainsTable($class)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Add a non-builtin, existing class type to the candidate set.
+     *
+     * @param  array<class-string, true>  $candidates
+     */
+    protected function collectClassType(?ReflectionType $type, array &$candidates): void
+    {
+        if (! $type instanceof ReflectionNamedType || $type->isBuiltin()) {
+            return;
+        }
+
+        $class = $type->getName();
+
+        if (class_exists($class)) {
+            /** @var class-string $class */
+            $candidates[$class] = true;
+        }
+    }
+
+    /**
+     * Whether the file declaring the given class references an Inertia UI Table
+     * subclass. Reflection + `containsTableReference()` only; no table is evaluated.
+     *
+     * @param  class-string  $class
+     */
+    protected function classFileContainsTable(string $class): bool
+    {
+        $file = (new ReflectionClass($class))->getFileName();
+
+        if ($file === false) {
+            return false;
+        }
+
+        DependencyRecorder::record($file);
+
+        return $this->containsTableReference($this->parseAndResolveAst((string) file_get_contents($file)));
     }
 
     /**

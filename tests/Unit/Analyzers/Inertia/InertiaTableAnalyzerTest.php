@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaTableAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaInlineTableController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaServiceTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaTableController;
 use Workbench\App\Http\Controllers\InertiaController;
 use Workbench\App\Models\Post;
@@ -68,4 +69,13 @@ it('does not flag a table-free controller as tainted', function () {
 
 it('resolves the component name statically', function () {
     expect((new InertiaTableAnalyzer)->resolveComponent(InertiaTableController::class.'@serviceCreate'))->toBe('Tables/Create');
+});
+
+it('flags a non-Inertia action as tainted via a table-bearing controller dependency', function () {
+    // The controller file has no inline table; taint comes only from the injected resource.
+    expect((new InertiaTableAnalyzer)->isTainted(InertiaServiceTableController::class.'@store'))->toBeTrue();
+});
+
+it('still flags the Inertia index action on the same controller as tainted', function () {
+    expect((new InertiaTableAnalyzer)->isTainted(InertiaServiceTableController::class.'@index'))->toBeTrue();
 });

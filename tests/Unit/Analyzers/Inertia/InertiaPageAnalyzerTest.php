@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaServiceTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaTableController;
 use Laravel\Ranger\Collectors\Response as ResponseCollector;
 use Laravel\Ranger\Components\JsonResponse;
@@ -767,4 +768,23 @@ test('analyze() builds a page type from #[TsCasts] on a tainted route without Ra
 
     expect($result)->not->toBeNull()
         ->and($result['pageType'])->toBe('Inertia.SharedData & { mode: string }');
+});
+
+test('analyze() returns null for a tainted non-Inertia action without calling Ranger', function () {
+    $mock = Mockery::mock(ResponseCollector::class);
+    $mock->shouldNotReceive('parseResponse');
+    $analyzer = new InertiaPageAnalyzer($mock);
+
+    expect($analyzer->analyze(['uses' => InertiaServiceTableController::class.'@store']))->toBeNull();
+});
+
+test('analyze() short-circuits the Inertia index action on a service-backed table controller', function () {
+    $mock = Mockery::mock(ResponseCollector::class);
+    $mock->shouldNotReceive('parseResponse');
+    $analyzer = new InertiaPageAnalyzer($mock);
+
+    $result = $analyzer->analyze(['uses' => InertiaServiceTableController::class.'@index']);
+
+    expect($result)->not->toBeNull()
+        ->and($result['pageType'])->toBe('Inertia.SharedData & { posts: TableResource<Post> }');
 });

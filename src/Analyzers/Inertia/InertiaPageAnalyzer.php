@@ -70,7 +70,6 @@ class InertiaPageAnalyzer
         if (str_contains($action['uses'], '@') && $tableAnalyzer->isTainted($action['uses'])) {
             $component = $tableAnalyzer->resolveComponent($action['uses']);
 
-            // Dynamic component — can't build a static type; fall through to Ranger.
             if ($component !== null) {
                 [$controllerClass, $methodName] = explode('@', $action['uses'], 2);
                 $parsed = $this->parseTsCastsFromMethod($controllerClass, $methodName);
@@ -95,6 +94,10 @@ class InertiaPageAnalyzer
                     'externalImports' => [],
                 ];
             }
+
+            // Tainted but no resolvable Inertia component (e.g. a non-Inertia store()/update()):
+            // not an Inertia page — skip Ranger entirely to avoid the table autoload.
+            return null;
         }
 
         // Reset the InertiaComponents static registry so each analyze() call gets
