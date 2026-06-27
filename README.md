@@ -2887,6 +2887,71 @@ If you don't want a route helper generated at all, annotate the method with `#[T
 
 Taint is detected through the controller's own file and one level of `$this->property->method(...)` resources that are passed directly as the `Inertia::render()` data argument. Deeper indirection that still reaches a table — for example, a table reached only through a nested array value, an `array_merge(...)`, or a variable-assigned render argument — may not be auto-detected. In those cases `ts:publish` could still fatal when it attempts to evaluate the table. Use `#[TsCasts]` or `#[TsExclude]` on the method as a manual escape hatch.
 
+##### Automatic Taint Skip: The Common CRUD Case
+
+The most common pattern — a CRUD controller that injects a table-bearing resource through a constructor parameter or a typed property — is handled automatically without any restructuring. When `ts:publish` detects that a controller depends on a resource whose file references an Inertia UI Table, it skips deep analysis for every action on that controller. This means all sibling actions (`index`, `create`, `store`, `update`, `destroy`) are covered without annotating each method.
+
+##### Dedicated-Controller Escape Hatch
+
+When taint detection cannot reach a table — for example, the table is obtained through `app(...)` / `resolve(...)` inside a method body, a trait method, or a global helper rather than through a typed constructor or property dependency — the **guaranteed fix** is to isolate the table in a dedicated single-action `__invoke` controller marked `#[TsExclude]`, and to remove the table from the shared CRUD resource so the rest of its routes are analyzed normally.
+
+**Example — before (table mixed into CRUD resource, detection may not reach it):**
+
+```php
+class MerchandiseResource
+{
+    public function index(Request $request): array
+    {
+        return [
+            'merchandise' => app(MerchandiseTable::class)->make(),
+            'brands'      => Brand::all(),
+        ];
+    }
+}
+```
+
+**Example — after (table isolated, CRUD resource is table-free):**
+
+```php
+// app/Http/Controllers/Merchandise/MerchandiseIndexController.php
+use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
+use InertiaUI\Table\Table;
+use Inertia\Inertia;
+
+#[TsExclude]
+class MerchandiseIndexController
+{
+    public function __invoke(Request $request): \Inertia\Response
+    {
+        return Inertia::render('Merchandise/MerchandiseIndex', [
+            'merchandise' => MerchandiseTable::make(),
+        ]);
+    }
+}
+
+// app/Http/Controllers/Merchandise/MerchandiseController.php
+// (resource no longer references the table)
+class MerchandiseResource
+{
+    public function index(Request $request): array
+    {
+        return [
+            'brands' => Brand::all(),
+        ];
+    }
+}
+```
+
+```php
+// routes/web.php
+Route::get('/merchandise', MerchandiseIndexController::class)->name('merchandise.index');
+Route::resource('merchandise', MerchandiseController::class)->except('index');
+```
+
+With `#[TsExclude]` on the dedicated controller, `ts:publish` skips that route entirely (no route helper, no page-prop type). The remaining CRUD routes — now backed by a table-free resource — type normally. This is the 100% robust fallback: no table class appears in any file that `ts:publish` statically analyzes.
+
+The trade-off is a small per-table restructure: one extra single-action controller per table-rendered page. This is only necessary when the automatic taint skip cannot detect the table dependency. The underlying root cause is an optional-dependency load fatal (PhpSpreadsheet under certain PHP versions); a future fix in `phpoffice/phpspreadsheet` or the Inertia UI Table package would eliminate the need for any of this.
+
 ### Vite Environment (`vite_env.*`)
 
 | Config Key                            | Type       | Default                              | Description                                                          |
