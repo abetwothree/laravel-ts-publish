@@ -84,12 +84,15 @@ class InertiaTableAnalyzer
      * Determine whether analyzing this route would parse a file containing an
      * `InertiaUI\Table\Table` subclass reference.
      *
-     * Two taint sources are checked in order:
+     * Three taint sources are checked in order:
      *   (a) the controller file itself — any `StaticCall`/`New_` rooted at a
      *       `Table` subclass anywhere in the file taints every action in it;
-     *   (b) any class reached via a `$this->property->method(...)` argument in
+     *   (b) table-bearing controller dependencies (constructor params or typed properties);
      *       the action's `Inertia::render()` call — if that resource file
      *       contains a table reference the route is tainted.
+     *   (c) any class reached via a `$this->property->method(...)` argument in
+     *       the `Inertia::render()` call — if that class contains a table reference
+     *       the route is tainted.
      *
      * Only `class_exists` and `is_a` are used to test class membership; no
      * table method is invoked and no `toArray()` is triggered.
