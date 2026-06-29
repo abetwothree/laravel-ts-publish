@@ -681,6 +681,7 @@ test('summary callout lists generated type counts and a totals footer', function
     // 'models' comes from the callout content, 'All done' from outro() – separate writes.
     $this->artisan('ts:publish', ['--preview' => 'false'])
         ->expectsOutputToContain('models')
+        ->expectsOutputToContain('files')
         ->expectsOutputToContain('All done')
         ->assertExitCode(0);
 });
