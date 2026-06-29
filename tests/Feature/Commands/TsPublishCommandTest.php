@@ -661,3 +661,17 @@ test('ts:publish broadcast events disabled in config skips the files', function 
 
     (new Filesystem)->deleteDirectory($outputDir);
 });
+
+test('full run completes and announces ts:publish', function () {
+    $this->artisan('ts:publish', ['--preview' => 'false'])
+        ->expectsOutputToContain('ts:publish')
+        ->expectsOutputToContain('All done')
+        ->assertExitCode(0);
+});
+
+test('quiet run produces no ts:publish output', function () {
+    $this->artisan('ts:publish', ['--preview' => 'false', '--quiet' => true])
+        ->doesntExpectOutputToContain('ts:publish')
+        ->doesntExpectOutputToContain('All done')
+        ->assertExitCode(0);
+});

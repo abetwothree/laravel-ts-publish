@@ -23,10 +23,7 @@ use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
-use Laravel\Prompts\Progress;
-
-use function Laravel\Prompts\progress;
-
+use Laravel\Prompts\Support\Logger;
 use Throwable;
 
 abstract class BaseRunner
@@ -119,19 +116,19 @@ abstract class BaseRunner
 
     public protected(set) string $inertiaConfigContent = '';
 
-    /** @var Progress<int> */
-    public protected(set) ?Progress $progress = null;
+    /**
+     * Live task logger for per-phase status output during a run.
+     */
+    public protected(set) ?Logger $logger = null;
 
     abstract public function run(): void;
 
-    public function usingProgress(): self
+    /**
+     * Attach a Prompts task logger so each generation phase can report progress.
+     */
+    public function setLogger(?Logger $logger): void
     {
-        $this->progress = progress(
-            label: 'Generating TypeScript files',
-            steps: $this->countShouldPublish(),
-        );
-
-        return $this;
+        $this->logger = $logger;
     }
 
     /**
@@ -254,22 +251,6 @@ abstract class BaseRunner
         );
 
         return $generator;
-    }
-
-    protected function countShouldPublish(): int
-    {
-        // need to count how many class properties beginning with "shouldPublish" are set to true
-        $count = 0;
-
-        foreach (get_object_vars($this) as $property => $value) {
-            if (str_starts_with($property, 'shouldPublish') && $value === true) {
-                $count++;
-            }
-        }
-
-        // TODO Count other should publish like vite env, watcher json, etc
-
-        return $count;
     }
 
     /**

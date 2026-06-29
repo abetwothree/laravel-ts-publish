@@ -23,7 +23,11 @@ use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\intro;
 use function Laravel\Prompts\outro;
+
+use Laravel\Prompts\Support\Logger;
+
 use function Laravel\Prompts\table;
+use function Laravel\Prompts\task;
 use function Laravel\Prompts\warning;
 
 class TsPublishCommand extends Command
@@ -133,10 +137,20 @@ class TsPublishCommand extends Command
         ] = $flags;
 
         try {
-            $runner->usingProgress()->progress?->start();
-            $runner->run();
-            $runner->progress?->label('Finished...');
-            $runner->progress?->finish();
+            if ($this->output->isQuiet()) {
+                $runner->run();
+            } else {
+                task(
+                    label: 'Generating TypeScript files',
+                    callback: function (Logger $logger) use ($runner): bool {
+                        $runner->setLogger($logger);
+                        $runner->run();
+
+                        return true;
+                    },
+                    keepSummary: true,
+                );
+            }
         } catch (InvalidArgumentException $e) {
             if (! $this->output->isQuiet()) {
                 error($e->getMessage());
