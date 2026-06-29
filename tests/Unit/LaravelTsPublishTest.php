@@ -975,6 +975,18 @@ describe('relativeImportPath', function () {
     test('going up to common root', function () {
         expect($this->service->relativeImportPath('app/models', 'app/enums'))->toBe('../enums');
     });
+
+    test('same-directory child target is prefixed with ./', function () {
+        expect($this->service->relativeImportPath('models', 'models/videos'))->toBe('./videos');
+    });
+
+    test('descendant target several levels deep is prefixed with ./', function () {
+        expect($this->service->relativeImportPath('models', 'models/foo/bar'))->toBe('./foo/bar');
+    });
+
+    test('descendant target under a prefixed root is prefixed with ./', function () {
+        expect($this->service->relativeImportPath('app/models', 'app/models/videos'))->toBe('./videos');
+    });
 });
 
 describe('sortImportPaths', function () {

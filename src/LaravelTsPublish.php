@@ -1118,6 +1118,7 @@ class LaravelTsPublish
      * Example: 'blog/models' → 'blog/enums' = '../enums'
      * Example: 'app/models' → 'blog/enums' = '../../blog/enums'
      * Example: 'blog/models' → 'blog/models' = '.'
+     * Example: 'models' → 'models/videos' = './videos'
      */
     public function relativeImportPath(string $fromNamespacePath, string $toNamespacePath): string
     {
@@ -1138,6 +1139,15 @@ class LaravelTsPublish
 
         $upCount = count($fromParts) - $commonLength;
         $downSegments = array_slice($toParts, $commonLength);
+
+        // Target is the same directory or a descendant of it (no upward steps).
+        // A bare specifier like 'videos' is treated by TypeScript as a module
+        // lookup, not a relative path, so it must be prefixed with './'.
+        // ($downSegments is always non-empty here: an empty one means
+        // $from === $to, which returned '.' at the top of the method.)
+        if ($upCount === 0) {
+            return './'.implode('/', $downSegments);
+        }
 
         $relative = str_repeat('../', $upCount).implode('/', $downSegments);
 
