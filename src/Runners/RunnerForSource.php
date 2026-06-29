@@ -128,6 +128,8 @@ class RunnerForSource extends BaseRunner
 
     protected function generateModel(string $fqcn): void
     {
+        $this->buildModelMorphTargetMap();
+
         /** @var ModelGenerator $generator */
         $generator = resolve(
             Config::string('ts-publish.models.generator_class', ModelGenerator::class),

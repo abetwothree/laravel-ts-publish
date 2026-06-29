@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\Fingerprinter;
 use AbeTwoThree\LaravelTsPublish\Cache\GenerationManifest;
 use AbeTwoThree\LaravelTsPublish\Cache\OutputRecorder;
+use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\CoreGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
@@ -16,10 +17,16 @@ use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Config;
+use Laravel\Prompts\Progress;
+
+use function Laravel\Prompts\progress;
+
 use Throwable;
 
 abstract class BaseRunner
@@ -112,7 +119,20 @@ abstract class BaseRunner
 
     public protected(set) string $inertiaConfigContent = '';
 
+    /** @var Progress<int> */
+    public protected(set) ?Progress $progress = null;
+
     abstract public function run(): void;
+
+    public function usingProgress(): self
+    {
+        $this->progress = progress(
+            label: 'Generating TypeScript files',
+            steps: $this->countShouldPublish(),
+        );
+
+        return $this;
+    }
 
     /**
      * Attach a generation manifest so per-class builds can be cached.
@@ -234,5 +254,41 @@ abstract class BaseRunner
         );
 
         return $generator;
+    }
+
+    protected function countShouldPublish(): int
+    {
+        // need to count how many class properties beginning with "shouldPublish" are set to true
+        $count = 0;
+
+        foreach (get_object_vars($this) as $property => $value) {
+            if (str_starts_with($property, 'shouldPublish') && $value === true) {
+                $count++;
+            }
+        }
+
+        // TODO Count other should publish like vite env, watcher json, etc
+
+        return $count;
+    }
+
+    /**
+     * Builds the morph target map for all models, allowing MorphTo relations to be resolved to precise union types.
+     *
+     * @return list<class-string>
+     */
+    protected function buildModelMorphTargetMap(): array
+    {
+        /** @var ModelsCollector $collector */
+        $collector = resolve(Config::string('ts-publish.models.collector_class', ModelsCollector::class));
+
+        /** @var list<class-string> $modelClasses */
+        $modelClasses = $collector->collect()->all();
+
+        // Pre-scan all models to build the morph target map so that MorphTo
+        // relations can be resolved to precise union types.
+        resolve(ModelAttributeResolver::class)->buildMorphTargetMap($modelClasses);
+
+        return $modelClasses;
     }
 }

@@ -71,19 +71,19 @@ class TsPublishCommand extends Command
             return self::SUCCESS;
         }
 
+        $onlyBroadcastChannels = (bool) $this->option('only-broadcast-channels');
+        $onlyBroadcastEvents = (bool) $this->option('only-broadcast-events');
         $onlyEnums = (bool) $this->option('only-enums');
+        $onlyFormRequests = (bool) $this->option('only-form-requests');
         $onlyModels = (bool) $this->option('only-models');
         $onlyResources = (bool) $this->option('only-resources');
         $onlyRoutes = (bool) $this->option('only-routes');
-        $onlyFormRequests = (bool) $this->option('only-form-requests');
-        $onlyBroadcastChannels = (bool) $this->option('only-broadcast-channels');
-        $onlyBroadcastEvents = (bool) $this->option('only-broadcast-events');
 
         $onlyCount = (int) $onlyEnums + (int) $onlyModels + (int) $onlyResources + (int) $onlyRoutes + (int) $onlyFormRequests + (int) $onlyBroadcastChannels + (int) $onlyBroadcastEvents;
 
         if ($onlyCount > 1) {
             if (! $this->output->isQuiet()) {
-                error('The --only-enums, --only-models, --only-resources, --only-routes, --only-form-requests, --only-broadcast-channels, and --only-broadcast-events options cannot be used together. Please specify only one or none of these options.');
+                error('Cannot use multiple --only-* options together. Please specify only one or none of these options.');
             }
 
             return self::FAILURE;
@@ -133,7 +133,10 @@ class TsPublishCommand extends Command
         ] = $flags;
 
         try {
+            $runner->usingProgress()->progress?->start();
             $runner->run();
+            $runner->progress?->label('Finished...');
+            $runner->progress?->finish();
         } catch (InvalidArgumentException $e) {
             if (! $this->output->isQuiet()) {
                 error($e->getMessage());

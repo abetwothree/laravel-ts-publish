@@ -9,7 +9,6 @@ use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastChannelsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastEventsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\FormRequestsCollector;
-use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ResourcesCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\RoutesCollector;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
@@ -18,7 +17,6 @@ use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
-use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\BroadcastChannelsWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\BroadcastEventsEchoWriter;
@@ -67,6 +65,8 @@ class Runner extends BaseRunner
             return;
         }
 
+        $this->progress?->label('Generating enums...');
+
         /** @var EnumsCollector $collector */
         $collector = resolve(Config::string('ts-publish.enums.collector_class', EnumsCollector::class));
 
@@ -83,6 +83,7 @@ class Runner extends BaseRunner
         $this->enumGenerators = $enumGenerators;
 
         $this->enumModularBarrels = $this->barrelWriter->writeModular($this->enumGenerators);
+        $this->progress?->advance();
     }
 
     protected function generateModels(): void
@@ -95,15 +96,10 @@ class Runner extends BaseRunner
             return;
         }
 
-        /** @var ModelsCollector $collector */
-        $collector = resolve(Config::string('ts-publish.models.collector_class', ModelsCollector::class));
+        $this->progress?->label('Generating models...');
 
         /** @var list<class-string> $modelClasses */
-        $modelClasses = $collector->collect()->all();
-
-        // Pre-scan all models to build the morph target map so that MorphTo
-        // relations can be resolved to precise union types.
-        resolve(ModelAttributeResolver::class)->buildMorphTargetMap($modelClasses);
+        $modelClasses = $this->buildModelMorphTargetMap();
 
         /** @var Collection<int, ModelGenerator> $modelGenerators */
         $modelGenerators = collect();
@@ -118,6 +114,7 @@ class Runner extends BaseRunner
         $this->modelGenerators = $modelGenerators;
 
         $this->modelModularBarrels = $this->barrelWriter->writeModular($this->modelGenerators);
+        $this->progress?->advance();
     }
 
     protected function generateResources(): void
@@ -129,6 +126,8 @@ class Runner extends BaseRunner
 
             return;
         }
+
+        $this->progress?->label('Generating resources...');
 
         /** @var ResourcesCollector $collector */
         $collector = resolve(Config::string('ts-publish.resources.collector_class', ResourcesCollector::class));
@@ -146,6 +145,7 @@ class Runner extends BaseRunner
         $this->resourceGenerators = $resourceGenerators;
 
         $this->resourceModularBarrels = $this->barrelWriter->writeModular($this->resourceGenerators);
+        $this->progress?->advance();
     }
 
     /**
@@ -159,6 +159,8 @@ class Runner extends BaseRunner
         if (! Config::boolean('ts-publish.inertia.enabled')) {
             return;
         }
+
+        $this->progress?->label('Generating inertia config...');
 
         $middlewarePath = Config::get('ts-publish.inertia.inertia_middleware_path');
         if (! is_string($middlewarePath) || ! is_dir($middlewarePath)) {
@@ -179,6 +181,7 @@ class Runner extends BaseRunner
         $writer = resolve(InertiaConfigWriter::class);
 
         $this->inertiaConfigContent = $writer->write($sharedData);
+        $this->progress?->advance();
     }
 
     protected function generateFormRequests(): void
@@ -191,6 +194,8 @@ class Runner extends BaseRunner
 
             return;
         }
+
+        $this->progress?->label('Generating form requests...');
 
         /** @var FormRequestsCollector $collector */
         $collector = resolve(Config::string('ts-publish.form_requests.collector_class', FormRequestsCollector::class));
@@ -212,6 +217,7 @@ class Runner extends BaseRunner
             $this->formRequestGenerators,
             is_string($formRequestOutputPath) ? $formRequestOutputPath : null,
         );
+        $this->progress?->advance();
     }
 
     protected function generateBroadcastChannels(): void
@@ -222,6 +228,8 @@ class Runner extends BaseRunner
             return;
         }
 
+        $this->progress?->label('Generating broadcast channels...');
+
         /** @var BroadcastChannelsCollector $collector */
         $collector = resolve(Config::string('ts-publish.broadcast_channels.collector_class', BroadcastChannelsCollector::class));
 
@@ -229,6 +237,7 @@ class Runner extends BaseRunner
         $writer = resolve(Config::string('ts-publish.broadcast_channels.writer_class', BroadcastChannelsWriter::class));
 
         $this->broadcastChannelsContent = $writer->write($collector->collect());
+        $this->progress?->advance();
     }
 
     /**
@@ -251,6 +260,8 @@ class Runner extends BaseRunner
 
             return;
         }
+
+        $this->progress?->label('Generating broadcast events...');
 
         /** @var BroadcastEventsCollector $collector */
         $collector = resolve(Config::string('ts-publish.broadcast_events.collector_class', BroadcastEventsCollector::class));
@@ -280,6 +291,7 @@ class Runner extends BaseRunner
         /** @var BroadcastEventsEchoWriter $echoWriter */
         $echoWriter = resolve(Config::string('ts-publish.broadcast_events.echo_augmentation.writer_class', BroadcastEventsEchoWriter::class));
         $this->broadcastEventsEchoContent = $echoWriter->write($this->broadcastEventGenerators);
+        $this->progress?->advance();
     }
 
     protected function generateRoutes(): void
@@ -292,6 +304,8 @@ class Runner extends BaseRunner
 
             return;
         }
+
+        $this->progress?->label('Generating routes...');
 
         /** @var RoutesCollector $collector */
         $collector = resolve(Config::string('ts-publish.routes.collector_class', RoutesCollector::class));
@@ -312,10 +326,12 @@ class Runner extends BaseRunner
         $routeWriter = resolve(Config::string('ts-publish.routes.writer_class', RouteWriter::class));
 
         $this->routeModularBarrels = $routeWriter->writeRouteBarrels($this->routeGenerators);
+        $this->progress?->advance();
     }
 
     protected function generateGlobals(): void
     {
+        $this->progress?->label('Generating globals...');
         /** @var GlobalsWriter $globalsWriter */
         $globalsWriter = resolve(Config::string('ts-publish.globals.writer_class', GlobalsWriter::class));
         $this->globalsWriter = $globalsWriter;
@@ -325,6 +341,7 @@ class Runner extends BaseRunner
 
     protected function generateJson(): void
     {
+        $this->progress?->label('Generating JSON...');
         /** @var JsonWriter $jsonWriter */
         $jsonWriter = resolve(Config::string('ts-publish.json.writer_class', JsonWriter::class));
 
@@ -336,6 +353,7 @@ class Runner extends BaseRunner
      */
     protected function generateViteEnv(): void
     {
+        $this->progress?->label('Generating Vite environment...');
         /** @var ViteEnvWriter $writer */
         $writer = resolve(ViteEnvWriter::class);
 
@@ -344,6 +362,7 @@ class Runner extends BaseRunner
 
     protected function generateWatcherJson(): void
     {
+        $this->progress?->label('Generating watcher JSON...');
         /** @var WatcherJsonWriter $jsonWriter */
         $jsonWriter = resolve(Config::string('ts-publish.watcher.writer_class', WatcherJsonWriter::class));
 
