@@ -112,10 +112,10 @@ class TsPublishCommand extends Command
     {
         $output = Config::string('ts-publish.output_directory');
         $cache = CacheBootstrap::enabled()
-            ? ($this->option('fresh') ? 'rebuilding' : 'enabled')
+            ? ($this->option('fresh') ? 'rebuilding' : ($this->option('source') ? 'disabled' : 'enabled'))
             : 'disabled';
 
-        note("Mode: {$mode}  ·  Output: {$output}  ·  Cache: {$cache}");
+        note("Mode: {$mode}  ·  Cache: {$cache}  ·  Output: {$output}");
     }
 
     protected function runAll(): int
