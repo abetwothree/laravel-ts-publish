@@ -692,3 +692,19 @@ test('source run summary only mentions the published type', function () {
         ->doesntExpectOutputToContain('route controller')
         ->assertExitCode(0);
 });
+
+test('intro shows the output directory context', function () {
+    $outputDir = config('ts-publish.output_directory');
+
+    $this->artisan('ts:publish', ['--preview' => 'false'])
+        ->expectsOutputToContain('Output:')
+        ->expectsOutputToContain($outputDir)
+        ->assertExitCode(0);
+});
+
+test('verbose mode labels each detail table with a section heading', function () {
+    $this->artisan('ts:publish', ['--preview' => 'false', '-vvv' => true])
+        ->expectsOutputToContain('Enums')
+        ->expectsOutputToContain('Models')
+        ->assertExitCode(0);
+});

@@ -27,6 +27,7 @@ use Laravel\Prompts\Elements\ElementContract;
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\intro;
+use function Laravel\Prompts\note;
 use function Laravel\Prompts\outro;
 
 use Laravel\Prompts\Support\Logger;
@@ -104,6 +105,19 @@ class TsPublishCommand extends Command
         return self::SUCCESS;
     }
 
+    /**
+     * Display a one-line run context: mode, output directory, and cache state.
+     */
+    protected function showRunContext(string $mode): void
+    {
+        $output = Config::string('ts-publish.output_directory');
+        $cache = CacheBootstrap::enabled()
+            ? ($this->option('fresh') ? 'rebuilding' : 'enabled')
+            : 'disabled';
+
+        note("Mode: {$mode}  ·  Output: {$output}  ·  Cache: {$cache}");
+    }
+
     protected function runAll(): int
     {
         $preview = filter_var($this->option('preview'), FILTER_VALIDATE_BOOLEAN);
@@ -111,6 +125,7 @@ class TsPublishCommand extends Command
 
         if (! $this->output->isQuiet()) {
             intro('ts:publish');
+            $this->showRunContext($preview ? 'preview' : 'full publish');
         }
 
         $runner = resolve(Runner::class);
@@ -187,6 +202,7 @@ class TsPublishCommand extends Command
 
         if (! $this->output->isQuiet()) {
             intro('ts:publish --source');
+            $this->showRunContext($preview ? "preview · source={$source}" : "source={$source}");
         }
 
         try {
@@ -590,6 +606,8 @@ class TsPublishCommand extends Command
     protected function createVerboseFilesList(Runner|RunnerForSource $runner): void
     {
         if (count($runner->enumGenerators) > 0) {
+            note('Enums');
+
             /** @var array<int, array<int, string>> $enumRows */
             $enumRows = $runner->enumGenerators->map(fn (EnumGenerator $g) => [
                 $g->transformer->enumName,
@@ -606,6 +624,8 @@ class TsPublishCommand extends Command
         }
 
         if (count($runner->modelGenerators) > 0) {
+            note('Models');
+
             /** @var array<int, array<int, string>> $modelRows */
             $modelRows = $runner->modelGenerators->map(fn (ModelGenerator $g) => [
                 $g->transformer->modelName,
@@ -622,6 +642,8 @@ class TsPublishCommand extends Command
         }
 
         if (count($runner->resourceGenerators) > 0) {
+            note('Resources');
+
             /** @var array<int, array<int, string>> $resourceRows */
             $resourceRows = $runner->resourceGenerators->map(fn (ResourceGenerator $g) => [
                 $g->transformer->resourceName,
@@ -636,6 +658,8 @@ class TsPublishCommand extends Command
         }
 
         if (count($runner->routeGenerators) > 0) {
+            note('Routes');
+
             /** @var array<int, array<int, string>> $routeRows */
             $routeRows = $runner->routeGenerators->map(fn (RouteGenerator $g) => [
                 $g->transformer->controllerName,
@@ -650,6 +674,8 @@ class TsPublishCommand extends Command
         }
 
         if (count($runner->formRequestGenerators) > 0) {
+            note('Form Requests');
+
             /** @var array<int, array<int, string>> $formRequestRows */
             $formRequestRows = $runner->formRequestGenerators->map(fn (FormRequestGenerator $g) => [
                 $g->transformer->typeName,
@@ -666,6 +692,8 @@ class TsPublishCommand extends Command
         $extras = $this->collectExtras($runner);
 
         if (count($extras) > 0) {
+            note('Extras');
+
             /** @var array<int, array<int, string>> $extras */
             table(
                 headers: ['Type', 'File'],
