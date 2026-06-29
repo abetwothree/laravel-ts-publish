@@ -675,3 +675,19 @@ test('quiet run produces no ts:publish output', function () {
         ->doesntExpectOutputToContain('All done')
         ->assertExitCode(0);
 });
+
+test('summary callout lists generated type counts and a totals footer', function () {
+    // The callout writes once; Mockery satisfies one substring expectation per write.
+    // 'models' comes from the callout content, 'All done' from outro() – separate writes.
+    $this->artisan('ts:publish', ['--preview' => 'false'])
+        ->expectsOutputToContain('models')
+        ->expectsOutputToContain('All done')
+        ->assertExitCode(0);
+});
+
+test('source run summary only mentions the published type', function () {
+    $this->artisan('ts:publish', ['--preview' => 'false', '--source' => 'Workbench\App\Models\User'])
+        ->expectsOutputToContain('model')
+        ->doesntExpectOutputToContain('route controller')
+        ->assertExitCode(0);
+});

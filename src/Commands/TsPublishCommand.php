@@ -18,7 +18,12 @@ use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
+use function Laravel\Prompts\callout;
 use function Laravel\Prompts\confirm;
+
+use Laravel\Prompts\Elements\Element;
+use Laravel\Prompts\Elements\ElementContract;
+
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\intro;
@@ -32,6 +37,8 @@ use function Laravel\Prompts\warning;
 
 class TsPublishCommand extends Command
 {
+    protected float $startedAt = 0.0;
+
     protected $signature = 'ts:publish
         {--preview=false : Output generated TypeScript declarations to the console instead of writing to files}
         {--source= : FQCN or file path of a specific supported class to republish}
@@ -49,6 +56,7 @@ class TsPublishCommand extends Command
 
     public function handle(): int
     {
+        $this->startedAt = microtime(true);
         LaravelTsPublish::callCommandWith();
 
         /** @var string|null $source */
@@ -166,22 +174,7 @@ class TsPublishCommand extends Command
                 $this->createPublishedFilesList($runner);
             }
 
-            if ($this->output->isVerbose()) {
-                $enumCount = count($runner->enumGenerators);
-                $modelCount = count($runner->modelGenerators);
-                $resourceCount = count($runner->resourceGenerators);
-                $routeCount = count($runner->routeGenerators);
-                $formRequestCount = count($runner->formRequestGenerators);
-                $broadcastChannelsPublished = $runner->broadcastChannelsContent !== '';
-                $broadcastEventsPublished = $runner->broadcastEventsIndexContent !== '' || $runner->broadcastEventsEchoContent !== '';
-
-                outro("{$enumCount} enums, {$modelCount} models, {$resourceCount} resources, {$routeCount} routes, {$formRequestCount} form requests"
-                    .($broadcastChannelsPublished ? ', broadcast channels' : '')
-                    .($broadcastEventsPublished ? ', broadcast events' : '')
-                    .' — All done');
-            } else {
-                outro('All done');
-            }
+            outro('All done');
         }
 
         return self::SUCCESS;
@@ -230,13 +223,7 @@ class TsPublishCommand extends Command
                 $this->createPublishedFilesList($runner);
             }
 
-            $enumCount = count($runner->enumGenerators);
-            $modelCount = count($runner->modelGenerators);
-            $resourceCount = count($runner->resourceGenerators);
-            $routeCount = count($runner->routeGenerators);
-            $formRequestCount = count($runner->formRequestGenerators);
-
-            outro("{$enumCount} enums, {$modelCount} models, {$resourceCount} resources, {$routeCount} routes, {$formRequestCount} form requests — All done");
+            outro('All done');
         }
 
         return self::SUCCESS;
@@ -512,56 +499,92 @@ class TsPublishCommand extends Command
 
         if ($this->output->isVerbose()) {
             $this->createVerboseFilesList($runner);
-        } else {
-            $this->createCompactSummary($runner);
         }
+
+        $this->renderSummaryCallout($runner);
     }
 
     protected function createCompactSummary(Runner|RunnerForSource $runner): void
     {
-        $enumCount = $runner->enumGenerators->count();
-        $modelCount = $runner->modelGenerators->count();
-        $resourceCount = $runner->resourceGenerators->count();
-        $routeCount = $runner->routeGenerators->count();
-        $formRequestCount = $runner->formRequestGenerators->count();
+        $this->renderSummaryCallout($runner);
+    }
 
-        $parts = [];
+    /**
+     * Ordered [singular-label => count] map of the primary published types, omitting
+     * zero counts. The singular label is pluralized by `Str::plural(..., prependCount: true)`
+     * at render time (e.g. 'model' → "128 models", "1 model").
+     *
+     * @return array<string, int>
+     */
+    protected function primaryCounts(Runner|RunnerForSource $runner): array
+    {
+        return array_filter([
+            'enum' => $runner->enumGenerators->count(),
+            'model' => $runner->modelGenerators->count(),
+            'resource' => $runner->resourceGenerators->count(),
+            'route controller' => $runner->routeGenerators->count(),
+            'form request' => $runner->formRequestGenerators->count(),
+            'broadcast event' => $runner->broadcastEventGenerators->count(),
+        ], fn (int $count) => $count > 0);
+    }
 
-        if ($enumCount > 0) {
-            $parts[] = Str::plural('enum', $enumCount, true);
+    /**
+     * Total number of TypeScript files written (primary files + extras).
+     */
+    protected function totalFilesWritten(Runner|RunnerForSource $runner): int
+    {
+        return array_sum($this->primaryCounts($runner)) + count($this->collectExtras($runner));
+    }
+
+    /**
+     * Render the published-files summary as a scannable callout: a key/value list
+     * of type counts, a bulleted list of extras, and a footer with the file total
+     * and elapsed time.
+     */
+    protected function renderSummaryCallout(Runner|RunnerForSource $runner): void
+    {
+        /** @var list<string> $primaryLines */
+        $primaryLines = [];
+
+        foreach ($this->primaryCounts($runner) as $singular => $count) {
+            // prependCount: true → auto-pluralized AND count-prefixed: "128 models", "1 resource".
+            $primaryLines[] = Str::plural($singular, $count, prependCount: true);
         }
 
-        if ($modelCount > 0) {
-            $parts[] = Str::plural('model', $modelCount, true);
+        /** @var list<string|ElementContract> $content */
+        $content = [];
+
+        if ($primaryLines !== []) {
+            $content[] = Element::bulletedList($primaryLines);
         }
 
-        if ($resourceCount > 0) {
-            $parts[] = Str::plural('resource', $resourceCount, true);
-        }
-
-        if ($routeCount > 0) {
-            $parts[] = Str::plural('route controller', $routeCount, true);
-        }
-
-        if ($formRequestCount > 0) {
-            $parts[] = Str::plural('form request', $formRequestCount, true);
-        }
-
-        if (count($parts) > 0) {
-            $this->line('  '.implode(', ', $parts));
-        }
-
+        // Extras: a singleton (e.g. "vite env", "inertia config") shows no count;
+        // multiples are pluralized + counted (e.g. "38 model barrels").
         $extras = $this->collectExtras($runner);
 
-        if (count($extras) > 0) {
+        if ($extras !== []) {
             $grouped = collect($extras)->groupBy(fn (array $e) => $e[0]);
-            $summary = $grouped->map(fn ($items, string $type) => $items->count() === 1
+            $extraLines = $grouped->map(fn ($items, string $type) => $items->count() === 1
                 ? Str::lower($type)
-                : $items->count().' '.Str::lower(Str::plural($type, $items->count())),
-            )->values()->implode(', ');
+                : Str::plural(Str::lower($type), $items->count(), prependCount: true),
+            )->values()->all();
 
-            $this->line("  Extras: {$summary}");
+            $content[] = Element::heading('Extras');
+            $content[] = Element::bulletedList($extraLines);
         }
+
+        if ($content === []) {
+            return;
+        }
+
+        $elapsed = number_format(microtime(true) - $this->startedAt, 2);
+        $total = $this->totalFilesWritten($runner);
+
+        callout(
+            label: 'Published TypeScript files',
+            content: $content,
+            info: Str::plural('file', $total, prependCount: true)." · {$elapsed}s",
+        );
     }
 
     protected function createVerboseFilesList(Runner|RunnerForSource $runner): void
