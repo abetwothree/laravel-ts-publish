@@ -16,6 +16,9 @@ List of new features
 * Vite env types augmentation file based on .env settings prefixed with `VITE_`
 * Intelligent caching for faster reruns of the full `ts:publish` command
 
+See the data examples for concrete examples of what’s been added for V2
+https://github.com/abetwothree/laravel-ts-publish/tree/main/workbench/resources/js/types/data
+
 ## Breaking Changes
 
 ### Configuration changes
@@ -65,7 +68,9 @@ php artisan vendor:publish --tag="laravel-ts-publish-views" --force
 
 ### Attribute `TsResourceCasts` removed
 
-**`TsResourceCasts` attribute removed** — The `TsResourceCasts` attribute (`AbeTwoThree\LaravelTsPublish\Attributes\TsResourceCasts`) has been removed. Replace all usages with `TsCasts` (`AbeTwoThree\LaravelTsPublish\Attributes\TsCasts`), which now handles resources, trait methods, models, and form requests uniformly. The constructor signature and array format are identical — only the class name changes.
+**`TsResourceCasts` attribute removed** — The `TsResourceCasts` attribute (`AbeTwoThree\LaravelTsPublish\Attributes\TsResourceCasts`) has been removed. 
+
+Replace all usages with `TsCasts` (`AbeTwoThree\LaravelTsPublish\Attributes\TsCasts`), which now handles resources, trait methods, models, and form requests uniformly. The constructor signature and array format are identical — only the class name changes.
 
   ```php
   // Before
