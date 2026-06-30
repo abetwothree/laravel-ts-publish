@@ -25,20 +25,20 @@ https://github.com/abetwothree/laravel-ts-publish/tree/main/workbench/resources/
 
 The configuration in V1 was mostly flat. In V2, with the larger number of features, each main feature has its own configuration group.
 
-For most settings from V1, you’ll need to prefix them with the group name (like `models.enabled`) and remove the group name from the config (from `enum_template` to `enums.template`). 
+For most settings from V1, you’ll need to prefix them with the group name (like `models.enabled`) and remove the group name from the config (from `enum_template` to `enums.template`).
 
-See the diff for the config between the V1 branch and V2 branches for full details. 
+See the diff for the config between the V1 branch and V2 branches for full details.
 https://github.com/abetwothree/laravel-ts-publish/compare/1.x...2.x
 
 If you had published the config file, make sure to republish it with the force flag
 
-```
+```bash
 php artisan vendor:publish --tag="ts-publish-config" --force
 ```
 
 ### NPM Package
 
-To support functional routing, you’ll need to install the new `@tolki/ts` package that goes along with this Laravel package. 
+To support functional routing as well as functional enums, you’ll need to install the new `@tolki/ts` package that goes along with this Laravel package.
 
 ```bash
 npm install @tolki/ts
@@ -57,6 +57,8 @@ import { laravelTsPublish } from "@tolki/ts/vite";
 ```
 
 Keep in mind that the Vite plugin from the `@tolki/enum` package calls the `ts:publish` command with the  `—only-enums` option. The `@tolki/ts` Vite plugin calls the `ts:publish` command with the `—only-functional` option instead to publish enums and routes when building assets.
+
+Long term, this new `@tolki/ts` package will allow for further functional features to be added seamlessly.
 
 ### Templates
 
