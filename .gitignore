@@ -27,7 +27,7 @@ _ide_helper_models.php
 # Misc
 phpunit.xml
 phpstan.neon
-/docs
+/docs/superpowers
 /coverage
 coverage.xml
 workbench/database/database.sqlite
