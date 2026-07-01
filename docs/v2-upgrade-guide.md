@@ -46,6 +46,180 @@ If you had published the config file, make sure to republish it with the force f
 php artisan vendor:publish --tag="ts-publish-config" --force
 ```
 
+#### Full configuration update list
+
+Below is the full key migration map from the old flat config shape to the v2 grouped shape.
+
+Republishing the config file is the recommended path, but if you maintain a customized config manually, use this checklist.
+
+##### 1) Pipeline class overrides moved under each feature group
+
+| Old key | New grouped key |
+|---|---|
+| `model_collector_class` | `models.collector_class` |
+| `model_generator_class` | `models.generator_class` |
+| `model_transformer_class` | `models.transformer_class` |
+| `model_writer_class` | `models.writer_class` |
+| `enum_collector_class` | `enums.collector_class` |
+| `enum_generator_class` | `enums.generator_class` |
+| `enum_transformer_class` | `enums.transformer_class` |
+| `enum_writer_class` | `enums.writer_class` |
+| `resource_collector_class` | `resources.collector_class` |
+| `resource_generator_class` | `resources.generator_class` |
+| `resource_transformer_class` | `resources.transformer_class` |
+| `resource_writer_class` | `resources.writer_class` |
+
+##### 2) Shared writer overrides renamed/grouped
+
+| Old key | New grouped key |
+|---|---|
+| `barrel_writer_class` | `barrel_writer_class` (same key, still supported as shared override) |
+| `globals_writer_class` | `globals.writer_class` |
+| `json_writer_class` | `json.writer_class` |
+| `watcher_json_writer_class` | `watcher.writer_class` |
+
+##### 3) Template key migration
+
+| Old key | New grouped key |
+|---|---|
+| `model_template` | `models.template` |
+| `enum_template` | `enums.template` |
+| `resource_template` | `resources.template` |
+| `globals_template` | `globals.template` |
+
+Also new template keys were introduced for new features:
+
+| New v2 template keys |
+|---|
+| `routes.template` |
+| `form_requests.template` |
+| `broadcast_channels.template` |
+| `broadcast_events.template` |
+| `broadcast_events.index_template` |
+| `broadcast_events.echo_augmentation.template` |
+
+##### 4) Feature enable flags moved from flat keys to grouped keys
+
+| Old key | New grouped key |
+|---|---|
+| `publish_enums` | `enums.enabled` |
+| `publish_models` | `models.enabled` |
+| `publish_resources` | `resources.enabled` |
+| `output_globals_file` | `globals.enabled` |
+| `output_json_file` | `json.enabled` |
+| `output_collected_files_json` | `watcher.enabled` |
+
+New feature toggles added in v2:
+
+| New v2 feature toggles |
+|---|
+| `routes.enabled` |
+| `form_requests.enabled` |
+| `broadcast_channels.enabled` |
+| `broadcast_events.enabled` |
+| `inertia.enabled` |
+| `vite_env.enabled` |
+| `cache.enabled` |
+
+##### 5) Namespace and casing options moved under feature groups
+
+| Old key | New grouped key |
+|---|---|
+| `models_namespace` | `models.namespace` |
+| `enums_namespace` | `enums.namespace` |
+| `resources_namespace` | `resources.namespace` |
+| `relationship_case` | `models.relationship_case` |
+| `enum_method_case` | `enums.method_case` |
+| `nullable_relations` | `models.nullable_relations` |
+| `relation_nullability_map` | `models.relation_nullability_map` |
+
+##### 6) Include/exclude/additional directories migrated per feature
+
+| Old key | New grouped key |
+|---|---|
+| `additional_model_directories` | `models.additional_directories` |
+| `included_models` | `models.included` |
+| `excluded_models` | `models.excluded` |
+| `additional_enum_directories` | `enums.additional_directories` |
+| `included_enums` | `enums.included` |
+| `excluded_enums` | `enums.excluded` |
+| `additional_resource_directories` | `resources.additional_directories` |
+| `included_resources` | `resources.included` |
+| `excluded_resources` | `resources.excluded` |
+
+The same include/exclude/additional pattern is now also used by:
+
+| New v2 groups using same pattern |
+|---|
+| `form_requests.*` |
+| `broadcast_events.*` |
+
+##### 7) Enum metadata/options renamed and regrouped
+
+| Old key | New grouped key |
+|---|---|
+| `enum_metadata_enabled` | `enums.metadata_enabled` |
+| `enums_use_tolki_package` | `enums.use_tolki_package` |
+| `auto_include_enum_methods` | `enums.auto_include_methods` |
+| `auto_include_enum_static_methods` | `enums.auto_include_static_methods` |
+
+##### 8) Output file naming/output directory keys grouped
+
+| Old key | New grouped key |
+|---|---|
+| `global_filename` | `globals.filename` |
+| `global_directory` | `globals.output_directory` |
+| `json_filename` | `json.filename` |
+| `json_output_directory` | `json.output_directory` |
+| `collected_files_json_filename` | `watcher.filename` |
+| `collected_files_json_output_directory` | `watcher.output_directory` |
+
+##### 9) Modular publishing setting removed
+
+| Old key | Status in v2 |
+|---|---|
+| `modular_publishing` | Removed. Modular output is always on. |
+
+##### 10) New top-level config groups in v2
+
+These groups did not exist in the v1 config shape:
+
+| New v2 top-level group |
+|---|
+| `cache.*` |
+| `routes.*` |
+| `form_requests.*` |
+| `broadcast_channels.*` |
+| `broadcast_events.*` |
+| `inertia.*` |
+| `vite_env.*` |
+
+Important new nested group:
+
+| New v2 nested group |
+|---|
+| `broadcast_events.echo_augmentation.*` |
+
+##### 11) Keys that stayed the same
+
+These keys are still top-level and did not require migration:
+
+| Key | Status |
+|---|---|
+| `run_after_migrate` | Unchanged (still top-level) |
+| `output_to_files` | Unchanged (still top-level) |
+| `output_directory` | Unchanged (still top-level) |
+| `namespace_strip_prefix` | Unchanged (still top-level) |
+| `custom_ts_mappings` | Unchanged (still top-level) |
+| `timestamps_as_date` | Unchanged (still top-level) |
+
+`ts_extends` still exists, but v2 adds additional sections beyond models/resources:
+
+| `ts_extends` key | v2 note |
+|---|---|
+| `ts_extends.form_requests` | New section in v2 |
+| `ts_extends.broadcast_events` | New section in v2 |
+
 ### NPM Package
 
 To support functional routing as well as functional enums, you’ll need to install the new `@tolki/ts` package that goes along with this Laravel package.
