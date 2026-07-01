@@ -24,6 +24,7 @@ For examples of the generated TypeScript output, see [these output examples](wor
 - 🏷️ [Enums](#enums)
 - 🗃️ [Models](#models)
 - 📡 [API Resources](#api-resources)
+- 🚗 [Routes](#routes)
 - 🧬 [Extending Interfaces](#extending-interfaces-with-tsextends--configs)
 - ❌ [Excluding Content](#excluding-with-tsexclude)
 - 🔤 [Casing Configurations](#casing-configurations)
