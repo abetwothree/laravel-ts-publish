@@ -19,6 +19,16 @@ List of new features
 See the data examples for concrete examples of what’s been added for V2
 https://github.com/abetwothree/laravel-ts-publish/tree/main/workbench/resources/js/types/data
 
+## Recommended upgrade flow
+
+1. Update to the v2 package release in Composer.
+2. Republish config and views with `--force`.
+3. Install `@tolki/ts` and remove `@tolki/enum`.
+4. Update your Vite plugin import to `@tolki/ts/vite`.
+5. Remove your old generated `data` folder.
+6. Run a fresh publish with `php artisan ts:publish --fresh`.
+7. Fix import paths in your app code to match modular namespace output.
+
 ## Breaking Changes
 
 ### Configuration changes
@@ -56,9 +66,9 @@ Additionally, if you were using the Vite plugin, update the package plugin impor
 import { laravelTsPublish } from "@tolki/ts/vite";
 ```
 
-Keep in mind that the Vite plugin from the `@tolki/enum` package calls the `ts:publish` command with the  `—only-enums` option. The `@tolki/ts` Vite plugin calls the `ts:publish` command with the `—only-functional` option instead to publish enums and routes when building assets.
+Keep in mind that the Vite plugin from the `@tolki/enum` package calls the `ts:publish` command with the `--only-enums` option. The `@tolki/ts` Vite plugin calls the `ts:publish` command with the `--only-functional` option instead to publish enums and routes when building assets.
 
-Long term, this new `@tolki/ts` package will allow for further functional features to be added seamlessly.
+Long term, this new `@tolki/ts` package will allow for further features related to other sections of Laravel to be added seamlessly.
 
 ### Templates
 
@@ -117,3 +127,63 @@ import type { User } from '@data/models'
 // To this
 import type { User } from '@data/app/models/users'
 ```
+
+## New command options and behavior
+
+V2 adds additional `ts:publish` selective flags and cache controls:
+
+```bash
+# Functional-only output (enums + routes)
+php artisan ts:publish --only-functional
+
+# Feature-specific output
+php artisan ts:publish --only-routes
+php artisan ts:publish --only-form-requests
+php artisan ts:publish --only-broadcast-channels
+php artisan ts:publish --only-broadcast-events
+
+# Cache rebuild
+php artisan ts:publish --fresh
+```
+
+Important behavior notes:
+
+* Only one `--only-*` flag can be used per command.
+* `--only-functional` takes precedence and ignores other `--only-*` flags.
+* `--fresh` forces a full regeneration and cache rebuild.
+
+## New config groups in v2
+
+In addition to reorganizing existing model/enum/resource keys, v2 adds new config groups:
+
+* `routes.*`
+* `form_requests.*`
+* `broadcast_channels.*`
+* `broadcast_events.*`
+* `inertia.*`
+* `vite_env.*`
+* `cache.*`
+
+If you had a published v1 config, republish and re-apply your customizations to the new grouped structure.
+
+## New generated files you should expect
+
+Depending on which features are enabled, v2 now generates additional files beyond enums/models/resources:
+
+* Route controller helper files
+* Form request TypeScript interfaces
+* Event parameter TypeScript interfaces
+* `broadcast-channels.ts`
+* `broadcast-events.ts`
+* `echo-broadcast-events.d.ts` (when Echo augmentation is enabled)
+* `inertia-config.d.ts`
+* `vite-env.d.ts` (or your configured filename)
+
+Make sure these generated declaration files are included by your `tsconfig` include patterns.
+
+## Generation cache
+
+V2 introduces a generation cache to skip unchanged classes after the initial run.
+
+* Use `php artisan ts:publish --fresh` after upgrading.
+* Use the `--fresh` anytime you need to guarantee a full rebuild.
