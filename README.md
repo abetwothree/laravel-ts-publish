@@ -25,6 +25,11 @@ For examples of the generated TypeScript output, see [these output examples](wor
 - 🗃️ [Models](#models)
 - 📡 [API Resources](#api-resources)
 - 🚗 [Routes](#routes)
+- 📝 [Form Requests](#form-requests)
+- 📡 [Broadcast Channels](#broadcast-channels)
+- 🎤 [Broadcast Events](#broadcast-events)
+- 🧩 [Inertia](#inertia)
+- 🧩 [Vite Env](#vite-env)
 - 🧬 [Extending Interfaces](#extending-interfaces-with-tsextends--configs)
 - ❌ [Excluding Content](#excluding-with-tsexclude)
 - 🔤 [Casing Configurations](#casing-configurations)
@@ -1955,6 +1960,44 @@ php artisan ts:publish --only-resources
 ```
 
 The `--only-resources` flag cannot be combined with `--only-enums` or `--only-models`.
+
+## Routes
+
+This package publishes a lightweight, functional route helper for every controller action in your app — matching the feature set of [Laravel Wayfinder](https://github.com/laravel/wayfinder), but with all the URL-building, parameter-binding, query-string, and form-spoofing logic tucked away inside a single `defineRoute()` factory from [`@tolki/ts`](https://tolki.abe.dev/ts/) instead of being generated inline for every route.
+
+```typescript
+// resources/js/types/data/app/http/controllers/post-controller.ts (generated)
+import { defineRoute, annotateRequestPayload } from '@tolki/ts';
+import type { UpdatePostRequest } from '../requests/update-post-request';
+
+export const update = annotateRequestPayload<UpdatePostRequest>()(defineRoute({
+    name: 'posts.update',
+    url: '/posts/{post}',
+    methods: ['put'] as const,
+    args: [{ name: 'post', required: true, _routeKey: 'id' }] as const,
+}));
+```
+
+```typescript
+// Anywhere in your frontend
+import { PostController } from '@js/types/data/app/http/controllers';
+
+PostController.update({ post: 42 });           // { url: '/posts/42', method: 'put' }
+PostController.update.form.put({ post: 42 });  // { action: '/posts/42', method: 'post' } — with `_method=PUT` spoofed
+PostController.update(post);                   // pass the Post model instance directly
+```
+
+Key capabilities:
+
+- **Structural typing** — model and enum route bindings are fully typed without ever importing the PHP model or enum class into the route file.
+- **Multiple calling conventions** — named object, positional arguments, an array of positional arguments, or a bare model/scalar for single-parameter routes.
+- **Query strings** — extra keys become query parameters automatically, with a `_query` escape hatch and a `mergeQuery` option for updating the current page's query string.
+- **`.form()` helper** — builds `{ action, method }` for HTML forms, including Laravel's `_method` spoofing for `PUT`/`PATCH`/`DELETE`.
+- **Inertia integration** — page-prop types and the component name are inferred and attached automatically when `inertia.enabled` is on.
+- **Form Request payloads** — a controller method's `FormRequest` type-hint automatically attaches its generated interface to the route.
+- **Filtering** — `#[TsExclude]`, wildcard/negation route-name patterns (`routes.only` / `routes.except`), middleware exclusion, and named-routes-only mode.
+
+For every calling convention, model/enum binding rule, query-string behavior, route defaults, form-spoofing detail, and the Inertia/FormRequest typing helpers, see the full [Routing documentation](https://tolki.abe.dev/ts/routing).
 
 ## Extending Interfaces with `#[TsExtends]` & Configs
 
