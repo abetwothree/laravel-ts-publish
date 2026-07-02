@@ -50,7 +50,12 @@ php artisan vendor:publish --tag="ts-publish-config" --force
 
 Below is the full key migration map from the old flat config shape to the v2 grouped shape.
 
-Republishing the config file is the recommended path, but if you maintain a customized config manually, use this checklist.
+Republishing the config file is the recommended path and then use your project's git diff to confirm any customizations that need to be reapplied.
+
+<details>
+<summary>Show full configuration key-by-key migration table</summary>
+
+<br />
 
 ##### 1) Pipeline class overrides moved under each feature group
 
@@ -219,6 +224,8 @@ These keys are still top-level and did not require migration:
 |---|---|
 | `ts_extends.form_requests` | New section in v2 |
 | `ts_extends.broadcast_events` | New section in v2 |
+
+</details>
 
 ### NPM Package
 
