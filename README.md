@@ -23,7 +23,6 @@ For examples of the generated TypeScript output, see [these output examples](wor
 - 🚀 [Usage](#usage)
 - 🏷️ [Enums](#enums)
 - 🗃️ [Models](#models)
-- 📤 [Output Options](#output-options)
 - 📡 [API Resources](#api-resources)
 - 🚗 [Routes](#routes)
 - 📝 [Form Requests](#form-requests)
@@ -39,6 +38,7 @@ For examples of the generated TypeScript output, see [these output examples](wor
 - 🔧 [Customizing the Pipeline](#extending--customizing-the-pipeline)
 - ⚡ [Pre-Command Hook](#pre-command-hook)
 - 💾 [Cache Generation](#cache-generation)
+- 📤 [Output Options](#output-options)
 - ⚙️ [Configuration Reference](#configuration-reference)
 
 ## Installation
@@ -292,36 +292,6 @@ Key capabilities:
 - **Filtering** — the same `included` / `excluded` / `additional_directories` config pattern used by enums and resources.
 
 For the full template comparison, nullable relation strategies, every attribute option, and the complete type-mapping reference, see the full [Models documentation](https://tolki.abe.dev/ts/models).
-
-## Output Options
-
-This package provides several output formats that can be enabled independently:
-
-| Config Key                    | Default | Description                                                                 |
-|-------------------------------|---------|-----------------------------------------------------------------------------|
-| `output_to_files`             | `true`  | Write individual `.ts` files with barrel `index.ts` exports                 |
-| `globals.enabled`             | `false` | Generate a `global.d.ts` file with a global TypeScript namespace            |
-| `json.enabled`                | `false` | Output all generated definitions as a JSON file                             |
-| `watcher.enabled`             | `true`  | Output a JSON list of collected PHP file paths (useful for file watchers)   |
-
-When `globals.enabled` is enabled, a global declaration file is created that makes all your types available without explicit imports:
-
-```php
-// config/ts-publish.php
-
-'globals' => [
-    'enabled' => true,
-    'filename' => 'laravel-ts-global.d.ts',
-],
-'models' => [
-    'namespace' => 'models',
-],
-'enums' => [
-    'namespace' => 'enums',
-],
-```
-
-The JSON output from `watcher.enabled` is designed to work with build tools and file watchers (like the [@tolki/ts Vite plugin](https://tolki.abe.dev/ts/vite-plugin)) that need to know which PHP source files were collected so they can trigger a re-publish when those files change.
 
 ## API Resources
 
@@ -817,6 +787,36 @@ Key capabilities:
 - **HMAC-signed & tamper-resistant** — cache payloads are signed with your app key (or a dedicated `cache.key`) and deserialized with object instantiation disabled, so a corrupted or tampered cache file can never inject a PHP object.
 
 For the full fingerprinting algorithm, the dependency-recording rules, the `ProvidesCacheSignature` extension point for custom generators, and both storage backends' internals, see the full [Cache Generation documentation](https://tolki.abe.dev/ts/generating-cache).
+
+## Output Options
+
+This package provides several output formats that can be enabled independently:
+
+| Config Key                    | Default | Description                                                                 |
+|-------------------------------|---------|-----------------------------------------------------------------------------|
+| `output_to_files`             | `true`  | Write individual `.ts` files with barrel `index.ts` exports                 |
+| `globals.enabled`             | `false` | Generate a `global.d.ts` file with a global TypeScript namespace            |
+| `json.enabled`                | `false` | Output all generated definitions as a JSON file                             |
+| `watcher.enabled`             | `true`  | Output a JSON list of collected PHP file paths (useful for file watchers)   |
+
+When `globals.enabled` is enabled, a global declaration file is created that makes all your types available without explicit imports:
+
+```php
+// config/ts-publish.php
+
+'globals' => [
+    'enabled' => true,
+    'filename' => 'laravel-ts-global.d.ts',
+],
+'models' => [
+    'namespace' => 'models',
+],
+'enums' => [
+    'namespace' => 'enums',
+],
+```
+
+The JSON output from `watcher.enabled` is designed to work with build tools and file watchers (like the [@tolki/ts Vite plugin](https://tolki.abe.dev/ts/vite-plugin)) that need to know which PHP source files were collected so they can trigger a re-publish when those files change.
 
 ## Configuration Reference
 
