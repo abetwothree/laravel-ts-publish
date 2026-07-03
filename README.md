@@ -77,7 +77,7 @@ By default, the generated TypeScript declaration types will be saved to the `res
 
 Additionally, by default, the package will look for models in the `app/Models` directory, enums in the `app/Enums` directory, and API resources in the `app/Http/Resources` directory. You can customize these settings in the published configuration file.
 
-For a full installation and setup guide, see the [Installation & Setup](WORKFLOW.md) documentation.
+For a full installation and setup guide, see the [Installation & Setup](https://tolki.abe.dev/ts/) documentation.
 
 #### Preview Mode
 
