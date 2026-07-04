@@ -15,7 +15,6 @@ import type { {{ implode(', ', $types) }} } from '{{ $path }}';
 
 /* prettier-ignore */
 declare global {
-@if ($isModular)
 @foreach ($groupedModels as $namespace => $transformers)
 @if ($transformers->count() > 0)
     export namespace {{ $namespace }} {
@@ -30,7 +29,7 @@ declare global {
 @if($column['description'])
 {!! LaravelTsPublish::formatJsDoc($column['description'], 12) !!}
 @endif
-            {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!! LaravelTsPublish::qualifyGlobalType($column['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
+            {!! LaravelTsPublish::validJsObjectKey($name) !!}{{ $column['optional'] ? '?' : '' }}: {!! LaravelTsPublish::qualifyGlobalType($column['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
 @endforeach
 @endif
 @if (count($transformer->mutators) > 0 || count($transformer->appends) > 0)
@@ -39,13 +38,13 @@ declare global {
 @if($mutator['description'])
 {!! LaravelTsPublish::formatJsDoc($mutator['description'], 12) !!}
 @endif
-            {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!! LaravelTsPublish::qualifyGlobalType($mutator['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
+            {!! LaravelTsPublish::validJsObjectKey($name) !!}{{ $mutator['optional'] ? '?' : '' }}: {!! LaravelTsPublish::qualifyGlobalType($mutator['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
 @endforeach
 @foreach($transformer->appends as $name => $append)
 @if($append['description'])
 {!! LaravelTsPublish::formatJsDoc($append['description'], 12) !!}
 @endif
-            {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!! LaravelTsPublish::qualifyGlobalType($append['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
+            {!! LaravelTsPublish::validJsObjectKey($name) !!}{{ $append['optional'] ? '?' : '' }}: {!! LaravelTsPublish::qualifyGlobalType($append['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
 @endforeach
 @endif
 @if (count($transformer->relations) > 0)
@@ -98,6 +97,9 @@ declare global {
 @if($transformer->description)
 {!! LaravelTsPublish::formatJsDoc($transformer->description, 8) !!}
 @endif
+@if($transformer->typeAlias !== null)
+        export type {{ $transformer->resourceName }} = {!! LaravelTsPublish::qualifyGlobalType($transformer->typeAlias, $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
+@else
         export interface {{ $transformer->resourceName }}{!! count($transformer->tsExtends) > 0 ? ' extends '.implode(', ', $transformer->tsExtends) : '' !!} {
 @foreach ($transformer->properties as $name => $property)
 @if($property['description'])
@@ -106,101 +108,51 @@ declare global {
             {!! LaravelTsPublish::validJsObjectKey($name) !!}{!! $property['optional'] ? '?' : '' !!}: {!! LaravelTsPublish::qualifyGlobalType(LaravelTsPublish::rewriteAsEnumToType($property['type'], $transformer->globalEnumConstMap()), $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
 @endforeach
         }
+@endif
 @endforeach
     }
 @endif
 @endforeach
-@else{{-- end if $isModular --}}
-@if ($models->count() > 0)
-    // Models
-    export namespace {{ $modelsNamespace }} {
-@foreach ($models as $transformer)
-@if($transformer->description)
-{!! LaravelTsPublish::formatJsDoc($transformer->description, 8) !!}
+@foreach ($groupedFormRequests as $namespace => $transformers)
+@if ($transformers->count() > 0)
+    export namespace {{ $namespace }} {
+@foreach ($transformers as $transformer)
+@if($transformer->isDynamic)
+        export type {{ $transformer->typeName }} = Record<string, unknown>;
+@else
+        export interface {{ $transformer->typeName }} {
+@foreach ($transformer->fields as $field)
+@if(!$field['isProhibited'])
+@php
+$fieldType = $field['tsType'];
+if ($field['isNullable']) {
+    $fieldType .= ' | null';
+}
+$optional = ! $field['isRequired'] ? '?' : '';
+@endphp
+            {!! LaravelTsPublish::validJsObjectKey($field['fieldPath']) !!}{{ $optional }}: {!! $fieldType !!};
 @endif
-        export interface {{ $transformer->modelName }}{!! count($transformer->tsExtends) > 0 ? ' extends '.implode(', ', $transformer->tsExtends) : '' !!} {
-@if (count($transformer->columns) > 0)
-            // Columns
-@foreach($transformer->columns as $name => $column)
-@if($column['description'])
-{!! LaravelTsPublish::formatJsDoc($column['description'], 12) !!}
-@endif
-            {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!! LaravelTsPublish::qualifyGlobalType($column['type'], $globalTypesByNamespace, $modelsNamespace, $globalAliasMap) !!};
-@endforeach
-@endif
-@if (count($transformer->mutators) > 0 || count($transformer->appends) > 0)
-            // Mutators
-@foreach($transformer->mutators as $name => $mutator)
-@if($mutator['description'])
-{!! LaravelTsPublish::formatJsDoc($mutator['description'], 12) !!}
-@endif
-            {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!! LaravelTsPublish::qualifyGlobalType($mutator['type'], $globalTypesByNamespace, $modelsNamespace, $globalAliasMap) !!};
-@endforeach
-@foreach($transformer->appends as $name => $append)
-@if($append['description'])
-{!! LaravelTsPublish::formatJsDoc($append['description'], 12) !!}
-@endif
-            {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!! LaravelTsPublish::qualifyGlobalType($append['type'], $globalTypesByNamespace, $modelsNamespace, $globalAliasMap) !!};
-@endforeach
-@endif
-@if (count($transformer->relations) > 0)
-            // Relations
-@foreach($transformer->relations as $name => $relation)
-@if($relation['description'])
-{!! LaravelTsPublish::formatJsDoc($relation['description'], 12) !!}
-@endif
-            {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!! LaravelTsPublish::qualifyGlobalType($relation['type'], $globalTypesByNamespace, $modelsNamespace, $globalAliasMap) !!};
-            {!! LaravelTsPublish::validJsObjectKey($name.'_count') !!}: number;
-            {!! LaravelTsPublish::validJsObjectKey($name.'_exists') !!}: boolean;
-@endforeach
-@endif
-        }
-@endforeach
-    }
-@endif
-@if ($enums->count() > 0)
-    // Enums
-    export namespace {{ $enumsNamespace }} {
-@foreach ($enums as $transformer)
-@if($transformer->description)
-{!! LaravelTsPublish::formatJsDoc($transformer->description, 8) !!}
-@endif
-        export interface {{ $transformer->enumName }}
-        {
-@foreach($transformer->cases as $case)
-@if($case['description'])
-{!! LaravelTsPublish::formatJsDoc($case['description'], 12) !!}
-@endif
-            {!! LaravelTsPublish::validJsObjectKey($case['name']) !!}: {!! LaravelTsPublish::toJsLiteral($case['value']) !!},
 @endforeach
         }
-        export type {{ $transformer->enumName }}Type = {!! implode(' | ', $transformer->caseTypes) !!};
-@if($transformer->backed)
-        export type {{ $transformer->enumName }}Kind = {!! implode(' | ', $transformer->caseKinds) !!};
-@endif
-@if(!$loop->last)
-
 @endif
 @endforeach
     }
 @endif
-@if ($resources->count() > 0)
-    // Resources
-    export namespace {{ $resourcesNamespace }} {
-@foreach ($resources as $transformer)
-@if($transformer->description)
-{!! LaravelTsPublish::formatJsDoc($transformer->description, 8) !!}
-@endif
-        export interface {{ $transformer->resourceName }}{!! count($transformer->tsExtends) > 0 ? ' extends '.implode(', ', $transformer->tsExtends) : '' !!} {
-@foreach ($transformer->properties as $name => $property)
-@if($property['description'])
-{!! LaravelTsPublish::formatJsDoc($property['description'], 12) !!}
-@endif
-            {!! LaravelTsPublish::validJsObjectKey($name) !!}{!! $property['optional'] ? '?' : '' !!}: {!! LaravelTsPublish::qualifyGlobalType(LaravelTsPublish::rewriteAsEnumToType($property['type'], $transformer->globalEnumConstMap()), $globalTypesByNamespace, $resourcesNamespace, $globalAliasMap) !!};
+@endforeach
+@foreach ($groupedBroadcastEvents as $namespace => $transformers)
+@if ($transformers->count() > 0)
+    export namespace {{ $namespace }} {
+@foreach ($transformers as $transformer)
+        export interface {{ $transformer->eventName }} {
+@foreach ($transformer->properties as $name => $prop)
+@php
+$optional = $prop['optional'] ? '?' : '';
+@endphp
+            {!! LaravelTsPublish::validJsObjectKey($name) !!}{{ $optional }}: {!! LaravelTsPublish::qualifyGlobalType($prop['type'], $globalTypesByNamespace, $namespace, $transformer->globalTypeReferenceMap()) !!};
 @endforeach
         }
 @endforeach
     }
 @endif
-@endif
+@endforeach
 }

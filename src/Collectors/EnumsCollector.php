@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Collectors;
 
 use BackedEnum;
+use Illuminate\Support\Facades\Config;
 use ReflectionClass;
 use UnitEnum;
 
@@ -27,9 +28,9 @@ class EnumsCollector extends CoreCollector
     protected function finderSettings(): array
     {
         return [
-            'included' => $this->sanitizeAllowSetting(config()->array('ts-publish.included_enums')),
-            'excluded' => $this->sanitizeAllowSetting(config()->array('ts-publish.excluded_enums')),
-            'additional_directories' => $this->sanitizeAllowSetting(config()->array('ts-publish.additional_enum_directories')),
+            'included' => $this->sanitizeAllowSetting(Config::array('ts-publish.enums.included')),
+            'excluded' => $this->sanitizeAllowSetting(Config::array('ts-publish.enums.excluded')),
+            'additional_directories' => $this->sanitizeAllowSetting(Config::array('ts-publish.enums.additional_directories')),
         ];
     }
 }

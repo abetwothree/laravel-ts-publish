@@ -18,6 +18,7 @@ use JsonSerializable;
  * @phpstan-type ResourceData = array{
  *     resourceName: string,
  *     description: string,
+ *     fqcn: string,
  *     filePath: string,
  *     filename: string,
  *     properties: PropertiesList,
@@ -25,11 +26,12 @@ use JsonSerializable;
  *     valueImports: ValuesImportMap,
  *     modelClass: class-string|null,
  *     tsExtends: list<string>,
+ *     typeAlias: string|null,
  * }
  *
  * @implements Arrayable<string, string|PropertiesList|TypesImportMap|ValuesImportMap|list<string>|null>
  */
-class TsResourceDto implements Arrayable, Datable, Jsonable, JsonSerializable
+final readonly class TsResourceDto implements Arrayable, Datable, Jsonable, JsonSerializable
 {
     /**
      * @param  PropertiesList  $properties
@@ -41,6 +43,7 @@ class TsResourceDto implements Arrayable, Datable, Jsonable, JsonSerializable
     public function __construct(
         public string $resourceName,
         public string $description,
+        public string $fqcn,
         public string $filePath,
         public string $filename,
         public array $properties,
@@ -48,6 +51,7 @@ class TsResourceDto implements Arrayable, Datable, Jsonable, JsonSerializable
         public array $valueImports = [],
         public ?string $modelClass = null,
         public array $tsExtends = [],
+        public ?string $typeAlias = null,
     ) {}
 
     /** @return ResourceData */
@@ -56,6 +60,7 @@ class TsResourceDto implements Arrayable, Datable, Jsonable, JsonSerializable
         return [
             'resourceName' => $this->resourceName,
             'description' => $this->description,
+            'fqcn' => $this->fqcn,
             'filePath' => $this->filePath,
             'filename' => $this->filename,
             'properties' => $this->properties,
@@ -63,6 +68,7 @@ class TsResourceDto implements Arrayable, Datable, Jsonable, JsonSerializable
             'valueImports' => $this->valueImports,
             'modelClass' => $this->modelClass,
             'tsExtends' => $this->tsExtends,
+            'typeAlias' => $this->typeAlias,
         ];
     }
 

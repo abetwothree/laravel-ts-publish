@@ -14,7 +14,7 @@ test('models collector works correctly', function () {
 
     expect($models)
         ->toBeInstanceOf(Collection::class)
-        ->toHaveCount(38)
+        ->toHaveCount(41)
         ->toContain('Workbench\App\Models\TrackingEvent');
 });
 
@@ -27,7 +27,7 @@ test('models collector excludes classes with #[TsExclude]', function () {
 });
 
 test('models collector includes only classes from a directory', function () {
-    config()->set('ts-publish.included_models', [
+    config()->set('ts-publish.models.included', [
         workbench_path('modules/Accounting/Models'),
     ]);
 
@@ -40,7 +40,7 @@ test('models collector includes only classes from a directory', function () {
 });
 
 test('models collector includes a mix of class names and directories', function () {
-    config()->set('ts-publish.included_models', [
+    config()->set('ts-publish.models.included', [
         'Workbench\App\Models\User',
         workbench_path('modules/Accounting/Models'),
     ]);
@@ -55,7 +55,7 @@ test('models collector includes a mix of class names and directories', function 
 });
 
 test('models collector excludes classes from a directory', function () {
-    config()->set('ts-publish.excluded_models', [
+    config()->set('ts-publish.models.excluded', [
         workbench_path('app/Models'),
     ]);
 
@@ -70,11 +70,11 @@ test('models collector excludes classes from a directory', function () {
 });
 
 test('models collector excludes a mix of class names and directories', function () {
-    config()->set('ts-publish.additional_model_directories', [
+    config()->set('ts-publish.models.additional_directories', [
         'Illuminate\Notifications\DatabaseNotification',
         workbench_path('modules/Accounting/Models'),
     ]);
-    config()->set('ts-publish.excluded_models', [
+    config()->set('ts-publish.models.excluded', [
         'Workbench\App\Models\User',
         workbench_path('modules/Accounting/Models'),
     ]);

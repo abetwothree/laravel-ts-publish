@@ -50,6 +50,7 @@ test('barrel exports are sorted and unique', function () {
 test('writes barrel file to disk when output_to_files is enabled', function () {
     $filesystem = Mockery::mock(Filesystem::class);
     $filesystem->shouldReceive('ensureDirectoryExists')->once();
+    $filesystem->shouldReceive('exists')->once()->andReturn(false);
     $filesystem->shouldReceive('put')->once()
         ->withArgs(function (string $path, string $content) {
             return str_contains($path, 'index.ts') && str_contains($content, 'export * from');
@@ -68,6 +69,7 @@ test('writes barrel file to disk when output_to_files is enabled', function () {
 test('does not write barrel file to disk when output_to_files is disabled', function () {
     $filesystem = Mockery::mock(Filesystem::class);
     $filesystem->shouldNotReceive('ensureDirectoryExists');
+    $filesystem->shouldNotReceive('exists');
     $filesystem->shouldNotReceive('put');
 
     $generators = collect([
@@ -94,4 +96,61 @@ test('barrel uses TsEnum custom name for kebab-cased export', function () {
     expect($content)
         ->toContain("export * from './status';")
         ->toContain("export * from './shipment-status';");
+});
+
+test('writeModular writes barrels to the global output_directory by default', function () {
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.output_directory', '/tmp/default-output');
+
+    $filesystem = Mockery::mock(Filesystem::class);
+    $filesystem->shouldReceive('ensureDirectoryExists')->once()
+        ->with('/tmp/default-output/workbench/app/enums');
+    $filesystem->shouldReceive('exists')->once()->andReturn(false);
+    $filesystem->shouldReceive('put')->once()
+        ->withArgs(fn (string $path) => $path === '/tmp/default-output/workbench/app/enums/index.ts');
+
+    $generators = collect([
+        resolve(EnumGenerator::class, ['findable' => Status::class]),
+    ]);
+
+    $writer = new BarrelWriter($filesystem);
+    $writer->writeModular($generators);
+});
+
+test('writeModular writes barrels to the provided output base override', function () {
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.output_directory', '/tmp/default-output');
+
+    $filesystem = Mockery::mock(Filesystem::class);
+    $filesystem->shouldReceive('ensureDirectoryExists')->once()
+        ->with('/tmp/custom-broadcast/workbench/app/enums');
+    $filesystem->shouldReceive('exists')->once()->andReturn(false);
+    $filesystem->shouldReceive('put')->once()
+        ->withArgs(fn (string $path) => $path === '/tmp/custom-broadcast/workbench/app/enums/index.ts');
+
+    $generators = collect([
+        resolve(EnumGenerator::class, ['findable' => Status::class]),
+    ]);
+
+    $writer = new BarrelWriter($filesystem);
+    $writer->writeModular($generators, '/tmp/custom-broadcast');
+});
+
+test('writeModular falls back to output_directory when override is an empty string', function () {
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.output_directory', '/tmp/default-output');
+
+    $filesystem = Mockery::mock(Filesystem::class);
+    $filesystem->shouldReceive('ensureDirectoryExists')->once()
+        ->with('/tmp/default-output/workbench/app/enums');
+    $filesystem->shouldReceive('exists')->once()->andReturn(false);
+    $filesystem->shouldReceive('put')->once()
+        ->withArgs(fn (string $path) => $path === '/tmp/default-output/workbench/app/enums/index.ts');
+
+    $generators = collect([
+        resolve(EnumGenerator::class, ['findable' => Status::class]),
+    ]);
+
+    $writer = new BarrelWriter($filesystem);
+    $writer->writeModular($generators, '');
 });

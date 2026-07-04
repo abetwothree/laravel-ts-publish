@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish;
 
+use AbeTwoThree\LaravelTsPublish\Cache\CacheBootstrap;
+use AbeTwoThree\LaravelTsPublish\Cache\Contracts\CacheRepository;
 use AbeTwoThree\LaravelTsPublish\Commands\TsPublishCommand;
 use AbeTwoThree\LaravelTsPublish\Listeners\PostMigrateRunner;
 use Illuminate\Console\Events\CommandFinished;
 use Illuminate\Database\Events\MigrationsEnded;
 use Illuminate\Events\Dispatcher;
+use Illuminate\Support\Facades\Config;
 use Override;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
@@ -19,6 +22,8 @@ class LaravelTsPublishServiceProvider extends PackageServiceProvider
     public function packageRegistered(): void
     {
         $this->app->singleton(ModelAttributeResolver::class);
+
+        $this->app->bind(CacheRepository::class, fn () => CacheBootstrap::repository());
     }
 
     public function configurePackage(Package $package): void
@@ -39,8 +44,8 @@ class LaravelTsPublishServiceProvider extends PackageServiceProvider
     public function packageBooted(): void
     {
         if (! $this->app->runningUnitTests()
-            && config()->boolean('ts-publish.run_after_migrate')
-            && config()->boolean('ts-publish.output_to_files')) {
+            && Config::boolean('ts-publish.run_after_migrate')
+            && Config::boolean('ts-publish.output_to_files')) {
             /** @var Dispatcher $events */
             $events = $this->app->make(Dispatcher::class);
 

@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\Casts\AsUri;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Carbon as SupportCarbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Config;
 
 class TypeScriptMap
 {
@@ -122,7 +123,7 @@ class TypeScriptMap
         /** @var array<string, string|(callable(): string)> $merged */
         $merged = array_change_key_case(array_merge(
             $map,
-            config()->array('ts-publish.custom_ts_mappings', []),
+            Config::array('ts-publish.custom_ts_mappings', []),
         ), CASE_LOWER);
 
         return self::$map = $merged;
@@ -130,6 +131,6 @@ class TypeScriptMap
 
     protected function validateDate(): string
     {
-        return config()->boolean('ts-publish.timestamps_as_date', false) ? 'Date' : 'string';
+        return Config::boolean('ts-publish.timestamps_as_date', false) ? 'Date' : 'string';
     }
 }

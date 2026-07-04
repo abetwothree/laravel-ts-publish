@@ -11,6 +11,8 @@ abstract class CoreGenerator
 {
     public protected(set) string $content;
 
+    protected ?string $cachedFilename = null;
+
     /**
      * @param  class-string<TGeneratable>  $findable
      */

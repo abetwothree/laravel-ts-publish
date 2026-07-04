@@ -52,6 +52,8 @@ use Workbench\App\Http\Resources\OrderItemResource;
 use Workbench\App\Http\Resources\OrderOnlyResource;
 use Workbench\App\Http\Resources\OrderResource;
 use Workbench\App\Http\Resources\OrderSummaryResource;
+use Workbench\App\Http\Resources\PostCollection;
+use Workbench\App\Http\Resources\PostFlatCollection;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\QuirkyResource;
@@ -1052,7 +1054,7 @@ describe('ResourceAstAnalyzer edge cases', function () {
     });
 
     test('resolves singular relation without null when nullable_relations is false', function () {
-        config()->set('ts-publish.nullable_relations', false);
+        config()->set('ts-publish.models.nullable_relations', false);
 
         $reflection = new ReflectionClass(UserResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection, User::class);
@@ -1385,7 +1387,7 @@ describe('ResourceAstAnalyzer with parent::toArray spread', function () {
             ->toHaveKey('priority_new');
     });
 
-    test('inherits customImports from parent trait TsResourceCasts', function () {
+    test('inherits customImports from parent trait TsCasts', function () {
         $reflection = new ReflectionClass(ExtendedAddressResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection, User::class);
         $analysis = $analyzer->analyze();
@@ -1514,20 +1516,20 @@ describe('ResourceAstAnalyzer trait spread doc type branches', function () {
             ->and($isActive['type'])->toBe('boolean');
     });
 
-    test('applies TsResourceCasts type overrides on trait methods', function () {
+    test('applies TsCasts type overrides on trait methods', function () {
         $location = collect($this->analysis->properties)->firstWhere('name', 'location');
 
         expect($location['type'])->toBe('GeoPoint');
     });
 
-    test('applies TsResourceCasts optional flag on trait methods', function () {
+    test('applies TsCasts optional flag on trait methods', function () {
         $flag = collect($this->analysis->properties)->firstWhere('name', 'flag');
 
         expect($flag['type'])->toBe('string | null')
             ->and($flag['optional'])->toBeTrue();
     });
 
-    test('adds new properties from TsResourceCasts on trait methods', function () {
+    test('adds new properties from TsCasts on trait methods', function () {
         $extra = collect($this->analysis->properties)->firstWhere('name', 'extra');
 
         expect($extra)->not->toBeNull()
@@ -1535,7 +1537,7 @@ describe('ResourceAstAnalyzer trait spread doc type branches', function () {
             ->and($extra['optional'])->toBeFalse();
     });
 
-    test('populates customImports from TsResourceCasts import paths', function () {
+    test('populates customImports from TsCasts import paths', function () {
         expect($this->analysis->customImports)->toBe(['@/types/geo' => ['GeoPoint']]);
     });
 });
@@ -1921,7 +1923,7 @@ describe('ResourceAstAnalyzer with bare function call spread', function () {
             ->and($isActive['type'])->toBe('boolean');
     });
 
-    test('resolves TsResourceCasts from bare function call spreads', function () {
+    test('resolves TsCasts from bare function call spreads', function () {
         $reflection = new ReflectionClass(BareFuncCallResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection, Comment::class);
         $analysis = $analyzer->analyze();
@@ -3176,7 +3178,7 @@ describe('ResourceAstAnalyzer with CommentResource — nullsafe chains and closu
     });
 });
 
-describe('ResourceAstAnalyzer with ToArrayCastsResource — #[TsResourceCasts] on toArray() method', function () {
+describe('ResourceAstAnalyzer with ToArrayCastsResource — #[TsCasts] on toArray() method', function () {
     beforeEach(function () {
         $reflection = new ReflectionClass(ToArrayCastsResource::class);
         $this->analysis = (new ResourceAstAnalyzer($reflection, User::class))->analyze();
@@ -3206,7 +3208,7 @@ describe('ResourceAstAnalyzer with ToArrayCastsResource — #[TsResourceCasts] o
             ->and($prop['optional'])->toBeFalse();
     });
 
-    test('registers custom import from method-level TsResourceCasts', function () {
+    test('registers custom import from method-level TsCasts', function () {
         expect($this->analysis->customImports)->toHaveKey('@/types/geo')
             ->and($this->analysis->customImports['@/types/geo'])->toContain('GeoPoint');
     });
@@ -3220,6 +3222,50 @@ describe('ResourceAstAnalyzer with ToArrayCastsResource — #[TsResourceCasts] o
         $prop = collect($this->analysis->properties)->firstWhere('name', 'name');
         expect($prop)->not->toBeNull()
             ->and($prop['type'])->toBe('string');
+    });
+});
+
+describe('ResourceAstAnalyzer with PostCollection (#[Collects] attribute, no toArray)', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(PostCollection::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection))->analyze();
+    });
+
+    test('produces data property with PostResource[] type', function () {
+        $data = collect($this->analysis->properties)->firstWhere('name', 'data');
+
+        expect($data)->not->toBeNull()
+            ->and($data['type'])->toBe('PostResource[]')
+            ->and($data['optional'])->toBeFalse();
+    });
+
+    test('tracks PostResource FQCN in nestedResources under data key', function () {
+        expect($this->analysis->nestedResources)
+            ->toHaveKey('data')
+            ->and($this->analysis->nestedResources['data'])->toBe(PostResource::class);
+    });
+
+    test('flatTypeAlias is null (collection wraps data in key)', function () {
+        expect($this->analysis->flatTypeAlias)->toBeNull();
+    });
+});
+
+describe('ResourceAstAnalyzer with PostFlatCollection ($wrap = null, no toArray)', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(PostFlatCollection::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection))->analyze();
+    });
+
+    test('has flatTypeAlias set to PostResource[]', function () {
+        expect($this->analysis->flatTypeAlias)->toBe('PostResource[]');
+    })->skip(fn () => ! version_compare(app()->version(), '13', '>='));
+
+    test('has flatTypeAliasFqcn pointing to PostResource', function () {
+        expect($this->analysis->flatTypeAliasFqcn)->toBe(PostResource::class);
+    })->skip(fn () => ! version_compare(app()->version(), '13', '>='));
+
+    test('has no properties (type alias skips interface shape)', function () {
+        expect($this->analysis->properties)->toBeEmpty();
     });
 });
 
@@ -3707,7 +3753,7 @@ describe('ResourceAstAnalyzer with ResourceWrappedEnumResource — issue #43 $th
     });
 
     test('inline array with only EnumResource::make() values produces plain types when tolki disabled', function () {
-        config()->set('ts-publish.enums_use_tolki_package', false);
+        config()->set('ts-publish.enums.use_tolki_package', false);
         $reflection = new ReflectionClass(ResourceWrappedEnumResource::class);
         $analysis = (new ResourceAstAnalyzer($reflection, Post::class))->analyze();
         $prop = collect($analysis->properties)->firstWhere('name', 'enums_array');
@@ -3753,7 +3799,7 @@ describe('ResourceAstAnalyzer with ResourceWrappedEnumResource — issue #43 $th
     });
 
     test('mixed inline array: EnumResource::make($this->resource->prop) produces plain type when tolki disabled', function () {
-        config()->set('ts-publish.enums_use_tolki_package', false);
+        config()->set('ts-publish.enums.use_tolki_package', false);
         $reflection = new ReflectionClass(ResourceWrappedEnumResource::class);
         $analysis = (new ResourceAstAnalyzer($reflection, Post::class))->analyze();
         $prop = collect($analysis->properties)->firstWhere('name', 'mixed_enums_array');

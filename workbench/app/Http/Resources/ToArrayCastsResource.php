@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Workbench\App\Http\Resources;
 
-use AbeTwoThree\LaravelTsPublish\Attributes\TsResourceCasts;
+use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Models\User;
 
 /**
- * Fixture resource used to test #[TsResourceCasts] placed on the toArray() method
+ * Fixture resource used to test #[TsCasts] placed on the toArray() method
  * rather than on the class. No class-level annotation is present on purpose so that
  * method-level behavior is tested in isolation.
  *
@@ -18,7 +18,7 @@ use Workbench\App\Models\User;
  */
 class ToArrayCastsResource extends JsonResource
 {
-    #[TsResourceCasts([
+    #[TsCasts([
         'role' => 'string',
         'email' => ['type' => 'string | null', 'optional' => true],
         'injected_field' => 'Record<string, unknown>',

@@ -17,18 +17,22 @@
     ],
     "require": {
         "php": "^8.4",
-        "composer/class-map-generator": "^1.7",
-        "illuminate/contracts": "^13.0||^12.0||^11.0",
+        "composer/class-map-generator": "^1.7.2",
+        "illuminate/contracts": "^13.0||^12.0",
+        "laravel/prompts": "^0.3.21",
+        "laravel/ranger": "^0.1.12",
+        "laravel/surveyor": "^0.1.9",
         "nikic/php-parser": "^5.0",
         "spatie/laravel-package-tools": "^1.16"
     },
     "require-dev": {
         "archtechx/enums": "^1.1",
+        "inertiajs/inertia-laravel": "^3",
         "awobaz/compoships": "^2.5 || ^3.0",
         "larastan/larastan": "^3.0",
         "laravel/pint": "^1.14",
         "nunomaduro/collision": "^8.8",
-        "orchestra/testbench": "^11.0||^10.0.0||^9.0.0",
+        "orchestra/testbench": "^11.0||^10.0.0",
         "pestphp/pest": "^4.0",
         "pestphp/pest-plugin-arch": "^4.0.1",
         "pestphp/pest-plugin-laravel": "^4.0",
@@ -45,6 +49,7 @@
     "autoload-dev": {
         "psr-4": {
             "AbeTwoThree\\LaravelTsPublish\\Tests\\": "tests/",
+            "InertiaUI\\Table\\": "tests/Fixtures/InertiaUiTable/",
             "Workbench\\App\\": "workbench/app/",
             "Workbench\\Database\\Factories\\": "workbench/database/factories/",
             "Workbench\\Database\\Seeders\\": "workbench/database/seeders/",
@@ -64,8 +69,8 @@
         "analyse": "vendor/bin/phpstan analyse --verbose --ansi",
         "test": "vendor/bin/pest --parallel",
         "test-update-shards": "vendor/bin/pest --parallel --update-shards",
-        "test-cov": "export XDEBUG_MODE=coverage && vendor/bin/pest --parallel --coverage --coverage-clover coverage.xml",
-        "test-cov-html": "export XDEBUG_MODE=coverage && vendor/bin/pest --parallel --coverage-html coverage",
+        "test-cov": "export XDEBUG_MODE=coverage && php -d memory_limit=-1 vendor/bin/pest --parallel --coverage --coverage-clover coverage.xml",
+        "test-cov-html": "export XDEBUG_MODE=coverage && php -d memory_limit=-1 vendor/bin/pest --parallel --coverage-html coverage",
         "test-cov-xml": "export XDEBUG_MODE=coverage && vendor/bin/pest --parallel --coverage-xml coverage",
         "format": "vendor/bin/pint",
         "lint": [

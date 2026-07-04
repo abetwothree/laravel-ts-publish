@@ -8,7 +8,7 @@ use Illuminate\Http\Request;
 use Workbench\App\Models\User;
 
 /**
- * Exercises: parent spread inheriting customImports from parent trait TsResourceCasts.
+ * Exercises: parent spread inheriting customImports from parent trait TsCasts.
  *
  * @mixin User
  */

@@ -1,11 +1,18 @@
 @use('AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish')
 @if($metadataEnabled && $usesTolkiPackage)
-import { defineEnum } from '@tolki/enum';
+import { defineEnum } from '@tolki/ts';
 
 @endif
-@if($data->description)
-{!! LaravelTsPublish::formatJsDoc($data->description) !!}
-@endif
+@php
+    $description = $data->description;
+
+    if($description){
+        $description .= "\n\n";
+    }
+
+    $description .= "@see {$data->fqcn}";
+@endphp
+{!! LaravelTsPublish::formatJsDoc($description) !!}
 @if($metadataEnabled && $usesTolkiPackage)
 export const {{ $data->enumName }} = defineEnum({
 @else

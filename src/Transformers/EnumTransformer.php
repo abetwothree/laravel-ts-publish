@@ -11,7 +11,9 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsEnumStaticMethod;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsEnumDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
 use BackedEnum;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 use Override;
 use ReflectionEnum;
@@ -31,6 +33,8 @@ use UnitEnum;
  */
 class EnumTransformer extends CoreTransformer
 {
+    use SnapshotsTransformerState;
+
     public protected(set) string $enumName;
 
     public protected(set) string $description = '';
@@ -65,6 +69,12 @@ class EnumTransformer extends CoreTransformer
     /** @var list<string> */
     private const array BUILT_IN_ENUM_METHODS = ['cases', 'from', 'tryFrom'];
 
+    /** @return list<string> */
+    protected function transientProperties(): array
+    {
+        return ['reflectionEnum'];
+    }
+
     #[Override]
     public function transform(): self
     {
@@ -87,6 +97,7 @@ class EnumTransformer extends CoreTransformer
         return new TsEnumDto(
             enumName: $this->enumName,
             description: $this->description,
+            fqcn: $this->fqcn(),
             filePath: $this->filePath,
             filename: $this->filename(),
             cases: $this->cases,
@@ -199,8 +210,8 @@ class EnumTransformer extends CoreTransformer
 
     protected function transformMethods(): self
     {
-        $autoInclude = config('ts-publish.auto_include_enum_methods');
-        $caseFormatting = config()->string('ts-publish.enum_method_case');
+        $autoInclude = Config::boolean('ts-publish.enums.auto_include_methods');
+        $caseFormatting = Config::string('ts-publish.enums.method_case');
 
         foreach ($this->reflectionEnum->getMethods() as $method) {
             $methodName = $method->getName();
@@ -260,8 +271,8 @@ class EnumTransformer extends CoreTransformer
 
     protected function transformStaticMethods(): self
     {
-        $autoInclude = config('ts-publish.auto_include_enum_static_methods');
-        $caseFormatting = config()->string('ts-publish.enum_method_case');
+        $autoInclude = Config::boolean('ts-publish.enums.auto_include_static_methods');
+        $caseFormatting = Config::string('ts-publish.enums.method_case');
 
         foreach ($this->reflectionEnum->getMethods() as $method) {
             $methodName = $method->getName();

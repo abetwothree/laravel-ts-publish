@@ -4,33 +4,55 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Runners;
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastChannelsCollector;
+use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastEventsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
-use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
+use AbeTwoThree\LaravelTsPublish\Collectors\FormRequestsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ResourcesCollector;
+use AbeTwoThree\LaravelTsPublish\Collectors\RoutesCollector;
+use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
+use AbeTwoThree\LaravelTsPublish\Writers\BroadcastChannelsWriter;
+use AbeTwoThree\LaravelTsPublish\Writers\BroadcastEventsEchoWriter;
+use AbeTwoThree\LaravelTsPublish\Writers\BroadcastEventsIndexWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
+use AbeTwoThree\LaravelTsPublish\Writers\InertiaConfigWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\JsonWriter;
+use AbeTwoThree\LaravelTsPublish\Writers\RouteWriter;
+use AbeTwoThree\LaravelTsPublish\Writers\ViteEnvWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\WatcherJsonWriter;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Config;
 
 class Runner extends BaseRunner
 {
     public function run(): void
     {
         /** @var BarrelWriter $barrelWriter */
-        $barrelWriter = resolve(config()->string('ts-publish.barrel_writer_class'));
+        $barrelWriter = resolve(Config::string('ts-publish.barrel_writer_class', BarrelWriter::class));
         $this->barrelWriter = $barrelWriter;
 
         $this->generateEnums();
         $this->generateModels();
         $this->generateResources();
+        $this->generateInertiaConfig();
+        $this->generateFormRequests();
+        $this->generateBroadcastChannels();
+        $this->generateBroadcastEvents();
+        $this->generateRoutes();
 
         $this->generateGlobals();
+        $this->generateViteEnv();
         $this->generateJson();
         $this->generateWatcherJson();
+
+        $this->manifest?->save();
     }
 
     protected function generateEnums(): void
@@ -43,34 +65,25 @@ class Runner extends BaseRunner
             return;
         }
 
+        $this->logger?->subLabel('Enums…');
+
         /** @var EnumsCollector $collector */
-        $collector = resolve(config()->string('ts-publish.enum_collector_class'));
+        $collector = resolve(Config::string('ts-publish.enums.collector_class', EnumsCollector::class));
 
         /** @var Collection<int, EnumGenerator> $enumGenerators */
         $enumGenerators = collect();
 
         foreach ($collector->collect() as $enumClass) {
-            /** @var EnumGenerator $generator */
-            $generator = resolve(
-                config()->string('ts-publish.enum_generator_class'),
-                ['findable' => $enumClass],
-            );
+            /** @var class-string<EnumGenerator> $generatorClass */
+            $generatorClass = Config::string('ts-publish.enums.generator_class', EnumGenerator::class);
 
-            $enumGenerators->push($generator);
+            $enumGenerators->push($this->cachedGenerate($enumClass, $generatorClass));
         }
 
         $this->enumGenerators = $enumGenerators;
 
-        if (config()->boolean('ts-publish.modular_publishing')) {
-            $this->enumModularBarrels = $this->barrelWriter->writeModular($this->enumGenerators);
-            $this->enumBarrelContent = implode("\n\n", $this->enumModularBarrels);
-        } else {
-            $this->enumBarrelContent = $this->barrelWriter->write(
-                $this->enumGenerators,
-                'index',
-                'enums'
-            );
-        }
+        $this->enumModularBarrels = $this->barrelWriter->writeModular($this->enumGenerators);
+        $this->logger?->success('Enums — '.$this->enumGenerators->count());
     }
 
     protected function generateModels(): void
@@ -83,34 +96,25 @@ class Runner extends BaseRunner
             return;
         }
 
-        /** @var ModelsCollector $collector */
-        $collector = resolve(config()->string('ts-publish.model_collector_class'));
+        $this->logger?->subLabel('Models…');
+
+        /** @var list<class-string> $modelClasses */
+        $modelClasses = $this->buildModelMorphTargetMap();
 
         /** @var Collection<int, ModelGenerator> $modelGenerators */
         $modelGenerators = collect();
 
-        foreach ($collector->collect() as $modelClass) {
-            /** @var ModelGenerator $generator */
-            $generator = resolve(
-                config()->string('ts-publish.model_generator_class'),
-                ['findable' => $modelClass],
-            );
+        foreach ($modelClasses as $modelClass) {
+            /** @var class-string<ModelGenerator> $generatorClass */
+            $generatorClass = Config::string('ts-publish.models.generator_class', ModelGenerator::class);
 
-            $modelGenerators->push($generator);
+            $modelGenerators->push($this->cachedGenerate($modelClass, $generatorClass));
         }
 
         $this->modelGenerators = $modelGenerators;
 
-        if (config()->boolean('ts-publish.modular_publishing')) {
-            $this->modelModularBarrels = $this->barrelWriter->writeModular($this->modelGenerators);
-            $this->modelBarrelContent = implode("\n\n", $this->modelModularBarrels);
-        } else {
-            $this->modelBarrelContent = $this->barrelWriter->write(
-                $this->modelGenerators,
-                'index',
-                'models'
-            );
-        }
+        $this->modelModularBarrels = $this->barrelWriter->writeModular($this->modelGenerators);
+        $this->logger?->success('Models — '.$this->modelGenerators->count());
     }
 
     protected function generateResources(): void
@@ -123,58 +127,257 @@ class Runner extends BaseRunner
             return;
         }
 
+        $this->logger?->subLabel('Resources…');
+
         /** @var ResourcesCollector $collector */
-        $collector = resolve(config()->string('ts-publish.resource_collector_class'));
+        $collector = resolve(Config::string('ts-publish.resources.collector_class', ResourcesCollector::class));
 
         /** @var Collection<int, ResourceGenerator> $resourceGenerators */
         $resourceGenerators = collect();
 
         foreach ($collector->collect() as $resourceClass) {
-            /** @var ResourceGenerator $generator */
-            $generator = resolve(
-                config()->string('ts-publish.resource_generator_class'),
-                ['findable' => $resourceClass],
-            );
+            /** @var class-string<ResourceGenerator> $generatorClass */
+            $generatorClass = Config::string('ts-publish.resources.generator_class', ResourceGenerator::class);
 
-            $resourceGenerators->push($generator);
+            $resourceGenerators->push($this->cachedGenerate($resourceClass, $generatorClass));
         }
 
         $this->resourceGenerators = $resourceGenerators;
 
-        if (config()->boolean('ts-publish.modular_publishing')) {
-            $this->resourceModularBarrels = $this->barrelWriter->writeModular($this->resourceGenerators);
-            $this->resourceBarrelContent = implode("\n\n", $this->resourceModularBarrels);
-        } else {
-            $this->resourceBarrelContent = $this->barrelWriter->write(
-                $this->resourceGenerators,
-                'index',
-                config()->string('ts-publish.resources_namespace', 'resources')
-            );
+        $this->resourceModularBarrels = $this->barrelWriter->writeModular($this->resourceGenerators);
+        $this->logger?->success('Resources — '.$this->resourceGenerators->count());
+    }
+
+    /**
+     * Generate the inertia module augmentation file.
+     *
+     * Runs before route generation so Inertia.SharedData is defined
+     * before page types reference it.
+     */
+    protected function generateInertiaConfig(): void
+    {
+        if (! Config::boolean('ts-publish.inertia.enabled')) {
+            return;
         }
+
+        $this->logger?->subLabel('Inertia config…');
+
+        $middlewarePath = Config::get('ts-publish.inertia.inertia_middleware_path');
+        if (! is_string($middlewarePath) || ! is_dir($middlewarePath)) {
+            $middlewarePath = app_path();
+        }
+
+        /** @var InertiaSharedDataAnalyzer $analyzer */
+        $analyzer = resolve(InertiaSharedDataAnalyzer::class);
+        $analyzer->setAppPaths($middlewarePath);
+
+        $sharedData = $analyzer->analyze();
+
+        if ($sharedData === null) {
+            return;
+        }
+
+        /** @var InertiaConfigWriter $writer */
+        $writer = resolve(InertiaConfigWriter::class);
+
+        $this->inertiaConfigContent = $writer->write($sharedData);
+        $this->logger?->success('Inertia config');
+    }
+
+    protected function generateFormRequests(): void
+    {
+        /** @var Collection<int, FormRequestGenerator> $empty */
+        $empty = collect();
+
+        if (! $this->shouldPublishFormRequests || ! Config::boolean('ts-publish.form_requests.enabled')) {
+            $this->formRequestGenerators = $empty;
+
+            return;
+        }
+
+        $this->logger?->subLabel('Form requests…');
+
+        /** @var FormRequestsCollector $collector */
+        $collector = resolve(Config::string('ts-publish.form_requests.collector_class', FormRequestsCollector::class));
+
+        /** @var Collection<int, FormRequestGenerator> $formRequestGenerators */
+        $formRequestGenerators = collect();
+
+        foreach ($collector->collect() as $formRequestClass) {
+            /** @var class-string<FormRequestGenerator> $generatorClass */
+            $generatorClass = Config::string('ts-publish.form_requests.generator_class', FormRequestGenerator::class);
+
+            $formRequestGenerators->push($this->cachedGenerate($formRequestClass, $generatorClass));
+        }
+
+        $this->formRequestGenerators = $formRequestGenerators;
+
+        $formRequestOutputPath = Config::get('ts-publish.form_requests.output_directory');
+        $this->formRequestModularBarrels = $this->barrelWriter->writeModular(
+            $this->formRequestGenerators,
+            is_string($formRequestOutputPath) ? $formRequestOutputPath : null,
+        );
+        $this->logger?->success('Form requests — '.$this->formRequestGenerators->count());
+    }
+
+    protected function generateBroadcastChannels(): void
+    {
+        if (! $this->shouldPublishBroadcastChannels || ! Config::boolean('ts-publish.broadcast_channels.enabled')) {
+            $this->broadcastChannelsContent = '';
+
+            return;
+        }
+
+        $this->logger?->subLabel('Broadcast channels…');
+
+        /** @var BroadcastChannelsCollector $collector */
+        $collector = resolve(Config::string('ts-publish.broadcast_channels.collector_class', BroadcastChannelsCollector::class));
+
+        /** @var BroadcastChannelsWriter $writer */
+        $writer = resolve(Config::string('ts-publish.broadcast_channels.writer_class', BroadcastChannelsWriter::class));
+
+        $this->broadcastChannelsContent = $writer->write($collector->collect());
+        $this->logger?->success('Broadcast channels');
+    }
+
+    /**
+     * Collect, transform, and write all broadcast event TypeScript interface files.
+     *
+     * Skips when shouldPublishBroadcastEvents is false or broadcast_events is disabled in config.
+     * Writes per-event files, barrel index files, the broadcast-events.ts index, and the
+     * optional echo-broadcast-events.d.ts module augmentation file.
+     */
+    protected function generateBroadcastEvents(): void
+    {
+        /** @var Collection<int, BroadcastEventGenerator> $empty */
+        $empty = collect();
+
+        if (! $this->shouldPublishBroadcastEvents || ! Config::boolean('ts-publish.broadcast_events.enabled')) {
+            $this->broadcastEventGenerators = $empty;
+            $this->broadcastEventModularBarrels = [];
+            $this->broadcastEventsIndexContent = '';
+            $this->broadcastEventsEchoContent = '';
+
+            return;
+        }
+
+        $this->logger?->subLabel('Broadcast events…');
+
+        /** @var BroadcastEventsCollector $collector */
+        $collector = resolve(Config::string('ts-publish.broadcast_events.collector_class', BroadcastEventsCollector::class));
+
+        /** @var Collection<int, BroadcastEventGenerator> $broadcastEventGenerators */
+        $broadcastEventGenerators = collect();
+
+        foreach ($collector->collect() as $eventClass) {
+            /** @var class-string<BroadcastEventGenerator> $generatorClass */
+            $generatorClass = Config::string('ts-publish.broadcast_events.generator_class', BroadcastEventGenerator::class);
+
+            $broadcastEventGenerators->push($this->cachedGenerate($eventClass, $generatorClass));
+        }
+
+        $this->broadcastEventGenerators = $broadcastEventGenerators;
+
+        $broadcastEventsOutputPath = Config::get('ts-publish.broadcast_events.output_directory');
+        $this->broadcastEventModularBarrels = $this->barrelWriter->writeModular(
+            $this->broadcastEventGenerators,
+            is_string($broadcastEventsOutputPath) ? $broadcastEventsOutputPath : null,
+        );
+
+        /** @var BroadcastEventsIndexWriter $indexWriter */
+        $indexWriter = resolve(Config::string('ts-publish.broadcast_events.index_writer_class', BroadcastEventsIndexWriter::class));
+        $this->broadcastEventsIndexContent = $indexWriter->write($this->broadcastEventGenerators);
+
+        /** @var BroadcastEventsEchoWriter $echoWriter */
+        $echoWriter = resolve(Config::string('ts-publish.broadcast_events.echo_augmentation.writer_class', BroadcastEventsEchoWriter::class));
+        $this->broadcastEventsEchoContent = $echoWriter->write($this->broadcastEventGenerators);
+        $this->logger?->success('Broadcast events — '.$this->broadcastEventGenerators->count());
+    }
+
+    protected function generateRoutes(): void
+    {
+        /** @var Collection<int, RouteGenerator> $empty */
+        $empty = collect();
+
+        if (! $this->shouldPublishRoutes || ! Config::boolean('ts-publish.routes.enabled')) {
+            $this->routeGenerators = $empty;
+
+            return;
+        }
+
+        $this->logger?->subLabel('Route controllers…');
+
+        /** @var RoutesCollector $collector */
+        $collector = resolve(Config::string('ts-publish.routes.collector_class', RoutesCollector::class));
+
+        /** @var Collection<int, RouteGenerator> $routeGenerators */
+        $routeGenerators = collect();
+
+        foreach ($collector->collect() as $controllerClass) {
+            /** @var class-string<RouteGenerator> $generatorClass */
+            $generatorClass = Config::string('ts-publish.routes.generator_class', RouteGenerator::class);
+
+            $routeGenerators->push($this->cachedGenerate($controllerClass, $generatorClass));
+        }
+
+        $this->routeGenerators = $routeGenerators;
+
+        /** @var RouteWriter $routeWriter */
+        $routeWriter = resolve(Config::string('ts-publish.routes.writer_class', RouteWriter::class));
+
+        $this->routeModularBarrels = $routeWriter->writeRouteBarrels($this->routeGenerators);
+        $this->logger?->success('Route controllers — '.$this->routeGenerators->count());
     }
 
     protected function generateGlobals(): void
     {
+        $this->logger?->subLabel('Globals…');
         /** @var GlobalsWriter $globalsWriter */
-        $globalsWriter = resolve(config()->string('ts-publish.globals_writer_class'));
+        $globalsWriter = resolve(Config::string('ts-publish.globals.writer_class', GlobalsWriter::class));
         $this->globalsWriter = $globalsWriter;
 
         $this->globalsContent = $globalsWriter->write($this);
+        if ($this->globalsContent !== '') {
+            $this->logger?->success('Globals');
+        }
     }
 
     protected function generateJson(): void
     {
+        $this->logger?->subLabel('JSON…');
         /** @var JsonWriter $jsonWriter */
-        $jsonWriter = resolve(config()->string('ts-publish.json_writer_class'));
+        $jsonWriter = resolve(Config::string('ts-publish.json.writer_class', JsonWriter::class));
 
         $this->jsonContent = $jsonWriter->write($this);
+        if ($this->jsonContent !== '') {
+            $this->logger?->success('JSON');
+        }
+    }
+
+    /**
+     * Generate the vite-env.d.ts declaration file for VITE_-prefixed environment variables.
+     */
+    protected function generateViteEnv(): void
+    {
+        $this->logger?->subLabel('Vite env…');
+        /** @var ViteEnvWriter $writer */
+        $writer = resolve(ViteEnvWriter::class);
+
+        $this->viteEnvContent = $writer->write();
+        if ($this->viteEnvContent !== '') {
+            $this->logger?->success('Vite env');
+        }
     }
 
     protected function generateWatcherJson(): void
     {
+        $this->logger?->subLabel('Watcher JSON…');
         /** @var WatcherJsonWriter $jsonWriter */
-        $jsonWriter = resolve(config()->string('ts-publish.watcher_json_writer_class'));
+        $jsonWriter = resolve(Config::string('ts-publish.watcher.writer_class', WatcherJsonWriter::class));
 
         $this->watcherJsonContent = $jsonWriter->write();
+        if ($this->watcherJsonContent !== '') {
+            $this->logger?->success('Watcher JSON');
+        }
     }
 }

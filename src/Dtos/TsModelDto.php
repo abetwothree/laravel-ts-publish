@@ -13,15 +13,16 @@ use JsonSerializable;
  * @phpstan-import-type TypesImportMap from Datable
  * @phpstan-import-type ValuesImportMap from Datable
  *
- * @phpstan-type ColumnsList = array<string, array{type: string, description: string}>
- * @phpstan-type MutatorsList = array<string, array{type: string, description: string}>
+ * @phpstan-type ColumnsList = array<string, array{type: string, description: string, optional: bool}>
+ * @phpstan-type MutatorsList = array<string, array{type: string, description: string, optional: bool}>
  * @phpstan-type RelationsList = array<string, array{type: string, description: string}>
  * @phpstan-type EnumPropertyInfo = array{constName: string, nullable: bool}
  * @phpstan-type EnumPropertiesList = array<string, EnumPropertyInfo>
- * @phpstan-type AppendsList = array<string, array{type: string, description: string}>
+ * @phpstan-type AppendsList = array<string, array{type: string, description: string, optional: bool}>
  * @phpstan-type ModelData = array{
  *    modelName: string,
  *    description: string,
+ *    fqcn: string,
  *    filePath: string,
  *    filename: string,
  *    columns: ColumnsList,
@@ -38,7 +39,7 @@ use JsonSerializable;
  *
  * @implements Arrayable<string, string|ColumnsList|RelationsList|MutatorsList|AppendsList|TypesImportMap|ValuesImportMap|EnumPropertiesList|list<string>>
  */
-class TsModelDto implements Arrayable, Datable, Jsonable, JsonSerializable
+final readonly class TsModelDto implements Arrayable, Datable, Jsonable, JsonSerializable
 {
     /**
      * @param  ColumnsList  $columns
@@ -55,6 +56,7 @@ class TsModelDto implements Arrayable, Datable, Jsonable, JsonSerializable
     public function __construct(
         public string $modelName,
         public string $description,
+        public string $fqcn,
         public string $filePath,
         public string $filename,
         public array $columns,
@@ -75,6 +77,7 @@ class TsModelDto implements Arrayable, Datable, Jsonable, JsonSerializable
         return [
             'modelName' => $this->modelName,
             'description' => $this->description,
+            'fqcn' => $this->fqcn,
             'filePath' => $this->filePath,
             'filename' => $this->filename,
             'columns' => $this->columns,

@@ -7,7 +7,6 @@ namespace AbeTwoThree\LaravelTsPublish\Transformers;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
-use AbeTwoThree\LaravelTsPublish\Attributes\TsResourceCasts;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesClassNames;
@@ -17,9 +16,11 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
+use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\TracksEnumImports;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 use Override;
 use ReflectionClass;
@@ -40,6 +41,7 @@ class ResourceTransformer extends CoreTransformer
     use ParsesTsExtends;
     use ResolvesClassNames;
     use ResolvesImportConflicts;
+    use SnapshotsTransformerState;
     use TracksEnumImports {
         shouldGenerateHasEnums as traitShouldGenerateHasEnums;
         enumPropertyFqcns as traitEnumPropertyFqcns;
@@ -122,8 +124,14 @@ class ResourceTransformer extends CoreTransformer
     /** @var array<string, string> property name => import path from model's #[TsCasts] */
     protected array $modelTsCastsImportPaths = [];
 
+    /** @var array<string, bool> property name => optional flag from model's #[TsCasts] */
+    protected array $modelTsCastsOptionalOverrides = [];
+
     /** @var list<string> TypeScript extends clauses */
     public protected(set) array $tsExtends = [];
+
+    /** @var string|null TypeScript type alias (e.g. `export type X = SingularResource[]`) emitted instead of an interface */
+    public protected(set) ?string $typeAlias = null;
 
     #[Override]
     public function transform(): self
@@ -132,7 +140,7 @@ class ResourceTransformer extends CoreTransformer
             ->parseTsExtends()
             ->resolveModelClass()
             ->parseModelTsCastsOverrides()
-            ->parseTsResourceCastsOverrides()
+            ->parseResourceTsCastsOverrides()
             ->runAstAnalysis()
             ->applyOverrides()
             ->resolveMultiClassAccessorFqcns()
@@ -150,6 +158,7 @@ class ResourceTransformer extends CoreTransformer
         return new TsResourceDto(
             resourceName: $this->resourceName,
             description: $this->description,
+            fqcn: $this->fqcn(),
             filePath: $this->filePath,
             filename: $this->filename(),
             properties: $this->properties,
@@ -157,6 +166,7 @@ class ResourceTransformer extends CoreTransformer
             valueImports: $this->valueImports,
             modelClass: $this->modelClass,
             tsExtends: $this->tsExtends,
+            typeAlias: $this->typeAlias,
         );
     }
 
@@ -336,7 +346,7 @@ class ResourceTransformer extends CoreTransformer
         }
 
         /** @var ModelsCollector $collector */
-        $collector = resolve(config()->string('ts-publish.model_collector_class'));
+        $collector = resolve(Config::string('ts-publish.models.collector_class', ModelsCollector::class));
 
         foreach ($collector->collect() as $modelClass) {
             $reflection = new ReflectionClass($modelClass);
@@ -363,35 +373,34 @@ class ResourceTransformer extends CoreTransformer
 
         $this->modelTsCastsOverrides = $result['overrides'];
         $this->modelTsCastsImportPaths = $result['importPaths'];
+        $this->modelTsCastsOptionalOverrides = $result['optionalOverrides'];
 
         return $this;
     }
 
     /**
-     * Parse #[TsResourceCasts] attributes for type overrides.
+     * Parse #[TsCasts] attributes on the resource class for type overrides.
      */
-    protected function parseTsResourceCastsOverrides(): self
+    protected function parseResourceTsCastsOverrides(): self
     {
-        foreach ($this->reflectionResource->getAttributes(TsResourceCasts::class) as $attr) {
-            $instance = $attr->newInstance();
+        $result = $this->parseTsCastsFromReflection($this->reflectionResource);
 
-            foreach ($instance->types as $property => $value) {
-                if (is_array($value)) {
-                    $this->tsTypeOverrides[$property] = $value['type'];
+        foreach ($result['overrides'] as $property => $type) {
+            $this->tsTypeOverrides[$property] = $type;
+        }
 
-                    if (isset($value['import'])) {
-                        foreach (LaravelTsPublish::extractImportableTypes($value['type']) as $importName) {
-                            $this->customImports[$value['import']][] = $importName;
-                        }
-                    }
+        foreach ($result['importPaths'] as $property => $importPath) {
+            $type = $result['overrides'][$property] ?? null;
 
-                    if (isset($value['optional'])) {
-                        $this->optionalOverrides[$property] = $value['optional'];
-                    }
-                } else {
-                    $this->tsTypeOverrides[$property] = $value;
+            if ($type !== null) {
+                foreach (LaravelTsPublish::extractImportableTypes($type) as $importName) {
+                    $this->customImports[$importPath][] = $importName;
                 }
             }
+        }
+
+        foreach ($result['optionalOverrides'] as $property => $optional) {
+            $this->optionalOverrides[$property] = $optional;
         }
 
         return $this;
@@ -405,6 +414,18 @@ class ResourceTransformer extends CoreTransformer
         $analyzer = new ResourceAstAnalyzer($this->reflectionResource, $this->modelClass);
         $analysis = $analyzer->analyze();
 
+        // Handle flat type alias (e.g. `export type PostCollection = PostResource[]`)
+        // for ResourceCollection subclasses with $wrap = null.
+        if ($analysis->flatTypeAlias !== null) {
+            $this->typeAlias = $analysis->flatTypeAlias;
+
+            if ($analysis->flatTypeAliasFqcn !== null && $analysis->flatTypeAliasFqcn !== $this->findable) {
+                $this->resourceFqcnMap[$analysis->flatTypeAliasFqcn] = class_basename($analysis->flatTypeAliasFqcn);
+            }
+
+            return $this;
+        }
+
         // Convert ResourcePropertyInfo list into PropertiesList map
         foreach ($analysis->properties as $prop) {
             $this->properties[$prop['name']] = [
@@ -416,7 +437,7 @@ class ResourceTransformer extends CoreTransformer
 
         // Populate enum tracking maps from EnumResource::make() properties
         foreach ($analysis->enumResources as $propName => $fqcn) {
-            $tsInfo = LaravelTsPublish::phpToTypeScriptType($fqcn);
+            $tsInfo = LaravelTsPublish::toTsType($fqcn);
             $this->enumFqcnMap[$fqcn] = $tsInfo['enumTypes'][0] ?? class_basename($fqcn).'Type';
             $this->enumConstMap[$fqcn] = $tsInfo['enums'][0] ?? class_basename($fqcn);
             $nullable = str_contains($this->properties[$propName]['type'] ?? '', 'null');
@@ -427,7 +448,7 @@ class ResourceTransformer extends CoreTransformer
         // Populate enum tracking maps from direct $this->prop enum access
         foreach ($analysis->directEnumFqcns as $propName => $fqcn) {
             if (! isset($this->enumFqcnMap[$fqcn])) {
-                $tsInfo = LaravelTsPublish::phpToTypeScriptType($fqcn);
+                $tsInfo = LaravelTsPublish::toTsType($fqcn);
                 $this->enumFqcnMap[$fqcn] = $tsInfo['enumTypes'][0] ?? class_basename($fqcn).'Type';
                 $this->enumConstMap[$fqcn] = $tsInfo['enums'][0] ?? class_basename($fqcn);
             }
@@ -464,7 +485,7 @@ class ResourceTransformer extends CoreTransformer
         foreach ($analysis->inlineEnumResourceFqcns as $propName => $fqcns) {
             foreach ($fqcns as $fqcn) {
                 if (! isset($this->enumConstMap[$fqcn])) {
-                    $tsInfo = LaravelTsPublish::phpToTypeScriptType($fqcn);
+                    $tsInfo = LaravelTsPublish::toTsType($fqcn);
                     $this->enumConstMap[$fqcn] = $tsInfo['enums'][0] ?? class_basename($fqcn);
                 }
             }
@@ -475,7 +496,7 @@ class ResourceTransformer extends CoreTransformer
         foreach ($analysis->multiEnumResourceFqcns as $propName => $fqcns) {
             foreach ($fqcns as $fqcn) {
                 if (! isset($this->enumFqcnMap[$fqcn])) {
-                    $tsInfo = LaravelTsPublish::phpToTypeScriptType($fqcn);
+                    $tsInfo = LaravelTsPublish::toTsType($fqcn);
                     $this->enumFqcnMap[$fqcn] = $tsInfo['enumTypes'][0] ?? class_basename($fqcn).'Type';
                     $this->enumConstMap[$fqcn] = $tsInfo['enums'][0] ?? class_basename($fqcn);
                 }
@@ -483,7 +504,7 @@ class ResourceTransformer extends CoreTransformer
             $this->multiEnumResourceProperties[$propName] = $fqcns;
         }
 
-        // Merge custom imports from trait method #[TsResourceCasts] attributes
+        // Merge custom imports from trait method #[TsCasts] attributes
         foreach ($analysis->customImports as $importPath => $types) {
             $this->customImports[$importPath] = [...($this->customImports[$importPath] ?? []), ...$types];
         }
@@ -492,11 +513,11 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * Apply model #[TsCasts] then #[TsResourceCasts] overrides on top of AST-inferred properties.
+     * Apply model #[TsCasts] then resource #[TsCasts] overrides on top of AST-inferred properties.
      */
     protected function applyOverrides(): self
     {
-        // Apply model TsCasts overrides (only for properties already in toArray, not overridden by TsResourceCasts)
+        // Apply model TsCasts overrides (only for properties already in toArray, not overridden by resource TsCasts)
         foreach ($this->modelTsCastsOverrides as $property => $type) {
             if (isset($this->properties[$property]) && ! isset($this->tsTypeOverrides[$property])) {
                 $this->properties[$property]['type'] = $type;
@@ -506,10 +527,14 @@ class ResourceTransformer extends CoreTransformer
                         $this->customImports[$this->modelTsCastsImportPaths[$property]][] = $importName;
                     }
                 }
+
+                if (isset($this->modelTsCastsOptionalOverrides[$property])) {
+                    $this->properties[$property]['optional'] = $this->modelTsCastsOptionalOverrides[$property];
+                }
             }
         }
 
-        // Apply TsResourceCasts overrides (highest priority, can add new properties)
+        // Apply resource TsCasts overrides (highest priority, can add new properties)
         foreach ($this->tsTypeOverrides as $property => $type) {
             if (isset($this->properties[$property])) {
                 $this->properties[$property]['type'] = $type;
@@ -539,28 +564,16 @@ class ResourceTransformer extends CoreTransformer
     {
         $typeImports = [];
         $valueImports = [];
-        $isModular = config()->boolean('ts-publish.modular_publishing');
         $hasEnums = $this->shouldGenerateHasEnums();
 
-        if ($isModular) {
-            $typeImports = [
-                ...$this->collectModularTypeImports($this->enumFqcnMap),
-                ...$this->collectModularTypeImports($this->resourceFqcnMap),
-                ...$this->collectModularTypeImports($this->modelFqcnMap),
-            ];
+        $typeImports = [
+            ...$this->collectModularTypeImports($this->enumFqcnMap),
+            ...$this->collectModularTypeImports($this->resourceFqcnMap),
+            ...$this->collectModularTypeImports($this->modelFqcnMap),
+        ];
 
-            if ($hasEnums) {
-                $valueImports = $this->collectModularValueImports($this->enumPropertyFqcns());
-            }
-        } else {
-            ['typeImports' => $typeImports, 'valueImports' => $valueImports] = $this->buildFlatEnumImports(
-                $this->enumFqcnMap,
-                $this->enumPropertyFqcns(),
-                $hasEnums,
-            );
-
-            $this->addSortedImports($typeImports, './', $this->collectFlatTypeImports($this->resourceFqcnMap));
-            $this->addSortedImports($typeImports, '../models', $this->collectFlatTypeImports($this->modelFqcnMap));
+        if ($hasEnums) {
+            $valueImports = $this->collectModularValueImports($this->enumPropertyFqcns());
         }
 
         $typeImports = $this->mergeCustomImports($typeImports, $this->customImports);
@@ -577,7 +590,7 @@ class ResourceTransformer extends CoreTransformer
      */
     protected function rewriteEnumResourceTypes(): self
     {
-        if (! config()->boolean('ts-publish.enums_use_tolki_package')) {
+        if (! Config::boolean('ts-publish.enums.use_tolki_package')) {
             return $this;
         }
 
@@ -929,8 +942,6 @@ class ResourceTransformer extends CoreTransformer
      */
     public function globalEnumConstMap(): array
     {
-        $isModular = config()->boolean('ts-publish.modular_publishing');
-        $enumsNs = config()->string('ts-publish.enums_namespace');
         $map = [];
 
         foreach ($this->enumResourceProperties as $info) {
@@ -946,9 +957,7 @@ class ResourceTransformer extends CoreTransformer
             }
 
             $typeName = $originalConstName.'Type';
-            $ns = $isModular
-                ? str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn))
-                : $enumsNs;
+            $ns = str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn));
 
             $map[$constAlias] = $ns.'.'.$typeName;
         }
@@ -964,9 +973,7 @@ class ResourceTransformer extends CoreTransformer
                 }
 
                 $typeName = $originalConstName.'Type';
-                $ns = $isModular
-                    ? str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn))
-                    : $enumsNs;
+                $ns = str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn));
 
                 $map[$constAlias] = $ns.'.'.$typeName;
             }
@@ -985,32 +992,28 @@ class ResourceTransformer extends CoreTransformer
      */
     public function globalAliasMap(): array
     {
-        $isModular = config()->boolean('ts-publish.modular_publishing');
-        $modelsNs = config()->string('ts-publish.models_namespace');
-        $enumsNs = config()->string('ts-publish.enums_namespace');
-        $resourcesNs = config()->string('ts-publish.resources_namespace', 'resources');
         $map = [];
 
         foreach ($this->importAliases as $fqcn => $alias) {
             if (isset($this->enumFqcnMap[$fqcn])) {
-                $ns = $isModular
-                    ? str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn))
-                    : $enumsNs;
+                $ns = str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn));
                 $map[$alias] = $ns.'.'.$this->enumFqcnMap[$fqcn];
             } elseif (isset($this->resourceFqcnMap[$fqcn])) {
-                $ns = $isModular
-                    ? str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn))
-                    : $resourcesNs;
+                $ns = str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn));
                 $map[$alias] = $ns.'.'.$this->resourceFqcnMap[$fqcn];
             } elseif (isset($this->modelFqcnMap[$fqcn])) {
-                $ns = $isModular
-                    ? str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn))
-                    : $modelsNs;
+                $ns = str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn));
                 $map[$alias] = $ns.'.'.$this->modelFqcnMap[$fqcn];
             }
         }
 
         return $map;
+    }
+
+    /** @return list<string> */
+    protected function transientProperties(): array
+    {
+        return ['reflectionResource'];
     }
 
     #[Override]
@@ -1028,7 +1031,7 @@ class ResourceTransformer extends CoreTransformer
      */
     protected function shouldGenerateHasEnums(): bool
     {
-        if (! config()->boolean('ts-publish.enums_use_tolki_package')) {
+        if (! Config::boolean('ts-publish.enums.use_tolki_package')) {
             return false;
         }
 

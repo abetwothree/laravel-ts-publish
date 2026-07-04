@@ -4,12 +4,18 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Writers;
 
+use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
+use AbeTwoThree\LaravelTsPublish\Dtos\TsFormRequestDto;
+use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
+use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Facades\Config;
 
 /**
  * @phpstan-import-type CasesList from EnumTransformer
@@ -17,28 +23,32 @@ use Illuminate\Filesystem\Filesystem;
  * @phpstan-import-type CaseTypesList from EnumTransformer
  * @phpstan-import-type MethodsList from EnumTransformer
  * @phpstan-import-type StaticMethodsList from EnumTransformer
+ * @phpstan-import-type FormRequestFieldData from TsFormRequestDto
+ * @phpstan-import-type PropertyInfo from TsBroadcastEventDto
  */
 class JsonWriter
 {
+    use WritesGeneratedFiles;
+
     public function __construct(
         protected Filesystem $filesystem,
     ) {}
 
     public function write(Runner $runner): string
     {
-        if (! config()->boolean('ts-publish.output_json_file')) {
+        if (! Config::boolean('ts-publish.json.enabled')) {
             return '';
         }
 
         $content = $this->createJsonContent($runner);
 
-        if (config()->boolean('ts-publish.output_to_files')) {
-            $jsonDir = config('ts-publish.json_output_directory');
-            $outputPath = is_string($jsonDir) ? $jsonDir : config()->string('ts-publish.output_directory');
-            $filename = config()->string('ts-publish.json_filename');
+        if (Config::boolean('ts-publish.output_to_files')) {
+            $jsonDir = Config::string('ts-publish.json.output_directory');
+            $outputPath = ! empty($jsonDir) ? $jsonDir : Config::string('ts-publish.output_directory');
+            $filename = Config::string('ts-publish.json.filename');
 
             $this->filesystem->ensureDirectoryExists($outputPath);
-            $this->filesystem->put("$outputPath/$filename", $content);
+            $this->putIfChanged("$outputPath/$filename", $content);
         }
 
         return $content;
@@ -47,8 +57,10 @@ class JsonWriter
     protected function createJsonContent(Runner $runner): string
     {
         $data = [
-            'models' => $this->createJsonForModels($runner),
+            'broadcastEvents' => $this->createJsonForBroadcastEvents($runner),
             'enums' => $this->createJsonForEnums($runner),
+            'formRequests' => $this->createJsonForFormRequests($runner),
+            'models' => $this->createJsonForModels($runner),
             'resources' => $this->createJsonForResources($runner),
         ];
 
@@ -136,22 +148,73 @@ class JsonWriter
         return $data;
     }
 
-    /** @return array<string, list<array{name: string, type: string, optional: bool}>> */
+    /** @return array<string, list<array{name: string, type: string, optional: bool}>|array{typeAlias: string}> */
     protected function createJsonForResources(Runner $runner): array
     {
         $transformers = $runner->resourceGenerators->map(fn (ResourceGenerator $g) => $g->transformer);
         $data = [];
 
         foreach ($transformers as $transformer) {
-            $data[$transformer->resourceName] = array_map(
-                fn (array $prop, string $name) => [
-                    'name' => $name,
-                    'type' => $prop['type'],
-                    'optional' => $prop['optional'],
-                ],
-                $transformer->properties,
-                array_keys($transformer->properties),
-            );
+            if ($transformer->typeAlias !== null) {
+                $data[$transformer->resourceName] = ['typeAlias' => $transformer->typeAlias];
+            } else {
+                $data[$transformer->resourceName] = array_map(
+                    fn (array $prop, string $name) => [
+                        'name' => $name,
+                        'type' => $prop['type'],
+                        'optional' => $prop['optional'],
+                    ],
+                    $transformer->properties,
+                    array_keys($transformer->properties),
+                );
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * @return array<string, array{isDynamic: bool, fields: list<FormRequestFieldData>}>
+     */
+    protected function createJsonForFormRequests(Runner $runner): array
+    {
+        $data = [];
+
+        foreach ($runner->formRequestGenerators as $generator) {
+            /** @var FormRequestGenerator $generator */
+            $transformer = $generator->transformer;
+            $data[$transformer->typeName] = [
+                'isDynamic' => $transformer->isDynamic,
+                'fields' => $transformer->fields,
+            ];
+        }
+
+        return $data;
+    }
+
+    /**
+     * @return array<string, array{eventName: string, broadcastName: string, properties: list<array{name: string, type: string, optional: bool}>}>
+     */
+    protected function createJsonForBroadcastEvents(Runner $runner): array
+    {
+        $data = [];
+
+        foreach ($runner->broadcastEventGenerators as $generator) {
+            /** @var BroadcastEventGenerator $generator */
+            $transformer = $generator->transformer;
+            $data[$transformer->broadcastName] = [
+                'eventName' => $transformer->eventName,
+                'broadcastName' => $transformer->broadcastName,
+                'properties' => array_map(
+                    fn (array $prop, string $name) => [
+                        'name' => $name,
+                        'type' => $prop['type'],
+                        'optional' => $prop['optional'],
+                    ],
+                    $transformer->properties,
+                    array_keys($transformer->properties),
+                ),
+            ];
         }
 
         return $data;

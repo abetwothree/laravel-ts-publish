@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 
 class RelationMap
@@ -53,7 +54,7 @@ class RelationMap
         /** @var array<class-string, string> $merged */
         $merged = array_merge(
             $map,
-            array_filter(config()->array('ts-publish.relation_nullability_map', []), 'is_string'),
+            array_filter(Config::array('ts-publish.models.relation_nullability_map', []), 'is_string'),
         );
 
         return self::$map = $merged;

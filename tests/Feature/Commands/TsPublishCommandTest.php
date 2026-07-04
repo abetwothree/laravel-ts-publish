@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Facades\Broadcast;
 
 use function Orchestra\Testbench\workbench_path;
 
@@ -39,8 +40,17 @@ test('ts:publish preview shows barrel files', function () {
 
     $this->artisan('ts:publish', ['--preview' => 'true'])
         ->assertSuccessful()
-        ->expectsOutputToContain('Enum Barrel File:')
-        ->expectsOutputToContain('Model Barrel File:');
+        ->expectsOutputToContain('Enum Barrel Files:')
+        ->expectsOutputToContain('Model Barrel Files:');
+});
+
+test('ts:publish preview shows form request content', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true'])
+        ->assertSuccessful()
+        ->expectsOutputToContain('Form Requests:')
+        ->expectsOutputToContain('StorePostRequest');
 });
 
 test('ts:publish writes files to disk', function () {
@@ -52,12 +62,12 @@ test('ts:publish writes files to disk', function () {
         ->assertSuccessful()
         ->expectsOutputToContain("Published to: {$outputDir}");
 
-    expect(is_dir("$outputDir/enums"))->toBeTrue()
-        ->and(is_dir("$outputDir/models"))->toBeTrue()
-        ->and(file_exists("$outputDir/enums/status.ts"))->toBeTrue()
-        ->and(file_exists("$outputDir/models/user.ts"))->toBeTrue()
-        ->and(file_exists("$outputDir/enums/index.ts"))->toBeTrue()
-        ->and(file_exists("$outputDir/models/index.ts"))->toBeTrue();
+    expect(is_dir("$outputDir/workbench/app/enums"))->toBeTrue()
+        ->and(is_dir("$outputDir/workbench/app/models"))->toBeTrue()
+        ->and(file_exists("$outputDir/workbench/app/enums/status.ts"))->toBeTrue()
+        ->and(file_exists("$outputDir/workbench/app/models/user.ts"))->toBeTrue()
+        ->and(file_exists("$outputDir/workbench/app/enums/index.ts"))->toBeTrue()
+        ->and(file_exists("$outputDir/workbench/app/models/index.ts"))->toBeTrue();
 
     // Cleanup
     (new Filesystem)->deleteDirectory($outputDir);
@@ -71,57 +81,49 @@ test('ts:publish returns success exit code', function () {
 });
 
 test('ts:publish writes model split template files', function () {
-    $outputDir = workbench_path('resources/js/types/split-template-example');
+    $outputDir = workbench_path('resources/js/types/data/split-template-example');
 
-    // Cleanup before test
-    $filesystem = new Filesystem;
-    if ($filesystem->exists($outputDir)) {
-        $filesystem->deleteDirectory($outputDir);
-    }
-
-    config()->set('ts-publish.model_template', 'laravel-ts-publish::model-split');
+    config()->set('ts-publish.models.template', 'laravel-ts-publish::model-split');
     config()->set('ts-publish.output_directory', $outputDir);
     config()->set('ts-publish.output_to_files', true);
-    config()->set('ts-publish.modular_publishing', false);
-
-    $this->artisan('ts:publish', ['--preview' => 'false'])
-        ->assertSuccessful();
-});
-
-test('ts:publish writes model full template files', function () {
-    $outputDir = workbench_path('resources/js/types/full-template-example');
-
-    // Cleanup before test
-    $filesystem = new Filesystem;
-    if ($filesystem->exists($outputDir)) {
-        $filesystem->deleteDirectory($outputDir);
-    }
-
-    config()->set('ts-publish.model_template', 'laravel-ts-publish::model-full');
-    config()->set('ts-publish.output_directory', $outputDir);
-    config()->set('ts-publish.output_to_files', true);
-    config()->set('ts-publish.modular_publishing', false);
-
-    $this->artisan('ts:publish', ['--preview' => 'false'])
-        ->assertSuccessful();
-});
-
-test('ts:publish writes modular files to namespace-based directories', function () {
-    $outputDir = workbench_path('resources/js/types/modular-example');
-
-    // Cleanup before test
-    $filesystem = new Filesystem;
-    if ($filesystem->exists($outputDir)) {
-        $filesystem->deleteDirectory($outputDir);
-    }
-
-    config()->set('ts-publish.output_directory', $outputDir);
-    config()->set('ts-publish.output_to_files', true);
-    config()->set('ts-publish.modular_publishing', true);
+    config()->set('ts-publish.routes.enabled', true);
     config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
 
     $this->artisan('ts:publish', ['--preview' => 'false'])
         ->assertSuccessful();
+
+    expect(file_exists("$outputDir/app/http/controllers/post-controller.ts"))->toBeTrue();
+});
+
+test('ts:publish writes model full template files', function () {
+    $outputDir = workbench_path('resources/js/types/data/full-template-example');
+
+    config()->set('ts-publish.models.template', 'laravel-ts-publish::model-full');
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.routes.enabled', true);
+    config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+    $this->artisan('ts:publish', ['--preview' => 'false'])
+        ->assertSuccessful();
+
+    expect(file_exists("$outputDir/app/http/controllers/post-controller.ts"))->toBeTrue();
+});
+
+test('ts:publish writes modular files to namespace-based directories', function () {
+    $outputDir = workbench_path('resources/js/types/data/default-example');
+
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+    config()->set('ts-publish.routes.enabled', true);
+
+    $this->artisan('ts:publish', ['--preview' => 'false'])
+        ->assertSuccessful();
+
+    // Route files should be in app/http/controllers/
+    expect(file_exists("$outputDir/app/http/controllers/post-controller.ts"))->toBeTrue()
+        ->and(file_exists("$outputDir/app/http/controllers/index.ts"))->toBeTrue();
 
     // App models and enums should be in app/ subdirectories
     expect(file_exists("$outputDir/app/models/user.ts"))->toBeTrue()
@@ -188,7 +190,7 @@ test('ts:publish --source writes file to disk', function () {
     $this->artisan('ts:publish', ['--preview' => 'false', '--source' => 'Workbench\App\Enums\Status'])
         ->assertSuccessful();
 
-    expect(file_exists("$outputDir/enums/status.ts"))->toBeTrue();
+    expect(file_exists("$outputDir/workbench/app/enums/status.ts"))->toBeTrue();
 
     // Cleanup
     (new Filesystem)->deleteDirectory($outputDir);
@@ -220,8 +222,8 @@ test('ts:publish --only-enums writes only enum files to disk', function () {
     $this->artisan('ts:publish', ['--preview' => 'false', '--only-enums' => true])
         ->assertSuccessful();
 
-    expect(is_dir("$outputDir/enums"))->toBeTrue()
-        ->and(is_dir("$outputDir/models"))->toBeFalse();
+    expect(is_dir("$outputDir/workbench/app/enums"))->toBeTrue()
+        ->and(is_dir("$outputDir/workbench/app/models"))->toBeFalse();
 
     // Cleanup
     (new Filesystem)->deleteDirectory($outputDir);
@@ -235,8 +237,8 @@ test('ts:publish --only-models writes only model files to disk', function () {
     $this->artisan('ts:publish', ['--preview' => 'false', '--only-models' => true])
         ->assertSuccessful();
 
-    expect(is_dir("$outputDir/models"))->toBeTrue()
-        ->and(is_dir("$outputDir/enums"))->toBeFalse();
+    expect(is_dir("$outputDir/workbench/app/models"))->toBeTrue()
+        ->and(is_dir("$outputDir/workbench/app/enums"))->toBeFalse();
 
     // Cleanup
     (new Filesystem)->deleteDirectory($outputDir);
@@ -251,9 +253,13 @@ test('ts:publish fails when both --only-enums and --only-models are passed', fun
 
 test('ts:publish warns and exits when both config types are disabled', function () {
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.publish_enums', false);
-    config()->set('ts-publish.publish_models', false);
-    config()->set('ts-publish.publish_resources', false);
+    config()->set('ts-publish.enums.enabled', false);
+    config()->set('ts-publish.models.enabled', false);
+    config()->set('ts-publish.resources.enabled', false);
+    config()->set('ts-publish.routes.enabled', false);
+    config()->set('ts-publish.form_requests.enabled', false);
+    config()->set('ts-publish.broadcast_channels.enabled', false);
+    config()->set('ts-publish.broadcast_events.enabled', false);
 
     $this->artisan('ts:publish', ['--preview' => 'true'])
         ->assertSuccessful()
@@ -262,7 +268,7 @@ test('ts:publish warns and exits when both config types are disabled', function 
 
 test('ts:publish respects publish_enums false in config', function () {
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.publish_enums', false);
+    config()->set('ts-publish.enums.enabled', false);
 
     $this->artisan('ts:publish', ['--preview' => 'true'])
         ->assertSuccessful()
@@ -272,7 +278,7 @@ test('ts:publish respects publish_enums false in config', function () {
 
 test('ts:publish respects publish_models false in config', function () {
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.publish_models', false);
+    config()->set('ts-publish.models.enabled', false);
 
     $this->artisan('ts:publish', ['--preview' => 'true'])
         ->assertSuccessful()
@@ -320,8 +326,8 @@ test('ts:publish quiet mode produces no output', function () {
         ->doesntExpectOutput();
 
     // Files should still be written
-    expect(is_dir("$outputDir/enums"))->toBeTrue()
-        ->and(is_dir("$outputDir/models"))->toBeTrue();
+    expect(is_dir("$outputDir/workbench/app/enums"))->toBeTrue()
+        ->and(is_dir("$outputDir/workbench/app/models"))->toBeTrue();
 
     // Cleanup
     (new Filesystem)->deleteDirectory($outputDir);
@@ -336,7 +342,7 @@ test('ts:publish quiet mode with --source produces no output', function () {
         ->assertSuccessful()
         ->doesntExpectOutput();
 
-    expect(file_exists("$outputDir/enums/status.ts"))->toBeTrue();
+    expect(file_exists("$outputDir/workbench/app/enums/status.ts"))->toBeTrue();
 
     // Cleanup
     (new Filesystem)->deleteDirectory($outputDir);
@@ -344,9 +350,13 @@ test('ts:publish quiet mode with --source produces no output', function () {
 
 test('ts:publish --source exits successfully when both config types disabled', function () {
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.publish_enums', false);
-    config()->set('ts-publish.publish_models', false);
-    config()->set('ts-publish.publish_resources', false);
+    config()->set('ts-publish.enums.enabled', false);
+    config()->set('ts-publish.models.enabled', false);
+    config()->set('ts-publish.resources.enabled', false);
+    config()->set('ts-publish.routes.enabled', false);
+    config()->set('ts-publish.form_requests.enabled', false);
+    config()->set('ts-publish.broadcast_channels.enabled', false);
+    config()->set('ts-publish.broadcast_events.enabled', false);
 
     $this->artisan('ts:publish', ['--preview' => 'true', '--source' => 'Workbench\App\Enums\Status'])
         ->assertSuccessful()
@@ -355,7 +365,7 @@ test('ts:publish --source exits successfully when both config types disabled', f
 
 test('ts:publish --only-enums exits when config enums disabled and non-interactive', function () {
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.publish_enums', false);
+    config()->set('ts-publish.enums.enabled', false);
 
     $this->artisan('ts:publish', ['--preview' => 'true', '--only-enums' => true, '--no-interaction' => true])
         ->assertSuccessful();
@@ -363,7 +373,7 @@ test('ts:publish --only-enums exits when config enums disabled and non-interacti
 
 test('ts:publish --only-enums overrides when user confirms interactively', function () {
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.publish_enums', false);
+    config()->set('ts-publish.enums.enabled', false);
 
     $this->artisan('ts:publish', ['--preview' => 'true', '--only-enums' => true])
         ->expectsConfirmation('Config has enums publishing disabled. Override and publish enums anyway?', 'yes')
@@ -372,7 +382,7 @@ test('ts:publish --only-enums overrides when user confirms interactively', funct
 
 test('ts:publish --only-models exits when config models disabled and non-interactive', function () {
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.publish_models', false);
+    config()->set('ts-publish.models.enabled', false);
 
     $this->artisan('ts:publish', ['--preview' => 'true', '--only-models' => true, '--no-interaction' => true])
         ->assertSuccessful();
@@ -380,7 +390,6 @@ test('ts:publish --only-models exits when config models disabled and non-interac
 
 test('ts:publish preview shows modular barrel files', function () {
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.modular_publishing', true);
     config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
 
     $this->artisan('ts:publish', ['--preview' => 'true'])
@@ -415,8 +424,287 @@ test('ts:publish --only-resources shows only resource content in preview', funct
 
 test('ts:publish --only-resources exits when config resources disabled and non-interactive', function () {
     config()->set('ts-publish.output_to_files', false);
-    config()->set('ts-publish.publish_resources', false);
+    config()->set('ts-publish.resources.enabled', false);
 
     $this->artisan('ts:publish', ['--preview' => 'true', '--only-resources' => true, '--no-interaction' => true])
         ->assertSuccessful();
+});
+
+test('ts:publish preview shows route content', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.routes.enabled', true);
+
+    $this->artisan('ts:publish', ['--preview' => 'true'])
+        ->assertSuccessful()
+        ->expectsOutputToContain('Routes:')
+        ->expectsOutputToContain('defineRoute(');
+});
+
+test('ts:publish --only-routes shows only route content in preview', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.routes.enabled', true);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-routes' => true])
+        ->assertSuccessful()
+        ->expectsOutputToContain('Routes:')
+        ->doesntExpectOutputToContain('Enums:')
+        ->doesntExpectOutputToContain('Models:');
+});
+
+test('ts:publish --only-routes exits when config routes disabled and non-interactive', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.routes.enabled', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-routes' => true, '--no-interaction' => true])
+        ->assertSuccessful();
+});
+
+test('ts:publish fails when both --only-routes and --only-enums are passed', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-routes' => true, '--only-enums' => true])
+        ->assertFailed();
+});
+
+test('ts:publish --only-routes writes only route files to disk', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-only-routes-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.routes.enabled', true);
+    config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+    $this->artisan('ts:publish', ['--preview' => 'false', '--only-routes' => true])
+        ->assertSuccessful();
+
+    expect(is_dir("$outputDir"))->toBeTrue()
+        ->and(is_dir("$outputDir/models"))->toBeFalse()
+        ->and(is_dir("$outputDir/enums"))->toBeFalse();
+
+    // Cleanup
+    (new Filesystem)->deleteDirectory($outputDir);
+});
+
+test('ts:publish --only-functional publishes only enums and routes', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.routes.enabled', true);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-functional' => true])
+        ->assertSuccessful()
+        ->expectsOutputToContain('only functional content')
+        ->expectsOutputToContain('Enums:')
+        ->expectsOutputToContain('Routes:')
+        ->doesntExpectOutputToContain('Models:')
+        ->doesntExpectOutputToContain('Resources:');
+});
+
+test('ts:publish --only-functional warns when all functional options disabled', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.enums.enabled', false);
+    config()->set('ts-publish.routes.enabled', false);
+    config()->set('ts-publish.form_requests.enabled', false);
+    config()->set('ts-publish.broadcast_channels.enabled', false);
+    config()->set('ts-publish.broadcast_events.enabled', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-functional' => true])
+        ->assertSuccessful()
+        ->expectsOutputToContain('All functional options are disabled');
+});
+
+test('ts:publish --only-functional ignores other --only flags', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.routes.enabled', true);
+
+    // --only-enums should be ignored when --only-functional is set
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-functional' => true, '--only-enums' => true])
+        ->assertSuccessful()
+        ->expectsOutputToContain('only functional content');
+});
+
+test('ts:publish --only-routes overrides when user confirms interactively', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.routes.enabled', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-routes' => true])
+        ->expectsConfirmation('Config has routes publishing disabled. Override and publish routes anyway?', 'yes')
+        ->assertSuccessful();
+});
+
+test('ts:publish preview shows broadcast channels content', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.broadcast_channels.enabled', true);
+
+    $this->artisan('ts:publish', ['--preview' => 'true'])
+        ->assertSuccessful()
+        ->expectsOutputToContain('Broadcast Channels:')
+        ->expectsOutputToContain('BroadcastChannel');
+});
+
+test('ts:publish fails gracefully when broadcast channels have conflicting parameter names', function () {
+    // 'orders.{orderId}' is registered in the workbench. Registering 'orders.{slug}.timeline'
+    // in the same test causes the 'orders' segment to have two different wildcard names.
+    // Before the fix, runAll() had no try/catch so this surfaced as an uncaught exception.
+    // After the fix it must print a friendly error message and exit with a failure code.
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.broadcast_channels.enabled', true);
+
+    Broadcast::channel('orders.{slug}.timeline', fn () => true);
+
+    $this->artisan('ts:publish', ['--preview' => 'true'])
+        ->assertFailed()
+        ->expectsOutputToContain('conflicting parameter names');
+});
+
+test('ts:publish --only-broadcast-channels publishes only the broadcast-channels file', function () {
+    $outputDir = sys_get_temp_dir().'/ts-publish-bc-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.broadcast_channels.enabled', true);
+
+    $this->artisan('ts:publish', ['--only-broadcast-channels' => true, '--preview' => 'false'])
+        ->assertSuccessful();
+
+    expect(file_exists($outputDir.'/broadcast-channels.ts'))->toBeTrue()
+        ->and(file_get_contents($outputDir.'/broadcast-channels.ts'))
+        ->toContain('export type BroadcastChannel')
+        ->toContain('export const BroadcastChannels');
+
+    // No enum or model files
+    expect(is_dir($outputDir.'/workbench/app/enums'))->toBeFalse();
+
+    (new Filesystem)->deleteDirectory($outputDir);
+});
+
+test('ts:publish --only-broadcast-channels published file contains $channel accessor for overlapping channels', function () {
+    // 'chat.{roomId}' and 'chat.{roomId}.messages' are both registered in the
+    // workbench. The published file must contain a $channel accessor inside the
+    // chat() function so both channel strings are accessible at runtime.
+    $outputDir = sys_get_temp_dir().'/ts-publish-bc-overlap-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.broadcast_channels.enabled', true);
+
+    $this->artisan('ts:publish', ['--only-broadcast-channels' => true, '--preview' => 'false'])
+        ->assertSuccessful();
+
+    $content = file_get_contents($outputDir.'/broadcast-channels.ts');
+    expect($content)
+        ->toContain('$channel: `chat.${roomId}` as const')
+        ->toContain('messages: `chat.${roomId}.messages` as const');
+
+    (new Filesystem)->deleteDirectory($outputDir);
+});
+
+test('ts:publish broadcast channels disabled in config skips the file', function () {
+    $outputDir = sys_get_temp_dir().'/ts-publish-bc-disabled-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.broadcast_channels.enabled', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'false'])
+        ->assertSuccessful();
+
+    expect(file_exists($outputDir.'/broadcast-channels.ts'))->toBeFalse();
+
+    (new Filesystem)->deleteDirectory($outputDir);
+});
+
+test('ts:publish preview shows broadcast events content', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.broadcast_events.enabled', true);
+    config()->set('ts-publish.broadcast_events.echo_augmentation.enabled', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true'])
+        ->assertSuccessful()
+        ->expectsOutputToContain('BroadcastEvent');
+});
+
+test('ts:publish --only-broadcast-events runs successfully', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.broadcast_events.enabled', true);
+    config()->set('ts-publish.broadcast_events.echo_augmentation.enabled', false);
+
+    $this->artisan('ts:publish', ['--only-broadcast-events' => true, '--preview' => 'true'])
+        ->assertSuccessful();
+});
+
+test('ts:publish --only-broadcast-events publishes only the broadcast events files', function () {
+    $outputDir = sys_get_temp_dir().'/ts-publish-be-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.broadcast_events.enabled', true);
+    config()->set('ts-publish.broadcast_events.echo_augmentation.enabled', false);
+
+    $this->artisan('ts:publish', ['--only-broadcast-events' => true, '--preview' => 'false'])
+        ->assertSuccessful();
+
+    expect(file_exists($outputDir.'/broadcast-events.ts'))->toBeTrue()
+        ->and(file_get_contents($outputDir.'/broadcast-events.ts'))
+        ->toContain('export type BroadcastEvent')
+        ->toContain('export const BroadcastEvents');
+
+    // No enum or model files
+    expect(is_dir($outputDir.'/workbench/app/enums'))->toBeFalse();
+
+    (new Filesystem)->deleteDirectory($outputDir);
+});
+
+test('ts:publish broadcast events disabled in config skips the files', function () {
+    $outputDir = sys_get_temp_dir().'/ts-publish-be-disabled-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.broadcast_events.enabled', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'false'])
+        ->assertSuccessful();
+
+    expect(file_exists($outputDir.'/broadcast-events.ts'))->toBeFalse();
+
+    (new Filesystem)->deleteDirectory($outputDir);
+});
+
+test('full run completes and announces ts:publish', function () {
+    $this->artisan('ts:publish', ['--preview' => 'false'])
+        ->expectsOutputToContain('ts:publish')
+        ->expectsOutputToContain('All done')
+        ->assertExitCode(0);
+});
+
+test('quiet run produces no ts:publish output', function () {
+    $this->artisan('ts:publish', ['--preview' => 'false', '--quiet' => true])
+        ->doesntExpectOutputToContain('ts:publish')
+        ->doesntExpectOutputToContain('All done')
+        ->assertExitCode(0);
+});
+
+test('summary callout lists generated type counts and a totals footer', function () {
+    // The callout writes once; Mockery satisfies one substring expectation per write.
+    // 'models' comes from the callout content, 'All done' from outro() – separate writes.
+    $this->artisan('ts:publish', ['--preview' => 'false'])
+        ->expectsOutputToContain('models')
+        ->expectsOutputToContain('files')
+        ->expectsOutputToContain('All done')
+        ->assertExitCode(0);
+});
+
+test('source run summary only mentions the published type', function () {
+    $this->artisan('ts:publish', ['--preview' => 'false', '--source' => 'Workbench\App\Models\User'])
+        ->expectsOutputToContain('model')
+        ->doesntExpectOutputToContain('route controller')
+        ->assertExitCode(0);
+});
+
+test('intro shows the output directory context', function () {
+    $outputDir = config('ts-publish.output_directory');
+
+    $this->artisan('ts:publish', ['--preview' => 'false'])
+        ->expectsOutputToContain('Output:')
+        ->expectsOutputToContain($outputDir)
+        ->assertExitCode(0);
+});
+
+test('verbose mode labels each detail table with a section heading', function () {
+    $this->artisan('ts:publish', ['--preview' => 'false', '-vvv' => true])
+        ->expectsOutputToContain('Enums')
+        ->expectsOutputToContain('Models')
+        ->assertExitCode(0);
 });

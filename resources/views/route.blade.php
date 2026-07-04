@@ -1,0 +1,136 @@
+@use('AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish')
+@use('Illuminate\Support\Str')
+@if(count($data->actions) === 0)
+export {}
+@else
+@php
+$importParts = ['defineRoute'];
+
+if ($data->hasPageTypes) {
+    $importParts[] = 'annotatePageProps';
+}
+
+if ($data->hasRequestTypes) {
+    $importParts[] = 'annotateRequestPayload';
+}
+
+$imports = implode(', ', $importParts);
+@endphp
+import { {!! $imports !!} } from '@tolki/ts';
+@if(count($data->typeImports) > 0)
+
+@foreach($data->typeImports as $importPath => $typeNames)
+import type { {!! implode(', ', $typeNames) !!} } from '{!! $importPath !!}';
+@endforeach
+@endif
+@foreach ($data->actions as $action)
+@if(isset($action['pageType']))
+
+@if(is_array($action['pageType']))
+@foreach($action['pageType'] as $pageTypeKey => $pageTypeValue)
+export type {!! Str::studly($action['methodName']) . Str::studly($pageTypeKey) !!}PageProps = {!! $pageTypeValue !!};
+@endforeach
+@else
+export type {!! Str::studly($action['methodName']) !!}PageProps = {!! $action['pageType'] !!};
+@endif
+
+@endif
+@php
+$hasRequest = isset($action['requestFqcn']);
+$needExtraSpacing = $action['shouldAnnotate'] || $action['hasFormRequest'] || $hasRequest;
+@endphp
+@if(!isset($action['pageType']))
+
+@endif{{-- blank line between each export const; pageType block already has a trailing blank --}}
+@if($action['description'])
+{!! LaravelTsPublish::formatJsDoc($action['description']) !!}
+@endif
+@if($action['shouldAnnotate'] && $hasRequest)
+export const {!! LaravelTsPublish::validJsObjectKey($action['methodName']) !!} = annotateRequestPayload<{!! $action['requestTypeAlias'] !!}>()(annotatePageProps<{!! $action['pageTypeAnnotation'] !!}>()(defineRoute({
+@elseif($action['shouldAnnotate'])
+export const {!! LaravelTsPublish::validJsObjectKey($action['methodName']) !!} = annotatePageProps<{!! $action['pageTypeAnnotation'] !!}>()(defineRoute({
+@elseif($hasRequest)
+export const {!! LaravelTsPublish::validJsObjectKey($action['methodName']) !!} = annotateRequestPayload<{!! $action['requestTypeAlias'] !!}>()(defineRoute({
+@else
+export const {!! LaravelTsPublish::validJsObjectKey($action['methodName']) !!} = defineRoute({
+@endif
+@if($action['name'] !== null)
+    name: {!! LaravelTsPublish::toJsLiteral($action['name']) !!},
+@endif
+@if($action['url'] !== null)
+    url: {!! LaravelTsPublish::toJsLiteral($action['url']) !!},
+@else
+    url: {!! LaravelTsPublish::toJsLiteral($action['uri']) !!},
+@endif
+@if($action['domain'] !== null)
+    domain: {!! LaravelTsPublish::toJsLiteral($action['domain']) !!},
+@endif
+    methods: [{!! implode(', ', array_map(fn($m) => "'$m'", $action['methods'])) !!}] as const,
+@if(!empty($action['args']))
+    args: {!! LaravelTsPublish::routeArgsToJs($action['args']) !!} as const,
+@endif
+@if(isset($action['component']))
+@if(is_array($action['component']))
+    component: {!! LaravelTsPublish::toJsLiteral($action['component']) !!} as const,
+@else
+    component: {!! LaravelTsPublish::toJsLiteral($action['component']) !!},
+@endif
+@endif
+@if($action['shouldAnnotate'] && $hasRequest)
+})));
+@elseif($needExtraSpacing)
+}));
+@else
+});
+@endif
+@endforeach
+
+@php
+$controllerName = LaravelTsPublish::safeJsIdentifier($data->controllerName, 'Controller');
+$controllerDescription = $data->description ? $data->description . "\n\n" : '';
+$controllerDescription .= "@see {$data->fqcn}";
+@endphp
+{!! LaravelTsPublish::formatJsDoc($controllerDescription) !!}
+@if($data->isInvokable)
+@php
+$invokeMethodName = 'invoke';
+$extraMethods = [];
+
+foreach ($data->actions as $routeAction) {
+    if ($routeAction['originalMethodName'] === '__invoke') {
+        $invokeMethodName = $routeAction['methodName'];
+    } else {
+        $extraMethods[] = [
+            'originalMethodName' => $routeAction['originalMethodName'],
+            'methodName' => $routeAction['methodName'],
+        ];
+    }
+}
+@endphp
+@if(count($extraMethods) > 0)
+const {!! $controllerName !!} = Object.assign({!! LaravelTsPublish::validJsObjectKey($invokeMethodName) !!}, {
+@foreach($extraMethods as $extraAction)
+@if($extraAction['originalMethodName'] === $extraAction['methodName'])
+    {!! LaravelTsPublish::validJsObjectKey($extraAction['methodName']) !!},
+@else
+    {!! LaravelTsPublish::toJsLiteral($extraAction['originalMethodName']) !!}: {!! LaravelTsPublish::validJsObjectKey($extraAction['methodName']) !!},
+@endif
+@endforeach
+});
+@else
+const {!! $controllerName !!} = {!! LaravelTsPublish::validJsObjectKey($invokeMethodName) !!};
+@endif
+@else
+const {!! $controllerName !!} = {
+@foreach ($data->actions as $action)
+@if($action['originalMethodName'] === $action['methodName'])
+    {!! LaravelTsPublish::validJsObjectKey($action['methodName']) !!},
+@else
+    {!! LaravelTsPublish::toJsLiteral($action['originalMethodName']) !!}: {!! LaravelTsPublish::validJsObjectKey($action['methodName']) !!},
+@endif
+@endforeach
+};
+@endif
+
+export default {!! $controllerName !!};
+@endif

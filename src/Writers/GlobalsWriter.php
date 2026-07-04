@@ -5,42 +5,41 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
+use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Facades\Config;
 
 class GlobalsWriter
 {
+    use WritesGeneratedFiles;
+
     public function __construct(
         protected Filesystem $filesystem,
     ) {}
 
     public function write(Runner $runner): string
     {
-        if (! config()->boolean('ts-publish.output_globals_file')) {
+        if (! Config::boolean('ts-publish.globals.enabled')) {
             return '';
         }
 
         /** @var view-string $template */
-        $template = config()->string('ts-publish.globals_template');
-
-        $isModular = config()->boolean('ts-publish.modular_publishing');
-
-        $modelsNamespace = config()->string('ts-publish.models_namespace');
-        $enumsNamespace = config()->string('ts-publish.enums_namespace');
-        $resourcesNamespace = config()->string('ts-publish.resources_namespace', 'resources');
+        $template = Config::string('ts-publish.globals.template');
 
         // Build a map of global namespace → type names it owns, used for cross-namespace qualification.
-        // In non-modular mode: 'enums' => [...], 'models' => [...], 'resources' => [...]
-        // In modular mode: 'accounting.enums' => [...], 'app.models' => [...], etc.
+        // Each key is a dot-separated namespace path, e.g. 'app.enums' => [...], 'app.models' => [...].
         /** @var array<string, list<string>> $globalTypesByNamespace */
         $globalTypesByNamespace = [];
 
         foreach ($runner->enumGenerators as $gen) {
             $t = $gen->transformer;
-            $ns = $isModular ? str_replace('/', '.', $t->namespacePath) : $enumsNamespace;
+            $ns = str_replace('/', '.', $t->namespacePath);
             $globalTypesByNamespace[$ns][] = $t->enumName;
             $globalTypesByNamespace[$ns][] = $t->enumName.'Type';
             if ($t->backed) {
@@ -50,14 +49,26 @@ class GlobalsWriter
 
         foreach ($runner->modelGenerators as $gen) {
             $t = $gen->transformer;
-            $ns = $isModular ? str_replace('/', '.', $t->namespacePath) : $modelsNamespace;
+            $ns = str_replace('/', '.', $t->namespacePath);
             $globalTypesByNamespace[$ns][] = $t->modelName;
         }
 
         foreach ($runner->resourceGenerators as $gen) {
             $t = $gen->transformer;
-            $ns = $isModular ? str_replace('/', '.', $t->namespacePath) : $resourcesNamespace;
+            $ns = str_replace('/', '.', $t->namespacePath);
             $globalTypesByNamespace[$ns][] = $t->resourceName;
+        }
+
+        foreach ($runner->formRequestGenerators as $gen) {
+            $t = $gen->transformer;
+            $ns = str_replace('/', '.', $t->namespacePath);
+            $globalTypesByNamespace[$ns][] = $t->typeName;
+        }
+
+        foreach ($runner->broadcastEventGenerators as $gen) {
+            $t = $gen->transformer;
+            $ns = str_replace('/', '.', $t->namespacePath);
+            $globalTypesByNamespace[$ns][] = $t->eventName;
         }
 
         // Collect external (non-relative) type imports needed at the top of the globals file.
@@ -89,6 +100,19 @@ class GlobalsWriter
             }
         }
 
+        foreach ($runner->broadcastEventGenerators as $gen) {
+            foreach ($gen->transformer->typeImports as $path => $types) {
+                if (str_starts_with($path, '.')) {
+                    continue;
+                }
+                foreach ($types as $type) {
+                    if (! in_array($type, $externalTypeImports[$path] ?? [], true)) {
+                        $externalTypeImports[$path][] = $type;
+                    }
+                }
+            }
+        }
+
         $externalTypeImports = LaravelTsPublish::sortImportPaths($externalTypeImports);
 
         // Build a merged alias map from all transformers so the globals template can resolve
@@ -104,45 +128,50 @@ class GlobalsWriter
             $globalAliasMap = array_merge($globalAliasMap, $gen->transformer->globalAliasMap());
         }
 
+        foreach ($runner->broadcastEventGenerators as $gen) {
+            $globalAliasMap = array_merge($globalAliasMap, $gen->transformer->globalAliasMap());
+        }
+
         $viewData = [
-            'enums' => $runner->enumGenerators->map(fn (EnumGenerator $g) => $g->transformer),
-            'models' => $runner->modelGenerators->map(fn (ModelGenerator $g) => $g->transformer),
-            'resources' => $runner->resourceGenerators->map(fn (ResourceGenerator $g) => $g->transformer),
-            'modelsNamespace' => $modelsNamespace,
-            'enumsNamespace' => $enumsNamespace,
-            'resourcesNamespace' => $resourcesNamespace,
-            'isModular' => $isModular,
             'globalTypesByNamespace' => $globalTypesByNamespace,
             'globalAliasMap' => $globalAliasMap,
             'externalTypeImports' => $externalTypeImports,
         ];
 
-        if ($isModular) {
-            $viewData['groupedModels'] = $runner->modelGenerators
-                ->groupBy(fn (ModelGenerator $g) => str_replace('/', '.', $g->transformer->namespacePath))
-                ->map(fn ($group) => $group->map(fn (ModelGenerator $g) => $g->transformer))
-                ->sortKeys();
+        $viewData['groupedModels'] = $runner->modelGenerators
+            ->groupBy(fn (ModelGenerator $g) => str_replace('/', '.', $g->transformer->namespacePath))
+            ->map(fn ($group) => $group->map(fn (ModelGenerator $g) => $g->transformer))
+            ->sortKeys();
 
-            $viewData['groupedEnums'] = $runner->enumGenerators
-                ->groupBy(fn (EnumGenerator $g) => str_replace('/', '.', $g->transformer->namespacePath))
-                ->map(fn ($group) => $group->map(fn (EnumGenerator $g) => $g->transformer))
-                ->sortKeys();
+        $viewData['groupedEnums'] = $runner->enumGenerators
+            ->groupBy(fn (EnumGenerator $g) => str_replace('/', '.', $g->transformer->namespacePath))
+            ->map(fn ($group) => $group->map(fn (EnumGenerator $g) => $g->transformer))
+            ->sortKeys();
 
-            $viewData['groupedResources'] = $runner->resourceGenerators
-                ->groupBy(fn (ResourceGenerator $g) => str_replace('/', '.', $g->transformer->namespacePath))
-                ->map(fn ($group) => $group->map(fn (ResourceGenerator $g) => $g->transformer))
-                ->sortKeys();
-        }
+        $viewData['groupedResources'] = $runner->resourceGenerators
+            ->groupBy(fn (ResourceGenerator $g) => str_replace('/', '.', $g->transformer->namespacePath))
+            ->map(fn ($group) => $group->map(fn (ResourceGenerator $g) => $g->transformer))
+            ->sortKeys();
+
+        $viewData['groupedFormRequests'] = $runner->formRequestGenerators
+            ->groupBy(fn (FormRequestGenerator $g) => str_replace('/', '.', $g->transformer->namespacePath))
+            ->map(fn ($group) => $group->map(fn (FormRequestGenerator $g) => $g->transformer))
+            ->sortKeys();
+
+        $viewData['groupedBroadcastEvents'] = $runner->broadcastEventGenerators
+            ->groupBy(fn (BroadcastEventGenerator $g) => str_replace('/', '.', $g->transformer->namespacePath))
+            ->map(fn ($group) => $group->map(fn (BroadcastEventGenerator $g) => $g->transformer))
+            ->sortKeys();
 
         $content = view($template, $viewData)->render();
 
-        if (config()->boolean('ts-publish.output_to_files')) {
-            $globalDir = config('ts-publish.global_directory');
-            $outputPath = is_string($globalDir) ? $globalDir : config()->string('ts-publish.output_directory');
-            $filename = config()->string('ts-publish.global_filename');
+        if (Config::boolean('ts-publish.output_to_files')) {
+            $globalDir = Config::string('ts-publish.globals.output_directory');
+            $outputPath = ! empty($globalDir) ? $globalDir : Config::string('ts-publish.output_directory');
+            $filename = Config::string('ts-publish.globals.filename');
 
             $this->filesystem->ensureDirectoryExists($outputPath);
-            $this->filesystem->put("$outputPath/$filename", $content);
+            $this->putIfChanged("$outputPath/$filename", $content);
         }
 
         return $content;

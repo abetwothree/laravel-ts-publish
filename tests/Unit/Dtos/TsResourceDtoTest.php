@@ -9,6 +9,7 @@ describe('TsResourceDto', function () {
         $this->dto = new TsResourceDto(
             resourceName: 'PostResource',
             description: 'A test resource',
+            fqcn: 'App\Http\Resources\PostResource',
             filePath: 'app/Http/Resources/PostResource.php',
             filename: 'post-resource',
             properties: [

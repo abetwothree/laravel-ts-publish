@@ -25,7 +25,7 @@ test('resources collector excludes EnumResource', function () {
 });
 
 test('resources collector respects included_resources config', function () {
-    config()->set('ts-publish.included_resources', [
+    config()->set('ts-publish.resources.included', [
         'Workbench\App\Http\Resources\PostResource',
     ]);
 
@@ -37,7 +37,7 @@ test('resources collector respects included_resources config', function () {
 });
 
 test('resources collector respects excluded_resources config', function () {
-    config()->set('ts-publish.excluded_resources', [
+    config()->set('ts-publish.resources.excluded', [
         'Workbench\App\Http\Resources\PostResource',
     ]);
 

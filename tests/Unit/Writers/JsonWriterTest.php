@@ -7,7 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Writers\JsonWriter;
 use Illuminate\Filesystem\Filesystem;
 
 test('writes json content when enabled', function () {
-    config()->set('ts-publish.output_json_file', true);
+    config()->set('ts-publish.json.enabled', true);
     config()->set('ts-publish.output_to_files', false);
 
     $runner = resolve(Runner::class);
@@ -26,7 +26,7 @@ test('writes json content when enabled', function () {
 });
 
 test('returns empty string when json output is disabled', function () {
-    config()->set('ts-publish.output_json_file', false);
+    config()->set('ts-publish.json.enabled', false);
     config()->set('ts-publish.output_to_files', false);
 
     $runner = resolve(Runner::class);
@@ -39,7 +39,7 @@ test('returns empty string when json output is disabled', function () {
 });
 
 test('json models contain columns as name/type pairs', function () {
-    config()->set('ts-publish.output_json_file', true);
+    config()->set('ts-publish.json.enabled', true);
     config()->set('ts-publish.output_to_files', false);
 
     $runner = resolve(Runner::class);
@@ -56,7 +56,7 @@ test('json models contain columns as name/type pairs', function () {
 });
 
 test('json enums contain cases and methods', function () {
-    config()->set('ts-publish.output_json_file', true);
+    config()->set('ts-publish.json.enabled', true);
     config()->set('ts-publish.output_to_files', false);
 
     $runner = resolve(Runner::class);
@@ -76,11 +76,27 @@ test('json enums contain cases and methods', function () {
         ->toHaveKey('staticMethods');
 });
 
+test('json resources include typeAlias for flat collections', function () {
+    config()->set('ts-publish.json.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+
+    $runner = resolve(Runner::class);
+    $runner->run();
+
+    $writer = new JsonWriter(new Filesystem);
+    $content = $writer->write($runner);
+    $decoded = json_decode($content, true);
+
+    expect($decoded['resources'])->toHaveKey('PostFlatCollection');
+    expect($decoded['resources']['PostFlatCollection'])->toBe(['typeAlias' => 'PostResource[]']);
+})->skip(fn () => ! version_compare(app()->version(), '13', '>='));
+
 test('writes json file to disk when output_to_files is enabled', function () {
-    config()->set('ts-publish.output_json_file', true);
+    config()->set('ts-publish.json.enabled', true);
 
     $filesystem = Mockery::mock(Filesystem::class);
     $filesystem->shouldReceive('ensureDirectoryExists')->once();
+    $filesystem->shouldReceive('exists')->once()->andReturn(false);
     $filesystem->shouldReceive('put')->once()
         ->withArgs(function (string $path, string $content) {
             return str_contains($path, 'laravel-ts-definitions.json') && str_contains($content, '"models"');

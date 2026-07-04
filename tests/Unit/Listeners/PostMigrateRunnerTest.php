@@ -2,17 +2,20 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Commands\TsPublishCommand;
 use AbeTwoThree\LaravelTsPublish\Listeners\PostMigrateRunner;
 use Illuminate\Console\Events\CommandFinished;
 use Illuminate\Contracts\Console\Kernel as Artisan;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 
-test('handle runs ts:publish when shouldRun is true', function () {
+test('handle runs ts:publish with --fresh when shouldRun is true', function () {
     PostMigrateRunner::$shouldRun = true;
 
     $artisan = Mockery::mock(Artisan::class);
-    $artisan->shouldReceive('call')->once();
+    $artisan->shouldReceive('call')
+        ->once()
+        ->with(TsPublishCommand::class, ['--fresh' => true], Mockery::any());
 
     $listener = new PostMigrateRunner($artisan);
 

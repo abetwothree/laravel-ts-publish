@@ -7,13 +7,15 @@ namespace AbeTwoThree\LaravelTsPublish\Analyzers;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\FiltersModelAttributes;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ResolvesModelTypes;
-use AbeTwoThree\LaravelTsPublish\Attributes\TsResourceCasts;
+use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesClassNames;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
+use Illuminate\Support\Facades\Config;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -141,6 +143,10 @@ class ResourceAstAnalyzer
 
     public function analyze(): ResourceAnalysis
     {
+        if ($this->modelClass !== null) {
+            DependencyRecorder::recordClass($this->modelClass);
+        }
+
         $filePath = (string) $this->resourceReflection->getFileName();
         $source = (string) file_get_contents($filePath);
 
@@ -152,6 +158,10 @@ class ResourceAstAnalyzer
         });
 
         if (! $toArrayMethod instanceof ClassMethod || $toArrayMethod->stmts === null) {
+            if ($this->isResourceCollection()) {
+                return $this->buildCollectionDelegatedAnalysis();
+            }
+
             return $this->buildModelDelegatedAnalysis() ?? new ResourceAnalysis;
         }
 
@@ -166,7 +176,7 @@ class ResourceAstAnalyzer
 
         if ($branchAnalysis !== null) {
             if ($this->resourceReflection->hasMethod('toArray')) {
-                $this->applyTsResourceCastsFromMethod($this->resourceReflection->getMethod('toArray'), $branchAnalysis);
+                $this->applyTsCastsFromMethod($this->resourceReflection->getMethod('toArray'), $branchAnalysis);
             }
 
             return $branchAnalysis;
@@ -275,21 +285,24 @@ class ResourceAstAnalyzer
             }
 
             // Handle ...functionCall() spread (bare trait method calls without $this->)
-            if ($item->key === null && $item->unpack
-                && $item->value instanceof FuncCall
-                && $item->value->name instanceof Name) {
-                $funcName = $item->value->name->getLast();
+            if ($item->key === null && $item->unpack && $item->value instanceof FuncCall) {
+                /** @var Node $funcCallName */
+                $funcCallName = $item->value->name;
 
-                if ($this->resourceReflection->hasMethod($funcName)) {
-                    $spreadAnalysis = $this->analyzeThisMethodSpread($funcName);
+                if ($funcCallName instanceof Name) {
+                    $funcName = $funcCallName->getLast();
 
-                    if ($spreadAnalysis !== null) {
-                        $this->syncAnalysisMaps(
-                            $properties, $enumResources, $nestedResources,
-                            $directEnumFqcns, $modelFqcns, $customImports,
-                            $spreadAnalysis, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
-                            $inlineEnumResourceFqcns,
-                        );
+                    if ($this->resourceReflection->hasMethod($funcName)) {
+                        $spreadAnalysis = $this->analyzeThisMethodSpread($funcName);
+
+                        if ($spreadAnalysis !== null) {
+                            $this->syncAnalysisMaps(
+                                $properties, $enumResources, $nestedResources,
+                                $directEnumFqcns, $modelFqcns, $customImports,
+                                $spreadAnalysis, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
+                                $inlineEnumResourceFqcns,
+                            );
+                        }
                     }
                 }
 
@@ -633,9 +646,13 @@ class ResourceAstAnalyzer
         if ($expr instanceof StaticCall
             && $expr->class instanceof PropertyFetch
             && $expr->name instanceof Identifier
-            && $this->closureRelationModelClass !== null
         ) {
-            return $this->analyzeRelatedModelMethodCall($expr->name->toString());
+            /** @var class-string<Model>|null $closureModelClass */
+            $closureModelClass = $this->closureRelationModelClass;
+
+            if ($closureModelClass !== null) {
+                return $this->analyzeRelatedModelMethodCall($expr->name->toString());
+            }
         }
 
         // EnumResource::make($this->prop) or SomeResource::make/collection()
@@ -726,7 +743,10 @@ class ResourceAstAnalyzer
 
             // When inside a whenLoaded closure and the wrapped-class resolution returned unknown,
             // try resolving the method against the related model (e.g. $this->user->nameTitled()).
-            if ($info['type'] === 'unknown' && $this->closureRelationModelClass !== null) {
+            /** @var class-string<Model>|null $closureModelClass */
+            $closureModelClass = $this->closureRelationModelClass;
+
+            if ($info['type'] === 'unknown' && $closureModelClass !== null) {
                 $info = $this->analyzeRelatedModelMethodCall($expr->name->toString());
             }
 
@@ -743,8 +763,11 @@ class ResourceAstAnalyzer
             return $this->analyzeThisMethodCall($expr->name->toString());
         }
 
+        /** @var class-string<Model>|null $closureModelClass */
+        $closureModelClass = $this->closureRelationModelClass;
+
         // $variable->property — resolve against the related model in a whenLoaded closure context
-        if ($this->closureRelationModelClass !== null
+        if ($closureModelClass !== null
             && $expr instanceof PropertyFetch
             && $expr->var instanceof Variable
             && is_string($expr->var->name)
@@ -1290,10 +1313,10 @@ class ResourceAstAnalyzer
                     return null;
                 }
 
-                // Use phpToTypeScriptType on the enum FQCN directly so we get the
+                // Use toTsType on the enum FQCN directly so we get the
                 // pure enum TS type ('RoleType') without any nullable suffix that
                 // appendNullable may have appended based on the DB column definition.
-                $enumTsInfo = LaravelTsPublish::phpToTypeScriptType($enumFqcn);
+                $enumTsInfo = LaravelTsPublish::toTsType($enumFqcn);
 
                 return [
                     ...$result,
@@ -1564,8 +1587,8 @@ class ResourceAstAnalyzer
             unset($prop);
         }
 
-        // Apply #[TsResourceCasts] attribute overrides from the method
-        $this->applyTsResourceCastsFromMethod($method, $analysis);
+        // Apply #[TsCasts] attribute overrides from the method
+        $this->applyTsCastsFromMethod($method, $analysis);
 
         return $analysis;
     }
@@ -1896,14 +1919,14 @@ class ResourceAstAnalyzer
                 return null;
             }
 
-            $tsInfo = LaravelTsPublish::phpToTypeScriptType($phpType);
+            $tsInfo = LaravelTsPublish::toTsType($phpType);
 
             return $tsInfo['type'] !== 'unknown' ? ['type' => $tsInfo['type']] : null;
         }
 
         if ($typeNode instanceof Name) {
             $phpType = $typeNode->toString();
-            $tsInfo = LaravelTsPublish::phpToTypeScriptType($phpType);
+            $tsInfo = LaravelTsPublish::toTsType($phpType);
 
             if ($tsInfo['type'] === 'unknown') {
                 return null;
@@ -1933,16 +1956,16 @@ class ResourceAstAnalyzer
     }
 
     /**
-     * Apply #[TsResourceCasts] attribute overrides declared on a reflection method to
+     * Apply #[TsCasts] attribute overrides declared on a reflection method to
      * the given ResourceAnalysis, updating or injecting property types as directed.
      *
      * Used both by analyzeThisMethodSpread() for trait/helper methods and by analyze()
-     * for the toArray() method itself, allowing #[TsResourceCasts] to be placed directly
+     * for the toArray() method itself, allowing #[TsCasts] to be placed directly
      * on toArray() as a lightweight override mechanism.
      */
-    private function applyTsResourceCastsFromMethod(ReflectionMethod $method, ResourceAnalysis $analysis): void
+    private function applyTsCastsFromMethod(ReflectionMethod $method, ResourceAnalysis $analysis): void
     {
-        foreach ($method->getAttributes(TsResourceCasts::class) as $attr) {
+        foreach ($method->getAttributes(TsCasts::class) as $attr) {
             $instance = $attr->newInstance();
 
             foreach ($instance->types as $property => $value) {
@@ -2275,13 +2298,30 @@ class ResourceAstAnalyzer
     /**
      * Resolve the singular resource FQCN for a ResourceCollection.
      *
-     * Checks the explicit $collects property first, then falls back
-     * to naming convention (UserCollection → UserResource).
+     * Resolution order:
+     * 1. #[Collects] PHP attribute on the class (Laravel 12+)
+     * 2. Explicit $collects property default value
+     * 3. Naming convention: XCollection → XResource
      *
      * @return class-string<JsonResource>|null
      */
     protected function resolveSingularResourceClass(): ?string
     {
+        $collectsAttribute = 'Illuminate\Http\Resources\Attributes\Collects';
+        if (class_exists($collectsAttribute)) {
+            // Priority 1: #[Collects] attribute (Laravel 12+)
+            $collectsAttrs = $this->resourceReflection->getAttributes($collectsAttribute);
+
+            if ($collectsAttrs !== []) {
+                $collectsClass = $collectsAttrs[0]->newInstance()->class;
+
+                if (class_exists($collectsClass) && is_a($collectsClass, JsonResource::class, true)) {
+                    return $collectsClass;
+                }
+            }
+        }
+
+        // Priority 2: explicit $collects property default value
         /** @var array<string, mixed> $defaults */
         $defaults = $this->resourceReflection->getDefaultProperties();
         $collects = $defaults['collects'] ?? null;
@@ -2310,6 +2350,53 @@ class ResourceAstAnalyzer
         }
 
         return null;
+    }
+
+    /**
+     * Build a ResourceAnalysis for a ResourceCollection subclass that has no toArray() method.
+     *
+     * Reads the $wrap key to determine the property name (default: 'data').
+     * - If $wrap is a non-empty string: generates `{ data: SingularResource[] }` interface shape
+     * - If $wrap is null: sets flatTypeAlias so the writer emits `export type X = SingularResource[]`
+     */
+    protected function buildCollectionDelegatedAnalysis(): ResourceAnalysis
+    {
+        $singular = $this->resolveSingularResourceClass();
+
+        if ($singular === null) {
+            return new ResourceAnalysis;
+        }
+
+        // Read the declared $wrap value from this class only (not inherited).
+        // $wrap is a static property on JsonResource (default: 'data').
+        $wrapKey = 'data';
+
+        if ($this->resourceReflection->hasProperty('wrap')) {
+            $wrapProp = $this->resourceReflection->getProperty('wrap');
+
+            if ($wrapProp->getDeclaringClass()->getName() === $this->resourceReflection->getName()) {
+                /** @var string|null $wrapKey */
+                $wrapKey = $wrapProp->getDefaultValue();
+            }
+        }
+
+        $singularBaseName = class_basename($singular);
+
+        if ($wrapKey === null || $wrapKey === '') {
+            return new ResourceAnalysis(flatTypeAlias: $singularBaseName.'[]', flatTypeAliasFqcn: $singular);
+        }
+
+        $key = $wrapKey ? $wrapKey : 'data';
+
+        return new ResourceAnalysis(
+            properties: [[
+                'name' => $key,
+                'type' => $singularBaseName.'[]',
+                'optional' => false,
+                'description' => '',
+            ]],
+            nestedResources: [$wrapKey => $singular],
+        );
     }
 
     /**
@@ -2513,7 +2600,7 @@ class ResourceAstAnalyzer
             return ['type' => 'Record<string, unknown>', 'optional' => false];
         }
 
-        $useTolki = config()->boolean('ts-publish.enums_use_tolki_package');
+        $useTolki = Config::boolean('ts-publish.enums.use_tolki_package');
 
         $parts = array_map(function (array $prop) use ($analysis, $useTolki): string {
             $key = LaravelTsPublish::validJsObjectKey($prop['name']);
@@ -2524,7 +2611,7 @@ class ResourceAstAnalyzer
             // to `AsEnum<typeof X>` to match the top-level enum resource transformer behaviour.
             if ($useTolki && isset($analysis->enumResources[$prop['name']])) {
                 $fqcn = $analysis->enumResources[$prop['name']];
-                $tsInfo = LaravelTsPublish::phpToTypeScriptType($fqcn);
+                $tsInfo = LaravelTsPublish::toTsType($fqcn);
                 $constName = $tsInfo['enums'][0] ?? class_basename($fqcn);
                 $nullable = str_contains($type, 'null');
                 $type = 'AsEnum<typeof '.$constName.'>'.($nullable ? ' | null' : '');

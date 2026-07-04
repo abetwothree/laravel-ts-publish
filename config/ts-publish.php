@@ -2,23 +2,6 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
-use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
-use AbeTwoThree\LaravelTsPublish\Collectors\ResourcesCollector;
-use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
-use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
-use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
-use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
-use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
-use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
-use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\EnumWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\JsonWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\ModelWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
-use AbeTwoThree\LaravelTsPublish\Writers\WatcherJsonWriter;
-
 return [
     /*
     |--------------------------------------------------------------------------
@@ -34,105 +17,51 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | File Collector Classes
+    | Output TypeScript Definitions to Files
     |--------------------------------------------------------------------------
     |
-    | Specifies the classes responsible for finding the enums & models
-    | You can extend the default collectors or create your own.
+    | Specifies whether to output the TypeScript definitions to files.
     |
-    | Collectors find the given class types and pas the results to generators.
+    | This will write modular namespace-derived directory trees with a file
+    | for each class and barrel index.ts files per namespace directory.
     */
 
-    'model_collector_class' => ModelsCollector::class,
+    'output_to_files' => true,
 
-    'enum_collector_class' => EnumsCollector::class,
-
-    'resource_collector_class' => ResourcesCollector::class,
+    'output_directory' => resource_path('/js/types/data/'),
 
     /*
     |--------------------------------------------------------------------------
-    | File Generator Classes
+    | Generation Cache
     |--------------------------------------------------------------------------
     |
-    | Specifies the classes responsible for generating the TypeScript output.
-    | You can extend the default generators or create your own.
-    |
-    | Generators receive a collected class, pass it to its transformer,
-    | and then pass the transformer to the writer to create the final output.
+    | After the first full publish, ts:publish can skip re-generating classes
+    | whose source files (and their dependencies) have not changed. The cache
+    | is busted automatically when the package version or the output-affecting
+    | config changes, and can be forced fresh with `php artisan ts:publish --fresh`.
     */
 
-    'model_generator_class' => ModelGenerator::class,
-
-    'enum_generator_class' => EnumGenerator::class,
-
-    'resource_generator_class' => ResourceGenerator::class,
+    'cache' => [
+        'enabled' => env('TS_PUBLISH_CACHE_ENABLED', true),
+        'store' => env('TS_PUBLISH_CACHE_STORE'),
+        'directory' => storage_path('framework/cache/ts-publish'),
+        'key' => env('TS_PUBLISH_CACHE_KEY'),
+    ],
 
     /*
     |--------------------------------------------------------------------------
-    | File Transformer Classes
+    | Namespace Strip Prefix
     |--------------------------------------------------------------------------
     |
-    | Specifies the classes responsible for transforming PHP classes into TypeScript definitions.
-    | You can extend the default transformers or create your own.
+    | This prefix is stripped from the fully-qualified class namespace before
+    | converting to a directory path.
     |
-    | Transformers receive a class and transform it into a TypeScript definition.
+    | For example, setting this to 'Modules\\' turns
+    | `Modules\Blog\Models\Article` into `blog/models/article.ts`
+    | instead of `modules/blog/models/article.ts`.
     */
 
-    'model_transformer_class' => ModelTransformer::class,
-
-    'enum_transformer_class' => EnumTransformer::class,
-
-    'resource_transformer_class' => ResourceTransformer::class,
-
-    /*
-    |--------------------------------------------------------------------------
-    | File Writers Classes
-    |--------------------------------------------------------------------------
-    |
-    | Specifies the classes responsible for writing the TypeScript definitions to files.
-    | You can extend the default writers or create your own.
-    |
-    | Writers receive a transformer and optionally write the output to a file and return it as a string.
-    |
-    | The barrel writer creates an index.ts file that exports all generated types from each file category
-    |
-    | The globals writer creates a global.d.ts file that contains a global namespace with all generated types from all categories
-    */
-
-    'model_writer_class' => ModelWriter::class,
-
-    'enum_writer_class' => EnumWriter::class,
-
-    'resource_writer_class' => ResourceWriter::class,
-
-    'barrel_writer_class' => BarrelWriter::class,
-
-    'globals_writer_class' => GlobalsWriter::class,
-
-    'json_writer_class' => JsonWriter::class,
-
-    'watcher_json_writer_class' => WatcherJsonWriter::class,
-
-    /*
-    |--------------------------------------------------------------------------
-    | File Template Blade Files
-    |--------------------------------------------------------------------------
-    |
-    | Specifies the Blade template files responsible for generating the TypeScript definitions.
-    | You can extend the default templates or create your own.
-    |
-    | Writers pass the transformed data to the templates to generate the actual TypeScript content.
-    |
-    | The easiest way to customize the output is to publish the templates and modify them as needed.
-    */
-
-    'model_template' => 'laravel-ts-publish::model-split',
-
-    'enum_template' => 'laravel-ts-publish::enum',
-
-    'globals_template' => 'laravel-ts-publish::globals',
-
-    'resource_template' => 'laravel-ts-publish::resource',
+    'namespace_strip_prefix' => '',
 
     /*
     |--------------------------------------------------------------------------
@@ -144,199 +73,13 @@ return [
     |
     | See AbeTwoThree\LaravelTsPublish\TypeScriptMap
     |
-    | To configure TypeScript types on a per-model per-enum basis use attributes.
+    | To configure TypeScript types on a per-class basis use attributes.
     | See AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
     */
 
     'custom_ts_mappings' => [
         // 'binary' => 'Blob',
     ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Enum Public Methods Global Inclusion
-    |--------------------------------------------------------------------------
-    |
-    | By default this package requires that you use the PHP method attributes
-    | (#[TsEnumMethod] & #[TsEnumStaticMethod]) to include them in the output.
-    |
-    | This is done for security reasons to avoid making private content public.
-    |
-    | However, you can make all enum methods be included by default without
-    | needing to add the attributes by setting the options below to true.
-    |
-    | Even when you set these options as true, you can still use the
-    | attributes to set custom settings your enum on methods.
-    |
-    | If you set to true, I hope you know what you're doing.
-    */
-
-    'auto_include_enum_methods' => false,
-
-    'auto_include_enum_static_methods' => false,
-
-    /*
-    |--------------------------------------------------------------------------
-    | Output TypeScript Definitions to Files
-    |--------------------------------------------------------------------------
-    |
-    | Specifies whether to output the TypeScript definitions to files.
-    |
-    | This will write "enums" & "models" folders with a file for each class.
-    | It will create a "barrel" index.ts file to export all types.
-    |
-    | You can conditionally only publish enums or models by setting the options below.
-    */
-
-    'output_to_files' => true,
-
-    'output_directory' => resource_path('/js/types/data/'),
-
-    'publish_enums' => true,
-
-    'publish_models' => true,
-
-    'publish_resources' => true,
-
-    /*
-    |--------------------------------------------------------------------------
-    | Modular Publishing
-    |--------------------------------------------------------------------------
-    |
-    | When enabled, TypeScript files are organized into namespace-derived
-    | directory trees instead of flat "enums/" and "models/" folders.
-    |
-    | For example, `Blog\Enums\ArticleStatus` writes to `blog/enums/article-status.ts`
-    | instead of `enums/article-status.ts`.
-    |
-    | Each namespace folder receives its own barrel index.ts file.
-    |
-    | Import paths between generated files are computed as relative paths
-    | based on the namespace directory structure.
-    */
-
-    'modular_publishing' => false,
-
-    /*
-    |--------------------------------------------------------------------------
-    | Namespace Strip Prefix
-    |--------------------------------------------------------------------------
-    |
-    | When modular publishing is enabled, this prefix is stripped from the
-    | fully-qualified class namespace before converting to a directory path.
-    |
-    | For example, setting this to 'Modules\\' turns
-    | `Modules\Blog\Models\Article` into `blog/models/article.ts`
-    | instead of `modules/blog/models/article.ts`.
-    */
-
-    'namespace_strip_prefix' => '',
-
-    /*
-    |--------------------------------------------------------------------------
-    | Publishing Case Style
-    |--------------------------------------------------------------------------
-    |
-    | Specifies the case style to use for relationship names & enum methods in the generated TypeScript definitions.
-    |
-    | Can be 'snake', 'camel', or 'pascal'.
-    */
-
-    'relationship_case' => 'snake',
-
-    'enum_method_case' => 'camel',
-
-    /*
-    |--------------------------------------------------------------------------
-    | Nullable Relations
-    |--------------------------------------------------------------------------
-    |
-    | When enabled, singular relations (HasOne, BelongsTo, MorphOne, etc.) will
-    | generate TypeScript types with `| null` based on smart nullability detection.
-    |
-    | HasOne / MorphOne / HasOneThrough → always nullable
-    | BelongsTo → nullable when the foreign key column is nullable in the DB
-    | MorphTo → nullable when the morph type or id column is nullable in the DB
-    | Collection relations (HasMany, BelongsToMany, etc.) → never nullable
-    */
-
-    'nullable_relations' => true,
-
-    /*
-    |--------------------------------------------------------------------------
-    | Relation Nullability Map
-    |--------------------------------------------------------------------------
-    |
-    | Override the default nullability strategy for specific relation types.
-    | Keys are fully qualified class names of Laravel relation classes.
-    | Use the ::class syntax for safety and IDE autocompletion.
-    |
-    | Available strategies:
-    |   'nullable' — always append | null
-    |   'never'    — never append | null
-    |   'fk'       — check the foreign key column's DB nullability
-    |   'morph'    — check both morph type and id columns' DB nullability
-    |
-    | See AbeTwoThree\LaravelTsPublish\RelationMap
-    */
-
-    'relation_nullability_map' => [
-        // \Illuminate\Database\Eloquent\Relations\BelongsTo::class => 'nullable',
-        // \Illuminate\Database\Eloquent\Relations\HasOne::class    => 'never',
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Generate TypeScript Global Namespace Types
-    |--------------------------------------------------------------------------
-    |
-    | Specifies whether to create a "global.ts" file with a global namespace containing all generated types.
-    */
-
-    'output_globals_file' => false,
-
-    'global_filename' => 'laravel-ts-global.ts',
-
-    /* Defaults to output_directory setting */
-    'global_directory' => null,
-
-    'models_namespace' => 'models',
-
-    'enums_namespace' => 'enums',
-
-    'resources_namespace' => 'resources',
-
-    /*
-    |--------------------------------------------------------------------------
-    | Output the Results in a JSON File
-    |--------------------------------------------------------------------------
-    |
-    | Specifies whether to output the generated TypeScript definitions in a JSON file.
-    | This can be in addition to or instead of outputting to .d.ts files, depending on the "output_to_files" option.
-    */
-
-    'output_json_file' => false,
-
-    'json_filename' => 'laravel-ts-definitions.json',
-
-    /* Defaults to output_directory setting */
-    'json_output_directory' => null,
-
-    /*
-    |--------------------------------------------------------------------------
-    | Output files collected list in a JSON file
-    |--------------------------------------------------------------------------
-    |
-    | Specifies whether to create a JSON file containing the list of collected models and enums file paths.
-    | This is useful for npm processes to watch for changes in the collected files and trigger the publish command on change.
-    */
-
-    'output_collected_files_json' => true,
-
-    'collected_files_json_filename' => 'laravel-ts-collected-files.json',
-
-    /* Defaults to output_directory setting */
-    'collected_files_json_output_directory' => null,
 
     /*
     |--------------------------------------------------------------------------
@@ -348,120 +91,6 @@ return [
     */
 
     'timestamps_as_date' => false,
-
-    /*
-    |--------------------------------------------------------------------------
-    | Model Collector Finder Settings
-    |--------------------------------------------------------------------------
-    |
-    | Below you can specify which models to include, exclude, or add additional directories to search for models in.
-    | By default, the package will look for models in the app/Models directory and include all models found there.
-    |
-    | Settings can be specific model class names or directories to search for models in. For example:
-    | 'included_models' => [
-    |     'App\Models\User', // Include only the User model
-    |     'App\Models\Post', // Include only the Post model
-    |     'vendor/<vendor_name>/src/Models', // Include all models in the vendor/<vendor_name>/src/Models directory
-    | ],
-    */
-
-    /* Most flexible, anything added here will be included */
-    'additional_model_directories' => [
-        //
-    ],
-
-    /* Most restrictive, only these models will be included */
-    'included_models' => [
-        //
-    ],
-
-    /* Excluded models will always be ignored */
-    'excluded_models' => [
-        //
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Enum Collector Finder Settings
-    |--------------------------------------------------------------------------
-    |
-    | Below you can specify which enums to include, exclude, or add additional directories to search for enums in.
-    | By default, the package will look for enums in the app/Enums directory and include all enums found there.
-    |
-    | Settings can be specific enum class names or directories to search for enums in. For example:
-    | 'included_enums' => [
-    |     'App\Enums\UserType', // Include only the UserType enum
-    |     'App\Enums\PostStatus', // Include only the PostStatus enum
-    |     'vendor/<vendor_name>/src/Enums', // Include all enums in the vendor/<vendor_name>/src/Enums directory
-    | ],
-    */
-
-    /* Most flexible, anything added here will be included */
-    'additional_enum_directories' => [
-        //
-    ],
-
-    /* Most restrictive, only these enums will be included */
-    'included_enums' => [
-        //
-    ],
-
-    /* Excluded enums will always be ignored */
-    'excluded_enums' => [
-        //
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Resource Collector Finder Settings
-    |--------------------------------------------------------------------------
-    |
-    | Below you can specify which resources to include, exclude, or add additional directories to search for resources in.
-    | By default, the package will look for resources in the app/Http/Resources directory and include all resources found there.
-    |
-    | Settings can be specific resource class names or directories to search for resources in. For example:
-    | 'included_resources' => [
-    |     'App\Http\Resources\UserResource', // Include only the UserResource
-    |     'App\Http\Resources\PostResource', // Include only the PostResource
-    | ],
-    */
-
-    /* Most flexible, anything added here will be included */
-    'additional_resource_directories' => [
-        //
-    ],
-
-    /* Most restrictive, only these resources will be included */
-    'included_resources' => [
-        //
-    ],
-
-    /* Excluded resources will always be ignored */
-    'excluded_resources' => [
-        //
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Enum Metadata & Tolki Enum Package Integration
-    |--------------------------------------------------------------------------
-    |
-    | Specifies whether to include metadata about the enums which is used by the @tolki/enum package.
-    |
-    | If you don't plan on using the @tolki/enum package or don't need the additional metadata, set 'enum_metadata_enabled' to false.
-    |
-    | When this is enabled, each enum will include the following additional properties:
-    | - _cases: An array of the enum case names, used to know which keys are cases.
-    | - _methods: An array of the enum method names, used to know which keys are methods.
-    | - _static: An array of the enum static method names, used to know which keys are static methods.
-    |
-    | When 'enums_use_tolki_package' is enabled, it will bind helper methods to the generated enum.
-    | The helper methods come from the @tolki/enum package to implement similar methods that PHP provides on enums.
-    */
-
-    'enum_metadata_enabled' => true,
-
-    'enums_use_tolki_package' => true,
 
     /*
     |--------------------------------------------------------------------------
@@ -490,11 +119,304 @@ return [
     */
 
     'ts_extends' => [
+        'broadcast_events' => [
+            //
+        ],
+        'form_requests' => [
+            //
+        ],
         'models' => [
             //
         ],
         'resources' => [
             //
         ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Shared Writer Classes
+    |--------------------------------------------------------------------------
+    |
+    | The barrel writer creates an index.ts file that exports all generated
+    | types from each file category.
+    */
+
+    // 'barrel_writer_class' => BarrelWriter::class,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Vite Watcher JSON
+    |--------------------------------------------------------------------------
+    |
+    | Specifies whether to create a JSON file containing the list of collected models and enums file paths.
+    | This is useful for npm processes to watch for changes in the collected files and trigger the publish command on change.
+    */
+
+    'watcher' => [
+        'enabled' => true,
+        'filename' => 'laravel-ts-collected-files.json',
+        'output_directory' => '',
+        // 'writer_class' => WatcherJsonWriter::class,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Enums
+    |--------------------------------------------------------------------------
+    |
+    | Settings for enum publishing and the @tolki/ts package integration.
+    |
+    | When 'metadata_enabled' is true, each enum includes _cases, _methods,
+    | and _static arrays for runtime introspection.
+    |
+    | When 'use_tolki_package' is true, enums are wrapped in defineEnum()
+    | from @tolki/ts to bind PHP-like helper methods at runtime.
+    */
+
+    'enums' => [
+        'enabled' => true,
+        'metadata_enabled' => true,
+        'use_tolki_package' => true,
+        'auto_include_methods' => false,
+        'auto_include_static_methods' => false,
+        'method_case' => 'camel',
+        'namespace' => 'enums',
+        'template' => 'laravel-ts-publish::enum',
+        'additional_directories' => [],
+        'included' => [],
+        'excluded' => [],
+        // 'collector_class' => EnumsCollector::class,
+        // 'generator_class' => EnumGenerator::class,
+        // 'transformer_class' => EnumTransformer::class,
+        // 'writer_class' => EnumWriter::class,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Models
+    |--------------------------------------------------------------------------
+    |
+    | Settings for model publishing.
+    |
+    | 'relationship_case': Case style for relationship names ('snake', 'camel', or 'pascal').
+    | 'nullable_relations': When enabled, singular relations generate types with | null.
+    */
+
+    'models' => [
+        'enabled' => true,
+        'relationship_case' => 'snake',
+        'nullable_relations' => true,
+        'namespace' => 'models',
+        'template' => 'laravel-ts-publish::model-split',
+        'relation_nullability_map' => [
+            // \Illuminate\Database\Eloquent\Relations\BelongsTo::class => 'nullable',
+            // \Illuminate\Database\Eloquent\Relations\HasOne::class    => 'never',
+        ],
+        'additional_directories' => [],
+        'included' => [],
+        'excluded' => [],
+        // 'collector_class' => ModelsCollector::class,
+        // 'generator_class' => ModelGenerator::class,
+        // 'transformer_class' => ModelTransformer::class,
+        // 'writer_class' => ModelWriter::class,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Resources
+    |--------------------------------------------------------------------------
+    |
+    | Settings for API resource publishing.
+    */
+
+    'resources' => [
+        'enabled' => true,
+        'namespace' => 'resources',
+        'template' => 'laravel-ts-publish::resource',
+        'additional_directories' => [],
+        'included' => [],
+        'excluded' => [],
+        // 'collector_class' => ResourcesCollector::class,
+        // 'generator_class' => ResourceGenerator::class,
+        // 'transformer_class' => ResourceTransformer::class,
+        // 'writer_class' => ResourceWriter::class,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Routes
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, TypeScript files are generated for each controller found
+    | in your application. Each file exports a defineRoute() call per method.
+    */
+
+    'routes' => [
+        'enabled' => true,
+        'method_casing' => 'camel',
+        'only_named' => false,
+        'template' => 'laravel-ts-publish::route',
+        'output_directory' => '',
+        'only' => [],
+        'except' => [],
+        'exclude_middleware' => [],
+        // 'collector_class' => RoutesCollector::class,
+        // 'generator_class' => RouteGenerator::class,
+        // 'transformer_class' => RouteTransformer::class,
+        // 'writer_class' => RouteWriter::class,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Form Request Types
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, generates a TypeScript interface for each FormRequest class
+    | found in the application. Rules are resolved statically where possible;
+    | requests with dynamic rules fall back to `Record<string, unknown>`.
+    */
+
+    'form_requests' => [
+        'enabled' => true,
+        'namespace' => 'form-requests',
+        'template' => 'laravel-ts-publish::form-request',
+        'output_directory' => '',
+        'additional_directories' => [],
+        'included' => [],
+        'excluded' => [],
+        // 'collector_class' => FormRequestsCollector::class,
+        // 'generator_class' => FormRequestGenerator::class,
+        // 'transformer_class' => FormRequestTransformer::class,
+        // 'writer_class' => FormRequestWriter::class,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Broadcast Channel Types
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, generates a single broadcast-channels.ts file containing:
+    |   - A BroadcastChannel union type (template literal union of all channel names).
+    |   - A BroadcastChannels const with nested accessor functions matching the
+    |     dot-notation structure of each channel name.
+    */
+
+    'broadcast_channels' => [
+        'enabled' => true,
+        'filename' => 'broadcast-channels.ts',
+        'template' => 'laravel-ts-publish::broadcast-channels',
+        'output_directory' => '',
+        // 'collector_class' => BroadcastChannelsCollector::class,
+        // 'writer_class' => BroadcastChannelsWriter::class,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Broadcast Event Types
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, generates one TypeScript interface file per ShouldBroadcast
+    | event class, a broadcast-events.ts index file with a BroadcastEvent union
+    | type and flat BroadcastEvents const.
+    |
+    | Optionally, you can also generate an echo-broadcast-events.d.ts Echo module
+    | TypeScript augmentation file. Only works if you're using the any of the
+    | npm `@laravel/echo-{vue,react,svelte}` packages for broadcast events.
+    */
+
+    'broadcast_events' => [
+        'enabled' => true,
+        'index_filename' => 'broadcast-events.ts',
+        'index_template' => 'laravel-ts-publish::broadcast-events-index',
+        'template' => 'laravel-ts-publish::broadcast-event',
+        'output_directory' => '',
+        'additional_directories' => [],
+        'included' => [],
+        'excluded' => [],
+        // 'collector_class' => BroadcastEventsCollector::class,
+        // 'generator_class' => BroadcastEventGenerator::class,
+        // 'transformer_class' => BroadcastEventTransformer::class,
+        // 'writer_class' => BroadcastEventWriter::class,
+        // 'index_writer_class' => BroadcastEventsIndexWriter::class,
+
+        'echo_augmentation' => [
+            'enabled' => true,
+            'echo_package' => null,
+            'filename' => 'echo-broadcast-events.d.ts',
+            'template' => 'laravel-ts-publish::echo-broadcast-events',
+            'output_directory' => '',
+            // 'writer_class' => BroadcastEventsEchoWriter::class,
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Inertia Page Types
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, generates TypeScript page-prop types for each Inertia component
+    | and a TypeScript Declaration module augmentation file for @inertiajs/core.
+    */
+
+    'inertia' => [
+        'enabled' => true,
+        'component_casing' => 'camel',
+        'inertia_middleware_path' => null,
+        'augmentation_filename' => 'inertia-config.d.ts',
+        'output_directory' => '',
+        'ui_table_package' => null,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Vite Environment Types
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, reads .env.example (or the specified source file) for
+    | VITE_-prefixed variables and writes a vite-env.d.ts declaration file
+    | that augments Vite's ImportMetaEnv interface.
+    |
+    | All variables are typed as string (Vite always provides strings at runtime).
+    | Source defaults to .env first, then falls back to .env.example if .env doesn't exist.
+    */
+
+    'vite_env' => [
+        'enabled' => true,
+        'filename' => 'vite-env.d.ts',
+        'source_file' => null,
+        'output_directory' => '',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Globals Declaration Types
+    |--------------------------------------------------------------------------
+    |
+    | Specifies whether to create a "global.ts" file with a global namespace
+    | which will contain all generated types for individually generated interfaces.
+    */
+
+    'globals' => [
+        'enabled' => false,
+        'filename' => 'laravel-ts-global.ts',
+        'template' => 'laravel-ts-publish::globals',
+        'output_directory' => '',
+        // 'writer_class' => GlobalsWriter::class,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | JSON Output
+    |--------------------------------------------------------------------------
+    |
+    | Specifies whether to output the generated TypeScript definitions in a JSON file.
+    */
+
+    'json' => [
+        'enabled' => false,
+        'filename' => 'laravel-ts-definitions.json',
+        'output_directory' => '',
+        // 'writer_class' => JsonWriter::class,
     ],
 ];

@@ -1,0 +1,12 @@
+/**
+ * Exercises resolveClosureReturnExpression with a Closure passed to merge().
+ * The closure has a guard clause followed by the real array return.
+ *
+ * @see Workbench\App\Http\Resources\MergeClosureResource
+ */
+export interface MergeClosureResource
+{
+    id: number;
+    user_name: string;
+    user_email: string;
+}

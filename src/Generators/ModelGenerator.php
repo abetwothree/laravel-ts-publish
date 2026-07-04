@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Generators;
 
+use AbeTwoThree\LaravelTsPublish\Generators\Concerns\RehydratesFromCache;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ModelWriter;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Config;
 use Override;
 
 /**
@@ -14,19 +16,21 @@ use Override;
  */
 class ModelGenerator extends CoreGenerator
 {
+    use RehydratesFromCache;
+
     public protected(set) ModelTransformer $transformer;
 
     #[Override]
     public function generate(): string
     {
         /** @var ModelTransformer $transformer */
-        $transformer = resolve(config()->string('ts-publish.model_transformer_class'), [
+        $transformer = resolve(Config::string('ts-publish.models.transformer_class', ModelTransformer::class), [
             'findable' => $this->findable,
         ]);
         $this->transformer = $transformer;
 
         /** @var ModelWriter $writer */
-        $writer = resolve(config()->string('ts-publish.model_writer_class'));
+        $writer = resolve(Config::string('ts-publish.models.writer_class', ModelWriter::class));
 
         return $this->content = $writer->write($this->transformer);
     }
@@ -34,6 +38,6 @@ class ModelGenerator extends CoreGenerator
     #[Override]
     public function filename(): string
     {
-        return $this->transformer->filename();
+        return $this->cachedFilename ?? $this->transformer->filename();
     }
 }

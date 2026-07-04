@@ -2,9 +2,11 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\RunnerForSource;
 use Illuminate\Filesystem\Filesystem;
 
@@ -62,7 +64,7 @@ test('throws for non-existent class', function () {
 test('throws for class that is not enum or model', function () {
     $runner = new RunnerForSource(RunnerForSource::class);
     $runner->run();
-})->throws(InvalidArgumentException::class, 'not a publishable enum, model, or resource');
+})->throws(InvalidArgumentException::class, 'not a publishable enum, model, resource, controller, form request, or broadcast event');
 
 test('throws for file that does not contain a class', function () {
     $runner = new RunnerForSource(workbench_path('routes/web.php'));
@@ -73,9 +75,7 @@ test('barrel and globals content remain empty', function () {
     $runner = new RunnerForSource('Workbench\App\Enums\Status');
     $runner->run();
 
-    expect($runner->enumBarrelContent)->toBe('')
-        ->and($runner->modelBarrelContent)->toBe('')
-        ->and($runner->enumModularBarrels)->toBe([])
+    expect($runner->enumModularBarrels)->toBe([])
         ->and($runner->modelModularBarrels)->toBe([])
         ->and($runner->globalsContent)->toBe('')
         ->and($runner->jsonContent)->toBe('')
@@ -90,7 +90,7 @@ test('writes single enum file to disk', function () {
     $runner = new RunnerForSource('Workbench\App\Enums\Status');
     $runner->run();
 
-    expect(file_exists("$outputDir/enums/status.ts"))->toBeTrue();
+    expect(file_exists("$outputDir/workbench/app/enums/status.ts"))->toBeTrue();
 
     // Cleanup
     (new Filesystem)->deleteDirectory($outputDir);
@@ -104,7 +104,7 @@ test('writes single model file to disk', function () {
     $runner = new RunnerForSource('Workbench\App\Models\User');
     $runner->run();
 
-    expect(file_exists("$outputDir/models/user.ts"))->toBeTrue();
+    expect(file_exists("$outputDir/workbench/app/models/user.ts"))->toBeTrue();
 
     // Cleanup
     (new Filesystem)->deleteDirectory($outputDir);
@@ -137,3 +137,52 @@ test('throws when resource publishing is disabled', function () {
     $runner->shouldPublishResources = false;
     $runner->run();
 })->throws(InvalidArgumentException::class, 'Resource publishing is disabled');
+
+test('generates single route from controller FQCN', function () {
+    $runner = new RunnerForSource('Workbench\App\Http\Controllers\PostController');
+    $runner->run();
+
+    expect($runner->routeGenerators)->toHaveCount(1)
+        ->and($runner->routeGenerators->first())->toBeInstanceOf(RouteGenerator::class)
+        ->and($runner->enumGenerators)->toHaveCount(0)
+        ->and($runner->modelGenerators)->toHaveCount(0)
+        ->and($runner->resourceGenerators)->toHaveCount(0);
+});
+
+test('throws when route publishing is disabled', function () {
+    $runner = new RunnerForSource('Workbench\App\Http\Controllers\PostController');
+    $runner->shouldPublishRoutes = false;
+    $runner->run();
+})->throws(InvalidArgumentException::class, 'Route publishing is disabled');
+
+test('throws for controller with TsExclude attribute', function () {
+    $runner = new RunnerForSource('Workbench\App\Http\Controllers\ExcludedController');
+    $runner->run();
+})->throws(InvalidArgumentException::class, 'not a publishable enum, model, resource, controller, form request, or broadcast event');
+
+test('generates single broadcast event from FQCN', function () {
+    $runner = new RunnerForSource('Workbench\App\Events\OrderShipped');
+    $runner->run();
+
+    expect($runner->broadcastEventGenerators)->toHaveCount(1)
+        ->and($runner->broadcastEventGenerators->first())->toBeInstanceOf(BroadcastEventGenerator::class)
+        ->and($runner->broadcastEventGenerators->first()->transformer->eventName)->toBe('OrderShipped')
+        ->and($runner->enumGenerators)->toHaveCount(0)
+        ->and($runner->modelGenerators)->toHaveCount(0);
+});
+
+test('generates single broadcast event from file path', function () {
+    $filePath = workbench_path('app/Events/OrderShipped.php');
+
+    $runner = new RunnerForSource($filePath);
+    $runner->run();
+
+    expect($runner->broadcastEventGenerators)->toHaveCount(1)
+        ->and($runner->broadcastEventGenerators->first()->transformer->eventName)->toBe('OrderShipped');
+});
+
+test('throws when broadcast event publishing is disabled', function () {
+    $runner = new RunnerForSource('Workbench\App\Events\OrderShipped');
+    $runner->shouldPublishBroadcastEvents = false;
+    $runner->run();
+})->throws(InvalidArgumentException::class, 'Broadcast event publishing is disabled');

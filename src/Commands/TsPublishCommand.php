@@ -4,37 +4,60 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Commands;
 
+use AbeTwoThree\LaravelTsPublish\Cache\CacheBootstrap;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Runners\RunnerForSource;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
+use function Laravel\Prompts\callout;
 use function Laravel\Prompts\confirm;
+
+use Laravel\Prompts\Elements\Element;
+use Laravel\Prompts\Elements\ElementContract;
+
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\intro;
+use function Laravel\Prompts\note;
 use function Laravel\Prompts\outro;
+
+use Laravel\Prompts\Support\Logger;
+
 use function Laravel\Prompts\table;
+use function Laravel\Prompts\task;
 use function Laravel\Prompts\warning;
 
 class TsPublishCommand extends Command
 {
+    protected float $startedAt = 0.0;
+
     protected $signature = 'ts:publish
         {--preview=false : Output generated TypeScript declarations to the console instead of writing to files}
-        {--source= : FQCN or file path of a specific enum or model to republish}
-        {--only-enums : Only publish enums (ignoring models and resources)}
-        {--only-models : Only publish models (ignoring enums and resources)}
-        {--only-resources : Only publish resources (ignoring enums and models)}';
+        {--source= : FQCN or file path of a specific supported class to republish}
+        {--fresh : Ignore and rebuild the generation cache from scratch (no-op with --source or --preview)}
+        {--only-broadcast-channels : Only publish broadcast channel types (ignoring all other types)}
+        {--only-broadcast-events : Only publish broadcast event types (ignoring all other types)}
+        {--only-form-requests : Only publish form requests (ignoring enums, models, resources, and routes)}
+        {--only-functional : Only publish enabled functional content like routes & enums}
+        {--only-enums : Only publish enums (ignoring models, resources, and routes)}
+        {--only-models : Only publish models (ignoring enums, resources, and routes)}
+        {--only-resources : Only publish resources (ignoring enums, models, and routes)}
+        {--only-routes : Only publish routes (ignoring enums, models, and resources)}';
 
-    protected $description = 'Publish All TypeScript files from enums, models & resources';
+    protected $description = 'Publish TypeScript files from enums, models, resources, routes, form requests, broadcast channels, and broadcast events';
 
     public function handle(): int
     {
+        $this->startedAt = microtime(true);
         LaravelTsPublish::callCommandWith();
 
         /** @var string|null $source */
@@ -51,15 +74,29 @@ class TsPublishCommand extends Command
 
     protected function validateOnlyOptions(): int
     {
+        $onlyFunctional = (bool) $this->option('only-functional');
+
+        if ($onlyFunctional) {
+            if (! $this->output->isQuiet()) {
+                info('The --only-functional flag is set. This will publish only functional content like enums & routes. All other --only-* flags will be ignored.');
+            }
+
+            return self::SUCCESS;
+        }
+
+        $onlyBroadcastChannels = (bool) $this->option('only-broadcast-channels');
+        $onlyBroadcastEvents = (bool) $this->option('only-broadcast-events');
         $onlyEnums = (bool) $this->option('only-enums');
+        $onlyFormRequests = (bool) $this->option('only-form-requests');
         $onlyModels = (bool) $this->option('only-models');
         $onlyResources = (bool) $this->option('only-resources');
+        $onlyRoutes = (bool) $this->option('only-routes');
 
-        $onlyCount = (int) $onlyEnums + (int) $onlyModels + (int) $onlyResources;
+        $onlyCount = (int) $onlyEnums + (int) $onlyModels + (int) $onlyResources + (int) $onlyRoutes + (int) $onlyFormRequests + (int) $onlyBroadcastChannels + (int) $onlyBroadcastEvents;
 
         if ($onlyCount > 1) {
             if (! $this->output->isQuiet()) {
-                error('The --only-enums, --only-models, and --only-resources options cannot be used together. Please specify only one or none of these options.');
+                error('Cannot use multiple --only-* options together. Please specify only one or none of these options.');
             }
 
             return self::FAILURE;
@@ -68,24 +105,82 @@ class TsPublishCommand extends Command
         return self::SUCCESS;
     }
 
+    /**
+     * Display a one-line run context: mode, output directory, and cache state.
+     */
+    protected function showRunContext(string $mode): void
+    {
+        $output = Config::string('ts-publish.output_directory');
+        $cache = CacheBootstrap::enabled()
+            ? ($this->option('fresh') ? 'rebuilding' : ($this->option('source') ? 'disabled' : 'enabled'))
+            : 'disabled';
+
+        note("Mode: {$mode}  ·  Cache: {$cache}  ·  Output: {$output}");
+    }
+
     protected function runAll(): int
     {
         $preview = filter_var($this->option('preview'), FILTER_VALIDATE_BOOLEAN);
-        config()->set('ts-publish.output_to_files', ! $preview);
+        Config::set('ts-publish.output_to_files', ! $preview);
 
         if (! $this->output->isQuiet()) {
             intro('ts:publish');
+            $this->showRunContext($preview ? 'preview' : 'full publish');
         }
 
         $runner = resolve(Runner::class);
+
+        // Attach the generation cache for real (file-writing) runs only. Preview
+        // runs write nothing, so caching them would record empty outputs and
+        // poison later real runs into skipping files that were never written.
+        if (! $preview && CacheBootstrap::enabled()) {
+            $repository = CacheBootstrap::repository();
+
+            if ($this->option('fresh')) {
+                $repository->flush();
+            }
+
+            $runner->useCache(CacheBootstrap::manifest($repository));
+        }
+
         $flags = $this->resolvePublishFlags();
 
         if ($flags === null) {
             return self::SUCCESS;
         }
 
-        [$runner->shouldPublishEnums, $runner->shouldPublishModels, $runner->shouldPublishResources] = $flags;
-        $runner->run();
+        [
+            $runner->shouldPublishEnums,
+            $runner->shouldPublishModels,
+            $runner->shouldPublishResources,
+            $runner->shouldPublishRoutes,
+            $runner->shouldPublishFormRequests,
+            $runner->shouldPublishBroadcastChannels,
+            $runner->shouldPublishBroadcastEvents,
+        ] = $flags;
+
+        try {
+            if ($this->output->isQuiet()) {
+                $runner->run();
+            } else {
+                task(
+                    label: 'Generating TypeScript files',
+                    callback: function (Logger $logger) use ($runner): bool {
+                        $runner->setLogger($logger);
+                        $runner->run();
+
+                        return true;
+                    },
+                    keepSummary: true,
+                );
+            }
+        } catch (InvalidArgumentException $e) {
+            if (! $this->output->isQuiet()) {
+                error($e->getMessage());
+            }
+
+            return self::FAILURE;
+        }
 
         if (! $this->output->isQuiet()) {
             if ($preview) {
@@ -94,15 +189,7 @@ class TsPublishCommand extends Command
                 $this->createPublishedFilesList($runner);
             }
 
-            if ($this->output->isVerbose()) {
-                $enumCount = count($runner->enumGenerators);
-                $modelCount = count($runner->modelGenerators);
-                $resourceCount = count($runner->resourceGenerators);
-
-                outro("{$enumCount} enums, {$modelCount} models, {$resourceCount} resources — All done");
-            } else {
-                outro('All done');
-            }
+            outro('All done');
         }
 
         return self::SUCCESS;
@@ -111,13 +198,15 @@ class TsPublishCommand extends Command
     protected function runSource(string $source): int
     {
         $preview = filter_var($this->option('preview'), FILTER_VALIDATE_BOOLEAN);
-        config()->set('ts-publish.output_to_files', ! $preview);
+        Config::set('ts-publish.output_to_files', ! $preview);
 
         if (! $this->output->isQuiet()) {
             intro('ts:publish --source');
+            $this->showRunContext($preview ? "preview · source={$source}" : "source={$source}");
         }
 
         try {
+            // --source runs always bypass the generation cache.
             $runner = new RunnerForSource($source);
             $flags = $this->resolvePublishFlags();
 
@@ -125,7 +214,15 @@ class TsPublishCommand extends Command
                 return self::SUCCESS;
             }
 
-            [$runner->shouldPublishEnums, $runner->shouldPublishModels, $runner->shouldPublishResources] = $flags;
+            [
+                $runner->shouldPublishEnums,
+                $runner->shouldPublishModels,
+                $runner->shouldPublishResources,
+                $runner->shouldPublishRoutes,
+                $runner->shouldPublishFormRequests,
+                $runner->shouldPublishBroadcastChannels,
+                $runner->shouldPublishBroadcastEvents,
+            ] = $flags;
             $runner->run();
         } catch (InvalidArgumentException $e) {
             if (! $this->output->isQuiet()) {
@@ -142,11 +239,7 @@ class TsPublishCommand extends Command
                 $this->createPublishedFilesList($runner);
             }
 
-            $enumCount = count($runner->enumGenerators);
-            $modelCount = count($runner->modelGenerators);
-            $resourceCount = count($runner->resourceGenerators);
-
-            outro("{$enumCount} enums, {$modelCount} models, {$resourceCount} resources — All done");
+            outro('All done');
         }
 
         return self::SUCCESS;
@@ -155,69 +248,84 @@ class TsPublishCommand extends Command
     /**
      * Resolve the final publish flags from config values and command options.
      *
-     * @return array{0: bool, 1: bool, 2: bool}|null [shouldPublishEnums, shouldPublishModels, shouldPublishResources] or null to abort
+     * @return array{0: bool, 1: bool, 2: bool, 3: bool, 4: bool, 5: bool, 6: bool}|null [shouldPublishEnums, shouldPublishModels, shouldPublishResources, shouldPublishRoutes, shouldPublishFormRequests, shouldPublishBroadcastChannels, shouldPublishBroadcastEvents] or null to abort
      */
     protected function resolvePublishFlags(): ?array
     {
-        $configEnums = config()->boolean('ts-publish.publish_enums');
-        $configModels = config()->boolean('ts-publish.publish_models');
-        $configResources = config()->boolean('ts-publish.publish_resources');
-        $onlyEnums = (bool) $this->option('only-enums');
-        $onlyModels = (bool) $this->option('only-models');
-        $onlyResources = (bool) $this->option('only-resources');
+        $onlyFunctional = (bool) $this->option('only-functional');
 
-        $shouldPublishEnums = $configEnums;
-        $shouldPublishModels = $configModels;
-        $shouldPublishResources = $configResources;
+        // Publish-type registry in return-array order.
+        // 'functional' controls inclusion under --only-functional (models/resources are excluded).
+        /** @var array<string, array{config: string, option: string, label: string, functional: bool}> $types */
+        $types = [
+            'broadcast_channels' => ['config' => 'ts-publish.broadcast_channels.enabled', 'option' => 'only-broadcast-channels', 'label' => 'broadcast channels', 'functional' => true],
+            'broadcast_events' => ['config' => 'ts-publish.broadcast_events.enabled', 'option' => 'only-broadcast-events', 'label' => 'broadcast events', 'functional' => true],
+            'form_requests' => ['config' => 'ts-publish.form_requests.enabled', 'option' => 'only-form-requests', 'label' => 'form requests', 'functional' => true],
+            'enums' => ['config' => 'ts-publish.enums.enabled', 'option' => 'only-enums', 'label' => 'enums', 'functional' => true],
+            'models' => ['config' => 'ts-publish.models.enabled', 'option' => 'only-models', 'label' => 'models', 'functional' => false],
+            'resources' => ['config' => 'ts-publish.resources.enabled', 'option' => 'only-resources', 'label' => 'resources', 'functional' => false],
+            'routes' => ['config' => 'ts-publish.routes.enabled', 'option' => 'only-routes', 'label' => 'routes', 'functional' => true],
+        ];
 
-        if ($onlyEnums) {
-            $shouldPublishModels = false;
-            $shouldPublishResources = false;
+        // Build initial flags from config; --only-functional forces non-functional types off.
+        /** @var array<string, bool> $flags */
+        $flags = [];
 
-            if (! $configEnums) {
-                $shouldPublishEnums = $this->promptConfigOverride('enums');
+        foreach ($types as $key => $type) {
+            $flags[$key] = ($onlyFunctional && ! $type['functional'])
+                ? false
+                : Config::boolean($type['config']);
+        }
 
-                if (! $shouldPublishEnums) {
+        if ($onlyFunctional) {
+            if (! in_array(true, $flags, true)) {
+                if (! $this->output->isQuiet()) {
+                    warning('All functional options are disabled in config. Nothing to publish.');
+                }
+
+                return null;
+            }
+
+            return [$flags['enums'], $flags['models'], $flags['resources'], $flags['routes'], $flags['form_requests'], $flags['broadcast_channels'], $flags['broadcast_events']];
+        }
+
+        // Find the active --only-* key, if any (validateOnlyOptions enforces at most one).
+        $onlyKey = null;
+
+        foreach ($types as $key => $type) {
+            if ((bool) $this->option($type['option'])) {
+                $onlyKey = $key;
+                break;
+            }
+        }
+
+        if ($onlyKey !== null) {
+            $activeType = $types[$onlyKey];
+
+            foreach (array_keys($flags) as $k) {
+                $flags[$k] = false;
+            }
+
+            if (Config::boolean($activeType['config'])) {
+                $flags[$onlyKey] = true;
+            } else {
+                $flags[$onlyKey] = $this->promptConfigOverride($activeType['label']);
+
+                if (! $flags[$onlyKey]) {
                     return null;
                 }
             }
         }
 
-        if ($onlyModels) {
-            $shouldPublishEnums = false;
-            $shouldPublishResources = false;
-
-            if (! $configModels) {
-                $shouldPublishModels = $this->promptConfigOverride('models');
-
-                if (! $shouldPublishModels) {
-                    return null;
-                }
-            }
-        }
-
-        if ($onlyResources) {
-            $shouldPublishEnums = false;
-            $shouldPublishModels = false;
-
-            if (! $configResources) {
-                $shouldPublishResources = $this->promptConfigOverride('resources');
-
-                if (! $shouldPublishResources) {
-                    return null;
-                }
-            }
-        }
-
-        if (! $shouldPublishEnums && ! $shouldPublishModels && ! $shouldPublishResources) {
+        if (! in_array(true, $flags, true)) {
             if (! $this->output->isQuiet()) {
-                warning('Enums, models, and resources are all disabled in config. Nothing to publish.');
+                warning('Enums, models, resources, routes, form requests, broadcast channels, and broadcast events are all disabled in config. Nothing to publish.');
             }
 
             return null;
         }
 
-        return [$shouldPublishEnums, $shouldPublishModels, $shouldPublishResources];
+        return [$flags['enums'], $flags['models'], $flags['resources'], $flags['routes'], $flags['form_requests'], $flags['broadcast_channels'], $flags['broadcast_events']];
     }
 
     protected function promptConfigOverride(string $type): bool
@@ -243,20 +351,13 @@ class TsPublishCommand extends Command
             }
         }
 
-        if (! empty($runner->enumBarrelContent)) {
+        if (count($runner->enumModularBarrels) > 0) {
             $this->newLine();
-            if (count($runner->enumModularBarrels) > 0) {
-                $this->comment('Enum Barrel Files:');
-                foreach ($runner->enumModularBarrels as $namespacePath => $content) {
-                    $this->newLine();
-                    $this->comment("  {$namespacePath}/index.ts");
-                    $this->line($content);
-                }
-            } else {
-                $this->comment('Enum Barrel File:');
+            $this->comment('Enum Barrel Files:');
+            foreach ($runner->enumModularBarrels as $namespacePath => $content) {
                 $this->newLine();
-                $this->comment('  index.ts');
-                $this->line($runner->enumBarrelContent);
+                $this->comment("  {$namespacePath}/index.ts");
+                $this->line($content);
             }
         }
 
@@ -270,20 +371,13 @@ class TsPublishCommand extends Command
             }
         }
 
-        if (! empty($runner->modelBarrelContent)) {
+        if (count($runner->modelModularBarrels) > 0) {
             $this->newLine();
-            if (count($runner->modelModularBarrels) > 0) {
-                $this->comment('Model Barrel Files:');
-                foreach ($runner->modelModularBarrels as $namespacePath => $content) {
-                    $this->newLine();
-                    $this->comment("  {$namespacePath}/index.ts");
-                    $this->line($content);
-                }
-            } else {
-                $this->comment('Model Barrel File:');
+            $this->comment('Model Barrel Files:');
+            foreach ($runner->modelModularBarrels as $namespacePath => $content) {
                 $this->newLine();
-                $this->comment('  index.ts');
-                $this->line($runner->modelBarrelContent);
+                $this->comment("  {$namespacePath}/index.ts");
+                $this->line($content);
             }
         }
 
@@ -297,77 +391,223 @@ class TsPublishCommand extends Command
             }
         }
 
-        if (! empty($runner->resourceBarrelContent)) {
+        if (count($runner->resourceModularBarrels) > 0) {
             $this->newLine();
-            if (count($runner->resourceModularBarrels) > 0) {
-                $this->comment('Resource Barrel Files:');
-                foreach ($runner->resourceModularBarrels as $namespacePath => $content) {
-                    $this->newLine();
-                    $this->comment("  {$namespacePath}/index.ts");
-                    $this->line($content);
-                }
-            } else {
-                $this->comment('Resource Barrel File:');
+            $this->comment('Resource Barrel Files:');
+            foreach ($runner->resourceModularBarrels as $namespacePath => $content) {
                 $this->newLine();
-                $this->comment('  index.ts');
-                $this->line($runner->resourceBarrelContent);
+                $this->comment("  {$namespacePath}/index.ts");
+                $this->line($content);
             }
+        }
+
+        if (count($runner->routeGenerators) > 0) {
+            $this->newLine();
+            $this->comment('Routes:');
+            foreach ($runner->routeGenerators as $generator) {
+                $this->newLine();
+                $this->comment("  {$generator->transformer->namespacePath}/{$generator->filename()}.ts");
+                $this->line($generator->content);
+            }
+        }
+
+        if (count($runner->routeModularBarrels) > 0) {
+            $this->newLine();
+            $this->comment('Route Barrel Files:');
+            foreach ($runner->routeModularBarrels as $namespacePath => $content) {
+                $this->newLine();
+                $this->comment("  {$namespacePath}/index.ts");
+                $this->line($content);
+            }
+        }
+
+        if (count($runner->formRequestGenerators) > 0) {
+            $this->newLine();
+            $this->comment('Form Requests:');
+            foreach ($runner->formRequestGenerators as $generator) {
+                $this->newLine();
+                $this->comment("  {$generator->transformer->namespacePath}/{$generator->filename()}.ts");
+                $this->line($generator->content);
+            }
+        }
+
+        if (count($runner->formRequestModularBarrels) > 0) {
+            $this->newLine();
+            $this->comment('Form Request Barrel Files:');
+            foreach ($runner->formRequestModularBarrels as $namespacePath => $content) {
+                $this->newLine();
+                $this->comment("  {$namespacePath}/index.ts");
+                $this->line($content);
+            }
+        }
+
+        if (! empty($runner->viteEnvContent)) {
+            $viteEnvFilename = Config::string('ts-publish.vite_env.filename', 'vite-env.d.ts');
+            $this->newLine();
+            $this->comment('Vite Env:');
+            $this->newLine();
+            $this->comment("  {$viteEnvFilename}");
+            $this->line($runner->viteEnvContent);
+        }
+
+        if (! empty($runner->inertiaConfigContent)) {
+            $configFilename = Config::string('ts-publish.inertia.augmentation_filename');
+
+            $this->newLine();
+            $this->comment('Inertia Config:');
+            $this->newLine();
+            $this->comment("  {$configFilename}");
+            $this->line($runner->inertiaConfigContent);
+        }
+
+        if (! empty($runner->broadcastChannelsContent)) {
+            $filename = Config::string('ts-publish.broadcast_channels.filename', 'broadcast-channels.ts');
+            $this->newLine();
+            $this->comment('Broadcast Channels:');
+            $this->newLine();
+            $this->comment("  {$filename}");
+            $this->line($runner->broadcastChannelsContent);
+        }
+
+        if (! empty($runner->broadcastEventsIndexContent)) {
+            $filename = Config::string('ts-publish.broadcast_events.index_filename', 'broadcast-events.ts');
+            $this->newLine();
+            $this->comment('Broadcast Events:');
+            $this->newLine();
+            $this->comment("  {$filename}");
+            $this->line($runner->broadcastEventsIndexContent);
+        }
+
+        if (count($runner->broadcastEventGenerators) > 0) {
+            $this->newLine();
+            $this->comment('Broadcast Event Interfaces:');
+            foreach ($runner->broadcastEventGenerators as $generator) {
+                $this->newLine();
+                $this->comment("  {$generator->transformer->namespacePath}/{$generator->filename()}.ts");
+                $this->line($generator->content);
+            }
+        }
+        if (count($runner->broadcastEventModularBarrels) > 0) {
+            $this->newLine();
+            $this->comment('Broadcast Event Barrel Files:');
+            foreach ($runner->broadcastEventModularBarrels as $namespacePath => $content) {
+                $this->newLine();
+                $this->comment("  {$namespacePath}/index.ts");
+                $this->line($content);
+            }
+        }
+
+        if (! empty($runner->broadcastEventsEchoContent)) {
+            $filename = Config::string('ts-publish.broadcast_events.echo_augmentation.filename', 'echo-broadcast-events.d.ts');
+            $this->newLine();
+            $this->comment('Echo Broadcast Events:');
+            $this->newLine();
+            $this->comment("  {$filename}");
+            $this->line($runner->broadcastEventsEchoContent);
         }
     }
 
     protected function createPublishedFilesList(Runner|RunnerForSource $runner): void
     {
-        $outputDirectory = config()->string('ts-publish.output_directory');
+        $outputDirectory = Config::string('ts-publish.output_directory');
 
         info("Published to: {$outputDirectory}");
 
         if ($this->output->isVerbose()) {
             $this->createVerboseFilesList($runner);
-        } else {
-            $this->createCompactSummary($runner);
         }
+
+        $this->renderSummaryCallout($runner);
     }
 
     protected function createCompactSummary(Runner|RunnerForSource $runner): void
     {
-        $enumCount = $runner->enumGenerators->count();
-        $modelCount = $runner->modelGenerators->count();
-        $resourceCount = $runner->resourceGenerators->count();
+        $this->renderSummaryCallout($runner);
+    }
 
-        $parts = [];
+    /**
+     * Ordered [singular-label => count] map of the primary published types, omitting
+     * zero counts. The singular label is pluralized by `Str::plural(..., prependCount: true)`
+     * at render time (e.g. 'model' → "128 models", "1 model").
+     *
+     * @return array<string, int>
+     */
+    protected function primaryCounts(Runner|RunnerForSource $runner): array
+    {
+        return array_filter([
+            'enum' => $runner->enumGenerators->count(),
+            'model' => $runner->modelGenerators->count(),
+            'resource' => $runner->resourceGenerators->count(),
+            'route controller' => $runner->routeGenerators->count(),
+            'form request' => $runner->formRequestGenerators->count(),
+            'broadcast event' => $runner->broadcastEventGenerators->count(),
+        ], fn (int $count) => $count > 0);
+    }
 
-        if ($enumCount > 0) {
-            $parts[] = Str::plural('enum', $enumCount, true);
+    /**
+     * Total number of TypeScript files written (primary files + extras).
+     */
+    protected function totalFilesWritten(Runner|RunnerForSource $runner): int
+    {
+        return array_sum($this->primaryCounts($runner)) + count($this->collectExtras($runner));
+    }
+
+    /**
+     * Render the published-files summary as a scannable callout: a key/value list
+     * of type counts, a bulleted list of extras, and a footer with the file total
+     * and elapsed time.
+     */
+    protected function renderSummaryCallout(Runner|RunnerForSource $runner): void
+    {
+        /** @var list<string> $primaryLines */
+        $primaryLines = [];
+
+        foreach ($this->primaryCounts($runner) as $singular => $count) {
+            // prependCount: true → auto-pluralized AND count-prefixed: "128 models", "1 resource".
+            $primaryLines[] = Str::plural($singular, $count, prependCount: true);
         }
 
-        if ($modelCount > 0) {
-            $parts[] = Str::plural('model', $modelCount, true);
+        /** @var list<string|ElementContract> $content */
+        $content = [];
+
+        if ($primaryLines !== []) {
+            $content[] = Element::bulletedList($primaryLines);
         }
 
-        if ($resourceCount > 0) {
-            $parts[] = Str::plural('resource', $resourceCount, true);
-        }
-
-        if (count($parts) > 0) {
-            $this->line('  '.implode(', ', $parts));
-        }
-
+        // Extras: a singleton (e.g. "vite env", "inertia config") shows no count;
+        // multiples are pluralized + counted (e.g. "38 model barrels").
         $extras = $this->collectExtras($runner);
 
-        if (count($extras) > 0) {
+        if ($extras !== []) {
             $grouped = collect($extras)->groupBy(fn (array $e) => $e[0]);
-            $summary = $grouped->map(fn ($items, string $type) => $items->count() === 1
+            $extraLines = $grouped->map(fn ($items, string $type) => $items->count() === 1
                 ? Str::lower($type)
-                : $items->count().' '.Str::lower(Str::plural($type, $items->count())),
-            )->values()->implode(', ');
+                : Str::plural(Str::lower($type), $items->count(), prependCount: true),
+            )->values()->all();
 
-            $this->line("  Extras: {$summary}");
+            $content[] = Element::heading('Extras');
+            $content[] = Element::bulletedList($extraLines);
         }
+
+        if ($content === []) {
+            return;
+        }
+
+        $elapsed = number_format(microtime(true) - $this->startedAt, 2);
+        $total = $this->totalFilesWritten($runner);
+
+        callout(
+            label: 'Published TypeScript files',
+            content: $content,
+            info: Str::plural('file', $total, prependCount: true)." · {$elapsed}s",
+        );
     }
 
     protected function createVerboseFilesList(Runner|RunnerForSource $runner): void
     {
         if (count($runner->enumGenerators) > 0) {
+            note('Enums');
+
             /** @var array<int, array<int, string>> $enumRows */
             $enumRows = $runner->enumGenerators->map(fn (EnumGenerator $g) => [
                 $g->transformer->enumName,
@@ -384,6 +624,8 @@ class TsPublishCommand extends Command
         }
 
         if (count($runner->modelGenerators) > 0) {
+            note('Models');
+
             /** @var array<int, array<int, string>> $modelRows */
             $modelRows = $runner->modelGenerators->map(fn (ModelGenerator $g) => [
                 $g->transformer->modelName,
@@ -400,6 +642,8 @@ class TsPublishCommand extends Command
         }
 
         if (count($runner->resourceGenerators) > 0) {
+            note('Resources');
+
             /** @var array<int, array<int, string>> $resourceRows */
             $resourceRows = $runner->resourceGenerators->map(fn (ResourceGenerator $g) => [
                 $g->transformer->resourceName,
@@ -413,9 +657,43 @@ class TsPublishCommand extends Command
             );
         }
 
+        if (count($runner->routeGenerators) > 0) {
+            note('Routes');
+
+            /** @var array<int, array<int, string>> $routeRows */
+            $routeRows = $runner->routeGenerators->map(fn (RouteGenerator $g) => [
+                $g->transformer->controllerName,
+                $g->transformer->namespacePath.'/'.$g->filename().'.ts',
+                (string) count($g->transformer->actions),
+            ])->toArray();
+
+            table(
+                headers: ['Controller', 'File', 'Actions'],
+                rows: $routeRows,
+            );
+        }
+
+        if (count($runner->formRequestGenerators) > 0) {
+            note('Form Requests');
+
+            /** @var array<int, array<int, string>> $formRequestRows */
+            $formRequestRows = $runner->formRequestGenerators->map(fn (FormRequestGenerator $g) => [
+                $g->transformer->typeName,
+                $g->transformer->namespacePath.'/'.$g->filename().'.ts',
+                (string) count($g->transformer->fields),
+            ])->toArray();
+
+            table(
+                headers: ['Form Request', 'File', 'Fields'],
+                rows: $formRequestRows,
+            );
+        }
+
         $extras = $this->collectExtras($runner);
 
         if (count($extras) > 0) {
+            note('Extras');
+
             /** @var array<int, array<int, string>> $extras */
             table(
                 headers: ['Type', 'File'],
@@ -430,17 +708,25 @@ class TsPublishCommand extends Command
     protected function collectExtras(Runner|RunnerForSource $runner): array
     {
         return array_filter([
-            ...($runner->enumModularBarrels
-                ? array_map(fn (string $path) => ['Barrel', "{$path}/index.ts"], array_keys($runner->enumModularBarrels))
-                : ($runner->enumBarrelContent ? [['Barrel', 'enums/index.ts']] : [])),
-            ...($runner->modelModularBarrels
-                ? array_map(fn (string $path) => ['Barrel', "{$path}/index.ts"], array_keys($runner->modelModularBarrels))
-                : ($runner->modelBarrelContent ? [['Barrel', 'models/index.ts']] : [])),
-            ...($runner->resourceModularBarrels
-                ? array_map(fn (string $path) => ['Barrel', "{$path}/index.ts"], array_keys($runner->resourceModularBarrels))
-                : ($runner->resourceBarrelContent ? [['Barrel', config()->string('ts-publish.resources_namespace', 'resources').'/index.ts']] : [])),
-            $runner->globalsContent ? ['Globals', config()->string('ts-publish.global_filename')] : null,
-            $runner->jsonContent ? ['JSON', config()->string('ts-publish.json_filename')] : null,
+            ...array_map(fn (string $path) => ['Enum Barrel', "{$path}/index.ts"], array_keys($runner->enumModularBarrels)),
+            ...array_map(fn (string $path) => ['Model Barrel', "{$path}/index.ts"], array_keys($runner->modelModularBarrels)),
+            ...array_map(fn (string $path) => ['Resource Barrel', "{$path}/index.ts"], array_keys($runner->resourceModularBarrels)),
+            ...array_map(fn (string $path) => ['Route Barrel', "{$path}/index.ts"], array_keys($runner->routeModularBarrels)),
+            ...array_map(fn (string $path) => ['Form Request Barrel', "{$path}/index.ts"], array_keys($runner->formRequestModularBarrels)),
+            ...array_map(fn (string $path) => ['Broadcast Event Barrel', "{$path}/index.ts"], array_keys($runner->broadcastEventModularBarrels)),
+            $runner->globalsContent ? ['Globals', Config::string('ts-publish.globals.filename')] : null,
+            $runner->viteEnvContent ? ['Vite Env', Config::string('ts-publish.vite_env.filename', 'vite-env.d.ts')] : null,
+            $runner->inertiaConfigContent ? ['Inertia Config', Config::string('ts-publish.inertia.augmentation_filename')] : null,
+            $runner->broadcastChannelsContent !== ''
+                ? ['Broadcast Channels', Config::string('ts-publish.broadcast_channels.filename', 'broadcast-channels.ts')]
+                : null,
+            $runner->broadcastEventsIndexContent !== ''
+                ? ['Broadcast Events', Config::string('ts-publish.broadcast_events.index_filename', 'broadcast-events.ts')]
+                : null,
+            $runner->broadcastEventsEchoContent !== ''
+                ? ['Echo Broadcast Events', Config::string('ts-publish.broadcast_events.echo_augmentation.filename', 'echo-broadcast-events.d.ts')]
+                : null,
+            $runner->jsonContent ? ['JSON', Config::string('ts-publish.json.filename')] : null,
         ]);
     }
 }

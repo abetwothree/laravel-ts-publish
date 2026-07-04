@@ -6,10 +6,14 @@ namespace AbeTwoThree\LaravelTsPublish\Runners;
 
 use AbeTwoThree\LaravelTsPublish\Collectors\Concerns\ValidatesCollectorFiles;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Config;
 use InvalidArgumentException;
 use ReflectionClass;
 
@@ -31,6 +35,18 @@ class RunnerForSource extends BaseRunner
         /** @var Collection<int, ResourceGenerator> $resourceGenerators */
         $resourceGenerators = collect();
         $this->resourceGenerators = $resourceGenerators;
+
+        /** @var Collection<int, RouteGenerator> $routeGenerators */
+        $routeGenerators = collect();
+        $this->routeGenerators = $routeGenerators;
+
+        /** @var Collection<int, FormRequestGenerator> $formRequestGenerators */
+        $formRequestGenerators = collect();
+        $this->formRequestGenerators = $formRequestGenerators;
+
+        /** @var Collection<int, BroadcastEventGenerator> $broadcastEventGenerators */
+        $broadcastEventGenerators = collect();
+        $this->broadcastEventGenerators = $broadcastEventGenerators;
     }
 
     public function run(): void
@@ -61,8 +77,26 @@ class RunnerForSource extends BaseRunner
             }
 
             $this->generateResource($fqcn);
+        } elseif ($this->validateController($reflection)) {
+            if (! $this->shouldPublishRoutes) {
+                throw new InvalidArgumentException("Route publishing is disabled: {$fqcn}");
+            }
+
+            $this->generateRoute($fqcn);
+        } elseif ($this->validateFormRequest($reflection)) {
+            if (! $this->shouldPublishFormRequests) {
+                throw new InvalidArgumentException("Form request publishing is disabled: {$fqcn}");
+            }
+
+            $this->generateFormRequest($fqcn);
+        } elseif ($this->validateBroadcastEvent($reflection)) {
+            if (! $this->shouldPublishBroadcastEvents) {
+                throw new InvalidArgumentException("Broadcast event publishing is disabled: {$fqcn}");
+            }
+
+            $this->generateBroadcastEvent($fqcn);
         } else {
-            throw new InvalidArgumentException("Class is not a publishable enum, model, or resource: {$fqcn}");
+            throw new InvalidArgumentException("Class is not a publishable enum, model, resource, controller, form request, or broadcast event: {$fqcn}");
         }
     }
 
@@ -85,7 +119,7 @@ class RunnerForSource extends BaseRunner
     {
         /** @var EnumGenerator $generator */
         $generator = resolve(
-            config()->string('ts-publish.enum_generator_class'),
+            Config::string('ts-publish.enums.generator_class', EnumGenerator::class),
             ['findable' => $fqcn],
         );
 
@@ -94,9 +128,11 @@ class RunnerForSource extends BaseRunner
 
     protected function generateModel(string $fqcn): void
     {
+        $this->buildModelMorphTargetMap();
+
         /** @var ModelGenerator $generator */
         $generator = resolve(
-            config()->string('ts-publish.model_generator_class'),
+            Config::string('ts-publish.models.generator_class', ModelGenerator::class),
             ['findable' => $fqcn],
         );
 
@@ -107,10 +143,61 @@ class RunnerForSource extends BaseRunner
     {
         /** @var ResourceGenerator $generator */
         $generator = resolve(
-            config()->string('ts-publish.resource_generator_class'),
+            Config::string('ts-publish.resources.generator_class', ResourceGenerator::class),
             ['findable' => $fqcn],
         );
 
         $this->resourceGenerators = collect([$generator]);
+    }
+
+    /**
+     * Generate a route from a controller FQCN.
+     *
+     * Class existence and TsExclude are already validated by run() → validateController(),
+     * so no redundant checks are needed here.
+     *
+     * @param  class-string  $fqcn  The fully qualified class name of the controller.
+     */
+    protected function generateRoute(string $fqcn): void
+    {
+        /** @var RouteGenerator $generator */
+        $generator = resolve(
+            Config::string('ts-publish.routes.generator_class', RouteGenerator::class),
+            ['findable' => $fqcn],
+        );
+
+        $this->routeGenerators = collect([$generator]);
+    }
+
+    /**
+     * Generate a FormRequest interface from its FQCN.
+     *
+     * @param  class-string  $fqcn  The fully qualified class name of the FormRequest.
+     */
+    protected function generateFormRequest(string $fqcn): void
+    {
+        /** @var FormRequestGenerator $generator */
+        $generator = resolve(
+            Config::string('ts-publish.form_requests.generator_class', FormRequestGenerator::class),
+            ['findable' => $fqcn],
+        );
+
+        $this->formRequestGenerators = collect([$generator]);
+    }
+
+    /**
+     * Generate a broadcast event interface from its FQCN.
+     *
+     * @param  class-string  $fqcn  The fully qualified class name of the broadcast event.
+     */
+    protected function generateBroadcastEvent(string $fqcn): void
+    {
+        /** @var BroadcastEventGenerator $generator */
+        $generator = resolve(
+            Config::string('ts-publish.broadcast_events.generator_class', BroadcastEventGenerator::class),
+            ['findable' => $fqcn],
+        );
+
+        $this->broadcastEventGenerators = collect([$generator]);
     }
 }

@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Generators;
 
+use AbeTwoThree\LaravelTsPublish\Generators\Concerns\RehydratesFromCache;
 use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\EnumWriter;
 use BackedEnum;
+use Illuminate\Support\Facades\Config;
 use Override;
 use UnitEnum;
 
@@ -15,19 +17,21 @@ use UnitEnum;
  */
 class EnumGenerator extends CoreGenerator
 {
+    use RehydratesFromCache;
+
     public protected(set) EnumTransformer $transformer;
 
     #[Override]
     public function generate(): string
     {
         /** @var EnumTransformer $transformer */
-        $transformer = resolve(config()->string('ts-publish.enum_transformer_class'), [
+        $transformer = resolve(Config::string('ts-publish.enums.transformer_class', EnumTransformer::class), [
             'findable' => $this->findable,
         ]);
         $this->transformer = $transformer;
 
         /** @var EnumWriter $writer */
-        $writer = resolve(config()->string('ts-publish.enum_writer_class'));
+        $writer = resolve(Config::string('ts-publish.enums.writer_class', EnumWriter::class));
 
         return $this->content = $writer->write($this->transformer);
     }
@@ -35,6 +39,6 @@ class EnumGenerator extends CoreGenerator
     #[Override]
     public function filename(): string
     {
-        return $this->transformer->filename();
+        return $this->cachedFilename ?? $this->transformer->filename();
     }
 }

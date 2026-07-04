@@ -1,0 +1,853 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AbeTwoThree\LaravelTsPublish\Transformers;
+
+use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Analyzers\SurveyorTypeMapper;
+use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
+use AbeTwoThree\LaravelTsPublish\Concerns\FiltersRoutes;
+use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
+use AbeTwoThree\LaravelTsPublish\Dtos\TsRouteDto;
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
+use BackedEnum;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Routing\Route;
+use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Str;
+use Override;
+use ReflectionClass;
+use ReflectionNamedType;
+use ReflectionParameter;
+
+/**
+ * @phpstan-import-type RouteActionData from TsRouteDto
+ * @phpstan-import-type RouteArgData from TsRouteDto
+ * @phpstan-import-type TypesImportMap from Datable
+ *
+ * @extends CoreTransformer<object>
+ */
+class RouteTransformer extends CoreTransformer
+{
+    use FiltersRoutes;
+    use SnapshotsTransformerState;
+
+    public protected(set) string $controllerName;
+
+    public protected(set) string $filePath;
+
+    public protected(set) string $namespacePath;
+
+    public protected(set) ?string $description;
+
+    /** @var list<RouteActionData> */
+    public protected(set) array $actions = [];
+
+    /** @var TypesImportMap */
+    public protected(set) array $typeImports = [];
+
+    /** @var array<int, list<class-string>> Action index => FQCNs found in page type */
+    protected array $actionPageTypeFqcns = [];
+
+    /** @var array<int, array<string, list<string>>> Action index => external imports (e.g. @tolki/types) */
+    protected array $actionExternalImports = [];
+
+    /** @var ReflectionClass<object> */
+    protected ReflectionClass $reflectionController;
+
+    /** @var array<class-string, object> Cache of instantiated models for binding resolution */
+    protected static array $modelInstanceCache = [];
+
+    protected ?InertiaPageAnalyzer $inertiaPageAnalyzer = null;
+
+    protected const INVOKE = '__invoke';
+
+    /** Whether any actions have page types that require the annotatePageProps import. */
+    protected bool $hasPageTypes = false;
+
+    /** Whether any actions have FormRequest params that require the annotateRequestPayload import. */
+    protected bool $hasRequestTypes = false;
+
+    /** Whether this controller is invokable (an action maps to __invoke). */
+    protected bool $isInvokable = false;
+
+    #[Override]
+    public function transform(): self
+    {
+        $this->initReflection()
+            ->initInertiaAnalyzer()
+            ->initActions()
+            ->detectInvokable()
+            ->buildTypeImports();
+
+        return $this;
+    }
+
+    #[Override]
+    public function data(): TsRouteDto
+    {
+        return new TsRouteDto(
+            controllerName: $this->controllerName,
+            filePath: $this->namespacePath.'/'.Str::kebab($this->controllerName),
+            fqcn: $this->findable,
+            description: $this->description !== '' ? $this->description : null,
+            actions: $this->actions,
+            typeImports: $this->typeImports,
+            hasPageTypes: $this->hasPageTypes,
+            hasRequestTypes: $this->hasRequestTypes,
+            isInvokable: $this->isInvokable,
+        );
+    }
+
+    #[Override]
+    public function filename(): string
+    {
+        return Str::kebab($this->controllerName);
+    }
+
+    /** @return list<string> */
+    protected function transientProperties(): array
+    {
+        return ['reflectionController', 'inertiaPageAnalyzer'];
+    }
+
+    /**
+     * Initialize the reflection instance and controller metadata.
+     */
+    protected function initReflection(): self
+    {
+        $this->reflectionController = new ReflectionClass($this->findable);
+        $this->controllerName = $this->reflectionController->getShortName();
+        $this->filePath = (string) $this->reflectionController->getFileName();
+        $this->namespacePath = LaravelTsPublish::namespaceToPath($this->findable);
+        $this->description = LaravelTsPublish::parseDocBlockDescription($this->reflectionController->getDocComment());
+
+        return $this;
+    }
+
+    /**
+     * Conditionally resolve the Inertia page analyzer if Inertia support is enabled.
+     */
+    protected function initInertiaAnalyzer(): self
+    {
+        if (Config::boolean('ts-publish.inertia.enabled')) {
+            $this->inertiaPageAnalyzer = resolve(InertiaPageAnalyzer::class);
+        }
+
+        return $this;
+    }
+
+    /**
+     * Collect and set all publishable route actions.
+     */
+    protected function initActions(): self
+    {
+        $this->actions = $this->collectActions();
+
+        return $this;
+    }
+
+    /**
+     * Determine whether this controller is invokable based on collected actions.
+     */
+    protected function detectInvokable(): self
+    {
+        foreach ($this->actions as $action) {
+            if ($action['originalMethodName'] === self::INVOKE) {
+                $this->isInvokable = true;
+
+                break;
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * Merge page-type and request-type import maps and store the sorted result.
+     */
+    protected function buildTypeImports(): self
+    {
+        $pageImports = $this->resolvePageTypeImports();
+        $requestImports = $this->resolveRequestTypeImports();
+
+        $merged = $pageImports;
+
+        foreach ($requestImports as $path => $types) {
+            foreach ($types as $type) {
+                if (! in_array($type, $merged[$path] ?? [], true)) {
+                    $merged[$path][] = $type;
+                }
+            }
+        }
+
+        $this->typeImports = LaravelTsPublish::sortImportPaths($merged);
+
+        return $this;
+    }
+
+    /**
+     * Collect all publishable route actions for this controller.
+     *
+     * @return list<RouteActionData>
+     */
+    protected function collectActions(): array
+    {
+        /** @var Router $router */
+        $router = app(Router::class);
+
+        /** @var array<string, RouteActionData> $actionsByMethod Actions keyed by method name to deduplicate */
+        $actionsByMethod = [];
+
+        $only = array_values(array_filter(Config::array('ts-publish.routes.only', []), 'is_string'));
+        $except = array_values(array_filter(Config::array('ts-publish.routes.except', []), 'is_string'));
+        $excludeMiddleware = array_values(array_filter(Config::array('ts-publish.routes.exclude_middleware', []), 'is_string'));
+        $onlyNamed = Config::boolean('ts-publish.routes.only_named', false);
+        $methodCasing = Config::string('ts-publish.routes.method_casing', 'camel');
+
+        foreach ($router->getRoutes()->getRoutes() as $route) {
+            /** @var Route $route */
+            if (ltrim((string) $route->getControllerClass(), '\\') !== $this->findable) {
+                continue;
+            }
+
+            if (! $this->shouldIncludeRoute($route, $only, $except, $onlyNamed, $excludeMiddleware)) {
+                continue;
+            }
+
+            $routeName = $route->getName();
+            $actionMethod = $route->getActionMethod();
+
+            // For invokable controllers, getActionMethod() returns the FQCN rather than '__invoke'
+            if (str_contains($actionMethod, '\\') || ! $this->reflectionController->hasMethod($actionMethod)) {
+                $actionMethod = self::INVOKE;
+            }
+
+            // Skip if the action method has #[TsExclude]
+            if ($this->isMethodExcluded($actionMethod)) {
+                continue;
+            }
+
+            $methodName = $this->resolveMethodName($actionMethod, $methodCasing);
+
+            // When multiple routes map to the same controller method, keep the one with a name
+            // (or the first one seen if none have a name).
+            if (isset($actionsByMethod[$actionMethod])) {
+                if ($routeName !== null && $actionsByMethod[$actionMethod]['name'] === null) {
+                    // Replace un-named entry with named one
+                    $actionsByMethod[$actionMethod] = $this->buildAction($route, $methodName, $actionMethod);
+                }
+
+                continue;
+            }
+
+            $actionsByMethod[$actionMethod] = $this->buildAction($route, $methodName, $actionMethod);
+        }
+
+        return array_values($actionsByMethod);
+    }
+
+    /**
+     * Build a single route action data array.
+     *
+     * @return RouteActionData
+     */
+    protected function buildAction(Route $route, string $methodName, string $originalMethodName): array
+    {
+        $description = null;
+
+        if ($this->reflectionController->hasMethod($originalMethodName)) {
+            $desc = LaravelTsPublish::parseDocBlockDescription(
+                $this->reflectionController->getMethod($originalMethodName)->getDocComment()
+            );
+            $description = $desc !== '' ? $desc : null;
+        }
+
+        $uri = '/'.ltrim($route->uri(), '/');
+
+        $url = null;
+        if (is_string($domain = $route->domain())) {
+            $url = $domain.$uri;
+        }
+
+        $action = [
+            'name' => $route->getName(),
+            'url' => $url,
+            'uri' => $uri,
+            'domain' => $route->getDomain(),
+            'methods' => array_values(array_filter(
+                array_map(fn (mixed $m): string => strtolower(is_string($m) ? $m : ''), $route->methods()),
+                fn (string $m): bool => $m !== 'head',
+            )),
+            'methodName' => $methodName,
+            'originalMethodName' => $originalMethodName,
+            'description' => $description,
+            'args' => $this->resolveArgs($route, $originalMethodName),
+            'shouldAnnotate' => false, // set to true if Inertia page types are detected
+            'hasFormRequest' => false, // set to true if a FormRequest param is detected
+        ];
+
+        if ($this->inertiaPageAnalyzer !== null) {
+            $controllerClass = ltrim((string) $route->getControllerClass(), '\\');
+            $uses = $controllerClass.'@'.$originalMethodName;
+
+            $inertiaData = $this->inertiaPageAnalyzer->analyze(['uses' => $uses]);
+
+            if ($inertiaData !== null) {
+                $action['component'] = $this->normalizeComponent($inertiaData['component']);
+
+                if ($inertiaData['pageType'] !== null) {
+                    $action['pageType'] = $this->normalizePageType(
+                        $inertiaData['component'],
+                        $inertiaData['pageType'],
+                    );
+
+                    $action['pageTypeAnnotation'] = $this->resolvePageTypeAnnotation(
+                        $methodName,
+                        $action['pageType'],
+                    );
+
+                    $action['shouldAnnotate'] = true;
+                    $this->hasPageTypes = true;
+                }
+
+                if ($inertiaData['classFqcns'] !== []) {
+                    $this->actionPageTypeFqcns[] = $inertiaData['classFqcns'];
+                }
+
+                $externalImports = $inertiaData['externalImports'] ?? [];
+
+                if ($externalImports !== []) {
+                    $this->actionExternalImports[] = $externalImports;
+                }
+            }
+        }
+
+        if (Config::boolean('ts-publish.form_requests.enabled')) {
+            $this->detectFormRequest($originalMethodName, $action);
+        }
+
+        return $action;
+    }
+
+    /**
+     * Detect a FormRequest parameter on the given controller method and populate
+     * request-related fields on the action array if found.
+     *
+     * @param  RouteActionData  $action
+     */
+    protected function detectFormRequest(string $originalMethodName, array &$action): void
+    {
+        if (! $this->reflectionController->hasMethod($originalMethodName)) {
+            return;
+        }
+
+        $method = $this->reflectionController->getMethod($originalMethodName);
+
+        foreach ($method->getParameters() as $param) {
+            $type = $param->getType();
+
+            if (! ($type instanceof ReflectionNamedType) || $type->isBuiltin()) {
+                continue;
+            }
+
+            $paramClass = $type->getName();
+
+            if (! class_exists($paramClass)) {
+                continue;
+            }
+
+            if (! is_a($paramClass, FormRequest::class, true)) {
+                continue;
+            }
+
+            $paramReflection = new ReflectionClass($paramClass);
+            $shortName = $paramReflection->getShortName();
+            $requestNamespacePath = LaravelTsPublish::namespaceToPath($paramClass);
+            $requestFilename = Str::kebab($shortName);
+
+            $action['requestFqcn'] = $paramClass;
+            $action['requestTypeAlias'] = $shortName;
+            $action['requestImportPath'] = LaravelTsPublish::relativeImportPath(
+                $this->namespacePath,
+                $requestNamespacePath,
+            ).'/'.$requestFilename;
+
+            $action['hasFormRequest'] = true;
+
+            $this->hasRequestTypes = true;
+
+            break;
+        }
+    }
+
+    /**
+     * Resolve the JavaScript export name for a route action.
+     */
+    protected function resolveMethodName(string $actionMethod, string $casing): string
+    {
+        // __invoke maps to 'invoke' at the action level; the blade renders the
+        // emitted const using the controller short name (see route.blade.php).
+        if ($actionMethod === self::INVOKE) {
+            return 'invoke';
+        }
+
+        // Mirror Wayfinder: the export name is the controller action method name,
+        // never the route name.
+        return LaravelTsPublish::safeJsIdentifier(
+            LaravelTsPublish::keyCase($actionMethod, $casing),
+            'Method'
+        );
+    }
+
+    /**
+     * Resolve the args list for a route, including binding metadata.
+     *
+     * @return list<RouteArgData>
+     */
+    protected function resolveArgs(Route $route, string $actionMethod): array
+    {
+        /** @var list<RouteArgData> $args */
+        $args = [];
+
+        $paramNames = $route->parameterNames();
+
+        if ($paramNames === []) {
+            return $args;
+        }
+
+        $methodParams = [];
+
+        if ($this->reflectionController->hasMethod($actionMethod)) {
+            $methodParams = $this->reflectionController->getMethod($actionMethod)->getParameters();
+        }
+
+        // Build a map of param name → ReflectionParameter for type-hint inspection
+        /** @var array<string, ReflectionParameter> $paramMap */
+        $paramMap = [];
+
+        foreach ($methodParams as $rp) {
+            $paramMap[$rp->getName()] = $rp;
+        }
+
+        $wheres = $route->wheres;
+
+        foreach ($paramNames as $paramName) {
+            if (! is_string($paramName)) {
+                continue; // @codeCoverageIgnore
+            }
+
+            // parameterNames() already strips the '?' suffix; detect optionality from the URI
+            $cleanName = $paramName;
+            $required = ! str_contains($route->uri(), '{'.$paramName.'?}');
+
+            /** @var RouteArgData $arg */
+            $arg = ['name' => $cleanName, 'required' => $required];
+
+            // Check for regex constraint
+            $whereValue = $wheres[$cleanName] ?? null;
+
+            if (is_string($whereValue) && $whereValue !== '') {
+                $arg['where'] = $whereValue;
+            }
+
+            // Resolve binding type
+            $bindingField = $this->resolveBindingField($route, $cleanName, $paramMap);
+
+            if ($bindingField !== null) {
+                $arg['_routeKey'] = $bindingField;
+            } else {
+                // Check for enum binding
+                $enumValues = $this->resolveEnumValues($cleanName, $paramMap);
+
+                if ($enumValues !== null) {
+                    $arg['_enumValues'] = $enumValues;
+                }
+            }
+
+            $args[] = $arg;
+        }
+
+        return $args;
+    }
+
+    /**
+     * Resolve the route key field for a model-bound parameter.
+     * Returns null if the parameter is not model-bound.
+     *
+     * Priority:
+     * 1. Explicit binding field from {post:slug} syntax
+     * 2. Type-hinted to a Model — call getRouteKeyName()
+     * 3. Default: null (not model-bound)
+     *
+     * @param  array<string, ReflectionParameter>  $paramMap
+     */
+    protected function resolveBindingField(Route $route, string $paramName, array $paramMap): ?string
+    {
+        // 1. Explicit binding field from route definition (e.g. {post:slug})
+        $explicit = $route->bindingFieldFor($paramName);
+
+        if ($explicit !== null && $explicit !== '') {
+            return $explicit;
+        }
+
+        // 2. Check if the param is type-hinted to a Model
+        if (! isset($paramMap[$paramName])) {
+            return null;
+        }
+
+        $rp = $paramMap[$paramName];
+        $type = $rp->getType();
+
+        if (! ($type instanceof ReflectionNamedType) || $type->isBuiltin()) {
+            return null;
+        }
+
+        $className = $type->getName();
+
+        if (! class_exists($className)) {
+            return null; // @codeCoverageIgnore
+        }
+
+        // Check it's actually a Model (not an Enum or other class)
+        if (! is_a($className, Model::class, true)) {
+            return null;
+        }
+
+        // Only instantiate if the class overrides the default route key
+        if ($this->overridesRouteKey($className)) {
+            if (! isset(self::$modelInstanceCache[$className])) {
+                self::$modelInstanceCache[$className] = new $className;
+            }
+
+            /** @var Model $instance */
+            $instance = self::$modelInstanceCache[$className];
+
+            return $instance->getRouteKeyName();
+        }
+
+        return 'id';
+    }
+
+    /**
+     * Check if a model class overrides the default route key name.
+     *
+     * Only instantiate the model if it actually overrides getRouteKeyName,
+     * getKeyName, or $primaryKey — otherwise assume 'id'.
+     *
+     * @param  class-string  $className
+     */
+    protected function overridesRouteKey(string $className): bool
+    {
+        $reflection = new ReflectionClass($className);
+
+        // Check if getRouteKeyName is overridden
+        if ($reflection->hasMethod('getRouteKeyName')) {
+            $method = $reflection->getMethod('getRouteKeyName');
+
+            if ($method->getDeclaringClass()->getName() !== Model::class) {
+                return true;
+            }
+        }
+
+        // Check if getKeyName is overridden (getRouteKeyName delegates to getKeyName)
+        if ($reflection->hasMethod('getKeyName')) {
+            $method = $reflection->getMethod('getKeyName');
+
+            if ($method->getDeclaringClass()->getName() !== Model::class) {
+                return true;
+            }
+        }
+
+        // Check if $primaryKey property is overridden
+        if ($reflection->hasProperty('primaryKey')) {
+            $prop = $reflection->getProperty('primaryKey');
+
+            if ($prop->getDeclaringClass()->getName() !== Model::class) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Resolve backed enum values for an enum-bound parameter.
+     * Returns null if the parameter is not enum-bound.
+     *
+     * @param  array<string, ReflectionParameter>  $paramMap
+     * @return list<string|int>|null
+     */
+    protected function resolveEnumValues(string $paramName, array $paramMap): ?array
+    {
+        if (! isset($paramMap[$paramName])) {
+            return null;
+        }
+
+        $rp = $paramMap[$paramName];
+        $type = $rp->getType();
+
+        if (! ($type instanceof ReflectionNamedType) || $type->isBuiltin()) {
+            return null;
+        }
+
+        $className = $type->getName();
+
+        if (! class_exists($className)) {
+            return null; // @codeCoverageIgnore
+        }
+
+        // Only backed enums can be route-bound
+        if (! is_a($className, BackedEnum::class, true)) {
+            return null;
+        }
+
+        /** @var class-string<BackedEnum> $className */
+        return array_map(
+            fn (BackedEnum $case): string|int => $case->value,
+            $className::cases(),
+        );
+    }
+
+    /**
+     * Check whether a controller method has #[TsExclude].
+     */
+    protected function isMethodExcluded(string $methodName): bool
+    {
+        if (! $this->reflectionController->hasMethod($methodName)) {
+            return false; // @codeCoverageIgnore
+        }
+
+        return $this->reflectionController->getMethod($methodName)->getAttributes(TsExclude::class) !== [];
+    }
+
+    /**
+     * Clear the static model instance cache.
+     *
+     * Useful in test suites to prevent stale state between tests.
+     */
+    public static function clearModelInstanceCache(): void
+    {
+        self::$modelInstanceCache = [];
+    }
+
+    /**
+     * Build a TypeScript import map for all FormRequest types referenced in route actions.
+     *
+     * Iterates the collected actions, groups each requestTypeAlias by its requestImportPath,
+     * and deduplicates so that multiple actions sharing the same import path produce a
+     * single consolidated import statement.
+     *
+     * @return TypesImportMap
+     */
+    private function resolveRequestTypeImports(): array
+    {
+        /** @var TypesImportMap $imports */
+        $imports = [];
+
+        foreach ($this->actions as $action) {
+            if (! isset($action['requestImportPath'], $action['requestTypeAlias'])) {
+                continue;
+            }
+
+            $path = $action['requestImportPath'];
+            $alias = $action['requestTypeAlias'];
+
+            if (! in_array($alias, $imports[$path] ?? [], true)) {
+                $imports[$path][] = $alias;
+            }
+        }
+
+        return $imports;
+    }
+
+    /**
+     * Build a TypeScript import map for all PHP classes/enums referenced in page-prop types.
+     *
+     * Collects all FQCNs gathered from Inertia page-type analysis, computes relative
+     * import paths from this controller's namespace path, and returns a deduplicated
+     * sorted map of `importPath => list<TypeName>`.
+     *
+     * @return TypesImportMap
+     */
+    private function resolvePageTypeImports(): array
+    {
+        if ($this->actionPageTypeFqcns === [] && $this->actionExternalImports === []) {
+            return [];
+        }
+
+        /** @var list<class-string> $allFqcns */
+        $allFqcns = $this->actionPageTypeFqcns !== []
+            ? array_values(array_unique(array_merge(...array_values($this->actionPageTypeFqcns))))
+            : [];
+
+        /** @var TypesImportMap $imports */
+        $imports = [];
+
+        foreach ($allFqcns as $fqcn) {
+            // FQCNs in TOLKI_TYPES_MAP are imported from '@tolki/types' rather than a relative path
+            if (isset(SurveyorTypeMapper::TOLKI_TYPES_MAP[$fqcn])) {
+                $imports['@tolki/types'][] = SurveyorTypeMapper::TOLKI_TYPES_MAP[$fqcn];
+
+                continue;
+            }
+
+            $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
+            $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
+            $imports[$importPath][] = class_basename($fqcn);
+        }
+
+        // Merge external imports collected from InertiaPageAnalyzer (e.g. ResourceCollection, TsCasts)
+        foreach ($this->actionExternalImports as $externalImports) {
+            foreach ($externalImports as $path => $types) {
+                foreach ($types as $type) {
+                    if (! in_array($type, $imports[$path] ?? [], true)) {
+                        $imports[$path][] = $type;
+                    }
+                }
+            }
+        }
+
+        foreach ($imports as $path => $types) {
+            $unique = array_values(array_unique($types));
+            sort($unique);
+            $imports[$path] = $unique;
+        }
+
+        return LaravelTsPublish::sortImportPaths($imports);
+    }
+
+    /**
+     * Normalize Inertia component data for the route action.
+     *
+     * Single components remain as-is (a plain string). Multi-component
+     * arrays are converted to an associative array keyed by the short
+     * component name (last segment, transformed by component_casing config).
+     *
+     * @param  string|list<string>  $component
+     * @return string|array<string, string>
+     */
+    protected function normalizeComponent(string|array $component): string|array
+    {
+        if (is_string($component)) {
+            return $component;
+        }
+
+        $casing = Config::string('ts-publish.inertia.component_casing', 'camel');
+        $paths = $component;
+        $keyMap = $this->computeUniqueComponentKeys($paths, $casing);
+        $normalized = [];
+
+        foreach ($paths as $path) {
+            $normalized[$keyMap[$path]] = $path;
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * Normalize Inertia page type data aligned with normalized component keys.
+     *
+     * For a single component (string), the page type is returned as-is.
+     * For multiple (conditional) components, the page type list is converted
+     * to an associative array with the same keys used by normalizeComponent()
+     * so the blade template can emit one `export type` alias per variant.
+     *
+     * @param  string|list<string>  $component  Raw component list from the analyzer.
+     * @param  string|list<string>  $pageType  Parallel page type list from the analyzer.
+     * @return string|array<string, string>
+     */
+    protected function normalizePageType(string|array $component, string|array $pageType): string|array
+    {
+        if (is_string($component)) {
+            return is_string($pageType) ? $pageType : $pageType[0];
+        }
+
+        $casing = Config::string('ts-publish.inertia.component_casing', 'camel');
+        $paths = $component;
+        $types = is_array($pageType) ? $pageType : [$pageType];
+        $keyMap = $this->computeUniqueComponentKeys($paths, $casing);
+        $normalized = [];
+
+        foreach ($paths as $index => $path) {
+            $normalized[$keyMap[$path]] = $types[$index] ?? 'Inertia.SharedData';
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * Resolve the TypeScript type annotation for an Inertia page type, based on the method name and page type data.
+     *
+     * @param  string|array<string, string>  $pageType
+     */
+    protected function resolvePageTypeAnnotation(string $methodName, string|array $pageType): string
+    {
+        if (is_string($pageType)) {
+            return Str::studly($methodName).'PageProps';
+        }
+
+        return implode(' | ', array_map(
+            fn ($key) => Str::studly($methodName).Str::studly($key).'PageProps',
+            array_keys($pageType)
+        ));
+    }
+
+    /**
+     * Compute unique casing keys for each component path.
+     *
+     * Uses depth=1 (last segment) first. When two paths share the same short name
+     * (e.g. Admin/Dashboard and User/Dashboard both yield "dashboard"), the depth
+     * is incremented until all keys in the group are distinct.
+     *
+     * @param  array<string>  $paths
+     * @return array<string, string> path => key
+     */
+    private function computeUniqueComponentKeys(array $paths, string $casing): array
+    {
+        $split = function (string $path): array {
+            if (str_contains($path, '/')) {
+                return array_values(array_filter(explode('/', $path), fn (string $s) => $s !== ''));
+            }
+
+            if (str_contains($path, '\\')) {
+                return array_values(array_filter(explode('\\', $path), fn (string $s) => $s !== ''));
+            }
+
+            if (str_contains($path, '.')) {
+                return array_values(array_filter(explode('.', $path), fn (string $s) => $s !== ''));
+            }
+
+            return [$path];
+        };
+
+        $segmentCounts = array_map(fn (string $p) => count($split($p)), $paths);
+        $maxDepth = max(1, ...array_values($segmentCounts));
+
+        for ($depth = 1; $depth <= $maxDepth; $depth++) {
+            $keys = [];
+
+            foreach ($paths as $path) {
+                $tail = array_slice($split($path), -$depth);
+                $keys[$path] = LaravelTsPublish::keyCase(implode(' ', $tail), $casing);
+            }
+
+            if (count(array_unique(array_values($keys))) === count($paths)) {
+                return $keys;
+            }
+        }
+
+        // All depths exhausted: fall back to the full path as the key
+        $keys = [];
+
+        foreach ($paths as $path) {
+            $keys[$path] = LaravelTsPublish::keyCase($path, $casing);
+        }
+
+        return $keys;
+    }
+}

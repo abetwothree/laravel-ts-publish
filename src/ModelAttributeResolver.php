@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish;
 
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesAccessorType;
 use AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Config;
 use ReflectionClass;
 use Throwable;
 
@@ -41,6 +43,16 @@ class ModelAttributeResolver
      * }>
      */
     protected array $contexts = [];
+
+    /**
+     * Map from a morphable child model FQCN to the sorted list of parent
+     * model FQCNs that declare a MorphOne/MorphMany pointing at it.
+     *
+     * Built once via buildMorphTargetMap() before model processing begins.
+     *
+     * @var array<class-string, list<class-string>>
+     */
+    protected array $morphTargetMap = [];
 
     /**
      * Resolve the full TypeScriptTypeInfo for a model attribute through the
@@ -81,7 +93,7 @@ class ModelAttributeResolver
 
         // 2. Regular cast (enum, date, json, etc.)
         if ($cast !== null && $cast !== '' && $cast !== 'attribute' && $cast !== 'accessor') {
-            $tsInfo = LaravelTsPublish::phpToTypeScriptType($cast);
+            $tsInfo = LaravelTsPublish::toTsType($cast);
 
             return $this->appendNullable($tsInfo, $attr['nullable']);
         }
@@ -91,7 +103,7 @@ class ModelAttributeResolver
             return $empty;
         }
 
-        $tsInfo = LaravelTsPublish::phpToTypeScriptType($attr['type']);
+        $tsInfo = LaravelTsPublish::toTsType($attr['type']);
 
         if ($tsInfo['type'] === 'unknown') {
             return $empty; // @codeCoverageIgnore
@@ -120,6 +132,29 @@ class ModelAttributeResolver
             return ['type' => 'unknown', 'modelFqcn' => null];
         }
 
+        $isMorphTo = $relation['type'] === 'MorphTo'
+            || (str_ends_with($relation['type'], 'MorphTo') && ! str_ends_with($relation['type'], 'MorphToMany'));
+
+        if ($isMorphTo) {
+            $targets = $this->getMorphToTargets($modelFqcn);
+
+            if ($targets !== []) {
+                $type = implode(' | ', array_map(class_basename(...), $targets));
+            } else {
+                $type = 'unknown';
+            }
+
+            $nullableRelations = Config::boolean('ts-publish.models.nullable_relations');
+
+            if ($nullableRelations && $ctx['relationNullable']->isNullable($relation)) {
+                $type .= ' | null';
+            }
+
+            return ['type' => $type, 'modelFqcn' => null];
+        }
+
+        DependencyRecorder::recordClass($relation['related']);
+
         $relatedModel = class_basename($relation['related']);
         $containsMany = str_contains(strtolower($relation['type']), 'many');
 
@@ -128,7 +163,7 @@ class ModelAttributeResolver
         }
 
         $type = $relatedModel;
-        $nullableRelations = config()->boolean('ts-publish.nullable_relations');
+        $nullableRelations = Config::boolean('ts-publish.models.nullable_relations');
 
         if ($nullableRelations && $ctx['relationNullable']->isNullable($relation)) {
             $type .= ' | null';
@@ -201,6 +236,15 @@ class ModelAttributeResolver
                 fn (string $fqcn) => is_a($fqcn, Model::class, true),
             ));
 
+            // An accessor-returned model reached here is inlined into a resource's
+            // output when the resource applies ->only()/->except() to it (its
+            // column/cast types become an anonymous object shape). Its source file
+            // is therefore a real cache dependency — record it, mirroring how
+            // resolveRelation() records related models.
+            foreach ($fqcns as $fqcn) {
+                DependencyRecorder::recordClass($fqcn);
+            }
+
             return $fqcns;
         } catch (Throwable) { // @codeCoverageIgnore
             return []; // @codeCoverageIgnore
@@ -248,6 +292,67 @@ class ModelAttributeResolver
     public function getReflection(string $modelFqcn): ?ReflectionClass
     {
         return $this->resolveContext($modelFqcn)['reflection'] ?? null;
+    }
+
+    /**
+     * Scan all configured models' relations to build the morph target map.
+     *
+     * For each model that declares a MorphOne or MorphMany relation, the
+     * related (child) model is recorded as being morphable by the declaring
+     * (parent) model.  The resulting map lets getMorphToTargets() resolve
+     * MorphTo relations to precise union types instead of `unknown`.
+     *
+     * @param  list<class-string>  $modelFqcns  All model FQCNs that will be processed.
+     */
+    public function buildMorphTargetMap(array $modelFqcns): void
+    {
+        /** @var array<class-string, list<class-string>> $map */
+        $map = [];
+
+        foreach ($modelFqcns as $parentFqcn) {
+            $ctx = $this->resolveContext($parentFqcn);
+
+            if ($ctx === null) {
+                continue;
+            }
+
+            foreach ($ctx['relations'] as $relation) {
+                if ($relation['type'] !== 'MorphOne' && $relation['type'] !== 'MorphMany') {
+                    continue;
+                }
+
+                $childFqcn = $relation['related'];
+
+                DependencyRecorder::recordClass($childFqcn);
+
+                if (! isset($map[$childFqcn])) {
+                    $map[$childFqcn] = [];
+                }
+
+                if (! in_array($parentFqcn, $map[$childFqcn], true)) {
+                    $map[$childFqcn][] = $parentFqcn;
+                }
+            }
+        }
+
+        // Sort each target list alphabetically for deterministic output.
+        foreach ($map as $childFqcn => $parents) {
+            sort($parents);
+            $map[$childFqcn] = $parents;
+        }
+
+        $this->morphTargetMap = $map;
+    }
+
+    /**
+     * Return the list of parent model FQCNs that morphTo the given child model.
+     *
+     * @param  class-string  $childModelFqcn
+     * @return list<class-string>
+     */
+    public function getMorphToTargets(string $childModelFqcn): array
+    {
+        return $this->morphTargetMap[$childModelFqcn] ?? [];
     }
 
     /**
