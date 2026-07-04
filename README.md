@@ -1,4 +1,4 @@
-# Laravel TypeScript Enums, Models, & Resources Publisher
+# Generate TypeScript types from your Laravel models, enums, resources, routes & events
 
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/abetwothree/laravel-ts-publish.svg?style=flat-square)](https://packagist.org/packages/abetwothree/laravel-ts-publish)
 [![Laravel Compatibility](https://badge.laravel.cloud/badge/abetwothree/laravel-ts-publish)](https://packagist.org/packages/abetwothree/laravel-ts-publish)
@@ -101,7 +101,7 @@ php artisan ts:publish --source="app/Enums/Status.php"
 php artisan ts:publish --source="App\Http\Resources\UserResource"
 ```
 
-This is significantly faster than a full publish on large projects and is used automatically by the [Vite plugin](https://tolki.abe.dev/ts/vite-plugin) to republish only the file that changed during development.
+This is significantly faster than a full publish on large projects and is used automatically by the [Vite plugin](https://tolki.abe.dev/ts/vite-plugin.html) to republish only the file that changed during development.
 
 #### Automatic Publishing After Migrations
 
@@ -192,7 +192,7 @@ The `ts:publish` command supports three verbosity levels using the standard Arti
 
 | Flag | Output |
 |------|--------|
-| `--quiet` / `-q` | No output at all — only the exit code indicates success or failure. Ideal for automated tooling like the [Vite plugin](https://tolki.abe.dev/ts/vite-plugin). |
+| `--quiet` / `-q` | No output at all — only the exit code indicates success or failure. Ideal for automated tooling like the [Vite plugin](https://tolki.abe.dev/ts/vite-plugin.html). |
 | *(default)* | A compact summary showing the output directory, file counts, and any extra files generated (barrels, globals, JSON). |
 | `--verbose` / `-v` | Detailed tables listing every generated file with per-file metadata (cases, methods, columns, mutators, relations). |
 
@@ -207,7 +207,7 @@ php artisan ts:publish -v
 php artisan ts:publish --quiet
 ```
 
-In quiet mode, files are still generated normally — only console output is suppressed. The [Vite plugin](https://tolki.abe.dev/ts/vite-plugin) passes `--quiet` by default since it only needs the exit code.
+In quiet mode, files are still generated normally — only console output is suppressed. The [Vite plugin](https://tolki.abe.dev/ts/vite-plugin.html) passes `--quiet` by default since it only needs the exit code.
 
 ## Enums
 
@@ -249,7 +249,7 @@ Key capabilities:
 - **`#[TsExclude]`** — exclude an entire enum or specific methods from the output. See [Excluding with TsExclude](#excluding-with-tsexclude).
 - **`EnumResource`** — an HTTP JSON resource for returning flattened, instance-specific enum data from your API routes. See [JSON Enum HTTP API Resource](#json-enum-http-api-resource).
 
-For every attribute option, the metadata/`@tolki/ts` integration, the Vite plugin, and the full behavior of auto-including methods, see the full [Enums documentation](https://tolki.abe.dev/ts/enums).
+For every attribute option, the metadata/`@tolki/ts` integration, the Vite plugin, and the full behavior of auto-including methods, see the full [Enums documentation](https://tolki.abe.dev/ts/enums.html).
 
 ## Models
 
@@ -293,7 +293,7 @@ Key capabilities:
 - **Enum-typed columns** also generate a matching `{Model}Resource` interface using `AsEnum<>`, for when you've resolved a raw enum column to a full enum instance (e.g. via `Status.from(user.status)`).
 - **Filtering** — the same `included` / `excluded` / `additional_directories` config pattern used by enums and resources.
 
-For the full template comparison, nullable relation strategies, every attribute option, and the complete type-mapping reference, see the full [Models documentation](https://tolki.abe.dev/ts/models).
+For the full template comparison, nullable relation strategies, every attribute option, and the complete type-mapping reference, see the full [Models documentation](https://tolki.abe.dev/ts/models.html).
 
 ## API Resources
 
@@ -339,7 +339,7 @@ Key capabilities:
 - **Smart nullable relations** — the same nullability-detection strategy used by [models](#models), with config to override the strategy per relation type.
 - **Filtering** — the same `included` / `excluded` / `additional_directories` config pattern used by enums and models.
 
-For every supported `toArray()` pattern, the full attribute reference, and nullable-relation strategies, see the full [API Resources documentation](https://tolki.abe.dev/ts/api-resources).
+For every supported `toArray()` pattern, the full attribute reference, and nullable-relation strategies, see the full [API Resources documentation](https://tolki.abe.dev/ts/api-resources.html).
 
 ## Routes
 
@@ -378,7 +378,7 @@ Key capabilities:
 - **Form Request payloads** — a controller method's `FormRequest` type-hint automatically attaches its generated interface to the route.
 - **Filtering** — `#[TsExclude]`, wildcard/negation route-name patterns (`routes.only` / `routes.except`), middleware exclusion, and named-routes-only mode.
 
-For every calling convention, model/enum binding rule, query-string behavior, route defaults, form-spoofing detail, and the Inertia/FormRequest typing helpers, see the full [Routing documentation](https://tolki.abe.dev/ts/routing).
+For every calling convention, model/enum binding rule, query-string behavior, route defaults, form-spoofing detail, and the Inertia/FormRequest typing helpers, see the full [Routing documentation](https://tolki.abe.dev/ts/routing.html).
 
 ## Form Requests
 
@@ -412,11 +412,11 @@ Key capabilities:
 - **`#[TsCasts]`** — override or add field types on the request class itself, the same attribute used by models and resources.
 - **`#[TsExtends]`** — extend shared interfaces, the same mechanism used by models and resources. See [Extending Interfaces](#extending-interfaces-with-tsextends--configs).
 - **Dynamic fallback** — requests whose `rules()` can't be resolved without real HTTP context (e.g. reading `$this->user()->id` directly) fall back to `Record<string, unknown>` instead of failing the publish.
-- **Route integration** — a controller action type-hinted to a `FormRequest` automatically gets its route export wrapped with `annotateRequestPayload<T>()`. See [Form Request Payload Types](https://tolki.abe.dev/ts/routing#form-request-payload-types).
+- **Route integration** — a controller action type-hinted to a `FormRequest` automatically gets its route export wrapped with `annotateRequestPayload<T>()`. See [Form Request Payload Types](https://tolki.abe.dev/ts/routing.html#form-request-payload-types).
 - **`#[TsExclude]`** — exclude an entire request class from the output. See [Excluding with TsExclude](#excluding-with-tsexclude).
 - **Filtering** — the same `included` / `excluded` / `additional_directories` config pattern used by enums, models, and resources.
 
-For the full rule-to-type mapping, every JSDoc metadata annotation, and all attribute options, see the full [Form Requests documentation](https://tolki.abe.dev/ts/form-requests).
+For the full rule-to-type mapping, every JSDoc metadata annotation, and all attribute options, see the full [Form Requests documentation](https://tolki.abe.dev/ts/form-requests.html).
 
 ## Broadcast Channels
 
@@ -445,7 +445,7 @@ Key capabilities:
 - **`BroadcastChannel` type** — a template-literal union of every registered channel name, handy for typing a generic "subscribe to any channel" helper.
 - **Single combined file** — unlike enums/models/resources/form requests, there's no per-item filtering or attributes; every registered channel is compiled into one `broadcast-channels.ts` output.
 
-For the dot-notation tree algorithm, parameter typing, and quoted-key handling, see the full [Broadcast Channels documentation](https://tolki.abe.dev/ts/broadcast-channels).
+For the dot-notation tree algorithm, parameter typing, and quoted-key handling, see the full [Broadcast Channels documentation](https://tolki.abe.dev/ts/broadcast-channels.html).
 
 ## Broadcast Events
 
@@ -486,7 +486,7 @@ Key capabilities:
 - **Echo module augmentation** — optionally generates an `echo-broadcast-events.d.ts` file that augments `@laravel/echo`'s (or `@laravel/echo-vue`/`-react`/`-svelte`'s, auto-detected) `Events` interface for fully-typed `Echo.private(...).listen()` calls.
 - **Filtering** — the same `included` / `excluded` / `additional_directories` config pattern used by enums, models, and form requests.
 
-For the full property-resolution rules, import-conflict aliasing, and Echo augmentation setup, see the full [Broadcast Events documentation](https://tolki.abe.dev/ts/broadcast-events).
+For the full property-resolution rules, import-conflict aliasing, and Echo augmentation setup, see the full [Broadcast Events documentation](https://tolki.abe.dev/ts/broadcast-events.html).
 
 ## Inertia
 
@@ -524,9 +524,9 @@ Key capabilities:
 - **Static `share()` analysis** — every key returned from `share()` (including a spread `...parent::share($request)`) is statically resolved to a TypeScript type, no running the app required.
 - **`#[TsCasts]` / `@return` docblock overrides** — override or add types for keys Surveyor can't infer on its own, the same `#[TsCasts]` attribute used everywhere else in the package.
 - **`errorValueType`** — automatically added to the augmentation when the middleware's `$withAllErrors` property is `true`, matching Inertia's validation error bag shape.
-- **Route-linked page props** — a related but separate piece: a controller action's `Inertia::render()` call gets its own page-prop type that intersects with `Inertia.SharedData`, threaded into that route's generated file automatically. See [Inertia Integration](https://tolki.abe.dev/ts/routing#inertia-integration) in the Routing docs.
+- **Route-linked page props** — a related but separate piece: a controller action's `Inertia::render()` call gets its own page-prop type that intersects with `Inertia.SharedData`, threaded into that route's generated file automatically. See [Inertia Integration](https://tolki.abe.dev/ts/routing.html#inertia-integration) in the Routing docs.
 
-For the full middleware discovery rules, the type-override priority order, and the generated file anatomy, see the full [Inertia documentation](https://tolki.abe.dev/ts/inertia).
+For the full middleware discovery rules, the type-override priority order, and the generated file anatomy, see the full [Inertia documentation](https://tolki.abe.dev/ts/inertia.html).
 
 ## Vite Env
 
@@ -557,7 +557,7 @@ Key capabilities:
 - **Always `string`** — every variable is typed as `string`, matching what Vite actually provides at runtime regardless of the value's apparent type.
 - **Skips cleanly when empty** — no `VITE_`-prefixed variables found (or the source file doesn't exist) means no file is generated at all.
 
-For the exact variable-parsing rules and source-file resolution order, see the full [Vite Env documentation](https://tolki.abe.dev/ts/vite-env).
+For the exact variable-parsing rules and source-file resolution order, see the full [Vite Env documentation](https://tolki.abe.dev/ts/vite-env.html).
 
 ## Extending Interfaces with `#[TsExtends]` & Configs
 
@@ -592,7 +592,7 @@ Key capabilities:
 - **TypeScript helper support** — wrap the interface name in `Partial<>`, `Pick<>`, `Omit<>`, or any other generic, with `types` naming which identifiers need importing.
 - **Automatic deduplication & conflict resolution** — the same extends clause reachable through multiple paths (e.g. a shared trait) is combined into one, and the same type name imported from two different paths is aliased automatically to avoid a collision.
 
-For the full attribute reference, the trait/parent-class inheritance rules, and how naming conflicts are resolved, see the full [Extending Interfaces documentation](https://tolki.abe.dev/ts/extending-interfaces).
+For the full attribute reference, the trait/parent-class inheritance rules, and how naming conflicts are resolved, see the full [Extending Interfaces documentation](https://tolki.abe.dev/ts/extending-interfaces.html).
 
 ## Excluding with `#[TsExclude]`
 
@@ -620,7 +620,7 @@ Key capabilities:
 - **Class-level exclusion removes the class from collection entirely** — it won't appear in any generated output, index, or barrel file.
 - **Method/accessor/relation/action-level exclusion** only removes that one member — everything else on the class still publishes normally.
 
-For the full target reference and a worked example for every supported type, see the full [Excluding Content documentation](https://tolki.abe.dev/ts/excluding-content).
+For the full target reference and a worked example for every supported type, see the full [Excluding Content documentation](https://tolki.abe.dev/ts/excluding-content.html).
 
 ## Casing Configurations
 
@@ -647,11 +647,11 @@ Key capabilities:
 - **`routes.method_casing`** — controls the casing of each generated route action's exported identifier (default `'camel'`); it only affects the generated variable name, never the underlying Laravel route name.
 - **Independent settings** — each config option only affects its own feature; there's no single global casing setting.
 
-For the full casing tables and worked examples for all three settings, see the full [Casing Configurations documentation](https://tolki.abe.dev/ts/casing-configuration).
+For the full casing tables and worked examples for all three settings, see the full [Casing Configurations documentation](https://tolki.abe.dev/ts/casing-configuration.html).
 
 ## JSON Enum HTTP API Resource
 
-This package ships with `EnumResource` — a Laravel [JSON resource](https://laravel.com/docs/eloquent-resources) that transforms any PHP enum case into a flat, API-friendly array, running it through the same transformer pipeline used for TypeScript publishing so every `#[TsEnumMethod]` / `#[TsEnumStaticMethod]` you've configured is automatically included in the response.
+This package ships with `EnumResource` — a Laravel [JSON resource](https://laravel.com/docs/eloquent-resources.html) that transforms any PHP enum case into a flat, API-friendly array, running it through the same transformer pipeline used for TypeScript publishing so every `#[TsEnumMethod]` / `#[TsEnumStaticMethod]` you've configured is automatically included in the response.
 
 ```php
 use AbeTwoThree\LaravelTsPublish\EnumResource;
@@ -673,12 +673,12 @@ return new EnumResource(Status::Published);
 Key capabilities:
 
 - **Same pipeline as `ts:publish`** — only `#[TsEnumMethod]` / `#[TsEnumStaticMethod]` methods (or all public methods when auto-include is on) are included, using the same `enums.method_case` casing.
-- **Works standalone or embedded** — instantiate directly (`new EnumResource($enum)`) for a top-level API response, or use `EnumResource::make()` inside another resource's `toArray()` to embed a rich enum object. See [Enum Properties with EnumResource](https://tolki.abe.dev/ts/api-resources#enum-properties-with-enumresource).
+- **Works standalone or embedded** — instantiate directly (`new EnumResource($enum)`) for a top-level API response, or use `EnumResource::make()` inside another resource's `toArray()` to embed a rich enum object. See [Enum Properties with EnumResource](https://tolki.abe.dev/ts/api-resources.html#enum-properties-with-enumresource).
 - **`AsEnum<T, V?>` from `@tolki/ts`** — the TypeScript type companion that matches this exact response shape, letting you fully type an API response that used `EnumResource`.
 - **Auto-generated `{Model}Resource` interfaces** — any model with enum-cast columns automatically gets a companion set of interfaces using `AsEnum<>`, so you don't have to hand-compose `Omit` + `AsEnum` yourself.
 - **Unit enum support** — enums without a backed type still work; `value` mirrors the case `name` and `backed` is `false`.
 
-For the full response shape, unit enum behavior, and the auto-generated model resource interfaces, see the full [Enum API Resource documentation](https://tolki.abe.dev/ts/enum-api-resource).
+For the full response shape, unit enum behavior, and the auto-generated model resource interfaces, see the full [Enum API Resource documentation](https://tolki.abe.dev/ts/enum-api-resource.html).
 
 ## Modular Publishing
 
@@ -715,7 +715,7 @@ Key capabilities:
 - **`namespace_strip_prefix`** — strip a common namespace prefix (e.g. `Modules\`) from the output path when your app already nests everything under one root namespace.
 - **Applies to every feature** — models, enums, resources, form requests, broadcast events, and routes are all placed using the same namespace-derived path.
 
-For the full kebab-casing algorithm, the relative-import-path rules, and the barrel file format, see the full [Modular Publishing documentation](https://tolki.abe.dev/ts/modular-publishing).
+For the full kebab-casing algorithm, the relative-import-path rules, and the barrel file format, see the full [Modular Publishing documentation](https://tolki.abe.dev/ts/modular-publishing.html).
 
 ## Extending & Customizing the Pipeline
 
@@ -733,10 +733,10 @@ Key capabilities:
 
 - **Every feature is customizable** — models, enums, resources, routes, form requests, broadcast channels, and broadcast events each expose their own `*.collector_class` / `*.generator_class` / `*.transformer_class` / `*.writer_class` config keys.
 - **Abstract base classes** — `CoreCollector`, `CoreGenerator`, `CoreTransformer`, and `CoreWriter` define the exact method contract a custom class must implement.
-- **Cache-compatible generators** — a custom `*.generator_class` can opt into the [generation cache](https://tolki.abe.dev/ts/generating-cache) with the `RehydratesFromCache` trait, the same way every built-in generator does.
+- **Cache-compatible generators** — a custom `*.generator_class` can opt into the [generation cache](https://tolki.abe.dev/ts/generating-cache.html) with the `RehydratesFromCache` trait, the same way every built-in generator does.
 - **Swap just the templates** — publish and edit the Blade templates directly with `php artisan vendor:publish --tag="laravel-ts-publish-views"` if you only need to change output formatting, without writing any PHP classes.
 
-For the full per-feature pipeline-stage reference, every abstract base class's method contract, and the cache rehydration mechanics, see the full [Customizing the Pipeline documentation](https://tolki.abe.dev/ts/customizing-the-pipeline).
+For the full per-feature pipeline-stage reference, every abstract base class's method contract, and the cache rehydration mechanics, see the full [Customizing the Pipeline documentation](https://tolki.abe.dev/ts/customizing-the-pipeline.html).
 
 ## Pre-Command Hook
 
@@ -760,10 +760,10 @@ Key capabilities:
 
 - **Runs on every invocation** — a full `ts:publish`, a `--source=...` rerun, and a `--preview` run all trigger the hook identically, unconditionally, before any command flags are parsed.
 - **Only one closure at a time** — calling `callCommandUsing()` again replaces the previous closure entirely; it doesn't stack.
-- **Set any config, not just directories** — since it runs with the full config already loaded, the closure can set any `ts-publish.*` key, including swapping a `*_class` override (see [Customizing the Pipeline](https://tolki.abe.dev/ts/customizing-the-pipeline)).
+- **Set any config, not just directories** — since it runs with the full config already loaded, the closure can set any `ts-publish.*` key, including swapping a `*_class` override (see [Customizing the Pipeline](https://tolki.abe.dev/ts/customizing-the-pipeline.html)).
 - **Dynamic directory discovery** — a common pattern is scanning the filesystem (e.g. with Symfony Finder) or a package's own module registry to build `additional_directories` lists that stay in sync automatically as modules are added or removed.
 
-For worked examples (modular package integration, conditional pipeline swaps, feature-flag-driven publishing), the exact invocation timing, and how to safely reset the hook between tests, see the full [Pre-Command Hook documentation](https://tolki.abe.dev/ts/pre-command-hook).
+For worked examples (modular package integration, conditional pipeline swaps, feature-flag-driven publishing), the exact invocation timing, and how to safely reset the hook between tests, see the full [Pre-Command Hook documentation](https://tolki.abe.dev/ts/pre-command-hook.html).
 
 ## Cache Generation
 
@@ -788,7 +788,7 @@ Key capabilities:
 - **File or Laravel cache store backend** — defaults to a signed file-based cache; point `cache.store` at any Laravel cache store (`redis`, `database`, …) to keep the manifest there instead, without ever touching keys outside this package's own.
 - **HMAC-signed & tamper-resistant** — cache payloads are signed with your app key (or a dedicated `cache.key`) and deserialized with object instantiation disabled, so a corrupted or tampered cache file can never inject a PHP object.
 
-For the full fingerprinting algorithm, the dependency-recording rules, the `ProvidesCacheSignature` extension point for custom generators, and both storage backends' internals, see the full [Cache Generation documentation](https://tolki.abe.dev/ts/generating-cache).
+For the full fingerprinting algorithm, the dependency-recording rules, the `ProvidesCacheSignature` extension point for custom generators, and both storage backends' internals, see the full [Cache Generation documentation](https://tolki.abe.dev/ts/generating-cache.html).
 
 ## Output Options
 
@@ -818,7 +818,7 @@ When `globals.enabled` is enabled, a global declaration file is created that mak
 ],
 ```
 
-The JSON output from `watcher.enabled` is designed to work with build tools and file watchers (like the [@tolki/ts Vite plugin](https://tolki.abe.dev/ts/vite-plugin)) that need to know which PHP source files were collected so they can trigger a re-publish when those files change.
+The JSON output from `watcher.enabled` is designed to work with build tools and file watchers (like the [@tolki/ts Vite plugin](https://tolki.abe.dev/ts/vite-plugin.html)) that need to know which PHP source files were collected so they can trigger a re-publish when those files change.
 
 ## Configuration Reference
 
@@ -828,7 +828,7 @@ Every configuration option lives in `config/ts-publish.php`, organized by featur
 php artisan vendor:publish --tag="ts-publish-config"
 ```
 
-For the full list of every configuration key, its type, default, and description, see the complete [Configuration Reference](https://tolki.abe.dev/ts/configuration-reference).
+For the full list of every configuration key, its type, default, and description, see the complete [Configuration Reference](https://tolki.abe.dev/ts/configuration-reference.html).
 
 ## Changelog
 
