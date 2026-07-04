@@ -9,9 +9,9 @@
 
 <p align="center"><img src="./assets/laravel-typescript-publish-logo-short.svg" width="50%" alt="Laravel TypeScript Publisher Logo"></p>
 
-This is an extremely flexible package that allows you to transform Laravel PHP models, enums, API resources, and other cast classes into TypeScript declaration types.
+This is an extremely flexible package that allows you to transform Laravel PHP models, enums, API resources, routes, broadcast events, and other cast classes into TypeScript declaration types.
 
-Enums are treated as functional objects with support for PHP-like enum functions and the inclusion of your custom methods in your enums.
+Enums & routes are treated as functional objects. Enums come with support for PHP-like enum functions and the inclusion of your custom methods in your enums.
 
 Every Laravel application is different, and this package aims to provide the tools to tailor TypeScript types to your specific needs while providing powerful backend & frontend tooling to keep your frontend types in sync with your backend PHP code.
 
@@ -75,9 +75,15 @@ You can publish your TypeScript declaration types using the `ts:publish` Artisan
 php artisan ts:publish
 ```
 
+On first run, this package will intelligently cache files to make reruns significantly faster. You can break cache with the `--fresh` option. See [Cache Generation](#cache-generation) for more details.
+
+```bash
+php artisan ts:publish --fresh
+```
+
 By default, the generated TypeScript declaration types will be saved to the `resources/js/types/data/` directory and follow default configuration settings.
 
-Additionally, by default, the package will look for models in the `app/Models` directory, enums in the `app/Enums` directory, and API resources in the `app/Http/Resources` directory. You can customize these settings in the published configuration file.
+Additionally, by default, the package will look for content in the standard Laravel directories like `app/Models`, `app/Enums`, and `app/Http/Resources`. You can customize these settings in the published configuration file.
 
 For a full installation and setup guide, see the [Installation & Setup](https://tolki.abe.dev/ts/) documentation.
 
@@ -121,7 +127,7 @@ TS_PUBLISH_RUN_AFTER_MIGRATE=false
 
 #### Filtering Models, Enums & Resources
 
-You can fully customize which models, enums, and resources are included or excluded, and add additional directories to search in. By default, all models in `app/Models`, all enums in `app/Enums`, and all resources in `app/Http/Resources` are included.
+You can fully customize which content is included or excluded, and add additional directories to search in. By default, all content in standard Laravel directories like `app/Models`, `app/Enums`, `app/Http/Resources` are included.
 
 ```php
 // config/ts-publish.php
@@ -145,7 +151,7 @@ You can fully customize which models, enums, and resources are included or exclu
 ],
 ```
 
-The same options are available for enums with `enums.included`, `enums.excluded`, and `enums.additional_directories`, and for resources with `resources.included`, `resources.excluded`, and `resources.additional_directories`.
+Similar options are available for other content types like enums, events, resources, etc., allowing you to specify `included`, `excluded`, and `additional_directories` for each type.
 
 > [!TIP]
 > Include and exclude settings accept both fully-qualified class names and directory paths. When a directory is provided, all matching classes within it will be discovered automatically.
