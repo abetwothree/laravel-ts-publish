@@ -43,7 +43,9 @@ For examples of the generated TypeScript output, see [these output examples](wor
 
 ## Installation
 
-**Requires PHP 8.4+ and supports Laravel 13, 12 or 11**
+**Requires PHP 8.4+ and supports Laravel 13, 12**
+
+Upgrading from version 1.x? Please refer to the [Upgrade Guide](./docs/v2-upgrade-guide.md) for instructions on migrating from version 1.x to the current version.
 
 You can install the package via composer:
 
