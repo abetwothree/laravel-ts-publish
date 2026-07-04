@@ -2,6 +2,32 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v2.0.0 - 2026-07-04
+
+### What's Changed
+
+* Initial Routing  by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/20
+* V2 breaking changes updates by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/24
+* V2 Inertia features by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/27
+* 2x inertia page return props by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/30
+* Bump ramsey/composer-install from 3 to 4 by @dependabot[bot] in https://github.com/abetwothree/laravel-ts-publish/pull/4
+* Bump dependabot/fetch-metadata from 2.5.0 to 3.1.0 by @dependabot[bot] in https://github.com/abetwothree/laravel-ts-publish/pull/26
+* Update awobaz/compoships requirement from ^2.5 to ^2.5 || ^3.0 by @dependabot[bot] in https://github.com/abetwothree/laravel-ts-publish/pull/29
+* Form Requests  by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/47
+* Broadcast channels by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/48
+* Broadcast Events by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/49
+* 2.x routing spec checks by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/50
+* 2x Caching by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/52
+* 2x inertia table UI by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/53
+* Bump actions/checkout from 6 to 7 by @dependabot[bot] in https://github.com/abetwothree/laravel-ts-publish/pull/51
+* 2.x by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/23
+
+### New Contributors
+
+* @dependabot[bot] made their first contribution in https://github.com/abetwothree/laravel-ts-publish/pull/4
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v1.5.0...v2.0.0
+
 ## v1.5.0 - 2026-05-23
 
 ### What's Changed
