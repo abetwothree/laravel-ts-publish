@@ -2,6 +2,22 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v1.5.1 - 2026-07-09
+
+### What's Changed
+
+* Report ts:publish failures on stderr under --quiet
+* Bump ramsey/composer-install from 3 to 4 by @dependabot[bot] in https://github.com/abetwothree/laravel-ts-publish/pull/4
+* Bump dependabot/fetch-metadata from 2.5.0 to 3.1.0 by @dependabot[bot] in https://github.com/abetwothree/laravel-ts-publish/pull/26
+* Update awobaz/compoships requirement from ^2.5 to ^2.5 || ^3.0 by @dependabot[bot] in https://github.com/abetwothree/laravel-ts-publish/pull/29
+* Bump actions/checkout from 6 to 7 by @dependabot[bot] in https://github.com/abetwothree/laravel-ts-publish/pull/51
+
+### New Contributors
+
+* @dependabot[bot] made their first contribution in https://github.com/abetwothree/laravel-ts-publish/pull/4
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v1.5.0...v1.5.1
+
 ## v2.0.1 - 2026-07-09
 
 Report ts:publish failures on stderr under --quiet
