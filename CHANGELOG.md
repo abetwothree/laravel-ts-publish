@@ -2,6 +2,12 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v2.0.1 - 2026-07-09
+
+Report ts:publish failures on stderr under --quiet
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v2.0.0...v2.0.1
+
 ## v2.0.0 - 2026-07-04
 
 ### What's Changed
