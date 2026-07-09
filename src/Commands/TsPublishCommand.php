@@ -22,6 +22,9 @@ use function Laravel\Prompts\outro;
 use function Laravel\Prompts\table;
 use function Laravel\Prompts\warning;
 
+use Symfony\Component\Console\Output\ConsoleOutputInterface;
+use Symfony\Component\Console\Output\OutputInterface;
+
 class TsPublishCommand extends Command
 {
     protected $signature = 'ts:publish
@@ -58,14 +61,37 @@ class TsPublishCommand extends Command
         $onlyCount = (int) $onlyEnums + (int) $onlyModels + (int) $onlyResources;
 
         if ($onlyCount > 1) {
-            if (! $this->output->isQuiet()) {
-                error('The --only-enums, --only-models, and --only-resources options cannot be used together. Please specify only one or none of these options.');
-            }
+            $this->reportError('The --only-enums, --only-models, and --only-resources options cannot be used together. Please specify only one or none of these options.');
 
             return self::FAILURE;
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Report a failure message so it stays visible under --quiet.
+     *
+     * Laravel Prompts renders to stdout at normal verbosity, which --quiet
+     * suppresses entirely. Non-interactive callers such as the Vite plugin
+     * pass --quiet and would otherwise only receive a bare exit code, so
+     * quiet failures are written to stderr with the QUIET verbosity flag.
+     */
+    protected function reportError(string $message): void
+    {
+        if (! $this->output->isQuiet()) {
+            error($message);
+
+            return;
+        }
+
+        $output = $this->output->getOutput();
+
+        $errorOutput = $output instanceof ConsoleOutputInterface
+            ? $output->getErrorOutput()
+            : $output;
+
+        $errorOutput->writeln("ts:publish failed: {$message}", OutputInterface::VERBOSITY_QUIET);
     }
 
     protected function runAll(): int
@@ -128,9 +154,7 @@ class TsPublishCommand extends Command
             [$runner->shouldPublishEnums, $runner->shouldPublishModels, $runner->shouldPublishResources] = $flags;
             $runner->run();
         } catch (InvalidArgumentException $e) {
-            if (! $this->output->isQuiet()) {
-                error($e->getMessage());
-            }
+            $this->reportError($e->getMessage());
 
             return self::FAILURE;
         }
