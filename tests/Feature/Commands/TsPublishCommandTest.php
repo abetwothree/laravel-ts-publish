@@ -182,6 +182,14 @@ test('ts:publish --source with invalid class returns failure', function () {
         ->assertFailed();
 });
 
+test('ts:publish --source with invalid class reports the error under --quiet', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $this->artisan('ts:publish', ['--source' => 'App\NonExistent\FakeClass', '--quiet' => true])
+        ->assertFailed()
+        ->expectsOutputToContain('ts:publish failed: Class does not exist: App\NonExistent\FakeClass');
+});
+
 test('ts:publish --source writes file to disk', function () {
     $outputDir = sys_get_temp_dir().'/laravel-ts-publish-source-test-'.uniqid();
     config()->set('ts-publish.output_directory', $outputDir);
@@ -410,6 +418,14 @@ test('ts:publish fails when both --only-models and --only-resources are passed',
 
     $this->artisan('ts:publish', ['--preview' => 'true', '--only-models' => true, '--only-resources' => true])
         ->assertFailed();
+});
+
+test('ts:publish reports multiple --only-* options failure under --quiet', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-enums' => true, '--only-models' => true, '--quiet' => true])
+        ->assertFailed()
+        ->expectsOutputToContain('ts:publish failed: Cannot use multiple --only-* options together');
 });
 
 test('ts:publish --only-resources shows only resource content in preview', function () {
