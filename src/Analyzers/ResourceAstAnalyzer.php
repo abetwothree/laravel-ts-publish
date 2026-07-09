@@ -630,10 +630,12 @@ class ResourceAstAnalyzer
 
         // $this->relation::staticMethod() or $this->resource->relation::staticMethod()
         // inside a whenLoaded closure — delegate to the related model's method resolver.
+        $closureRelationModelClass = $this->closureRelationModelClass;
+
         if ($expr instanceof StaticCall
             && $expr->class instanceof PropertyFetch
             && $expr->name instanceof Identifier
-            && $this->closureRelationModelClass !== null
+            && $closureRelationModelClass !== null
         ) {
             return $this->analyzeRelatedModelMethodCall($expr->name->toString());
         }
