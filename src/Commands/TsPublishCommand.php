@@ -16,7 +16,6 @@ use AbeTwoThree\LaravelTsPublish\Runners\RunnerForSource;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
-use InvalidArgumentException;
 
 use function Laravel\Prompts\callout;
 use function Laravel\Prompts\confirm;
@@ -38,6 +37,7 @@ use function Laravel\Prompts\warning;
 
 use Symfony\Component\Console\Output\ConsoleOutputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use Throwable;
 
 class TsPublishCommand extends Command
 {
@@ -200,7 +200,7 @@ class TsPublishCommand extends Command
                     keepSummary: true,
                 );
             }
-        } catch (InvalidArgumentException $e) {
+        } catch (Throwable $e) {
             $this->reportError($e->getMessage());
 
             return self::FAILURE;
@@ -248,7 +248,7 @@ class TsPublishCommand extends Command
                 $runner->shouldPublishBroadcastEvents,
             ] = $flags;
             $runner->run();
-        } catch (InvalidArgumentException $e) {
+        } catch (Throwable $e) {
             $this->reportError($e->getMessage());
 
             return self::FAILURE;
