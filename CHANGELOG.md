@@ -2,6 +2,14 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v2.0.3 - 2026-07-10
+
+### What's Changed
+
+* Fix/writer mkdir race by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/56
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v2.0.2...v2.0.3
+
 ## v2.0.2 - 2026-07-10
 
 ### What's Changed
