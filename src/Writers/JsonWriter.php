@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
+use AbeTwoThree\LaravelTsPublish\Writers\Concerns\EnsuresDirectoryExists;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Config;
@@ -28,6 +29,7 @@ use Illuminate\Support\Facades\Config;
  */
 class JsonWriter
 {
+    use EnsuresDirectoryExists;
     use WritesGeneratedFiles;
 
     public function __construct(
@@ -47,7 +49,7 @@ class JsonWriter
             $outputPath = ! empty($jsonDir) ? $jsonDir : Config::string('ts-publish.output_directory');
             $filename = Config::string('ts-publish.json.filename');
 
-            $this->filesystem->ensureDirectoryExists($outputPath);
+            $this->ensureDirectoryExists($outputPath);
             $this->putIfChanged("$outputPath/$filename", $content);
         }
 

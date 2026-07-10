@@ -11,12 +11,14 @@ use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
+use AbeTwoThree\LaravelTsPublish\Writers\Concerns\EnsuresDirectoryExists;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Config;
 
 class GlobalsWriter
 {
+    use EnsuresDirectoryExists;
     use WritesGeneratedFiles;
 
     public function __construct(
@@ -170,7 +172,7 @@ class GlobalsWriter
             $outputPath = ! empty($globalDir) ? $globalDir : Config::string('ts-publish.output_directory');
             $filename = Config::string('ts-publish.globals.filename');
 
-            $this->filesystem->ensureDirectoryExists($outputPath);
+            $this->ensureDirectoryExists($outputPath);
             $this->putIfChanged("$outputPath/$filename", $content);
         }
 

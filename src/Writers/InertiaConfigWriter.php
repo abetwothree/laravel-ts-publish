@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Writers\Concerns\EnsuresDirectoryExists;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Config;
@@ -16,6 +17,7 @@ use Illuminate\Support\Facades\Config;
  */
 class InertiaConfigWriter
 {
+    use EnsuresDirectoryExists;
     use WritesGeneratedFiles;
 
     public function __construct(
@@ -46,7 +48,7 @@ class InertiaConfigWriter
         $outputPath = $this->resolveOutputPath();
         $filename = Config::string('ts-publish.inertia.augmentation_filename');
 
-        $this->filesystem->ensureDirectoryExists($outputPath);
+        $this->ensureDirectoryExists($outputPath);
         $this->putIfChanged("{$outputPath}/{$filename}", $content);
     }
 

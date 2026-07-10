@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastChannelsTransformer;
+use AbeTwoThree\LaravelTsPublish\Writers\Concerns\EnsuresDirectoryExists;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Collection;
@@ -12,6 +13,7 @@ use Illuminate\Support\Facades\Config;
 
 class BroadcastChannelsWriter
 {
+    use EnsuresDirectoryExists;
     use WritesGeneratedFiles;
 
     public function __construct(
@@ -47,7 +49,7 @@ class BroadcastChannelsWriter
         $outputPath = $this->resolveOutputPath();
         $filename = Config::string('ts-publish.broadcast_channels.filename', 'broadcast-channels.ts');
 
-        $this->filesystem->ensureDirectoryExists($outputPath);
+        $this->ensureDirectoryExists($outputPath);
         $this->putIfChanged("{$outputPath}/{$filename}", $content);
     }
 

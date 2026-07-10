@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Support\PackageJson;
+use AbeTwoThree\LaravelTsPublish\Writers\Concerns\EnsuresDirectoryExists;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\ResolvesEventNameConflicts;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
 use Illuminate\Filesystem\Filesystem;
@@ -25,6 +26,7 @@ use Illuminate\Support\Facades\Config;
  */
 class BroadcastEventsEchoWriter
 {
+    use EnsuresDirectoryExists;
     use ResolvesEventNameConflicts;
     use WritesGeneratedFiles;
 
@@ -129,7 +131,7 @@ class BroadcastEventsEchoWriter
         $outputPath = $this->resolveOutputPath();
         $filename = Config::string('ts-publish.broadcast_events.echo_augmentation.filename', 'echo-broadcast-events.d.ts');
 
-        $this->filesystem->ensureDirectoryExists($outputPath);
+        $this->ensureDirectoryExists($outputPath);
         $this->putIfChanged("{$outputPath}/{$filename}", $content);
     }
 

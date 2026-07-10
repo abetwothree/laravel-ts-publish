@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
+use AbeTwoThree\LaravelTsPublish\Writers\Concerns\EnsuresDirectoryExists;
 use Illuminate\Filesystem\Filesystem;
 
 /**
@@ -12,6 +13,8 @@ use Illuminate\Filesystem\Filesystem;
  */
 abstract class CoreWriter
 {
+    use EnsuresDirectoryExists;
+
     public function __construct(
         protected Filesystem $filesystem,
     ) {}

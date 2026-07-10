@@ -48,7 +48,7 @@ class RouteWriter extends CoreWriter
 
         $outputPath = $outputBase.'/'.$namespacePath;
 
-        $this->filesystem->ensureDirectoryExists($outputPath);
+        $this->ensureDirectoryExists($outputPath);
         $this->putIfChanged("$outputPath/$filename.ts", $content);
     }
 
@@ -94,7 +94,7 @@ class RouteWriter extends CoreWriter
                     : Config::string('ts-publish.output_directory');
 
                 $outputPath = $outputBase.'/'.$namespacePath;
-                $this->filesystem->ensureDirectoryExists($outputPath);
+                $this->ensureDirectoryExists($outputPath);
                 $this->putIfChanged("$outputPath/index.ts", $content);
             }
 

@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ResourcesCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\RoutesCollector;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Writers\Concerns\EnsuresDirectoryExists;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
 use BackedEnum;
 use Illuminate\Database\Eloquent\Model;
@@ -22,6 +23,7 @@ use UnitEnum;
 
 class WatcherJsonWriter
 {
+    use EnsuresDirectoryExists;
     use WritesGeneratedFiles;
 
     public function __construct(
@@ -52,7 +54,7 @@ class WatcherJsonWriter
             $outputPath = ! empty($watcherDir) ? $watcherDir : Config::string('ts-publish.output_directory');
             $filename = Config::string('ts-publish.watcher.filename');
 
-            $this->filesystem->ensureDirectoryExists($outputPath);
+            $this->ensureDirectoryExists($outputPath);
             $this->putIfChanged("$outputPath/$filename", $content);
         }
 
