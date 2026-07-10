@@ -2,6 +2,14 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v2.0.2 - 2026-07-10
+
+### What's Changed
+
+* fix: Handle cache dir creation race condition by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/55
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v2.0.1...v2.0.2
+
 ## v1.5.1 - 2026-07-09
 
 ### What's Changed
