@@ -428,6 +428,24 @@ test('ts:publish reports multiple --only-* options failure under --quiet', funct
         ->expectsOutputToContain('ts:publish failed: Cannot use multiple --only-* options together');
 });
 
+test('ts:publish reports unexpected writer failures under --quiet', function () {
+    // Regression test: writers can raise ErrorException/RuntimeException (e.g.
+    // an mkdir() race or, as forced here, an output path blocked by a file),
+    // not just InvalidArgumentException. Those must still be caught and
+    // reported to stderr under --quiet rather than escaping uncaught.
+    $blockedFile = sys_get_temp_dir().'/ts-publish-blocked-'.uniqid();
+    file_put_contents($blockedFile, '');
+
+    config()->set('ts-publish.output_directory', $blockedFile.'/nested');
+    config()->set('ts-publish.output_to_files', true);
+
+    $this->artisan('ts:publish', ['--preview' => 'false', '--quiet' => true])
+        ->assertFailed()
+        ->expectsOutputToContain('ts:publish failed: Unable to create output directory');
+
+    unlink($blockedFile);
+});
+
 test('ts:publish --only-resources shows only resource content in preview', function () {
     config()->set('ts-publish.output_to_files', false);
 

@@ -27,7 +27,6 @@ test('writes model content from transformer', function () {
 
 test('writes model file to disk when output_to_files is enabled', function () {
     $filesystem = Mockery::mock(Filesystem::class);
-    $filesystem->shouldReceive('ensureDirectoryExists')->once();
     $filesystem->shouldReceive('exists')->once()->andReturn(false);
     $filesystem->shouldReceive('put')->once()
         ->withArgs(function (string $path, string $content) {
@@ -44,7 +43,6 @@ test('writes model file to disk when output_to_files is enabled', function () {
 
 test('does not write model file to disk when output_to_files is disabled', function () {
     $filesystem = Mockery::mock(Filesystem::class);
-    $filesystem->shouldNotReceive('ensureDirectoryExists');
     $filesystem->shouldNotReceive('exists');
     $filesystem->shouldNotReceive('put');
 

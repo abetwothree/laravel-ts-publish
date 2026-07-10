@@ -24,7 +24,6 @@ test('writes resource content from transformer', function () {
 
 test('writes resource file to disk when output_to_files is enabled', function () {
     $filesystem = Mockery::mock(Filesystem::class);
-    $filesystem->shouldReceive('ensureDirectoryExists')->once();
     $filesystem->shouldReceive('exists')->once()->andReturn(false);
     $filesystem->shouldReceive('put')->once()
         ->withArgs(function (string $path, string $content) {
@@ -41,7 +40,6 @@ test('writes resource file to disk when output_to_files is enabled', function ()
 
 test('does not write resource file when output_to_files is disabled', function () {
     $filesystem = Mockery::mock(Filesystem::class);
-    $filesystem->shouldNotReceive('ensureDirectoryExists');
     $filesystem->shouldNotReceive('exists');
     $filesystem->shouldNotReceive('put');
 
@@ -57,10 +55,9 @@ test('writes to namespace-based directory', function () {
     $transformer = new ResourceTransformer(PostResource::class);
 
     $filesystem = Mockery::mock(Filesystem::class);
-    $filesystem->shouldReceive('ensureDirectoryExists')->once()
-        ->withArgs(fn (string $path) => str_contains($path, $transformer->namespacePath));
     $filesystem->shouldReceive('exists')->once()->andReturn(false);
-    $filesystem->shouldReceive('put')->once();
+    $filesystem->shouldReceive('put')->once()
+        ->withArgs(fn (string $path) => str_contains($path, $transformer->namespacePath));
 
     $writer = new ResourceWriter($filesystem);
 

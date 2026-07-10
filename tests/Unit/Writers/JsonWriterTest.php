@@ -95,7 +95,6 @@ test('writes json file to disk when output_to_files is enabled', function () {
     config()->set('ts-publish.json.enabled', true);
 
     $filesystem = Mockery::mock(Filesystem::class);
-    $filesystem->shouldReceive('ensureDirectoryExists')->once();
     $filesystem->shouldReceive('exists')->once()->andReturn(false);
     $filesystem->shouldReceive('put')->once()
         ->withArgs(function (string $path, string $content) {
