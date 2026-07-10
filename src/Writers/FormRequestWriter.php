@@ -48,7 +48,7 @@ class FormRequestWriter extends CoreWriter
     {
         $outputPath = $this->resolveOutputPath($namespacePath);
 
-        $this->filesystem->ensureDirectoryExists($outputPath);
+        $this->ensureDirectoryExists($outputPath);
         $this->putIfChanged("$outputPath/$filename.ts", $content);
     }
 

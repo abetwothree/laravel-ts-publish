@@ -52,7 +52,7 @@ class ModelWriter extends CoreWriter
         $outputBase = Config::string('ts-publish.output_directory');
         $outputPath = $outputBase.'/'.$namespacePath;
 
-        $this->filesystem->ensureDirectoryExists($outputPath);
+        $this->ensureDirectoryExists($outputPath);
         $this->putIfChanged("$outputPath/$filename.ts", $content);
     }
 }

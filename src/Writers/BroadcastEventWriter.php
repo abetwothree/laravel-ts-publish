@@ -60,7 +60,7 @@ class BroadcastEventWriter extends CoreWriter
 
         $outputPath = $outputBase.'/'.$namespacePath;
 
-        $this->filesystem->ensureDirectoryExists($outputPath);
+        $this->ensureDirectoryExists($outputPath);
         $this->putIfChanged("{$outputPath}/{$filename}.ts", $content);
     }
 }
