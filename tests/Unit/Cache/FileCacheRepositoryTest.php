@@ -53,3 +53,52 @@ it('rejects tampered payloads when a signing key is set', function () {
 
     expect($repo->get('signed'))->toBeNull();
 });
+
+it('tolerates concurrent processes racing to create the cache directory', function () {
+    if (! function_exists('pcntl_fork')) {
+        test()->markTestSkipped('pcntl extension is not available.');
+    }
+
+    // Regression test for a `mkdir(): File exists` crash: two processes
+    // (e.g. parallel `npm run build` Vite builds each shelling out to `ts:publish`)
+    // can both observe a missing cache directory
+    $barrier = $this->dir.'.barrier';
+    $pids = [];
+
+    for ($i = 0; $i < 8; $i++) {
+        $pid = pcntl_fork();
+
+        if ($pid === -1) {
+            test()->fail('Could not fork a child process.');
+        }
+
+        if ($pid === 0) {
+            while (! is_file($barrier)) {
+                usleep(500);
+            }
+
+            try {
+                new FileCacheRepository($this->dir, null);
+                exit(0);
+            } catch (Throwable) {
+                exit(1);
+            }
+        }
+
+        $pids[] = $pid;
+    }
+
+    file_put_contents($barrier, '1');
+
+    $failures = 0;
+
+    foreach ($pids as $pid) {
+        pcntl_waitpid($pid, $status);
+        $failures += pcntl_wexitstatus($status) === 0 ? 0 : 1;
+    }
+
+    @unlink($barrier);
+
+    expect($failures)->toBe(0)
+        ->and(is_dir($this->dir))->toBeTrue();
+});

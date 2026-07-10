@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Cache;
 
 use AbeTwoThree\LaravelTsPublish\Cache\Concerns\SignsCachePayloads;
 use AbeTwoThree\LaravelTsPublish\Cache\Contracts\CacheRepository;
+use RuntimeException;
 
 class FileCacheRepository implements CacheRepository
 {
@@ -96,11 +97,14 @@ class FileCacheRepository implements CacheRepository
 
     /**
      * Create the cache directory if missing and ensure it self-ignores in git.
+     *
+     * Uses an attempt-then-recheck pattern rather than a plain existence
+     * check: concurrent processes (e.g. parallel Vite builds )
      */
     protected function ensureDirectory(): void
     {
-        if (! is_dir($this->directory)) {
-            mkdir($this->directory, 0755, true);
+        if (! is_dir($this->directory) && ! @mkdir($this->directory, 0755, true) && ! is_dir($this->directory)) {
+            throw new RuntimeException("Unable to create cache directory [{$this->directory}]");
         }
 
         $gitignore = $this->directory.'/.gitignore';
