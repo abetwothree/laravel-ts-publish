@@ -89,11 +89,14 @@ For a full installation and setup guide, see the [Installation & Setup](https://
 
 #### Preview Mode
 
-You can preview the generated TypeScript output in the console without writing any files by using the `--preview` flag:
+You can preview the generated TypeScript output in the console without writing any files by using `--preview=true`:
 
 ```bash
-php artisan ts:publish --preview
+php artisan ts:publish --preview=true
 ```
+
+> [!WARNING]
+> The `=true` is required. `--preview` is declared with a default value (`{--preview=false}`), so a bare `--preview` flag is parsed as unset rather than `true` — the command will write real files instead of only previewing them.
 
 This is useful for debugging or reviewing what will be generated before committing to file output.
 
@@ -176,7 +179,7 @@ Setting any to `false` will skip that type on every run, including automatic pos
 
 ##### Via Command Flags
 
-Use the `--only-enums`, `--only-models`, or `--only-resources` flags to limit a single run:
+Use one of the `--only-*` flags to limit a single run to a specific type: `--only-enums`, `--only-models`, `--only-resources`, `--only-routes`, `--only-form-requests`, `--only-broadcast-channels`, or `--only-broadcast-events`.
 
 ```bash
 php artisan ts:publish --only-enums
@@ -185,6 +188,8 @@ php artisan ts:publish --only-resources
 ```
 
 These flags cannot be combined — passing any two together will return an error.
+
+There's also `--only-functional`, which publishes only type-erasure-safe output (enums, routes, form requests, broadcast channels/events) while skipping models and resources — this is what the [Vite plugin](https://tolki.abe.dev/ts/vite-plugin.html) appends on `vite build`, since interfaces are erased at compile time anyway. It overrides the other `--only-*` flags if combined with them.
 
 ##### Config & Flag Conflicts
 
@@ -764,7 +769,7 @@ public function boot(): void
 
 Key capabilities:
 
-- **Runs on every invocation** — a full `ts:publish`, a `--source=...` rerun, and a `--preview` run all trigger the hook identically, unconditionally, before any command flags are parsed.
+- **Runs on every invocation** — a full `ts:publish`, a `--source=...` rerun, and a `--preview=true` run all trigger the hook identically, unconditionally, before any command flags are parsed.
 - **Only one closure at a time** — calling `callCommandUsing()` again replaces the previous closure entirely; it doesn't stack.
 - **Set any config, not just directories** — since it runs with the full config already loaded, the closure can set any `ts-publish.*` key, including swapping a `*_class` override (see [Customizing the Pipeline](https://tolki.abe.dev/ts/customizing-the-pipeline.html)).
 - **Dynamic directory discovery** — a common pattern is scanning the filesystem (e.g. with Symfony Finder) or a package's own module registry to build `additional_directories` lists that stay in sync automatically as modules are added or removed.
@@ -789,8 +794,8 @@ After the first full publish, `ts:publish` can skip re-generating classes whose 
 Key capabilities:
 
 - **Content-based fingerprinting** — each class is fingerprinted over its own source file plus everything it depends on (parent classes, traits, interfaces, related models, and more); for routes, the route definitions themselves (URI, methods, name, middleware) are folded in too, since those live outside any class file.
-- **`--fresh`** — forces a full rebuild, ignoring and regenerating the cache from scratch. A no-op under `--source` and `--preview`.
-- **Always bypassed by `--source` and `--preview`** — single-class republishing and preview runs never read or write the cache.
+- **`--fresh`** — forces a full rebuild, ignoring and regenerating the cache from scratch. A no-op under `--source` and `--preview=true`.
+- **Always bypassed by `--source` and `--preview=true`** — single-class republishing and preview runs never read or write the cache.
 - **File or Laravel cache store backend** — defaults to a signed file-based cache; point `cache.store` at any Laravel cache store (`redis`, `database`, …) to keep the manifest there instead, without ever touching keys outside this package's own.
 - **HMAC-signed & tamper-resistant** — cache payloads are signed with your app key (or a dedicated `cache.key`) and deserialized with object instantiation disabled, so a corrupted or tampered cache file can never inject a PHP object.
 
