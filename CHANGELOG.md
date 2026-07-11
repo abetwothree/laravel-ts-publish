@@ -2,6 +2,14 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v2.1.0 - 2026-07-11
+
+Fix docs & Laravel Boost skill to help AI understand how to create types and how to use them from this package.
+
+You can install the skill on your Laravel application by re-running `boost:install`
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v2.0.3...v2.1.0
+
 ## v2.0.3 - 2026-07-10
 
 ### What's Changed
