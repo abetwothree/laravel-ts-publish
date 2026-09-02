@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AuthUserResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
@@ -17,6 +18,7 @@ use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
+use ReflectionFunction;
 
 /**
  * A call to a known PHP built-in function (`count(...)`, `strtoupper(...)`, etc.), typed from its
@@ -74,7 +76,7 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             || ! $expr->var->name instanceof Name
             || $expr->var->name->getLast() !== 'auth'
             || $expr->var->isFirstClassCallable()
-            || $expr->var->getArgs() !== []) {
+            || ! CallArguments::for($expr->var, new ReflectionFunction('auth'))->isEmpty()) {
             return null;
         }
 

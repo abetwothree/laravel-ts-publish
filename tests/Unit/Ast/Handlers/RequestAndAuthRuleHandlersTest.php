@@ -19,6 +19,7 @@ use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
@@ -197,6 +198,12 @@ it('declines auth() with a named guard rather than answering with the default gu
 
     expect((new KnownFunctionCallHandler)->resolve($named, requestRuleScope(), requestRuleEngine()))->toBeNull()
         ->and((new KnownFunctionCallHandler)->resolve($callable, requestRuleScope(), requestRuleEngine()))->toBeNull();
+});
+
+it('declines auth(guard: …) written by name, exactly like the positional guard', function () {
+    $expr = new MethodCall(new FuncCall(new Name('auth'), [new Arg(new String_('admin'), name: new Identifier('guard'))]), 'user');
+
+    expect((new KnownFunctionCallHandler)->resolve($expr, requestRuleScope(), requestRuleEngine()))->toBeNull();
 });
 
 it('declines Auth::user(...) as a first-class callable', function () {
