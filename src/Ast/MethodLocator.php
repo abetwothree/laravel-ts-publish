@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use PhpParser\Node;
+use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\NodeFinder;
 use ReflectionClass;
@@ -81,20 +82,35 @@ class MethodLocator
     }
 
     /**
-     * Run the finder over a parsed file for the named ClassMethod with a non-null body.
+     * Run the finder over the file's owning ClassLike for the named ClassMethod with a non-null body.
      *
      * @param  ReflectionClass<object>  $reflection
      */
     protected function findIn(ReflectionClass $reflection, string $file, string $method, bool $caseSensitive): ?MethodContext
     {
         $stmts = $this->parser->parseFile($file);
+        $finder = new NodeFinder;
 
-        /** @var ClassMethod|null $node */
-        $node = (new NodeFinder)->findFirst($stmts, function (Node $node) use ($method, $caseSensitive): bool {
+        $matches = function (Node $node) use ($method, $caseSensitive): bool {
             return $node instanceof ClassMethod && ($caseSensitive
                 ? $node->name->toString() === $method
                 : strcasecmp($node->name->toString(), $method) === 0);
-        });
+        };
+
+        /** @var list<ClassLike> $owners */
+        $owners = array_values(array_filter(
+            $finder->findInstanceOf($stmts, ClassLike::class),
+            fn (ClassLike $classLike): bool => $finder->findFirst($classLike->stmts, $matches) !== null,
+        ));
+
+        $owner = $this->resolveOwner($owners, $reflection, $method);
+
+        if (! $owner instanceof ClassLike) {
+            return null;
+        }
+
+        /** @var ClassMethod|null $node */
+        $node = $finder->findFirst($owner->stmts, $matches);
 
         if (! $node instanceof ClassMethod || $node->stmts === null) {
             return null;
@@ -115,5 +131,30 @@ class MethodLocator
         }
 
         return $this->located[$key] = $resolve();
+    }
+
+    /**
+     * One declaring ClassLike is unambiguous. Two or more — e.g. two classes sharing a file and a
+     * method name — are disambiguated by the class PHP itself would dispatch $method to; a trait's
+     * using class never appears in the trait's own file, so an unmatched tie falls back to the first.
+     *
+     * @param  list<ClassLike>  $owners
+     * @param  ReflectionClass<object>  $reflection
+     */
+    private function resolveOwner(array $owners, ReflectionClass $reflection, string $method): ?ClassLike
+    {
+        if (count($owners) < 2) {
+            return $owners[0] ?? null;
+        }
+
+        $expected = $reflection->getMethod($method)->getDeclaringClass()->getName();
+
+        foreach ($owners as $owner) {
+            if ($owner->namespacedName?->toString() === $expected) {
+                return $owner;
+            }
+        }
+
+        return $owners[0];
     }
 }
