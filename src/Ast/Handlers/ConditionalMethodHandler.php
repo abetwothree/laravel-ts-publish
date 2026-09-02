@@ -479,12 +479,14 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
     /**
      * Whether `value` was skipped by a later named argument: PHP then binds it to null and still counts it.
+     * Mirrors hasExplicitDefaultArg()'s spread bail-out: a spread makes passedCount() unreliable, and this
+     * reads that same count to draw a positive conclusion, so it must bail exactly as often.
      */
     private function valueSkipped(CallArguments $args): bool
     {
         $position = $args->positionOf('value');
 
-        return $position !== null && $args->named('value') === null && $args->passedCount() > $position;
+        return ! $args->hasUnpack() && $position !== null && $args->named('value') === null && $args->passedCount() > $position;
     }
 
     /**

@@ -395,6 +395,42 @@ it('types whenHas(attribute, default: …) with the value skipped as null unione
     expect($result)->toBe(['type' => 'null | string', 'optional' => false]);
 });
 
+// whenAppended('attr', default: …) skips $value the same way whenHas() does: Laravel counts three
+// arguments and evaluates value(null, …), so the present arm is null, not the appended accessor's type.
+it('types whenAppended(attribute, default: …) with the value skipped as null unioned with the default', function () {
+    $defaultExpr = new String_('none');
+    $expr = new MethodCall(new Variable('this'), 'whenAppended', [
+        new Arg(new String_('name')),
+        new Arg($defaultExpr, name: new Identifier('default')),
+    ]);
+    $scope = new AnalysisScope(new ReflectionClass(UserResource::class), User::class);
+    $engine = new ConditionalMethodHandlerArmStubEngine([
+        [$defaultExpr, ['type' => 'string', 'optional' => false]],
+    ]);
+
+    $result = (new ConditionalMethodHandler)->resolve($expr, $scope, $engine);
+
+    expect($result)->toBe(['type' => 'null | string', 'optional' => false]);
+});
+
+// whenExistsLoaded('rel', default: …) skips $value: unlike whenLoaded(), there is no identity-closure
+// swap here, so Laravel evaluates value(null, …) and the present arm is null, not the exists flag.
+it('types whenExistsLoaded(relationship, default: …) with the value skipped as null unioned with the default', function () {
+    $defaultExpr = new String_('none');
+    $expr = new MethodCall(new Variable('this'), 'whenExistsLoaded', [
+        new Arg(new String_('posts')),
+        new Arg($defaultExpr, name: new Identifier('default')),
+    ]);
+    $scope = new AnalysisScope(new ReflectionClass(UserResource::class), User::class);
+    $engine = new ConditionalMethodHandlerArmStubEngine([
+        [$defaultExpr, ['type' => 'string', 'optional' => false]],
+    ]);
+
+    $result = (new ConditionalMethodHandler)->resolve($expr, $scope, $engine);
+
+    expect($result)->toBe(['type' => 'null | string', 'optional' => false]);
+});
+
 it('still treats a spread at the default position as no default', function () {
     $expr = new MethodCall(new Variable('this'), 'whenCounted', [
         new Arg(new String_('posts')),
@@ -404,4 +440,19 @@ it('still treats a spread at the default position as no default', function () {
     $result = (new ConditionalMethodHandler)->resolve($expr, conditionalMethodHandlerScope(), conditionalMethodHandlerThrowingEngine());
 
     expect($result)->toBe(['type' => 'number', 'optional' => true]);
+});
+
+// valueSkipped() reads the same unreliable passedCount() hasExplicitDefaultArg() already bails on for a
+// spread, so it must bail too: a spread before a named default must not be misread as a skipped $value.
+it('does not report a skipped value when a spread precedes a named default', function () {
+    $expr = new MethodCall(new Variable('this'), 'whenHas', [
+        new Arg(new String_('name')),
+        new Arg(new Variable('rest'), unpack: true),
+        new Arg(new String_('x'), name: new Identifier('default')),
+    ]);
+    $scope = new AnalysisScope(new ReflectionClass(UserResource::class), User::class);
+
+    $result = (new ConditionalMethodHandler)->resolve($expr, $scope, conditionalMethodHandlerThrowingEngine());
+
+    expect($result)->toBe(['type' => 'string', 'optional' => true]);
 });

@@ -4360,7 +4360,7 @@ describe('ResourceAstAnalyzer with ConditionalDefaultsResource — whenNotNull/w
             ->and($props['not_null_named_default']['optional'])->toBeFalse();
     });
 
-    // Same bail-out for a spread argument at the default position.
+    // A spread argument at the default position makes the count unknowable, so it bails out.
     it('bails out on a spread default argument, back to value-arm-only and optional', function () {
         $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ConditionalDefaultsResource::class), Address::class);
         $props = collect($analyzer->analyze()->properties)->keyBy('name');
