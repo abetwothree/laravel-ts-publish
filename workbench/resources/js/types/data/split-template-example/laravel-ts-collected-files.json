@@ -164,6 +164,7 @@
     "app\/Http\/Resources\/PostCollection.php",
     "app\/Http\/Resources\/PostFlatCollection.php",
     "app\/Http\/Resources\/PostResource.php",
+    "app\/Http\/Resources\/PostSpotlightResource.php",
     "app\/Http\/Resources\/PostUnwrappedCollection.php",
     "app\/Http\/Resources\/PreserveKeysCollection.php",
     "app\/Http\/Resources\/PreserveKeysFlatCollection.php",

@@ -5699,6 +5699,10 @@
                     "type": "string"
                 },
                 {
+                    "name": "latest_comment",
+                    "type": "Comment | null"
+                },
+                {
                     "name": "author",
                     "type": "User"
                 },
@@ -11440,6 +11444,26 @@
                     "name": "category_table_name",
                     "type": "string",
                     "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\PostSpotlightResource": {
+            "name": "PostSpotlightResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "headline",
+                    "type": "Comment | null",
+                    "optional": false
+                },
+                {
+                    "name": "spotlight",
+                    "type": "{ comment: Comment | null }",
+                    "optional": false
                 }
             ]
         },

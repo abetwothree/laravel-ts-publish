@@ -657,6 +657,8 @@ declare global {
             excerpt: string | null;
             /** Estimated reading time formatted */
             reading_time: string;
+            /** Newest comment, typed by a single model FQCN and deliberately not appended. */
+            latest_comment: Comment | null;
             // Relations
             author: User;
             author_count: number;
@@ -2856,6 +2858,15 @@ declare global {
             post_table_name: string;
             category_class_name?: string;
             category_table_name?: string;
+        }
+        /**
+         * Reads a single-model accessor inside an inline member and under a key that differs from the
+         * accessor name, so neither the top-level fallback nor the inline import gatherer rescues it.
+         */
+        export interface PostSpotlightResource {
+            id: number;
+            headline: workbench.app.models.Comment | null;
+            spotlight: { comment: workbench.app.models.Comment | null };
         }
         /** Inherits `$wrap = null` and declares nothing else — the delegated analysis must still see it. */
         export type PostUnwrappedCollection = PostResource[];
