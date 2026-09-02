@@ -28,7 +28,8 @@ is declared on `Illuminate\Foundation\Http\FormRequest`, and the scope records o
 *a* `Request`, never which subclass, so reflecting against the base class finds no such method and the
 rule declines. `Inertia::render('X', ['title' => $request->validated('title')])` — a headline user shape
 — therefore ships `title: unknown`. It is in the golden tree today:
-`workbench/app/Http/Controllers/InertiaFormRequestController.php:35` emits
+`InertiaFormRequestController::store()` in
+`workbench/app/Http/Controllers/InertiaFormRequestController.php` emits
 `export type StorePageProps = Inertia.SharedData & { title: unknown };` at
 `workbench/resources/js/types/data/default-example/app/http/controllers/inertia-form-request-controller.ts:15`.
 

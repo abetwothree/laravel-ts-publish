@@ -1055,7 +1055,9 @@ analyze against an empty registry even in the same process as an earlier full ru
 set from that run narrows this run's own convention guess and a real type silently collapses to `unknown`.
 Failing closed there would also silently strip the regenerated file's *convention-guessed* nested resource
 references. Only those. The registry is consulted at four candidate-inventing sites:
-`ToResourceHandler.php:181`, `:227` and `:238`, plus the candidate list inside the naming-convention
+`ToResourceHandler::resolveResourceForModel()`'s naming-convention loop,
+`resolveResourceCollectionForModel()`'s two naming-convention loops (the `{Guessed}Collection`
+candidates, then the bare guessed resources), plus the candidate list inside the naming-convention
 branch of `InspectsAstNodes::resolveCollectedResourceClass()`. An explicitly named reference never
 reaches it and would survive — `SomeResource::make()` and the `::collection()` arm of `StaticCallHandler`
 test `isResourceClass()` rather than `isPublishedResourceClass()`, and so do the explicit-argument arms of
@@ -1194,9 +1196,11 @@ where Laravel's `JsonResource::collection()` checks `static::class` — the sing
 on, not a separate collection class. The other is `toResourceCollection(SomeResource::class)`, because
 `TransformsToResourceCollection::toResourceCollection()` returns `$resourceClass::collection($this)` and
 so lands in that same method. The remaining sites reflect on whatever class Laravel instantiates — the
-`ResourceCollection` subclass for `make()`, `new`, and the collection-delegated path. The argument-less
-`toResourceCollection()` arm (`ToResourceHandler.php:125`) is the one that varies: it reflects on
-`resolveResourceCollectionForModel()`'s `collectionFqcn`, and that is only sometimes a collection class.
+`ResourceCollection` subclass for `make()`, `new`, and the collection-delegated path. The
+argument-less `toResourceCollection()` arm — the no-explicit-argument branch of
+`analyzeToResourceCollectionCall()` — is the one that varies: it reflects on
+`resolveResourceCollectionForModel()`'s `collectionFqcn`, and that is only sometimes a collection
+class.
 Of the method's four value-returning arms, the two that resolve *through a collection class*
 (`#[UseResourceCollection]`, and the `{Guessed}Collection` naming branch) set it to that class; the two
 that find **no collection class at all** — the `#[UseResource]` arm and the naming-convention fallback

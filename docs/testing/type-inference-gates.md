@@ -214,8 +214,8 @@ swapped token through.
 
 Kept because the origins are worth re-deriving rather than assuming. This bucket was **10** until the stubs
 took it to 0, and it was **not** made of `custom_ts_mappings` entries. The workbench's
-`custom_ts_mappings` is empty (`workbench/config/ts-publish.php:80-82` holds only a commented-out example),
-so it contributes none of the 10. Traced to source, the two surviving names are:
+`custom_ts_mappings` is empty (the entry in `workbench/config/ts-publish.php` is only a commented-out
+example), so it contributes none of the 10. Traced to source, the two surviving names are:
 
 | Name | Count | Where it comes from | Expected? |
 | --- | --- | --- | --- |
