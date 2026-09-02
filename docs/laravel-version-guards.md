@@ -120,3 +120,5 @@ String FQCNs that exist for reasons other than version support, and must not be 
 - `src/Ast/Handlers/ModelFinderHandler.php` — its `PAGINATORS` map names
   `Illuminate\Pagination\{LengthAwarePaginator,Paginator,CursorPaginator}` by string, the same
   always-present-class-by-name shape as `TolkiTypes.php`.
+- `src/Ast/Handlers/InertiaWrapperHandler.php` — imports the dev-only `Inertia\ResponseFactory`
+  behind `class_exists()`; an optional adapter, not a Laravel version guard.

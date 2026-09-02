@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use Inertia\ResponseFactory;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use ReflectionMethod;
 
 /**
  * Inertia's prop factories — `Inertia::defer()`, `optional()`, `always()`, `merge()`, `deepMerge()`,
@@ -53,17 +56,30 @@ final class InertiaWrapperHandler implements ExpressionHandler
             return null;
         }
 
-        $args = $expr->getArgs();
+        $wrapped = $this->wrapperArguments($expr, $expr->name->toString())->at(0);
 
-        if ($args === []) {
+        if ($wrapped === null) {
             return null;
         }
 
-        $result = $engine->resolve($args[0]->value);
+        $result = $engine->resolve($wrapped->value);
 
         return [
             ...$result,
             'optional' => $result['optional'] || in_array($expr->name->toString(), self::OPTIONAL_WRAPPERS, true),
         ];
+    }
+
+    /**
+     * The wrapper's arguments mapped against Inertia's own factory signature. `lazy` (gone in v3) and an
+     * app without the adapter fall back to positions only; the adapter is a dev dependency, hence the guard.
+     */
+    private function wrapperArguments(StaticCall $expr, string $method): CallArguments
+    {
+        if (class_exists(ResponseFactory::class) && method_exists(ResponseFactory::class, $method)) {
+            return CallArguments::for($expr, new ReflectionMethod(ResponseFactory::class, $method));
+        }
+
+        return CallArguments::fromNames($expr->getArgs(), []);
     }
 }
