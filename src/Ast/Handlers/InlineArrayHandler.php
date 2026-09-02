@@ -99,7 +99,7 @@ final class InlineArrayHandler implements ExpressionHandler
 
                 $prop['type'] = $isMixed
                     ? $this->expandMixedEnumType($members, $bareTypeName, $asEnumType)
-                    : $this->substituteEnumType($prop['type'], $bareTypeName, $asEnumType);
+                    : LaravelTsPublish::substituteEnumType($prop['type'], $bareTypeName, $asEnumType);
             }
 
             unset($prop);
@@ -359,19 +359,6 @@ final class InlineArrayHandler implements ExpressionHandler
         }
 
         return $value instanceof FuncCall;
-    }
-
-    /**
-     * Replace a bare enum type-name token with its AsEnum wrap, preserving every other union arm.
-     *
-     * Mirrors ResourceTransformer::substituteEnumResourceType(): the lookbehind's `.` keeps a
-     * namespace-qualified `foo.RoleType` unmatched, the lookahead keeps `RoleTypeExtra` unmatched.
-     */
-    private function substituteEnumType(string $typeStr, string $bareTypeName, string $asEnumType): string
-    {
-        $pattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($bareTypeName, '/').'(?![A-Za-z0-9_$])/';
-
-        return preg_replace($pattern, $asEnumType, $typeStr) ?? $typeStr;
     }
 
     /**

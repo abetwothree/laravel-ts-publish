@@ -484,7 +484,7 @@ class ResourceTransformer extends CoreTransformer
                 // Substitute the bare enum type-name token inside the analyzer's own type string,
                 // so any richer shape (an extra default arm, a keyed Record arm) round-trips
                 // untouched — only the wrapped enum's own token changes.
-                $type = $this->substituteEnumResourceType(
+                $type = LaravelTsPublish::substituteEnumType(
                     $this->properties[$propName]['type'],
                     $searchTypeName,
                     'AsEnum<typeof '.$constName.'>',
@@ -607,19 +607,6 @@ class ResourceTransformer extends CoreTransformer
         }
 
         return $this;
-    }
-
-    /**
-     * Replace every word-boundary-safe occurrence of a bare enum type name with its AsEnum wrap.
-     *
-     * Preserves everything else in the analyzer's type string — unions, Record arms, extra default
-     * arms — since only the wrapped enum's own token changes, not the shape around it.
-     */
-    protected function substituteEnumResourceType(string $typeStr, string $bareTypeName, string $asEnumType): string
-    {
-        $pattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($bareTypeName, '/').'(?![A-Za-z0-9_$])/';
-
-        return preg_replace($pattern, $asEnumType, $typeStr) ?? $typeStr;
     }
 
     /**

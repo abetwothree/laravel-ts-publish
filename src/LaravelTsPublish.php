@@ -2137,6 +2137,19 @@ class LaravelTsPublish
     }
 
     /**
+     * Replace a bare enum type-name token with its AsEnum wrap, preserving every other union arm.
+     *
+     * The lookbehind's `.` keeps a namespace-qualified `foo.RoleType` unmatched; the lookahead keeps
+     * `RoleTypeExtra` unmatched.
+     */
+    public static function substituteEnumType(string $typeStr, string $bareTypeName, string $asEnumType): string
+    {
+        $pattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($bareTypeName, '/').'(?![A-Za-z0-9_$])/';
+
+        return preg_replace($pattern, $asEnumType, $typeStr) ?? $typeStr;
+    }
+
+    /**
      * Replace `AsEnum<typeof ConstAlias>` patterns with the pre-computed type alias.
      *
      * In the globals file there is no `AsEnum` import, so `AsEnum<typeof X>` and `XType` collapse to
