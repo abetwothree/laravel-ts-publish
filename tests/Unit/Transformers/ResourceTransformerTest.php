@@ -26,6 +26,7 @@ use Workbench\App\Http\Resources\EnumCollectionResource;
 use Workbench\App\Http\Resources\EventLogResource;
 use Workbench\App\Http\Resources\FqcnMixinResource;
 use Workbench\App\Http\Resources\ImageDelegatedResource;
+use Workbench\App\Http\Resources\ImageDimensionsResource;
 use Workbench\App\Http\Resources\ImageMorphResource;
 use Workbench\App\Http\Resources\InheritedInlineFqcnResource;
 use Workbench\App\Http\Resources\KpiResource;
@@ -2352,6 +2353,15 @@ describe('ResourceTransformer with EnumCollectionResource — EnumResource::coll
 
         expect($data->properties['latest_status_or_history']['type'])
             ->toBe('AsEnum<typeof Status> | StatusType[]');
+    });
+});
+
+describe('ResourceTransformer with ImageDimensionsResource', function () {
+    test('a when() default keeps both inline-object arms intact', function () {
+        $properties = (new ResourceTransformer(ImageDimensionsResource::class))->data()->properties;
+
+        expect($properties['box']['type'])
+            ->toBe('{ width: number | null; height: number | null } | { width: number | null }');
     });
 });
 
