@@ -136,8 +136,11 @@ final class KnownMethodRuleHandler implements ExpressionHandler
         };
 
         foreach ($arms as $arm) {
-            if ($arm instanceof ReflectionNamedType && ! $arm->isBuiltin()) {
-                $declared .= '|'.$arm->getName();
+            // A DNF arm is an intersection nested inside a union: flatten one level to reach its names.
+            foreach ($arm instanceof ReflectionIntersectionType ? $arm->getTypes() : [$arm] as $named) {
+                if ($named instanceof ReflectionNamedType && ! $named->isBuiltin()) {
+                    $declared .= '|'.$named->getName();
+                }
             }
         }
 

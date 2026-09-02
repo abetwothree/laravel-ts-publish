@@ -160,13 +160,26 @@ it('scans every arm of a union return type for a class that does not serialize',
         {
             return 'x';
         }
+
+        public function combo(): UploadedFile&Countable
+        {
+            return 'x';
+        }
+
+        // DNF: an intersection arm nested inside a union — the case a flat instanceof check drops.
+        public function dnf(): (UploadedFile&Countable)|string
+        {
+            return 'x';
+        }
     };
 
     $check = fn (string $method): bool => (fn () => $this->serializesAsReflected(new ReflectionMethod($subject, $method)))
         ->call(new KnownMethodRuleHandler);
 
     expect($check('upload'))->toBeFalse()   // UploadedFile is not JsonSerializable
-        ->and($check('stamp'))->toBeTrue(); // Carbon is
+        ->and($check('stamp'))->toBeTrue()  // Carbon is
+        ->and($check('combo'))->toBeFalse() // intersection arm: UploadedFile is not JsonSerializable
+        ->and($check('dnf'))->toBeFalse();  // DNF arm: the intersection nested in the union
 });
 
 // The decline above is a fall-through, not a result: requestMethodRule() runs before knownMethodRule()
