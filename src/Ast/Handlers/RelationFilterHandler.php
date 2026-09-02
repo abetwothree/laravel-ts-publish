@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\MethodCall;
@@ -22,6 +23,7 @@ use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
+use ReflectionMethod;
 
 /**
  * `$this->relation->only([...])`/`->except([...])` and Laravel's `map` HigherOrderCollectionProxy
@@ -109,7 +111,7 @@ final class RelationFilterHandler implements ExpressionHandler
                 return $result; // @codeCoverageIgnore
             }
 
-            $keys = $this->extractFilterKeys($call);
+            $keys = $this->extractFilterKeys($call, new ReflectionMethod(Model::class, $methodName));
 
             if ($keys === null || $keys === []) {
                 return $result; // @codeCoverageIgnore
@@ -185,7 +187,8 @@ final class RelationFilterHandler implements ExpressionHandler
             ];
         }
 
-        $keys = $this->extractFilterKeys($call);
+        $receiver = str_ends_with($relationInfo['type'], '[]') ? EloquentCollection::class : Model::class;
+        $keys = $this->extractFilterKeys($call, new ReflectionMethod($receiver, $methodName));
 
         if ($keys === null || $keys === []) {
             return $result; // @codeCoverageIgnore
@@ -260,7 +263,7 @@ final class RelationFilterHandler implements ExpressionHandler
             return $result;
         }
 
-        $keys = $this->extractFilterKeys($call);
+        $keys = $this->extractFilterKeys($call, new ReflectionMethod(Model::class, $methodName));
 
         if ($keys === null || $keys === []) {
             return $result;

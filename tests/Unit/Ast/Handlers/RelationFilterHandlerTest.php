@@ -14,6 +14,7 @@ use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
 use PhpParser\Node\Scalar\String_;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
@@ -145,4 +146,29 @@ it('emits Pick<Model, never> when except() names every published column', functi
         ->call(new RelationFilterHandler);
 
     expect($type)->toBe('Pick<Tag, never>');
+});
+
+it('reads only(attributes: [...]) by name, matching Model::only()\'s own parameter', function () {
+    $expr = new MethodCall(
+        new PropertyFetch(new Variable('this'), 'post'),
+        'only',
+        [new Arg(new Array_([new ArrayItem(new String_('id')), new ArrayItem(new String_('title'))]), name: new Identifier('attributes'))],
+    );
+    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
+
+    $result = (new RelationFilterHandler)->resolve($expr, $scope, relationFilterHandlerThrowingEngine());
+
+    expect($result)->toBe(['type' => "Pick<Post, 'id' | 'title'>", 'optional' => false, 'modelFqcn' => Post::class]);
+});
+
+// func_get_args() on a lone named argument is [that value], so a single-key named call is a one-key list.
+it('reads a lone only(attributes: \'id\') as a single-key list', function () {
+    $expr = new MethodCall(new PropertyFetch(new Variable('this'), 'post'), 'only', [
+        new Arg(new String_('id'), name: new Identifier('attributes')),
+    ]);
+    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
+
+    $result = (new RelationFilterHandler)->resolve($expr, $scope, relationFilterHandlerThrowingEngine());
+
+    expect($result)->toBe(['type' => "Pick<Post, 'id'>", 'optional' => false, 'modelFqcn' => Post::class]);
 });
