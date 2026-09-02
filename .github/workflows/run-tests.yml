@@ -144,6 +144,9 @@ jobs:
           fi
           echo "PASS - @tolki/ts types resolve"
 
+      - name: Gate - docs cite symbols, not line numbers
+        run: .github/scripts/docs-anchor-gate.sh
+
       - name: Gate - no type token emitted without its import
         run: .github/scripts/unimportable-token-gate.sh 0 0 0
 

@@ -655,8 +655,8 @@ keys are strings, so the two cannot collide, and `Omit<T, number>` on a string-k
 subtract nothing anyway.
 
 The shape that *would* collide is a numeric explicit sibling key — `[...$members->toArray(), 5 => 'x']`
-puts `5` in both halves. It is unreachable rather than unhandled: `resolveKeyName()`
-(`src/Analyzers/Concerns/InspectsAstNodes.php:116`) returns a name only for a `String_` key, and
+puts `5` in both halves. It is unreachable rather than unhandled: `resolveKeyName()` in
+`src/Analyzers/Concerns/InspectsAstNodes.php` returns a name only for a `String_` key, and
 `analyzeReturnArray()` skips every item whose key resolves to `null`, so a numeric key never becomes
 a property in the first place. `QuirkyResource` pins that independently — it writes `42 => $this->total`
 and `42 => 'number_keyed'`, and the generated `QuirkyResource` interface has no `42` member. So the
@@ -1055,11 +1055,10 @@ analyze against an empty registry even in the same process as an earlier full ru
 set from that run narrows this run's own convention guess and a real type silently collapses to `unknown`.
 Failing closed there would also silently strip the regenerated file's *convention-guessed* nested resource
 references. Only those. The registry is consulted at four candidate-inventing sites:
-`ToResourceHandler.php:181`, `:227` and `:238`, plus the naming-convention branch of
-`InspectsAstNodes::resolveCollectedResourceClass()`, which tries two candidates (`:203`, `:209`). An
-explicitly named reference never reaches it and would survive — `SomeResource::make()` and
-`::collection()` (`StaticCallHandler.php:187`, `:201`) test `isResourceClass()` rather than
-`isPublishedResourceClass()`, and so do the explicit-argument arms of
+`ToResourceHandler.php:181`, `:227` and `:238`, plus the candidate list inside the naming-convention
+branch of `InspectsAstNodes::resolveCollectedResourceClass()`. An explicitly named reference never
+reaches it and would survive — `SomeResource::make()` and the `::collection()` arm of `StaticCallHandler`
+test `isResourceClass()` rather than `isPublishedResourceClass()`, and so do the explicit-argument arms of
 `ToResourceHandler::analyzeToResourceCall()` and `analyzeToResourceCollectionCall()`.
 
 ### Both runners reset the registry at the top of `run()`, once per run
@@ -1070,12 +1069,12 @@ runners enforce that as the first statement of `run()`: `Runner::run()` calls
 same — its own reset, not a side effect of skipping `register()`.
 
 Placement matters. `Runner::generateResources()` returns early, before it would otherwise call
-`register()`, whenever `shouldPublishResources` is `false` (see "Populated once, before the generate
-loop" below). A reset placed next to that `register()` call would never run on a resources-disabled run,
-so the registry would still hold the *previous* run's set — the wrong kind of narrowing, not the
-intended "allow everything" of an empty registry. Resetting at the top of `run()` instead means a
-resources-disabled run reaches every convention-guessed resource unfiltered, exactly like the
-single-FQCN `RunnerForSource` path above, rather than being gated by stale state.
+`register()`, whenever `shouldPublishResources` is `false` (e.g. `--only-routes`) (see "Populated
+once, before the generate loop" below). A reset placed next to that `register()` call would never run
+on a resources-disabled run, so the registry would still hold the *previous* run's set — the wrong
+kind of narrowing, not the intended "allow everything" of an empty registry. Resetting at the top of
+`run()` instead means a resources-disabled run reaches every convention-guessed resource unfiltered,
+exactly like the single-FQCN `RunnerForSource` path above, rather than being gated by stale state.
 
 This also closes the other direction: two full `Runner::run()` calls in one process, the second with a
 narrower `ts-publish.resources.excluded`, no longer leave the first run's classes registered — a

@@ -11,10 +11,10 @@ The script runs one test, uncached:
 php -d memory_limit=-1 vendor/bin/pest tests/Feature/Commands/TsPublishCommandTest.php --filter="writes files to disk"
 ```
 
-That is `ts:publish writes files to disk` (`tests/Feature/Commands/TsPublishCommandTest.php:56`) — one
+That is `ts:publish writes files to disk` (`tests/Feature/Commands/TsPublishCommandTest.php`) — one
 complete, uncached publish through the real test harness. `ts-publish.cache.enabled` is `false` in tests
-(`tests/TestCase.php:111`), so every run re-does the full analysis pass, and the harness runs real
-migrations against a database, so the DB-introspection cost is included.
+(the `ts-publish.cache.enabled` override in `tests/TestCase.php`), so every run re-does the full analysis
+pass, and the harness runs real migrations against a database, so the DB-introspection cost is included.
 
 This is deliberately the *test-harness* publish, not `composer ts:publish` from the workbench. The
 workbench command has no database connection and skips DB-introspection entirely (`AGENTS.md`), so it

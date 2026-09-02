@@ -22,7 +22,7 @@ if neither, it does not go in this file.
 ### `$request->validated('key')` is never typed
 
 The Inertia page path types `$request->url()`, `->integer()` and friends by reflecting the method off
-`Illuminate\Http\Request` — `requestMethodRule()` in `src/Ast/Handlers/KnownMethodRuleHandler.php:79`
+`Illuminate\Http\Request` — `requestMethodRule()` in `src/Ast/Handlers/KnownMethodRuleHandler.php`
 (`->user()` is the one name answered ahead of reflection, from the configured auth model). `validated()`
 is declared on `Illuminate\Foundation\Http\FormRequest`, and the scope records only that a variable holds
 *a* `Request`, never which subclass, so reflecting against the base class finds no such method and the
@@ -78,7 +78,8 @@ per-file flavour is correct today. The emitter is `resources/views/globals.blade
 
 `ResourceTransformer` assumes the wrapping arm of a mixed enum ternary is never
 `EnumResource::collection()`, which is not true in general — the array suffix can come out wrong. The
-assumption is written at the branch it governs, `src/Transformers/ResourceTransformer.php:471`.
+assumption is written at the branch it governs, inside `rewriteEnumResourceTypes()` in
+`src/Transformers/ResourceTransformer.php`.
 
 ## Deliberate non-goals
 
@@ -86,8 +87,10 @@ Absent on purpose. Do not "fix" these without raising it first.
 
 - **Non-Inertia and JSON responses are never typed.** Only `Inertia::render()` page props and the
   shared-data middleware are analyzed.
-- **No `ts-publish.analyzer.handlers` config key.** You cannot append your own `ExpressionHandler`. Every
-  extension point is a compatibility promise; worth adding only if someone asks.
+- **No `ts-publish.analyzer.handlers` config key, and no supported extension of the AST engine.** The
+  only user-facing surface of the engine is `AstEngine`. Every handler, concern, resolver and value
+  object under `src/Ast/` is internal and changes without notice as inference grows; nothing there is a
+  compatibility promise, and code that extends it is on its own.
 - **Form requests stay runtime.** They are resolved by instantiating and calling `rules()`, on purpose.
 
 ## Green signals that are narrower than they look

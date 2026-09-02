@@ -516,13 +516,13 @@ into that instance's ordinary state (`$table`/`$connection`/`$hidden`/`$visible`
 This package only ever reads that state back through plain instance calls, the same four call
 sites that already made `protected $table = '...'` etc. work before Laravel 13 existed:
 
-- `ModelTransformer::initInstance()` (`src/Transformers/ModelTransformer.php:185`) calls
+- `ModelTransformer::initInstance()` (`src/Transformers/ModelTransformer.php`) calls
   `$this->modelInstance->getConnection()->getSchemaBuilder()->getColumnListing($this->modelInstance->getTable())`
   — honours `#[Table]` and `#[Connection]` together, since both feed into which schema is queried
   for which table name.
-- `ModelTransformer::initInstance()` (`src/Transformers/ModelTransformer.php:187`) calls
+- `ModelTransformer::initInstance()` (`src/Transformers/ModelTransformer.php`) also calls
   `$this->modelInstance->getAppends()` — honours `#[Appends]`.
-- `ModelAttributeResolver` (`src/ModelAttributeResolver.php:487`) calls
+- `ModelAttributeResolver::databaseColumnNames()` (`src/ModelAttributeResolver.php`) calls
   `$ctx['instance']->getTable()` and `getConnection()` again when resolving a column's type.
 - `ModelInspector::getAttributes()` (Laravel's own, in `vendor/laravel/framework/.../ModelInspector.php`,
   which `AbeTwoThree\LaravelTsPublish\ModelInspector` extends) calls `attributeIsHidden($column,
