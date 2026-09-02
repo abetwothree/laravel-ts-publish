@@ -114,6 +114,7 @@ export * from './supplier-summary-resource';
 export * from './tag-resource';
 export * from './team-member-resource';
 export * from './team-resource';
+export * from './team-status-audit-resource';
 export * from './ternary-resource';
 export * from './to-array-casts-resource';
 export * from './tracking-event-resource';

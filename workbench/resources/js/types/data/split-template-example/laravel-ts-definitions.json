@@ -13105,6 +13105,21 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\TeamStatusAuditResource": {
+            "name": "TeamStatusAuditResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "audit",
+                    "type": "{ status: AsEnum<typeof Status>[] }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\TernaryResource": {
             "name": "TernaryResource",
             "properties": [

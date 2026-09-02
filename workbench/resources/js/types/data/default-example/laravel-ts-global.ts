@@ -3341,6 +3341,14 @@ declare global {
             settings?: Record<string, unknown> | null;
         }
         /**
+         * The direct arm's enum type is substituted away by the wrapped arm, so the bare enum type must not
+         * be imported.
+         */
+        export interface TeamStatusAuditResource {
+            id: number;
+            audit: { status: app.enums.StatusType[] };
+        }
+        /**
          * Exercises: ternary operator in various return-value positions.
          *
          * All properties in this resource use the ternary operator (`? :`) or the
