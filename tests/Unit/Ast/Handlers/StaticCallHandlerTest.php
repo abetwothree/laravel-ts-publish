@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\StaticCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ToResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
+use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -82,6 +83,19 @@ final class StaticCallHandlerArmStubEngine implements ExpressionEngine
     public function returnArrayAnalysis(Array_ $array): MethodAnalysis
     {
         throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
+    }
+}
+
+/**
+ * A resource whose constructor names its payload parameter something other than `resource` —
+ * pins that resourcePayloadArguments() reflects the concrete receiver's own constructor, not
+ * JsonResource's, so a subclass departing from the base parameter name still resolves.
+ */
+final class NamedPayloadResource extends JsonResource
+{
+    public function __construct(mixed $payload)
+    {
+        parent::__construct($payload);
     }
 }
 
@@ -264,5 +278,20 @@ it('resolves new PostResource(resource: $this->when(…)) as optional through th
         'type' => 'PostResource',
         'optional' => true,
         'resourceFqcn' => PostResource::class,
+    ]);
+});
+
+it('resolves new NamedPayloadResource(payload: $this->whenLoaded(…)) through the concrete constructor, not JsonResource\'s', function () {
+    $expr = new New_(new Name(NamedPayloadResource::class), [
+        new Arg(new MethodCall(new Variable('this'), 'whenLoaded', [new Arg(new String_('x'))]), name: new Identifier('payload')),
+    ]);
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class));
+
+    $result = (new NewResourceHandler)->resolve($expr, $scope, staticCallHandlerThrowingEngine());
+
+    expect($result)->toBe([
+        'type' => 'NamedPayloadResource',
+        'optional' => true,
+        'resourceFqcn' => NamedPayloadResource::class,
     ]);
 });
