@@ -183,6 +183,8 @@ final class ThisPropertyHandler implements ExpressionHandler
             // needs its FQCNs threaded out here for aliasPropertyType() to consume per occurrence.
             if (count($info['classFqcns']) > 1) {
                 $result['embeddedModelFqcns'] = $info['classFqcns'];
+            } elseif (count($info['classFqcns']) === 1) {
+                $result['modelFqcn'] = $info['classFqcns'][0];
             }
 
             return $result;

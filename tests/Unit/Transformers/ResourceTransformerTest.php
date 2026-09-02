@@ -37,6 +37,7 @@ use Workbench\App\Http\Resources\NamedArgsConditionalResource;
 use Workbench\App\Http\Resources\OrderResource;
 use Workbench\App\Http\Resources\PostFlatCollection;
 use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Http\Resources\PostSpotlightResource;
 use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\ProfileResource;
 use Workbench\App\Http\Resources\RelationChainResource;
@@ -2363,6 +2364,17 @@ describe('ResourceTransformer with ImageDimensionsResource', function () {
 
         expect($properties['box']['type'])
             ->toBe('{ width: number | null; height: number | null } | { width: number | null }');
+    });
+});
+
+describe('ResourceTransformer with PostSpotlightResource', function () {
+    test('a single-FQCN accessor imports its model under a foreign key and inside an inline member', function () {
+        $transformer = new ResourceTransformer(PostSpotlightResource::class);
+        $properties = $transformer->data()->properties;
+
+        expect($properties['headline']['type'])->toBe('Comment | null')
+            ->and($properties['spotlight']['type'])->toBe('{ comment: Comment | null }')
+            ->and(array_merge(...array_values($transformer->typeImports)))->toContain('Comment');
     });
 });
 
