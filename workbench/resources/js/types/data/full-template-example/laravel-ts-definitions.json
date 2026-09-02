@@ -10105,6 +10105,21 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\ImageDimensionsResource": {
+            "name": "ImageDimensionsResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "box",
+                    "type": "{ width: number | null; height: number | null } | { width: number | null }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\ImageMorphResource": {
             "name": "ImageMorphResource",
             "properties": [

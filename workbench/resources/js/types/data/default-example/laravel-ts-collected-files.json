@@ -121,6 +121,7 @@
     "app\/Http\/Resources\/GuardClauseClosureResource.php",
     "app\/Http\/Resources\/HelperCallResource.php",
     "app\/Http\/Resources\/ImageDelegatedResource.php",
+    "app\/Http\/Resources\/ImageDimensionsResource.php",
     "app\/Http\/Resources\/ImageMorphResource.php",
     "app\/Http\/Resources\/ImageResource.php",
     "app\/Http\/Resources\/InheritedInlineFqcnResource.php",

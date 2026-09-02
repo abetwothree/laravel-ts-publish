@@ -2386,6 +2386,14 @@ declare global {
             imageable: app.models.Post | app.models.Product | app.models.User | crm.models.User;
             reviewable: crm.models.User | app.models.User | null;
         }
+        /**
+         * Both when() arms are inline objects whose members are nullable, so the union must be split at the
+         * top level only.
+         */
+        export interface ImageDimensionsResource {
+            id: number;
+            box: { width: number | null; height: number | null } | { width: number | null };
+        }
         /** Exercises a morphTo relation exposed through a resource: the emitted union needs every parent imported. */
         export interface ImageMorphResource {
             id: number;
