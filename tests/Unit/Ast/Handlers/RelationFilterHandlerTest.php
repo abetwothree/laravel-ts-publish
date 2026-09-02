@@ -172,3 +172,23 @@ it('reads a lone only(attributes: \'id\') as a single-key list', function () {
 
     expect($result)->toBe(['type' => "Pick<Post, 'id'>", 'optional' => false, 'modelFqcn' => Post::class]);
 });
+
+// Post::comments() is a HasMany, so the relation resolves through Illuminate\Database\Eloquent\Collection,
+// whose only() parameter is `keys` — not Model::only()'s `attributes`. A wrong reflected receiver here
+// makes named('keys') miss and the filter keys silently vanish; this pins the Collection-side name.
+it('reads only(keys: [...]) by name on a to-many relation, matching Collection::only()\'s own parameter', function () {
+    $expr = new MethodCall(
+        new PropertyFetch(new Variable('this'), 'comments'),
+        'only',
+        [new Arg(new Array_([new ArrayItem(new String_('id')), new ArrayItem(new String_('content'))]), name: new Identifier('keys'))],
+    );
+    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Post::class);
+
+    $result = (new RelationFilterHandler)->resolve($expr, $scope, relationFilterHandlerThrowingEngine());
+
+    expect($result)->toBe([
+        'type' => "Pick<Comment, 'id' | 'content'>[]",
+        'optional' => false,
+        'modelFqcn' => Comment::class,
+    ]);
+});
