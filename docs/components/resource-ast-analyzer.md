@@ -1401,23 +1401,24 @@ default `$wrap`) and `LeafCollection extends MidCollection` (`#[Collects(UserRes
 `$wrap` of its own) both analyze to `{ data: PostResource[] }` — `LeafCollection` emits its parent's
 collected type, not its own.
 
-**The carve-out: a parent with `$wrap === null` breaks the inheritance.**
+A parent with `$wrap === null` still breaks the `properties !== []` guard the same way:
 `buildCollectionDelegatedAnalysis()` returns `new ResourceAnalysis(flatTypeAlias: $elementType,
 flatTypeAliasFqcn: $singular)` when `$wrap` resolves `null`/empty — `properties` stays at its `[]`
-default, which *fails* the `properties !== []` guard. `LeafCollection::analyze()` then falls through
-instead of returning the parent's result, reaches `isResourceCollection()`, and calls its **own**
-`buildCollectionDelegatedAnalysis()` — this time resolving `$collects` from `LeafCollection`'s own
-reflection, so its own override *is* honoured here.
+default, so `LeafCollection::analyze()` falls through instead of returning the parent's result,
+reaches `isResourceCollection()`, and calls its **own** `buildCollectionDelegatedAnalysis()` — this
+time resolving `$collects` from `LeafCollection`'s own reflection, so its own override *is* honoured.
 
-That recomputation does not inherit the parent's `$wrap = null`, though.
-`buildCollectionDelegatedAnalysis()` only reads `$wrap` when `ReflectionProperty::getDeclaringClass()`
-is the class currently being analyzed (`Read $wrap declared on this class only`). Since `LeafCollection`
-doesn't redeclare `$wrap` itself, its declaring class resolves to `MidCollection`, not `LeafCollection`,
-so that check fails and `$wrapKey` falls back to the method's hardcoded `'data'` default. The same
-probe's `$wrap = null` variant (`MidCollection` declares `public static $wrap = null;`,
-`LeafCollection` does not) confirms it: `LeafCollection` analyzes to `{ data: UserResource[] }`, the
-wrapped shape, not the flat `UserResource[]` its parent's `$wrap = null` would suggest. A body-less
-child only reproduces an ancestor's flat shape if it redeclares `$wrap = null` itself.
+> `$wrap` is read through reflection from wherever it is declared — the collection itself, a parent
+> collection, or `JsonResource`'s own `'data'` default — so an abstract base that sets `public static
+> $wrap = null` unwraps every body-less subclass.
+
+That recomputation inherits the parent's `$wrap = null` for the same reason:
+`buildCollectionDelegatedAnalysis()` reads `ReflectionProperty::getDefaultValue()` with no
+declaring-class check, so `LeafCollection` resolving `$wrap` on its own reflection still finds the
+value `MidCollection` declared. The same probe's `$wrap = null` variant (`MidCollection` declares
+`public static $wrap = null;`, `LeafCollection` does not) confirms it: `LeafCollection` now analyzes
+to the flat `UserResource[]` — its own `$collects` combined with the parent's inherited `$wrap = null`
+— not the `{ data: UserResource[] }` shape a declaring-class check would have produced.
 
 ### The explicit `parent::toArray($request)` forms are unchanged
 

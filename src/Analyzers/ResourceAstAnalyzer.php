@@ -1024,17 +1024,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
             return new ResourceAnalysis;
         }
 
-        // Read $wrap declared on this class only — inherited, JsonResource's static default is 'data'.
-        $wrapKey = 'data';
-
-        if ($this->scope->subjectReflection->hasProperty('wrap')) {
-            $wrapProp = $this->scope->subjectReflection->getProperty('wrap');
-
-            if ($wrapProp->getDeclaringClass()->getName() === $this->scope->subjectReflection->getName()) {
-                /** @var string|null $wrapKey */
-                $wrapKey = $wrapProp->getDefaultValue();
-            }
-        }
+        // JsonResource declares `public static $wrap = 'data'`, so reflection always finds a value; an
+        // inherited `$wrap = null` is as deliberate as an own one.
+        /** @var string|null $wrapKey */
+        $wrapKey = $this->scope->subjectReflection->hasProperty('wrap')
+            ? $this->scope->subjectReflection->getProperty('wrap')->getDefaultValue()
+            : 'data';
 
         $elementType = $this->wrapCollectionElementType(LaravelTsPublish::resourceTypeName($singular), $this->scope->subjectReflection);
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeArrayMergeChildResource;
@@ -100,6 +101,7 @@ use Workbench\App\Http\Resources\PostAttachmentFilterResource;
 use Workbench\App\Http\Resources\PostCollection;
 use Workbench\App\Http\Resources\PostFlatCollection;
 use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Http\Resources\PostUnwrappedCollection;
 use Workbench\App\Http\Resources\PreserveKeysCollection;
 use Workbench\App\Http\Resources\PreserveKeysPropertyCollection;
 use Workbench\App\Http\Resources\ProductResource;
@@ -3924,6 +3926,12 @@ describe('ResourceAstAnalyzer with PostFlatCollection ($wrap = null, no toArray)
     test('has no properties (type alias skips interface shape)', function () {
         expect($this->analysis->properties)->toBeEmpty();
     });
+});
+
+it('honours an inherited $wrap = null on a body-less collection', function () {
+    $analysis = resolve(AstEngine::class)->analyzeMethod(PostUnwrappedCollection::class, 'toArray', Post::class);
+
+    expect($analysis->flatTypeAlias)->toBe('PostResource[]');
 });
 
 describe('ResourceAstAnalyzer with PreserveKeysCollection (#[PreserveKeys] attribute)', function () {
