@@ -583,15 +583,15 @@ class ResourceAstAnalyzer implements ExpressionEngine
             return null;
         }
 
-        $this->scope->visitedSpreadMethods[$methodName] = true;
-
         $method = $this->scope->subjectReflection->getMethod($methodName);
         $context = resolve(MethodLocator::class)->locate($this->scope->subjectReflection->getName(), $methodName);
         $targetMethod = $context?->method;
 
         if ($targetMethod === null || $targetMethod->stmts === null) {
-            return null; // @codeCoverageIgnore
+            return null;
         }
+
+        $this->scope->visitedSpreadMethods[$methodName] = true;
 
         $finder = new NodeFinder;
 

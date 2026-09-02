@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeArrayMergeChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeSpreadChildResource;
@@ -2867,6 +2868,30 @@ describe('ResourceAstAnalyzer with ApiArticleResource (abstract parent + only + 
         $id = collect($analysis->properties)->firstWhere('name', 'id');
 
         expect($id['type'])->toBe('number');
+    });
+});
+
+describe('ResourceAstAnalyzer with CommonResource (spread guard release)', function () {
+    it('does not keep a spread method marked visited after the locator returned nothing', function () {
+        $analyzer = new class(new ReflectionClass(CommonResource::class), Comment::class) extends ResourceAstAnalyzer
+        {
+            public function spread(string $method): ?ResourceAnalysis
+            {
+                return $this->analyzeThisMethodSpread($method);
+            }
+        };
+
+        app()->instance(MethodLocator::class, new class
+        {
+            public function locate(string $class, string $method): mixed
+            {
+                return null;
+            }
+        });
+        expect($analyzer->spread('includeTypedExtras'))->toBeNull();
+
+        app()->forgetInstance(MethodLocator::class);
+        expect($analyzer->spread('includeTypedExtras'))->not->toBeNull();
     });
 });
 
