@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\EnumResource;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\PropertyFetch;
@@ -93,6 +94,18 @@ it('declines a method call named neither toResource nor toResourceCollection', f
     $result = (new ToResourceHandler)->resolve($expr, $scope, staticCallHandlerThrowingEngine());
 
     expect($result)->toBeNull();
+});
+
+it('reads toResource(resourceClass: …) and toResourceCollection(resourceClass: …) by name', function () {
+    $explicit = fn (): Arg => new Arg(new ClassConstFetch(new Name(PostResource::class), 'class'), name: new Identifier('resourceClass'));
+    $single = new MethodCall(new Variable('model'), 'toResource', [$explicit()]);
+    $many = new MethodCall(new Variable('models'), 'toResourceCollection', [$explicit()]);
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class));
+
+    expect((new ToResourceHandler)->resolve($single, $scope, staticCallHandlerThrowingEngine()))
+        ->toBe(['type' => 'PostResource', 'optional' => false, 'resourceFqcn' => PostResource::class])
+        ->and((new ToResourceHandler)->resolve($many, $scope, staticCallHandlerThrowingEngine()))
+        ->toBe(['type' => 'PostResource[]', 'optional' => false, 'resourceFqcn' => PostResource::class]);
 });
 
 // StaticCallHandler

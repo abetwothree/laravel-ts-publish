@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ChecksPreserveKeys;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
@@ -16,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\ResourceCollection;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\MethodCall;
@@ -23,6 +25,7 @@ use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use ReflectionClass;
+use ReflectionMethod;
 
 /**
  * `$model->toResource()` / `$model->toResource(SomeResource::class)` and
@@ -71,10 +74,11 @@ final class ToResourceHandler implements ExpressionHandler
     private function analyzeToResourceCall(MethodCall $call, AnalysisScope $scope): array
     {
         $result = ValueResult::unknown();
-        $args = $call->getArgs();
+        $args = $this->callArguments($call, Model::class, 'toResource');
+        $explicitArg = $args->named('resourceClass') ?? $args->at(0);
 
-        if ($args !== []) {
-            $explicit = resolve(ValueResolver::class)->resolveClassConstArgument($args[0]->value);
+        if ($explicitArg !== null) {
+            $explicit = resolve(ValueResolver::class)->resolveClassConstArgument($explicitArg->value);
 
             if ($explicit === null || ! $this->isResourceClass($explicit)) {
                 return $result;
@@ -104,10 +108,11 @@ final class ToResourceHandler implements ExpressionHandler
     private function analyzeToResourceCollectionCall(MethodCall $call, AnalysisScope $scope): array
     {
         $result = ValueResult::unknown();
-        $args = $call->getArgs();
+        $args = $this->callArguments($call, Collection::class, 'toResourceCollection');
+        $explicitArg = $args->named('resourceClass') ?? $args->at(0);
 
-        if ($args !== []) {
-            $explicit = resolve(ValueResolver::class)->resolveClassConstArgument($args[0]->value);
+        if ($explicitArg !== null) {
+            $explicit = resolve(ValueResolver::class)->resolveClassConstArgument($explicitArg->value);
 
             if ($explicit === null || ! $this->isResourceClass($explicit)) {
                 return $result;
@@ -138,6 +143,21 @@ final class ToResourceHandler implements ExpressionHandler
             'optional' => false,
             'resourceFqcn' => $resolved['resourceFqcn'],
         ];
+    }
+
+    /**
+     * The call's arguments mapped against Laravel's own toResource()/toResourceCollection() signature. On a
+     * Laravel release without the method only positions are known, which the `?? at(0)` fallback reads.
+     *
+     * @param  class-string  $class
+     */
+    private function callArguments(MethodCall $call, string $class, string $method): CallArguments
+    {
+        if (method_exists($class, $method)) {
+            return CallArguments::for($call, new ReflectionMethod($class, $method));
+        }
+
+        return CallArguments::fromNames($call->isFirstClassCallable() ? [] : $call->getArgs(), []);
     }
 
     /**
