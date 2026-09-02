@@ -336,3 +336,36 @@ it('types a single-argument config() on an absent key as null', function () {
     expect((new KnownFunctionCallHandler)->resolve($call, requestRuleScope(), requestRuleEngine()))
         ->toBe(['type' => 'null', 'optional' => false]);
 });
+
+it('types the typed config accessors from their declared return type, whatever the key or default', function (string $method, string $type) {
+    $expr = new MethodCall(new FuncCall(new Name('config')), $method, [
+        new Arg(new String_('ts-publish-probe.anything')),
+        new Arg(new Int_(0)),
+    ]);
+
+    expect((new KnownFunctionCallHandler)->resolve($expr, requestRuleScope(), requestRuleEngine()))
+        ->toBe(['type' => $type, 'optional' => false]);
+})->with([
+    ['string', 'string'],
+    ['integer', 'number'],
+    ['float', 'number'],
+    ['boolean', 'boolean'],
+    ['array', 'unknown[]'],
+]);
+
+it('types config()->get() exactly like config()', function () {
+    config()->set('ts-publish-probe.via-get', 'live');
+
+    $expr = new MethodCall(new FuncCall(new Name('config')), 'get', [new Arg(new String_('ts-publish-probe.via-get')), new Arg(new String_('fallback'))]);
+
+    expect((new KnownFunctionCallHandler)->resolve($expr, requestRuleScope(), requestRuleEngine()))
+        ->toBe(['type' => 'string', 'optional' => false]);
+});
+
+it('declines a typed accessor on a config() receiver that already took a key, and an unknown accessor', function () {
+    $onValue = new MethodCall(new FuncCall(new Name('config'), [new Arg(new String_('a.b'))]), 'integer', [new Arg(new String_('c'))]);
+    $unknown = new MethodCall(new FuncCall(new Name('config')), 'nope', [new Arg(new String_('c'))]);
+
+    expect((new KnownFunctionCallHandler)->resolve($onValue, requestRuleScope(), requestRuleEngine()))->toBeNull()
+        ->and((new KnownFunctionCallHandler)->resolve($unknown, requestRuleScope(), requestRuleEngine()))->toBeNull();
+});

@@ -10,7 +10,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use Illuminate\Config\Repository;
 use Illuminate\Support\Facades\Config;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\FuncCall;
@@ -18,13 +20,15 @@ use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
+use ReflectionClass;
 use ReflectionFunction;
+use ReflectionMethod;
 use stdClass;
 
 /**
  * A call to a known PHP built-in function (`count(...)`, `strtoupper(...)`, etc.), typed from its
- * reflected return type, plus the two Laravel helpers whose shape is knowable: `config('literal')`
- * and `auth()->user()`/`auth()->id()`. Declines anything else.
+ * reflected return type, plus the Laravel helpers whose shape is knowable: `config('literal')`,
+ * `config()->get()` and its typed accessors, and `auth()->user()`/`auth()->id()`. Declines anything else.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  */
@@ -42,14 +46,14 @@ final class KnownFunctionCallHandler implements ExpressionHandler
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         if ($expr instanceof MethodCall) {
-            return $this->authHelperMethodRule($expr);
+            return $this->authHelperMethodRule($expr) ?? $this->typedConfigAccessorRule($expr, $engine);
         }
 
         if ($expr instanceof FuncCall && $expr->name instanceof Name) {
             $name = $expr->name->getLast();
 
             if ($name === 'config') {
-                return $this->resolveConfigCallType($expr, $engine);
+                return $this->resolveConfigCallType(CallArguments::for($expr, new ReflectionFunction('config')), $engine);
             }
 
             $tsType = $this->resolveKnownFunctionCallType($name);
@@ -85,6 +89,35 @@ final class KnownFunctionCallHandler implements ExpressionHandler
     }
 
     /**
+     * Resolve `config()->integer('key', 0)` and the other typed accessors from Repository's declared return
+     * type — the default never changes it — and `config()->get(...)` exactly like `config(...)`.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function typedConfigAccessorRule(MethodCall $expr, ExpressionEngine $engine): ?array
+    {
+        if (! $expr->name instanceof Identifier
+            || ! $expr->var instanceof FuncCall
+            || ! $expr->var->name instanceof Name
+            || $expr->var->name->getLast() !== 'config'
+            || $expr->var->isFirstClassCallable()
+            || $expr->var->getArgs() !== []
+            || ! method_exists(Repository::class, $expr->name->toString())) {
+            return null;
+        }
+
+        $method = $expr->name->toString();
+
+        if ($method === 'get') {
+            return $this->resolveConfigCallType(CallArguments::for($expr, new ReflectionMethod(Repository::class, 'get')), $engine);
+        }
+
+        $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass(Repository::class), $method);
+
+        return resolve(ReflectedTypeAcceptor::class)->accept($tsInfo);
+    }
+
+    /**
      * Resolve `config('some.key')` to the TypeScript type of the live configuration value.
      *
      * The package runs inside the booted app, so reading the value is honest; a computed key
@@ -92,9 +125,8 @@ final class KnownFunctionCallHandler implements ExpressionHandler
      *
      * @return ValueExpressionResult|null
      */
-    private function resolveConfigCallType(FuncCall $expr, ExpressionEngine $engine): ?array
+    private function resolveConfigCallType(CallArguments $args, ExpressionEngine $engine): ?array
     {
-        $args = CallArguments::for($expr, new ReflectionFunction('config'));
         $keyArg = $args->named('key');
 
         if (! $keyArg?->value instanceof String_) {
