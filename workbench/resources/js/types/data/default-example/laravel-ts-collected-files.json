@@ -144,6 +144,7 @@
     "app\/Http\/Resources\/MiscCollection.php",
     "app\/Http\/Resources\/ModelWrappedPropResource.php",
     "app\/Http\/Resources\/MutuallyRecursiveSpreadResource.php",
+    "app\/Http\/Resources\/NamedArgsConditionalResource.php",
     "app\/Http\/Resources\/NestedResourceSpreadResource.php",
     "app\/Http\/Resources\/NonArrayReturnResource.php",
     "app\/Http\/Resources\/NonThisReceiverSpreadResource.php",

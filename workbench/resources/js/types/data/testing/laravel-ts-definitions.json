@@ -8932,8 +8932,8 @@
                 },
                 {
                     "name": "not_null_named_default",
-                    "type": "string",
-                    "optional": true
+                    "type": "string | number",
+                    "optional": false
                 },
                 {
                     "name": "not_null_spread_default",
@@ -10601,6 +10601,31 @@
                 {
                     "name": "name",
                     "type": "string",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\NamedArgsConditionalResource": {
+            "name": "NamedArgsConditionalResource",
+            "properties": [
+                {
+                    "name": "not_null_named_default",
+                    "type": "string | number",
+                    "optional": false
+                },
+                {
+                    "name": "when_all_named",
+                    "type": "string | number",
+                    "optional": false
+                },
+                {
+                    "name": "loaded_named_default",
+                    "type": "Comment[]",
+                    "optional": false
+                },
+                {
+                    "name": "counted_named_out_of_order",
+                    "type": "number",
                     "optional": false
                 }
             ]

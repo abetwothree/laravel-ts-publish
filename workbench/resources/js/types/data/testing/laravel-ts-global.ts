@@ -2020,7 +2020,7 @@ declare global {
             not_null_same_type_default: number;
             null_with_default: null | string;
             not_null_explicit_null_default: string | null;
-            not_null_named_default?: string;
+            not_null_named_default: string | number;
             not_null_spread_default?: string;
             when_no_default?: string;
             when_with_default: string | number;
@@ -2611,6 +2611,16 @@ declare global {
          */
         export interface MutuallyRecursiveSpreadResource {
             name: string;
+        }
+        /**
+         * The conditional family called with named arguments. PHP binds each argument to its parameter by name
+         * and Laravel then tests func_num_args(), so a named `default:` is a real default however it is written.
+         */
+        export interface NamedArgsConditionalResource {
+            not_null_named_default: string | number;
+            when_all_named: string | number;
+            loaded_named_default: workbench.app.models.Comment[];
+            counted_named_out_of_order: number;
         }
         /**
          * Exercises spreading a resolved resource inside a NESTED inline array literal — a map()
