@@ -10,6 +10,8 @@ use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
@@ -137,17 +139,25 @@ it('keeps an undeclared name reachable by that name only, outside the count', fu
 });
 
 // JsonResource::make(...$parameters) forwards to __construct($resource); a caller wanting the
-// constructor's names reflects that instead (Task 37). Against make() itself only positions exist.
-it('maps positions past a variadic parameter and treats a first-class callable as empty', function () {
+// constructor's names reflects that instead (Task 37). A variadic parameter has no declared
+// position, so make() itself is reachable only by at(N), never by the name `parameters`.
+it('stops declared parameter names before a variadic tail and treats a first-class callable as empty', function () {
     $first = new Arg(new Variable('a'));
     $second = new Arg(new Variable('b'));
     $make = new ReflectionMethod(JsonResource::class, 'make');
 
-    $args = CallArguments::for(new StaticCall(new Name(JsonResource::class), 'make', [$first, $second]), $make);
-    $callable = CallArguments::for(new StaticCall(new Name(JsonResource::class), 'make', [new VariadicPlaceholder]), $make);
+    $args = CallArguments::for(
+        new StaticCall(new Name(JsonResource::class), 'make', [$first, $second]),
+        $make,
+    );
+    $callable = CallArguments::for(
+        new StaticCall(new Name(JsonResource::class), 'make', [new VariadicPlaceholder]),
+        $make,
+    );
 
     expect($args->at(0))->toBe($first)
-        ->and($args->named('parameters'))->toBe($first)
+        ->and($args->positionOf('parameters'))->toBeNull()
+        ->and($args->named('parameters'))->toBeNull()
         ->and($args->at(1))->toBe($second)
         ->and($args->passedCount())->toBe(2)
         ->and($callable->isEmpty())->toBeTrue()
@@ -163,3 +173,104 @@ it('builds from an explicit name list when no reflection target exists', functio
         ->and($args->named('callback'))->toBe($callback)
         ->and($args->passedCount())->toBe(1);
 });
+
+it('treats a call with no arguments as empty', function () {
+    $args = configArguments([]);
+
+    expect($args->isEmpty())->toBeTrue()
+        ->and($args->passedCount())->toBe(0)
+        ->and($args->at(0))->toBeNull()
+        ->and($args->named('key'))->toBeNull()
+        ->and($args->hasUnpack())->toBeFalse();
+});
+
+it('reads a nullsafe method call the same as a plain one', function () {
+    $relationship = new Arg(new String_('profile'));
+
+    $args = CallArguments::for(
+        new NullsafeMethodCall(new Variable('this'), 'whenLoaded', [$relationship]),
+        new ReflectionMethod(JsonResource::class, 'whenLoaded'),
+    );
+
+    expect($args->at(0))->toBe($relationship)
+        ->and($args->named('relationship'))->toBe($relationship)
+        ->and($args->passedCount())->toBe(1);
+});
+
+it('reads arguments from a `new` expression against its constructor', function () {
+    $resource = new Arg(new Variable('model'));
+
+    $args = CallArguments::for(
+        new New_(new Name(JsonResource::class), [$resource]),
+        new ReflectionMethod(JsonResource::class, '__construct'),
+    );
+
+    expect($args->at(0))->toBe($resource)
+        ->and($args->named('resource'))->toBe($resource)
+        ->and($args->passedCount())->toBe(1);
+});
+
+// `config(...$a, default: $x)` is legal since PHP 8.1. A spread reaching the named position is a
+// fatal "overwrites previous argument" error, so every valid call of this shape has a real
+// func_num_args() equal to the named position plus one, however many elements the spread holds.
+it('gets passedCount() right for a spread followed by a trailing named argument', function () {
+    $spread = new Arg(new Variable('a'), unpack: true);
+    $default = new Arg(new String_('fallback'), name: new Identifier('default'));
+
+    $args = configArguments([$spread, $default]);
+
+    expect($args->hasUnpack())->toBeTrue()
+        ->and($args->passedCount())->toBe(2);
+});
+
+it('indexes fromNames() positional arguments by an internal counter, not the array key', function () {
+    $first = new Arg(new Variable('x'));
+    $second = new Arg(new Variable('y'));
+
+    $args = CallArguments::fromNames(['unrelated' => $first, 7 => $second], ['a', 'b']);
+
+    expect($args->at(0))->toBe($first)
+        ->and($args->at(1))->toBe($second)
+        ->and($args->passedCount())->toBe(2);
+});
+
+// Both fixtures declare a same-named `shared()` with different parameters, pinning that a closure
+// or first-class callable is read fresh rather than memoized under its colliding bare name.
+it('keeps same-named closures distinct, since a closure is never memoized', function () {
+    $alpha = new Arg(new Variable('a'));
+    $beta = new Arg(new Variable('b'));
+    $gamma = new Arg(new Variable('c'));
+
+    $fromA = CallArguments::for(
+        new FuncCall(new Name('shared'), [$alpha]),
+        new ReflectionFunction((new CallArgumentsFixtureA)->shared(...)),
+    );
+    $fromB = CallArguments::for(
+        new FuncCall(new Name('shared'), [$beta, $gamma]),
+        new ReflectionFunction((new CallArgumentsFixtureB)->shared(...)),
+    );
+
+    expect($fromA->positionOf('alpha'))->toBe(0)
+        ->and($fromA->positionOf('beta'))->toBeNull()
+        ->and($fromB->positionOf('beta'))->toBe(0)
+        ->and($fromB->positionOf('gamma'))->toBe(1)
+        ->and($fromB->positionOf('alpha'))->toBeNull();
+});
+
+/**
+ * Declares `shared(string $alpha)`, distinct from CallArgumentsFixtureB's `shared()`, to pin that
+ * closures reflecting same-named methods on different classes are never memoized together.
+ */
+class CallArgumentsFixtureA
+{
+    public function shared(string $alpha): void {}
+}
+
+/**
+ * Declares `shared(string $beta, string $gamma)`, distinct from CallArgumentsFixtureA's `shared()`,
+ * to pin that closures reflecting same-named methods on different classes are never memoized together.
+ */
+class CallArgumentsFixtureB
+{
+    public function shared(string $beta, string $gamma): void {}
+}

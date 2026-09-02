@@ -6,16 +6,16 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr\CallLike;
+use ReflectionFunction;
 use ReflectionFunctionAbstract;
 use ReflectionMethod;
-use ReflectionParameter;
 
 /**
  * A call's arguments read by parameter name or by position, whichever way the caller wrote them.
  *
  * passedCount() emulates PHP's func_num_args(): a named argument for position N counts as passing 0..N,
  * which is the test Laravel's conditional family makes to tell an omitted argument from an explicit null.
- * Parameter names come from reflection of the real target, memoized per callable — never a fixed table.
+ * Parameter names are reflected from the real target, memoized only where that target's identity is stable.
  */
 final class CallArguments
 {
@@ -87,6 +87,14 @@ final class CallArguments
     }
 
     /**
+     * Clears the memoized parameter-name cache, so one test run's reflection can't leak into another's.
+     */
+    public static function reset(): void
+    {
+        self::$parameterNames = [];
+    }
+
+    /**
      * The argument bound to a position: written there, or written by that position's parameter name.
      */
     public function at(int $position): ?Arg
@@ -125,7 +133,9 @@ final class CallArguments
     }
 
     /**
-     * What func_num_args() would report: the highest bound position plus one. A spread is not counted.
+     * What func_num_args() would report: the highest bound position plus one.
+     *
+     * A spread argument is not counted, so this undercounts once hasUnpack() is true — check that first.
      */
     public function passedCount(): int
     {
@@ -149,17 +159,43 @@ final class CallArguments
     }
 
     /**
-     * The target's parameter names by position, reflected once per callable.
+     * The target's parameter names by position, memoized only where the callable's identity is stable;
+     * a closure or first-class callable is read fresh, since two unrelated ones can share a bare name.
      *
      * @return list<string>
      */
     private static function parameterNames(ReflectionFunctionAbstract $target): array
     {
-        $key = $target instanceof ReflectionMethod ? $target->class.'::'.$target->name : $target->getName();
+        if ($target instanceof ReflectionMethod) {
+            $key = $target->class.'::'.$target->name;
 
-        return self::$parameterNames[$key] ??= array_map(
-            fn (ReflectionParameter $parameter): string => $parameter->getName(),
-            $target->getParameters(),
-        );
+            return self::$parameterNames[$key] ??= self::declaredParameterNames($target);
+        }
+
+        if ($target instanceof ReflectionFunction && ! $target->isClosure()) {
+            return self::$parameterNames[$target->getName()] ??= self::declaredParameterNames($target);
+        }
+
+        return self::declaredParameterNames($target);
+    }
+
+    /**
+     * Every declared parameter name up to (not including) a variadic tail, which has no fixed position.
+     *
+     * @return list<string>
+     */
+    private static function declaredParameterNames(ReflectionFunctionAbstract $target): array
+    {
+        $names = [];
+
+        foreach ($target->getParameters() as $parameter) {
+            if ($parameter->isVariadic()) {
+                break;
+            }
+
+            $names[] = $parameter->getName();
+        }
+
+        return $names;
     }
 }
