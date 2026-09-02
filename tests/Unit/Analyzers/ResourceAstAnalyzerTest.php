@@ -2443,7 +2443,7 @@ describe('ResourceAstAnalyzer with OrderClosureResource', function () {
     });
 });
 
-describe('ResourceAstAnalyzer with UserCollection (convention-based)', function () {
+describe('ResourceAstAnalyzer with UserCollection (explicit $collects)', function () {
     beforeEach(function () {
         $reflection = new ReflectionClass(UserCollection::class);
         $this->analysis = (new ResourceAstAnalyzer($reflection))->analyze();
