@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationFilterHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use Illuminate\Support\Facades\Schema;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -20,6 +21,7 @@ use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\Tag;
 
 /**
  * An engine that fails the test if a handler calls back into it, proving the handler resolved or
@@ -134,4 +136,13 @@ it('declines a method call whose name is not only/except', function () {
     $result = (new RelationFilterHandler)->resolve($expr, $scope, relationFilterHandlerThrowingEngine());
 
     expect($result)->toBeNull();
+});
+
+it('emits Pick<Model, never> when except() names every published column', function () {
+    $columns = Schema::getColumnListing((new Tag)->getTable());
+
+    $type = (fn () => $this->relationFilterModelReference(Tag::class, $columns, false))
+        ->call(new RelationFilterHandler);
+
+    expect($type)->toBe('Pick<Tag, never>');
 });
