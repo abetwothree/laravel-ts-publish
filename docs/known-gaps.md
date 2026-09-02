@@ -39,15 +39,12 @@ known blast radius, not a wall. The objection that actually holds is the second:
 instantiating the form request and calling `rules()` during type resolution, which runs application code
 inside the analyzer. Worth doing as its own change with that trade-off argued explicitly.
 
-### `config()` calls have three residual cases
+### `config()` on an absent key with no default types as null
 
-`config('key', $default)` types from the default expression when the key is unset. Still imperfect:
-a single-argument `config('unset.key')` types as `null`; only positional arguments are understood, so
-`config(default: 'x', key: 'k')` reads the wrong one; and a key explicitly set to `null` with a default
-types as the default, where Laravel would hand you `null`.
-
-All three are read from the config as it stands when `ts:publish` runs. If the machine generating types has
-a different `.env` from production, the emitted type follows the generating machine.
+`config('key', $default)` types from the default expression only when the key is absent; a key set to
+`null` types as `null`, and named arguments are honoured. The one residual: `config('unset.key')` with
+no default types as `null`, which is the live value on the generating machine. All reads follow that
+machine's config, so a `.env` that differs from production changes the emitted type.
 
 ### On Laravel 12, `#[Collects]` cannot be resolved — use the `$collects` property
 

@@ -19,6 +19,7 @@ use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use ReflectionFunction;
+use stdClass;
 
 /**
  * A call to a known PHP built-in function (`count(...)`, `strtoupper(...)`, etc.), typed from its
@@ -93,22 +94,25 @@ final class KnownFunctionCallHandler implements ExpressionHandler
      */
     private function resolveConfigCallType(FuncCall $expr, ExpressionEngine $engine): ?array
     {
-        if ($expr->isFirstClassCallable()) {
+        $args = CallArguments::for($expr, new ReflectionFunction('config'));
+        $keyArg = $args->named('key');
+
+        if (! $keyArg?->value instanceof String_) {
             return null;
         }
 
-        $args = $expr->getArgs();
+        $absent = new stdClass;
+        $value = Config::get($keyArg->value->value, $absent);
 
-        if ($args === [] || ! $args[0]->value instanceof String_) {
-            return null;
-        }
+        // Only an ABSENT key falls through to the default; a key set to null hands the caller null.
+        if ($value === $absent) {
+            $defaultArg = $args->named('default');
 
-        $value = Config::get($args[0]->value->value);
+            if ($defaultArg !== null) {
+                return $engine->resolve($defaultArg->value);
+            }
 
-        // An unset key returns the second argument, so answering `null` would be confidently wrong
-        // for the common config('services.x.key', 'fallback') shape. Type the default instead.
-        if ($value === null && isset($args[1])) {
-            return $engine->resolve($args[1]->value);
+            $value = null;
         }
 
         $type = match (true) {

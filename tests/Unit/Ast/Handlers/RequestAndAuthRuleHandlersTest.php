@@ -308,3 +308,31 @@ it('declines config() with a computed key', function () {
 
     expect((new KnownFunctionCallHandler)->resolve($expr, requestRuleScope(), requestRuleEngine()))->toBeNull();
 });
+
+it('reads config() arguments by name before position', function () {
+    config()->set('ts-publish-test.named', 'live');
+
+    $call = new FuncCall(new Name('config'), [
+        new Arg(new ConstFetch(new Name('true')), name: new Identifier('default')),
+        new Arg(new String_('ts-publish-test.named'), name: new Identifier('key')),
+    ]);
+
+    expect((new KnownFunctionCallHandler)->resolve($call, requestRuleScope(), requestRuleEngine()))
+        ->toBe(['type' => 'string', 'optional' => false]);
+});
+
+it('types a key explicitly set to null as null even when a default is supplied', function () {
+    config()->set('ts-publish-test.nulled', null);
+
+    $call = new FuncCall(new Name('config'), [new Arg(new String_('ts-publish-test.nulled')), new Arg(new String_('fallback'))]);
+
+    expect((new KnownFunctionCallHandler)->resolve($call, requestRuleScope(), requestRuleEngine()))
+        ->toBe(['type' => 'null', 'optional' => false]);
+});
+
+it('types a single-argument config() on an absent key as null', function () {
+    $call = new FuncCall(new Name('config'), [new Arg(new String_('ts-publish-test.absent'))]);
+
+    expect((new KnownFunctionCallHandler)->resolve($call, requestRuleScope(), requestRuleEngine()))
+        ->toBe(['type' => 'null', 'optional' => false]);
+});
