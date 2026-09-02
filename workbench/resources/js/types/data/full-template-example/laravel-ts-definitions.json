@@ -11428,6 +11428,10 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\PostUnwrappedCollection": {
+            "name": "PostUnwrappedCollection",
+            "typeAlias": "PostResource[]"
+        },
         "Workbench\\App\\Http\\Resources\\PreserveKeysCollection": {
             "name": "PreserveKeysCollection",
             "properties": [

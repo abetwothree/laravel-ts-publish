@@ -2849,6 +2849,8 @@ declare global {
             category_class_name?: string;
             category_table_name?: string;
         }
+        /** Inherits `$wrap = null` and declares nothing else — the delegated analysis must still see it. */
+        export type PostUnwrappedCollection = PostResource[];
         /**
          * A collection that keeps its source keys, so the payload is a JSON object rather than an array.
          * Uses Laravel 13's #[PreserveKeys] attribute.

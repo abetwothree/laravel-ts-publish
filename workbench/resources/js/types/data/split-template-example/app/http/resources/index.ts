@@ -83,6 +83,7 @@ export * from './post-attachment-filter-resource';
 export * from './post-collection';
 export * from './post-flat-collection';
 export * from './post-resource';
+export * from './post-unwrapped-collection';
 export * from './preserve-keys-collection';
 export * from './preserve-keys-flat-collection';
 export * from './preserve-keys-property-collection';
