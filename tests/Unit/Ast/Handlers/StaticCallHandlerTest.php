@@ -17,6 +17,7 @@ use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use Workbench\App\Enums\Status;
@@ -203,4 +204,52 @@ it('declines a node outside its claimed New_ class', function () {
     $result = (new NewResourceHandler)->resolve($expr, $scope, staticCallHandlerThrowingEngine());
 
     expect($result)->toBeNull();
+});
+
+// Resource payloads written by name — `resource:` is JsonResource::__construct()'s and ::collection()'s
+// parameter, and make() forwards it there through `new static(...$parameters)`.
+
+it('resolves PostResource::collection(resource: $this->whenLoaded(…)) as optional through the named payload', function () {
+    $expr = new StaticCall(new Name(PostResource::class), 'collection', [
+        new Arg(new MethodCall(new Variable('this'), 'whenLoaded', [new Arg(new String_('posts'))]), name: new Identifier('resource')),
+    ]);
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class));
+
+    $result = (new StaticCallHandler)->resolve($expr, $scope, staticCallHandlerThrowingEngine());
+
+    expect($result)->toBe([
+        'type' => 'PostResource[]',
+        'optional' => true,
+        'resourceFqcn' => PostResource::class,
+    ]);
+});
+
+it('resolves EnumResource::make(resource: $this->status) to the enum channel', function () {
+    $expr = new StaticCall(new Name(EnumResource::class), 'make', [
+        new Arg(new PropertyFetch(new Variable('this'), 'status'), name: new Identifier('resource')),
+    ]);
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+
+    $result = (new StaticCallHandler)->resolve($expr, $scope, staticCallHandlerThrowingEngine());
+
+    expect($result)->toBe([
+        'type' => 'StatusType',
+        'optional' => false,
+        'enumFqcn' => Status::class,
+    ]);
+});
+
+it('resolves new PostResource(resource: $this->when(…)) as optional through the named payload', function () {
+    $expr = new New_(new Name(PostResource::class), [
+        new Arg(new MethodCall(new Variable('this'), 'when', [new Arg(new Variable('flag')), new Arg(new Variable('post'))]), name: new Identifier('resource')),
+    ]);
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class));
+
+    $result = (new NewResourceHandler)->resolve($expr, $scope, staticCallHandlerThrowingEngine());
+
+    expect($result)->toBe([
+        'type' => 'PostResource',
+        'optional' => true,
+        'resourceFqcn' => PostResource::class,
+    ]);
 });

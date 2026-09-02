@@ -176,14 +176,14 @@ final class StaticCallHandler implements ExpressionHandler
 
         // EnumResource::make($this->prop)
         if ($this->isEnumResourceClass($className) && $methodName === 'make') {
-            return $this->analyzeEnumResourceMake($call, $scope);
+            return $this->analyzeEnumResourceMake($call, $className, $scope);
         }
 
         // EnumResource::collection($this->prop) — must precede the generic isResourceClass()
         // checks below: EnumResource extends JsonResource, so those would match it too and
         // yield the unsuffixed 'EnumResource[]' instead of resolving the wrapped enum.
         if ($this->isEnumResourceClass($className) && $methodName === 'collection') {
-            return $this->analyzeEnumResourceCollection($call, $scope);
+            return $this->analyzeEnumResourceCollection($call, $className, $scope);
         }
 
         // SomeCollection::make()/::collection() on a ResourceCollection subclass. Must precede the generic
@@ -196,7 +196,7 @@ final class StaticCallHandler implements ExpressionHandler
                 return [
                     ...$result,
                     'type' => $this->wrapCollectionElementType(LaravelTsPublish::resourceTypeName($collected), new ReflectionClass($className)),
-                    'optional' => $this->hasConditionalArgument($call),
+                    'optional' => $this->hasConditionalArgument($call, $className),
                     'resourceFqcn' => $collected,
                 ];
             }
@@ -205,7 +205,7 @@ final class StaticCallHandler implements ExpressionHandler
         // SomeResource::make($this->prop) — nested resource
         if ($this->isResourceClass($className) && $methodName === 'make') {
             $resourceName = LaravelTsPublish::resourceTypeName($className);
-            $optional = $this->hasConditionalArgument($call);
+            $optional = $this->hasConditionalArgument($call, $className);
 
             /** @var class-string $className */
             return [
@@ -219,7 +219,7 @@ final class StaticCallHandler implements ExpressionHandler
         // SomeResource::collection(...) — array or keyed record of nested resource
         if ($this->isResourceClass($className) && $methodName === 'collection') {
             $resourceName = LaravelTsPublish::resourceTypeName($className);
-            $optional = $this->hasConditionalArgument($call);
+            $optional = $this->hasConditionalArgument($call, $className);
 
             /** @var class-string $className */
             return [
@@ -346,21 +346,15 @@ final class StaticCallHandler implements ExpressionHandler
      *
      * @return ValueExpressionResult
      */
-    private function analyzeEnumResourceMake(StaticCall $call, AnalysisScope $scope): array
+    private function analyzeEnumResourceMake(StaticCall $call, string $className, AnalysisScope $scope): array
     {
-        $result = ValueResult::unknown();
+        $payload = $this->resourcePayloadArguments($call, $className)->at(0)?->value;
 
-        if ($call->isFirstClassCallable()) {
-            return $result;
+        if ($payload === null) {
+            return ValueResult::unknown();
         }
 
-        $args = $call->getArgs();
-
-        if (count($args) < 1) {
-            return $result;
-        }
-
-        return $this->resolveEnumFromPropertyArg($args[0]->value, $scope) ?? $result;
+        return $this->resolveEnumFromPropertyArg($payload, $scope) ?? ValueResult::unknown();
     }
 
     /**
@@ -372,21 +366,16 @@ final class StaticCallHandler implements ExpressionHandler
      *
      * @return ValueExpressionResult
      */
-    private function analyzeEnumResourceCollection(StaticCall $call, AnalysisScope $scope): array
+    private function analyzeEnumResourceCollection(StaticCall $call, string $className, AnalysisScope $scope): array
     {
         $result = ValueResult::unknown();
+        $payload = $this->resourcePayloadArguments($call, $className)->at(0)?->value;
 
-        if ($call->isFirstClassCallable()) {
+        if ($payload === null) {
             return $result;
         }
 
-        $args = $call->getArgs();
-
-        if (count($args) < 1) {
-            return $result;
-        }
-
-        $enumResult = $this->resolveEnumFromPropertyArg($args[0]->value, $scope);
+        $enumResult = $this->resolveEnumFromPropertyArg($payload, $scope);
 
         if ($enumResult === null) {
             return $result;

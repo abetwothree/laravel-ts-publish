@@ -73,9 +73,9 @@ final class InertiaResourcePropHandler implements ExpressionHandler
         }
 
         $reflection = self::reflect($className);
-        $optional = $this->hasConditionalNewArgument($expr);
+        $optional = $this->hasConditionalNewArgument($expr, $className);
 
-        if (! $this->firstArgumentIsPaginator($expr->getArgs(), $engine)) {
+        if (! $this->firstArgumentIsPaginator($this->resourcePayloadArguments($expr, $className)->at(0), $engine)) {
             return [
                 ...ValueResult::unknown(),
                 'type' => LaravelTsPublish::resourceTypeName($className),
@@ -131,9 +131,9 @@ final class InertiaResourcePropHandler implements ExpressionHandler
 
         /** @var class-string $className */
         $reflection = self::reflect($className);
-        $optional = $this->hasConditionalArgument($expr);
+        $optional = $this->hasConditionalArgument($expr, $className);
 
-        if ($this->firstArgumentIsPaginator($expr->getArgs(), $engine)) {
+        if ($this->firstArgumentIsPaginator($this->resourcePayloadArguments($expr, $className)->at(0), $engine)) {
             return [
                 ...$this->paginatedResourceType($className, $reflection),
                 'optional' => $optional,
@@ -184,14 +184,10 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     }
 
     /**
-     * Whether the first constructor/collection argument resolves to one of the paginator types.
-     *
-     * @param  array<array-key, Arg>  $args
+     * Whether the payload argument resolves to one of the paginator types.
      */
-    private function firstArgumentIsPaginator(array $args, ExpressionEngine $engine): bool
+    private function firstArgumentIsPaginator(?Arg $first, ExpressionEngine $engine): bool
     {
-        $first = array_values($args)[0] ?? null;
-
         if ($first === null) {
             return false;
         }
