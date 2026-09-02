@@ -5337,6 +5337,28 @@ test('relation except() expands to database columns only, matching Model::except
     expect($analyzer->expose()['type'])->toBe($expected);
 });
 
+test('relation except() honours models.exclude_hidden on the columns it keeps', function (bool $excludeHidden, bool $passwordPresent) {
+    config()->set('ts-publish.models.exclude_hidden', $excludeHidden);
+
+    $analyzer = new class(new ReflectionClass(WarehouseResource::class), Warehouse::class) extends ResourceAstAnalyzer
+    {
+        /** @return array{type: string} */
+        public function expose(): array
+        {
+            return $this->resolveFilteredRelationType(User::class, ['created_at', 'updated_at'], false);
+        }
+    };
+
+    $type = $analyzer->expose()['type'];
+
+    expect(str_contains($type, 'password:'))->toBe($passwordPresent)
+        ->and(str_contains($type, 'remember_token:'))->toBe($passwordPresent)
+        ->and($type)->toContain('email: string');
+})->with([
+    'hidden excluded' => [true, false],
+    'hidden kept' => [false, true],
+]);
+
 test('relation only() still resolves a named accessor and a named relation, unlike except()', function () {
     // HasAttributes::only() calls getAttribute() per named key, so both do come back at runtime. The
     // columns-only change touched the $include === false branch only, so this cannot fail from it: it is a
