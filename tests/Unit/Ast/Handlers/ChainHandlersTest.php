@@ -14,13 +14,17 @@ use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
+use PhpParser\Node\Name;
 use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\Int_;
+use PhpParser\Node\Scalar\String_;
 use Workbench\App\Enums\Role;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\HelperCallResource;
@@ -263,4 +267,50 @@ it('resolves a generic $this->method() through the subject method resolver', fun
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(MediaTypeResource::class));
 
     expect($analyzer->resolve($expr))->toBe(['type' => 'string', 'optional' => false]);
+});
+
+// Named collection arguments. pluck(key:, value:) is the one that genuinely reorders: written this way,
+// index 0 is the key column, and the old read typed the plucked list from it.
+
+it('reads pluck(key: …, value: …) by name inside a relation chain', function () {
+    $expr = new MethodCall(chainThisProp('members'), 'pluck', [
+        new Arg(new String_('id'), name: new Identifier('key')),
+        new Arg(new String_('email'), name: new Identifier('value')),
+    ]);
+    $scope = new AnalysisScope(new ReflectionClass(RelationChainResource::class), Team::class);
+
+    $result = (new RelationCollectionChainHandler)->resolve($expr, $scope, chainHandlersThrowingEngine());
+
+    expect($result['type'])->toBe('string[] | Record<string, string>');
+});
+
+it('reads take(limit: …) and map(callback: …) by name', function () {
+    $closure = new ArrowFunction([
+        'params' => [new Param(new Variable('member'))],
+        'expr' => new Variable('mapBody'),
+    ]);
+    $chain = new MethodCall(
+        new MethodCall(chainThisProp('members'), 'take', [new Arg(new Int_(5), name: new Identifier('limit'))]),
+        'map',
+        [new Arg($closure, name: new Identifier('callback'))],
+    );
+    $scope = new AnalysisScope(new ReflectionClass(RelationChainResource::class), Team::class);
+    $engine = new ChainHandlersMapStubEngine($closure, ['type' => '{ id: number }', 'optional' => false], $scope);
+
+    $result = (new RelationCollectionChainHandler)->resolve($chain, $scope, $engine);
+
+    expect($result)->toBe(['type' => '{ id: number }[]', 'optional' => false]);
+});
+
+it('treats first(default: …) as non-terminal, the same as a positional default', function () {
+    $expr = new MethodCall(
+        new MethodCall(chainThisProp('members'), 'take', [new Arg(new Int_(5))]),
+        'first',
+        [new Arg(new ConstFetch(new Name('null')), name: new Identifier('default'))],
+    );
+    $scope = new AnalysisScope(new ReflectionClass(RelationChainResource::class), Team::class);
+
+    $result = (new RelationCollectionChainHandler)->resolve($expr, $scope, chainHandlersThrowingEngine());
+
+    expect($result)->toBeNull();
 });

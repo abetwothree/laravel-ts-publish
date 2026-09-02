@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Scalar\String_;
+use ReflectionMethod;
 
 /**
  * Type a `pluck('field')` call against the ambient whenLoaded closure's related model.
@@ -30,11 +33,10 @@ trait AnalyzesPluckCalls
      */
     protected function analyzeVariablePluckCall(MethodCall $call, AnalysisScope $scope): array
     {
-        $args = $call->getArgs();
+        $field = CallArguments::for($call, new ReflectionMethod(EloquentCollection::class, 'pluck'))->named('value')?->value;
 
-        if (count($args) >= 1 && $args[0]->value instanceof String_) {
-            $fieldName = $args[0]->value->value;
-            $info = $this->analyzeRelatedModelProperty($fieldName, $scope);
+        if ($field instanceof String_) {
+            $info = $this->analyzeRelatedModelProperty($field->value, $scope);
 
             if ($info['type'] !== 'unknown') {
                 $info['type'] = ValueResult::arrayWrapType($info['type']);

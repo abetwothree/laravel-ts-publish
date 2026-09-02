@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\CallMatcher;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\AnalyzesPluckCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\AppliesKnownMethodRules;
@@ -21,6 +22,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Carbon\Carbon as BaseCarbon;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use PhpParser\Node\Expr;
@@ -146,8 +148,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
         // while loop above ran at least once, since $call is typed as MethodCall.
         $terminalOp = $ops[0]['name'];
         $isTerminal = ($terminalOp === 'first' || $terminalOp === 'last')
-            && ! $ops[0]['node']->isFirstClassCallable()
-            && $ops[0]['node']->getArgs() === [];
+            && $this->collectionArguments($ops[0]['node'], $terminalOp)->isEmpty();
 
         if ($isTerminal) {
             array_shift($ops);
@@ -180,7 +181,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
 
             if ($op['name'] === 'pluck' && $pluckNode === null && $mapNode === null) {
                 $pluckNode = $op['node'];
-                $sequentialKeys = $op['node']->isFirstClassCallable() || count($op['node']->getArgs()) < 2;
+                $sequentialKeys = $this->collectionArguments($op['node'], 'pluck')->named('key') === null;
 
                 continue;
             }
@@ -212,13 +213,6 @@ final class RelationCollectionChainHandler implements ExpressionHandler
         }
 
         if ($pluckNode !== null) {
-            // First-class callable syntax (`->pluck(...)`) has no args: CallLike::getArgs() asserts
-            // !isFirstClassCallable() and throws AssertionError under zend.assertions=1 (PHP's dev
-            // default), and analyzeVariablePluckCall() calls getArgs() unconditionally.
-            if ($pluckNode->isFirstClassCallable()) {
-                return null;
-            }
-
             $previousContext = $scope->closureRelationModelClass;
             $scope->closureRelationModelClass = $elementModel;
 
@@ -245,19 +239,11 @@ final class RelationCollectionChainHandler implements ExpressionHandler
         // bare string callable (`'strtoupper'`) is itself a valid expression node, so analyzeValueExpression()
         // would resolve *that* — 'strtoupper' → 'string', wrongly wrapped here to 'string[]'.
         /** @var MethodCall $mapNode */
-        // First-class callable syntax (`->map(...)`) has no args: getArgs() throws AssertionError under
-        // zend.assertions=1 rather than returning [].
-        if ($mapNode->isFirstClassCallable()) {
-            return null;
-        }
+        $mapArg = $this->collectionArguments($mapNode, 'map')->named('callback')?->value;
 
-        $args = $mapNode->getArgs();
-
-        if ($args === []) {
+        if ($mapArg === null) {
             return null; // @codeCoverageIgnore
         }
-
-        $mapArg = $args[0]->value;
 
         if (! $mapArg instanceof ArrowFunction && ! $mapArg instanceof ClosureExpr) {
             return null;
@@ -440,9 +426,9 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             return false;
         }
 
-        $args = $call->getArgs();
+        $args = $this->collectionArguments($call, 'take');
 
-        return count($args) === 1 && $args[0]->value instanceof Int_;
+        return $args->passedCount() === 1 && ! $args->hasUnpack() && $args->named('limit')?->value instanceof Int_;
     }
 
     /**
@@ -451,5 +437,13 @@ final class RelationCollectionChainHandler implements ExpressionHandler
     private function keyedObjectArm(string $arrayType): string
     {
         return $arrayType.' | Record<string, '.substr($arrayType, 0, -2).'>';
+    }
+
+    /**
+     * A chain op's arguments mapped against the Eloquent collection method it calls.
+     */
+    private function collectionArguments(MethodCall $call, string $method): CallArguments
+    {
+        return CallArguments::for($call, new ReflectionMethod(EloquentCollection::class, $method));
     }
 }
