@@ -174,6 +174,16 @@ final class InlineArrayHandler implements ExpressionHandler
 
         array_push($embeddedModelFqcns, ...$spreadModelFqcns);
 
+        // An enum whose bare name no longer occurs in the final type (its arm was substituted by a
+        // wrapped one) must not claim an import the transformer would then emit unused.
+        $embeddedEnumFqcns = array_values(array_filter(
+            $embeddedEnumFqcns,
+            fn (string $fqcn): bool => preg_match(
+                '/\b'.preg_quote(LaravelTsPublish::toTsType($fqcn)['type'], '/').'\b/',
+                $result['type'],
+            ) === 1,
+        ));
+
         if ($embeddedEnumFqcns !== []) {
             $result['embeddedEnumFqcns'] = $embeddedEnumFqcns;
         }

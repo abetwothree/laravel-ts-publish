@@ -42,6 +42,7 @@ use Workbench\App\Http\Resources\ProfileResource;
 use Workbench\App\Http\Resources\RelationChainResource;
 use Workbench\App\Http\Resources\ResourceWrappedEnumResource;
 use Workbench\App\Http\Resources\ServiceDeskResource;
+use Workbench\App\Http\Resources\TeamStatusAuditResource;
 use Workbench\App\Http\Resources\TernaryResource;
 use Workbench\App\Http\Resources\ToArrayCastsResource;
 use Workbench\App\Http\Resources\TraitSpreadCoverageResource;
@@ -2362,6 +2363,16 @@ describe('ResourceTransformer with ImageDimensionsResource', function () {
 
         expect($properties['box']['type'])
             ->toBe('{ width: number | null; height: number | null } | { width: number | null }');
+    });
+});
+
+describe('ResourceTransformer with TeamStatusAuditResource', function () {
+    test('an inline enum member whose bare type was substituted away claims no type import', function () {
+        $transformer = new ResourceTransformer(TeamStatusAuditResource::class);
+        $transformer->data();
+
+        expect(implode(' ', array_merge(...array_values($transformer->typeImports))))->not->toContain('StatusType')
+            ->and(implode(' ', array_merge(...array_values($transformer->valueImports))))->toContain('Status');
     });
 });
 
