@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\FiltersModelAttributes;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ResolvesModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DispatchesFqcnResults;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
@@ -502,17 +503,14 @@ class ResourceAstAnalyzer implements ExpressionEngine
             return new ResourceAnalysis; // @codeCoverageIgnore
         }
 
-        $args = $call->getArgs();
+        $method = $isMerge ? 'merge' : ($isMergeWhen ? 'mergeWhen' : 'mergeUnless');
+        $value = CallArguments::for($call, new ReflectionMethod(JsonResource::class, $method))->named('value');
 
-        if ($isMerge && count($args) >= 1) {
-            return $this->resolveArrayOrClosureToProperties($args[0]->value, optional: false);
+        if ($value === null) {
+            return new ResourceAnalysis;
         }
 
-        if (($isMergeWhen || $isMergeUnless) && count($args) >= 2) {
-            return $this->resolveArrayOrClosureToProperties($args[1]->value, optional: true);
-        }
-
-        return new ResourceAnalysis;
+        return $this->resolveArrayOrClosureToProperties($value->value, optional: ! $isMerge);
     }
 
     /**

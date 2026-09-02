@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeArrayMergeChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeSpreadChildResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NamedMergeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UnreadableReturnResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Illuminate\Notifications\DatabaseNotification;
@@ -5824,5 +5825,23 @@ describe('ResourceAstAnalyzer with an arbitrary method name', function () {
 
         expect($analysis->properties)->not->toBeEmpty()
             ->and($names)->toContain('id', 'name', 'email');
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// merge()/mergeWhen()/mergeUnless() read `value:` by name — NamedMergeResource
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ResourceAstAnalyzer with NamedMergeResource — merge helpers read value: by name', function () {
+    it('reads merge(value: …) as required and mergeWhen/mergeUnless(value: …, condition: …) as optional', function () {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(NamedMergeResource::class), Post::class);
+        $props = collect($analyzer->analyze()->properties)->keyBy('name');
+
+        expect($props['title']['type'])->toBe('string')
+            ->and($props['title']['optional'])->toBeFalse()
+            ->and($props['published']['type'])->toBe('string | null')
+            ->and($props['published']['optional'])->toBeTrue()
+            ->and($props['content']['type'])->toBe('string')
+            ->and($props['content']['optional'])->toBeTrue();
     });
 });
