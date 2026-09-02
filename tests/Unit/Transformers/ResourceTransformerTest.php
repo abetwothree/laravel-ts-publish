@@ -30,6 +30,7 @@ use Workbench\App\Http\Resources\KpiResource;
 use Workbench\App\Http\Resources\MediaTypeInstanceOfResource;
 use Workbench\App\Http\Resources\MediaTypeResource;
 use Workbench\App\Http\Resources\MediaTypeUnknownResource;
+use Workbench\App\Http\Resources\NamedArgsConditionalResource;
 use Workbench\App\Http\Resources\OrderResource;
 use Workbench\App\Http\Resources\PostFlatCollection;
 use Workbench\App\Http\Resources\PostResource;
@@ -2480,5 +2481,20 @@ describe('ResourceTransformer inline model FQCN multiplicity through analyzer me
 
         expect($data->properties['probe_nested']['type'])
             ->toBe('{ first: CrmUser | ModelsUser | null; second: ModelsUser | null }');
+    });
+});
+
+describe('ResourceTransformer with NamedArgsConditionalResource', function () {
+    test('reads the conditional family\'s named arguments the way Laravel binds them', function () {
+        $properties = (new ResourceTransformer(NamedArgsConditionalResource::class))->data()->properties;
+
+        expect($properties['not_null_named_default']['type'])->toBe('string | number')
+            ->and($properties['not_null_named_default']['optional'])->toBeFalse()
+            ->and($properties['when_all_named']['type'])->toBe('string | number')
+            ->and($properties['when_all_named']['optional'])->toBeFalse()
+            ->and($properties['loaded_named_default']['type'])->toBe('Comment[]')
+            ->and($properties['loaded_named_default']['optional'])->toBeFalse()
+            ->and($properties['counted_named_out_of_order']['type'])->toBe('number')
+            ->and($properties['counted_named_out_of_order']['optional'])->toBeFalse();
     });
 });

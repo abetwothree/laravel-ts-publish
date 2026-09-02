@@ -4350,14 +4350,14 @@ describe('ResourceAstAnalyzer with ConditionalDefaultsResource — whenNotNull/w
             ->and($props['not_null_explicit_null_default']['optional'])->toBeFalse();
     });
 
-    // A named argument makes position meaningless, so hasExplicitDefaultArg() bails to false — the default
-    // is not unioned in, and the property behaves exactly as if only the value argument had been passed.
-    it('bails out on a named default argument, back to value-arm-only and optional', function () {
+    // Laravel's func_num_args() counts `default: 0` as a second argument, so a named default is a real
+    // default: it unions in and makes the key required, exactly like the positional form above.
+    it('reads a named default argument as a real default, required and unioned', function () {
         $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ConditionalDefaultsResource::class), Address::class);
         $props = collect($analyzer->analyze()->properties)->keyBy('name');
 
-        expect($props['not_null_named_default']['type'])->toBe('string')
-            ->and($props['not_null_named_default']['optional'])->toBeTrue();
+        expect($props['not_null_named_default']['type'])->toBe('string | number')
+            ->and($props['not_null_named_default']['optional'])->toBeFalse();
     });
 
     // Same bail-out for a spread argument at the default position.

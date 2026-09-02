@@ -6,12 +6,14 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\BinaryOp;
@@ -22,6 +24,7 @@ use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Scalar\String_;
+use ReflectionMethod;
 
 /**
  * Laravel's conditional-property family: `when`, `unless`, `whenHas`, `whenNotNull`, `whenNull`,
@@ -48,14 +51,14 @@ final class ConditionalMethodHandler implements ExpressionHandler
     {
         if ($this->isThisMethodCall($expr, 'when')) {
             /** @var MethodCall $expr */
-            return $this->analyzeWhen($expr, $scope, $engine);
+            return $this->analyzeWhen($expr, 'when', $scope, $engine);
         }
 
         // unless() delegates to when() unchanged: negating the condition changes which arm runs,
         // never what either arm's type is.
         if ($this->isThisMethodCall($expr, 'unless')) {
             /** @var MethodCall $expr */
-            return $this->analyzeWhen($expr, $scope, $engine);
+            return $this->analyzeWhen($expr, 'unless', $scope, $engine);
         }
 
         if ($this->isThisMethodCall($expr, 'whenAppended')) {
@@ -95,22 +98,22 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
         if ($this->isThisMethodCall($expr, 'whenCounted')) {
             /** @var MethodCall $expr */
-            return $this->applyConditionalDefault(['type' => 'number', 'optional' => false], $expr, 2, $scope, $engine);
+            return $this->applyConditionalDefault(['type' => 'number', 'optional' => false], $this->arguments($expr, 'whenCounted'), $scope, $engine);
         }
 
         if ($this->isThisMethodCall($expr, 'whenAggregated')) {
             /** @var MethodCall $expr */
-            return $this->applyConditionalDefault(['type' => 'number', 'optional' => false], $expr, 4, $scope, $engine);
+            return $this->applyConditionalDefault(['type' => 'number', 'optional' => false], $this->arguments($expr, 'whenAggregated'), $scope, $engine);
         }
 
         if ($this->isThisMethodCall($expr, 'whenPivotLoaded')) {
             /** @var MethodCall $expr */
-            return $this->applyConditionalDefault(ValueResult::unknown(), $expr, 2, $scope, $engine);
+            return $this->applyConditionalDefault(ValueResult::unknown(), $this->arguments($expr, 'whenPivotLoaded'), $scope, $engine);
         }
 
         if ($this->isThisMethodCall($expr, 'whenPivotLoadedAs')) {
             /** @var MethodCall $expr */
-            return $this->applyConditionalDefault(ValueResult::unknown(), $expr, 3, $scope, $engine);
+            return $this->applyConditionalDefault(ValueResult::unknown(), $this->arguments($expr, 'whenPivotLoadedAs'), $scope, $engine);
         }
 
         return null;
@@ -129,17 +132,18 @@ final class ConditionalMethodHandler implements ExpressionHandler
      */
     protected function applyConditionalDefault(
         array $value,
-        MethodCall $call,
-        int $index,
+        CallArguments $args,
         AnalysisScope $scope,
         ExpressionEngine $engine,
         int $defaultArgCount = 0,
     ): array {
-        if (! $this->hasExplicitDefaultArg($call, $index)) {
+        $defaultArg = $args->named('default');
+
+        if ($defaultArg === null || ! $this->hasExplicitDefaultArg($args)) {
             return [...$value, 'optional' => true];
         }
 
-        $defaultExpr = $call->getArgs()[$index]->value;
+        $defaultExpr = $defaultArg->value;
 
         // A default closure requiring more parameters than Laravel supplies it can never run, so its
         // arm is unreachable — the value arm stands alone, still required.
@@ -170,29 +174,28 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze $this->when(condition, value) — the value is the second arg.
+     * Analyze $this->when(condition, value) / $this->unless(condition, value) — the value arm types the key.
      *
      * @return ValueExpressionResult
      */
-    protected function analyzeWhen(MethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): array
+    protected function analyzeWhen(MethodCall $call, string $method, AnalysisScope $scope, ExpressionEngine $engine): array
     {
-        $result = ValueResult::unknown();
-        $args = $call->getArgs();
+        $args = $this->arguments($call, $method);
+        $condition = $args->named('condition');
+        $valueArg = $args->named('value');
 
-        if (count($args) >= 2) {
-            $valueExpr = $args[1]->value;
-
-            $previousBindings = $scope->closureParamExprBindings;
-            $this->bindClosureParamsFromCondition($args[0]->value, $valueExpr, $scope);
-
-            $inner = $engine->resolve($valueExpr);
-
-            $scope->closureParamExprBindings = $previousBindings;
-
-            return $this->applyConditionalDefault($inner, $call, 2, $scope, $engine);
+        if ($condition === null || $valueArg === null) {
+            return [...ValueResult::unknown(), 'optional' => true]; // @codeCoverageIgnore
         }
 
-        return [...$result, 'optional' => true]; // @codeCoverageIgnore
+        $previousBindings = $scope->closureParamExprBindings;
+        $this->bindClosureParamsFromCondition($condition->value, $valueArg->value, $scope);
+
+        $inner = $engine->resolve($valueArg->value);
+
+        $scope->closureParamExprBindings = $previousBindings;
+
+        return $this->applyConditionalDefault($inner, $args, $scope, $engine);
     }
 
     /**
@@ -207,23 +210,29 @@ final class ConditionalMethodHandler implements ExpressionHandler
      */
     protected function analyzeWhenHas(MethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): array
     {
-        $result = ValueResult::unknown();
-        $args = $call->getArgs();
+        $args = $this->arguments($call, 'whenHas');
+        $attribute = $args->named('attribute')?->value;
 
-        if (count($args) >= 1 && $args[0]->value instanceof String_) {
-            $attrName = $args[0]->value->value;
-            $info = $this->resolveModelAttributeTypeInfo($attrName, $scope);
-            $result = ['type' => $info['type'], 'optional' => false];
-
-            if ($info['enumFqcn'] !== null) {
-                $wrapped = count($args) >= 2 && $this->isEnumResourceWrapCall($args[1]->value);
-                $result[$wrapped ? 'enumFqcn' : 'directEnumFqcn'] = $info['enumFqcn'];
-            }
-
-            return $this->applyConditionalDefault($result, $call, 2, $scope, $engine);
+        if (! $attribute instanceof String_) {
+            return [...ValueResult::unknown(), 'optional' => true]; // @codeCoverageIgnore
         }
 
-        return [...$result, 'optional' => true]; // @codeCoverageIgnore
+        // `whenHas('attr', default: …)` skips $value: Laravel then evaluates value(null, …), so the present
+        // arm is null, never the attribute.
+        if ($this->valueSkipped($args)) {
+            return $this->applyConditionalDefault(['type' => 'null', 'optional' => false], $args, $scope, $engine);
+        }
+
+        $info = $this->resolveModelAttributeTypeInfo($attribute->value, $scope);
+        $result = ['type' => $info['type'], 'optional' => false];
+
+        if ($info['enumFqcn'] !== null) {
+            $valueExpr = $args->named('value')?->value;
+            $wrapped = $valueExpr !== null && $this->isEnumResourceWrapCall($valueExpr);
+            $result[$wrapped ? 'enumFqcn' : 'directEnumFqcn'] = $info['enumFqcn'];
+        }
+
+        return $this->applyConditionalDefault($result, $args, $scope, $engine);
     }
 
     /**
@@ -237,21 +246,28 @@ final class ConditionalMethodHandler implements ExpressionHandler
      */
     protected function analyzeWhenAppended(MethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): array
     {
-        $args = $call->getArgs();
+        $args = $this->arguments($call, 'whenAppended');
+        $attribute = $args->named('attribute')?->value;
 
-        if ($args === [] || ! $args[0]->value instanceof String_) {
+        if (! $attribute instanceof String_) {
             return [...ValueResult::unknown(), 'optional' => true]; // @codeCoverageIgnore
         }
 
-        $info = $this->resolveModelAttributeTypeInfo($args[0]->value->value, $scope);
+        // Same as whenHas(): a skipped $value is value(null) at runtime.
+        if ($this->valueSkipped($args)) {
+            return $this->applyConditionalDefault(['type' => 'null', 'optional' => false], $args, $scope, $engine);
+        }
+
+        $info = $this->resolveModelAttributeTypeInfo($attribute->value, $scope);
         $result = ['type' => $info['type'], 'optional' => false];
 
         if ($info['enumFqcn'] !== null) {
-            $wrapped = count($args) >= 2 && $this->isEnumResourceWrapCall($args[1]->value);
+            $valueExpr = $args->named('value')?->value;
+            $wrapped = $valueExpr !== null && $this->isEnumResourceWrapCall($valueExpr);
             $result[$wrapped ? 'enumFqcn' : 'directEnumFqcn'] = $info['enumFqcn'];
         }
 
-        return $this->applyConditionalDefault($result, $call, 2, $scope, $engine);
+        return $this->applyConditionalDefault($result, $args, $scope, $engine);
     }
 
     /**
@@ -280,13 +296,18 @@ final class ConditionalMethodHandler implements ExpressionHandler
      */
     protected function analyzeWhenExistsLoaded(MethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): array
     {
-        $args = $call->getArgs();
+        $args = $this->arguments($call, 'whenExistsLoaded');
 
-        if ($args === [] || ! $args[0]->value instanceof String_) {
+        if (! $args->named('relationship')?->value instanceof String_) {
             return [...ValueResult::unknown(), 'optional' => true]; // @codeCoverageIgnore
         }
 
-        return $this->applyConditionalDefault(['type' => 'boolean', 'optional' => false], $call, 2, $scope, $engine);
+        // Unlike whenLoaded(), a skipped $value is not swapped for the identity closure: value(null, …) is null.
+        if ($this->valueSkipped($args)) {
+            return $this->applyConditionalDefault(['type' => 'null', 'optional' => false], $args, $scope, $engine);
+        }
+
+        return $this->applyConditionalDefault(['type' => 'boolean', 'optional' => false], $args, $scope, $engine);
     }
 
     /**
@@ -296,7 +317,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
      */
     protected function analyzeWhenNotNull(MethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): array
     {
-        return $this->analyzeWhenPossiblyNull($call, stripNull: true, scope: $scope, engine: $engine);
+        return $this->analyzeWhenPossiblyNull($call, 'whenNotNull', stripNull: true, scope: $scope, engine: $engine);
     }
 
     /**
@@ -307,7 +328,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
      */
     protected function analyzeWhenNull(MethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): array
     {
-        return $this->analyzeWhenPossiblyNull($call, stripNull: false, scope: $scope, engine: $engine);
+        return $this->analyzeWhenPossiblyNull($call, 'whenNull', stripNull: false, scope: $scope, engine: $engine);
     }
 
     /**
@@ -316,15 +337,16 @@ final class ConditionalMethodHandler implements ExpressionHandler
      *
      * @return ValueExpressionResult
      */
-    protected function analyzeWhenPossiblyNull(MethodCall $call, bool $stripNull, AnalysisScope $scope, ExpressionEngine $engine): array
+    protected function analyzeWhenPossiblyNull(MethodCall $call, string $method, bool $stripNull, AnalysisScope $scope, ExpressionEngine $engine): array
     {
-        $args = $call->getArgs();
+        $args = $this->arguments($call, $method);
+        $valueArg = $args->named('value');
 
-        if ($args === []) {
+        if ($valueArg === null) {
             return [...ValueResult::unknown(), 'optional' => true]; // @codeCoverageIgnore
         }
 
-        $value = $engine->resolve($args[0]->value);
+        $value = $engine->resolve($valueArg->value);
 
         if ($stripNull) {
             $value['type'] = ValueResult::stripNullArm($value['type']);
@@ -332,7 +354,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
             $value['type'] = 'null';
         }
 
-        return $this->applyConditionalDefault($value, $call, 1, $scope, $engine);
+        return $this->applyConditionalDefault($value, $args, $scope, $engine);
     }
 
     /**
@@ -346,17 +368,19 @@ final class ConditionalMethodHandler implements ExpressionHandler
     protected function analyzeWhenLoaded(MethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): array
     {
         $result = ValueResult::unknown();
-        $args = $call->getArgs();
+        $args = $this->arguments($call, 'whenLoaded');
+        $relationship = $args->named('relationship')?->value;
+        $valueExpr = $args->named('value')?->value;
 
-        if (count($args) >= 2) {
+        if ($valueExpr !== null) {
             // Resolve the related model so accesses on local variables inside the closure can be typed.
             $previousRelationModel = $scope->closureRelationModelClass;
             $previousVarModelBindings = $scope->varModelBindings;
             $previousVarCollectionBindings = $scope->varCollectionBindings;
             $relationInfo = null;
 
-            if ($args[0]->value instanceof String_) {
-                $relationInfo = $this->resolveModelRelationTypeInfo($args[0]->value->value, $scope);
+            if ($relationship instanceof String_) {
+                $relationInfo = $this->resolveModelRelationTypeInfo($relationship->value, $scope);
 
                 if ($relationInfo['modelFqcn'] !== null) {
                     $scope->closureRelationModelClass = $relationInfo['modelFqcn'];
@@ -365,12 +389,12 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
             if ($relationInfo !== null
                 && $relationInfo['modelFqcn'] !== null
-                && ($args[1]->value instanceof ClosureExpr || $args[1]->value instanceof ArrowFunction)
-                && isset($args[1]->value->params[0])
-                && $args[1]->value->params[0]->var instanceof Variable
-                && is_string($args[1]->value->params[0]->var->name)
+                && ($valueExpr instanceof ClosureExpr || $valueExpr instanceof ArrowFunction)
+                && isset($valueExpr->params[0])
+                && $valueExpr->params[0]->var instanceof Variable
+                && is_string($valueExpr->params[0]->var->name)
             ) {
-                $paramName = $args[1]->value->params[0]->var->name;
+                $paramName = $valueExpr->params[0]->var->name;
 
                 if (str_ends_with($relationInfo['type'], '[]')) {
                     $scope->varCollectionBindings[$paramName] = [
@@ -383,19 +407,20 @@ final class ConditionalMethodHandler implements ExpressionHandler
             }
 
             try {
-                $inner = $engine->resolve($args[1]->value);
+                $inner = $engine->resolve($valueExpr);
             } finally {
                 $scope->closureRelationModelClass = $previousRelationModel;
                 $scope->varModelBindings = $previousVarModelBindings;
                 $scope->varCollectionBindings = $previousVarCollectionBindings;
             }
 
-            return $this->applyConditionalDefault($inner, $call, 2, $scope, $engine);
+            return $this->applyConditionalDefault($inner, $args, $scope, $engine);
         }
 
-        if (count($args) >= 1 && $args[0]->value instanceof String_) {
-            $relationName = $args[0]->value->value;
-            $info = $this->resolveModelRelationTypeInfo($relationName, $scope);
+        // Also `whenLoaded('rel', default: …)`: Laravel then calls value() with a null $value, which it
+        // swaps for the identity closure, so the loaded arm is still the relation itself.
+        if ($relationship instanceof String_) {
+            $info = $this->resolveModelRelationTypeInfo($relationship->value, $scope);
             $result = ['type' => $info['type'], 'optional' => false];
 
             if ($info['modelFqcn'] !== null) {
@@ -406,7 +431,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
                 $result['embeddedModelFqcns'] = $info['morphFqcns'];
             }
 
-            return $this->applyConditionalDefault($result, $call, 2, $scope, $engine);
+            return $this->applyConditionalDefault($result, $args, $scope, $engine);
         }
 
         return [...$result, 'optional' => true]; // @codeCoverageIgnore
@@ -420,42 +445,55 @@ final class ConditionalMethodHandler implements ExpressionHandler
      */
     protected function analyzeTransform(MethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): array
     {
-        $result = ValueResult::unknown();
-        $args = $call->getArgs();
+        $args = $this->arguments($call, 'transform');
+        $valueArg = $args->named('value');
+        $callbackArg = $args->named('callback');
 
-        if (count($args) >= 2) {
-            $valueExpr = $args[0]->value;
-            $callbackExpr = $args[1]->value;
-
-            $previousBindings = $scope->closureParamExprBindings;
-            $this->bindClosureParamsFromCondition($valueExpr, $callbackExpr, $scope);
-
-            $inner = $engine->resolve($callbackExpr);
-
-            $scope->closureParamExprBindings = $previousBindings;
-
-            // transform()'s default runs through the global transform() helper's $default($value) — one
-            // argument — unlike the rest of the family's zero-argument value($default).
-            return $this->applyConditionalDefault($inner, $call, 2, $scope, $engine, defaultArgCount: 1);
+        if ($valueArg === null || $callbackArg === null) {
+            return [...ValueResult::unknown(), 'optional' => true]; // @codeCoverageIgnore
         }
 
-        return [...$result, 'optional' => true]; // @codeCoverageIgnore
+        $previousBindings = $scope->closureParamExprBindings;
+        $this->bindClosureParamsFromCondition($valueArg->value, $callbackArg->value, $scope);
+
+        $inner = $engine->resolve($callbackArg->value);
+
+        $scope->closureParamExprBindings = $previousBindings;
+
+        // transform()'s default runs through the global transform() helper's $default($value) — one
+        // argument — unlike the rest of the family's zero-argument value($default).
+        return $this->applyConditionalDefault($inner, $args, $scope, $engine, defaultArgCount: 1);
     }
 
     /**
-     * Whether an explicit default was passed at the given argument index. Laravel distinguishes a
-     * passed-through `null` from an omitted argument via func_num_args(), so position is the only
-     * signal; named or spread arguments make the position meaningless, so both bail out.
+     * Whether an explicit default was passed, as Laravel's func_num_args() sees it: `default` counts as
+     * passed once passedCount() exceeds its declared position, whether it was written there or by name
+     * (a named argument implies every earlier position). A spread makes the count unknowable, so it bails.
      */
-    private function hasExplicitDefaultArg(MethodCall $call, int $index): bool
+    private function hasExplicitDefaultArg(CallArguments $args): bool
     {
-        foreach ($call->getArgs() as $arg) {
-            if ($arg->unpack || $arg->name !== null) {
-                return false;
-            }
-        }
+        $position = $args->positionOf('default');
 
-        return count($call->getArgs()) > $index;
+        return ! $args->hasUnpack() && $position !== null && $args->passedCount() > $position;
+    }
+
+    /**
+     * Whether `value` was skipped by a later named argument: PHP then binds it to null and still counts it.
+     */
+    private function valueSkipped(CallArguments $args): bool
+    {
+        $position = $args->positionOf('value');
+
+        return $position !== null && $args->named('value') === null && $args->passedCount() > $position;
+    }
+
+    /**
+     * The call's arguments mapped against JsonResource's own signature for the method, so every read
+     * lands where Laravel binds it whether the caller wrote positions or names.
+     */
+    private function arguments(MethodCall $call, string $method): CallArguments
+    {
+        return CallArguments::for($call, new ReflectionMethod(JsonResource::class, $method));
     }
 
     /**
