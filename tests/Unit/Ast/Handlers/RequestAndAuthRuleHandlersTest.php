@@ -11,6 +11,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\StaticCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\StarterKit\StarterKitMiddleware;
+use Carbon\Carbon;
+use Illuminate\Http\UploadedFile;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -144,6 +146,27 @@ it('declines a Request method whose reflected type is unusable', function (strin
 it('declines a Request method returning a class token it cannot import', function () {
     expect((new KnownMethodRuleHandler)->resolve(requestCall('getUserResolver'), requestRuleScope(), requestRuleEngine()))
         ->toBeNull();
+});
+
+it('scans every arm of a union return type for a class that does not serialize', function () {
+    $subject = new class
+    {
+        public function upload(): UploadedFile|string
+        {
+            return 'x';
+        }
+
+        public function stamp(): Carbon|string
+        {
+            return 'x';
+        }
+    };
+
+    $check = fn (string $method): bool => (fn () => $this->serializesAsReflected(new ReflectionMethod($subject, $method)))
+        ->call(new KnownMethodRuleHandler);
+
+    expect($check('upload'))->toBeFalse()   // UploadedFile is not JsonSerializable
+        ->and($check('stamp'))->toBeTrue(); // Carbon is
 });
 
 // The decline above is a fall-through, not a result: requestMethodRule() runs before knownMethodRule()

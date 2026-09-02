@@ -22,8 +22,10 @@ use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use ReflectionClass;
+use ReflectionIntersectionType;
 use ReflectionMethod;
 use ReflectionNamedType;
+use ReflectionUnionType;
 
 /**
  * The dispatch floor: Laravel-convention method-name rules for method calls no earlier handler
@@ -126,8 +128,17 @@ final class KnownMethodRuleHandler implements ExpressionHandler
 
         $declared = $docComment === false ? '' : (string) LaravelTsPublish::extractReturnTypeFromDocblock($docComment);
 
-        if ($returnType instanceof ReflectionNamedType && ! $returnType->isBuiltin()) {
-            $declared .= '|'.$returnType->getName();
+        $arms = match (true) {
+            $returnType instanceof ReflectionNamedType => [$returnType],
+            $returnType instanceof ReflectionUnionType,
+            $returnType instanceof ReflectionIntersectionType => $returnType->getTypes(),
+            default => [],
+        };
+
+        foreach ($arms as $arm) {
+            if ($arm instanceof ReflectionNamedType && ! $arm->isBuiltin()) {
+                $declared .= '|'.$arm->getName();
+            }
         }
 
         // `class_exists` mirrors step 5b's own gate, so an interface — which it never launders — is skipped.
