@@ -621,8 +621,8 @@ class ResourceTransformer extends CoreTransformer
         $resolver = resolve(ModelAttributeResolver::class);
 
         foreach (array_keys($this->properties) as $propName) {
-            if (isset($this->propertyEnumFqcnsList[$propName])) {
-                continue; // @codeCoverageIgnore
+            if (isset($this->propertyEnumFqcnsList[$propName]) || isset($this->propertyInlineEnumFqcns[$propName])) {
+                continue;
             }
 
             $tsInfo = $resolver->resolveAttribute($this->modelClass, $propName);

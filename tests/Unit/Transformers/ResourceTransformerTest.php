@@ -5,6 +5,8 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
+use Workbench\App\Enums\Priority;
+use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\AddressExtendsResource;
 use Workbench\App\Http\Resources\AddressMixinResource;
 use Workbench\App\Http\Resources\AddressResource;
@@ -1624,6 +1626,26 @@ describe('ResourceTransformer mergePropertyFqcnMaps() overlap guard', function (
         // Without the guard the accessor pass re-adds its own [CrmUser, User] ahead of the inline
         // entries, producing a 4-entry queue for what is really 2 occurrences and misaligning the prefix.
         expect($merged['last_user_activity_by'])->toBe([User::class, CrmUser::class]);
+    });
+});
+
+describe('ResourceTransformer resolveMultiEnumAccessorFqcns() overlap guard', function () {
+    test('a property already carrying inline enum FQCNs is not re-queued by the accessor pass', function () {
+        $transformer = new ResourceTransformer(WarehouseResource::class);
+
+        (function () {
+            // review_priority's real construction also left a singular directEnumFqcn behind (the
+            // property-access handler's own, unrelated single-enum reference); clear it too so this
+            // isolates the list/inline overlap the accessor pass guard is meant to fix.
+            unset($this->propertyEnumFqcns['review_priority'], $this->propertyEnumFqcnsList['review_priority']);
+            $this->propertyInlineEnumFqcns['review_priority'] = [Priority::class, Status::class];
+        })->call($transformer);
+
+        (fn () => $this->resolveMultiEnumAccessorFqcns())->call($transformer);
+
+        $merged = (fn () => $this->mergePropertyFqcnMaps())->call($transformer);
+
+        expect($merged['review_priority'])->toBe([Priority::class, Status::class]);
     });
 });
 
