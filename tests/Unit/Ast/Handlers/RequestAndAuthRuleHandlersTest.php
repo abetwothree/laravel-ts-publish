@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownFunctionCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\StaticCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\StarterKit\StarterKitMiddleware;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
@@ -93,6 +94,20 @@ it('types a Request method call from the reflected signature', function (string 
 ]);
 
 it('types $request->user() through the auth provider model', function () {
+    expect((new KnownMethodRuleHandler)->resolve(requestCall('user'), requestRuleScope(), requestRuleEngine()))
+        ->toBe(['type' => 'User | null', 'optional' => false, 'modelFqcn' => User::class]);
+});
+
+it('answers $request->user() before the reflected-type acceptor gets a turn', function () {
+    app()->instance(ReflectedTypeAcceptor::class, new class
+    {
+        /** @param array<string, mixed> $tsInfo */
+        public function accept(array $tsInfo): never
+        {
+            throw new RuntimeException('user() must come from the auth model, not from reflection');
+        }
+    });
+
     expect((new KnownMethodRuleHandler)->resolve(requestCall('user'), requestRuleScope(), requestRuleEngine()))
         ->toBe(['type' => 'User | null', 'optional' => false, 'modelFqcn' => User::class]);
 });
