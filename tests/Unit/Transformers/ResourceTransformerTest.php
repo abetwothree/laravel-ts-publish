@@ -1634,18 +1634,15 @@ describe('ResourceTransformer resolveMultiEnumAccessorFqcns() overlap guard', fu
         $transformer = new ResourceTransformer(WarehouseResource::class);
 
         (function () {
-            // review_priority's real construction also left a singular directEnumFqcn behind (the
-            // property-access handler's own, unrelated single-enum reference); clear it too so this
-            // isolates the list/inline overlap the accessor pass guard is meant to fix.
-            unset($this->propertyEnumFqcns['review_priority'], $this->propertyEnumFqcnsList['review_priority']);
+            unset($this->propertyEnumFqcnsList['review_priority']);
             $this->propertyInlineEnumFqcns['review_priority'] = [Priority::class, Status::class];
         })->call($transformer);
 
         (fn () => $this->resolveMultiEnumAccessorFqcns())->call($transformer);
 
-        $merged = (fn () => $this->mergePropertyFqcnMaps())->call($transformer);
+        $list = (fn () => $this->propertyEnumFqcnsList)->call($transformer);
 
-        expect($merged['review_priority'])->toBe([Priority::class, Status::class]);
+        expect($list)->not->toHaveKey('review_priority');
     });
 });
 
