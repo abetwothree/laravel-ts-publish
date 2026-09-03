@@ -37,6 +37,7 @@
     "app\/Http\/Controllers\/DomainController.php",
     "app\/Http\/Controllers\/EnumBoundController.php",
     "app\/Http\/Controllers\/ExcludableController.php",
+    "app\/Http\/Controllers\/InertiaAddressController.php",
     "app\/Http\/Controllers\/InertiaController.php",
     "app\/Http\/Controllers\/InertiaFormRequestController.php",
     "app\/Http\/Controllers\/InertiaNamedCollectionsController.php",
