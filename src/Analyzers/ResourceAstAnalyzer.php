@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\FiltersModelAttributes;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ResolvesModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DispatchesFqcnResults;
@@ -19,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesSingularResourceClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ExpressionDispatcher;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ThisPropertyHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
@@ -26,8 +28,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesClassNames;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -78,6 +82,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
     use FiltersModelAttributes;
     use InspectsAstNodes;
     use InspectsResourceSubject;
+    use ParsesTsCasts;
     use ResolvesClassNames;
     use ResolvesModelRelationTypes;
     use ResolvesModelTypes;
@@ -269,10 +274,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
     /**
      * Array-literal-analyze an expression's items. ExpressionEngine entry point for InlineArrayHandler,
      * reusing the same machinery a resource's top-level return array uses (parent/filter/method spreads).
+     *
+     * Not top-level: a spread here is InlineArrayHandler's own intersection arm, not a flatten target.
      */
     public function returnArrayAnalysis(Array_ $array): ResourceAnalysis
     {
-        return $this->analyzeReturnArray($array);
+        return $this->analyzeReturnArray($array, topLevel: false);
     }
 
     /**
@@ -316,8 +323,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
     /**
      * Analyze a returned array literal into properties, spreads, and FQCN tracking maps.
+     *
+     * $topLevel gates the top-level-only resolve()/toArray() spread flatten (A24): true for every
+     * whole-method-return call site; false only from returnArrayAnalysis(), InlineArrayHandler's
+     * entry point for a NESTED array, where the same spread is that handler's own intersection arm.
      */
-    protected function analyzeReturnArray(Array_ $array): ResourceAnalysis
+    protected function analyzeReturnArray(Array_ $array, bool $topLevel = true): ResourceAnalysis
     {
         $analysis = new ResourceAnalysis;
 
@@ -384,6 +395,20 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 continue;
             }
 
+            // Handle a top-level ...SomeResource::make(...)->resolve(), ...$model->toArray(), or
+            // ...$collection->toArray() spread — flatten that arm's shape into this resource's own
+            // properties, the same three shapes InlineArrayHandler folds into an intersection one
+            // level down inside an inline array. Gated to $topLevel: nested, it's that handler's arm.
+            if ($topLevel && $item->key === null && $item->unpack) {
+                $armAnalysis = $this->analyzeSpreadArm($item->value);
+
+                if ($armAnalysis !== null) {
+                    $analysis->merge($armAnalysis);
+
+                    continue;
+                }
+            }
+
             // Handle $this->merge([...]) or $this->mergeWhen(condition, [...])
             if ($item->key === null && $item->value instanceof MethodCall) {
                 $mergeResult = $this->analyzeMergeExpression($item->value);
@@ -447,6 +472,124 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
+     * Classify a top-level spread's value expression via InlineArrayHandler::classifySpreadArm()
+     * and flatten its shape into this resource's own properties. Null for anything the classifier
+     * declines, so the caller falls through to $this->merge()'s own handling.
+     */
+    private function analyzeSpreadArm(Expr $expr): ?MethodAnalysis
+    {
+        $arm = InlineArrayHandler::classifySpreadArm($expr, $this->scope, $this);
+
+        if ($arm === null) {
+            return null;
+        }
+
+        if (! $arm['isModel']) {
+            /** @var class-string<JsonResource> $resourceFqcn */
+            $resourceFqcn = $arm['fqcn'];
+
+            return $this->analyzeResourceSpreadArm($resourceFqcn);
+        }
+
+        /** @var class-string<Model> $modelFqcn */
+        $modelFqcn = $arm['fqcn'];
+
+        return $arm['isCollection']
+            ? $this->analyzeCollectionSpreadArm($modelFqcn)
+            : $this->analyzeModelSpreadArm($modelFqcn);
+    }
+
+    /**
+     * Flatten a spread resource's own toArray() into this resource, the way analyzeThisMethodSpread()
+     * merges a spread method's analysis — nested resources, model FQCNs, and enum channels travel
+     * with it via MethodAnalysis::merge().
+     *
+     * @param  class-string<JsonResource>  $resourceFqcn
+     */
+    private function analyzeResourceSpreadArm(string $resourceFqcn): MethodAnalysis
+    {
+        DependencyRecorder::recordClass($resourceFqcn);
+
+        return resolve(AstEngine::class)->analyzeMethod($resourceFqcn, 'toArray');
+    }
+
+    /**
+     * Flatten a spread model's toArray() into one property per published column, typed the same
+     * way ThisPropertyHandler types a `$this->column` access, honoring that model's own #[TsCasts]
+     * overrides — the same refinement the canonical model interface a bare-model arm references gets.
+     *
+     * @param  class-string<Model>  $modelFqcn
+     */
+    private function analyzeModelSpreadArm(string $modelFqcn): ResourceAnalysis
+    {
+        DependencyRecorder::recordClass($modelFqcn);
+
+        $resolver = resolve(ModelAttributeResolver::class);
+        $tsCasts = $this->parseTsCastsFromReflection(new ReflectionClass($modelFqcn));
+        $properties = [];
+        $directEnumFqcns = [];
+        $customImports = [];
+
+        foreach ($resolver->publishedColumnNames($modelFqcn) as $column) {
+            $override = $tsCasts['overrides'][$column] ?? null;
+
+            if ($override !== null) {
+                $type = $override;
+                $enumFqcn = null;
+
+                $importPath = $tsCasts['importPaths'][$column] ?? null;
+
+                if ($importPath !== null) {
+                    foreach (LaravelTsPublish::extractImportableTypes($type) as $importName) {
+                        $customImports[$importPath][] = $importName;
+                    }
+                }
+            } else {
+                $tsInfo = $resolver->resolveAttribute($modelFqcn, $column);
+                $type = $tsInfo['type'];
+                $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
+            }
+
+            $properties[] = [
+                'name' => $column,
+                'type' => $type,
+                'optional' => $tsCasts['optionalOverrides'][$column] ?? false,
+                'description' => '',
+            ];
+
+            if ($enumFqcn !== null) {
+                $directEnumFqcns[$column] = $enumFqcn;
+            }
+        }
+
+        return new ResourceAnalysis(properties: $properties, directEnumFqcns: $directEnumFqcns, customImports: $customImports);
+    }
+
+    /**
+     * Flatten a spread collection's toArray() into an index-signature member: spreading a collection
+     * renumbers its elements 0..n at runtime, so no single named property can stand in for it. Same
+     * `Record<number, Model>` shape InlineArrayHandler emits for a nested spread, spelled as a member.
+     *
+     * @param  class-string<Model>  $modelFqcn
+     */
+    private function analyzeCollectionSpreadArm(string $modelFqcn): ResourceAnalysis
+    {
+        DependencyRecorder::recordClass($modelFqcn);
+
+        $indexKey = '[key: number]';
+
+        return new ResourceAnalysis(
+            properties: [[
+                'name' => $indexKey,
+                'type' => LaravelTsPublish::resourceTypeName($modelFqcn),
+                'optional' => false,
+                'description' => '',
+            ]],
+            modelFqcns: [$indexKey => $modelFqcn],
+        );
+    }
+
+    /**
      * Analyze a returned `array_merge(...)` through the array-literal it is equivalent to.
      *
      * Declines the whole call when an argument is neither a literal nor `parent::{$this->methodName}()`.
@@ -499,7 +642,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $isMergeUnless = $this->isThisMethodCall($call, 'mergeUnless');
 
         if (! $isMerge && ! $isMergeWhen && ! $isMergeUnless) {
-            return new ResourceAnalysis; // @codeCoverageIgnore
+            return new ResourceAnalysis;
         }
 
         if ($call->isFirstClassCallable()) {

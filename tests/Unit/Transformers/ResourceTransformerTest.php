@@ -18,6 +18,7 @@ use Workbench\App\Http\Resources\BranchedInlineFqcnResource;
 use Workbench\App\Http\Resources\CategoryResource;
 use Workbench\App\Http\Resources\ChildInlineFqcnResource;
 use Workbench\App\Http\Resources\ChildSharedResource;
+use Workbench\App\Http\Resources\CommentComposedResource;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\DelegatingWithMixinResource;
 use Workbench\App\Http\Resources\EmptyResource;
@@ -1224,6 +1225,21 @@ describe('ResourceTransformer with parent::toArray spread', function () {
         expect($allTypes)->toContain('StatusType')
             ->and($allTypes)->toContain('VisibilityType')
             ->and($allTypes)->toContain('PriorityType');
+    });
+});
+
+describe('ResourceTransformer with CommentComposedResource — top-level spreads flatten', function () {
+    test('top-level resolve()/toArray() spreads flatten into the resource properties', function () {
+        $properties = (new ResourceTransformer(CommentComposedResource::class))->data()->properties;
+        $names = array_keys($properties);
+
+        expect($names)->toContain('id')
+            ->and($names)->toContain('title')   // from PostResource
+            ->and($names)->toContain('email')   // from User::toArray()
+            // from Post::tags()->toArray() — an index signature, not a named key: spreading a
+            // collection renumbers its elements 0..n, the same shape buildSpreadArmTypes() wraps
+            // as `Record<number, Tag>` for the identical spread one level down inside an inline array.
+            ->and($properties['[key: number]']['type'])->toBe('Tag');
     });
 });
 

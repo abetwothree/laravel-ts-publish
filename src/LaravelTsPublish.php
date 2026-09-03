@@ -1667,9 +1667,14 @@ class LaravelTsPublish
         }
     }
 
+    /**
+     * A generated `[key: number]`/`[key: string]` index signature is already valid TS syntax, not
+     * a literal property name — quoting it below would silently turn it into one.
+     */
     public function validJsObjectKey(string $key): string
     {
-        if (preg_match('/^[a-zA-Z_$][a-zA-Z0-9_$]*$/', $key)) {
+        if (preg_match('/^[a-zA-Z_$][a-zA-Z0-9_$]*$/', $key)
+            || preg_match('/^\[[a-zA-Z_$][a-zA-Z0-9_$]*: (?:string|number)\]$/', $key)) {
             return $key;
         }
 

@@ -10,12 +10,14 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Config;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 
@@ -33,6 +35,44 @@ final class InlineArrayHandler implements ExpressionHandler
     use BuildsInlineObjectTypes;
     use InspectsAstNodes;
 
+    /**
+     * Classify a spread's value expression as a bare named resource, a bound model's toArray(), or
+     * a bound collection's toArray() — the three shapes an inline array's intersection is built
+     * from. Shared with ResourceAstAnalyzer's top-level flatten path so the two never diverge on
+     * the same shape.
+     *
+     * @return InlineSpreadArm|null
+     */
+    public static function classifySpreadArm(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $modelFqcn = self::spreadModelToArrayFqcn($expr, $scope);
+
+        if ($modelFqcn !== null) {
+            return ['fqcn' => $modelFqcn, 'isModel' => true, 'isCollection' => false];
+        }
+
+        $collectionFqcn = self::spreadCollectionToArrayFqcn($expr, $scope);
+
+        if ($collectionFqcn !== null) {
+            return ['fqcn' => $collectionFqcn, 'isModel' => true, 'isCollection' => true];
+        }
+
+        $chain = self::spreadRelationChainFqcn($expr, $scope);
+
+        if ($chain !== null) {
+            return ['fqcn' => $chain['fqcn'], 'isModel' => true, 'isCollection' => $chain['isCollection']];
+        }
+
+        $spreadResult = $engine->resolve($expr);
+
+        if (isset($spreadResult['resourceFqcn'])
+            && $spreadResult['type'] === LaravelTsPublish::resourceTypeName($spreadResult['resourceFqcn'])) {
+            return ['fqcn' => $spreadResult['resourceFqcn'], 'isModel' => false, 'isCollection' => false];
+        }
+
+        return null;
+    }
+
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
     {
@@ -47,6 +87,135 @@ final class InlineArrayHandler implements ExpressionHandler
         }
 
         return null;
+    }
+
+    /**
+     * Resolve `$var->toArray()` to the name of `$var`, or null when the expression is not that shape.
+     *
+     * `$this->toArray()` is the resource's own method and is handled elsewhere, so it is excluded
+     * by name — `$this` parses as a `Variable` too, which would otherwise match incidentally.
+     */
+    private static function spreadToArrayVarName(Expr $expr): ?string
+    {
+        if (! $expr instanceof MethodCall
+            || ! $expr->name instanceof Identifier
+            || $expr->name->toString() !== 'toArray'
+            || ! $expr->var instanceof Variable
+            || ! is_string($expr->var->name)
+            || $expr->var->name === 'this') {
+            return null;
+        }
+
+        return $expr->var->name;
+    }
+
+    /**
+     * Resolve `$var->toArray()`, where `$var` is a closure-bound model, to that model's FQCN.
+     *
+     * @return class-string<Model>|null
+     */
+    private static function spreadModelToArrayFqcn(Expr $expr, AnalysisScope $scope): ?string
+    {
+        $varName = self::spreadToArrayVarName($expr);
+
+        if ($varName === null) {
+            return null;
+        }
+
+        if (isset($scope->varModelBindings[$varName])) {
+            return $scope->varModelBindings[$varName];
+        }
+
+        // A to-many whenLoaded param holds the whole collection, not one element — its toArray()
+        // is a list of member arrays, never a single model's shape. spreadCollectionToArrayFqcn()
+        // picks it up instead.
+        if (isset($scope->varCollectionBindings[$varName])) {
+            return null;
+        }
+
+        return $scope->closureRelationModelClass;
+    }
+
+    /**
+     * Resolve `$var->toArray()`, where `$var` is a closure-bound relation collection, to its
+     * element model's FQCN.
+     *
+     * @return class-string<Model>|null
+     */
+    private static function spreadCollectionToArrayFqcn(Expr $expr, AnalysisScope $scope): ?string
+    {
+        $varName = self::spreadToArrayVarName($expr);
+
+        return $varName === null ? null : ($scope->varCollectionBindings[$varName]['modelFqcn'] ?? null);
+    }
+
+    /**
+     * Resolve `$this->relation[->relation...]->toArray()`, where every hop is a real relation on
+     * the previous hop's model, to the terminal relation's element FQCN and its to-many-ness.
+     *
+     * @return array{fqcn: class-string<Model>, isCollection: bool}|null
+     */
+    private static function spreadRelationChainFqcn(Expr $expr, AnalysisScope $scope): ?array
+    {
+        if (! $expr instanceof MethodCall
+            || ! $expr->name instanceof Identifier
+            || $expr->name->toString() !== 'toArray'
+            || $expr->isFirstClassCallable()
+            || $expr->getArgs() !== []) {
+            return null;
+        }
+
+        $segments = self::relationChainSegments($expr->var);
+
+        if ($segments === null || $segments === [] || $scope->modelClass === null) {
+            return null;
+        }
+
+        $resolver = resolve(ModelAttributeResolver::class);
+        /** @var class-string<Model> $modelFqcn */
+        $modelFqcn = $scope->modelClass;
+        $isCollection = false;
+
+        foreach ($segments as $segment) {
+            // A hop past an already-to-many relation has no single model left to resolve against
+            // (Post::tags() has no further relation to walk) — decline rather than guess.
+            if ($isCollection) {
+                return null;
+            }
+
+            $info = $resolver->resolveRelation($modelFqcn, $segment);
+
+            if ($info['modelFqcn'] === null) {
+                return null;
+            }
+
+            $modelFqcn = $info['modelFqcn'];
+            $isCollection = str_ends_with($info['type'], '[]');
+        }
+
+        return ['fqcn' => $modelFqcn, 'isCollection' => $isCollection];
+    }
+
+    /**
+     * Walk a `$this->a->b->c` property-fetch chain into its segment names, outermost first. Any
+     * shape but a chain rooted at `$this` — a computed name, a non-`this` root — declines.
+     *
+     * @return list<string>|null
+     */
+    private static function relationChainSegments(Expr $expr): ?array
+    {
+        $segments = [];
+
+        while ($expr instanceof PropertyFetch) {
+            if (! $expr->name instanceof Identifier) {
+                return null;
+            }
+
+            array_unshift($segments, $expr->name->toString());
+            $expr = $expr->var;
+        }
+
+        return $expr instanceof Variable && is_string($expr->name) && $expr->name === 'this' ? $segments : null;
     }
 
     /**
@@ -236,90 +405,14 @@ final class InlineArrayHandler implements ExpressionHandler
                 continue;
             }
 
-            $modelFqcn = $this->spreadModelToArrayFqcn($item->value, $scope);
+            $arm = self::classifySpreadArm($item->value, $scope, $engine);
 
-            if ($modelFqcn !== null) {
-                $spreadArms[] = ['fqcn' => $modelFqcn, 'isModel' => true, 'isCollection' => false];
-
-                continue;
-            }
-
-            $collectionFqcn = $this->spreadCollectionToArrayFqcn($item->value, $scope);
-
-            if ($collectionFqcn !== null) {
-                $spreadArms[] = ['fqcn' => $collectionFqcn, 'isModel' => true, 'isCollection' => true];
-
-                continue;
-            }
-
-            $spreadResult = $engine->resolve($item->value);
-
-            if (isset($spreadResult['resourceFqcn']) && $spreadResult['type'] === LaravelTsPublish::resourceTypeName($spreadResult['resourceFqcn'])) {
-                $spreadArms[] = ['fqcn' => $spreadResult['resourceFqcn'], 'isModel' => false, 'isCollection' => false];
+            if ($arm !== null) {
+                $spreadArms[] = $arm;
             }
         }
 
         return $spreadArms;
-    }
-
-    /**
-     * Resolve `$var->toArray()` to the name of `$var`, or null when the expression is not that shape.
-     *
-     * `$this->toArray()` is the resource's own method and is handled elsewhere, so it is excluded
-     * by name — `$this` parses as a `Variable` too, which would otherwise match incidentally.
-     */
-    private function spreadToArrayVarName(Expr $expr): ?string
-    {
-        if (! $expr instanceof MethodCall
-            || ! $expr->name instanceof Identifier
-            || $expr->name->toString() !== 'toArray'
-            || ! $expr->var instanceof Variable
-            || ! is_string($expr->var->name)
-            || $expr->var->name === 'this') {
-            return null;
-        }
-
-        return $expr->var->name;
-    }
-
-    /**
-     * Resolve `$var->toArray()`, where `$var` is a closure-bound model, to that model's FQCN.
-     *
-     * @return class-string<Model>|null
-     */
-    private function spreadModelToArrayFqcn(Expr $expr, AnalysisScope $scope): ?string
-    {
-        $varName = $this->spreadToArrayVarName($expr);
-
-        if ($varName === null) {
-            return null;
-        }
-
-        if (isset($scope->varModelBindings[$varName])) {
-            return $scope->varModelBindings[$varName];
-        }
-
-        // A to-many whenLoaded param holds the whole collection, not one element — its toArray()
-        // is a list of member arrays, never a single model's shape. spreadCollectionToArrayFqcn()
-        // picks it up instead.
-        if (isset($scope->varCollectionBindings[$varName])) {
-            return null;
-        }
-
-        return $scope->closureRelationModelClass;
-    }
-
-    /**
-     * Resolve `$var->toArray()`, where `$var` is a closure-bound relation collection, to its
-     * element model's FQCN.
-     *
-     * @return class-string<Model>|null
-     */
-    private function spreadCollectionToArrayFqcn(Expr $expr, AnalysisScope $scope): ?string
-    {
-        $varName = $this->spreadToArrayVarName($expr);
-
-        return $varName === null ? null : ($scope->varCollectionBindings[$varName]['modelFqcn'] ?? null);
     }
 
     /**

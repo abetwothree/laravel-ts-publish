@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclinedTopLevelSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeArrayMergeChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeSpreadChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NamedMergeResource;
@@ -5876,5 +5877,19 @@ describe('ResourceAstAnalyzer with NamedMergeResource — merge helpers read val
             ->and($props['published']['optional'])->toBeTrue()
             ->and($props['content']['type'])->toBe('string')
             ->and($props['content']['optional'])->toBeTrue();
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A top-level spread none of the three arm shapes classify contributes nothing —
+// DeclinedTopLevelSpreadResource
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ResourceAstAnalyzer with DeclinedTopLevelSpreadResource — an unclassifiable top-level spread', function () {
+    it('declines the spread and keeps only the explicit key', function () {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(DeclinedTopLevelSpreadResource::class), Post::class);
+        $names = array_column($analyzer->analyze()->properties, 'name');
+
+        expect($names)->toBe(['id']);
     });
 });
