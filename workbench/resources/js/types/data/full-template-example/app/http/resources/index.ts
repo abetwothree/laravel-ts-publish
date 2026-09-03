@@ -63,6 +63,8 @@ export * from './merchant-resource';
 export * from './merge-closure-resource';
 export * from './merge-multi-branch-closure-resource';
 export * from './misc-collection';
+export * from './mixed-enum-merged-resource';
+export * from './mixed-enum-return-branches-resource';
 export * from './model-wrapped-prop-resource';
 export * from './mutually-recursive-spread-resource';
 export * from './named-args-conditional-resource';

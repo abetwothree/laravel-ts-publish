@@ -10614,6 +10614,51 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\MixedEnumMergedResource": {
+            "name": "MixedEnumMergedResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "wrapped_history_or_scalar_merged",
+                    "type": "AsEnum<typeof Status>[] | StatusType",
+                    "optional": false
+                },
+                {
+                    "name": "assigned_marker",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "wrapped_history_or_scalar_assigned",
+                    "type": "AsEnum<typeof Status>[] | StatusType",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\MixedEnumReturnBranchesResource": {
+            "name": "MixedEnumReturnBranchesResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "branch_active",
+                    "type": "boolean",
+                    "optional": true
+                },
+                {
+                    "name": "wrapped_history_or_scalar",
+                    "type": "AsEnum<typeof Status>[] | StatusType",
+                    "optional": true
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\ModelWrappedPropResource": {
             "name": "ModelWrappedPropResource",
             "properties": [

@@ -2613,6 +2613,29 @@ declare global {
         export interface MiscCollection {
             data: unknown;
         }
+        /**
+         * Regression fixture: a mixed EnumResource::collection()/direct-access ternary's per-arm shape
+         * (Task 28) must survive every result collector, not only analyzeReturnArray(). Each property
+         * below reaches a different collector that used to drop the shape and silently reproduce the
+         * pre-fix (missing `[]`) answer.
+         */
+        export interface MixedEnumMergedResource {
+            id: number;
+            wrapped_history_or_scalar_merged: app.enums.StatusType[] | app.enums.StatusType;
+            assigned_marker: boolean;
+            wrapped_history_or_scalar_assigned: app.enums.StatusType[] | app.enums.StatusType;
+        }
+        /**
+         * Regression fixture: a mixed EnumResource::collection()/direct-access ternary's per-arm shape
+         * (Task 28) must survive ResourceAstAnalyzer::mergeReturnBranches(), not only the single-branch
+         * analyzeReturnArray() path. Each `if`/`else` here returns its own array, so toArray() has more
+         * than one top-level `return` and is merged rather than analyzed directly.
+         */
+        export interface MixedEnumReturnBranchesResource {
+            id: number;
+            branch_active?: boolean;
+            wrapped_history_or_scalar?: app.enums.StatusType[] | app.enums.StatusType;
+        }
         /** Resource for testing that $this->resource->prop on a model-backed resource resolves to the model attribute type. */
         export interface ModelWrappedPropResource {
             title: string;
