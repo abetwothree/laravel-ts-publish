@@ -323,9 +323,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
     /**
      * Analyze a returned array literal into properties, spreads, and FQCN tracking maps.
      *
-     * $topLevel gates the top-level-only resolve()/toArray() spread flatten (A24): true for every
-     * whole-method-return call site; false only from returnArrayAnalysis(), InlineArrayHandler's
-     * entry point for a NESTED array, where the same spread is that handler's own intersection arm.
+     * $topLevel gates the top-level-only resolve()/toArray() spread flatten (A24): true when this
+     * literal IS a whole return shape (a resource's own, or an opted-in caller like Inertia's props);
+     * false — one value's own inline type — threads down through every method this recurses into.
      */
     protected function analyzeReturnArray(Array_ $array, bool $topLevel = true): ResourceAnalysis
     {

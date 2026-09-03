@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaInlineTabl
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaServiceTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithDelegatedProps;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithSpreadProps;
 use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
 use Workbench\App\Http\Controllers\InertiaPaginationsController;
 use Workbench\App\Http\Controllers\InertiaPreserveKeysController;
@@ -161,6 +162,19 @@ it('types props delegated to a collaborator, and reads both inertia() helper for
         ->and($helper['pageType'])->toBe('Inertia.SharedData & { label: string }')
         ->and($chain['component'])->toBe('Dashboard/HelperChain')
         ->and($chain['pageType'])->toBe('Inertia.SharedData & { label: string }');
+});
+
+// Task 32 review, fix round 2: the props array literal passed to Inertia::render() is a whole
+// return shape in its own right, so a top-level resource spread inside it must flatten too.
+it('flattens a top-level resource spread inside the render props array', function () {
+    $data = pageData(ControllerWithSpreadProps::class.'@index');
+
+    expect($data['component'])->toBe('Dashboard/Spread')
+        ->and($data['pageType'])->toBe(
+            'Inertia.SharedData & { id: number, name: string, email: string, role: RoleType | null, '.
+            'profile?: Profile | null, posts?: PostResource[], phone?: string | null, avatar?: string, '.
+            'posts_count?: number, comments_count?: number, flag: boolean }'
+        );
 });
 
 it('returns null for an action that renders no Inertia response', function () {
