@@ -108,17 +108,6 @@ inventory — which pairs are pinned, which are proven inert, and which are neit
 in [docs/components/ast-engine.md](./components/ast-engine.md#the-honest-ordering-inventory). Read the pin
 count as "the divergences someone has gone and found", not "the only divergences that exist".
 
-### `skipLibCheck` hides every generated `.d.ts` from that same gate
-
-`tsconfig.json:43` sets `skipLibCheck: true`, so `tsc` never checks the body of a declaration file. The
-generated tree contains `.d.ts` files and lists them in `include` on purpose, so their imports are read and
-then checked against nothing — straight through the zero-tolerance relative-specifier sub-gate the script's
-header calls out as having no legitimate non-zero cause.
-
-Confirmed by mutation, not inferred: pointing a relative import in a generated `.d.ts` at a nonexistent
-module produces no diagnostic at all, and the gate still passes. Turning the flag off is not a one-line
-fix — it also starts checking `node_modules`, which surfaces a failure this package does not own.
-
 ### The publish-speed gate is one-sided and its two arms are not pinned
 
 `.github/scripts/publish-bench.sh` runs and passes in CI. Two things it does not do.

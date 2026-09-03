@@ -81,8 +81,12 @@ gate_one() {
     return 1
   fi
 
+  # node_modules declarations are checked now too; count only diagnostics in files this package writes.
+  local owned
+  owned=$(printf '%s\n' "$out" | grep -E "^(workbench|tests)/" || true)
+
   local errs count
-  errs=$(printf '%s\n' "$out" | grep -E "error TS(2300|2304|2305|2344|2440|2552|2724)" || true)
+  errs=$(printf '%s\n' "$owned" | grep -E "error TS(2300|2304|2305|2344|2440|2552|2724)" || true)
   count=$(printf '%s' "$errs" | grep -c . || true)
 
   echo "TS2300/TS2304/TS2305/TS2344/TS2440/TS2552/TS2724 (duplicate identifier / cannot find name / unexported name / bad type argument / import-local conflict) in generated tree: $count"
@@ -94,7 +98,7 @@ gate_one() {
   # count rather than folded into the bare one below: pooling the two would let a new broken relative
   # import hide inside ordinary bare-alias churn, invisible until the combined total crossed baseline.
   local rel_errs rel_count
-  rel_errs=$(printf '%s\n' "$out" | grep -E "error TS2307" | grep -E "Cannot find module '\.{1,2}/" || true)
+  rel_errs=$(printf '%s\n' "$owned" | grep -E "error TS2307" | grep -E "Cannot find module '\.{1,2}/" || true)
   rel_count=$(printf '%s' "$rel_errs" | grep -c . || true)
 
   echo "TS2307 (cannot find module) with a relative specifier in generated tree: $rel_count"
@@ -104,7 +108,7 @@ gate_one() {
   # the consuming app. Those are stubbed under tests/types/stubs and mapped by tsconfig `paths`, so an
   # unresolved one means a new alias needs a stub, or an import was emitted that nothing should have.
   local bare_errs bare_count
-  bare_errs=$(printf '%s\n' "$out" | grep -E "error TS2307" | grep -vE "Cannot find module '\.{1,2}/" || true)
+  bare_errs=$(printf '%s\n' "$owned" | grep -E "error TS2307" | grep -vE "Cannot find module '\.{1,2}/" || true)
   bare_count=$(printf '%s' "$bare_errs" | grep -c . || true)
 
   echo "TS2307 (cannot find module) with a bare specifier in generated tree: $bare_count"

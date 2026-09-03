@@ -138,6 +138,17 @@ checking four trees together, not a defect in any one of them. The env var `TSCO
 default all four) selects which configs a run checks; both fail-open guards below run per config, and the
 script fails if any config fails, not only the last.
 
+**`skipLibCheck` is off.** `tsconfig.json` sets `"skipLibCheck": false`, so `tsc` checks the *body* of
+every `.d.ts` it includes, not just its shape — the generated tree ships `.d.ts` files on purpose (e.g.
+`echo-broadcast-events.d.ts`), and a broken import inside one used to produce no diagnostic at all.
+
+Turning it off also checks `node_modules`, which is not this package's code to fix. So `gate_one()` counts
+only diagnostics whose path starts with `workbench/` or `tests/` — the two fail-open guards above still
+read the *whole* `tsc` output, since a config or parse error can print with no path prefix at all, but
+every subsequent count is scoped. The current example is `@tolki/types`'s own `collections.d.ts`, which
+raises one `TS2526` that shows in raw `tsc` output and nowhere else; it disappears once the dependency's
+own fix (tracked separately) is picked up here.
+
 **All three baselines are `0`.** The app-side modules the generated tree imports are stubbed under
 `tests/types/stubs` (see [The app-side stubs](#the-app-side-stubs)), so the gate is an *identity* check
 rather than a cardinality one: any unresolvable module, any name a stub does not export, any bad `Pick`
@@ -278,9 +289,10 @@ disappearing together), then `GlobalsWriter`'s form-request import loop, then `#
 analyzer references, then the stubs. Lowering a baseline once the defect behind it is gone was always the
 point; defending the number never was. There is no baseline left to defend.
 
-After the stubs, `npx tsc --noEmit -p tsconfig.json` over the generated tree reports exactly one code:
-**4** TS6196 (`declared but never used`), which no gate counts — see
-[What the gates do not cover](#what-the-gates-do-not-cover).
+After the stubs, `npx tsc --noEmit -p tsconfig.json` over the generated tree reports two codes nothing
+gates on: **4** TS6196 (`declared but never used`, see
+[What the gates do not cover](#what-the-gates-do-not-cover)) and, since `skipLibCheck` went off (below),
+**1** TS2526 inside `@tolki/types`'s own shipped declaration file — a dependency bug, not ours.
 
 ### The TS2307 sub-gates
 
