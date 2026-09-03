@@ -121,6 +121,7 @@
     "app\/Http\/Resources\/FluentSelfResource.php",
     "app\/Http\/Resources\/FqcnMixinResource.php",
     "app\/Http\/Resources\/GuardClauseClosureResource.php",
+    "app\/Http\/Resources\/GuardedCollectionSpreadResource.php",
     "app\/Http\/Resources\/HelperCallResource.php",
     "app\/Http\/Resources\/ImageDelegatedResource.php",
     "app\/Http\/Resources\/ImageDimensionsResource.php",

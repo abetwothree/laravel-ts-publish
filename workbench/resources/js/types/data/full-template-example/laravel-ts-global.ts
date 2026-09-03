@@ -259,6 +259,7 @@ declare global {
             content: string;
             post_id: number;
             user_id: number;
+            parent_id: number | null;
             is_flagged: boolean;
             flagged_at: string | null;
             metadata: Record<string, unknown>;
@@ -274,6 +275,10 @@ declare global {
             user: User;
             user_count: number;
             user_exists: boolean;
+            /** Self-referencing: replies to this comment */
+            replies: Comment[];
+            replies_count: number;
+            replies_exists: boolean;
         }
         export interface CompositeComment {
             // Columns
@@ -2373,6 +2378,15 @@ declare global {
             id: number;
             total: number;
             buyer?: { name: string; email: string } | null;
+        }
+        /**
+         * A guard-clause branch alongside a top-level `[key: number]` collection spread — regression
+         * fixture for mergeReturnBranches() over-marking an index signature optional.
+         */
+        export interface GuardedCollectionSpreadResource {
+            id: number;
+            archived?: boolean;
+            [key: number]: app.models.OrderItem;
         }
         /**
          * Exercises userland global-helper reflection (route()), Carbon

@@ -4444,6 +4444,10 @@
                     "type": "number"
                 },
                 {
+                    "name": "parent_id",
+                    "type": "number | null"
+                },
+                {
                     "name": "is_flagged",
                     "type": "boolean"
                 },
@@ -4476,6 +4480,10 @@
                     "type": "User"
                 },
                 {
+                    "name": "replies",
+                    "type": "Comment[]"
+                },
+                {
                     "name": "post_count",
                     "type": "number"
                 },
@@ -4484,11 +4492,19 @@
                     "type": "number"
                 },
                 {
+                    "name": "replies_count",
+                    "type": "number"
+                },
+                {
                     "name": "post_exists",
                     "type": "boolean"
                 },
                 {
                     "name": "user_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "replies_exists",
                     "type": "boolean"
                 }
             ]
@@ -10118,6 +10134,26 @@
                     "name": "buyer",
                     "type": "{ name: string; email: string } | null",
                     "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\GuardedCollectionSpreadResource": {
+            "name": "GuardedCollectionSpreadResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "archived",
+                    "type": "boolean",
+                    "optional": true
+                },
+                {
+                    "name": "[key: number]",
+                    "type": "OrderItem",
+                    "optional": false
                 }
             ]
         },
