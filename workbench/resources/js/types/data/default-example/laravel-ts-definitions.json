@@ -11303,6 +11303,21 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\PostEnumTrioResource": {
+            "name": "PostEnumTrioResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "trio",
+                    "type": "{ a: StatusType; b: StatusType; c: PriorityType | null }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\PostFlatCollection": {
             "name": "PostFlatCollection",
             "typeAlias": "PostResource[]"

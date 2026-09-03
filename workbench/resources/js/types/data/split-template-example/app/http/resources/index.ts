@@ -82,6 +82,7 @@ export * from './order-resource';
 export * from './order-summary-resource';
 export * from './post-attachment-filter-resource';
 export * from './post-collection';
+export * from './post-enum-trio-resource';
 export * from './post-flat-collection';
 export * from './post-resource';
 export * from './post-spotlight-resource';

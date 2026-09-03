@@ -2825,6 +2825,11 @@ declare global {
         export interface PostCollection {
             data: PostResource[];
         }
+        /** Three enum members, two of them the same enum: the import queue must carry three entries, not two. */
+        export interface PostEnumTrioResource {
+            id: number;
+            trio: { a: app.enums.StatusType; b: app.enums.StatusType; c: app.enums.PriorityType | null };
+        }
         /**
          * A ResourceCollection with $wrap = null so the collection IS the array,
          * not wrapped in a 'data' key. Uses #[Collects] to identify the singular resource.
