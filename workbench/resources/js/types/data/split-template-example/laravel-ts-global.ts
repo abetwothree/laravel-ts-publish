@@ -373,7 +373,7 @@ declare global {
             status_from_docblock: app.enums.StatusType | null;
             uploader_from_docblock: User | null;
             config_from_docblock: MenuSettingsType;
-            data_from_docblock: { title: string; weight: number | null };
+            data_from_docblock: { recordedAt?: string; title: string; weight: number | null };
             uploaders_from_docblock: User[] | Record<string, User>;
             uploaders_from_docblock_int: User[];
             uploaders_from_docblock_string: Record<string, User>;
@@ -2376,7 +2376,7 @@ declare global {
             status_from_docblock: app.enums.StatusType | null;
             uploader_from_docblock: app.models.User | null;
             config_from_docblock: MenuSettingsType;
-            data_from_docblock: { title: string; weight: number | null };
+            data_from_docblock: { recordedAt?: string; title: string; weight: number | null };
             uploaders_from_docblock: app.models.User[] | Record<string, app.models.User>;
             uploaders_from_docblock_int: app.models.User[];
             uploaders_from_docblock_string: Record<string, app.models.User>;
@@ -4004,12 +4004,6 @@ declare global {
             tags: string[];
             id: number;
             note: string | null;
-        }
-        export interface DeferredNotification {
-            occurredAt: string;
-            note: string | null;
-            userId: number;
-            title: string;
         }
         export interface EnumBroadcastEvent {
             status: app.enums.StatusType;

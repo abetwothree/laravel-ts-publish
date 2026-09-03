@@ -14,7 +14,6 @@
     "app\/Enums\/WeekDays.php",
     "app\/Events\/ComputedNameEvent.php",
     "app\/Events\/DeclaredPropsEvent.php",
-    "app\/Events\/DeferredNotification.php",
     "app\/Events\/EnumBroadcastEvent.php",
     "app\/Events\/MixedTypesEvent.php",
     "app\/Events\/MultiModelEvent.php",

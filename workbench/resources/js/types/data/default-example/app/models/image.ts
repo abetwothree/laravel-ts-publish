@@ -42,7 +42,7 @@ export interface ImageMutators
     status_from_docblock: StatusType | null;
     uploader_from_docblock: ModelsUser | null;
     config_from_docblock: MenuSettingsType;
-    data_from_docblock: { title: string; weight: number | null };
+    data_from_docblock: { recordedAt?: string; title: string; weight: number | null };
     uploaders_from_docblock: ModelsUser[] | Record<string, ModelsUser>;
     uploaders_from_docblock_int: ModelsUser[];
     uploaders_from_docblock_string: Record<string, ModelsUser>;

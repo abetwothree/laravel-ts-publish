@@ -1,6 +1,5 @@
 import type { ComputedNameEvent } from './workbench/app/events/ComputedNameEvent';
 import type { DeclaredPropsEvent } from './workbench/app/events/DeclaredPropsEvent';
-import type { DeferredNotification } from './workbench/app/events/DeferredNotification';
 import type { EnumBroadcastEvent } from './workbench/app/events/EnumBroadcastEvent';
 import type { MixedTypesEvent } from './workbench/app/events/MixedTypesEvent';
 import type { MultiModelEvent } from './workbench/app/events/MultiModelEvent';
@@ -20,7 +19,6 @@ import type { UserSynced as CrmUserSynced } from './workbench/crm/events/UserSyn
 export type BroadcastEvent =
     | '.Workbench.App.Events.ComputedNameEvent'
     | '.Workbench.App.Events.DeclaredPropsEvent'
-    | '.Workbench.App.Events.DeferredNotification'
     | '.Workbench.App.Events.EnumBroadcastEvent'
     | '.Workbench.App.Events.MixedTypesEvent'
     | '.Workbench.App.Events.MultiModelEvent'
@@ -40,7 +38,6 @@ export type BroadcastEvent =
 export const BroadcastEvents = Object.freeze({
     ComputedNameEvent: '.Workbench.App.Events.ComputedNameEvent',
     DeclaredPropsEvent: '.Workbench.App.Events.DeclaredPropsEvent',
-    DeferredNotification: '.Workbench.App.Events.DeferredNotification',
     EnumBroadcastEvent: '.Workbench.App.Events.EnumBroadcastEvent',
     MixedTypesEvent: '.Workbench.App.Events.MixedTypesEvent',
     MultiModelEvent: '.Workbench.App.Events.MultiModelEvent',
@@ -61,7 +58,6 @@ export const BroadcastEvents = Object.freeze({
 export type {
     ComputedNameEvent,
     DeclaredPropsEvent,
-    DeferredNotification,
     EnumBroadcastEvent,
     MixedTypesEvent,
     MultiModelEvent,

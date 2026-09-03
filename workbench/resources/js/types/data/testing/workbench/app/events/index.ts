@@ -1,6 +1,5 @@
 export * from './ComputedNameEvent';
 export * from './DeclaredPropsEvent';
-export * from './DeferredNotification';
 export * from './EnumBroadcastEvent';
 export * from './MixedTypesEvent';
 export * from './MultiModelEvent';
