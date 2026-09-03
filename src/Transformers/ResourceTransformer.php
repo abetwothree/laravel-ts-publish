@@ -146,6 +146,7 @@ class ResourceTransformer extends CoreTransformer
             ->parseResourceTsCastsOverrides()
             ->runAstAnalysis()
             ->applyOverrides()
+            ->pruneOverriddenEnumImports()
             ->resolveMultiClassAccessorFqcns()
             ->resolveMultiEnumAccessorFqcns()
             ->resolveImportConflicts()
@@ -405,6 +406,24 @@ class ResourceTransformer extends CoreTransformer
         foreach ($this->optionalOverrides as $property => $optional) {
             if (isset($this->properties[$property])) {
                 $this->properties[$property]['optional'] = $optional;
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * Drops enum-map entries whose bare type no longer appears in any property after #[TsCasts] overrides.
+     *
+     * @return $this
+     */
+    protected function pruneOverriddenEnumImports(): self
+    {
+        $rendered = implode("\n", array_column($this->properties, 'type'));
+
+        foreach ($this->enumFqcnMap as $fqcn => $typeName) {
+            if (preg_match('/\b'.preg_quote($typeName, '/').'\b/', $rendered) !== 1) {
+                unset($this->enumFqcnMap[$fqcn]);
             }
         }
 

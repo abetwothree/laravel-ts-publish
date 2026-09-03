@@ -627,6 +627,13 @@ describe('ResourceTransformer with ToArrayCastsResource — #[TsCasts] on toArra
         expect($data->properties['id']['type'])->toBe('number');
         expect($data->properties['name']['type'])->toBe('string');
     });
+
+    test('a #[TsCasts] override removes the enum import the analyzer had claimed', function () {
+        $transformer = new ResourceTransformer(ToArrayCastsResource::class);
+        $transformer->data();
+
+        expect(implode(' ', array_merge(...array_values($transformer->typeImports))))->not->toContain('RoleType');
+    });
 });
 
 describe('ResourceTransformer with OrderResource', function () {
