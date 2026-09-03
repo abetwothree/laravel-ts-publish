@@ -1976,6 +1976,56 @@ declare global {
             buyer: app.models.User | null;
             status: app.enums.OrderStatusType;
         }
+        /**
+         * Three key-less spreads at the top level of toArray(): a resource's resolve(), a model's toArray(),
+         * and a collection's toArray(). Each flattens into this resource's own properties.
+         */
+        export interface CommentComposedResource {
+            morphValue: string;
+            id: number;
+            title: string;
+            content: string;
+            status: app.enums.StatusType;
+            status_new: app.enums.StatusType;
+            visibility: app.enums.VisibilityType | null;
+            visibility_new: app.enums.VisibilityType | null;
+            priority: app.enums.PriorityType | null;
+            priority_new: app.enums.PriorityType | null;
+            comments: { id: number; content: string; user: app.models.User }[];
+            comments_limited: Pick<app.models.Comment, 'id' | 'content'>[];
+            published: boolean;
+            rating_display: number;
+            word_count: string;
+            heading_content: { title: string; summary: string };
+            publishable: boolean;
+            comments_count: number;
+            is_featured: boolean;
+            category_is_first?: boolean | null;
+            category_is_active?: boolean | null;
+            category_breadcrumb?: string | null;
+            comments_resolved?: CommentResource[];
+            post_class_name: string;
+            post_table_name: string;
+            category_class_name?: string;
+            category_table_name?: string;
+            name: string;
+            email: string;
+            email_verified_at: string | null;
+            password: string;
+            options: Record<string, unknown> | null;
+            remember_token: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            role: app.enums.RoleType | null;
+            membership_level: app.enums.MembershipLevelType | null;
+            phone: string | null;
+            avatar: string | null;
+            bio: string | null;
+            settings: { theme: "light" | "dark"; notifications: boolean; locale: string } | null;
+            last_login_at: string | null;
+            last_login_ip: string | null;
+            [key: number]: app.models.Tag;
+        }
         export interface CommentResource {
             id: number;
             content: string;

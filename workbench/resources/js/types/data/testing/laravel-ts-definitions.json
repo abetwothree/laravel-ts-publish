@@ -8736,6 +8736,231 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\CommentComposedResource": {
+            "name": "CommentComposedResource",
+            "properties": [
+                {
+                    "name": "morphValue",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "title",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "content",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "status",
+                    "type": "AsEnum<typeof Status>",
+                    "optional": false
+                },
+                {
+                    "name": "status_new",
+                    "type": "AsEnum<typeof Status>",
+                    "optional": false
+                },
+                {
+                    "name": "visibility",
+                    "type": "AsEnum<typeof Visibility> | null",
+                    "optional": false
+                },
+                {
+                    "name": "visibility_new",
+                    "type": "AsEnum<typeof Visibility> | null",
+                    "optional": false
+                },
+                {
+                    "name": "priority",
+                    "type": "AsEnum<typeof Priority> | null",
+                    "optional": false
+                },
+                {
+                    "name": "priority_new",
+                    "type": "AsEnum<typeof Priority> | null",
+                    "optional": false
+                },
+                {
+                    "name": "comments",
+                    "type": "{ id: number; content: string; user: User }[]",
+                    "optional": false
+                },
+                {
+                    "name": "comments_limited",
+                    "type": "Pick<Comment, 'id' | 'content'>[]",
+                    "optional": false
+                },
+                {
+                    "name": "published",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "rating_display",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "word_count",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "heading_content",
+                    "type": "{ title: string; summary: string }",
+                    "optional": false
+                },
+                {
+                    "name": "publishable",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "comments_count",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "is_featured",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "category_is_first",
+                    "type": "boolean | null",
+                    "optional": true
+                },
+                {
+                    "name": "category_is_active",
+                    "type": "boolean | null",
+                    "optional": true
+                },
+                {
+                    "name": "category_breadcrumb",
+                    "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "comments_resolved",
+                    "type": "CommentResource[]",
+                    "optional": true
+                },
+                {
+                    "name": "post_class_name",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "post_table_name",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "category_class_name",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "category_table_name",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "name",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "email",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "email_verified_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "password",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "options",
+                    "type": "Record<string, unknown> | null",
+                    "optional": false
+                },
+                {
+                    "name": "remember_token",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "role",
+                    "type": "RoleType | null",
+                    "optional": false
+                },
+                {
+                    "name": "membership_level",
+                    "type": "MembershipLevelType | null",
+                    "optional": false
+                },
+                {
+                    "name": "phone",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "avatar",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "bio",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "settings",
+                    "type": "{ theme: \"light\" | \"dark\"; notifications: boolean; locale: string } | null",
+                    "optional": false
+                },
+                {
+                    "name": "last_login_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "last_login_ip",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "[key: number]",
+                    "type": "Tag",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\CommentResource": {
             "name": "CommentResource",
             "properties": [

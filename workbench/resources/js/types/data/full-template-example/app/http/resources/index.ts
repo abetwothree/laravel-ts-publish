@@ -18,6 +18,7 @@ export * from './closure-control-flow-resource';
 export * from './closure-param-shadow-resource';
 export * from './closure-union-metadata-resource';
 export * from './coalesce-channel-resource';
+export * from './comment-composed-resource';
 export * from './comment-resource';
 export * from './conditional-defaults-resource';
 export * from './conditional-param-array-resource';
