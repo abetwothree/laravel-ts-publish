@@ -66,12 +66,43 @@ final class TernaryHandler implements ExpressionHandler
 
         $ifResult = $engine->resolve($ifExpr);
         $elseResult = $engine->resolve($elseExpr);
-        $wrapResult = isset($ifResult['enumFqcn']) ? $ifResult : $elseResult;
-        $directResult = isset($ifResult['directEnumFqcn']) ? $ifResult : $elseResult;
+
+        $wrapResult = $this->unambiguousArm($ifResult, $elseResult, 'enumFqcn');
+        $directResult = $this->unambiguousArm($ifResult, $elseResult, 'directEnumFqcn');
+
+        // Either arm being itself mixed (e.g. a nested ternary) makes wrap/direct unattributable —
+        // decline rather than let one arm masquerade as both, and let the caller's own fallback stand.
+        if ($wrapResult === null || $directResult === null) {
+            return $result;
+        }
 
         $result['wrapIsCollection'] = str_ends_with(rtrim(str_replace('| null', '', $wrapResult['type'])), '[]');
         $result['directIsArray'] = str_ends_with(rtrim(str_replace('| null', '', $directResult['type'])), '[]');
 
         return $result;
+    }
+
+    /**
+     * The arm that carries only `$key` and not the other FQCN channel — null when neither arm
+     * qualifies (both/neither carry it alone), which is the ambiguous case the caller declines.
+     *
+     * @param  ValueExpressionResult  $ifResult
+     * @param  ValueExpressionResult  $elseResult
+     * @param  'enumFqcn'|'directEnumFqcn'  $key
+     * @return ValueExpressionResult|null
+     */
+    private function unambiguousArm(array $ifResult, array $elseResult, string $key): ?array
+    {
+        $other = $key === 'enumFqcn' ? 'directEnumFqcn' : 'enumFqcn';
+
+        if (isset($ifResult[$key]) && ! isset($ifResult[$other])) {
+            return $ifResult;
+        }
+
+        if (isset($elseResult[$key]) && ! isset($elseResult[$other])) {
+            return $elseResult;
+        }
+
+        return null;
     }
 }

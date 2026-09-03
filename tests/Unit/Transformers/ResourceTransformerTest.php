@@ -33,6 +33,8 @@ use Workbench\App\Http\Resources\KpiResource;
 use Workbench\App\Http\Resources\MediaTypeInstanceOfResource;
 use Workbench\App\Http\Resources\MediaTypeResource;
 use Workbench\App\Http\Resources\MediaTypeUnknownResource;
+use Workbench\App\Http\Resources\MixedEnumMergedResource;
+use Workbench\App\Http\Resources\MixedEnumReturnBranchesResource;
 use Workbench\App\Http\Resources\NamedArgsConditionalResource;
 use Workbench\App\Http\Resources\OrderResource;
 use Workbench\App\Http\Resources\PostEnumTrioResource;
@@ -2388,6 +2390,32 @@ describe('ResourceTransformer with EnumCollectionResource — EnumResource::coll
 
         expect($properties['wrapped_history_or_scalar']['type'])->toBe('AsEnum<typeof Status>[] | StatusType')
             ->and($properties['wrapped_history_or_array']['type'])->toBe('AsEnum<typeof Status>[] | StatusType[]');
+    });
+});
+
+// Regression: the mixed-ternary arm shape (Task 28) is recorded once, in TernaryHandler, but is
+// only useful if every ResourceAnalysis-building collector threads it through to the transformer —
+// not only ResourceAstAnalyzer::analyzeReturnArray(), the single path the first fix wired up.
+describe('ResourceTransformer with mixed-ternary collector regressions', function () {
+    test('mergeReturnBranches() carries the arm shape across multiple return branches', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+        $properties = (new ResourceTransformer(MixedEnumReturnBranchesResource::class))->data()->properties;
+
+        expect($properties['wrapped_history_or_scalar']['type'])->toBe('AsEnum<typeof Status>[] | StatusType');
+    });
+
+    test('ThisPropertyHandler::extractPropertiesFromArray() carries the arm shape through $this->merge()', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+        $properties = (new ResourceTransformer(MixedEnumMergedResource::class))->data()->properties;
+
+        expect($properties['wrapped_history_or_scalar_merged']['type'])->toBe('AsEnum<typeof Status>[] | StatusType');
+    });
+
+    test('collectVariableArrayAssignments() carries the arm shape through a variable-building spread method', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+        $properties = (new ResourceTransformer(MixedEnumMergedResource::class))->data()->properties;
+
+        expect($properties['wrapped_history_or_scalar_assigned']['type'])->toBe('AsEnum<typeof Status>[] | StatusType');
     });
 });
 

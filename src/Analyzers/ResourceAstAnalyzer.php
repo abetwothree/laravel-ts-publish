@@ -67,6 +67,7 @@ use ReflectionNamedType;
  * @phpstan-import-type InlineEnumFqcnsMap from MethodAnalysis
  * @phpstan-import-type InlineModelFqcnsMap from MethodAnalysis
  * @phpstan-import-type MultiEnumFqcnsMap from MethodAnalysis
+ * @phpstan-import-type EnumResourceArmShapeMap from MethodAnalysis
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  */
 class ResourceAstAnalyzer implements ExpressionEngine
@@ -740,12 +741,14 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $multiEnumResourceFqcns = [];
         /** @var InlineEnumFqcnsMap $inlineEnumResourceFqcns */
         $inlineEnumResourceFqcns = [];
+        /** @var EnumResourceArmShapeMap $enumResourceArmShapes */
+        $enumResourceArmShapes = [];
 
         $this->collectVariableArrayAssignments(
             $stmts, $varName, false,
             $properties, $enumResources, $nestedResources,
             $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
-            $inlineEnumResourceFqcns,
+            $inlineEnumResourceFqcns, $enumResourceArmShapes,
         );
 
         return new ResourceAnalysis(
@@ -759,6 +762,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             inlineModelFqcns: $inlineModelFqcns,
             multiEnumResourceFqcns: $multiEnumResourceFqcns,
             inlineEnumResourceFqcns: $inlineEnumResourceFqcns,
+            enumResourceArmShapes: $enumResourceArmShapes,
         );
     }
 
@@ -778,6 +782,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
      * @param  InlineModelFqcnsMap  $inlineModelFqcns
      * @param  MultiEnumFqcnsMap  $multiEnumResourceFqcns
      * @param  InlineEnumFqcnsMap  $inlineEnumResourceFqcns
+     * @param  EnumResourceArmShapeMap  $enumResourceArmShapes
      */
     protected function collectVariableArrayAssignments(
         array $stmts,
@@ -793,6 +798,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         array &$inlineModelFqcns,
         array &$multiEnumResourceFqcns = [],
         array &$inlineEnumResourceFqcns = [],
+        array &$enumResourceArmShapes = [],
     ): void {
         foreach ($stmts as $stmt) {
             if (! $stmt instanceof ExpressionStmt && ! $stmt instanceof If_
@@ -826,6 +832,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                     inlineModelFqcns: $inlineModelFqcns,
                     multiEnumResourceFqcns: $multiEnumResourceFqcns,
                     inlineEnumResourceFqcns: $inlineEnumResourceFqcns,
+                    enumResourceArmShapes: $enumResourceArmShapes,
                 );
                 $accumulator->merge($baseAnalysis);
 
@@ -839,6 +846,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 $inlineModelFqcns = $accumulator->inlineModelFqcns;
                 $multiEnumResourceFqcns = $accumulator->multiEnumResourceFqcns;
                 $inlineEnumResourceFqcns = $accumulator->inlineEnumResourceFqcns;
+                $enumResourceArmShapes = $accumulator->enumResourceArmShapes;
 
                 continue;
             }
@@ -886,9 +894,13 @@ class ResourceAstAnalyzer implements ExpressionEngine
                     $directEnumFqcns[$keyName],
                     $modelFqcns[$keyName],
                     $multiEnumResourceFqcns[$keyName],
+                    $enumResourceArmShapes[$keyName],
                 );
 
-                $this->dispatchFqcnResults($keyName, $result, $enumResources, $directEnumFqcns, $nestedResources, $modelFqcns, $multiEnumResourceFqcns);
+                $this->dispatchFqcnResults(
+                    $keyName, $result, $enumResources, $directEnumFqcns, $nestedResources, $modelFqcns,
+                    $multiEnumResourceFqcns, $enumResourceArmShapes,
+                );
 
                 foreach ($result['embeddedEnumFqcns'] ?? [] as $fqcn) {
                     $inlineEnumFqcns[$keyName][] = $fqcn;
@@ -914,7 +926,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                     $stmt->stmts, $varName, true,
                     $properties, $enumResources, $nestedResources,
                     $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
-                    $inlineEnumResourceFqcns,
+                    $inlineEnumResourceFqcns, $enumResourceArmShapes,
                 );
 
                 foreach ($stmt->elseifs as $elseif) {
@@ -922,7 +934,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                         $elseif->stmts, $varName, true,
                         $properties, $enumResources, $nestedResources,
                         $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
-                        $inlineEnumResourceFqcns,
+                        $inlineEnumResourceFqcns, $enumResourceArmShapes,
                     );
                 }
 
@@ -931,7 +943,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                         $stmt->else->stmts, $varName, true,
                         $properties, $enumResources, $nestedResources,
                         $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
-                        $inlineEnumResourceFqcns,
+                        $inlineEnumResourceFqcns, $enumResourceArmShapes,
                     );
                 }
             }
@@ -943,7 +955,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                     $stmt->stmts, $varName, true,
                     $properties, $enumResources, $nestedResources,
                     $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
-                    $inlineEnumResourceFqcns,
+                    $inlineEnumResourceFqcns, $enumResourceArmShapes,
                 );
             }
         }
@@ -1121,6 +1133,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $inlineModelFqcns = [];
         /** @var InlineEnumFqcnsMap $inlineEnumResourceFqcns */
         $inlineEnumResourceFqcns = [];
+        /** @var EnumResourceArmShapeMap $enumResourceArmShapes */
+        $enumResourceArmShapes = [];
         $flatTypeAlias = null;
         $flatTypeAliasFqcn = null;
 
@@ -1134,6 +1148,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $directEnumFqcns = [...$directEnumFqcns, ...$analysis->directEnumFqcns];
             $modelFqcns = [...$modelFqcns, ...$analysis->modelFqcns];
             $multiEnumResourceFqcns = [...$multiEnumResourceFqcns, ...$analysis->multiEnumResourceFqcns];
+            $enumResourceArmShapes = [...$enumResourceArmShapes, ...$analysis->enumResourceArmShapes];
             $flatTypeAlias ??= $analysis->flatTypeAlias;
             $flatTypeAliasFqcn ??= $analysis->flatTypeAliasFqcn;
 
@@ -1200,6 +1215,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             inlineModelFqcns: $inlineModelFqcns,
             multiEnumResourceFqcns: $multiEnumResourceFqcns,
             inlineEnumResourceFqcns: $inlineEnumResourceFqcns,
+            enumResourceArmShapes: $enumResourceArmShapes,
             flatTypeAlias: $flatTypeAlias,
             flatTypeAliasFqcn: $flatTypeAliasFqcn,
         );

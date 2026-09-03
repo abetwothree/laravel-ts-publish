@@ -37,6 +37,7 @@ use PhpParser\Node\Identifier;
  * @phpstan-import-type InlineEnumFqcnsMap from MethodAnalysis
  * @phpstan-import-type InlineModelFqcnsMap from MethodAnalysis
  * @phpstan-import-type MultiEnumFqcnsMap from MethodAnalysis
+ * @phpstan-import-type EnumResourceArmShapeMap from MethodAnalysis
  */
 final class ThisPropertyHandler implements ExpressionHandler
 {
@@ -92,6 +93,8 @@ final class ThisPropertyHandler implements ExpressionHandler
         $multiEnumResourceFqcns = [];
         /** @var InlineEnumFqcnsMap $inlineEnumResourceFqcns */
         $inlineEnumResourceFqcns = [];
+        /** @var EnumResourceArmShapeMap $enumResourceArmShapes */
+        $enumResourceArmShapes = [];
 
         foreach ($array->items as $item) {
             if ($item->key === null) {
@@ -113,7 +116,10 @@ final class ThisPropertyHandler implements ExpressionHandler
                 'description' => '',
             ];
 
-            $this->dispatchFqcnResults($keyName, $result, $enumResources, $directEnumFqcns, $nestedResources, $modelFqcns, $multiEnumResourceFqcns);
+            $this->dispatchFqcnResults(
+                $keyName, $result, $enumResources, $directEnumFqcns, $nestedResources, $modelFqcns,
+                $multiEnumResourceFqcns, $enumResourceArmShapes,
+            );
 
             foreach ($result['embeddedEnumFqcns'] ?? [] as $fqcn) {
                 $inlineEnumFqcns[$keyName][] = $fqcn;
@@ -143,6 +149,7 @@ final class ThisPropertyHandler implements ExpressionHandler
             inlineModelFqcns: $inlineModelFqcns,
             multiEnumResourceFqcns: $multiEnumResourceFqcns,
             inlineEnumResourceFqcns: $inlineEnumResourceFqcns,
+            enumResourceArmShapes: $enumResourceArmShapes,
         );
     }
 
