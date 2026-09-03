@@ -5,6 +5,8 @@
 set -uo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
+# docs/superpowers is gitignored planning notes, not shipped docs - excluded so its own line-number
+# references don't fail this gate.
 hits=$(grep -rnE '\b[A-Za-z0-9_/.-]+\.php:[0-9]+' docs --include='*.md' --exclude-dir=superpowers || true)
 
 if [ -n "$hits" ]; then

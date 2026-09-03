@@ -82,6 +82,13 @@ The executable ordering contract lives in `tests/Unit/Ast/ResourceExpressionHand
   - `InertiaWrapperHandler` before `StaticCallHandler` for `Inertia::always(...)`. `StaticCallHandler`'s
     last arm claims every `StaticCall` and never declines, so if it ran first it would reflect the
     wrapper as an ordinary static method and floor the prop at `unknown` instead of the wrapped value.
+  - `FirstClassCallableHandler` before `KnownFunctionCallHandler` for a first-class-callable
+    `auth()->user(...)`. `KnownFunctionCallHandler` gates only the inner `auth()` call on
+    `isFirstClassCallable()`, never the outer `MethodCall`, so if it ran first it would answer with
+    the guard's model — a confident type for what is actually a `Closure`.
+  - `FirstClassCallableHandler` before `ToResourceHandler` for a first-class-callable
+    `$this->post->toResource(...)`. `ToResourceHandler` matches on the method name alone and then
+    calls `getArgs()`, which asserts `!isFirstClassCallable()` and fatals without the guard ahead of it.
 
 `MethodCall` gets a further, exhaustive layer on top of the six pins above:
 `tests/Unit/Ast/MethodCallOrderingMatrixTest.php` runs every one of its nine claimants' 36 unordered

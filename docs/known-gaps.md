@@ -59,16 +59,21 @@ round; not reproduced as a committed test or golden-tree property, so nothing he
 Task 29 made an uninitialized typed public property optional wherever a class's shape is inlined —
 `LaravelTsPublish::publicPropertyShapeType()` (`src/LaravelTsPublish.php`), reached from `toTsType()`'s
 step 5c and from `arrayableShapeType()`'s no-docblock fallback. A broadcast event's own top-level
-property list never reaches that method: `AstEngine::analyzePublicProperties()`
-(`src/Ast/AstEngine.php:86-125`) reflects the event class directly and hardcodes `'optional' => false`
-for every property (line 105), regardless of whether reflection says the property was ever assigned.
-An event with `public Carbon $occurredAt;` and no default therefore still emits `occurredAt: string;`
-in its generated `.ts` file — required — even though `json_encode()` would omit the key exactly as
-Task 29's fix accounts for everywhere else. Verified against a throwaway event fixture during Task 29's
-fix round, then removed once it stopped pinning anything the golden tree would show; not reproduced as
-a committed test or golden-tree property, so nothing here pins it yet. Fixing it means threading the
-same `hasDefaultValue()`/`isPromoted()` check into `analyzePublicProperties()`, which is a change to
-every existing broadcast event's blast radius, not a one-fixture addition — worth doing as its own task.
+property list never reaches that method: `AstEngine::analyzePublicProperties()` reflects the event
+class directly and hardcodes `'optional' => false` for every property, regardless of whether reflection
+says the property was ever assigned. An event with `public Carbon $occurredAt;` and no default therefore
+still emits `occurredAt: string;` in its generated `.ts` file — required — even though `json_encode()`
+would omit the key exactly as Task 29's fix accounts for everywhere else. Verified against a throwaway
+event fixture during Task 29's fix round, then removed once it stopped pinning anything the golden tree
+would show; not reproduced as a committed test or golden-tree property, so nothing here pins it yet.
+Fixing it means threading the same `hasDefaultValue()`/`isPromoted()` check into
+`analyzePublicProperties()`, which is a change to every existing broadcast event's blast radius, not a
+one-fixture addition — worth doing as its own task. `analyzePublicProperties()`'s own docblock already
+states it never marks a property optional — nullability is `| null`, optionality is a `#[TsCasts]`
+concern — so a future fix has to reconcile that deliberate boundary rather than be surprised by it. A
+related case is inherent rather than fixable: a public non-promoted `readonly` property that a
+hand-written constructor always assigns still renders `?:`, because a `readonly` property cannot carry
+a declaration default for static reflection to read — absent from the corpus today.
 
 ### `#[TsCasts]` and the top-level spread flatten disagree by scope, in three separate ways
 
@@ -93,12 +98,12 @@ unrelated to spreading — makes the gap sharper than "missing", not just narrow
   `full_address` gets the same treatment.
 - **The host resource's own `#[TsCasts]` is applied by property name, blind to where the property actually
   came from.** `ResourceTransformer::applyOverrides()` walks `$this->modelTsCastsOverrides` (from the *host*
-  resource's own backing model) and rewrites `$this->properties[$property]` by name alone
-  (`src/Transformers/ResourceTransformer.php:391-407`) — it has no notion that a flattened property named
-  `created_at` or `settings` came from a *different* model than the host's own. A host resource's
-  `#[TsCasts]` entry for `created_at` — a common override, since raw `datetime` casts rarely need one but
-  developers add them anyway for consistency — silently overwrites a same-named column flattened from an
-  entirely unrelated spread arm, in whichever direction the override happens to point.
+  resource's own backing model) and rewrites `$this->properties[$property]` by name alone — it has no
+  notion that a flattened property named `created_at` or `settings` came from a *different* model than
+  the host's own. A host resource's `#[TsCasts]` entry for `created_at` — a common override, since raw
+  `datetime` casts rarely need one but developers add them anyway for consistency — silently overwrites
+  a same-named column flattened from an entirely unrelated spread arm, in whichever direction the
+  override happens to point.
 
 None of this is a regression to `unknown`: every case above still emits a real, plausible-looking type —
 just possibly the wrong one, or missing a refinement its own standalone file carries. Fixing the first two

@@ -291,7 +291,7 @@ analyzer references, then the stubs. Lowering a baseline once the defect behind 
 point; defending the number never was. There is no baseline left to defend.
 
 After the stubs, `npx tsc --noEmit -p tsconfig.json` over the generated tree reported two codes nothing
-gated on: **4** TS6196 (`declared but never used`) and, since `skipLibCheck` went off (below), **1** TS2526
+gated on: **4** TS6196 (`declared but never used`) and, since `skipLibCheck` went off (above), **1** TS2526
 inside `@tolki/types`'s own shipped declaration file — a dependency bug, not ours. The four TS6196s were
 later fixed — `laravel-ts-global.ts` now emits the `extends` clause it imports for, and a `#[TsCasts]`
 override releases the enum import it replaces — and the code joined the main count above. TS2526 remains
