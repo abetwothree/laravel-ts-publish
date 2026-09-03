@@ -93,20 +93,26 @@ Absent on purpose. Do not "fix" these without raising it first.
 
 ## Green signals that are narrower than they look
 
-### Handler ordering is pinned by example, not by the suite
+### Handler ordering is pinned pairwise, corpus-bounded
 
 Nine of the twenty-four handlers in the resource profile claim `MethodCall`
 (`src/Ast/ResourceExpressionHandlers.php`), so for a `$this->foo()` expression the dispatcher's registration
-order is what decides which one answers. Three of those ordered pairs have a dedicated ordering pin in
-`tests/Unit/Ast/ResourceExpressionHandlersTest.php`. Every other pair among the nine is held only by
-whichever end-to-end fixture happens to traverse it.
+order is what decides which one answers. Every one of the 36 ordered pairs among those nine is now run
+both ways by `tests/Unit/Ast/MethodCallOrderingMatrixTest.php`: seven pairs disagree and are held in the
+direction `handlers()` lists them (its `PINNED` map, and the `MethodCall` row of the ordering table in
+[docs/components/ast-engine.md](./components/ast-engine.md#the-honest-ordering-inventory)); the other 29
+are proven inert against that same corpus.
 
-Each of the three pins exists because a mutation found a reordering the rest of the suite did not catch —
-two crash-level, one a silent type divergence. Nobody has traced the remaining pairs the same way, so a
-green `composer test` is not evidence that reordering `handlers()` is safe. The full per-node-class
-inventory — which pairs are pinned, which are proven inert, and which are neither — is the ordering table
-in [docs/components/ast-engine.md](./components/ast-engine.md#the-honest-ordering-inventory). Read the pin
-count as "the divergences someone has gone and found", not "the only divergences that exist".
+The residual limit is the corpus, not the method: an expression shape the matrix never constructs cannot
+be proven to disagree there, however plausible it looks by inspection — a new shape that turns an inert
+pair into a disagreeing one fails the matrix, which is the signal to pin it. One of the seven pins is
+itself worth flagging rather than treating as settled: `RelationCollectionChainHandler` currently wins over
+`KnownMethodRuleHandler` for `$this->can(...)`/`cannot(...)`/`canAny(...)`, so a resource typing
+`$this->can('edit')` gets `unknown` today instead of the `boolean` that `KnownMethodRuleHandler`'s
+dedicated rule would give it if it ever got the chance. The matrix pins the order `handlers()` actually
+uses — it does not fix it, since reordering `handlers()` is outside this pin's scope. Read the pin count
+the same way as before: "the divergences someone has actually gone and found", not "the only divergences
+that exist" — now bounded by the matrix's corpus rather than by nothing at all.
 
 ### The publish-speed gate is one-sided
 
