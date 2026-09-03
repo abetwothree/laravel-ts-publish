@@ -61,17 +61,6 @@ on both versions, as does the `FooCollection` → `FooResource` naming conventio
 [docs/laravel-version-guards.md](./laravel-version-guards.md) for how the version floor was established and
 which tests are skipped below it.
 
-### `laravel-ts-global.ts` drops the `extends` clause it imports for
-
-On the global flavour, a type that should compose via `#[TsExtends]` gets the *import* but not the
-`extends` clause — `BroadcastableEvent`, `FormRequestBase` and `HasValidationMeta` are imported while
-`ServerCreated`, `StringRulesRequest` and `NumberRulesRequest` are emitted with no base. The per-file
-flavour emits both halves correctly.
-
-So on the global flavour those interfaces are silently missing their inherited members, and the only trace
-is an unused import. If you are on the global flavour and a base member is missing, this is why; the
-per-file flavour is correct today. The emitter is `resources/views/globals.blade.php`.
-
 ### `EnumResource::collection()` inside a mixed ternary arm
 
 `ResourceTransformer` assumes the wrapping arm of a mixed enum ternary is never

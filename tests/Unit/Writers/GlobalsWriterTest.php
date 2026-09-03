@@ -22,6 +22,19 @@ test('writes globals content when enabled', function () {
         ->toContain('export namespace workbench.app.enums');
 });
 
+test('globals content emits the extends clause for form requests and events', function () {
+    config()->set('ts-publish.globals.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+
+    $runner = resolve(Runner::class);
+    $runner->run();
+
+    $content = (new GlobalsWriter(new Filesystem))->write($runner);
+
+    expect($content)->toContain('interface StringRulesRequest extends FormRequestBase')
+        ->and($content)->toContain('interface ServerCreated extends BroadcastableEvent');
+});
+
 test('returns empty string when globals output is disabled', function () {
     config()->set('ts-publish.globals.enabled', false);
     config()->set('ts-publish.output_to_files', false);

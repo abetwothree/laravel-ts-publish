@@ -127,7 +127,8 @@ answer was neither `string` nor `unknown` but `ShipmentStatusType`.
 Runs `npx tsc --noEmit` over the generated tree and counts "cannot find name" diagnostics — TS2304, plus
 TS2552 (`Did you mean…`), which TypeScript emits instead when a similarly-named global exists — together
 with TS2300 (`Duplicate identifier`), TS2440 (`Import declaration conflicts with local declaration`),
-TS2344 (`does not satisfy the constraint`) and TS2305/TS2724 (`has no exported member`).
+TS2344 (`does not satisfy the constraint`), TS2305/TS2724 (`has no exported member`) and TS6196
+(`declared but never used`) — the trace a dropped `extends` clause or an overridden cast leaves behind.
 
 **It runs once per generated tree**, against its own tsconfig file — `tsconfig.json` for
 `data/default-example`, plus `tsconfig.testing.json`, `tsconfig.full-template-example.json` and
@@ -181,7 +182,7 @@ TSCONFIGS=tsconfig.testing.json .github/scripts/unimportable-token-gate.sh 0 0 0
 
 ```
 == tsconfig.json ==
-TS2300/TS2304/TS2305/TS2344/TS2440/TS2552/TS2724 (duplicate identifier / cannot find name / unexported name / bad type argument / import-local conflict) in generated tree: 0
+TS2300/TS2304/TS2305/TS2344/TS2440/TS2552/TS2724/TS6196 (duplicate identifier / cannot find name / unexported name / bad type argument / import-local conflict / unused import) in generated tree: 0
 TS2307 (cannot find module) with a relative specifier in generated tree: 0
 TS2307 (cannot find module) with a bare specifier in generated tree: 0
 
@@ -289,10 +290,12 @@ disappearing together), then `GlobalsWriter`'s form-request import loop, then `#
 analyzer references, then the stubs. Lowering a baseline once the defect behind it is gone was always the
 point; defending the number never was. There is no baseline left to defend.
 
-After the stubs, `npx tsc --noEmit -p tsconfig.json` over the generated tree reports two codes nothing
-gates on: **4** TS6196 (`declared but never used`, see
-[What the gates do not cover](#what-the-gates-do-not-cover)) and, since `skipLibCheck` went off (below),
-**1** TS2526 inside `@tolki/types`'s own shipped declaration file — a dependency bug, not ours.
+After the stubs, `npx tsc --noEmit -p tsconfig.json` over the generated tree reported two codes nothing
+gated on: **4** TS6196 (`declared but never used`) and, since `skipLibCheck` went off (below), **1** TS2526
+inside `@tolki/types`'s own shipped declaration file — a dependency bug, not ours. The four TS6196s were
+later fixed — `laravel-ts-global.ts` now emits the `extends` clause it imports for, and a `#[TsCasts]`
+override releases the enum import it replaces — and the code joined the main count above. TS2526 remains
+uncounted; it is a dependency bug, described [above](#unimportable-token-gatesh), not this package's to fix.
 
 ### The TS2307 sub-gates
 
@@ -505,8 +508,8 @@ those raise TS2344 and the directive is satisfied, and when they have degraded t
 and TypeScript reports **TS2578 "Unused '@ts-expect-error' directive"** — which is emitted by the
 directive machinery and therefore survives `any`-poisoning.
 
-`unimportable-token-gate.sh` counts only TS2300/TS2304/TS2305/TS2344/TS2440/TS2552/TS2724, so it does
-**not** fail on TS2578.
+`unimportable-token-gate.sh` counts only TS2300/TS2304/TS2305/TS2344/TS2440/TS2552/TS2724/TS6196, so it
+does **not** fail on TS2578.
 CI evaluates this guard in its own step (`Gate - the @tolki/ts type surface resolves`), which fails on any
 diagnostic under `tests/types/`. Locally:
 
@@ -538,7 +541,8 @@ When changing `unknown-regression-gate.py` itself, also run its
   only by constructing a fixture and regenerating, never by reading the code or running the suite.
 
 - **TS2307 (`Cannot find module`) is counted, in two separate counts, not the main one.**
-  `unimportable-token-gate.sh`'s main count greps only TS2300/TS2304/TS2305/TS2344/TS2440/TS2552/TS2724, and an
+  `unimportable-token-gate.sh`'s main count greps only
+  TS2300/TS2304/TS2305/TS2344/TS2440/TS2552/TS2724/TS6196, and an
   unresolved *module* is not an existing property degrading to `unknown`, so the regression gate is
   structurally blind to a bad import too. [The TS2307 sub-gates](#the-ts2307-sub-gates) above are where every
   TS2307 is counted instead, kept apart on purpose: the relative-specifier count, whose diagnostic is the signature of
@@ -554,16 +558,20 @@ When changing `unknown-regression-gate.py` itself, also run its
   [The app-side stubs](#the-app-side-stubs)) removed the 61 themselves, so neither sub-gate carries a
   tolerance any more.
 
-- **TS6196 (`declared but never used`) is counted by neither gate, and there are 4.** They are a genuine
-  pre-existing emitter defect, unrelated to the stubs and present at the same count before them.
-  `laravel-ts-global.ts` emits the `#[TsExtends]` **import** for broadcast events and form requests
-  (`BroadcastableEvent`, `FormRequestBase`, `HasValidationMeta`) but drops the corresponding `extends`
-  clause, which the per-file output does emit — so the global flavor silently loses the interface
+- **TS6196 (`declared but never used`) used to be counted by neither gate, with a baseline of 4.** They
+  were a genuine emitter defect, unrelated to the stubs and present at the same count before them.
+  `laravel-ts-global.ts` emitted the `#[TsExtends]` **import** for broadcast events and form requests
+  (`BroadcastableEvent`, `FormRequestBase`, `HasValidationMeta`) but dropped the corresponding `extends`
+  clause, which the per-file output did emit — so the global flavor silently lost the interface
   composition while keeping a now-unused import. (The import half of this was already noted above, as
-  "`#[TsExtends]` imports the globals body never references"; the missing `extends` is the other half.) The
-  fourth is an unused `RoleType` import in `to-array-casts-resource.ts`. Adding TS6196 to the gate would
-  fail immediately, so it is recorded rather than gated; fixing it means changing what the package emits
-  and re-baselining the golden tree.
+  "`#[TsExtends]` imports the globals body never references"; the missing `extends` was the other half.)
+  The fourth was an unused `RoleType` import in `to-array-casts-resource.ts`, left behind when a
+  `#[TsCasts]` override replaced an analyzer-inferred enum type.
+
+  Both are fixed: `resources/views/globals.blade.php` now emits the `extends` clause alongside the
+  import, and `ResourceTransformer::pruneOverriddenEnumImports()` drops an enum-map entry a cast override
+  leaves unused. `npx tsc --noEmit -p tsconfig.json` now reports **0** TS6196s, and TS6196 joined the
+  main count above — this bullet is kept as the record of what the count used to hide.
 
 - **An inline object that already contains `unknown` cannot report its own wholesale collapse.**
   `detect_regressions()` gates the base side on the substring test `"unknown" not in b[k]`, and the

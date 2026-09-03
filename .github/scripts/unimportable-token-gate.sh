@@ -11,6 +11,8 @@
 # type rejects it, e.g. Pick<Model, K> over a key the interface never declares.
 # TS2305/TS2724 cover the name that IS imported from a module that resolves but
 # never exports it - the shape that only became reachable once the stubs landed.
+# TS6196 is an import the generated file never uses - the trace a dropped extends
+# clause or an overridden cast leaves behind.
 #
 # The unknown-regression gate cannot catch either shape: a leaked or colliding
 # token is a NEW property with a plausible-looking type, not an existing
@@ -111,11 +113,11 @@ gate_one() {
   owned=$(printf '%s\n' "$out" | grep -E "^(workbench|tests)/" || true)
 
   local errs count
-  errs=$(printf '%s\n' "$owned" | grep -E "error TS(2300|2304|2305|2344|2440|2552|2724)" || true)
+  errs=$(printf '%s\n' "$owned" | grep -E "error TS(2300|2304|2305|2344|2440|2552|2724|6196)" || true)
   count=$(printf '%s' "$errs" | grep -c . || true)
 
-  echo "TS2300/TS2304/TS2305/TS2344/TS2440/TS2552/TS2724 (duplicate identifier / cannot find name / unexported name / bad type argument / import-local conflict) in generated tree: $count"
-  printf '%s\n' "$errs" | sed -E "s/.*(Cannot find name|Duplicate identifier|conflicts with local declaration of) '([^']+)'.*/  \2/; s/.*has no exported member (named )?'([^']+)'.*/  \2/" | sort | uniq -c | sort -rn
+  echo "TS2300/TS2304/TS2305/TS2344/TS2440/TS2552/TS2724/TS6196 (duplicate identifier / cannot find name / unexported name / bad type argument / import-local conflict / unused import) in generated tree: $count"
+  printf '%s\n' "$errs" | sed -E "s/.*(Cannot find name|Duplicate identifier|conflicts with local declaration of) '([^']+)'.*/  \2/; s/.*has no exported member (named )?'([^']+)'.*/  \2/; s/.*'([^']+)' is declared but never used\.?.*/  \1/" | sort | uniq -c | sort -rn
 
   # A relative specifier (./ or ../) only ever resolves against a file this package itself writes, so an
   # unresolved one is never an app-side alias a stub could cover - it is
