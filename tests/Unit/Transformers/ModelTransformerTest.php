@@ -1414,7 +1414,7 @@ describe('Image model @return Attribute<> docblock accessor resolution', functio
         $data = (new ModelTransformer(Image::class))->data();
 
         expect($data->mutators)->toHaveKey('data_from_docblock')
-            ->and($data->mutators['data_from_docblock']['type'])->toBe('{ title: string; weight: number | null }');
+            ->and($data->mutators['data_from_docblock']['type'])->toBe('{ recordedAt?: string; title: string; weight: number | null }');
     });
 
     test('priceFromDocblock resolves Arrayable class with a shape docblock to an inline object type', function () {

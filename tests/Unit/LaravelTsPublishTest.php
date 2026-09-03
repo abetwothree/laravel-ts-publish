@@ -30,7 +30,6 @@ use function Orchestra\Testbench\workbench_path;
 use Workbench\App\Casts\MenuSettings;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
-use Workbench\App\Events\DeferredNotification;
 use Workbench\App\Models\Order;
 use Workbench\App\Models\OrderItem;
 use Workbench\App\Models\User;
@@ -519,7 +518,7 @@ describe('Arrayable property-shape inference', function () {
     test('typed public properties produce the object shape when no docblock shape exists', function () {
         $result = $this->service->toTsType(ArrayableData::class);
 
-        expect($result['type'])->toBe('{ title: string; weight: number | null }');
+        expect($result['type'])->toBe('{ recordedAt?: string; title: string; weight: number | null }');
     });
 
     test('promoted readonly properties with a generic toArray docblock resolve', function () {
@@ -598,14 +597,6 @@ describe('Arrayable property-shape inference', function () {
         expect($type)->toContain('defaulted: number')
             ->and($type)->toContain('uninitialized?: number')
             ->and($type)->toContain('promoted: number');
-    });
-
-    it('makes DeferredNotification::$occurredAt optional because the payload may omit it', function () {
-        $type = $this->service->toTsType(DeferredNotification::class)['type'];
-
-        expect($type)->toContain('occurredAt?:')
-            ->and($type)->toContain('note: string | null')
-            ->and($type)->toContain('userId: number');
     });
 });
 

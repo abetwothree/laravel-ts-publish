@@ -74,6 +74,22 @@ ever runs, so it substitutes that single member and the direct arm's own presenc
 lost outright, not just under-suffixed. Verified against a throwaway fixture during Task 28's fix
 round; not reproduced as a committed test or golden-tree property, so nothing here pins it yet.
 
+### A broadcast event's own uninitialized typed property still types as required
+
+Task 29 made an uninitialized typed public property optional wherever a class's shape is inlined —
+`LaravelTsPublish::publicPropertyShapeType()` (`src/LaravelTsPublish.php`), reached from `toTsType()`'s
+step 5c and from `arrayableShapeType()`'s no-docblock fallback. A broadcast event's own top-level
+property list never reaches that method: `AstEngine::analyzePublicProperties()`
+(`src/Ast/AstEngine.php:86-125`) reflects the event class directly and hardcodes `'optional' => false`
+for every property (line 105), regardless of whether reflection says the property was ever assigned.
+An event with `public Carbon $occurredAt;` and no default therefore still emits `occurredAt: string;`
+in its generated `.ts` file — required — even though `json_encode()` would omit the key exactly as
+Task 29's fix accounts for everywhere else. Verified against a throwaway event fixture during Task 29's
+fix round, then removed once it stopped pinning anything the golden tree would show; not reproduced as
+a committed test or golden-tree property, so nothing here pins it yet. Fixing it means threading the
+same `hasDefaultValue()`/`isPromoted()` check into `analyzePublicProperties()`, which is a change to
+every existing broadcast event's blast radius, not a one-fixture addition — worth doing as its own task.
+
 ## Deliberate non-goals
 
 Absent on purpose. Do not "fix" these without raising it first.
