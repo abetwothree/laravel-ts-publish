@@ -105,7 +105,7 @@ declare global {
 @if($property['description'])
 {!! LaravelTsPublish::formatJsDoc($property['description'], 12) !!}
 @endif
-            {!! LaravelTsPublish::validJsObjectKey($name) !!}{!! $property['optional'] ? '?' : '' !!}: {!! LaravelTsPublish::qualifyGlobalType(LaravelTsPublish::rewriteAsEnumToType($property['type'], $transformer->globalEnumConstMap()), $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
+            {!! LaravelTsPublish::validJsObjectKey($name, allowIndexSignature: true) !!}{!! $property['optional'] ? '?' : '' !!}: {!! LaravelTsPublish::qualifyGlobalType(LaravelTsPublish::rewriteAsEnumToType($property['type'], $transformer->globalEnumConstMap()), $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
 @endforeach
         }
 @endif

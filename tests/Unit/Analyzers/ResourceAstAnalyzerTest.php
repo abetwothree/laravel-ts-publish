@@ -10,7 +10,9 @@ use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclinedTopLevelSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeArrayMergeChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeSpreadChildResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ModelArmAppendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NamedMergeResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NestedMethodModelSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UnreadableReturnResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Illuminate\Notifications\DatabaseNotification;
@@ -5812,6 +5814,32 @@ describe('ResourceAstAnalyzer with NestedResourceSpreadResource (spread-of-a-res
             "Omit<UserResource, 'flag'> & { flag: boolean })[]"
         )->and($this->props['members_resource_then_model_spread']['optional'])->toBeTrue();
     });
+
+    // Task 32 review, IMPORTANT-2: classifySpreadArm()'s new relation-chain predicate (added for the
+    // top-level flatten path) also fires here — nested, so it must still intersect, not flatten.
+    test('a $this->relation->toArray() spread nested in an inline array still intersects, never flattens', function () {
+        expect($this->props['owner_relation_spread']['type'])
+            ->toBe("Omit<User, 'flag'> & { flag: boolean }")
+            ->and($this->props['owner_relation_spread']['type'])->not->toContain('email:')
+            ->and(array_values($this->analysis->modelFqcns))->toContain(User::class);
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The model arm flattens $appends too, honoring that model's own #[TsCasts] —
+// ModelArmAppendsResource
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ResourceAstAnalyzer with ModelArmAppendsResource — the model arm includes $appends', function () {
+    it('flattens an $appends attribute alongside real columns, honoring the model\'s own #[TsCasts]', function () {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ModelArmAppendsResource::class), User::class);
+        $props = collect($analyzer->analyze()->properties)->keyBy('name');
+
+        expect($props->has('line_1'))->toBeTrue()
+            ->and($props->has('full_address'))->toBeTrue()
+            ->and($props['full_address']['type'])->toBe('string | null')
+            ->and($props['id']['type'])->toBe('number');
+    });
 });
 
 describe('ResourceAstAnalyzer with BranchedInlineFqcnResource (branch union nullability)', function () {
@@ -5891,5 +5919,21 @@ describe('ResourceAstAnalyzer with DeclinedTopLevelSpreadResource — an unclass
         $names = array_column($analyzer->analyze()->properties, 'name');
 
         expect($names)->toBe(['id']);
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A top-level spread reached from a NESTED array (via a trait/own-method call) must not
+// flatten — $topLevel has to thread through, not reset — NestedMethodModelSpreadResource
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ResourceAstAnalyzer with NestedMethodModelSpreadResource — $topLevel threads through a method spread', function () {
+    it('does not flatten a model spread reached through a nested method call', function () {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(NestedMethodModelSpreadResource::class), Comment::class);
+        $props = collect($analyzer->analyze()->properties)->keyBy('name');
+
+        expect($props->has('meta'))->toBeTrue()
+            ->and($props['meta']['type'])->toBe('{ z: number; y: number }')
+            ->and($props['meta']['type'])->not->toContain('email');
     });
 });

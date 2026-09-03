@@ -53,7 +53,7 @@ function conditionalMethodHandlerThrowingEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        public function returnArrayAnalysis(Array_ $array): MethodAnalysis
+        public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
         {
             throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
         }
@@ -86,7 +86,7 @@ final class ConditionalMethodHandlerArmStubEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    public function returnArrayAnalysis(Array_ $array): MethodAnalysis
+    public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
     {
         throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
     }
@@ -130,7 +130,7 @@ final class ConditionalMethodHandlerScopeSpyEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    public function returnArrayAnalysis(Array_ $array): MethodAnalysis
+    public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
     {
         throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
     }

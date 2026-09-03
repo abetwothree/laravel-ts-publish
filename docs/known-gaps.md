@@ -90,6 +90,44 @@ a committed test or golden-tree property, so nothing here pins it yet. Fixing it
 same `hasDefaultValue()`/`isPromoted()` check into `analyzePublicProperties()`, which is a change to
 every existing broadcast event's blast radius, not a one-fixture addition — worth doing as its own task.
 
+### `#[TsCasts]` and the top-level spread flatten disagree by scope, in three separate ways
+
+Task 32 flattens a top-level `...SomeResource::make(...)->resolve()`, `...$model->toArray()`, or
+`...$collection->toArray()` spread into the host resource's own properties
+(`ResourceAstAnalyzer::analyzeSpreadArm()` and its three arm builders, `src/Analyzers/ResourceAstAnalyzer.php`).
+Only one of the three places `#[TsCasts]` can apply is wired up for it, and a fourth interaction —
+unrelated to spreading — makes the gap sharper than "missing", not just narrower than it looks.
+
+- **A spread resource's own `#[TsCasts]` is skipped.** `analyzeResourceSpreadArm()` calls
+  `AstEngine::analyzeMethod($resourceFqcn, 'toArray')`, which runs `ResourceAstAnalyzer::analyze()`
+  directly — never `ResourceTransformer::parseResourceTsCastsOverrides()`/`applyOverrides()`, which is
+  where a resource's own `#[TsCasts]` attribute is read and applied. A `#[TsCasts]` override declared on
+  `PostResource` itself would apply when `PostResource.ts` is generated standalone, and silently not
+  apply to the identical property once `PostResource` is spread into another resource.
+- **The spread resource's own backing model's `#[TsCasts]` is skipped for the same reason** — it is
+  `ResourceTransformer::parseModelTsCastsOverrides()` that reads it, and the resource arm never reaches
+  that transformer either.
+- **The model and collection arms *do* apply the spread target's own `#[TsCasts]`** (`analyzeModelSpreadArm()`,
+  same file) — that half is fixed, and it is why `User::options`, cast to a plain array at the DB/Eloquent
+  level, still flattens as `Record<string, unknown> | null` and not `unknown[] | null`: `Address::$appends`'s
+  `full_address` gets the same treatment.
+- **The host resource's own `#[TsCasts]` is applied by property name, blind to where the property actually
+  came from.** `ResourceTransformer::applyOverrides()` walks `$this->modelTsCastsOverrides` (from the *host*
+  resource's own backing model) and rewrites `$this->properties[$property]` by name alone
+  (`src/Transformers/ResourceTransformer.php:391-407`) — it has no notion that a flattened property named
+  `created_at` or `settings` came from a *different* model than the host's own. A host resource's
+  `#[TsCasts]` entry for `created_at` — a common override, since raw `datetime` casts rarely need one but
+  developers add them anyway for consistency — silently overwrites a same-named column flattened from an
+  entirely unrelated spread arm, in whichever direction the override happens to point.
+
+None of this is a regression to `unknown`: every case above still emits a real, plausible-looking type —
+just possibly the wrong one, or missing a refinement its own standalone file carries. Fixing the first two
+cleanly means giving the resource arm a path to the spread resource's and its model's own overrides without
+re-running the whole `ResourceTransformer` pipeline recursively; fixing the fourth means `applyOverrides()`
+knowing which flattened properties are actually the host's own versus foreign, which the current
+`ResourceAnalysis::properties` list (name/type/optional/description only) does not carry. Both are scope
+changes to existing, working code paths, not one-fixture additions — worth doing as their own task.
+
 ## Deliberate non-goals
 
 Absent on purpose. Do not "fix" these without raising it first.

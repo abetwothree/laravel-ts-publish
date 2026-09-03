@@ -22,9 +22,19 @@ final class AstEngine
     use CollectsLocalVarBindings;
     use DispatchesFqcnResults;
 
+    /** @var array<string, true> class@method@modelClass keys currently on the call stack — cycle guard. */
+    private array $analyzing = [];
+
+    /** @var array<string, MethodAnalysis> class@method@modelClass => completed analysis, for reuse. */
+    private array $resultCache = [];
+
     /**
      * Analyze a method body's return shape. Resources get full resource semantics ('toArray'
      * default); any other class/method runs the same engine with the same handlers.
+     *
+     * Guarded against reentrant cycles (a spread reaching back to a class already mid-analysis)
+     * and memoized per class@method@modelClass, so two resources spreading each other can't
+     * recurse until memory is exhausted, and a widely-spread class is walked only once.
      *
      * @param  class-string  $class
      * @param  class-string<Model>|null  $modelClass  Backing model for `$this->prop` resolution; null to skip.
@@ -37,7 +47,29 @@ final class AstEngine
             $modelClass = resolve(ModelClassResolver::class)->resolve($reflection);
         }
 
-        return new ResourceAstAnalyzer($reflection, $modelClass, $method)->analyze();
+        $key = $class.'@'.$method.'@'.($modelClass ?? '');
+
+        if (isset($this->resultCache[$key])) {
+            return clone $this->resultCache[$key];
+        }
+
+        // Already on the stack: a self-spread or a cycle through other classes. Contribute nothing
+        // rather than re-entering — the caller's own merge() treats an empty analysis as a no-op.
+        if (isset($this->analyzing[$key])) {
+            return new MethodAnalysis;
+        }
+
+        $this->analyzing[$key] = true;
+
+        try {
+            $analysis = new ResourceAstAnalyzer($reflection, $modelClass, $method)->analyze();
+        } finally {
+            unset($this->analyzing[$key]);
+        }
+
+        $this->resultCache[$key] = $analysis;
+
+        return clone $analysis;
     }
 
     /**

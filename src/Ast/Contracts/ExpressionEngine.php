@@ -31,7 +31,8 @@ interface ExpressionEngine
 
     /**
      * Analyze an array literal's items into properties, spreads, and FQCN maps — the same
-     * return-position array machinery, reused for a nested inline array literal by InlineArrayHandler.
+     * return-position array machinery a resource's own toArray() return uses. $topLevel means
+     * "this literal IS the whole return shape" (Inertia props, a delegated return), not AST depth.
      */
-    public function returnArrayAnalysis(Array_ $array): MethodAnalysis;
+    public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis;
 }

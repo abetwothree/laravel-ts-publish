@@ -29,7 +29,7 @@ export interface {{ $data->resourceName }}{!! count($data->tsExtends) > 0 ? ' ex
 @if($property['description'])
 {!! LaravelTsPublish::formatJsDoc($property['description'], 4) !!}
 @endif
-    {!! LaravelTsPublish::validJsObjectKey($name) !!}{!! $property['optional'] ? '?' : '' !!}: {!! $property['type'] !!};
+    {!! LaravelTsPublish::validJsObjectKey($name, allowIndexSignature: true) !!}{!! $property['optional'] ? '?' : '' !!}: {!! $property['type'] !!};
 @endforeach
 }
 @endif

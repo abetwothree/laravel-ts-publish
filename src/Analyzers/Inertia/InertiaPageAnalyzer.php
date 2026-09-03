@@ -214,8 +214,10 @@ class InertiaPageAnalyzer
             return $this->analyzeDelegatedProps($propsArg, $context);
         }
 
+        // This literal IS the render call's whole props shape, not an array embedded inside it —
+        // top-level, so a top-level resolve()/toArray() spread inside it flattens instead of vanishing.
         $analyses = array_map(
-            fn (Array_ $array): ResourceAnalysis => $analyzer->returnArrayAnalysis($array),
+            fn (Array_ $array): ResourceAnalysis => $analyzer->returnArrayAnalysis($array, topLevel: true),
             $literals,
         );
 

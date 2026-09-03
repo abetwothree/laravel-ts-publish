@@ -1526,6 +1526,12 @@ describe('validJsObjectKey', function () {
             ->and($this->service->validJsObjectKey('has space'))->toBe('"has space"')
             ->and($this->service->validJsObjectKey('123start'))->toBe('"123start"');
     });
+
+    test('an index signature key is quoted unless allowIndexSignature is true', function () {
+        expect($this->service->validJsObjectKey('[key: number]'))->toBe('"[key: number]"')
+            ->and($this->service->validJsObjectKey('[key: number]', allowIndexSignature: true))->toBe('[key: number]')
+            ->and($this->service->validJsObjectKey('[key: string]', allowIndexSignature: true))->toBe('[key: string]');
+    });
 });
 
 describe('safeJsIdentifier', function () {

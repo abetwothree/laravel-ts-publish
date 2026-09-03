@@ -103,7 +103,7 @@ function resourceExpressionHandlersTestEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called while merely constructing handlers');
         }
 
-        public function returnArrayAnalysis(Array_ $array): MethodAnalysis
+        public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
         {
             throw new RuntimeException('returnArrayAnalysis() must not be called while merely constructing handlers');
         }

@@ -106,7 +106,7 @@ function inertEngine(): ExpressionEngine
             throw new RuntimeException('the matrix never resolves through make()');
         }
 
-        public function returnArrayAnalysis(Array_ $array): MethodAnalysis
+        public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
         {
             throw new RuntimeException('the matrix never resolves through make()');
         }
