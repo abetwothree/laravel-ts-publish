@@ -14024,6 +14024,26 @@
                 }
             ]
         },
+        "Workbench\\Crm\\Http\\Resources\\DealEnumTrioResource": {
+            "name": "DealEnumTrioResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "trio",
+                    "type": "{ a: EnumsStatusType; b: CrmStatusType; c: EnumsStatusType }",
+                    "optional": false
+                },
+                {
+                    "name": "matrix",
+                    "type": "{ a: EnumsStatusType; b: CrmStatusType; c: EnumsStatusType }[]",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\Crm\\Http\\Resources\\DealResource": {
             "name": "DealResource",
             "properties": [

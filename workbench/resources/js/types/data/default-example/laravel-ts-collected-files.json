@@ -279,6 +279,7 @@
     "modules\/Crm\/Events\/StatusSynced.php",
     "modules\/Crm\/Events\/UserSynced.php",
     "modules\/Crm\/Http\/Resources\/DealEnumInlineResource.php",
+    "modules\/Crm\/Http\/Resources\/DealEnumTrioResource.php",
     "modules\/Crm\/Http\/Resources\/DealResource.php",
     "modules\/Crm\/Http\/Resources\/UserResource.php",
     "modules\/Crm\/Models\/Deal.php",

@@ -3627,6 +3627,16 @@ declare global {
             summary: { app_status: app.enums.StatusType; crm_status: crm.enums.StatusType };
         }
         /**
+         * Two Status enums sharing a basename catch what a distinct-named pair (Status/Priority)
+         * cannot: aliasPropertyType() matches text, not FQCNs, so a repeat only misaligns once two
+         * colliding enums force it to substitute per occurrence instead of reusing one bare name.
+         */
+        export interface DealEnumTrioResource {
+            id: number;
+            trio: { a: app.enums.StatusType; b: crm.enums.StatusType; c: app.enums.StatusType };
+            matrix: { a: app.enums.StatusType; b: crm.enums.StatusType; c: app.enums.StatusType }[];
+        }
+        /**
          * Exercises: dual enum conflict — $this->status (App\Enums\Status direct access)
          * vs EnumResource::make($this->crm_status) (Crm\Enums\Status), whenLoaded bare
          * with two different User models (Crm\User + App\User), when conditional,
