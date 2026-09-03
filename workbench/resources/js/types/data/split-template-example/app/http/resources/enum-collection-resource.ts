@@ -19,7 +19,7 @@ export interface EnumCollectionResource
     week_days: AsEnum<typeof WeekDays>[] | null;
     wrapped_week_days: { week_days: AsEnum<typeof WeekDays>[] | null };
     week_days_when_has?: AsEnum<typeof WeekDays>[] | null;
-    week_days_when_has_default: AsEnum<typeof WeekDays>[] | null | string;
+    week_days_when_has_default: AsEnum<typeof WeekDays>[] | string | null;
     status_history_when_appended?: AsEnum<typeof Status>[];
     members_via_var?: AsEnum<typeof Role>[];
     member_role_snapshot?: ({ role: RoleType | null })[];

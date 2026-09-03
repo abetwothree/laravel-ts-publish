@@ -43,6 +43,7 @@ export * from './helper-call-resource';
 export * from './image-delegated-resource';
 export * from './image-dimensions-resource';
 export * from './image-morph-resource';
+export * from './image-nullable-arms-resource';
 export * from './image-resource';
 export * from './inherited-inline-fqcn-resource';
 export * from './inline-array-fqcn-resource';

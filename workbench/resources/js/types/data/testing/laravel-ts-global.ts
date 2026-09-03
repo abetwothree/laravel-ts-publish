@@ -2020,7 +2020,7 @@ declare global {
             not_null_no_default?: string;
             not_null_with_default: string | number;
             not_null_same_type_default: number;
-            null_with_default: null | string;
+            null_with_default: string | null;
             not_null_explicit_null_default: string | null;
             not_null_named_default: string | number;
             not_null_spread_default?: string;
@@ -2060,7 +2060,7 @@ declare global {
             user_summary?: { id: number; email: string; name: string };
             notes_or_default?: string;
             user_meta?: { profile: { name: string; email: string }; verified: boolean };
-            notes_when_null: null | string;
+            notes_when_null: string | null;
             flagged_notes_present?: (string | null)[];
         }
         /**
@@ -2244,7 +2244,7 @@ declare global {
             week_days: workbench.app.enums.WeekDaysType[] | null;
             wrapped_week_days: { week_days: workbench.app.enums.WeekDaysType[] | null };
             week_days_when_has?: workbench.app.enums.WeekDaysType[] | null;
-            week_days_when_has_default: workbench.app.enums.WeekDaysType[] | null | string;
+            week_days_when_has_default: workbench.app.enums.WeekDaysType[] | string | null;
             status_history_when_appended?: workbench.app.enums.StatusType[];
             members_via_var?: workbench.app.enums.RoleType[];
             member_role_snapshot?: ({ role: workbench.app.enums.RoleType | null })[];
@@ -2404,6 +2404,12 @@ declare global {
             imageable: workbench.app.models.Post | workbench.app.models.Product | workbench.app.models.User | workbench.crm.models.User;
             uploaders_from_docblock: workbench.app.models.User[] | Record<string, workbench.app.models.User>;
             imageable_when_loaded?: workbench.app.models.Post | workbench.app.models.Product | workbench.app.models.User | workbench.crm.models.User;
+        }
+        /** Ternary and Elvis arms that are each nullable: the union must carry one trailing null. */
+        export interface ImageNullableArmsResource {
+            id: number;
+            size: number | string | null;
+            label: string | number | null;
         }
         /** Exercises: whenNotNull on multiple nullable columns. */
         export interface ImageResource {

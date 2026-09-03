@@ -125,6 +125,7 @@
     "app\/Http\/Resources\/ImageDelegatedResource.php",
     "app\/Http\/Resources\/ImageDimensionsResource.php",
     "app\/Http\/Resources\/ImageMorphResource.php",
+    "app\/Http\/Resources\/ImageNullableArmsResource.php",
     "app\/Http\/Resources\/ImageResource.php",
     "app\/Http\/Resources\/InheritedInlineFqcnResource.php",
     "app\/Http\/Resources\/InlineArrayFqcnResource.php",
