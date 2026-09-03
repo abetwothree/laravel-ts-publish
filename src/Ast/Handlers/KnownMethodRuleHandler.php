@@ -97,6 +97,9 @@ final class KnownMethodRuleHandler implements ExpressionHandler
 
         // The scope knows the variable is *a* Request, not which subclass, so the base class is the
         // honest floor. Declining on an unusable type is required: knownMethodRule() runs next.
+        // Call-site defaults never widen a Request type: a typed method (`integer('k', 5)`) returns its
+        // declared type either way, and an untyped one is declined below. config() differs on purpose —
+        // its default IS the value when the key is absent.
         self::$requestReflection ??= new ReflectionClass(Request::class);
 
         if (! self::$requestReflection->hasMethod($method)) {

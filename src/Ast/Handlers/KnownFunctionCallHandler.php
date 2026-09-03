@@ -137,6 +137,9 @@ final class KnownFunctionCallHandler implements ExpressionHandler
         $value = Config::get($keyArg->value->value, $absent);
 
         // Only an ABSENT key falls through to the default; a key set to null hands the caller null.
+        // Unlike Request methods, config()'s default is the whole value when the key is absent, so it is
+        // typed. The typed accessors (config()->integer() etc., typedConfigAccessorRule()) follow the Request
+        // rule instead: declared return type, default ignored. See requestMethodRule() for the other half.
         if ($value === $absent) {
             $defaultArg = $args->named('default');
 
