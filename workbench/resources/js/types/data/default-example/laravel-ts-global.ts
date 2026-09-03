@@ -3787,7 +3787,7 @@ declare global {
             buckets?: ({ name?: string } & Record<string, string>)[];
             settings?: { color?: string } & Record<string, never>;
         }
-        export interface NumberRulesRequest {
+        export interface NumberRulesRequest extends HasValidationMeta {
             score: number;
             price: number;
             exchange_rate: number;
@@ -3852,7 +3852,7 @@ declare global {
             email: string;
             tags?: string[];
         }
-        export interface StringRulesRequest {
+        export interface StringRulesRequest extends FormRequestBase {
             website: string;
             first_name: string;
             username: string;
@@ -4011,7 +4011,7 @@ declare global {
             salesReport: Partial<app.models.sales.report.Report>;
             marketingReport: Partial<app.models.marketing.report.Report>;
         }
-        export interface ServerCreated {
+        export interface ServerCreated extends BroadcastableEvent {
             serverId: number;
             serverName: string;
         }
@@ -4019,7 +4019,7 @@ declare global {
             teamId: number;
             content: string;
         }
-        export interface UserNotification {
+        export interface UserNotification extends HasTimestamps {
             userId: number;
             title: string;
             message: string;
