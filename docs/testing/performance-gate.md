@@ -49,7 +49,7 @@ under `hyperfine`, and fails when the head's median exceeds the base's median by
 ```
 
 ```
-base 5.49s  head 6.10s  ratio 1.111 (max 1.25)
+PASS - base 5.49s  head 6.10s  ratio 1.111 (max 1.25)
 ```
 
 The A/B-on-one-runner design is the point: absolute CI times are noise across runners (different hosts,
