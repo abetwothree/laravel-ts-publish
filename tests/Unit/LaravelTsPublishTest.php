@@ -30,6 +30,7 @@ use function Orchestra\Testbench\workbench_path;
 use Workbench\App\Casts\MenuSettings;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
+use Workbench\App\Events\DeferredNotification;
 use Workbench\App\Models\Order;
 use Workbench\App\Models\OrderItem;
 use Workbench\App\Models\User;
@@ -580,6 +581,31 @@ describe('Arrayable property-shape inference', function () {
 
         expect($this->service->toTsType(MutualPropertyDtoB::class)['type'])
             ->toBe('{ label: string; sibling: { label: string; sibling: unknown[] | null } | null }');
+    });
+
+    it('marks an uninitialized typed public property optional, and a promoted or defaulted one required', function () {
+        $fixture = new class(2)
+        {
+            public int $defaulted = 1;
+
+            public int $uninitialized;
+
+            public function __construct(public int $promoted) {}
+        };
+
+        $type = $this->service->toTsType($fixture::class)['type'];
+
+        expect($type)->toContain('defaulted: number')
+            ->and($type)->toContain('uninitialized?: number')
+            ->and($type)->toContain('promoted: number');
+    });
+
+    it('makes DeferredNotification::$occurredAt optional because the payload may omit it', function () {
+        $type = $this->service->toTsType(DeferredNotification::class)['type'];
+
+        expect($type)->toContain('occurredAt?:')
+            ->and($type)->toContain('note: string | null')
+            ->and($type)->toContain('userId: number');
     });
 });
 

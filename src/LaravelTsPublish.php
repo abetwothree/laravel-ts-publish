@@ -523,7 +523,11 @@ class LaravelTsPublish
                     $type = 'unknown';
                 }
 
-                $parts[] = $property->getName().': '.$type;
+                // json_encode() omits a typed property that was never assigned; a promoted or defaulted
+                // one is always present.
+                $optional = ! $property->hasDefaultValue() && ! $property->isPromoted();
+
+                $parts[] = $property->getName().($optional ? '?' : '').': '.$type;
             }
         } finally {
             unset($this->shapeExpansionStack[$guard]);
