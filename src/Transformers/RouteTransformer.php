@@ -673,7 +673,7 @@ class RouteTransformer extends CoreTransformer
 
             $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
             $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
-            $imports[$importPath][] = class_basename($fqcn);
+            $imports[$importPath][] = LaravelTsPublish::resourceTypeName($fqcn);
         }
 
         foreach ($this->actionExternalImports as $externalImports) {
