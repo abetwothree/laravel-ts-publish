@@ -41,6 +41,31 @@
 set -uo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
+if [[ "${1:-}" == "--selftest" ]]; then
+  # Plant an unresolvable relative import in a .ts and a .d.ts, run the real gate, demand it FAILs
+  # on the relative sub-gate, clean up. A gate that cannot fail is not a gate.
+  ts="tests/types/__selftest_relative.ts"; dts="tests/types/__selftest_relative.d.ts"
+  trap 'rm -f "$ts" "$dts"' EXIT
+  for scratch in "$ts" "$dts"; do
+    printf "import type { Nope } from './does-not-exist';\nexport type SelfTest = Nope;\n" > "$scratch"
+    if TSCONFIGS=tsconfig.json "$0" 0 0 0 > /tmp/token-gate-selftest.out 2>&1; then
+      echo "FAIL - selftest: the gate passed with an unresolvable relative import in $scratch"
+      cat /tmp/token-gate-selftest.out; exit 1
+    fi
+    # The report line always says "... relative specifier ...: 0" whether or not it fired, so a bare
+    # substring match is vacuous. Require a nonzero count and a FAIL line naming the relative gate,
+    # so a different guard failing instead can never read as this sub-gate's success.
+    if ! grep -qE "relative specifier in generated tree: [1-9]" /tmp/token-gate-selftest.out \
+        || ! grep -qE "^FAIL.*relative" /tmp/token-gate-selftest.out; then
+      echo "FAIL - selftest: the gate failed, but not on the relative sub-gate, for $scratch"
+      cat /tmp/token-gate-selftest.out; exit 1
+    fi
+    rm -f "$scratch"
+  done
+  echo "PASS - selftest: relative-specifier sub-gate fires for .ts and .d.ts"
+  exit 0
+fi
+
 have_baseline=0
 have_relative_baseline=0
 have_bare_baseline=0

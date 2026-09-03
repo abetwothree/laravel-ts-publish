@@ -153,6 +153,9 @@ jobs:
       - name: Gate - unknown-regression-gate parser self-test
         run: python3 .github/scripts/unknown-regression-gate.py --parsetest
 
+      - name: Gate - token gate self-test
+        run: .github/scripts/unimportable-token-gate.sh --selftest
+
       - name: Gate - no property regressed to unknown
         run: |
           base=$(git merge-base origin/main HEAD 2>/dev/null || true)
