@@ -127,11 +127,13 @@ final class InlineArrayHandler implements ExpressionHandler
                  ? []
                  : array_merge(...array_values($analysis->inlineEnumFqcns));
 
-            $embeddedEnumFqcns = array_values(array_unique([
+            // Never deduped: aliasPropertyType() walks this list positionally against left-to-right
+            // occurrences of each bare enum name in the rendered type, so a real repeat must survive.
+            $embeddedEnumFqcns = [
                 ...array_values($analysis->directEnumFqcns),
                 // Propagate any deeply-nested direct enum FQCNs from sub-inline-arrays.
                 ...$nestedInlineEnumFqcns,
-            ]));
+            ];
 
             $enumResourceFqcns = array_values($analysis->enumResources);
             // Propagate any deeply-nested enum resource FQCNs from sub-inline-arrays.
@@ -140,15 +142,18 @@ final class InlineArrayHandler implements ExpressionHandler
                     $enumResourceFqcns[] = $fqcn;
                 }
             }
-            $embeddedEnumResourceFqcns = array_values(array_unique($enumResourceFqcns));
+            // Never deduped: same positional reasoning as $embeddedEnumFqcns above, for the
+            // EnumResource-wrapped (value-import) channel.
+            $embeddedEnumResourceFqcns = $enumResourceFqcns;
         } else {
-            // Tolki OFF: all enum FQCNs (both direct and EnumResource) need type imports.
-            $embeddedEnumFqcns = array_values(array_unique([
+            // Tolki OFF: all enum FQCNs (both direct and EnumResource) need type imports. Never
+            // deduped, same positional reasoning as the Tolki-on branch above.
+            $embeddedEnumFqcns = [
                 ...array_values($analysis->directEnumFqcns),
                 ...array_values($analysis->enumResources),
                 ...array_merge(...array_values($analysis->inlineEnumFqcns)),
                 ...array_merge(...array_values($analysis->inlineEnumResourceFqcns)),
-            ]));
+            ];
             $embeddedEnumResourceFqcns = [];
         }
 

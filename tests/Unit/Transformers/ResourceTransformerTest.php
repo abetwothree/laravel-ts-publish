@@ -35,6 +35,7 @@ use Workbench\App\Http\Resources\MediaTypeResource;
 use Workbench\App\Http\Resources\MediaTypeUnknownResource;
 use Workbench\App\Http\Resources\NamedArgsConditionalResource;
 use Workbench\App\Http\Resources\OrderResource;
+use Workbench\App\Http\Resources\PostEnumTrioResource;
 use Workbench\App\Http\Resources\PostFlatCollection;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\PostSpotlightResource;
@@ -2385,6 +2386,14 @@ describe('ResourceTransformer with TeamStatusAuditResource', function () {
 
         expect(implode(' ', array_merge(...array_values($transformer->typeImports))))->not->toContain('StatusType')
             ->and(implode(' ', array_merge(...array_values($transformer->valueImports))))->toContain('Status');
+    });
+});
+
+describe('ResourceTransformer with PostEnumTrioResource', function () {
+    test('repeated enum members keep their own type through the positional queue', function () {
+        $properties = (new ResourceTransformer(PostEnumTrioResource::class))->data()->properties;
+
+        expect($properties['trio']['type'])->toBe('{ a: StatusType; b: StatusType; c: PriorityType | null }');
     });
 });
 

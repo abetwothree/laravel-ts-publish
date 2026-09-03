@@ -73,22 +73,29 @@ it('appends customImports per import path rather than overwriting the path', fun
     ]);
 });
 
-it('unions inlineEnumFqcns per property with array_unique, dropping repeats', function () {
+it('appends inlineEnumFqcns per property WITHOUT deduping, same as inlineModelFqcns', function () {
     $target = new MethodAnalysis(inlineEnumFqcns: ['status' => ['App\\Enum1', 'App\\Enum2']]);
     $source = new MethodAnalysis(inlineEnumFqcns: ['status' => ['App\\Enum2', 'App\\Enum3']]);
 
     $target->merge($source);
 
-    expect($target->inlineEnumFqcns)->toBe(['status' => ['App\\Enum1', 'App\\Enum2', 'App\\Enum3']]);
+    // Deliberately not deduped: aliasPropertyType() walks this as a positional queue against
+    // left-to-right basename occurrences in the rendered type string.
+    expect($target->inlineEnumFqcns)->toBe([
+        'status' => ['App\\Enum1', 'App\\Enum2', 'App\\Enum2', 'App\\Enum3'],
+    ]);
 });
 
-it('unions inlineEnumResourceFqcns per property with array_unique, dropping repeats', function () {
+it('appends inlineEnumResourceFqcns per property WITHOUT deduping, same as inlineModelFqcns', function () {
     $target = new MethodAnalysis(inlineEnumResourceFqcns: ['status' => ['App\\Enum1', 'App\\Enum2']]);
     $source = new MethodAnalysis(inlineEnumResourceFqcns: ['status' => ['App\\Enum2', 'App\\Enum3']]);
 
     $target->merge($source);
 
-    expect($target->inlineEnumResourceFqcns)->toBe(['status' => ['App\\Enum1', 'App\\Enum2', 'App\\Enum3']]);
+    // Deliberately not deduped: same positional reasoning as inlineEnumFqcns above.
+    expect($target->inlineEnumResourceFqcns)->toBe([
+        'status' => ['App\\Enum1', 'App\\Enum2', 'App\\Enum2', 'App\\Enum3'],
+    ]);
 });
 
 it('appends inlineModelFqcns per property WITHOUT deduping, unlike its sibling inline maps', function () {

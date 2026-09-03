@@ -60,8 +60,9 @@ class MethodAnalysis
      * Merge another analysis's maps into this one.
      *
      * `properties` appends; the single-value class maps spread-merge with the source winning on
-     * collision. `inlineModelFqcns` appends WITHOUT deduping — unlike its sibling inline maps —
-     * since aliasPropertyType() consumes it as a positional queue against the rendered type string.
+     * collision. `inlineModelFqcns`, `inlineEnumFqcns` and `inlineEnumResourceFqcns` all append
+     * WITHOUT deduping, since aliasPropertyType() consumes each as a positional queue against the
+     * rendered type string.
      */
     public function merge(self $source): void
     {
@@ -77,9 +78,7 @@ class MethodAnalysis
         }
 
         foreach ($source->inlineEnumFqcns as $propName => $fqcns) {
-            $this->inlineEnumFqcns[$propName] = array_values(array_unique(
-                [...($this->inlineEnumFqcns[$propName] ?? []), ...$fqcns]
-            ));
+            $this->inlineEnumFqcns[$propName] = [...($this->inlineEnumFqcns[$propName] ?? []), ...$fqcns];
         }
 
         foreach ($source->inlineModelFqcns as $propName => $fqcns) {
@@ -87,9 +86,9 @@ class MethodAnalysis
         }
 
         foreach ($source->inlineEnumResourceFqcns as $propName => $fqcns) {
-            $this->inlineEnumResourceFqcns[$propName] = array_values(array_unique(
-                [...($this->inlineEnumResourceFqcns[$propName] ?? []), ...$fqcns]
-            ));
+            $this->inlineEnumResourceFqcns[$propName] = [
+                ...($this->inlineEnumResourceFqcns[$propName] ?? []), ...$fqcns,
+            ];
         }
     }
 }

@@ -244,7 +244,9 @@ final class ValueResolver
         $result = ['type' => '{ '.implode('; ', $parts).' }', 'optional' => false];
 
         if ($embeddedEnumFqcns !== []) {
-            $result['embeddedEnumFqcns'] = array_values(array_unique($embeddedEnumFqcns));
+            // Never deduped: each key has its own slot in the rendered object, so a repeated enum
+            // is a real repeat aliasPropertyType() must walk positionally, same as an inline array.
+            $result['embeddedEnumFqcns'] = $embeddedEnumFqcns;
         }
 
         return $result;

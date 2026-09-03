@@ -195,7 +195,8 @@ final class ValueResult
 
         $enumResourceFqcns = array_values(array_unique($enumResourceFqcns));
         $enumDirectFqcns = array_values(array_unique($enumDirectFqcns));
-        $embeddedEnumFqcns = array_values(array_unique($embeddedEnumFqcns));
+        // Never deduped: aliasPropertyType() walks this list positionally against left-to-right
+        // occurrences of each bare enum name in the merged union's rendered type.
         $embeddedModelFqcns = array_values(array_unique($embeddedModelFqcns));
         $embeddedResourceFqcns = array_values(array_unique($embeddedResourceFqcns));
 
@@ -218,11 +219,13 @@ final class ValueResult
                 $result['multiEnumResourceFqcns'] = $enumResourceFqcns;
             } else {
                 // Multiple different FQCNs or complex mixed branches: fall back to embedded imports.
-                $embeddedEnumFqcns = array_values(array_unique([...$allBranchFqcns, ...$embeddedEnumFqcns]));
+                // Never deduped, same positional reasoning as the assignment above.
+                $embeddedEnumFqcns = [...$allBranchFqcns, ...$embeddedEnumFqcns];
             }
         } elseif ($enumDirectFqcns !== []) {
-            // Only direct-access enum branches: existing embedded behaviour.
-            $embeddedEnumFqcns = array_values(array_unique([...$enumDirectFqcns, ...$embeddedEnumFqcns]));
+            // Only direct-access enum branches: existing embedded behaviour. Never deduped,
+            // same positional reasoning as the assignment above.
+            $embeddedEnumFqcns = [...$enumDirectFqcns, ...$embeddedEnumFqcns];
         }
 
         if ($embeddedEnumFqcns !== []) {

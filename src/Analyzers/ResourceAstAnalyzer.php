@@ -1142,10 +1142,10 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 ]));
             } // @codeCoverageIgnoreEnd
 
+            // inlineEnumFqcns/inlineEnumResourceFqcns append WITHOUT deduping, same as
+            // MethodAnalysis::merge() — aliasPropertyType() consumes each positionally.
             foreach ($analysis->inlineEnumFqcns as $propName => $fqcns) {
-                $inlineEnumFqcns[$propName] = array_values(array_unique(
-                    [...($inlineEnumFqcns[$propName] ?? []), ...$fqcns]
-                ));
+                $inlineEnumFqcns[$propName] = [...($inlineEnumFqcns[$propName] ?? []), ...$fqcns];
             }
 
             foreach ($analysis->inlineModelFqcns as $propName => $fqcns) {
@@ -1153,9 +1153,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             }
 
             foreach ($analysis->inlineEnumResourceFqcns as $propName => $fqcns) {
-                $inlineEnumResourceFqcns[$propName] = array_values(array_unique(
-                    [...($inlineEnumResourceFqcns[$propName] ?? []), ...$fqcns]
-                ));
+                $inlineEnumResourceFqcns[$propName] = [...($inlineEnumResourceFqcns[$propName] ?? []), ...$fqcns];
             }
         }
 
