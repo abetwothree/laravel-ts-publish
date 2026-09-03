@@ -201,7 +201,10 @@ jobs:
           fi
           echo "Comparing $base..HEAD"
           git worktree add /tmp/base "$base"
+          cp composer.lock /tmp/base/composer.lock
           composer install --prefer-dist --no-interaction --working-dir=/tmp/base
+          echo "base: $(composer show laravel/framework --working-dir=/tmp/base | grep '^versions')"
+          echo "head: $(composer show laravel/framework | grep '^versions')"
 
       - name: Gate - publish speed vs merge-base
         run: bash .github/scripts/publish-bench.sh /tmp/base "$PWD"

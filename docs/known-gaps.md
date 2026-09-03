@@ -108,15 +108,9 @@ inventory — which pairs are pinned, which are proven inert, and which are neit
 in [docs/components/ast-engine.md](./components/ast-engine.md#the-honest-ordering-inventory). Read the pin
 count as "the divergences someone has gone and found", not "the only divergences that exist".
 
-### The publish-speed gate is one-sided and its two arms are not pinned
+### The publish-speed gate is one-sided
 
-`.github/scripts/publish-bench.sh` runs and passes in CI. Two things it does not do.
-
-**It is a one-sided guard.** It fails only when head is **slower** than base by more than `MAX_RATIO=1.25`.
-Nothing ratchets: whenever a branch lands a large speedup, that whole win becomes headroom the next branch
-can spend without tripping the gate. Read a PASS as "no blowup", never as "the speed held".
-
-**Its two arms are not pinned.** `composer.lock` is gitignored, so the base and head worktrees each run an
-independent `composer install` and re-resolve from scratch. They have agreed on the same framework version
-in every run so far, but nothing enforces it — a release landing between the two installs would put
-different vendor code under the two arms, and the ratio would measure that instead of your change.
+`.github/scripts/publish-bench.sh` fails only when head is slower than the merge-base by more than
+`MAX_RATIO=1.25`. A large speedup becomes headroom the next branch can spend, so after merging one,
+fast-forward `main` so the fast side becomes the base. Both arms install from the same `composer.lock`,
+and the run prints each arm's framework version.
