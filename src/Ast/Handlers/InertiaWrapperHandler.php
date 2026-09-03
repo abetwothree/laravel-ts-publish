@@ -8,7 +8,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use Inertia\ResponseFactory;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
@@ -72,12 +71,15 @@ final class InertiaWrapperHandler implements ExpressionHandler
 
     /**
      * The wrapper's arguments mapped against Inertia's own factory signature. `lazy` (gone in v3) and an
-     * app without the adapter fall back to positions only; the adapter is a dev dependency, hence the guard.
+     * app without the adapter fall back to positions only. The adapter is a dev dependency, so it is named
+     * by string rather than imported — an import would declare a hard requirement this package lacks.
      */
     private function wrapperArguments(StaticCall $expr, string $method): CallArguments
     {
-        if (class_exists(ResponseFactory::class) && method_exists(ResponseFactory::class, $method)) {
-            return CallArguments::for($expr, new ReflectionMethod(ResponseFactory::class, $method));
+        $factory = 'Inertia\\ResponseFactory';
+
+        if (class_exists($factory) && method_exists($factory, $method)) {
+            return CallArguments::for($expr, new ReflectionMethod($factory, $method));
         }
 
         return CallArguments::fromNames($expr->getArgs(), []);

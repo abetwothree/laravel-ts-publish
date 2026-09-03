@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
-use Inertia\ResponseFactory;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -123,8 +122,12 @@ class InertiaRenderLocator
             return CallArguments::for($call, new ReflectionFunction('inertia'));
         }
 
-        if (! $call instanceof FuncCall && class_exists(ResponseFactory::class)) {
-            return CallArguments::for($call, new ReflectionMethod(ResponseFactory::class, 'render'));
+        // The Inertia adapter is a dev dependency, so it is named by string rather than imported —
+        // an import would declare a hard requirement this package does not have.
+        $factory = 'Inertia\\ResponseFactory';
+
+        if (! $call instanceof FuncCall && class_exists($factory)) {
+            return CallArguments::for($call, new ReflectionMethod($factory, 'render'));
         }
 
         return CallArguments::fromNames($call->isFirstClassCallable() ? [] : $call->getArgs(), []);

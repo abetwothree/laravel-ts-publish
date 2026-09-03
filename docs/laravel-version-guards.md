@@ -120,6 +120,7 @@ String FQCNs that exist for reasons other than version support, and must not be 
 - `src/Ast/Handlers/ModelFinderHandler.php` — its `PAGINATORS` map names
   `Illuminate\Pagination\{LengthAwarePaginator,Paginator,CursorPaginator}` by string, the same
   always-present-class-by-name shape as `TolkiTypes.php`.
-- `src/Ast/Handlers/InertiaWrapperHandler.php` and `src/Ast/InertiaRenderLocator.php` — import the
-  dev-only `Inertia\ResponseFactory` behind `class_exists()`; an optional adapter, not a Laravel
-  version guard.
+- `src/Ast/Handlers/InertiaWrapperHandler.php` and `src/Ast/InertiaRenderLocator.php` — name the dev-only
+  `Inertia\ResponseFactory` by string behind `class_exists()`. Not a Laravel version guard, but the same
+  rule applies for the same reason: a `require-dev` package must never be imported from `src/`, or the
+  import declares a hard dependency this package does not have.
