@@ -97,22 +97,34 @@ Absent on purpose. Do not "fix" these without raising it first.
 
 Nine of the twenty-four handlers in the resource profile claim `MethodCall`
 (`src/Ast/ResourceExpressionHandlers.php`), so for a `$this->foo()` expression the dispatcher's registration
-order is what decides which one answers. Every one of the 36 ordered pairs among those nine is now run
-both ways by `tests/Unit/Ast/MethodCallOrderingMatrixTest.php`: seven pairs disagree and are held in the
-direction `handlers()` lists them (its `PINNED` map, and the `MethodCall` row of the ordering table in
+order is what decides which one answers. Every one of the 36 unordered pairs among those nine is now run
+in both orders by `tests/Unit/Ast/MethodCallOrderingMatrixTest.php`: seven pairs disagree and are held in
+the direction `handlers()` lists them (its `METHOD_CALL_PINNED` map, and the `MethodCall` row of the ordering table in
 [docs/components/ast-engine.md](./components/ast-engine.md#the-honest-ordering-inventory)); the other 29
 are proven inert against that same corpus.
 
 The residual limit is the corpus, not the method: an expression shape the matrix never constructs cannot
 be proven to disagree there, however plausible it looks by inspection — a new shape that turns an inert
-pair into a disagreeing one fails the matrix, which is the signal to pin it. One of the seven pins is
-itself worth flagging rather than treating as settled: `RelationCollectionChainHandler` currently wins over
-`KnownMethodRuleHandler` for `$this->can(...)`/`cannot(...)`/`canAny(...)`, so a resource typing
-`$this->can('edit')` gets `unknown` today instead of the `boolean` that `KnownMethodRuleHandler`'s
-dedicated rule would give it if it ever got the chance. The matrix pins the order `handlers()` actually
-uses — it does not fix it, since reordering `handlers()` is outside this pin's scope. Read the pin count
-the same way as before: "the divergences someone has actually gone and found", not "the only divergences
-that exist" — now bounded by the matrix's corpus rather than by nothing at all.
+pair into a disagreeing one fails the matrix, which is the signal to pin it. One of the seven pins has a
+narrower practical consequence than "seven pins" alone suggests: `RelationCollectionChainHandler` wins
+over `KnownMethodRuleHandler` for `$this->can(...)`/`cannot(...)`/`canAny(...)`. The two orders diverge
+whenever the resource's model — resolved or not — does not declare `can()`: `RelationCollectionChainHandler`'s
+generic `$this->method()` fallback gates its model check on `method_exists($scope->modelClass,
+$methodName)`, which fails identically whether `scope->modelClass` is `null` or a real, resolved class
+that simply has no `can()` (this matrix's own `CommentResource`/`Comment` corpus row is exactly that
+case: the model resolves fine, but `Comment` declares no `can()`, so `RelationCollectionChainHandler`
+floors at `unknown` while `KnownMethodRuleHandler`'s unconditional rule still answers `boolean`). The two
+orders already agree in the mainstream case, though: whenever the model resolves to something
+Authorizable (e.g. `UserResource`/`User`), `RelationCollectionChainHandler`'s fallback reaches
+`Authorizable::can(): bool` through that same `method_exists()` check and lands on `boolean` too. A
+resource over a model with no `can()` at all is not shipping code regardless of which order wins:
+`$this->can(...)` there would throw `BadMethodCallException` at runtime (neither `Comment` nor
+`JsonResource` declares `can()`, and `JsonResource::__call()` forwards to a receiver that doesn't have
+it either) — that's why the practical impact is small, not why the divergence condition is narrow. The
+matrix pins the order `handlers()` actually uses; it does not change it, since reordering `handlers()`
+is outside this pin's scope. Read the pin count the same way as before: "the divergences someone has
+actually gone and found", not "the only divergences that exist" — now bounded by the matrix's corpus
+rather than by nothing at all.
 
 ### The publish-speed gate is one-sided
 

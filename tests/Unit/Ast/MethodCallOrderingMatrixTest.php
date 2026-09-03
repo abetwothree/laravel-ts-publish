@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
@@ -37,7 +38,7 @@ use Workbench\App\Models\User;
  * alphabetically, naming the class that must win. Every other pair is inert; one entry here is a
  * questionable-but-real winner — see docs/known-gaps.md for which, and why.
  */
-const PINNED = [
+const METHOD_CALL_PINNED = [
     'ConditionalMethodHandler|FirstClassCallableHandler' => FirstClassCallableHandler::class,
     'FirstClassCallableHandler|ToResourceHandler' => FirstClassCallableHandler::class,
     'FirstClassCallableHandler|KnownFunctionCallHandler' => FirstClassCallableHandler::class,
@@ -46,6 +47,19 @@ const PINNED = [
     'RelationCollectionChainHandler|RelationFilterHandler' => RelationFilterHandler::class,
     'KnownMethodRuleHandler|RelationCollectionChainHandler' => RelationCollectionChainHandler::class,
 ];
+
+/**
+ * Whether $handler alone answers $expr non-null, isolated from any partner — the measure of "the
+ * corpus exercises this pair" a vacuous-pair check needs. A handler's own internal recursion into
+ * $engine->resolve() for some unrelated sub-expression must not count as claiming $expr itself.
+ */
+function methodCallHandlerClaims(ExpressionHandler $handler, MethodCall $expr): bool
+{
+    $engine = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class, 'toArray', [$handler]);
+    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
+
+    return $handler->resolve($expr, $scope, $engine) !== null;
+}
 
 /** @return list<MethodCall> */
 function methodCallCorpus(): array
@@ -147,7 +161,7 @@ it('agrees in both orders, or is pinned in the documented direction', function (
     $sortedBasenames = array_map(class_basename(...), [$first, $second]);
     sort($sortedBasenames);
     $pairKey = implode('|', $sortedBasenames);
-    $winner = PINNED[$pairKey] ?? null;
+    $winner = METHOD_CALL_PINNED[$pairKey] ?? null;
     $disagreed = false;
 
     foreach (methodCallCorpus() as $expr) {
@@ -171,9 +185,12 @@ it('agrees in both orders, or is pinned in the documented direction', function (
     if ($winner !== null) {
         expect($disagreed)->toBeTrue("Pinned pair {$pairKey} never disagreed on the corpus — the pin is dead");
     } else {
-        // An unpinned disagreement already failed inside the loop above; this only gives the inert
-        // case its own assertion — phpunit.xml.dist's failOnRisky would otherwise fail a dataset
-        // entry that never disagreed, since it would run to completion without asserting anything.
-        expect($disagreed)->toBeFalse("Unpinned pair {$pairKey} disagreed without failing above — investigate");
+        // A disagreement here already failed inside the loop above. What's left to prove for an inert
+        // pair is that the corpus wasn't simply silent for both handlers — see methodCallHandlerClaims().
+        $claimed = array_any(
+            methodCallCorpus(),
+            fn (MethodCall $expr): bool => methodCallHandlerClaims($a, $expr) || methodCallHandlerClaims($b, $expr),
+        );
+        expect($claimed)->toBeTrue("Pair {$pairKey} is vacuous — neither handler claimed any corpus expression");
     }
 })->with(methodCallClaimantPairs());
