@@ -2141,6 +2141,35 @@ class LaravelTsPublish
     }
 
     /**
+     * Joins union members with a single trailing `null`, whichever arms the nulls came from.
+     *
+     * @param  list<string>  $types
+     */
+    public function hoistNull(array $types): string
+    {
+        $members = [];
+        $nullable = false;
+
+        foreach ($types as $type) {
+            foreach ($this->splitTopLevelUnion($type) as $member) {
+                if ($member === 'null') {
+                    $nullable = true;
+
+                    continue;
+                }
+
+                $members[] = $member;
+            }
+        }
+
+        if ($nullable) {
+            $members[] = 'null';
+        }
+
+        return implode(' | ', $members);
+    }
+
+    /**
      * Replace a bare enum type-name token with its AsEnum wrap, preserving every other union arm.
      *
      * The lookbehind's `.` keeps a namespace-qualified `foo.RoleType` unmatched; the lookahead keeps

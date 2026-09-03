@@ -392,7 +392,7 @@ it('types whenHas(attribute, default: …) with the value skipped as null unione
 
     $result = (new ConditionalMethodHandler)->resolve($expr, conditionalMethodHandlerScope(), $engine);
 
-    expect($result)->toBe(['type' => 'null | string', 'optional' => false]);
+    expect($result)->toBe(['type' => 'string | null', 'optional' => false]);
 });
 
 // whenAppended('attr', default: …) skips $value the same way whenHas() does: Laravel counts three
@@ -410,7 +410,7 @@ it('types whenAppended(attribute, default: …) with the value skipped as null u
 
     $result = (new ConditionalMethodHandler)->resolve($expr, $scope, $engine);
 
-    expect($result)->toBe(['type' => 'null | string', 'optional' => false]);
+    expect($result)->toBe(['type' => 'string | null', 'optional' => false]);
 });
 
 // whenExistsLoaded('rel', default: …) skips $value: unlike whenLoaded(), there is no identity-closure
@@ -428,7 +428,7 @@ it('types whenExistsLoaded(relationship, default: …) with the value skipped as
 
     $result = (new ConditionalMethodHandler)->resolve($expr, $scope, $engine);
 
-    expect($result)->toBe(['type' => 'null | string', 'optional' => false]);
+    expect($result)->toBe(['type' => 'string | null', 'optional' => false]);
 });
 
 it('still treats a spread at the default position as no default', function () {

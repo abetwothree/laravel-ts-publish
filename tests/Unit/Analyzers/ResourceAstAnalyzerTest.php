@@ -809,7 +809,7 @@ describe('ResourceAstAnalyzer with EnumCollectionResource (EnumResource::collect
     // demoted): the transformer's substitution-based rewrite reproduces the full union losslessly.
     test('whenHas() with an explicit default stays enumFqcn-tagged and keeps the full union', function () {
         expect($this->props['week_days_when_has_default']['type'])
-            ->toBe('WeekDaysType[] | null | string')
+            ->toBe('WeekDaysType[] | string | null')
             ->and($this->props['week_days_when_has_default']['optional'])->toBeFalse()
             ->and($this->analysis->enumResources)->toHaveKey('week_days_when_has_default')
             ->and($this->analysis->enumResources['week_days_when_has_default'])->toBe(WeekDays::class)
@@ -4258,7 +4258,7 @@ describe('ResourceAstAnalyzer with ConditionalParamArrayResource — issue #38 c
         $prop = collect($this->analysis->properties)->firstWhere('name', 'notes_when_null');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('null | string')
+            ->and($prop['type'])->toBe('string | null')
             ->and($prop['optional'])->toBeFalse();
     });
 

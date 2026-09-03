@@ -2456,6 +2456,16 @@ describe('splitTopLevelUnion', function () {
     });
 });
 
+describe('hoistNull', function () {
+    it('hoists every top-level null to one trailing member', function (array $types, string $expected) {
+        expect($this->service->hoistNull($types))->toBe($expected);
+    })->with([
+        'two nullable arms' => [['string | null', 'number | null'], 'string | number | null'],
+        'null arm only' => [['{ a: string | null }', 'null'], '{ a: string | null } | null'],
+        'no null' => [['string', 'number'], 'string | number'],
+    ]);
+});
+
 /**
  * A class annotated with #[TsType] for testing step 2 resolution.
  */

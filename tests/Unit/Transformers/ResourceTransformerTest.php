@@ -28,6 +28,7 @@ use Workbench\App\Http\Resources\FqcnMixinResource;
 use Workbench\App\Http\Resources\ImageDelegatedResource;
 use Workbench\App\Http\Resources\ImageDimensionsResource;
 use Workbench\App\Http\Resources\ImageMorphResource;
+use Workbench\App\Http\Resources\ImageNullableArmsResource;
 use Workbench\App\Http\Resources\InheritedInlineFqcnResource;
 use Workbench\App\Http\Resources\KpiResource;
 use Workbench\App\Http\Resources\MediaTypeInstanceOfResource;
@@ -2310,7 +2311,7 @@ describe('ResourceTransformer with EnumCollectionResource — EnumResource::coll
         $data = (new ResourceTransformer(EnumCollectionResource::class))->data();
 
         expect($data->properties['week_days_when_has_default']['type'])
-            ->toBe('AsEnum<typeof WeekDays>[] | null | string')
+            ->toBe('AsEnum<typeof WeekDays>[] | string | null')
             ->and($data->properties['week_days_when_has_default']['optional'])->toBeFalse();
     });
 
@@ -2425,6 +2426,15 @@ describe('ResourceTransformer with ImageDimensionsResource', function () {
 
         expect($properties['box']['type'])
             ->toBe('{ width: number | null; height: number | null } | { width: number | null }');
+    });
+});
+
+describe('ResourceTransformer with ImageNullableArmsResource', function () {
+    test('ternary and Elvis arms share one trailing null', function () {
+        $properties = (new ResourceTransformer(ImageNullableArmsResource::class))->data()->properties;
+
+        expect($properties['size']['type'])->toBe('number | string | null')
+            ->and($properties['label']['type'])->toBe('string | number | null');
     });
 });
 

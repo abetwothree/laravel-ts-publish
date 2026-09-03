@@ -1229,26 +1229,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
      */
     private function unionBranchTypes(array $types): string
     {
-        $members = [];
-        $nullable = false;
-
-        foreach ($types as $type) {
-            foreach (LaravelTsPublish::splitTopLevelUnion($type) as $member) {
-                if ($member === 'null') {
-                    $nullable = true;
-
-                    continue;
-                }
-
-                $members[] = $member;
-            }
-        }
-
-        if ($nullable) {
-            $members[] = 'null';
-        }
-
-        return implode(' | ', $members);
+        return LaravelTsPublish::hoistNull($types);
     }
 
     /**
