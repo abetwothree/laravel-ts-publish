@@ -2460,6 +2460,7 @@ describe('hoistNull', function () {
         'two nullable arms' => [['string | null', 'number | null'], 'string | number | null'],
         'null arm only' => [['{ a: string | null }', 'null'], '{ a: string | null } | null'],
         'no null' => [['string', 'number'], 'string | number'],
+        'duplicate member across arms' => [['A | null', 'A'], 'A | null'],
     ]);
 });
 

@@ -65,6 +65,7 @@ use Workbench\App\Http\Resources\EventLogResource;
 use Workbench\App\Http\Resources\ExtendedAddressResource;
 use Workbench\App\Http\Resources\FluentSelfResource;
 use Workbench\App\Http\Resources\GuardClauseClosureResource;
+use Workbench\App\Http\Resources\GuardedCollectionSpreadResource;
 use Workbench\App\Http\Resources\HelperCallResource;
 use Workbench\App\Http\Resources\InlineArrayFqcnResource;
 use Workbench\App\Http\Resources\Ledger;
@@ -3493,6 +3494,32 @@ describe('ResourceAstAnalyzer with ControlFlowReturnResource (union multiple ret
     test('mergeReturnBranches carries an enum referenced only inside an inline array literal', function () {
         expect($this->analysis->inlineEnumResourceFqcns)->toHaveKey('inline_enum_branch')
             ->and($this->analysis->inlineEnumResourceFqcns['inline_enum_branch'])->toContain(PaymentMethod::class);
+    });
+});
+
+describe('ResourceAstAnalyzer with GuardedCollectionSpreadResource (index signature across branches)', function () {
+    beforeEach(function () {
+        $reflection = new ReflectionClass(GuardedCollectionSpreadResource::class);
+        $this->analysis = (new ResourceAstAnalyzer($reflection, Order::class))->analyze();
+    });
+
+    test('an index signature missing from a guard-clause branch is never optional', function () {
+        $indexSignature = collect($this->analysis->properties)->firstWhere('name', '[key: number]');
+
+        expect($indexSignature)->not->toBeNull()
+            ->and($indexSignature['optional'])->toBeFalse();
+    });
+
+    test('a normally-named property missing from a branch is still optional', function () {
+        $archived = collect($this->analysis->properties)->firstWhere('name', 'archived');
+
+        expect($archived['optional'])->toBeTrue();
+    });
+
+    test('a property present in every branch stays required', function () {
+        $id = collect($this->analysis->properties)->firstWhere('name', 'id');
+
+        expect($id['optional'])->toBeFalse();
     });
 });
 

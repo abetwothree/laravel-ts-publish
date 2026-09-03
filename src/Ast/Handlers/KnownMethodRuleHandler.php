@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Analyzers\FormRequest\FormRequestRulesAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AuthUserResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\AppliesKnownMethodRules;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
@@ -144,13 +145,17 @@ final class KnownMethodRuleHandler implements ExpressionHandler
      */
     private function validatedKeyRule(MethodCall $expr, string $formRequestClass): ?array
     {
-        $args = $expr->getArgs();
+        $args = CallArguments::for($expr, new ReflectionMethod(FormRequest::class, 'validated'));
+        $keyArg = $args->named('key');
+        $defaultPosition = $args->positionOf('default');
 
-        if (count($args) !== 1 || ! $args[0]->value instanceof String_) {
+        if ($keyArg === null
+            || ! $keyArg->value instanceof String_
+            || ($defaultPosition !== null && $args->passedCount() > $defaultPosition)) {
             return null;
         }
 
-        $key = $args[0]->value->value;
+        $key = $keyArg->value->value;
 
         foreach (resolve(FormRequestRulesAnalyzer::class)->analyze($formRequestClass) as $field) {
             if ($field->fieldPath !== $key) {

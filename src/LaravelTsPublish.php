@@ -2168,6 +2168,8 @@ class LaravelTsPublish
             }
         }
 
+        $members = array_unique($members);
+
         if ($nullable) {
             $members[] = 'null';
         }

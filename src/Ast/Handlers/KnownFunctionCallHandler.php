@@ -101,7 +101,7 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             || ! $expr->var->name instanceof Name
             || $expr->var->name->getLast() !== 'config'
             || $expr->var->isFirstClassCallable()
-            || $expr->var->getArgs() !== []
+            || ! CallArguments::for($expr->var, new ReflectionFunction('config'))->isEmpty()
             || ! method_exists(Repository::class, $expr->name->toString())) {
             return null;
         }

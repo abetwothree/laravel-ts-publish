@@ -230,6 +230,37 @@ it('types validated(key) from the form request rules', function () {
         ->toBe(['type' => 'string', 'optional' => false]);
 });
 
+it('types validated(key: ...) bound by name, not just by position', function () {
+    $call = new MethodCall(new Variable('request'), 'validated', [
+        new Arg(new String_('title'), name: new Identifier('key')),
+    ]);
+
+    expect((new KnownMethodRuleHandler)->resolve($call, formRequestScope(), requestRuleEngine()))
+        ->toBe(['type' => 'string', 'optional' => false]);
+});
+
+// A bound `default` argument means data_get() can return that default instead of the rule's own
+// type — conservatively declining beats confidently narrowing to the rule's type alone.
+it('declines validated() when a default argument is also bound, named or positional', function () {
+    $positional = new MethodCall(new Variable('request'), 'validated', [
+        new Arg(new String_('title')), new Arg(new String_('fallback')),
+    ]);
+    $named = new MethodCall(new Variable('request'), 'validated', [
+        new Arg(new String_('title')), new Arg(new String_('fallback'), name: new Identifier('default')),
+    ]);
+
+    expect((new KnownMethodRuleHandler)->resolve($positional, formRequestScope(), requestRuleEngine()))->toBeNull()
+        ->and((new KnownMethodRuleHandler)->resolve($named, formRequestScope(), requestRuleEngine()))->toBeNull();
+});
+
+// getArgs() asserts !isFirstClassCallable() — reading through CallArguments must decline gracefully
+// instead of fataling on $request->validated(...).
+it('declines a first-class-callable validated(...) instead of fataling', function () {
+    $call = new MethodCall(new Variable('request'), 'validated', [new VariadicPlaceholder]);
+
+    expect((new KnownMethodRuleHandler)->resolve($call, formRequestScope(), requestRuleEngine()))->toBeNull();
+});
+
 it('declines validated() with a non-literal key, and on a plain Request', function () {
     $computed = new MethodCall(new Variable('request'), 'validated', [new Arg(new Variable('key'))]);
     $plain = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('title'))]);

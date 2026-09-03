@@ -1337,7 +1337,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
             $presentInAll = count($entries) === $branchCount;
             $anyOptional = (bool) array_filter($entries, fn (array $e) => $e['optional']);
-            $optional = ! $presentInAll || $anyOptional;
+            // An index signature (e.g. `[key: number]`) can never carry `?:` — it's a syntax
+            // error — regardless of whether every branch produced it.
+            $optional = ! self::isIndexSignatureKey($name) && (! $presentInAll || $anyOptional);
 
             // Use the first non-empty description found
             $description = '';
@@ -1373,6 +1375,15 @@ class ResourceAstAnalyzer implements ExpressionEngine
             flatTypeAlias: $flatTypeAlias,
             flatTypeAliasFqcn: $flatTypeAliasFqcn,
         );
+    }
+
+    /**
+     * Whether a property name is a generated `[key: number]`/`[key: string]` index signature —
+     * those can never carry `?:`, unlike a merely-missing-in-some-branch named property.
+     */
+    private static function isIndexSignatureKey(string $name): bool
+    {
+        return (bool) preg_match('/^\[[a-zA-Z_$][a-zA-Z0-9_$]*: (?:string|number)\]$/', $name);
     }
 
     /**

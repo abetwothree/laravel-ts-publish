@@ -84,6 +84,7 @@ function methodCallCorpus(): array
         new MethodCall(new FuncCall(new Name('auth')), 'user', [new VariadicPlaceholder]),
         new MethodCall(new StaticCall(new Name('Whatever'), 'collection', []), 'resolve', []),
         new MethodCall($this_, 'can', [new Arg(new String_('edit'))]),
+        new MethodCall(new PropertyFetch($this_, 'replies'), 'first', [new VariadicPlaceholder]),
         new MethodCall(new Variable('users'), 'map', [new Arg(new ArrowFunction([
             'params' => [new Param(new Variable('user'), type: new Name(User::class))],
             'expr' => new PropertyFetch(new Variable('user'), 'name'),

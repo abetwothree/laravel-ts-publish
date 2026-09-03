@@ -85,7 +85,11 @@ class ResourceTransformer extends CoreTransformer
     /** @var array<class-string, string> FQCN => resource interface name */
     protected array $resourceFqcnMap = [];
 
-    /** @var array<string, EnumResourcePropertyInfo> property => enum info for EnumResource::make()/::collection() properties */
+    /**
+     * Property => enum info for EnumResource::make()/::collection() properties.
+     *
+     * @var array<string, EnumResourcePropertyInfo>
+     */
     protected array $enumResourceProperties = [];
 
     /** @var array<class-string, string> FQCN => model interface name */
@@ -574,7 +578,7 @@ class ResourceTransformer extends CoreTransformer
                 continue; // @codeCoverageIgnore
             }
 
-            $tokens = explode(' | ', $this->properties[$propName]['type']);
+            $tokens = LaravelTsPublish::splitTopLevelUnion($this->properties[$propName]['type']);
             $fqcnIndex = 0;
             $rewritten = [];
 

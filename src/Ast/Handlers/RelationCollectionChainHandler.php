@@ -148,6 +148,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
         // while loop above ran at least once, since $call is typed as MethodCall.
         $terminalOp = $ops[0]['name'];
         $isTerminal = ($terminalOp === 'first' || $terminalOp === 'last')
+            && ! $ops[0]['node']->isFirstClassCallable()
             && $this->collectionArguments($ops[0]['node'], $terminalOp)->isEmpty();
 
         if ($isTerminal) {
