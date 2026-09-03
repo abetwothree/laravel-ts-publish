@@ -61,13 +61,6 @@ on both versions, as does the `FooCollection` → `FooResource` naming conventio
 [docs/laravel-version-guards.md](./laravel-version-guards.md) for how the version floor was established and
 which tests are skipped below it.
 
-### `EnumResource::collection()` inside a mixed ternary arm
-
-`ResourceTransformer` assumes the wrapping arm of a mixed enum ternary is never
-`EnumResource::collection()`, which is not true in general — the array suffix can come out wrong. The
-assumption is written at the branch it governs, inside `rewriteEnumResourceTypes()` in
-`src/Transformers/ResourceTransformer.php`.
-
 ## Deliberate non-goals
 
 Absent on purpose. Do not "fix" these without raising it first.

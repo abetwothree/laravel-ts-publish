@@ -365,12 +365,20 @@ happened to end in `[]` — a shape that is only correct when *both* arms are ar
 was later fixed to match: it now array-suffixes only the bare arm
 (`AsEnum<typeof Const> | EnumTypeName[]`) instead of wrapping the whole union, the same principle
 `expandMixedEnumType()` already applied — an array-shaped arm keeps its own `[]`, a scalar arm
-never gains one it didn't earn — even though the two reach it by different means: this section's
-member-position matching versus the top-level rewrite's fixed convention that the wrapped arm is
-always scalar and the direct arm is the one that can be array-shaped, since it still has no
-per-member signal from the analyzer's own (collapsed-when-same-shaped) merged string to inspect.
-`EnumCollectionResource::$latest_status_or_history` pins the corrected top-level shape:
-`AsEnum<typeof Status> | StatusType[]`.
+never gains one it didn't earn. That fix still assumed the wrapped arm itself was always scalar,
+true only while every wrap was `EnumResource::make()`; a wrap arm using `EnumResource::collection()`
+needs its own `[]` too, and the top-level rewrite had no member-position signal of its own to tell
+the two apart — its merged type string collapses to one token whenever both arms render the same
+way, unlike `expandMixedEnumType()`'s. `TernaryHandler::analyzeTernary()` now closes that gap
+directly: once the merged result shows a mixed pair it re-resolves both arms once each, records
+their own shapes (`wrapIsCollection`, `directIsArray`) on the result, and threads them through
+`MethodAnalysis::$enumResourceArmShapes` for `rewriteEnumResourceTypes()` to read back — the same
+per-arm signal `expandMixedEnumType()` gets from the merged string, delivered to the top-level
+rewrite by a different route since its own merged string can't carry it.
+`EnumCollectionResource::$latest_status_or_history` pins the scalar-wrap case:
+`AsEnum<typeof Status> | StatusType[]`. `$wrapped_history_or_scalar` and `$wrapped_history_or_array`
+pin the collection-wrap case the old fixed convention got backwards:
+`AsEnum<typeof Status>[] | StatusType` and `AsEnum<typeof Status>[] | StatusType[]`.
 
 In the globals tree, `LaravelTsPublish::rewriteAsEnumToType()`'s pair pattern folds an *exact*
 `AsEnum<typeof Const> | EnumTypeName` adjacency — no `[]` anywhere in that span, neither between

@@ -2381,6 +2381,14 @@ describe('ResourceTransformer with EnumCollectionResource — EnumResource::coll
         expect($data->properties['latest_status_or_history']['type'])
             ->toBe('AsEnum<typeof Status> | StatusType[]');
     });
+
+    test('a mixed ternary suffixes [] on whichever arm is a collection', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+        $properties = (new ResourceTransformer(EnumCollectionResource::class))->data()->properties;
+
+        expect($properties['wrapped_history_or_scalar']['type'])->toBe('AsEnum<typeof Status>[] | StatusType')
+            ->and($properties['wrapped_history_or_array']['type'])->toBe('AsEnum<typeof Status>[] | StatusType[]');
+    });
 });
 
 describe('ResourceTransformer with ImageDimensionsResource', function () {

@@ -43,10 +43,35 @@ final class TernaryHandler implements ExpressionHandler
      */
     private function analyzeTernary(Ternary $expr, ExpressionEngine $engine): array
     {
-        if ($expr->if === null) {
-            return ValueResult::analyzeClosureUnion([$expr->cond, $expr->else], $engine);
+        $ifExpr = $expr->if ?? $expr->cond;
+
+        $result = ValueResult::analyzeClosureUnion([$ifExpr, $expr->else], $engine);
+
+        return $this->recordMixedArmShapes($result, $ifExpr, $expr->else, $engine);
+    }
+
+    /**
+     * A mixed union (one arm wraps via EnumResource, the other reads directly) collapses to one
+     * deduped bare type name, so the merged result alone can't tell an array-shaped arm from a
+     * scalar one — re-resolving each arm here, while still distinct, is the only place that survives.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return ValueExpressionResult
+     */
+    private function recordMixedArmShapes(array $result, Expr $ifExpr, Expr $elseExpr, ExpressionEngine $engine): array
+    {
+        if (! isset($result['enumFqcn'], $result['directEnumFqcn']) || $result['enumFqcn'] !== $result['directEnumFqcn']) {
+            return $result;
         }
 
-        return ValueResult::analyzeClosureUnion([$expr->if, $expr->else], $engine);
+        $ifResult = $engine->resolve($ifExpr);
+        $elseResult = $engine->resolve($elseExpr);
+        $wrapResult = isset($ifResult['enumFqcn']) ? $ifResult : $elseResult;
+        $directResult = isset($ifResult['directEnumFqcn']) ? $ifResult : $elseResult;
+
+        $result['wrapIsCollection'] = str_ends_with(rtrim(str_replace('| null', '', $wrapResult['type'])), '[]');
+        $result['directIsArray'] = str_ends_with(rtrim(str_replace('| null', '', $directResult['type'])), '[]');
+
+        return $result;
     }
 }

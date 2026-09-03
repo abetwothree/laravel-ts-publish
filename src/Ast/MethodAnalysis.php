@@ -24,6 +24,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * @phpstan-type InlineEnumFqcnsMap = array<string, list<class-string>>
  * @phpstan-type InlineModelFqcnsMap = array<string, list<class-string>>
  * @phpstan-type MultiEnumFqcnsMap = array<string, list<class-string>>
+ * @phpstan-type EnumResourceArmShape = array{wrapIsCollection: bool, directIsArray: bool}
+ * @phpstan-type EnumResourceArmShapeMap = array<string, EnumResourceArmShape>
  */
 class MethodAnalysis
 {
@@ -38,6 +40,7 @@ class MethodAnalysis
      * @param  InlineModelFqcnsMap  $inlineModelFqcns  property name => list of model FQCNs embedded in inline object type strings
      * @param  MultiEnumFqcnsMap  $multiEnumResourceFqcns  property name => ordered list of enum FQCNs (for multi-EnumResource ternary/union branches, used for AsEnum rewrite)
      * @param  InlineEnumFqcnsMap  $inlineEnumResourceFqcns  property name => list of enum FQCNs embedded via EnumResource in inline object type strings (used for value imports)
+     * @param  EnumResourceArmShapeMap  $enumResourceArmShapes  property name => each arm's own array shape, for a mixed EnumResource/direct-access ternary
      * @param  string|null  $flatTypeAlias  when set, the collection emits `export type X = SingularResource[]` instead of an interface
      * @param  class-string<JsonResource>|null  $flatTypeAliasFqcn  FQCN of the singular resource for the flat type alias
      */
@@ -52,6 +55,7 @@ class MethodAnalysis
         public array $inlineModelFqcns = [],
         public array $multiEnumResourceFqcns = [],
         public array $inlineEnumResourceFqcns = [],
+        public array $enumResourceArmShapes = [],
         public ?string $flatTypeAlias = null,
         public ?string $flatTypeAliasFqcn = null,
     ) {}
@@ -71,6 +75,7 @@ class MethodAnalysis
         $this->directEnumFqcns = [...$this->directEnumFqcns, ...$source->directEnumFqcns];
         $this->modelFqcns = [...$this->modelFqcns, ...$source->modelFqcns];
         $this->multiEnumResourceFqcns = [...$this->multiEnumResourceFqcns, ...$source->multiEnumResourceFqcns];
+        $this->enumResourceArmShapes = [...$this->enumResourceArmShapes, ...$source->enumResourceArmShapes];
 
         foreach ($source->customImports as $path => $types) {
             $this->customImports[$path] = [...($this->customImports[$path] ?? []), ...$types];

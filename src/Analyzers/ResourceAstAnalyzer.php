@@ -409,6 +409,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 $analysis->enumResources[$keyName], $analysis->nestedResources[$keyName], $analysis->directEnumFqcns[$keyName],
                 $analysis->modelFqcns[$keyName], $analysis->multiEnumResourceFqcns[$keyName], $analysis->inlineEnumFqcns[$keyName],
                 $analysis->inlineModelFqcns[$keyName], $analysis->inlineEnumResourceFqcns[$keyName],
+                $analysis->enumResourceArmShapes[$keyName],
             );
 
             $analysis->properties[] = [
@@ -421,6 +422,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $this->dispatchFqcnResults(
                 $keyName, $result, $analysis->enumResources, $analysis->directEnumFqcns,
                 $analysis->nestedResources, $analysis->modelFqcns, $analysis->multiEnumResourceFqcns,
+                $analysis->enumResourceArmShapes,
             );
 
             foreach ($result['embeddedEnumFqcns'] ?? [] as $fqcn) {

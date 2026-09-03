@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type ClassMapType from MethodAnalysis
  * @phpstan-import-type MultiEnumFqcnsMap from MethodAnalysis
+ * @phpstan-import-type EnumResourceArmShapeMap from MethodAnalysis
  */
 trait DispatchesFqcnResults
 {
@@ -28,6 +29,7 @@ trait DispatchesFqcnResults
      * @param  ClassMapType  $nestedResources
      * @param  ClassMapType  $modelFqcns
      * @param  MultiEnumFqcnsMap  $multiEnumResourceFqcns
+     * @param  EnumResourceArmShapeMap  $enumResourceArmShapes
      */
     protected function dispatchFqcnResults(
         string $keyName,
@@ -37,6 +39,7 @@ trait DispatchesFqcnResults
         array &$nestedResources,
         array &$modelFqcns,
         array &$multiEnumResourceFqcns = [],
+        array &$enumResourceArmShapes = [],
     ): void {
         if (isset($result['enumFqcn'])) {
             $enumResources[$keyName] = $result['enumFqcn'];
@@ -44,6 +47,15 @@ trait DispatchesFqcnResults
 
         if (isset($result['directEnumFqcn'])) {
             $directEnumFqcns[$keyName] = $result['directEnumFqcn'];
+        }
+
+        // Only a mixed ternary/Elvis arm (TernaryHandler) records these; the merged union's own
+        // 'type' string already deduped away which arm was the collection.
+        if (isset($result['wrapIsCollection'], $result['directIsArray'])) {
+            $enumResourceArmShapes[$keyName] = [
+                'wrapIsCollection' => $result['wrapIsCollection'],
+                'directIsArray' => $result['directIsArray'],
+            ];
         }
 
         if (isset($result['multiEnumResourceFqcns'])) {

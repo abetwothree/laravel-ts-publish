@@ -30,6 +30,11 @@ use ReflectionClass;
  * @phpstan-import-type TypesImportMap from TsResourceDto
  * @phpstan-import-type ValuesImportMap from TsResourceDto
  * @phpstan-import-type ImportMapType from MethodAnalysis
+ * @phpstan-import-type EnumResourceArmShapeMap from MethodAnalysis
+ *
+ * @phpstan-type EnumResourcePropertyInfo = array{
+ *     fqcn: class-string, nullable: bool, isCollection: bool, wrapIsCollection: bool, directIsArray: bool
+ * }
  *
  * @extends CoreTransformer<JsonResource>
  */
@@ -80,7 +85,7 @@ class ResourceTransformer extends CoreTransformer
     /** @var array<class-string, string> FQCN => resource interface name */
     protected array $resourceFqcnMap = [];
 
-    /** @var array<string, array{fqcn: class-string, nullable: bool, isCollection: bool}> property => enum info for EnumResource::make()/::collection() properties */
+    /** @var array<string, EnumResourcePropertyInfo> property => enum info for EnumResource::make()/::collection() properties */
     protected array $enumResourceProperties = [];
 
     /** @var array<class-string, string> FQCN => model interface name */
@@ -308,7 +313,17 @@ class ResourceTransformer extends CoreTransformer
             $nullable = str_contains($type, 'null');
             // $type itself may already carry '| null' here, so the suffix check must strip it first.
             $isCollection = str_ends_with(rtrim(str_replace('| null', '', $type)), '[]');
-            $this->enumResourceProperties[$propName] = ['fqcn' => $fqcn, 'nullable' => $nullable, 'isCollection' => $isCollection];
+            // TernaryHandler records each arm's own shape for a mixed EnumResource/direct-access
+            // ternary; anything else mixed (e.g. a `??`) falls back to the merged-string guess,
+            // which never marks the wrap arm collection — the behaviour this replaces preserved.
+            $armShape = $analysis->enumResourceArmShapes[$propName] ?? null;
+            $this->enumResourceProperties[$propName] = [
+                'fqcn' => $fqcn,
+                'nullable' => $nullable,
+                'isCollection' => $isCollection,
+                'wrapIsCollection' => $armShape['wrapIsCollection'] ?? false,
+                'directIsArray' => $armShape['directIsArray'] ?? $isCollection,
+            ];
             $this->propertyEnumFqcns[$propName] = $fqcn;
         }
 
@@ -483,12 +498,9 @@ class ResourceTransformer extends CoreTransformer
             if ($isMixed) {
                 // Mixed ternary: one branch wraps the enum, the other reads it directly. The
                 // analyzer collapses both to a single deduped bare type name, so substitution can't
-                // tell the arms apart here — synthesize the union explicitly instead.
-                $wrappedTypeName = 'AsEnum<typeof '.$constName.'>';
-
-                // EnumResource::make() is always scalar; the direct arm's own shape decides the array suffix.
-                // Assumes the wrap arm is never EnumResource::collection() — not true in general, and known.
-                $directTypeName = $info['isCollection'] ? $enumTypeName.'[]' : $enumTypeName;
+                // tell the arms apart here — synthesize the union from each arm's own recorded shape.
+                $wrappedTypeName = 'AsEnum<typeof '.$constName.'>'.($info['wrapIsCollection'] ? '[]' : '');
+                $directTypeName = $enumTypeName.($info['directIsArray'] ? '[]' : '');
 
                 $type = $wrappedTypeName.' | '.$directTypeName;
 
