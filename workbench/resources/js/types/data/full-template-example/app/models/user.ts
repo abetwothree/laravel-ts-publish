@@ -42,6 +42,8 @@ export interface User
     comments: Comment[];
     orders: Order[];
     addresses: Address[];
+    /** Singular relation onto an $appends-bearing model, for the top-level spread appends regression. */
+    primary_address: Address | null;
     teams: Team[];
     owned_teams: Team[];
     /** Polymorphic images (avatar gallery, etc.) */
@@ -54,6 +56,7 @@ export interface User
     comments_count: number;
     orders_count: number;
     addresses_count: number;
+    primary_address_count: number;
     teams_count: number;
     owned_teams_count: number;
     images_count: number;
@@ -64,6 +67,7 @@ export interface User
     comments_exists: boolean;
     orders_exists: boolean;
     addresses_exists: boolean;
+    primary_address_exists: boolean;
     teams_exists: boolean;
     owned_teams_exists: boolean;
     images_exists: boolean;

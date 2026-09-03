@@ -6941,6 +6941,10 @@
                     "type": "Address[]"
                 },
                 {
+                    "name": "primary_address",
+                    "type": "Address | null"
+                },
+                {
                     "name": "teams",
                     "type": "Team[]"
                 },
@@ -6977,6 +6981,10 @@
                     "type": "number"
                 },
                 {
+                    "name": "primary_address_count",
+                    "type": "number"
+                },
+                {
                     "name": "teams_count",
                     "type": "number"
                 },
@@ -7010,6 +7018,10 @@
                 },
                 {
                     "name": "addresses_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "primary_address_exists",
                     "type": "boolean"
                 },
                 {
@@ -9679,6 +9691,11 @@
                     "optional": false
                 },
                 {
+                    "name": "primaryAddress",
+                    "type": "Address | null",
+                    "optional": false
+                },
+                {
                     "name": "teams",
                     "type": "Team[]",
                     "optional": false
@@ -9825,6 +9842,11 @@
                 {
                     "name": "addresses",
                     "type": "Address[]",
+                    "optional": false
+                },
+                {
+                    "name": "primaryAddress",
+                    "type": "Address | null",
                     "optional": false
                 },
                 {
@@ -10914,6 +10936,36 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\MutualSpreadAResource": {
+            "name": "MutualSpreadAResource",
+            "properties": [
+                {
+                    "name": "a_marker",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "b_marker",
+                    "type": "boolean",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\MutualSpreadBResource": {
+            "name": "MutualSpreadBResource",
+            "properties": [
+                {
+                    "name": "a_marker",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "b_marker",
+                    "type": "boolean",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\MutuallyRecursiveSpreadResource": {
             "name": "MutuallyRecursiveSpreadResource",
             "properties": [
@@ -11006,6 +11058,11 @@
                     "name": "members_resource_then_model_spread",
                     "type": "(Omit<UserResource, 'flag' | keyof User | keyof UserResource> & Omit<User, 'flag' | keyof UserResource> & Omit<UserResource, 'flag'> & { flag: boolean })[]",
                     "optional": true
+                },
+                {
+                    "name": "owner_relation_spread",
+                    "type": "Omit<User, 'flag'> & { flag: boolean }",
+                    "optional": false
                 }
             ]
         },
@@ -12424,6 +12481,16 @@
             "name": "RoutableResource",
             "properties": []
         },
+        "Workbench\\App\\Http\\Resources\\SelfSpreadResource": {
+            "name": "SelfSpreadResource",
+            "properties": [
+                {
+                    "name": "marker",
+                    "type": "boolean",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\ServiceDeskResource": {
             "name": "ServiceDeskResource",
             "properties": [
@@ -12588,6 +12655,11 @@
                     "optional": false
                 },
                 {
+                    "name": "primaryAddress",
+                    "type": "Address | null",
+                    "optional": false
+                },
+                {
                     "name": "teams",
                     "type": "Team[]",
                     "optional": false
@@ -12735,6 +12807,11 @@
                 {
                     "name": "addresses",
                     "type": "Address[]",
+                    "optional": false
+                },
+                {
+                    "name": "primaryAddress",
+                    "type": "Address | null",
                     "optional": false
                 },
                 {
@@ -13815,6 +13892,11 @@
                 {
                     "name": "addresses",
                     "type": "Address[]",
+                    "optional": false
+                },
+                {
+                    "name": "primaryAddress",
+                    "type": "Address | null",
                     "optional": false
                 },
                 {

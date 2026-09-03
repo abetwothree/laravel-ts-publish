@@ -1124,6 +1124,10 @@ declare global {
             addresses: Address[];
             addresses_count: number;
             addresses_exists: boolean;
+            /** Singular relation onto an $appends-bearing model, for the top-level spread appends regression. */
+            primary_address: Address | null;
+            primary_address_count: number;
+            primary_address_exists: boolean;
             teams: Team[];
             teams_count: number;
             teams_exists: boolean;
@@ -2242,6 +2246,7 @@ declare global {
             comments: app.models.Comment[];
             orders: app.models.Order[];
             addresses: Address[];
+            primaryAddress: Address | null;
             teams: app.models.Team[];
             ownedTeams: app.models.Team[];
             images: app.models.Image[];
@@ -2276,6 +2281,7 @@ declare global {
             comments: app.models.Comment[];
             orders: app.models.Order[];
             addresses: Address[];
+            primaryAddress: Address | null;
             teams: app.models.Team[];
             ownedTeams: app.models.Team[];
             images: app.models.Image[];
@@ -2697,6 +2703,22 @@ declare global {
             title: string;
         }
         /**
+         * Regression (Task 32 review, C1): two resources spreading each other must not recurse until
+         * memory is exhausted. Mirrors MutualSpreadBResource — see its docblock for the shared rationale.
+         */
+        export interface MutualSpreadAResource {
+            a_marker: boolean;
+            b_marker: boolean;
+        }
+        /**
+         * Regression (Task 32 review, C1): the other half of the mutual pair. A spreads B, B spreads A —
+         * AstEngine::analyzeMethod()'s cycle guard must break the loop wherever it's first re-entered.
+         */
+        export interface MutualSpreadBResource {
+            a_marker: boolean;
+            b_marker: boolean;
+        }
+        /**
          * Two methods that spread each other. Without a visited-method guard this recurses until the
          * parser exhausts memory; with one it degrades to an empty analysis.
          */
@@ -2733,6 +2755,7 @@ declare global {
             members_colliding_spread?: (Omit<UserResource, keyof TeamMemberResource> & TeamMemberResource)[];
             members_model_then_resource_spread?: (Omit<app.models.User, 'flag' | keyof UserResource | keyof app.models.User> & Omit<UserResource, 'flag' | keyof app.models.User> & Omit<app.models.User, 'flag'> & { flag: boolean })[];
             members_resource_then_model_spread?: (Omit<UserResource, 'flag' | keyof app.models.User | keyof UserResource> & Omit<app.models.User, 'flag' | keyof UserResource> & Omit<UserResource, 'flag'> & { flag: boolean })[];
+            owner_relation_spread: Omit<app.models.User, 'flag'> & { flag: boolean };
         }
         export interface NonArrayReturnResource {
             id: number;
@@ -3157,6 +3180,14 @@ declare global {
         export interface RoutableResource extends ResourceRoutes, Pick<Routable, "store" | "update"> {
         }
         /**
+         * Regression (Task 32 review, C1): a resource spreading itself must not recurse until memory is
+         * exhausted. AstEngine::analyzeMethod()'s cycle guard returns an empty analysis for the re-entrant
+         * call, so only 'marker' should ever appear.
+         */
+        export interface SelfSpreadResource {
+            marker: boolean;
+        }
+        /**
          * Exercises the inline model FQCN collision scenario.
          *
          * Two relations point to classes with the same basename: Crm\Models\User (direct, via crm_agent)
@@ -3206,6 +3237,7 @@ declare global {
             comments: app.models.Comment[];
             orders: app.models.Order[];
             addresses: Address[];
+            primaryAddress: Address | null;
             teams: app.models.Team[];
             ownedTeams: app.models.Team[];
             images: app.models.Image[];
@@ -3247,6 +3279,7 @@ declare global {
             comments: app.models.Comment[];
             orders: app.models.Order[];
             addresses: Address[];
+            primaryAddress: Address | null;
             teams: app.models.Team[];
             ownedTeams: app.models.Team[];
             images: app.models.Image[];
@@ -3558,6 +3591,7 @@ declare global {
             comments: app.models.Comment[];
             orders: app.models.Order[];
             addresses: Address[];
+            primaryAddress: Address | null;
             teams: app.models.Team[];
             ownedTeams: app.models.Team[];
             images: app.models.Image[];
