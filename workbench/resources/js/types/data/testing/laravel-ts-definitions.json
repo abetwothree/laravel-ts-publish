@@ -39,6 +39,33 @@
                 }
             ]
         },
+        "Workbench\\App\\Events\\DeferredNotification": {
+            "name": "DeferredNotification",
+            "eventName": "DeferredNotification",
+            "broadcastName": ".Workbench.App.Events.DeferredNotification",
+            "properties": [
+                {
+                    "name": "occurredAt",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "note",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "userId",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "title",
+                    "type": "string",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Events\\EnumBroadcastEvent": {
             "name": "EnumBroadcastEvent",
             "eventName": "EnumBroadcastEvent",

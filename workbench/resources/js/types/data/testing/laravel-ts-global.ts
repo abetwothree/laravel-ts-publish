@@ -3999,6 +3999,12 @@ declare global {
             id: number;
             note: string | null;
         }
+        export interface DeferredNotification {
+            occurredAt: string;
+            note: string | null;
+            userId: number;
+            title: string;
+        }
         export interface EnumBroadcastEvent {
             status: workbench.app.enums.StatusType;
             color: workbench.app.enums.ColorType;

@@ -1,5 +1,6 @@
 import type { ComputedNameEvent } from './workbench/app/events/ComputedNameEvent';
 import type { DeclaredPropsEvent } from './workbench/app/events/DeclaredPropsEvent';
+import type { DeferredNotification } from './workbench/app/events/DeferredNotification';
 import type { EnumBroadcastEvent } from './workbench/app/events/EnumBroadcastEvent';
 import type { MixedTypesEvent } from './workbench/app/events/MixedTypesEvent';
 import type { MultiModelEvent } from './workbench/app/events/MultiModelEvent';
@@ -20,6 +21,7 @@ declare module "@laravel/echo" {
     interface Events {
         ".Workbench.App.Events.ComputedNameEvent": ComputedNameEvent;
         ".Workbench.App.Events.DeclaredPropsEvent": DeclaredPropsEvent;
+        ".Workbench.App.Events.DeferredNotification": DeferredNotification;
         ".Workbench.App.Events.EnumBroadcastEvent": EnumBroadcastEvent;
         ".Workbench.App.Events.MixedTypesEvent": MixedTypesEvent;
         ".Workbench.App.Events.MultiModelEvent": MultiModelEvent;
