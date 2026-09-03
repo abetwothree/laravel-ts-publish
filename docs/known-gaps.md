@@ -19,26 +19,6 @@ if neither, it does not go in this file.
 
 ## Types the generator will not give you
 
-### `$request->validated('key')` is never typed
-
-The Inertia page path types `$request->url()`, `->integer()` and friends by reflecting the method off
-`Illuminate\Http\Request` — `requestMethodRule()` in `src/Ast/Handlers/KnownMethodRuleHandler.php`
-(`->user()` is the one name answered ahead of reflection, from the configured auth model). `validated()`
-is declared on `Illuminate\Foundation\Http\FormRequest`, and the scope records only that a variable holds
-*a* `Request`, never which subclass, so reflecting against the base class finds no such method and the
-rule declines. `Inertia::render('X', ['title' => $request->validated('title')])` — a headline user shape
-— therefore ships `title: unknown`. It is in the golden tree today:
-`InertiaFormRequestController::store()` in
-`workbench/app/Http/Controllers/InertiaFormRequestController.php` emits
-`export type StorePageProps = Inertia.SharedData & { title: unknown };` at
-`workbench/resources/js/types/data/default-example/app/http/controllers/inertia-form-request-controller.ts:15`.
-
-Deferred, not overlooked — but only one of the two reasons is a real obstacle. The scope tracks *that* a
-variable is a `Request`, not *which* `FormRequest` subclass it is; that is a data-shape widening with a
-known blast radius, not a wall. The objection that actually holds is the second: resolving the rules means
-instantiating the form request and calling `rules()` during type resolution, which runs application code
-inside the analyzer. Worth doing as its own change with that trade-off argued explicitly.
-
 ### `config()` on an absent key with no default types as null
 
 `config('key', $default)` types from the default expression only when the key is absent; a key set to

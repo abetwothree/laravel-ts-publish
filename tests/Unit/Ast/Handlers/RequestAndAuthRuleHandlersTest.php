@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\StarterKit\StarterKitMiddleware;
 use Carbon\Carbon;
+use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
@@ -26,6 +27,8 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\VariadicPlaceholder;
+use Workbench\App\Http\Requests\DynamicRequest;
+use Workbench\App\Http\Requests\StorePostRequest;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\User;
@@ -57,8 +60,17 @@ function requestRuleScope(bool $seeded = true): AnalysisScope
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
 
     if ($seeded) {
-        $scope->requestVarNames = ['request' => true];
+        $scope->requestVarNames = ['request' => Request::class];
     }
+
+    return $scope;
+}
+
+/** A scope seeded like `InertiaFormRequestController::store(StorePostRequest $request)`. */
+function formRequestScope(): AnalysisScope
+{
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $scope->requestVarNames = ['request' => StorePostRequest::class];
 
     return $scope;
 }
@@ -209,6 +221,40 @@ it('seeds requestVarNames for a non-resource subject from the analyzed method si
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(StarterKitMiddleware::class), null, 'share');
 
     expect($analyzer->resolve(requestCall('url')))->toBe(['type' => 'string', 'optional' => false]);
+});
+
+it('types validated(key) from the form request rules', function () {
+    $call = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('title'))]);
+
+    expect((new KnownMethodRuleHandler)->resolve($call, formRequestScope(), requestRuleEngine()))
+        ->toBe(['type' => 'string', 'optional' => false]);
+});
+
+it('declines validated() with a non-literal key, and on a plain Request', function () {
+    $computed = new MethodCall(new Variable('request'), 'validated', [new Arg(new Variable('key'))]);
+    $plain = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('title'))]);
+
+    expect((new KnownMethodRuleHandler)->resolve($computed, formRequestScope(), requestRuleEngine()))->toBeNull()
+        ->and((new KnownMethodRuleHandler)->resolve($plain, requestRuleScope(), requestRuleEngine()))->toBeNull();
+});
+
+// The zero-argument form returns the whole validated payload, not one key: synthesizing a shape
+// for it is out of scope, so it declines exactly like a key the rules never mention.
+it('declines validated() for a key the rules do not mention, and the zero-argument form', function () {
+    $unknownKey = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('nope'))]);
+    $wholePayload = new MethodCall(new Variable('request'), 'validated');
+
+    expect((new KnownMethodRuleHandler)->resolve($unknownKey, formRequestScope(), requestRuleEngine()))->toBeNull()
+        ->and((new KnownMethodRuleHandler)->resolve($wholePayload, formRequestScope(), requestRuleEngine()))->toBeNull();
+});
+
+it('declines validated() rather than letting a throwing rules() escape the analyzer', function () {
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $scope->requestVarNames = ['request' => DynamicRequest::class];
+
+    $call = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('name'))]);
+
+    expect((new KnownMethodRuleHandler)->resolve($call, $scope, requestRuleEngine()))->toBeNull();
 });
 
 it('types auth()->user() and auth()->id()', function () {

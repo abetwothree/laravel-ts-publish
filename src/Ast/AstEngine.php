@@ -107,7 +107,8 @@ final class AstEngine
                     /** @var class-string<Model> $class */
                     $scope->varModelBindings[$parameter->getName()] = $class;
                 } elseif (is_a($class, Request::class, true)) {
-                    $scope->requestVarNames[$parameter->getName()] = true;
+                    /** @var class-string<Request> $class */
+                    $scope->requestVarNames[$parameter->getName()] = $class;
                 }
             }
         }

@@ -73,6 +73,7 @@ use ReflectionNamedType;
  * @phpstan-import-type MultiEnumFqcnsMap from MethodAnalysis
  * @phpstan-import-type EnumResourceArmShapeMap from MethodAnalysis
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type RequestVarNamesMap from AnalysisScope
  */
 class ResourceAstAnalyzer implements ExpressionEngine
 {
@@ -127,12 +128,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Request-typed parameter names of one method, keyed for O(1) lookup.
+     * Request-typed parameter names of one method, keyed to their bound class for O(1) lookup.
      *
      * Resources take `toArray(Request $request)` too, but their committed output was inferred without
      * the Request rules; seeding them there would move it, so the resource path opts out.
      *
-     * @return array<string, true>
+     * @return RequestVarNamesMap
      */
     private function resolveRequestVarNames(string $methodName): array
     {
@@ -147,7 +148,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $type = $parameter->getType();
 
             if ($type instanceof ReflectionNamedType && is_a($type->getName(), Request::class, true)) {
-                $names[$parameter->getName()] = true;
+                /** @var class-string<Request> $class */
+                $class = $type->getName();
+                $names[$parameter->getName()] = $class;
             }
         }
 
