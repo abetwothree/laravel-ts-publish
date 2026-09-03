@@ -9681,6 +9681,16 @@
                     "name": "latest_status_or_history",
                     "type": "AsEnum<typeof Status> | StatusType[]",
                     "optional": false
+                },
+                {
+                    "name": "wrapped_history_or_scalar",
+                    "type": "AsEnum<typeof Status>[] | StatusType",
+                    "optional": false
+                },
+                {
+                    "name": "wrapped_history_or_array",
+                    "type": "AsEnum<typeof Status>[] | StatusType[]",
+                    "optional": false
                 }
             ]
         },

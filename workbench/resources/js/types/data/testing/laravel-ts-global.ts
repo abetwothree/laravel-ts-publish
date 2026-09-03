@@ -2250,6 +2250,8 @@ declare global {
             member_role_snapshot?: ({ role: workbench.app.enums.RoleType | null })[];
             wrapped_status_fallback: { status: workbench.app.enums.StatusType[] | workbench.app.enums.StatusType };
             latest_status_or_history: workbench.app.enums.StatusType | workbench.app.enums.StatusType[];
+            wrapped_history_or_scalar: workbench.app.enums.StatusType[] | workbench.app.enums.StatusType;
+            wrapped_history_or_array: workbench.app.enums.StatusType[] | workbench.app.enums.StatusType[];
         }
         /** Resource for testing @var null|Type docblock ordering (null-first convention). */
         export interface EnumNullFirstResource {
