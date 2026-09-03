@@ -60,9 +60,8 @@ class MethodAnalysis
      * Merge another analysis's maps into this one.
      *
      * `properties` appends; the single-value class maps spread-merge with the source winning on
-     * collision. `inlineModelFqcns`, `inlineEnumFqcns` and `inlineEnumResourceFqcns` all append
-     * WITHOUT deduping, since aliasPropertyType() consumes each as a positional queue against the
-     * rendered type string.
+     * collision. `inlineModelFqcns`, `inlineEnumFqcns` and `inlineEnumResourceFqcns` append WITHOUT
+     * deduping — aliasPropertyType() consumes each as a positional queue against the rendered type.
      */
     public function merge(self $source): void
     {

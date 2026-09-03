@@ -67,6 +67,7 @@ use Workbench\App\Models\Warehouse;
 use Workbench\App\Resources\DirectResource;
 use Workbench\Blog\Http\Resources\ApiArticleResource;
 use Workbench\Crm\Http\Resources\DealEnumInlineResource;
+use Workbench\Crm\Http\Resources\DealEnumTrioResource;
 use Workbench\Crm\Http\Resources\DealResource;
 use Workbench\Crm\Http\Resources\UserResource as CrmUserResource;
 use Workbench\Crm\Models\User as CrmUser;
@@ -1439,6 +1440,22 @@ describe('ResourceTransformer import collision deconfliction', function () {
         expect($allValueImports)->toBe(['Status as EnumsStatus', 'Status as CrmStatus']);
         expect($data->properties['summary']['type'])
             ->toBe('{ app_status: AsEnum<typeof EnumsStatus>; crm_status: AsEnum<typeof CrmStatus> }');
+    });
+
+    test('two colliding Status enums, one repeated, keep their own alias through the positional queue', function () {
+        $data = (new ResourceTransformer(DealEnumTrioResource::class))->data();
+
+        // App\Enums\Status and Crm\Enums\Status share a basename, so both render the same bare
+        // 'StatusType' token — aliasPropertyType() is the only thing telling occurrence 'c' apart
+        // from 'b', and it can only do that if the FQCN queue kept all three entries in order.
+        expect($data->properties['trio']['type'])
+            ->toBe('{ a: WorkbenchStatusType; b: CrmStatusType; c: WorkbenchStatusType }');
+
+        // Same collision, reached through a class-constant array of one record: the record's own
+        // positional list (analyzeConstantRecordValue()) must survive analyzeConstantListValue()'s
+        // list-element handling instead of being re-deduped there.
+        expect($data->properties['matrix']['type'])
+            ->toBe('{ a: WorkbenchStatusType; b: CrmStatusType; c: WorkbenchStatusType }[]');
     });
 });
 

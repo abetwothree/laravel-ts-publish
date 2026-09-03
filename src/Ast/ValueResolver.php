@@ -203,7 +203,9 @@ final class ValueResolver
         $result = ['type' => $elementType.'[]', 'optional' => false];
 
         if ($embeddedEnumFqcns !== []) {
-            $result['embeddedEnumFqcns'] = array_values(array_unique($embeddedEnumFqcns));
+            // Never deduped: an element can itself be a record whose rendered type carries several
+            // enum occurrences, so aliasPropertyType() must still walk this list positionally.
+            $result['embeddedEnumFqcns'] = $embeddedEnumFqcns;
         }
 
         return $result;

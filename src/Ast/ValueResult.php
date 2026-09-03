@@ -146,6 +146,8 @@ final class ValueResult
         $enumResourceFqcns = [];
         /** @var list<class-string> $enumDirectFqcns FQCNs from direct $this->prop enum-access branches */
         $enumDirectFqcns = [];
+        // Never deduped: aliasPropertyType() walks this list positionally against left-to-right
+        // occurrences of each bare enum name in the merged union's rendered type.
         /** @var list<class-string> $embeddedEnumFqcns FQCNs embedded inside nested inline-object types */
         $embeddedEnumFqcns = [];
         /** @var list<class-string> $embeddedModelFqcns */
@@ -195,8 +197,6 @@ final class ValueResult
 
         $enumResourceFqcns = array_values(array_unique($enumResourceFqcns));
         $enumDirectFqcns = array_values(array_unique($enumDirectFqcns));
-        // Never deduped: aliasPropertyType() walks this list positionally against left-to-right
-        // occurrences of each bare enum name in the merged union's rendered type.
         $embeddedModelFqcns = array_values(array_unique($embeddedModelFqcns));
         $embeddedResourceFqcns = array_values(array_unique($embeddedResourceFqcns));
 
@@ -219,12 +219,12 @@ final class ValueResult
                 $result['multiEnumResourceFqcns'] = $enumResourceFqcns;
             } else {
                 // Multiple different FQCNs or complex mixed branches: fall back to embedded imports.
-                // Never deduped, same positional reasoning as the assignment above.
+                // Never deduped, same positional reasoning as $embeddedEnumFqcns's own @var above.
                 $embeddedEnumFqcns = [...$allBranchFqcns, ...$embeddedEnumFqcns];
             }
         } elseif ($enumDirectFqcns !== []) {
             // Only direct-access enum branches: existing embedded behaviour. Never deduped,
-            // same positional reasoning as the assignment above.
+            // same positional reasoning as $embeddedEnumFqcns's own @var above.
             $embeddedEnumFqcns = [...$enumDirectFqcns, ...$embeddedEnumFqcns];
         }
 
