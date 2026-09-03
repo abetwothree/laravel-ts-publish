@@ -12,7 +12,7 @@ on:
       - "composer.lock"
       - "package-lock.json"
       - "testbench.yaml"
-      - "tsconfig.json"
+      - "tsconfig*.json"
 
 permissions:
   contents: write

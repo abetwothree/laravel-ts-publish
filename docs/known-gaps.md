@@ -108,14 +108,6 @@ inventory — which pairs are pinned, which are proven inert, and which are neit
 in [docs/components/ast-engine.md](./components/ast-engine.md#the-honest-ordering-inventory). Read the pin
 count as "the divergences someone has gone and found", not "the only divergences that exist".
 
-### The token gate type-checks one of the four generated trees
-
-`tsconfig.json`'s `include` covers `data/default-example/**` and `tests/types/**` only, so
-`.github/scripts/unimportable-token-gate.sh` never compiles `data/testing`, `data/full-template-example` or
-`data/split-template-example`. A bad token — or a parse error, the fail-open shape the gate was hardened
-against — appearing in only one of those three is invisible to it. Low likelihood, because all four trees
-come from one pipeline over one fixture set, but do not read a green gate as covering all four.
-
 ### `skipLibCheck` hides every generated `.d.ts` from that same gate
 
 `tsconfig.json:43` sets `skipLibCheck: true`, so `tsc` never checks the body of a declaration file. The

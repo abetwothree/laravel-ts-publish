@@ -129,6 +129,15 @@ TS2552 (`Did you mean…`), which TypeScript emits instead when a similarly-name
 with TS2300 (`Duplicate identifier`), TS2440 (`Import declaration conflicts with local declaration`),
 TS2344 (`does not satisfy the constraint`) and TS2305/TS2724 (`has no exported member`).
 
+**It runs once per generated tree**, against its own tsconfig file — `tsconfig.json` for
+`data/default-example`, plus `tsconfig.testing.json`, `tsconfig.full-template-example.json` and
+`tsconfig.split-template-example.json` for the other three — rather than once over all four combined.
+Each tree carries its own `laravel-ts-global.ts` declaring the same names under `declare global`, so a
+single program spanning all four reports well over a hundred TS2300 duplicate identifiers, a fixture artifact of
+checking four trees together, not a defect in any one of them. The env var `TSCONFIGS` (space-separated,
+default all four) selects which configs a run checks; both fail-open guards below run per config, and the
+script fails if any config fails, not only the last.
+
 **All three baselines are `0`.** The app-side modules the generated tree imports are stubbed under
 `tests/types/stubs` (see [The app-side stubs](#the-app-side-stubs)), so the gate is an *identity* check
 rather than a cardinality one: any unresolvable module, any name a stub does not export, any bad `Pick`
@@ -153,12 +162,14 @@ interface omits `$hidden` ones, so `K extends keyof T` failed. See
 `docs/components/resource-ast-analyzer.md`.
 
 ```bash
-.github/scripts/unimportable-token-gate.sh              # report only
+.github/scripts/unimportable-token-gate.sh              # report only, all four trees
 .github/scripts/unimportable-token-gate.sh 0            # fail on any counted name diagnostic
 .github/scripts/unimportable-token-gate.sh 0 0 0        # also gate both TS2307 sub-counts
+TSCONFIGS=tsconfig.testing.json .github/scripts/unimportable-token-gate.sh 0 0 0   # one tree only
 ```
 
 ```
+== tsconfig.json ==
 TS2300/TS2304/TS2305/TS2344/TS2440/TS2552/TS2724 (duplicate identifier / cannot find name / unexported name / bad type argument / import-local conflict) in generated tree: 0
 TS2307 (cannot find module) with a relative specifier in generated tree: 0
 TS2307 (cannot find module) with a bare specifier in generated tree: 0
@@ -166,6 +177,8 @@ TS2307 (cannot find module) with a bare specifier in generated tree: 0
 PASS - no new unimportable or colliding tokens (baseline 0)
 PASS - no new relative-specifier TS2307s (baseline 0)
 PASS - no new bare-specifier TS2307s (baseline 0)
+== tsconfig.testing.json ==
+… (repeats per config) …
 ```
 
 Each zero count prints one blank histogram line — `printf '%s\n' ""` on an empty match. Cosmetic, and now

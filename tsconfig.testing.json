@@ -1,0 +1,8 @@
+{
+    "extends": "./tsconfig.json",
+    "include": [
+        "workbench/resources/js/types/data/testing/**/*.ts",
+        "workbench/resources/js/types/data/testing/**/*.d.ts",
+        "tests/types/**/*.ts"
+    ]
+}
