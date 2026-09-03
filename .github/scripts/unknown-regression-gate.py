@@ -151,10 +151,20 @@ def snapshot(rev: str) -> dict[tuple[str, str, str], str]:
 
 
 def detect_regressions(b: dict, h: dict) -> list:
+    head_keys = list(h)
     return [
         (k, b[k], h[k])
         for k in h
-        if k in b and "unknown" not in b[k] and "unknown" in h[k]
+        if k in b
+        and "unknown" not in b[k]
+        and "unknown" in h[k]
+        # A key with members still under it in head is left to member-level comparison; only a
+        # true whole-object collapse (no head members left) is compared at the parent level, so
+        # a nested change doesn't also flag its parent.
+        and not any(
+            other[:-1] == k[:-1] and (other[-1].startswith(k[-1] + ".") or other[-1].startswith(k[-1] + "["))
+            for other in head_keys
+        )
     ]
 
 
@@ -223,6 +233,10 @@ COLLAPSE_BASE = "    heading_content: { title: string; summary: string };"
 COLLAPSE_HEAD = "    heading_content: unknown;"
 
 
+MEMBER_BASE = "export interface A {\n    meta: { id: number; note: string };\n}\n"
+MEMBER_HEAD = "export interface A {\n    meta: { id: number; note: unknown };\n}\n"
+
+
 def run_parsetest() -> int:
     failed = 0
     for name, source, want in PARSE_CASES:
@@ -253,7 +267,15 @@ def run_parsetest() -> int:
         failed += 1
         print(f"FAIL - whole inline object collapsing to unknown (synthetic)\n  got: {bad}")
 
-    total = len(PARSE_CASES) + 2
+    base, head = parse_source(MEMBER_BASE), parse_source(MEMBER_HEAD)
+    bad = detect_regressions(base, head)
+    if sorted(f"{k[0]}.{k[1]}" for k, _, _ in bad) == ["A.meta.note"]:
+        print("PASS - member gaining unknown beside an unchanged-shape parent (synthetic)")
+    else:
+        failed += 1
+        print(f"FAIL - member gaining unknown beside an unchanged-shape parent (synthetic)\n  got: {bad}")
+
+    total = len(PARSE_CASES) + 3
     if failed:
         print(f"FAIL - {failed} of {total} parser cases failed")
         return 1
