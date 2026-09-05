@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Metadata\ModelMetadataAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AliasedCastsAndInferredEnumMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AstEmptyValuesModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AstUnimportableModelMetadataProvider;
@@ -20,6 +21,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\JsonSerializableMetadataValue;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MismatchedModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MissingRequiredMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\OptionalModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\PrecedenceModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TupleShapeMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnimportableMetadataTypeProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnsafeIntegerBackedStatus;
@@ -456,4 +458,23 @@ test('keeps an explicit empty stdClass under a type that is not object-like', fu
     expect($data->propertyTypes['value'])->toBe('unknown')
         ->and($data->properties['value']['a'])->toBeInstanceOf(stdClass::class)
         ->and($data->properties['value']['b'])->toBeInstanceOf(stdClass::class);
+});
+
+test('docblock beats body inference and TsCasts beats both on the same key', function () {
+    config()->set('ts-publish.model_metadata.provider_class', PrecedenceModelMetadataProvider::class);
+
+    // Guard: the fixture only proves precedence if body inference really disagrees with the docblock.
+    $inferred = collect(resolve(AstEngine::class)->analyzeMethod(PrecedenceModelMetadataProvider::class, 'provide')->properties)
+        ->firstWhere('name', 'count');
+
+    expect($inferred['type'] ?? null)->not->toBeNull()->not->toBe('string')->not->toContain('unknown');
+
+    // The analyzer records which source won each key.
+    expect(resolve(ModelMetadataAnalyzer::class)->analyze(PrecedenceModelMetadataProvider::class, ['count', 'label'])->sources)
+        ->toBe(['count' => 'docblock', 'label' => 'casts']);
+
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    expect($data->propertyTypes)->toBe(['count' => 'string', 'label' => 'LabelToken'])
+        ->and($data->typeImports)->toBe(['@/types/label-token' => ['LabelToken']]);
 });
