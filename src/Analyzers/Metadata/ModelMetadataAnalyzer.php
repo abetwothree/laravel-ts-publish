@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Metadata;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisImports;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
+use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Metadata\Contracts\ModelMetadataProvider;
 use ReflectionMethod;
@@ -21,6 +23,7 @@ use Throwable;
  *
  * @phpstan-import-type TsCastsResult from ParsesTsCasts
  * @phpstan-import-type TypeSource from ModelMetadataAnalysis
+ * @phpstan-import-type TypesImportMap from Datable
  *
  * @phpstan-type DeclaredTypes array{
  *     overrides: array<string, string>,
@@ -38,31 +41,50 @@ class ModelMetadataAnalyzer
      * @param  class-string<ModelMetadataProvider>  $providerClass
      * @param  list<string>  $payloadKeys
      */
-    public function analyze(string $providerClass, array $payloadKeys): ModelMetadataAnalysis
+    public function analyze(string $providerClass, array $payloadKeys, string $namespacePath = ''): ModelMetadataAnalysis
     {
         $method = new ReflectionMethod($providerClass, 'provide');
+        $declared = $this->parseDeclaredTypes($method);
+        $casts = $this->parseTsCasts($method);
+        $analysis = $this->safeAnalyzeBody($method);
+        $inferred = $analysis === null ? [] : $this->inferTypes($analysis, $payloadKeys);
+        $result = $this->mergeTypes($inferred, $declared, $casts);
 
-        return $this->mergeTypes(
-            $this->inferTypes($method, $payloadKeys),
-            $this->parseDeclaredTypes($method),
-            $this->parseTsCasts($method),
+        if ($analysis === null) {
+            return $result;
+        }
+
+        $inferredKeys = array_keys(array_filter($result->sources, static fn (string $source): bool => $source === 'inferred'));
+
+        return new ModelMetadataAnalysis(
+            $result->types,
+            $result->sources,
+            $result->requiredKeys,
+            $result->importPaths,
+            $this->inferredTypeImports($analysis, $method, $inferredKeys, $result->types, $namespacePath),
         );
     }
 
     /**
-     * Infer concrete, non-unknown types from the provide() body; an engine failure infers nothing, never fails the run.
+     * Analyze the body, or null when the engine fails — inference then contributes nothing.
+     */
+    protected function safeAnalyzeBody(ReflectionMethod $method): ?MethodAnalysis
+    {
+        try {
+            return $this->analyzeBody($method);
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Infer concrete, non-unknown types for the keys the payload returned.
      *
      * @param  list<string>  $payloadKeys
      * @return array<string, string>
      */
-    protected function inferTypes(ReflectionMethod $method, array $payloadKeys): array
+    protected function inferTypes(MethodAnalysis $analysis, array $payloadKeys): array
     {
-        try {
-            $analysis = $this->analyzeBody($method);
-        } catch (Throwable) {
-            return [];
-        }
-
         $types = [];
 
         foreach ($analysis->properties as $property) {
@@ -75,6 +97,91 @@ class ModelMetadataAnalyzer
         }
 
         return $types;
+    }
+
+    /**
+     * Imports the inferred types need: only enum channels, only for keys inference won, only names still spelled.
+     *
+     * @param  list<string>  $inferredKeys
+     * @param  array<string, string>  $types
+     * @return TypesImportMap
+     */
+    protected function inferredTypeImports(
+        MethodAnalysis $analysis,
+        ReflectionMethod $method,
+        array $inferredKeys,
+        array $types,
+        string $namespacePath,
+    ): array {
+        $this->forgetTsCastsCustomImports($analysis, $method);
+
+        // A runtime metadata array need not satisfy a model interface, so a model-typed value keeps failing
+        // the token check rather than importing a model; nested resources have no meaning in a provider.
+        $analysis->modelFqcns = [];
+        $analysis->nestedResources = [];
+
+        foreach (array_keys($analysis->enumResources + $analysis->directEnumFqcns + $analysis->inlineEnumFqcns) as $name) {
+            // DispatchesFqcnResults keys an embedded enum by its own FQCN, so key-equals-value marks a channel
+            // with no property name to prune by; the still-spelled filter below owns those instead.
+            if (in_array($name, $inferredKeys, true) || ($analysis->directEnumFqcns[$name] ?? null) === $name) {
+                continue;
+            }
+
+            unset(
+                $analysis->enumResources[$name], $analysis->directEnumFqcns[$name],
+                $analysis->multiEnumResourceFqcns[$name], $analysis->inlineEnumFqcns[$name],
+                $analysis->inlineEnumResourceFqcns[$name],
+            );
+        }
+
+        $spelled = implode(' ', array_intersect_key($types, array_fill_keys($inferredKeys, true)));
+        $imports = [];
+
+        foreach (new AnalysisImports()->build($analysis, $namespacePath)['typeImports'] as $path => $names) {
+            $used = array_values(array_filter(
+                $names,
+                static fn (string $name): bool => preg_match(
+                    '/(?<![A-Za-z0-9_$.])'.preg_quote($name, '/').'(?![A-Za-z0-9_$])/',
+                    $spelled,
+                ) === 1,
+            ));
+
+            if ($used !== []) {
+                sort($used);
+                $imports[$path] = $used;
+            }
+        }
+
+        ksort($imports);
+
+        return $imports;
+    }
+
+    /**
+     * Drop the customImports ResourceAstAnalyzer::applyTsCastsFromMethod() appended for provide()'s own #[TsCasts].
+     *
+     * TsCastsImportResolver owns those imports (with alias collision handling); leaving them here would emit a
+     * bare duplicate beside an aliased one.
+     */
+    protected function forgetTsCastsCustomImports(MethodAnalysis $analysis, ReflectionMethod $method): void
+    {
+        foreach ($method->getAttributes(TsCasts::class) as $attribute) {
+            foreach ($attribute->newInstance()->types as $value) {
+                if (! is_array($value) || ! isset($value['import'])) {
+                    continue;
+                }
+
+                $names = LaravelTsPublish::extractImportableTypes($value['type']);
+                $analysis->customImports[$value['import']] = array_values(array_diff(
+                    $analysis->customImports[$value['import']] ?? [],
+                    $names,
+                ));
+
+                if ($analysis->customImports[$value['import']] === []) {
+                    unset($analysis->customImports[$value['import']]);
+                }
+            }
+        }
     }
 
     /**

@@ -566,15 +566,17 @@ class LaravelTsPublish
      *
      * extractImportableTypes() can't be reused: it skips '<'/'{' content, which docblock shapes routinely have.
      * Object-literal keys are stripped first so 'owner' in '{ owner: User }' isn't read as a value token.
+     *
+     * @param  list<string>  $importableNames  Local names an import already brings into the file.
      */
-    public function shapeValueHasUnimportableToken(string $type): bool
+    public function shapeValueHasUnimportableToken(string $type, array $importableNames = []): bool
     {
         $withoutKeys = (string) preg_replace('/\b\w+\s*:/', '', $type);
 
         $tokens = preg_split('/[<>{}()|,;\[\]\s]+/', $withoutKeys, -1, PREG_SPLIT_NO_EMPTY) ?: [];
 
         foreach ($tokens as $token) {
-            if (in_array($token, self::TS_PRIMITIVES, true)) {
+            if (in_array($token, self::TS_PRIMITIVES, true) || in_array($token, $importableNames, true)) {
                 continue;
             }
 

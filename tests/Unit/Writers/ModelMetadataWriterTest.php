@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AstUnimportableModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelMetadataTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ModelMetadataWriter;
@@ -67,4 +68,20 @@ test('does not write metadata when file output is disabled', function () {
 
     $writer = new ModelMetadataWriter($filesystem);
     $writer->write(new ModelMetadataTransformer(User::class));
+});
+
+test('renders a body-inferred enum import identically to a TsCasts one', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.model_metadata.provider_class', AstUnimportableModelMetadataProvider::class);
+
+    expect(rtrim((new ModelMetadataWriter(new Filesystem))->write(new ModelMetadataTransformer(User::class))))
+        ->toBe(<<<'TYPESCRIPT'
+import type { RoleType } from '../enums';
+
+export const UserModelMetadata = {
+    role: 'Admin',
+} as const satisfies {
+    role: RoleType;
+};
+TYPESCRIPT);
 });

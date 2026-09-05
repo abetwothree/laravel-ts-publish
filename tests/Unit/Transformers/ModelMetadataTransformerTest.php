@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Metadata\ModelMetadataAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AliasedCastsAndInferredEnumMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AstUnimportableModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BoundModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BranchedAstModelMetadataProvider;
@@ -58,11 +60,41 @@ test('falls back to body inference for a provider with a generic array declarati
     ]);
 });
 
-test('does not accept named body values without an import-aware TsCasts declaration', function () {
+test('imports the enum a body-inferred value names', function () {
     config()->set('ts-publish.model_metadata.provider_class', AstUnimportableModelMetadataProvider::class);
 
-    expect(fn () => new ModelMetadataTransformer(User::class))
-        ->toThrow(InvalidArgumentException::class, 'cannot infer an import; declare it with #[TsCasts]');
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    expect($data->propertyTypes)->toBe(['role' => 'RoleType'])
+        ->and($data->typeImports)->toBe(['../enums' => ['RoleType']])
+        ->and($data->properties)->toBe(['role' => 'Admin']);
+});
+
+test('does not import a model for a model-typed value', function () {
+    $provider = new ConfigurableModelMetadataProvider(new User);
+    app()->instance(ConfigurableModelMetadataProvider::class, $provider);
+    config()->set('ts-publish.model_metadata.provider_class', ConfigurableModelMetadataProvider::class);
+
+    expect((new ModelMetadataTransformer(User::class))->data()->propertyTypes)->toBe(['value' => 'unknown'])
+        ->and(resolve(ModelMetadataAnalyzer::class)
+            ->analyze(BoundModelMetadataProvider::class, ['table'], 'workbench/app/models')->typeImports)
+        ->toBe([]);
+});
+
+test('aliases two same-named cast imports beside the unaliased name inference claims', function () {
+    config()->set('ts-publish.model_metadata.provider_class', AliasedCastsAndInferredEnumMetadataProvider::class);
+
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    expect($data->propertyTypes)->toBe([
+        'first' => 'FirstRoleType',
+        'second' => 'SecondRoleType',
+        'role' => 'RoleType',
+    ])->and($data->typeImports)->toBe([
+        '../enums' => ['RoleType'],
+        '@/types/first' => ['RoleType as FirstRoleType'],
+        '@/types/second' => ['RoleType as SecondRoleType'],
+    ]);
 });
 
 test('uses only body-inferred keys present in the concrete model payload', function () {

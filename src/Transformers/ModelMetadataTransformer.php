@@ -161,7 +161,8 @@ class ModelMetadataTransformer extends CoreTransformer
      */
     protected function transformPropertyTypes(): static
     {
-        $this->analysis = resolve(ModelMetadataAnalyzer::class)->analyze($this->provider::class, array_keys($this->metadata));
+        $this->analysis = resolve(ModelMetadataAnalyzer::class)
+            ->analyze($this->provider::class, array_keys($this->metadata), $this->namespacePath);
 
         return $this;
     }
@@ -192,7 +193,7 @@ class ModelMetadataTransformer extends CoreTransformer
         foreach ($this->analysis->importFreeKeys($payloadKeys) as $property) {
             $type = $this->analysis->types[$property];
 
-            if (LaravelTsPublish::shapeValueHasUnimportableToken($type)) {
+            if (LaravelTsPublish::shapeValueHasUnimportableToken($type, $this->analysis->importedNames())) {
                 throw new InvalidArgumentException(
                     "Model metadata type [{$type}] for property [{$property}] cannot infer an import; declare it with #[TsCasts].",
                 );
@@ -216,7 +217,33 @@ class ModelMetadataTransformer extends CoreTransformer
             $this->propertyTypes[$property] = $resolved['overrides'][$property];
         }
 
-        $this->typeImports = $resolved['typeImports'];
+        $typeImports = $resolved['typeImports'];
+
+        foreach ($this->analysis->typeImports as $path => $names) {
+            $typeImports[$path] = array_values(array_unique([...($typeImports[$path] ?? []), ...$names]));
+            sort($typeImports[$path]);
+        }
+
+        ksort($typeImports);
+
+        $seen = [];
+
+        foreach ($typeImports as $path => $names) {
+            foreach ($names as $name) {
+                $local = str_contains($name, ' as ') ? trim(substr($name, strrpos($name, ' as ') + 4)) : $name;
+
+                if (isset($seen[$local]) && $seen[$local] !== $path) {
+                    throw new InvalidArgumentException(
+                        "Model metadata for model [{$this->findable}] imports [{$local}] from both [{$seen[$local]}] and [{$path}]; "
+                        .'declare one of them with an import-aware #[TsCasts] alias.',
+                    );
+                }
+
+                $seen[$local] = $path;
+            }
+        }
+
+        $this->typeImports = $typeImports;
 
         return $this;
     }

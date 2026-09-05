@@ -91,6 +91,44 @@ Use an import-aware `#[TsCasts]` override for that shared property. Supporting t
 requires the same type-rewrite and separate value-import pipeline used by resource generation; moving the
 value import into `typeImports` would be incorrect.
 
+### Two same-named enums in one metadata companion collide instead of aliasing
+
+Model metadata imports the enums body inference resolves, so a value the AST reads as an enum contributes
+an `import type` line of its own. Those inferred imports are pruned by property name, except when the
+engine has no property name to prune by: a value two direct enums can produce merges through
+`embeddedEnumFqcns`, and `DispatchesFqcnResults` keys those by FQCN
+(`src/Ast/Concerns/DispatchesFqcnResults.php:64`). `ModelMetadataAnalyzer::inferredTypeImports()` spares
+FQCN-keyed entries deliberately — pruning them by key would drop the union's own imports — which leaves
+the still-spelled filter as their only owner, and that filter matches the *rendered* TypeScript name, not
+the FQCN. Two enums with the same basename in different namespaces both render `StatusType`, so it cannot
+tell a stale channel from a live one.
+
+A provider whose `@return array{...}` retypes a key holding `App\Status | Crm\Status`, alongside a live key
+typed `Crm\Status`, therefore emits `StatusType` from both paths and trips the collision guard in
+`ModelMetadataTransformer::resolveImports()`:
+
+```
+Model metadata for model [App\Models\User] imports [StatusType] from both [../../crm/enums]
+and [../enums]; declare one of them with an import-aware #[TsCasts] alias.
+```
+
+This is a property of the inferred-import channel, not of the union case alone: two *live* keys typed
+`App\Status` and `Crm\Status` fail the same way. The guard's own advice does not resolve it — declaring one
+of the two keys as `['type' => 'StatusType', 'import' => '../enums']` still collides, because
+`TsCastsImportResolver` aliases only when two *cast* entries share a name and cannot see the inferred
+import at all. What works is giving one side a different local name that its path really exports:
+`['type' => 'AppStatusType', 'import' => '@/types/app-status']`, with that module re-exporting
+`export type { StatusType as AppStatusType }`. Writing the alias inline as `'Status as AppStatusType'` is
+not a substitute — it lands verbatim in the property type and emits invalid TypeScript.
+
+On the docblock-displaced union there is no handle at all: the channel is keyed by FQCN, so moving the key
+to `#[TsCasts]` does not prune it either. Drop that key to a single enum, which restores a property name
+for the prune to match.
+
+Fixing it means carrying the FQCN alongside the rendered name through the prune so the filter can compare
+identities rather than basenames, and then routing inferred imports through the same alias resolver the
+cast imports use. That is a channel change, not a patch at the filter.
+
 ## Deliberate non-goals
 
 Absent on purpose. Do not "fix" these without raising it first.

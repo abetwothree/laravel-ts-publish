@@ -512,6 +512,12 @@ describe('Arrayable DTO shape inference', function () {
 
         expect($result['type'])->toBe('{ fromArray: string }');
     });
+
+    test('shapeValueHasUnimportableToken accepts a token an import already brings in', function () {
+        expect($this->service->shapeValueHasUnimportableToken('RoleType'))->toBeTrue()
+            ->and($this->service->shapeValueHasUnimportableToken('RoleType', ['RoleType']))->toBeFalse()
+            ->and($this->service->shapeValueHasUnimportableToken('{ role: RoleType; other: Foo }', ['RoleType']))->toBeTrue();
+    });
 });
 
 describe('Arrayable property-shape inference', function () {
