@@ -17,6 +17,7 @@ final class EmptyValuesModelMetadataProvider implements ModelMetadataProvider
      *     flags: array<string, bool>,
      *     tags: list<string>,
      *     nested: array{items: array<string, int>, ids: list<int>},
+     *     rows: list<array<string, int>>,
      *     opaque: array<string, mixed>,
      *     explicit: object,
      *     maybe: array<array-key, int>,
@@ -32,6 +33,7 @@ final class EmptyValuesModelMetadataProvider implements ModelMetadataProvider
             'flags' => [],
             'tags' => [],
             'nested' => ['items' => [], 'ids' => []],
+            'rows' => [[], []],
             'opaque' => [],
             'explicit' => (object) [],
             // array<array-key, int> renders as `number[] | Record<string, number>`: neither list nor object, left as [].

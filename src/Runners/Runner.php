@@ -57,6 +57,8 @@ class Runner extends BaseRunner
         // Validated before any file is written, so a broken provider fails before the run leaves a half-built tree.
         if ($this->shouldPublishModelMetadata) {
             $this->validateModelMetadataConfiguration();
+        } elseif ($this->shouldPublishModels) {
+            $this->validateModelMetadataTransformer();
         }
 
         $this->generateEnums();
@@ -178,7 +180,7 @@ class Runner extends BaseRunner
     }
 
     /**
-     * Validate the configured metadata provider and generator before any model is processed.
+     * Validate the configured metadata provider, generator, and transformer before any model is processed.
      */
     protected function validateModelMetadataConfiguration(): void
     {
@@ -189,6 +191,29 @@ class Runner extends BaseRunner
         if (! is_a($generatorClass, ModelMetadataGenerator::class, true)) {
             throw new InvalidArgumentException(
                 "Configured model metadata generator [{$generatorClass}] must extend ".ModelMetadataGenerator::class.'.',
+            );
+        }
+
+        $this->validateModelMetadataTransformer();
+    }
+
+    /**
+     * Validate the transformer class the barrel phase static-dispatches through.
+     *
+     * Checked on every run that touches a model barrel, not only on runs that publish metadata: a run that
+     * skips the metadata phase still asks the configured transformer which exports that phase owns.
+     */
+    protected function validateModelMetadataTransformer(): void
+    {
+        $transformerClass = Config::string(
+            'ts-publish.model_metadata.transformer_class',
+            ModelMetadataTransformer::class,
+        );
+
+        if (! is_a($transformerClass, ModelMetadataTransformer::class, true)) {
+            throw new InvalidArgumentException(
+                "Configured model metadata transformer [{$transformerClass}] must extend "
+                .ModelMetadataTransformer::class.'.',
             );
         }
     }

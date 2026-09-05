@@ -205,7 +205,7 @@ There's also `--only-functional`, which publishes only runtime TypeScript output
 
 Model interfaces and their metadata companions share one barrel, and every export in it belongs to exactly one of those two phases — the `_meta` suffix decides which. A phase that runs owns its exports outright, so a removed model's export is pruned. A phase that is enabled in config but skipped by an `--only-*` flag keeps its exports, while a phase disabled in config drops them. If a model's metadata provider throws, that model keeps its last-known-good companion export and the command exits non-zero.
 
-Custom `barrel_writer_class` implementations inherit this behavior; they do not need to implement anything for partial runs to work. Barrels are generated files: a hand-written line that is not an `export * from './x';` statement is not preserved.
+A custom `barrel_writer_class` that overrides nothing inherits this behavior and needs no opt-in. One that overrides `writeModular()` to change the barrel format must override `writeModularPreserving()` the same way: partial runs call that method, and the inherited one would emit the base format for exactly the runs that preserve. Barrels are generated files: a hand-written line that is not an `export * from './x';` statement is not preserved.
 
 ##### Config & flag conflicts
 

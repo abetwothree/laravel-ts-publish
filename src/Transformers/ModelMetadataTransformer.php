@@ -199,7 +199,8 @@ class ModelMetadataTransformer extends CoreTransformer
 
             if (LaravelTsPublish::shapeValueHasUnimportableToken($type, $this->analysis->importedNames())) {
                 throw new InvalidArgumentException(
-                    "Model metadata type [{$type}] for property [{$property}] cannot infer an import; declare it with #[TsCasts].",
+                    "Model metadata for model [{$this->findable}] property [{$property}] has type [{$type}] "
+                    .'whose import cannot be inferred; declare it with #[TsCasts].',
                 );
             }
         }
@@ -297,8 +298,13 @@ class ModelMetadataTransformer extends CoreTransformer
      */
     private function validateMetadata(array $metadata): array
     {
-        if (array_filter(array_keys($metadata), 'is_int') !== []) {
-            throw new InvalidArgumentException('Model metadata payload must use string keys.');
+        $integerKeys = array_filter(array_keys($metadata), 'is_int');
+
+        if ($integerKeys !== []) {
+            throw new InvalidArgumentException(
+                "Model metadata for model [{$this->findable}] must use string keys; got integer keys: ["
+                .implode(', ', $integerKeys).']',
+            );
         }
 
         /** @var array<string, mixed> $metadata */
@@ -369,7 +375,7 @@ class ModelMetadataTransformer extends CoreTransformer
             if (abs($value) > self::MAX_SAFE_INTEGER) {
                 throw new InvalidArgumentException(
                     "Model metadata for model [{$this->findable}] property [{$path}] exceeds JavaScript's safe integer "
-                    .'range (±'.self::MAX_SAFE_INTEGER.'); return it as a string.',
+                    .'range (±'.self::MAX_SAFE_INTEGER.'); return it as a string and declare the key as string.',
                 );
             }
 

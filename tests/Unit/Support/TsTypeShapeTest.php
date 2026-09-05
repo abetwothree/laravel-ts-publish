@@ -4,34 +4,6 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 
-describe('isListLike', function () {
-    test('recognises every array spelling', function (string $type) {
-        expect(TsTypeShape::isListLike($type))->toBeTrue();
-    })->with([
-        'string[]',
-        'readonly string[]',
-        'Array<number>',
-        'ReadonlyArray<{ a: number }>',
-        '[]',
-        '[string, number]',
-        'string[] | null',
-        '(string | number)[] | undefined',
-    ]);
-
-    test('rejects objects, scalars, aliases, and mixed unions', function (string $type) {
-        expect(TsTypeShape::isListLike($type))->toBeFalse();
-    })->with([
-        'Record<string, boolean>',
-        '{ a: number }',
-        'string',
-        'unknown',
-        'Foo',
-        'string[] | Foo',
-        'string[] | Record<string, string>',
-        'null',
-    ]);
-});
-
 describe('isObjectLike', function () {
     test('recognises object literals, Record, and index signatures', function (string $type) {
         expect(TsTypeShape::isObjectLike($type))->toBeTrue();
@@ -76,12 +48,6 @@ describe('splitTopLevel', function () {
     test('floors depth at zero so an unmatched closing bracket still splits what follows', function () {
         expect(TsTypeShape::splitTopLevel('a) | b', ['|']))->toBe(['a)', 'b']);
     });
-
-    test('topLevelPosition finds the first separator outside brackets and quotes', function () {
-        expect(TsTypeShape::topLevelPosition('[key: string]: boolean', ':'))->toBe(13)
-            ->and(TsTypeShape::topLevelPosition('"a:b": string', ':'))->toBe(5)
-            ->and(TsTypeShape::topLevelPosition('Record<string, number>', ':'))->toBeNull();
-    });
 });
 
 describe('memberType', function () {
@@ -91,6 +57,7 @@ describe('memberType', function () {
             ->and(TsTypeShape::memberType('{ a: { b: string; c: number }; d: string }', 'd'))->toBe('string')
             ->and(TsTypeShape::memberType('{ a: { b: string; c: number }; d: string }', 'a'))->toBe('{ b: string; c: number }')
             ->and(TsTypeShape::memberType('{ "2fa"?: boolean, other: string }', '2fa'))->toBe('boolean')
+            ->and(TsTypeShape::memberType('{ "a:b": string; other: number }', 'a:b'))->toBe('string')
             ->and(TsTypeShape::memberType('{ a: number } | null', 'a'))->toBe('number');
     });
 

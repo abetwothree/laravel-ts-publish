@@ -176,7 +176,7 @@ test('throws when enum publishing is disabled', function () {
     $runner = new RunnerForSource('Workbench\App\Enums\Status');
     $runner->shouldPublishEnums = false;
     $runner->run();
-})->throws(InvalidArgumentException::class, 'Enum publishing is disabled');
+})->throws(InvalidArgumentException::class, 'Nothing to publish for Workbench\\App\\Enums\\Status: enums are disabled');
 
 test('generates model metadata when model publishing is disabled', function () {
     $runner = new RunnerForSource('Workbench\App\Models\User');
@@ -192,7 +192,10 @@ test('throws when model and model metadata publishing are disabled', function ()
     $runner->shouldPublishModels = false;
     $runner->shouldPublishModelMetadata = false;
     $runner->run();
-})->throws(InvalidArgumentException::class, 'Model and model metadata publishing are disabled');
+})->throws(
+    InvalidArgumentException::class,
+    'Nothing to publish for Workbench\\App\\Models\\User: models are disabled; model metadata is disabled',
+);
 
 test('generates single resource from FQCN', function () {
     $runner = new RunnerForSource('Workbench\App\Http\Resources\PostResource');
@@ -208,7 +211,7 @@ test('throws when resource publishing is disabled', function () {
     $runner = new RunnerForSource('Workbench\App\Http\Resources\PostResource');
     $runner->shouldPublishResources = false;
     $runner->run();
-})->throws(InvalidArgumentException::class, 'Resource publishing is disabled');
+})->throws(InvalidArgumentException::class, 'resources are disabled');
 
 test('generates single route from controller FQCN', function () {
     $runner = new RunnerForSource('Workbench\App\Http\Controllers\PostController');
@@ -225,7 +228,7 @@ test('throws when route publishing is disabled', function () {
     $runner = new RunnerForSource('Workbench\App\Http\Controllers\PostController');
     $runner->shouldPublishRoutes = false;
     $runner->run();
-})->throws(InvalidArgumentException::class, 'Route publishing is disabled');
+})->throws(InvalidArgumentException::class, 'routes are disabled');
 
 test('throws for controller with TsExclude attribute', function () {
     $runner = new RunnerForSource('Workbench\App\Http\Controllers\ExcludedController');
@@ -257,7 +260,7 @@ test('throws when broadcast event publishing is disabled', function () {
     $runner = new RunnerForSource('Workbench\App\Events\OrderShipped');
     $runner->shouldPublishBroadcastEvents = false;
     $runner->run();
-})->throws(InvalidArgumentException::class, 'Broadcast event publishing is disabled');
+})->throws(InvalidArgumentException::class, 'broadcast events are disabled');
 
 test('a --source run clears a full run\'s stale registry instead of narrowing against it', function () {
     config()->set('ts-publish.resources.excluded', [UserResource::class]);

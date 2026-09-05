@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomBarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FailingModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HeaderedBarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InvalidModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MarkedModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SingleModelMetadataCollector;
@@ -89,6 +90,40 @@ test('runner rejects an invalid metadata generator before processing models', fu
 
     expect(fn () => (new Runner)->run())
         ->toThrow(InvalidArgumentException::class, 'must extend');
+});
+
+test('runner rejects an invalid metadata transformer before processing models', function () {
+    config()->set('ts-publish.model_metadata.transformer_class', stdClass::class);
+
+    expect(fn () => (new Runner)->run())
+        ->toThrow(InvalidArgumentException::class, 'Configured model metadata transformer [stdClass] must extend');
+});
+
+test('runner rejects an invalid metadata transformer on a run that only preserves its barrel exports', function () {
+    $outputDirectory = sys_get_temp_dir().'/laravel-ts-publish-bad-transformer-'.uniqid();
+    $barrelDirectory = "$outputDirectory/workbench/app/models";
+    $filesystem = new Filesystem;
+    $filesystem->makeDirectory($barrelDirectory, recursive: true);
+    $filesystem->put("$barrelDirectory/index.ts", "export * from './user_meta';");
+
+    config()->set('ts-publish.model_metadata.enabled', true);
+    config()->set('ts-publish.model_metadata.transformer_class', stdClass::class);
+    config()->set('ts-publish.models.included', [User::class]);
+    config()->set('ts-publish.output_directory', $outputDirectory);
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.watcher.enabled', false);
+
+    try {
+        // The metadata phase is skipped, so only the barrel reads the transformer — static-dispatched, so an
+        // unguarded class would surface as `Error: Call to undefined method`.
+        $runner = new Runner;
+        $runner->shouldPublishModelMetadata = false;
+
+        expect(fn () => $runner->run())
+            ->toThrow(InvalidArgumentException::class, 'Configured model metadata transformer [stdClass] must extend');
+    } finally {
+        $filesystem->deleteDirectory($outputDirectory);
+    }
 });
 
 test('runner omits metadata generators when its phase is disabled', function () {
@@ -580,6 +615,32 @@ describe('Runner conditional publishing', function () {
 
             expect($filesystem->get("$barrelDirectory/index.ts"))
                 ->toBe("export * from './user';\nexport * from './user_meta';");
+        } finally {
+            $filesystem->deleteDirectory($outputDirectory);
+        }
+    });
+
+    test('a barrel writer that overrides writeModularPreserving keeps its format on a partial run', function () {
+        $outputDirectory = sys_get_temp_dir().'/laravel-ts-publish-headered-writer-'.uniqid();
+        $barrelDirectory = "$outputDirectory/workbench/app/models";
+        $filesystem = new Filesystem;
+        $filesystem->makeDirectory($barrelDirectory, recursive: true);
+        $filesystem->put("$barrelDirectory/index.ts", HeaderedBarrelWriter::HEADER."\nexport * from './user_meta';");
+
+        config()->set('ts-publish.barrel_writer_class', HeaderedBarrelWriter::class);
+        config()->set('ts-publish.models.enabled', true);
+        config()->set('ts-publish.model_metadata.enabled', true);
+        config()->set('ts-publish.models.included', [User::class]);
+        config()->set('ts-publish.output_directory', $outputDirectory);
+        config()->set('ts-publish.output_to_files', true);
+
+        try {
+            $runner = new Runner;
+            $runner->shouldPublishModelMetadata = false;
+            $runner->run();
+
+            expect($filesystem->get("$barrelDirectory/index.ts"))
+                ->toBe(HeaderedBarrelWriter::HEADER."\nexport * from './user';\nexport * from './user_meta';");
         } finally {
             $filesystem->deleteDirectory($outputDirectory);
         }

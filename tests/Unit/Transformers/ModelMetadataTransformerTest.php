@@ -203,7 +203,10 @@ test('rejects metadata payloads without string property keys', function () {
     config()->set('ts-publish.model_metadata.provider_class', InvalidMetadataPayloadProvider::class);
 
     expect(fn () => new ModelMetadataTransformer(User::class))
-        ->toThrow(InvalidArgumentException::class, 'must use string keys');
+        ->toThrow(
+            InvalidArgumentException::class,
+            'model [Workbench\\App\\Models\\User] must use string keys; got integer keys: [0]',
+        );
 });
 
 test('rejects returned metadata keys without inferred or declared types', function () {
@@ -236,7 +239,10 @@ test('requires TsCasts for inferred types whose imports cannot be inferred', fun
     expect((new ModelMetadataTransformer(Address::class))->data()->properties)->toBe(['table' => 'addresses']);
 
     expect(fn () => new ModelMetadataTransformer(User::class))
-        ->toThrow(InvalidArgumentException::class, 'cannot infer an import; declare it with #[TsCasts]');
+        ->toThrow(
+            InvalidArgumentException::class,
+            'model [Workbench\\App\\Models\\User] property [role] has type [RoleType] whose import cannot be inferred',
+        );
 });
 
 test('normalizes supported nested metadata values', function () {
@@ -350,7 +356,8 @@ test('an inherited provide() body infers with the model parameter bound', functi
 test('spells an empty PHP array as an empty object wherever its type is object-like', function () {
     config()->set('ts-publish.model_metadata.provider_class', EmptyValuesModelMetadataProvider::class);
 
-    $properties = (new ModelMetadataTransformer(User::class))->data()->properties;
+    $data = (new ModelMetadataTransformer(User::class))->data();
+    $properties = $data->properties;
 
     expect($properties['flags'])->toBeInstanceOf(stdClass::class)
         ->and($properties['tags'])->toBe([])
@@ -359,6 +366,11 @@ test('spells an empty PHP array as an empty object wherever its type is object-l
         ->and($properties['opaque'])->toBe([])
         ->and($properties['explicit'])->toBeInstanceOf(stdClass::class)
         ->and($properties['maybe'])->toBe([]);
+
+    // A list under an array type: only elementType() answers here, and each element is object-like.
+    expect($data->propertyTypes['rows'])->toBe('Record<string, number>[]')
+        ->and($properties['rows'][0])->toBeInstanceOf(stdClass::class)
+        ->and($properties['rows'][1])->toBeInstanceOf(stdClass::class);
 });
 
 test('spells body-inferred empty containers by their inferred type', function () {
@@ -390,7 +402,7 @@ test('rejects integers outside the JavaScript safe range with the property path'
     expect(fn () => new ModelMetadataTransformer(User::class))
         ->toThrow(
             InvalidArgumentException::class,
-            'property [snowflake] exceeds JavaScript\'s safe integer range (±9007199254740991); return it as a string.',
+            'property [snowflake] exceeds JavaScript\'s safe integer range (±9007199254740991); return it as a string and declare the key as string.',
         );
 });
 
@@ -447,7 +459,7 @@ test('rejects an int-backed enum case outside the JavaScript safe range', functi
     expect(fn () => new ModelMetadataTransformer(User::class))
         ->toThrow(
             InvalidArgumentException::class,
-            'property [value.snowflake] exceeds JavaScript\'s safe integer range (±9007199254740991); return it as a string.',
+            'property [value.snowflake] exceeds JavaScript\'s safe integer range (±9007199254740991); return it as a string and declare the key as string.',
         );
 });
 

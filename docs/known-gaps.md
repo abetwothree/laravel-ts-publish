@@ -136,12 +136,12 @@ cast imports use. That is a channel change, not a patch at the filter.
 Model metadata coerces an empty PHP array to `{}` wherever the property's resolved TypeScript type is
 object-like, because PHP cannot tell an empty map from an empty list and `[]` does not satisfy `Record<>`
 or an object literal. The decision is made by `TsTypeShape::isObjectLike()` reading the type *string*
-(`ModelMetadataTransformer::coerceEmptyArray()`, `src/Transformers/ModelMetadataTransformer.php:321`), and
+(`ModelMetadataTransformer::coerceEmptyArray()`, `src/Transformers/ModelMetadataTransformer.php:327`), and
 a bare imported identifier is opaque to it — `armIsObject()` recognises only `{...}` and `Record<`
-(`src/Support/TsTypeShape.php:203`). A `#[TsCasts]` type that names an imported alias therefore keeps `[]`,
+(`src/Support/TsTypeShape.php:183`). A `#[TsCasts]` type that names an imported alias therefore keeps `[]`,
 however object-like the alias resolves to on the TypeScript side.
 
-`tests/Fixtures/EmptyValuesModelMetadataProvider.php:26` pins exactly that shape — `'opaque' =>
+`tests/Fixtures/EmptyValuesModelMetadataProvider.php:27` pins exactly that shape — `'opaque' =>
 ['type' => 'OpaqueShape', 'import' => '@/types/opaque-shape']` holding `[]`. Point the alias at the
 map it reads as (`export type OpaqueShape = Record<string, unknown>;`) and the emitted companion fails:
 

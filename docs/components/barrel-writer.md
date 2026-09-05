@@ -81,14 +81,17 @@ A `barrel_writer_class` subclass inherits `writeModularPreserving()` and needs n
 stay correct (`tests/Fixtures/CustomBarrelWriter.php` — a subclass that overrides nothing — pins this). A
 subclass that overrides `writeModular()` to change the output *format* should override
 `writeModularPreserving()` the same way: the parent implementation is what partial runs call, and it would
-otherwise emit the base format for exactly the runs that preserve.
+otherwise emit the base format for exactly the runs that preserve. `writeModularBarrels()` and
+`existingExports()` are `protected` so such a subclass can reuse the merge instead of reimplementing it —
+`tests/Fixtures/HeaderedBarrelWriter.php` overrides both entry points that way and pins a preserving run
+that keeps its header.
 
 ## Tests
 
 - `tests/Unit/Writers/BarrelWriterTest.php` — rewrite versus preserve, the predicate, non-export lines, quote
   styles, CRLF, and preview parity.
 - `tests/Unit/RunnerTest.php` — the ownership table row by row: flag-skipped models, flag-skipped metadata,
-  config-disabled metadata, a failed model, and a custom `transformer_class`.
+  config-disabled metadata, a failed model, a custom `transformer_class`, and both custom barrel writers.
 - `tests/Feature/Commands/TsPublishCommandTest.php` — *a full publish drops barrel exports for models that no
   longer exist*, the `--only-*` sequences over a real temp directory, and the same sequences under a custom
   barrel writer.

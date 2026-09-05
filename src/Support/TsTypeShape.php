@@ -9,20 +9,11 @@ namespace AbeTwoThree\LaravelTsPublish\Support;
  *
  * Understands exactly the syntax the metadata pipeline emits: inline object literals and index signatures,
  * Record<K, V>, T[] / readonly T[] / Array<T> / ReadonlyArray<T>, tuples, and top-level unions with null.
- * Intersections and arrow-function types are opaque. Also the home of the one depth-aware top-level splitter.
+ * Intersections and arrow-function types are opaque. Also the home of the one top-level splitter for
+ * TypeScript type strings; PHPDoc types keep their own in LaravelTsPublish::splitPhpDocUnionType().
  */
 final class TsTypeShape
 {
-    /**
-     * Whether every non-null union arm is an array type.
-     */
-    public static function isListLike(string $type): bool
-    {
-        $arms = self::arms($type);
-
-        return $arms !== [] && array_all($arms, static fn (string $arm): bool => self::armIsList($arm));
-    }
-
     /**
      * Whether every non-null union arm is an object literal, index signature, or Record.
      */
@@ -140,7 +131,7 @@ final class TsTypeShape
     /**
      * Offset of the first $needle outside brackets, braces, parentheses, angle brackets, and quotes.
      */
-    public static function topLevelPosition(string $type, string $needle): ?int
+    private static function topLevelPosition(string $type, string $needle): ?int
     {
         $depth = 0;
         $quote = null;
@@ -184,17 +175,6 @@ final class TsTypeShape
         }
 
         return $arms;
-    }
-
-    /**
-     * Whether one union arm is an array or tuple type.
-     */
-    private static function armIsList(string $arm): bool
-    {
-        return str_ends_with($arm, '[]')
-            || (str_starts_with($arm, '[') && str_ends_with($arm, ']'))
-            || str_starts_with($arm, 'Array<')
-            || str_starts_with($arm, 'ReadonlyArray<');
     }
 
     /**

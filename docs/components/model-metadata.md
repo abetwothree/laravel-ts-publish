@@ -199,7 +199,7 @@ counter, and an object-identity stack for cycle detection.
 | PHP value | Emitted as |
 | --- | --- |
 | `null`, `bool`, `string` | Themselves. |
-| `int` | Itself, if `abs($value) <= 2^53 - 1`; otherwise rejected ("return it as a string"). |
+| `int` | Itself, if `abs($value) <= 2^53 - 1`; otherwise rejected ("return it as a string and declare the key as string" — a string under a `number` type fails `tsc`). |
 | `float` | Itself if finite (`LaravelTsPublish::toJsLiteral()` emits `json_encode()`'s shortest round-trip form); `INF` / `NAN` rejected. |
 | `BackedEnum` / `UnitEnum` | `LaravelTsPublish::enumScalar()` — `->value` / `->name` — re-normalized, so an int-backed case is range-checked like any other integer. |
 | `array` | Walked; each child is one nesting level deeper. `array_is_list()` decides `[…]` vs `{…}` at emit time. |
@@ -245,8 +245,9 @@ that, because `array{0: X, 1: Y}` renders as the object literal `{ 0: X; 1: Y }`
 `TsTypeShape` understands only the syntax this pipeline emits — inline object literals and index signatures,
 `Record<K, V>`, `T[]` / `readonly T[]` / `Array<T>` / `ReadonlyArray<T>`, tuples, and top-level unions with
 `null` / `undefined`. Intersections (`A & B`) and arrow-function types are opaque, so an empty array under either
-stays `[]`. It is also the home of the one depth-aware top-level splitter, `TsTypeShape::splitTopLevel()`;
-`LaravelTsPublish::splitTopLevelUnion()` delegates to it.
+stays `[]`. It is also the home of the one top-level splitter for *TypeScript* type strings,
+`TsTypeShape::splitTopLevel()`; `LaravelTsPublish::splitTopLevelUnion()` delegates to it. PHPDoc types are a
+separate domain with its own splitter, `LaravelTsPublish::splitPhpDocUnionType()`.
 
 Why a *string* at all: the engine's DTOs export only the type string, and the list-vs-object decision is made,
 then stringified, at three choke points — `InlineArrayHandler` (`never[]` for a literal `[]`,

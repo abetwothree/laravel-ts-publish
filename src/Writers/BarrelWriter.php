@@ -85,13 +85,15 @@ class BarrelWriter
     /**
      * Group generators by namespace and write each barrel, optionally keeping approved existing exports.
      *
+     * Protected so a subclass that changes the barrel format can reuse the merge instead of reimplementing it.
+     *
      * @template T of CoreGenerator
      *
      * @param  Collection<int, T>  $generators
      * @param  (Closure(string): bool)|null  $keepExisting
      * @return array<string, string> Barrel contents keyed by namespace path
      */
-    private function writeModularBarrels(Collection $generators, ?string $outputBase, ?Closure $keepExisting): array
+    protected function writeModularBarrels(Collection $generators, ?string $outputBase, ?Closure $keepExisting): array
     {
         /** @var array<string, list<string>> $grouped */
         $grouped = [];
@@ -141,7 +143,7 @@ class BarrelWriter
      *
      * @return list<string>
      */
-    private function existingExports(string $barrelPath): array
+    protected function existingExports(string $barrelPath): array
     {
         if (! $this->filesystem->exists($barrelPath)) {
             return [];
