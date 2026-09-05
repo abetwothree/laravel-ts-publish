@@ -26,3 +26,10 @@ test('rejects a resolved object that does not implement the provider contract', 
     expect(fn () => resolve(ModelMetadataProviderResolver::class)->resolve())
         ->toThrow(InvalidArgumentException::class, 'must implement');
 });
+
+test('resolves the default provider when the config key is absent', function () {
+    config()->set('ts-publish.model_metadata', ['enabled' => true]);
+
+    expect(resolve(ModelMetadataProviderResolver::class)->resolve())
+        ->toBeInstanceOf(DefaultModelMetadataProvider::class);
+});
