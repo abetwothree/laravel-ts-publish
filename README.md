@@ -201,9 +201,9 @@ The flags cannot be combined. Passing two returns an error.
 
 There's also `--only-functional`, which publishes only runtime TypeScript output (enums, model metadata, routes, form requests, broadcast channels/events) while skipping model and resource interfaces. The [Vite plugin](https://tolki.abe.dev/ts/vite-plugin.html) appends it on `vite build`, since interfaces are erased at compile time anyway. Combined with another `--only-*` flag, it wins.
 
-Partial model or metadata publishes merge their generated exports into existing model barrels. They create barrels when missing and preserve exports owned by the skipped companion phase. Because partial runs cannot identify every stale export safely, run both model phases together to rebuild the complete barrel after removing models.
+Model interfaces and their metadata companions share one barrel, and every export in it belongs to exactly one of those two phases — the `_meta` suffix decides which. A phase that runs owns its exports outright, so a removed model's export is pruned. A phase that is enabled in config but skipped by an `--only-*` flag keeps its exports, while a phase disabled in config drops them. If a model's metadata provider throws, that model keeps its last-known-good companion export and the command exits non-zero.
 
-Custom `barrel_writer_class` implementations can opt into partial merging by implementing `MergesModularBarrels`. Otherwise, partial model runs leave existing barrels untouched.
+Custom `barrel_writer_class` implementations inherit this behavior; they do not need to implement anything for partial runs to work. Barrels are generated files: a hand-written line that is not an `export * from './x';` statement is not preserved.
 
 ##### Config & flag conflicts
 

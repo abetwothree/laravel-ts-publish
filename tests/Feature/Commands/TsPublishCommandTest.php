@@ -2,8 +2,9 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomBarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FailingModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\NonMergingBarrelWriter;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InvalidModelMetadataProvider;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Broadcast;
 
@@ -45,15 +46,26 @@ test('ts:publish preview shows model content', function () {
         ->expectsOutputToContain('export const UserModelMetadata');
 });
 
-test('ts:publish preview shows model metadata warnings', function () {
+test('ts:publish exits non-zero when a metadata provider fails and names the model', function () {
     config()->set('ts-publish.output_to_files', false);
     config()->set('ts-publish.model_metadata.enabled', true);
     config()->set('ts-publish.models.included', [User::class]);
     config()->set('ts-publish.model_metadata.provider_class', FailingModelMetadataProvider::class);
 
     $this->artisan('ts:publish', ['--preview' => 'true'])
-        ->assertSuccessful()
+        ->assertFailed()
         ->expectsOutputToContain(User::class.': '.RuntimeException::class.': Metadata is unavailable for this model.');
+});
+
+test('ts:publish reports metadata provider failures even under --quiet', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.model_metadata.enabled', true);
+    config()->set('ts-publish.models.included', [User::class]);
+    config()->set('ts-publish.model_metadata.provider_class', FailingModelMetadataProvider::class);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--quiet' => true])
+        ->assertFailed()
+        ->expectsOutputToContain('ts:publish failed: '.User::class.': '.RuntimeException::class.': Metadata is unavailable for this model.');
 });
 
 test('ts:publish source keeps model metadata provider failures strict', function () {
@@ -75,19 +87,21 @@ test('ts:publish preserves last-known-good metadata output after a provider fail
     config()->set('ts-publish.model_metadata.enabled', true);
     config()->set('ts-publish.models.included', [User::class]);
 
-    $this->artisan('ts:publish', ['--preview' => 'false'])->assertSuccessful();
+    try {
+        $this->artisan('ts:publish', ['--preview' => 'false'])->assertSuccessful();
 
-    config()->set('ts-publish.model_metadata.provider_class', FailingModelMetadataProvider::class);
+        config()->set('ts-publish.model_metadata.provider_class', FailingModelMetadataProvider::class);
 
-    $this->artisan('ts:publish', ['--preview' => 'false'])->assertSuccessful();
+        $this->artisan('ts:publish', ['--preview' => 'false'])->assertFailed();
 
-    $metadataPath = "$outputDir/workbench/app/models/user_meta.ts";
-    $barrelPath = "$outputDir/workbench/app/models/index.ts";
+        $metadataPath = "$outputDir/workbench/app/models/user_meta.ts";
+        $barrelPath = "$outputDir/workbench/app/models/index.ts";
 
-    expect($metadataPath)->toBeFile()
-        ->and(file_get_contents($barrelPath))->toContain("export * from './user_meta';");
-
-    (new Filesystem)->deleteDirectory($outputDir);
+        expect($metadataPath)->toBeFile()
+            ->and(file_get_contents($barrelPath))->toContain("export * from './user_meta';");
+    } finally {
+        (new Filesystem)->deleteDirectory($outputDir);
+    }
 });
 
 test('ts:publish preview shows barrel files', function () {
@@ -400,74 +414,108 @@ test('ts:publish --only-model-metadata writes only metadata files to disk', func
 
 test('partial model runs preserve exports from the skipped companion phase', function () {
     $outputDir = sys_get_temp_dir().'/laravel-ts-publish-partial-model-barrel-'.uniqid();
+    $barrelPath = "$outputDir/workbench/app/models/index.ts";
+    $bothPhases = "export * from './user';\nexport * from './user_meta';";
     config()->set('ts-publish.output_directory', $outputDir);
     config()->set('ts-publish.output_to_files', true);
     config()->set('ts-publish.model_metadata.enabled', true);
-
-    $this->artisan('ts:publish', ['--preview' => 'false'])->assertSuccessful();
-    $this->artisan('ts:publish', ['--preview' => 'false', '--only-functional' => true])->assertSuccessful();
-
-    expect(file_exists("$outputDir/workbench/app/models/user.ts"))->toBeTrue()
-        ->and(file_exists("$outputDir/workbench/app/models/user_meta.ts"))->toBeTrue()
-        ->and(file_get_contents("$outputDir/workbench/app/models/index.ts"))
-        ->toContain("export * from './user';")
-        ->toContain("export * from './user_meta';");
-
-    $this->artisan('ts:publish', ['--preview' => 'false', '--only-model-metadata' => true])->assertSuccessful();
-
-    $barrel = file_get_contents("$outputDir/workbench/app/models/index.ts");
-
-    expect(file_exists("$outputDir/workbench/app/models/user.ts"))->toBeTrue()
-        ->and(file_exists("$outputDir/workbench/app/models/user_meta.ts"))->toBeTrue()
-        ->and($barrel)
-        ->toContain("export * from './user';")
-        ->toContain("export * from './user_meta';");
-
-    $this->artisan('ts:publish', ['--preview' => 'false', '--only-models' => true])->assertSuccessful();
-
-    expect(file_exists("$outputDir/workbench/app/models/user.ts"))->toBeTrue()
-        ->and(file_exists("$outputDir/workbench/app/models/user_meta.ts"))->toBeTrue()
-        ->and(file_get_contents("$outputDir/workbench/app/models/index.ts"))
-        ->toContain("export * from './user';")
-        ->toContain("export * from './user_meta';");
-
-    (new Filesystem)->deleteDirectory($outputDir);
-});
-
-test('partial model runs create missing barrels with custom writers without merge support', function () {
-    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-custom-partial-barrel-'.uniqid();
-    config()->set('ts-publish.barrel_writer_class', NonMergingBarrelWriter::class);
-    config()->set('ts-publish.output_directory', $outputDir);
-    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.models.included', [User::class]);
 
     try {
+        $this->artisan('ts:publish', ['--preview' => 'false'])->assertSuccessful();
+        $this->artisan('ts:publish', ['--preview' => 'false', '--only-functional' => true])->assertSuccessful();
+
+        expect(file_exists("$outputDir/workbench/app/models/user.ts"))->toBeTrue()
+            ->and(file_exists("$outputDir/workbench/app/models/user_meta.ts"))->toBeTrue()
+            ->and(file_get_contents($barrelPath))->toBe($bothPhases);
+
+        $this->artisan('ts:publish', ['--preview' => 'false', '--only-model-metadata' => true])->assertSuccessful();
+
+        expect(file_exists("$outputDir/workbench/app/models/user.ts"))->toBeTrue()
+            ->and(file_exists("$outputDir/workbench/app/models/user_meta.ts"))->toBeTrue()
+            ->and(file_get_contents($barrelPath))->toBe($bothPhases);
+
         $this->artisan('ts:publish', ['--preview' => 'false', '--only-models' => true])->assertSuccessful();
 
         expect(file_exists("$outputDir/workbench/app/models/user.ts"))->toBeTrue()
-            ->and(file_get_contents("$outputDir/workbench/app/models/index.ts"))
-            ->toContain("export * from './user';");
+            ->and(file_exists("$outputDir/workbench/app/models/user_meta.ts"))->toBeTrue()
+            ->and(file_get_contents($barrelPath))->toBe($bothPhases);
     } finally {
         (new Filesystem)->deleteDirectory($outputDir);
     }
 });
 
-test('partial model runs preserve existing barrels with custom writers without merge support', function () {
-    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-custom-existing-barrel-'.uniqid();
+test('partial model runs preserve the companion phase with a custom barrel writer', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-custom-writer-partial-'.uniqid();
+    config()->set('ts-publish.barrel_writer_class', CustomBarrelWriter::class);
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.model_metadata.enabled', true);
+    config()->set('ts-publish.models.included', [User::class]);
+
+    try {
+        $this->artisan('ts:publish', ['--preview' => 'false'])->assertSuccessful();
+        $this->artisan('ts:publish', ['--preview' => 'false', '--only-models' => true])->assertSuccessful();
+
+        expect(file_get_contents("$outputDir/workbench/app/models/index.ts"))
+            ->toBe("export * from './user';\nexport * from './user_meta';");
+    } finally {
+        (new Filesystem)->deleteDirectory($outputDir);
+    }
+});
+
+test('a full publish drops barrel exports for models that no longer exist', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-prune-barrel-'.uniqid();
     $barrelDirectory = "$outputDir/workbench/app/models";
     $filesystem = new Filesystem;
     $filesystem->makeDirectory($barrelDirectory, recursive: true);
-    $filesystem->put("$barrelDirectory/index.ts", "export * from './existing';");
-
-    config()->set('ts-publish.barrel_writer_class', NonMergingBarrelWriter::class);
+    $filesystem->put("$barrelDirectory/index.ts", "export * from './ghost';\nexport * from './ghost_meta';");
     config()->set('ts-publish.output_directory', $outputDir);
     config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.models.included', [User::class]);
 
     try {
-        $this->artisan('ts:publish', ['--preview' => 'false', '--only-models' => true])
-            ->assertSuccessful();
+        // Default config: models on, metadata off. Both stale exports must go.
+        $this->artisan('ts:publish', ['--preview' => 'false'])->assertSuccessful();
 
-        expect(file_get_contents("$barrelDirectory/index.ts"))
-            ->toBe("export * from './existing';");
+        expect(file_get_contents("$barrelDirectory/index.ts"))->toBe("export * from './user';");
+    } finally {
+        $filesystem->deleteDirectory($outputDir);
+    }
+});
+
+test('a partial run ignores an unresolvable provider for the phase it was told to skip', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-only-enums-bad-provider-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.model_metadata.enabled', true);
+    config()->set('ts-publish.watcher.enabled', true);
+    config()->set('ts-publish.model_metadata.provider_class', InvalidModelMetadataProvider::class);
+
+    try {
+        $this->artisan('ts:publish', ['--preview' => 'false', '--only-enums' => true])->assertSuccessful();
+
+        expect(file_exists("$outputDir/workbench/app/enums/status.ts"))->toBeTrue();
+    } finally {
+        (new Filesystem)->deleteDirectory($outputDir);
+    }
+});
+
+test('ts:publish verbose mode shows the model metadata table', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-verbose-metadata-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.model_metadata.enabled', true);
+    config()->set('ts-publish.models.included', [User::class]);
+
+    try {
+        // Prompts writes a whole table in one call and Mockery hands that call to the first matching
+        // expectation, so a row must be expected before a header it shares the write with.
+        $this->artisan('ts:publish', ['--preview' => 'false', '-v' => true])
+            ->assertSuccessful()
+            ->expectsOutputToContain('Model Metadata')
+            ->expectsOutputToContain('user_meta.ts')
+            ->expectsOutputToContain('Properties');
     } finally {
         (new Filesystem)->deleteDirectory($outputDir);
     }

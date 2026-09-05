@@ -163,14 +163,18 @@ test('watcher json follows container substitutions for the model metadata provid
     ))->toBeTrue();
 });
 
-test('watcher json rejects an invalid custom model metadata provider', function () {
+test('watcher json skips an unresolvable model metadata provider', function () {
     config()->set('ts-publish.watcher.enabled', true);
     config()->set('ts-publish.output_to_files', false);
     config()->set('ts-publish.model_metadata.enabled', true);
     config()->set('ts-publish.model_metadata.provider_class', InvalidModelMetadataProvider::class);
 
-    expect(fn () => (new WatcherJsonWriter(new Filesystem))->write())
-        ->toThrow(InvalidArgumentException::class, 'must implement');
+    $paths = collect(json_decode((new WatcherJsonWriter(new Filesystem))->write(), true));
+
+    expect($paths->contains(
+        fn (string $path): bool => str_ends_with($path, 'InvalidModelMetadataProvider.php'),
+    ))->toBeFalse()
+        ->and($paths->contains(fn (string $path): bool => str_ends_with($path, 'User.php')))->toBeTrue();
 });
 
 test('watcher json deduplicates a file collected as both a model and metadata provider', function () {

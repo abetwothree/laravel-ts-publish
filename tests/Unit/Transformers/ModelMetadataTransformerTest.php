@@ -261,3 +261,11 @@ test('rejects metadata values exceeding the maximum nesting depth', function () 
     expect(fn () => new ModelMetadataTransformer(User::class))
         ->toThrow(InvalidArgumentException::class, 'exceeds the maximum nesting depth of 64');
 });
+
+test('names companions with a suffix no model interface filename can carry', function () {
+    expect(ModelMetadataTransformer::filenameFor(User::class))->toBe('user_meta')
+        ->and(ModelMetadataTransformer::filenameFor('Workbench\\App\\Models\\PostMeta'))->toBe('post-meta_meta')
+        ->and(ModelMetadataTransformer::isMetadataFilename('user_meta'))->toBeTrue()
+        ->and(ModelMetadataTransformer::isMetadataFilename('post-meta'))->toBeFalse()
+        ->and((new ModelMetadataTransformer(User::class))->filename())->toBe('user_meta');
+});

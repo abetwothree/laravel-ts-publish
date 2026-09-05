@@ -23,6 +23,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
 use ReflectionClass;
 use ReflectionEnum;
+use Throwable;
 use UnitEnum;
 
 class WatcherJsonWriter
@@ -141,7 +142,12 @@ class WatcherJsonWriter
             return [];
         }
 
-        $provider = resolve(ModelMetadataProviderResolver::class)->resolve();
+        try {
+            $provider = resolve(ModelMetadataProviderResolver::class)->resolve();
+        } catch (Throwable) {
+            // A provider that cannot resolve has no file to watch; the run that publishes metadata fails loudly instead.
+            return [];
+        }
 
         if ($provider instanceof DefaultModelMetadataProvider) {
             return [];

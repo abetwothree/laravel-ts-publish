@@ -51,6 +51,9 @@ class ModelMetadataTransformer extends CoreTransformer
     use ParsesTsCasts;
     use SnapshotsTransformerState;
 
+    /** Kebab-cased model names carry no underscore, so only a companion filename ends in this suffix. */
+    public const string FILENAME_SUFFIX = '_meta';
+
     private const int MAX_METADATA_VALUE_DEPTH = 64;
 
     public protected(set) string $modelName;
@@ -73,6 +76,22 @@ class ModelMetadataTransformer extends CoreTransformer
 
     /** @var ModelMetadataTypes */
     protected array $metadataTypes;
+
+    /**
+     * Companion filename for a model class, without its TypeScript extension.
+     */
+    public static function filenameFor(string $modelClass): string
+    {
+        return Str::kebab(class_basename($modelClass)).static::FILENAME_SUFFIX;
+    }
+
+    /**
+     * Whether a barrel export names a metadata companion rather than a model interface.
+     */
+    public static function isMetadataFilename(string $filename): bool
+    {
+        return str_ends_with($filename, static::FILENAME_SUFFIX);
+    }
 
     /**
      * Transform a model into runtime metadata.
@@ -114,7 +133,7 @@ class ModelMetadataTransformer extends CoreTransformer
     #[Override]
     public function filename(): string
     {
-        return Str::kebab($this->modelName).'_meta';
+        return self::filenameFor($this->findable);
     }
 
     /**

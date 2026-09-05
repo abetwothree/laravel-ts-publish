@@ -7,7 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Writers;
 use AbeTwoThree\LaravelTsPublish\Generators\CoreGenerator;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\EnsuresDirectoryExists;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
-use AbeTwoThree\LaravelTsPublish\Writers\Contracts\MergesModularBarrels;
+use Closure;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
@@ -19,6 +19,9 @@ class BarrelWriter
 {
     use EnsuresDirectoryExists;
     use WritesGeneratedFiles;
+
+    /** The one line shape this writer emits, tolerating the quote style a formatter may have applied. */
+    private const string EXPORT_LINE = '#^export \* from [\'"]\./(?<file>[^\'"]+)[\'"];?$#';
 
     public function __construct(
         protected Filesystem $filesystem,
@@ -50,8 +53,7 @@ class BarrelWriter
     /**
      * Write per-namespace barrel files for modular publishing.
      *
-     * Groups generators by namespace path and writes an index.ts barrel file
-     * for each unique namespace directory.
+     * Groups generators by namespace path and rewrites an index.ts barrel file for each unique namespace directory.
      *
      * @template T of CoreGenerator
      *
@@ -61,39 +63,35 @@ class BarrelWriter
      */
     public function writeModular(Collection $generators, ?string $outputBase = null): array
     {
-        return $this->writeModularBarrels($generators, $outputBase, false);
+        return $this->writeModularBarrels($generators, $outputBase, null);
     }
 
     /**
-     * Merge generated exports into existing per-namespace barrel files.
+     * Write per-namespace barrels, carrying over the existing exports $keepExisting approves.
+     *
+     * Only namespaces that received a generator this run are written; an untouched namespace keeps its file.
      *
      * @template T of CoreGenerator
      *
      * @param  Collection<int, T>  $generators
+     * @param  Closure(string): bool  $keepExisting  Receives an existing export's filename, e.g. 'user_meta'.
      * @return array<string, string> Barrel contents keyed by namespace path
      */
-    public function mergeModular(Collection $generators, ?string $outputBase = null): array
+    public function writeModularPreserving(Collection $generators, Closure $keepExisting, ?string $outputBase = null): array
     {
-        return $this->writeModularBarrels($generators, $outputBase, true);
+        return $this->writeModularBarrels($generators, $outputBase, $keepExisting);
     }
 
     /**
-     * Determine whether partial runs can use the writer's modular merge behavior.
-     */
-    public function supportsModularMerging(): bool
-    {
-        return static::class === self::class || $this instanceof MergesModularBarrels;
-    }
-
-    /**
-     * Write grouped modular barrels using replace or merge semantics.
+     * Group generators by namespace and write each barrel, optionally keeping approved existing exports.
      *
      * @template T of CoreGenerator
      *
      * @param  Collection<int, T>  $generators
+     * @param  (Closure(string): bool)|null  $keepExisting
      * @return array<string, string> Barrel contents keyed by namespace path
      */
-    private function writeModularBarrels(Collection $generators, ?string $outputBase, bool $merge): array
+    private function writeModularBarrels(Collection $generators, ?string $outputBase, ?Closure $keepExisting): array
     {
         /** @var array<string, list<string>> $grouped */
         $grouped = [];
@@ -114,18 +112,15 @@ class BarrelWriter
         foreach ($grouped as $namespacePath => $filenames) {
             $outputPath = $base.'/'.$namespacePath;
             $barrelPath = "$outputPath/index.ts";
-            $exports = collect($filenames)
-                ->map(fn (string $file) => "export * from './{$file}';");
 
-            if ($merge && $this->filesystem->exists($barrelPath)) {
-                $existingExports = preg_split('/\R/', $this->filesystem->get($barrelPath)) ?: [];
-                $exports = $exports->merge($existingExports);
+            if ($keepExisting !== null) {
+                $filenames = [...$filenames, ...array_filter($this->existingExports($barrelPath), $keepExisting)];
             }
 
-            $content = $exports
-                ->filter()
+            $content = collect($filenames)
                 ->unique()
                 ->sort()
+                ->map(fn (string $file) => "export * from './{$file}';")
                 ->implode("\n");
 
             if ($outputToFiles) {
@@ -139,5 +134,27 @@ class BarrelWriter
         ksort($results);
 
         return $results;
+    }
+
+    /**
+     * Filenames an existing barrel exports. Anything that is not an export line is not carried over.
+     *
+     * @return list<string>
+     */
+    private function existingExports(string $barrelPath): array
+    {
+        if (! $this->filesystem->exists($barrelPath)) {
+            return [];
+        }
+
+        $files = [];
+
+        foreach (preg_split('/\R/', $this->filesystem->get($barrelPath)) ?: [] as $line) {
+            if (preg_match(self::EXPORT_LINE, trim($line), $matches) === 1) {
+                $files[] = $matches['file'];
+            }
+        }
+
+        return $files;
     }
 }
