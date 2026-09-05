@@ -4,10 +4,9 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
-use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
+use AbeTwoThree\LaravelTsPublish\Analyzers\Metadata\ModelMetadataAnalysis;
+use AbeTwoThree\LaravelTsPublish\Analyzers\Metadata\ModelMetadataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
-use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsModelMetadataDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -23,32 +22,17 @@ use InvalidArgumentException;
 use JsonSerializable;
 use Override;
 use ReflectionClass;
-use ReflectionMethod;
-use Throwable;
 use UnitEnum;
 
 /**
  * @extends CoreTransformer<Model>
  *
  * @phpstan-import-type TypesImportMap from Datable
- * @phpstan-import-type TsCastsResult from ParsesTsCasts
  *
  * @phpstan-type NormalizedModelMetadataValue null|bool|int|float|string|array<array-key, mixed>
- * @phpstan-type ProviderDeclaredTypes array{
- *     overrides: array<string, string>,
- *     requiredKeys: array<string, true>,
- *     optionalKeys: array<string, true>,
- * }
- * @phpstan-type ModelMetadataTypes array{
- *     overrides: array<string, string>,
- *     importPaths: array<string, string>,
- *     requiredKeys: array<string, true>,
- *     inferredKeys: array<string, true>,
- * }
  */
 class ModelMetadataTransformer extends CoreTransformer
 {
-    use ParsesTsCasts;
     use SnapshotsTransformerState;
 
     /** Kebab-cased model names carry no underscore, so only a companion filename ends in this suffix. */
@@ -74,8 +58,7 @@ class ModelMetadataTransformer extends CoreTransformer
     /** @var array<string, mixed> */
     protected array $metadata;
 
-    /** @var ModelMetadataTypes */
-    protected array $metadataTypes;
+    protected ModelMetadataAnalysis $analysis;
 
     /**
      * Companion filename for a model class, without its TypeScript extension.
@@ -174,21 +157,22 @@ class ModelMetadataTransformer extends CoreTransformer
     }
 
     /**
-     * Parse declared and overridden property types.
+     * Resolve declared, overridden, and body-inferred property types.
      */
     protected function transformPropertyTypes(): static
     {
-        $this->metadataTypes = $this->parseProviderTypes($this->provider);
+        $this->analysis = resolve(ModelMetadataAnalyzer::class)->analyze($this->provider::class, array_keys($this->metadata));
 
         return $this;
     }
 
     /**
-     * Validate the payload keys against its declared property types.
+     * Validate the payload keys against the analysis.
      */
     protected function validateProperties(): static
     {
-        $undeclaredKeys = array_keys(array_diff_key($this->metadata, $this->metadataTypes['overrides']));
+        $payloadKeys = array_keys($this->metadata);
+        $undeclaredKeys = $this->analysis->undeclaredKeys($payloadKeys);
 
         if ($undeclaredKeys !== []) {
             throw new InvalidArgumentException(
@@ -197,17 +181,16 @@ class ModelMetadataTransformer extends CoreTransformer
             );
         }
 
-        $missingKeys = array_keys(array_diff_key($this->metadataTypes['requiredKeys'], $this->metadata));
+        $missingKeys = $this->analysis->missingKeys($payloadKeys);
 
         if ($missingKeys !== []) {
             throw new InvalidArgumentException(
-                "Model metadata for model [{$this->findable}] is missing required keys: ["
-                .implode(', ', $missingKeys).']',
+                "Model metadata for model [{$this->findable}] is missing required keys: [".implode(', ', $missingKeys).']',
             );
         }
 
-        foreach (array_intersect_key($this->metadataTypes['inferredKeys'], $this->metadata) as $property => $_) {
-            $type = $this->metadataTypes['overrides'][$property];
+        foreach ($this->analysis->importFreeKeys($payloadKeys) as $property) {
+            $type = $this->analysis->types[$property];
 
             if (LaravelTsPublish::shapeValueHasUnimportableToken($type)) {
                 throw new InvalidArgumentException(
@@ -225,8 +208,8 @@ class ModelMetadataTransformer extends CoreTransformer
     protected function resolveImports(): static
     {
         $resolved = resolve(TsCastsImportResolver::class)->resolve(
-            array_intersect_key($this->metadataTypes['overrides'], $this->metadata),
-            array_intersect_key($this->metadataTypes['importPaths'], $this->metadata),
+            array_intersect_key($this->analysis->types, $this->metadata),
+            array_intersect_key($this->analysis->importPaths, $this->metadata),
         );
 
         foreach (array_keys($this->metadata) as $property) {
@@ -260,132 +243,7 @@ class ModelMetadataTransformer extends CoreTransformer
     /** @return list<string> */
     protected function transientProperties(): array
     {
-        return ['modelInstance', 'provider', 'metadata', 'metadataTypes'];
-    }
-
-    /**
-     * Combine body inference, return-shape declarations, and TsCasts overrides.
-     *
-     * @return ModelMetadataTypes
-     */
-    protected function parseProviderTypes(ModelMetadataProvider $provider): array
-    {
-        $method = new ReflectionMethod($provider, 'provide');
-
-        return $this->normalizeProviderTypes(
-            $this->inferProviderTypes($provider),
-            $this->parseProviderDeclaredTypes($method),
-            $this->parseProviderTsCasts($method),
-        );
-    }
-
-    /**
-     * Parse the provider's optional return-shape declarations.
-     *
-     * @return ProviderDeclaredTypes
-     */
-    protected function parseProviderDeclaredTypes(ReflectionMethod $method): array
-    {
-        $types = [];
-        $requiredKeys = [];
-        $optionalKeys = [];
-
-        foreach (LaravelTsPublish::parseDocblockReturnArrayShape($method) as $property => $type) {
-            $optional = str_ends_with($property, '?');
-            $property = $optional ? substr($property, 0, -1) : $property;
-            $types[$property] = $type;
-
-            if ($optional) {
-                $optionalKeys[$property] = true;
-            } else {
-                $requiredKeys[$property] = true;
-            }
-        }
-
-        return [
-            'overrides' => $types,
-            'requiredKeys' => $requiredKeys,
-            'optionalKeys' => $optionalKeys,
-        ];
-    }
-
-    /**
-     * Parse TsCasts declared on the provider method.
-     *
-     * @return TsCastsResult
-     */
-    protected function parseProviderTsCasts(ReflectionMethod $method): array
-    {
-        $castTypes = [];
-
-        foreach ($method->getAttributes(TsCasts::class) as $attribute) {
-            $castTypes = array_merge($castTypes, $attribute->newInstance()->types);
-        }
-
-        return $this->normalizeTsCasts($castTypes);
-    }
-
-    /**
-     * Normalize provider types with AST, PHPDoc, then TsCasts precedence.
-     *
-     * @param  array<string, string>  $inferredTypes
-     * @param  ProviderDeclaredTypes  $declaredTypes
-     * @param  TsCastsResult  $casts
-     * @return ModelMetadataTypes
-     */
-    protected function normalizeProviderTypes(array $inferredTypes, array $declaredTypes, array $casts): array
-    {
-        $types = [
-            ...array_diff_key($inferredTypes, $declaredTypes['overrides'], $casts['overrides']),
-            ...$declaredTypes['overrides'],
-        ];
-        $requiredKeys = $declaredTypes['requiredKeys'];
-
-        $inferredKeys = array_fill_keys(array_keys(array_diff_key($types, $casts['overrides'])), true);
-
-        foreach ($casts['overrides'] as $property => $type) {
-            $types[$property] = $type;
-
-            if ($casts['optionalOverrides'][$property] ?? isset($declaredTypes['optionalKeys'][$property])) {
-                unset($requiredKeys[$property]);
-            } else {
-                $requiredKeys[$property] = true;
-            }
-        }
-
-        return [
-            'overrides' => $types,
-            'importPaths' => $casts['importPaths'],
-            'requiredKeys' => $requiredKeys,
-            'inferredKeys' => $inferredKeys,
-        ];
-    }
-
-    /**
-     * Infer concrete, non-unknown property types from the provider method body.
-     *
-     * @return array<string, string>
-     */
-    protected function inferProviderTypes(ModelMetadataProvider $provider): array
-    {
-        try {
-            $analysis = resolve(AstEngine::class)->analyzeMethod($provider::class, 'provide');
-        } catch (Throwable) {
-            return [];
-        }
-
-        $types = [];
-
-        foreach ($analysis->properties as $property) {
-            if (! array_key_exists($property['name'], $this->metadata)
-                || preg_match('/\bunknown\b/', $property['type']) === 1) {
-                continue;
-            }
-
-            $types[$property['name']] = $property['type'];
-        }
-
-        return $types;
+        return ['modelInstance', 'provider', 'metadata', 'analysis'];
     }
 
     /**

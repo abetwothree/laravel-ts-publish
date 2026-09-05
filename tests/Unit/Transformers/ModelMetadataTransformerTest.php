@@ -3,10 +3,12 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AstUnimportableModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BoundModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BranchedAstModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CircularJsonSerializableMetadataValue;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ConfigurableModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InheritedModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InvalidMetadataPayloadProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InvalidModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\JsonSerializableMetadataValue;
@@ -268,4 +270,25 @@ test('names companions with a suffix no model interface filename can carry', fun
         ->and(ModelMetadataTransformer::isMetadataFilename('user_meta'))->toBeTrue()
         ->and(ModelMetadataTransformer::isMetadataFilename('post-meta'))->toBeFalse()
         ->and((new ModelMetadataTransformer(User::class))->filename())->toBe('user_meta');
+});
+
+test('infers string types for bound model method calls under a generic array declaration', function () {
+    config()->set('ts-publish.model_metadata.provider_class', BoundModelMetadataProvider::class);
+
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    expect($data->propertyTypes)->toBe([
+        'table' => 'string',
+        'keyName' => 'string',
+        'routeKeyName' => 'string',
+        'morphClass' => 'string',
+    ])->and($data->properties['table'])->toBe('users')
+        ->and($data->typeImports)->toBe([]);
+});
+
+test('an inherited provide() body infers with the model parameter bound', function () {
+    config()->set('ts-publish.model_metadata.provider_class', InheritedModelMetadataProvider::class);
+
+    expect((new ModelMetadataTransformer(User::class))->data()->propertyTypes)
+        ->toBe(['enabled' => 'boolean', 'table' => 'string']);
 });
