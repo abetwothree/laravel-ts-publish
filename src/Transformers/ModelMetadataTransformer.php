@@ -13,8 +13,8 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Metadata\Contracts\ModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Metadata\ModelMetadataProviderResolver;
 use AbeTwoThree\LaravelTsPublish\Support\TsCastsImportResolver;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
-use BackedEnum;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
@@ -22,6 +22,7 @@ use InvalidArgumentException;
 use JsonSerializable;
 use Override;
 use ReflectionClass;
+use stdClass;
 use UnitEnum;
 
 /**
@@ -29,7 +30,7 @@ use UnitEnum;
  *
  * @phpstan-import-type TypesImportMap from Datable
  *
- * @phpstan-type NormalizedModelMetadataValue null|bool|int|float|string|array<array-key, mixed>
+ * @phpstan-type NormalizedModelMetadataValue null|bool|int|float|string|array<array-key, mixed>|stdClass
  */
 class ModelMetadataTransformer extends CoreTransformer
 {
@@ -39,6 +40,8 @@ class ModelMetadataTransformer extends CoreTransformer
     public const string FILENAME_SUFFIX = '_meta';
 
     private const int MAX_METADATA_VALUE_DEPTH = 64;
+
+    private const int MAX_SAFE_INTEGER = 9_007_199_254_740_991;
 
     public protected(set) string $modelName;
 
@@ -90,7 +93,8 @@ class ModelMetadataTransformer extends CoreTransformer
             ->transformPropertyTypes()
             ->validateProperties()
             ->resolveImports()
-            ->transformProperties();
+            ->transformProperties()
+            ->coerceEmptyArrays();
 
         return $this;
     }
@@ -267,6 +271,18 @@ class ModelMetadataTransformer extends CoreTransformer
         return $this;
     }
 
+    /**
+     * Turn an empty PHP array into an empty object wherever its resolved type is object-like.
+     */
+    protected function coerceEmptyArrays(): static
+    {
+        foreach ($this->properties as $property => $value) {
+            $this->properties[$property] = $this->coerceEmptyArray($value, $this->propertyTypes[$property]);
+        }
+
+        return $this;
+    }
+
     /** @return list<string> */
     protected function transientProperties(): array
     {
@@ -290,6 +306,43 @@ class ModelMetadataTransformer extends CoreTransformer
     }
 
     /**
+     * Walk one value alongside its declared type, spelling `[]` as `{}` where the type says object.
+     *
+     * PHP cannot tell `[]` from `{}`, and the engine's DTOs export only the type string, so an opaque type keeps `[]`.
+     *
+     * @param  NormalizedModelMetadataValue  $value
+     * @return NormalizedModelMetadataValue
+     */
+    private function coerceEmptyArray(
+        null|bool|int|float|string|array|stdClass $value,
+        ?string $type,
+    ): null|bool|int|float|string|array|stdClass {
+        if ($value === []) {
+            return $type !== null && TsTypeShape::isObjectLike($type) ? new stdClass : [];
+        }
+
+        if (! is_array($value) || $type === null) {
+            return $value;
+        }
+
+        // A PHP list can carry an object literal's numeric keys (`array{0: ..., 1: ...}`), so a list falls back
+        // to the member accessor. The reverse has no payload that it fixes: an object literal typed as an array
+        // fails tsc however its members are spelled, so an assoc array consults the member accessor only.
+        $isList = array_is_list($value);
+        $elementType = $isList ? TsTypeShape::elementType($type) : null;
+
+        foreach ($value as $key => $nested) {
+            /** @var NormalizedModelMetadataValue $nested */
+            $value[$key] = $this->coerceEmptyArray(
+                $nested,
+                $elementType ?? TsTypeShape::memberType($type, (string) $key),
+            );
+        }
+
+        return $value;
+    }
+
+    /**
      * Normalize a provider value into a safely renderable TypeScript literal value.
      *
      * @param  array<int, true>  $objectStack
@@ -300,7 +353,7 @@ class ModelMetadataTransformer extends CoreTransformer
         string $path,
         int $depth,
         array &$objectStack,
-    ): null|bool|int|float|string|array {
+    ): null|bool|int|float|string|array|stdClass {
         if ($depth > self::MAX_METADATA_VALUE_DEPTH) {
             throw new InvalidArgumentException(
                 "Model metadata for model [{$this->findable}] property [{$path}] exceeds the maximum nesting depth of "
@@ -308,7 +361,18 @@ class ModelMetadataTransformer extends CoreTransformer
             );
         }
 
-        if ($value === null || is_bool($value) || is_int($value) || is_string($value)) {
+        if ($value === null || is_bool($value) || is_string($value)) {
+            return $value;
+        }
+
+        if (is_int($value)) {
+            if (abs($value) > self::MAX_SAFE_INTEGER) {
+                throw new InvalidArgumentException(
+                    "Model metadata for model [{$this->findable}] property [{$path}] exceeds JavaScript's safe integer "
+                    .'range (±'.self::MAX_SAFE_INTEGER.'); return it as a string.',
+                );
+            }
+
             return $value;
         }
 
@@ -322,12 +386,8 @@ class ModelMetadataTransformer extends CoreTransformer
             return $value;
         }
 
-        if ($value instanceof BackedEnum) {
-            return $this->normalizeMetadataValue($value->value, $path, $depth + 1, $objectStack);
-        }
-
         if ($value instanceof UnitEnum) {
-            return $value->name;
+            return $this->normalizeMetadataValue(LaravelTsPublish::enumScalar($value), $path, $depth, $objectStack);
         }
 
         if (is_array($value)) {
@@ -345,10 +405,10 @@ class ModelMetadataTransformer extends CoreTransformer
             return $normalized;
         }
 
-        if (! $value instanceof Arrayable && ! $value instanceof JsonSerializable) {
+        if (! $value instanceof stdClass && ! $value instanceof Arrayable && ! $value instanceof JsonSerializable) {
             throw new InvalidArgumentException(
                 "Model metadata for model [{$this->findable}] property [{$path}] returned unsupported value "
-                .'['.get_debug_type($value).']. Expected a scalar, array, enum, Arrayable, or JsonSerializable value.',
+                .'['.get_debug_type($value).']. Expected a scalar, array, enum, stdClass, Arrayable, or JsonSerializable value.',
             );
         }
 
@@ -363,9 +423,25 @@ class ModelMetadataTransformer extends CoreTransformer
         $objectStack[$objectId] = true;
 
         try {
+            if ($value instanceof stdClass) {
+                $properties = get_object_vars($value);
+
+                // The one value PHP can spell as an empty object; a bare [] is disambiguated later by its type.
+                return $properties === []
+                    ? new stdClass
+                    : $this->normalizeMetadataValue($properties, $path, $depth, $objectStack);
+            }
+
             $serialized = $value instanceof Arrayable ? $value->toArray() : $value->jsonSerialize();
 
-            return $this->normalizeMetadataValue($serialized, $path, $depth + 1, $objectStack);
+            // An object wrapping an array is not a level of its own; one wrapping another object must cost
+            // one, or a serializer returning a fresh object each call would recurse until memory ran out.
+            return $this->normalizeMetadataValue(
+                $serialized,
+                $path,
+                $depth + (is_array($serialized) ? 0 : 1),
+                $objectStack,
+            );
         } finally {
             unset($objectStack[$objectId]);
         }

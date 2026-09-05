@@ -129,6 +129,38 @@ Fixing it means carrying the FQCN alongside the rendered name through the prune 
 identities rather than basenames, and then routing inferred imports through the same alias resolver the
 cast imports use. That is a channel change, not a patch at the filter.
 
+### An empty `[]` under an imported type alias still ships as `[]`
+
+Model metadata coerces an empty PHP array to `{}` wherever the property's resolved TypeScript type is
+object-like, because PHP cannot tell an empty map from an empty list and `[]` does not satisfy `Record<>`
+or an object literal. The decision is made by `TsTypeShape::isObjectLike()` reading the type *string*
+(`ModelMetadataTransformer::coerceEmptyArray()`, `src/Transformers/ModelMetadataTransformer.php:321`), and
+a bare imported identifier is opaque to it — `armIsObject()` recognises only `{...}` and `Record<`
+(`src/Support/TsTypeShape.php:203`). A `#[TsCasts]` type that names an imported alias therefore keeps `[]`,
+however object-like the alias resolves to on the TypeScript side.
+
+`tests/Fixtures/EmptyValuesModelMetadataProvider.php:26` pins exactly that shape — `'opaque' =>
+['type' => 'OpaqueShape', 'import' => '@/types/opaque-shape']` holding `[]`. Point the alias at the
+map it reads as (`export type OpaqueShape = Record<string, unknown>;`) and the emitted companion fails:
+
+```
+error TS2322: Type 'readonly []' is not assignable to type 'OpaqueShape'.
+  Index signature for type 'string' is missing in type 'readonly []'.
+```
+
+Every other property in that same companion type-checks clean, so this is the residue of a bug that used to
+hit every object-like property, not a new one. **The workaround is to return `(object) []`**, which the
+provider may now do explicitly and which survives coercion untouched.
+
+No gate catches it. The writer tests that render this companion all run with `ts-publish.output_to_files`
+false (`tests/Unit/Writers/ModelMetadataWriterTest.php:93`), so the file never reaches the generated tree
+the token gate compiles — read a green gate as saying nothing about this case either way.
+
+Fixing it means resolving the alias to a type the shape inspector can read, which puts a module-resolution
+step inside a transformer that today does pure string inspection. Widening `isObjectLike()` to guess that
+any unknown identifier is object-like is not the fix: it would spell `{}` for an alias of `string[]`,
+turning a narrow wrong answer into a broad one.
+
 ## Deliberate non-goals
 
 Absent on purpose. Do not "fix" these without raising it first.
