@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelMetadataCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 
@@ -67,4 +68,23 @@ test('rejects an explicitly supplied model excluded through a directory', functi
     config()->set('ts-publish.model_metadata.excluded', [$modelDirectory]);
 
     expect(resolve(ModelMetadataCollector::class)->allows(User::class))->toBeFalse();
+});
+
+test('allows resolves directory entries through a per-process class map cache', function () {
+    CoreCollector::flushClassMapCache();
+    config()->set('ts-publish.models.included', [workbench_path('app/Models')]);
+
+    $collector = resolve(ModelsCollector::class);
+
+    expect($collector->allows(User::class))->toBeTrue();
+
+    // Seed the cache with a map that lacks User: a second allows() must consult the cache, not rescan.
+    $cache = new ReflectionProperty(CoreCollector::class, 'classMaps');
+    $cache->setValue(null, array_map(fn (): array => [], $cache->getValue()));
+
+    expect($collector->allows(User::class))->toBeFalse();
+
+    CoreCollector::flushClassMapCache();
+
+    expect($collector->allows(User::class))->toBeTrue();
 });

@@ -170,6 +170,13 @@ Absent on purpose. Do not "fix" these without raising it first.
 - **No `ts-publish.analyzer.handlers` config key.** You cannot append your own `ExpressionHandler`. Every
   extension point is a compatibility promise; worth adding only if someone asks.
 - **Form requests stay runtime.** They are resolved by instantiating and calling `rules()`, on purpose.
+- **Collector class maps are not invalidated mid-process.** `CoreCollector::classMap()` scans each directory
+  once per process, and `Runner::run()` / `RunnerForSource::run()` clear it first, so a `ts:publish` run
+  always reads the disk. Host code that calls `collect()` or `allows()` directly on either side of writing a
+  `.php` file — a custom collector, a `tinker` or test-helper loop that generates a model and re-collects —
+  gets the pre-write answer from both. Call `CoreCollector::flushClassMapCache()` between the write and the
+  second call. Stat-based invalidation would charge every run for a case no package run path reaches:
+  nothing in `src/` writes a `.php` file.
 
 ## Green signals that are narrower than they look
 

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
+use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
@@ -82,7 +83,18 @@ test('throws when source model and metadata filters both exclude the model', fun
     $runner->run();
 })->throws(
     InvalidArgumentException::class,
-    'Model and model metadata filters exclude: Workbench\\App\\Models\\User',
+    'Nothing to publish for Workbench\\App\\Models\\User: models are excluded by filters; model metadata is excluded by filters',
+);
+
+test('names the disabled phase when a flag skipped it and filters excluded the other', function () {
+    config()->set('ts-publish.model_metadata.excluded', ['Workbench\\App\\Models\\User']);
+
+    $runner = new RunnerForSource('Workbench\\App\\Models\\User');
+    $runner->shouldPublishModels = false;
+    $runner->run();
+})->throws(
+    InvalidArgumentException::class,
+    'Nothing to publish for Workbench\\App\\Models\\User: models are disabled; model metadata is excluded by filters',
 );
 
 test('generates single enum from file path', function () {
@@ -272,4 +284,14 @@ test('a --source run clears a leftover AnalysisWarnings entry instead of leaking
     $runner->run();
 
     expect(AnalysisWarnings::all())->toBe([]);
+});
+
+test('a --source run drops a class map memoized before it so the disk is rescanned', function () {
+    $cache = new ReflectionProperty(CoreCollector::class, 'classMaps');
+    $cache->setValue(null, ['/a/directory/scanned/by/an/earlier/run' => []]);
+
+    $runner = new RunnerForSource('Workbench\\App\\Enums\\Status');
+    $runner->run();
+
+    expect($cache->getValue())->not->toHaveKey('/a/directory/scanned/by/an/earlier/run');
 });

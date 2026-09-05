@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Runners;
 
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Collectors\Concerns\ValidatesCollectorFiles;
+use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelMetadataCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -70,6 +71,7 @@ class RunnerForSource extends BaseRunner
     {
         PublishedResourceRegistry::reset();
         AnalysisWarnings::reset();
+        CoreCollector::flushClassMapCache();
 
         $fqcn = $this->resolveSourceToFqcn();
 
@@ -103,7 +105,12 @@ class RunnerForSource extends BaseRunner
             $publishMetadata = $this->shouldPublishModelMetadata && $metadataCollector->allows($fqcn);
 
             if (! $publishModel && ! $publishMetadata) {
-                throw new InvalidArgumentException("Model and model metadata filters exclude: {$fqcn}");
+                $modelReason = $this->shouldPublishModels ? 'are excluded by filters' : 'are disabled';
+                $metadataReason = $this->shouldPublishModelMetadata ? 'is excluded by filters' : 'is disabled';
+
+                throw new InvalidArgumentException(
+                    "Nothing to publish for {$fqcn}: models {$modelReason}; model metadata {$metadataReason}",
+                );
             }
 
             if ($publishModel) {

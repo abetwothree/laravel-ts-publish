@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
+use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
@@ -761,4 +762,15 @@ describe('PublishedResourceRegistry run boundary', function () {
             ->toContain('registrar?: unknown;')
             ->not->toContain('RegistrarResource');
     });
+});
+
+// ─── CoreCollector class map run boundary ────────────────────────
+
+test('a run drops a class map memoized before it so the disk is rescanned', function () {
+    $cache = new ReflectionProperty(CoreCollector::class, 'classMaps');
+    $cache->setValue(null, ['/a/directory/scanned/by/an/earlier/run' => []]);
+
+    (new Runner)->run();
+
+    expect($cache->getValue())->not->toHaveKey('/a/directory/scanned/by/an/earlier/run');
 });
