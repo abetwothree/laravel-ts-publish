@@ -972,3 +972,33 @@ test('verbose mode labels each detail table with a section heading', function ()
         ->expectsOutputToContain('Models')
         ->assertExitCode(0);
 });
+
+test('ts:publish survives a published config that predates model metadata', function () {
+    config()->set('ts-publish.output_to_files', false);
+    // A config:cache built from a pre-upgrade config/ts-publish.php has no model_metadata key at all.
+    config()->set('ts-publish.model_metadata', null);
+
+    $this->artisan('ts:publish', ['--preview' => 'true'])
+        ->assertSuccessful()
+        ->expectsOutputToContain('Models:')
+        ->doesntExpectOutputToContain('Model Metadata:');
+});
+
+test('ts:publish --only-model-metadata skips cleanly when the config block is missing', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.model_metadata', null);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-model-metadata' => true, '--no-interaction' => true])
+        ->assertSuccessful();
+});
+
+test('ts:publish generates metadata from a partial model_metadata config block', function () {
+    config()->set('ts-publish.output_to_files', false);
+    // README shows users this one-key shape; mergeConfigFrom is a shallow array_merge, so it replaces the block.
+    config()->set('ts-publish.model_metadata', ['enabled' => true]);
+    config()->set('ts-publish.models.included', [User::class]);
+
+    $this->artisan('ts:publish', ['--preview' => 'true'])
+        ->assertSuccessful()
+        ->expectsOutputToContain('export const UserModelMetadata');
+});

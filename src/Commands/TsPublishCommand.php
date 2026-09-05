@@ -306,7 +306,7 @@ class TsPublishCommand extends Command
         foreach ($types as $key => $type) {
             $flags[$key] = ($onlyFunctional && ! $type['functional'])
                 ? false
-                : Config::boolean($type['config']);
+                : Config::boolean($type['config'], false);
         }
 
         if ($onlyFunctional) {
@@ -338,7 +338,7 @@ class TsPublishCommand extends Command
                 $flags[$k] = false;
             }
 
-            if (Config::boolean($activeType['config'])) {
+            if (Config::boolean($activeType['config'], false)) {
                 $flags[$onlyKey] = true;
             } else {
                 $flags[$onlyKey] = $this->promptConfigOverride($activeType['label']);

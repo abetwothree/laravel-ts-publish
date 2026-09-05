@@ -310,3 +310,13 @@ test('watcher json excludes broadcast event paths when broadcast_events is disab
 
     expect($paths->contains(fn ($p) => str_contains($p, 'Events/')))->toBeFalse();
 });
+
+test('watcher json tolerates a config without a model_metadata block', function () {
+    config()->set('ts-publish.watcher.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.model_metadata', null);
+
+    $paths = collect(json_decode((new WatcherJsonWriter(new Filesystem))->write(), true));
+
+    expect($paths->contains(fn (string $path): bool => str_contains($path, 'Model')))->toBeTrue();
+});

@@ -104,7 +104,7 @@ class WatcherJsonWriter
             $models = $models->merge($collector->collect());
         }
 
-        if (Config::boolean('ts-publish.model_metadata.enabled')) {
+        if (Config::boolean('ts-publish.model_metadata.enabled', false)) {
             /** @var ModelMetadataCollector $collector */
             $collector = resolve(Config::string(
                 'ts-publish.model_metadata.collector_class',
@@ -137,7 +137,7 @@ class WatcherJsonWriter
      */
     protected function collectModelMetadataProviderPaths(): array
     {
-        if (! Config::boolean('ts-publish.model_metadata.enabled')) {
+        if (! Config::boolean('ts-publish.model_metadata.enabled', false)) {
             return [];
         }
 
