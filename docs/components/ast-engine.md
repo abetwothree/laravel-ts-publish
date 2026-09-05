@@ -146,7 +146,7 @@ itself reaches the same instance as `$this->scope`.
 | `instanceOfWrappedClass` | `class-string\|null` | Wrapped class from an `instanceof` guard in `toArray()`; fallback when `resolveClassOnProperty()` returns `null`. |
 | `closureRelationModelClass` | `class-string<Model>\|null` | Related model set while analyzing a `whenLoaded` closure, so `$variable->prop`/`->method()` inside it resolve. |
 | `closureParamExprBindings` | `array<string, Expr>` | Closure parameter names bound to the `$this->prop` expression found in the surrounding `when()` condition, so `EnumResource::make($status)` resolves like `EnumResource::make($this->status)`. |
-| `varModelBindings` | `array<string, class-string<Model>>` | Closure params / loop vars bound to a model class (`whenLoaded` params, relation-chain `map()` params, `foreach` over a many-relation), so `$var`, `$var->prop`, `$var->method()` resolve against that model. Scoped: writers save and restore around the body. |
+| `varModelBindings` | `array<string, class-string<Model>>` | Closure params / loop vars bound to a model class (`whenLoaded` params, relation-chain `map()` params, `foreach` over a many-relation), so `$var`, `$var->prop`, `$var->method()` resolve against that model. Scoped: writers save and restore around the body. Also seeded, via `AstEngine::bindingsFor()`, from every `Model`-typed parameter of the located method — a route-bound `Post $post`, a metadata provider's `Model $model` — bound to the parameter's **declared** type. |
 | `varCollectionBindings` | `array<string, array{type: string, modelFqcn: class-string<Model>}>` | Closure params bound to a whole relation collection rather than one element — a to-many `whenLoaded` param. Read for a bare return of the param, and as the element-model fallback for an untyped `->map()` closure param. |
 | `localVarBindings` | `array<string, Expr>` | Top-level `$var = expr;` bindings for the method last analyzed, so a bare `Variable` value expression resolves through its bound expression instead of degrading to `unknown`. Only variables written exactly once are recorded; `analyzeThisMethodSpread()` saves and restores this per method. |
 | `resolvingLocalVars` | `array<string, true>` | Re-entrancy guard: variable names currently mid-resolution, so a self- or mutually-referential binding (`$a = $b; $b = $a;`) resolves as `unknown` instead of recursing forever. |
@@ -380,3 +380,14 @@ resolves *expressions* — every `Inertia::render()` props argument in a control
 same-component branches with `mergeReturnBranches()` so a key present in only one branch becomes
 optional. It reaches for `AstEngine::analyzeMethod()` directly only when the props are delegated whole
 to a collaborator (`Inertia::render('X', $this->service->build())`).
+
+`ModelMetadataAnalyzer` (`src/Analyzers/Metadata/`) is the second `bindingsFor()` caller and the third
+shape: it locates a metadata provider's `provide()` on its **declaring** class, seeds the scope so the
+`Model $model` parameter's method calls reflect Laravel's own docblocks, and runs `ResourceAstAnalyzer` on
+the default resource profile with that scope — not through `analyzeMethod()`, which seeds no bindings and
+would drop them on an inherited body. Docblock and method-level `#[TsCasts]` overrides layer on top, the
+FQCN channels of overridden or unreturned keys are forgotten, `modelFqcns` / `nestedResources` are cleared
+(a runtime metadata array need not satisfy a model interface), and `AnalysisImports::build()` supplies the
+enum imports the surviving inferred types spell. It strips the `customImports` that
+`applyTsCastsFromMethod()` already appended for the method's own `#[TsCasts]`, whose imports
+`TsCastsImportResolver` owns. See [model-metadata.md](model-metadata.md#body-inference-is-an-engine-consumer).

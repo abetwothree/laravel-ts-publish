@@ -371,7 +371,7 @@ Model metadata is disabled by default. When enabled, the default provider publis
 
 A provider that throws for a model — an enforced morph map missing it, say — keeps that model's last-known-good companion, finishes every other file, and exits non-zero so CI and the Vite plugin see it. Use `model_metadata.excluded` for models you do not map.
 
-For the provider contract, type precedence, value rules, barrel behavior, and failure semantics, see the full [Model Metadata documentation](https://tolki.abe.dev/ts/model-metadata.html).
+For the provider contract, type precedence, value rules, barrel behavior, and failure semantics, see the full [Model Metadata documentation](https://tolki.abe.dev/ts/model-metadata.html). The pipeline, type precedence, value rules, and failure semantics are documented for contributors in [docs/components/model-metadata.md](docs/components/model-metadata.md); barrel ownership in [docs/components/barrel-writer.md](docs/components/barrel-writer.md).
 
 Key capabilities:
 
