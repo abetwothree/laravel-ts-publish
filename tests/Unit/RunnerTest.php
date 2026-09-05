@@ -15,6 +15,8 @@ use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomBarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FailingModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InvalidModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MarkedModelMetadataGenerator;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SingleModelMetadataCollector;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SuffixedModelMetadataTransformer;
 use Illuminate\Filesystem\Filesystem;
 use Workbench\App\Http\Resources\Registrar as BareRegistrarResource;
@@ -773,4 +775,26 @@ test('a run drops a class map memoized before it so the disk is rescanned', func
     (new Runner)->run();
 
     expect($cache->getValue())->not->toHaveKey('/a/directory/scanned/by/an/earlier/run');
+});
+
+test('runner honors the configured model metadata collector_class', function () {
+    config()->set('ts-publish.model_metadata.collector_class', SingleModelMetadataCollector::class);
+
+    $runner = new Runner;
+    $runner->run();
+
+    expect($runner->modelMetadataGenerators)->toHaveCount(1)
+        ->and($runner->modelMetadataGenerators->first()->findable)->toBe(Post::class);
+});
+
+test('runner honors the configured model metadata generator_class', function () {
+    config()->set('ts-publish.models.included', [User::class]);
+    config()->set('ts-publish.model_metadata.generator_class', MarkedModelMetadataGenerator::class);
+
+    $runner = new Runner;
+    $runner->run();
+
+    expect($runner->modelMetadataGenerators)->toHaveCount(1)
+        ->and($runner->modelMetadataGenerators->first())->toBeInstanceOf(MarkedModelMetadataGenerator::class)
+        ->and($runner->modelMetadataGenerators->first()->content)->toEndWith("// custom generator\n");
 });
