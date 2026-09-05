@@ -1575,6 +1575,31 @@ describe('toJsLiteral', function () {
 
         expect($this->service->toJsLiteral($obj))->toBe("{name: 'test', value: 42}");
     });
+
+    test('toJsLiteral emits floats in their shortest round-trip form', function () {
+        expect($this->service->toJsLiteral(0.1 + 0.2))->toBe('0.30000000000000004')
+            ->and($this->service->toJsLiteral(1.2345678901234567))->toBe('1.2345678901234567')
+            ->and($this->service->toJsLiteral(1.0))->toBe('1')
+            ->and($this->service->toJsLiteral(1e25))->toBe('1.0e+25');
+    });
+
+    test('toJsLiteral rejects non-finite floats', function () {
+        expect(fn () => $this->service->toJsLiteral(INF))->toThrow(InvalidArgumentException::class, 'non-finite')
+            ->and(fn () => $this->service->toJsLiteral(NAN))->toThrow(InvalidArgumentException::class, 'non-finite');
+    });
+
+    test('toJsLiteral emits an empty stdClass as an empty object literal', function () {
+        expect($this->service->toJsLiteral(new stdClass))->toBe('{}')
+            ->and($this->service->toJsLiteral((object) ['a' => new stdClass]))->toBe('{a: {}}')
+            ->and($this->service->toJsLiteral([]))->toBe('[]');
+    });
+});
+
+describe('enumScalar', function () {
+    test('returns a backed enum value and a pure enum name', function () {
+        expect($this->service->enumScalar(Status::Published))->toBe(1)
+            ->and($this->service->enumScalar(Role::Admin))->toBe('Admin');
+    });
 });
 
 describe('routeArgsToJs', function () {

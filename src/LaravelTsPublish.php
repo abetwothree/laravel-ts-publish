@@ -21,6 +21,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 use JsonSerializable;
 use PhpParser\Node;
 use PhpParser\Node\Stmt\GroupUse;
@@ -35,6 +36,7 @@ use ReflectionNamedType;
 use ReflectionProperty;
 use ReflectionType;
 use ReflectionUnionType;
+use stdClass;
 use UnitEnum;
 
 /**
@@ -1706,20 +1708,29 @@ class LaravelTsPublish
             return $value ? 'true' : 'false';
         }
 
-        if (is_int($value) || is_float($value)) {
+        if (is_int($value)) {
             return (string) $value;
+        }
+
+        if (is_float($value)) {
+            if (! is_finite($value)) {
+                throw new InvalidArgumentException('A non-finite float has no TypeScript literal.');
+            }
+
+            // (string) rounds to the `precision` ini value; json_encode() emits the shortest round-trip form.
+            return (string) json_encode($value);
         }
 
         if (is_string($value)) {
             return "'".str_replace(['\\', "'", "\n", "\r", "\t"], ['\\\\', "\\'", '\\n', '\\r', '\\t'], $value)."'";
         }
 
-        if ($value instanceof BackedEnum) {
-            return $this->toJsLiteral($value->value);
+        if ($value instanceof UnitEnum) {
+            return $this->toJsLiteral($this->enumScalar($value));
         }
 
-        if ($value instanceof UnitEnum) {
-            return $this->toJsLiteral($value->name);
+        if ($value instanceof stdClass && get_object_vars($value) === []) {
+            return '{}';
         }
 
         if (is_object($value)) {
@@ -1740,6 +1751,14 @@ class LaravelTsPublish
         }
 
         return 'null';
+    }
+
+    /**
+     * The scalar an enum case serializes to: a backed case's value, a pure case's name.
+     */
+    public function enumScalar(UnitEnum $enum): int|string
+    {
+        return $enum instanceof BackedEnum ? $enum->value : $enum->name;
     }
 
     /**

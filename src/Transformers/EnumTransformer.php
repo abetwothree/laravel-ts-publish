@@ -184,7 +184,7 @@ class EnumTransformer extends CoreTransformer
 
             $override = $this->tsTypeOverrides[$caseName] ?? [];
 
-            $value = $caseValue instanceof BackedEnum ? $caseValue->value : $caseName;
+            $value = LaravelTsPublish::enumScalar($caseValue);
 
             $description = $override['description'] ?? '';
 
