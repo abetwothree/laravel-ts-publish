@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AstUnimportableModelMetadataProv
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BoundModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BranchedAstModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CircularJsonSerializableMetadataValue;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CollidingCastAndInferredEnumMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ConfigurableModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EmptyValuesModelMetadataProvider;
@@ -103,6 +104,19 @@ test('aliases two same-named cast imports beside the unaliased name inference cl
         '@/types/first' => ['RoleType as FirstRoleType'],
         '@/types/second' => ['RoleType as SecondRoleType'],
     ]);
+});
+
+test('names the fix a cast import colliding with an inferred one actually has', function () {
+    // TsCastsImportResolver aliases only between cast entries, so no alias can separate these two.
+    config()->set('ts-publish.model_metadata.provider_class', CollidingCastAndInferredEnumMetadataProvider::class);
+
+    expect(fn () => (new ModelMetadataTransformer(User::class))->data())
+        ->toThrow(
+            InvalidArgumentException::class,
+            'Model metadata for model ['.User::class.'] imports [RoleType] from both [../enums] and '
+            .'[@/types/label]; declare one of them with an import-aware #[TsCasts] whose type is a distinct '
+            .'name that module exports.',
+        );
 });
 
 test('uses only body-inferred keys present in the concrete model payload', function () {

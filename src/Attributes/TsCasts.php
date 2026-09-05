@@ -9,7 +9,9 @@ use Attribute;
 /**
  * Attribute to specify custom TypeScript types for generated properties.
  *
- * Supported generators read it from their documented class, property, or method locations.
+ * Read from a model, resource, form request, or broadcast event class — including its `$casts` property or
+ * `casts()` method — and from an analyzed method: a resource's `toArray()`, an Inertia controller action or
+ * `HandleInertiaRequests::share()`, and a model metadata provider's `provide()`.
  *
  * ```php
  * #[TsCasts([

@@ -239,7 +239,7 @@ class ModelMetadataTransformer extends CoreTransformer
                 if (isset($seen[$local]) && $seen[$local] !== $path) {
                     throw new InvalidArgumentException(
                         "Model metadata for model [{$this->findable}] imports [{$local}] from both [{$seen[$local]}] and [{$path}]; "
-                        .'declare one of them with an import-aware #[TsCasts] alias.',
+                        .'declare one of them with an import-aware #[TsCasts] whose type is a distinct name that module exports.',
                     );
                 }
 

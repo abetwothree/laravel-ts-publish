@@ -83,9 +83,10 @@ assumption is written at the branch it governs, `src/Transformers/ResourceTransf
 ### Inertia shared data does not rewrite `EnumResource` types for Tolki
 
 An `EnumResource::make(...)` returned from `HandleInertiaRequests::share()` is analyzed as its bare enum
-type, but with Tolki enabled the shared-data analyzer neither rewrites it to `AsEnum<typeof Enum>` nor
-emits the enum's value import. This predates the `typeImports` consolidation: the removed
-`importStatements` channel was generated only from `#[TsCasts]` and contained only `import type` lines.
+type by `InertiaSharedDataAnalyzer::buildTypeImports()`, but with Tolki enabled the shared-data analyzer
+neither rewrites it to `AsEnum<typeof Enum>` nor emits the enum's value import. This predates the
+`typeImports` consolidation: the removed `importStatements` channel was generated only from `#[TsCasts]`
+and contained only `import type` lines.
 
 Use an import-aware `#[TsCasts]` override for that shared property. Supporting the serialized enum shape
 requires the same type-rewrite and separate value-import pipeline used by resource generation; moving the
@@ -109,14 +110,15 @@ typed `Crm\Status`, therefore emits `StatusType` from both paths and trips the c
 
 ```
 Model metadata for model [App\Models\User] imports [StatusType] from both [../../crm/enums]
-and [../enums]; declare one of them with an import-aware #[TsCasts] alias.
+and [../enums]; declare one of them with an import-aware #[TsCasts] whose type is a distinct name
+that module exports.
 ```
 
 This is a property of the inferred-import channel, not of the union case alone: two *live* keys typed
-`App\Status` and `Crm\Status` fail the same way. The guard's own advice does not resolve it — declaring one
-of the two keys as `['type' => 'StatusType', 'import' => '../enums']` still collides, because
-`TsCastsImportResolver` aliases only when two *cast* entries share a name and cannot see the inferred
-import at all. What works is giving one side a different local name that its path really exports:
+`App\Status` and `Crm\Status` fail the same way. Re-declaring one of the two keys as
+`['type' => 'StatusType', 'import' => '../enums']` still collides, because `TsCastsImportResolver` aliases
+only when two *cast* entries share a name and cannot see the inferred import at all — which is why the
+guard asks for a *distinct* name that the module really exports:
 `['type' => 'AppStatusType', 'import' => '@/types/app-status']`, with that module re-exporting
 `export type { StatusType as AppStatusType }`. Writing the alias inline as `'Status as AppStatusType'` is
 not a substitute — it lands verbatim in the property type and emits invalid TypeScript.
@@ -160,6 +162,26 @@ Fixing it means resolving the alias to a type the shape inspector can read, whic
 step inside a transformer that today does pure string inspection. Widening `isObjectLike()` to guess that
 any unknown identifier is object-like is not the fix: it would spell `{}` for an alias of `string[]`,
 turning a narrow wrong answer into a broad one.
+
+### A body-inferred metadata enum that enum publishing excludes imports a file that is never written
+
+`ModelMetadataAnalyzer::inferredTypeImports()` in `src/Analyzers/Metadata/ModelMetadataAnalyzer.php` turns an
+enum a provider body returns into `import type { XType } from '../enums'` through `Ast\AnalysisImports`, which
+resolves the path from the enum's namespace and does not know whether `enums.excluded`, `#[TsExclude]`, or a
+directory outside `enums.additional_directories` keeps that enum out of the published tree. The companion then
+fails `tsc` — `TS2305` where the namespace published a barrel without that member, `TS2307` where it published
+nothing at all — rather than `ts:publish` failing. Include the enum, or declare the property with an
+import-aware `#[TsCasts]`. Resources have `PublishedResourceRegistry` for this gate; enums do not.
+
+### A model class name containing an underscore can collide with a metadata companion
+
+Companion files are `Str::kebab(ModelName).'_meta'`, and `Str::kebab()` never produces an underscore, so
+`UserMeta` (`user-meta.ts`) cannot collide with `User`'s `user_meta.ts`. A class literally named `User_meta`
+kebabs to `user_meta` and would share the companion's filename: the phase that writes last wins the file, the
+barrel carries one export for two things, and `ModelMetadataTransformer::isMetadataFilename()` hands that
+export to the metadata phase. PSR-1 class names do not carry underscores, so this is accepted rather than
+guarded. The rule lives at `ModelMetadataTransformer::FILENAME_SUFFIX` in
+`src/Transformers/ModelMetadataTransformer.php`.
 
 ## Deliberate non-goals
 

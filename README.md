@@ -186,6 +186,8 @@ Disable any publishing phase independently in the config file:
 
 Setting any to `false` will skip that type on every run, including automatic post-migration publishing.
 
+The `model_metadata` block is new in this release, so a `config/ts-publish.php` you published earlier does not carry it. The package config merges one level deep, so copy the **whole** block rather than one key — a partial block replaces the packaged one outright. Nothing breaks if you skip it: every `model_metadata` key falls back in code to the value the packaged config ships, so an older config keeps working until you enable the feature.
+
 ##### Via command flags
 
 Use one of the `--only-*` flags to limit a single run to a specific type: `--only-enums`, `--only-models`, `--only-model-metadata`, `--only-resources`, `--only-routes`, `--only-form-requests`, `--only-broadcast-channels`, or `--only-broadcast-events`.
@@ -308,7 +310,7 @@ import type { User, UserMutators, UserRelations } from '@js/types/data/models';
 // UserRelations → posts: Post[]; posts_count: number; posts_exists: boolean
 ```
 
-Model runtime metadata is published beside each model by default:
+Model runtime metadata can be published beside each model (opt-in via `model_metadata.enabled`):
 
 ```typescript
 // models/user_meta.ts
@@ -319,13 +321,9 @@ export const UserModelMetadata = {
 };
 ```
 
-The configured provider's `provide()` method receives each model instance and returns its complete metadata payload. Prefer a precise `@return array{...}` shape so PHPStan or Psalm can validate that contract. When a provider only declares `array<string, mixed>`, types fall back to inference from statically analyzable array returns. The PHPDoc shape overrides body inference and is required for optional or dynamically constructed keys; `#[TsCasts]` has final precedence and owns explicit overrides and imports. Providers are resolved through Laravel's container, so constructor dependencies are supported.
+The configured provider's `provide()` receives each model instance and returns the payload; providers resolve through the container, so constructor dependencies work. Types come from `#[TsCasts]` on `provide()` first, then the `@return array{...}` shape (`key?:` marks an optional key), then inference over the method body — including calls on the `$model` parameter such as `getTable()` or `getMorphClass()`, and enum values, whose `{Name}Type` alias is imported for you. A class or enum named in the docblock, or a model-typed value, still needs an import-aware `#[TsCasts]`.
 
-Optional PHPDoc keys may be absent from a model's payload. When present, they are emitted as required properties because each generated metadata object represents that concrete payload. Required PHPDoc keys must always be present, and every returned key must have either an inferred or `#[TsCasts]` type.
-
-Scalar and nested inline-array types are inferred directly from the method body, as are enums the body resolves to a class name — their `import type` line is emitted beside the companion's other imports. PHPDoc additionally supports scalar, container, and nested array-shape types. A class or enum named only in a PHPDoc shape carries no class name to import from, so it, like any model-typed value, needs an explicit `#[TsCasts]` override.
-
-Metadata values may be `null`, scalars, arrays, enums, or objects implementing Laravel's `Arrayable` or PHP's `JsonSerializable` contract. These values can be nested and are normalized recursively. Unsupported objects, resources, non-finite floats, circular objects, and values nested more than 64 levels fail with the model and metadata property path instead of producing invalid TypeScript.
+Values may be `null`, scalars, arrays, enums, `stdClass`, or `Arrayable` / `JsonSerializable` objects, normalized recursively. Anything the companion could not express as valid TypeScript — an unsupported object, a non-finite float, an integer beyond ±2⁵³−1, a cycle, more than 64 nesting levels — fails with the model and property path. Return `(object) []` for an empty object; a bare `[]` follows its declared type.
 
 ```php
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
@@ -371,7 +369,9 @@ final class AppModelMetadataProvider implements ModelMetadataProvider
 
 Model metadata is disabled by default. When enabled, the default provider publishes `morphClass` as a string and preserves configured morph-map aliases. Model metadata is a separate publishing phase. `models.enabled` and `--only-models` control only model interfaces; they do not generate or disable metadata. Use `model_metadata.enabled` and `--only-model-metadata` for metadata. Metadata discovery inherits `models.included`, `models.excluded`, and `models.additional_directories` when the corresponding key is omitted from `model_metadata`. An explicitly configured metadata value takes precedence, including an empty array.
 
-If your app calls `Relation::enforceMorphMap()`, every discovered model must appear in the map. Use `model_metadata.excluded` for models you do not map.
+A provider that throws for a model — an enforced morph map missing it, say — keeps that model's last-known-good companion, finishes every other file, and exits non-zero so CI and the Vite plugin see it. Use `model_metadata.excluded` for models you do not map.
+
+For the provider contract, type precedence, value rules, barrel behavior, and failure semantics, see the full [Model Metadata documentation](https://tolki.abe.dev/ts/model-metadata.html).
 
 Key capabilities:
 

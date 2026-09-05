@@ -23,7 +23,7 @@ compatibility: Requires abetwothree/laravel-ts-publish (PHP 8.4+, Laravel 12/13)
 3. If types look wrong/stale across the whole app (config change, first run, suspected stale cache), do a full rebuild: `php artisan ts:publish --fresh`.
 4. To hide a specific accessor/relation/method/property — or an entire class — from the output, add `#[TsExclude]` to it. It always wins over every other attribute or config.
 5. To shape what a member generates as, use the attributes in the table below.
-6. If a `--source` run doesn't seem to "take," run a full `php artisan ts:publish` — barrel `index.ts` files only refresh on full runs (see gotcha below).
+6. If a `--source` run doesn't seem to "take," run a full `php artisan ts:publish` — a `--source` run never rewrites barrel `index.ts` files (see gotcha below).
 
 ## Command flags
 
@@ -54,13 +54,13 @@ respects the config and skips it.
 
 ## Model metadata
 
-When enabled, model metadata writes a runtime `{model}_meta.ts` companion. Prefer a precise `@return array{...}` on the provider's `provide()` method so static analysis can validate its contract. For generic `array<string, mixed>` declarations, import-free types fall back to body inference. PHPDoc then refines those types and declares optional or dynamic keys; `#[TsCasts]` has final precedence and owns explicit overrides and imports. Metadata finder settings inherit the model finder settings when omitted.
+When enabled, model metadata writes a runtime `{model}_meta.ts` companion. Prefer a precise `@return array{...}` on the provider's `provide()` method so static analysis can validate its contract. For generic `array<string, mixed>` declarations, types fall back to body inference, which resolves calls on the `$model` parameter and imports the enums it names. PHPDoc then refines those types and declares optional or dynamic keys; `#[TsCasts]` has final precedence and owns explicit overrides and imports. Metadata finder settings inherit the model finder settings when omitted.
 
-Optional shape keys may be absent. Undeclared keys, missing required keys, unsupported values, and named types without an import-aware `#[TsCasts]` override fail generation.
+Optional shape keys may be absent. Undeclared keys, missing required keys, unsupported values, and types named only in the docblock — or a model-typed value — without an import-aware `#[TsCasts]` override fail generation, and the command exits non-zero.
 
 ## Output layout & imports
 
-Generated files live below `output_directory` (default `resources/js/types/data/`) in their configured namespace, mirroring PHP namespaces with kebab-cased segments: `App\Models\User` becomes `app/models/user.ts`. Full runs refresh barrel `index.ts` files; source and partial model/metadata runs preserve existing exports.
+Generated files live below `output_directory` (default `resources/js/types/data/`) in their configured namespace, mirroring PHP namespaces with kebab-cased segments: `App\Models\User` becomes `app/models/user.ts`. Every run rebuilds the barrel of each namespace it publishes into, and `--source` runs never touch barrels. Model interfaces and their `_meta` companions share one barrel: whichever of those two phases the run publishes owns its exports outright, a phase enabled in config but skipped by an `--only-*` flag keeps its existing exports, and a phase disabled in config keeps none.
 
 ### Importing types, enum objects, & routes
 

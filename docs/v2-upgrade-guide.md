@@ -314,7 +314,7 @@ import type { User } from '@data/app/models/users'
 V2 adds additional `ts:publish` selective flags and cache controls:
 
 ```bash
-# Functional-only output (enums + routes)
+# Functional-only output (enums, model metadata, routes, form requests, broadcast channels/events)
 php artisan ts:publish --only-functional
 
 # Feature-specific output
