@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ConfigurableModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelMetadataTransformer;
 use Workbench\App\Models\User;
 use Workbench\App\Providers\AstInferredModelMetadataProvider;
@@ -39,4 +40,23 @@ test('renders metadata types inferred from a provider with a generic array decla
         ->toContain('enabled: boolean;')
         ->toContain('limits: { minimum: number; maximum: null };')
         ->toContain('role: RoleType;');
+});
+
+test('cache signature is stable for one payload and changes with it', function () {
+    $first = ModelMetadataGenerator::cacheSignature(User::class);
+
+    expect(ModelMetadataGenerator::cacheSignature(User::class))->toBe($first);
+
+    app()->instance(ConfigurableModelMetadataProvider::class, new ConfigurableModelMetadataProvider('changed'));
+    config()->set('ts-publish.model_metadata.provider_class', ConfigurableModelMetadataProvider::class);
+
+    expect(ModelMetadataGenerator::cacheSignature(User::class))->not->toBe($first);
+});
+
+test('cache signature never repeats for a payload that cannot be serialized', function () {
+    app()->instance(ConfigurableModelMetadataProvider::class, new ConfigurableModelMetadataProvider(fn () => null));
+    config()->set('ts-publish.model_metadata.provider_class', ConfigurableModelMetadataProvider::class);
+
+    expect(ModelMetadataGenerator::cacheSignature(User::class))
+        ->not->toBe(ModelMetadataGenerator::cacheSignature(User::class));
 });
