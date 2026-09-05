@@ -2453,6 +2453,11 @@ describe('splitTopLevelUnion', function () {
         expect($this->service->splitTopLevelUnion("'a|b' | 'c'"))
             ->toBe(["'a|b'", "'c'"]);
     });
+
+    it('keeps a double-quoted literal whole', function () {
+        expect($this->service->splitTopLevelUnion('{ theme: "light" | "dark" } | null'))
+            ->toBe(['{ theme: "light" | "dark" }', 'null']);
+    });
 });
 
 /**

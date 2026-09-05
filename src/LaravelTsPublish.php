@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsEnum;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use BackedEnum;
 use Closure;
 use Composer\ClassMapGenerator\PhpFileParser;
@@ -2118,41 +2119,13 @@ class LaravelTsPublish
      * Split a type string into its top-level union members.
      *
      * Depth-aware over braces, parens, angle brackets, and square brackets, and skips
-     * single-quoted literals whole, so a nested `|` never splits.
+     * quoted literals whole, so a nested `|` never splits.
      *
      * @return list<string>
      */
     public function splitTopLevelUnion(string $typeStr): array
     {
-        $members = [];
-        $current = '';
-        $depth = 0;
-        $inString = false;
-
-        foreach (str_split($typeStr) as $char) {
-            if ($char === "'") {
-                $inString = ! $inString;
-            }
-
-            if (! $inString) {
-                if (str_contains('{(<[', $char)) {
-                    $depth++;
-                } elseif (str_contains('})>]', $char)) {
-                    $depth = max(0, $depth - 1);
-                } elseif ($char === '|' && $depth === 0) {
-                    $members[] = trim($current);
-                    $current = '';
-
-                    continue;
-                }
-            }
-
-            $current .= $char;
-        }
-
-        $members[] = trim($current);
-
-        return array_values(array_filter($members, fn (string $member): bool => $member !== ''));
+        return TsTypeShape::splitTopLevel($typeStr, ['|']);
     }
 
     /**
