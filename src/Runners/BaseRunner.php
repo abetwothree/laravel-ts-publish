@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\CoreGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
@@ -39,6 +40,10 @@ abstract class BaseRunner
 
     public bool $shouldPublishModels = true;
 
+    public bool $shouldPublishModelMetadata = true;
+
+    public bool $shouldMergeModelBarrels = false;
+
     public bool $shouldPublishResources = true;
 
     public bool $shouldPublishRoutes = true;
@@ -57,6 +62,9 @@ abstract class BaseRunner
 
     /** @var Collection<int, ModelGenerator> */
     public protected(set) Collection $modelGenerators;
+
+    /** @var Collection<int, ModelMetadataGenerator> */
+    public protected(set) Collection $modelMetadataGenerators;
 
     /** @var array<string, string> Barrel contents keyed by namespace path */
     public protected(set) array $modelModularBarrels = [];
@@ -152,19 +160,20 @@ abstract class BaseRunner
             return $generator;
         }
 
-        $this->manifest->markSeen($fqcn);
+        $cacheKey = $generatorClass.'::'.$fqcn;
 
         // Folds inputs living outside any class file (e.g. route definitions) into the fingerprint.
         $signature = is_subclass_of($generatorClass, ProvidesCacheSignature::class, true)
             ? $generatorClass::cacheSignature($fqcn)
             : '';
+        $this->manifest->markSeen($cacheKey);
 
         // Recomputed over the deps recorded on the last build, so editing any of them flips the fingerprint.
-        $storedDeps = $this->manifest->deps($fqcn);
+        $storedDeps = $this->manifest->deps($cacheKey);
 
-        if ($storedDeps !== [] && $this->manifest->hit($fqcn, Fingerprinter::fromPaths($storedDeps, $signature))) {
-            $snapshot = $this->manifest->snapshot($fqcn);
-            $filename = $this->manifest->filename($fqcn);
+        if ($storedDeps !== [] && $this->manifest->hit($cacheKey, Fingerprinter::fromPaths($storedDeps, $signature))) {
+            $snapshot = $this->manifest->snapshot($cacheKey);
+            $filename = $this->manifest->filename($cacheKey);
 
             if ($snapshot !== null && $filename !== null) {
                 $decoded = base64_decode($snapshot, true);
@@ -187,16 +196,20 @@ abstract class BaseRunner
         }
 
         DependencyRecorder::start();
-        DependencyRecorder::recordClass($fqcn);
         OutputRecorder::start();
 
-        /** @var T $generator */
-        $generator = resolve($generatorClass, ['findable' => $fqcn]);
+        try {
+            DependencyRecorder::recordClass($fqcn);
 
-        $deps = DependencyRecorder::paths();
-        $outputs = OutputRecorder::paths();
-        DependencyRecorder::stop();
-        OutputRecorder::stop();
+            /** @var T $generator */
+            $generator = resolve($generatorClass, ['findable' => $fqcn]);
+
+            $deps = DependencyRecorder::paths();
+            $outputs = OutputRecorder::paths();
+        } finally {
+            DependencyRecorder::stop();
+            OutputRecorder::stop();
+        }
 
         if (! isset($generator->transformer) || ! $generator->transformer instanceof CoreTransformer) {
             return $generator;
@@ -212,7 +225,7 @@ abstract class BaseRunner
         }
 
         $this->manifest->record(
-            $fqcn,
+            $cacheKey,
             Fingerprinter::fromPaths($deps, $signature),
             $generator->filename(),
             $deps,

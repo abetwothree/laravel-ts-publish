@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InvalidModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ModelMetadataProviderModel;
 use AbeTwoThree\LaravelTsPublish\Writers\WatcherJsonWriter;
 use Illuminate\Filesystem\Filesystem;
 
@@ -98,6 +101,7 @@ test('watcher json excludes models when publish_models config is false', functio
     config()->set('ts-publish.output_to_files', false);
     config()->set('ts-publish.enums.enabled', true);
     config()->set('ts-publish.models.enabled', false);
+    config()->set('ts-publish.model_metadata.enabled', false);
     config()->set('ts-publish.resources.enabled', false);
     config()->set('ts-publish.routes.enabled', false);
     config()->set('ts-publish.form_requests.enabled', false);
@@ -111,6 +115,79 @@ test('watcher json excludes models when publish_models config is false', functio
 
     expect($paths->contains(fn ($p) => str_contains($p, 'Enum')))->toBeTrue()
         ->and($paths->contains(fn ($p) => str_contains($p, 'Model')))->toBeFalse();
+});
+
+test('watcher json includes metadata model paths when model publishing is disabled', function () {
+    config()->set('ts-publish.watcher.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.enums.enabled', false);
+    config()->set('ts-publish.models.enabled', false);
+    config()->set('ts-publish.model_metadata.enabled', true);
+    config()->set('ts-publish.resources.enabled', false);
+    config()->set('ts-publish.routes.enabled', false);
+    config()->set('ts-publish.form_requests.enabled', false);
+    config()->set('ts-publish.broadcast_events.enabled', false);
+
+    $writer = new WatcherJsonWriter(new Filesystem);
+    $paths = collect(json_decode($writer->write(), true));
+
+    expect($paths->contains(fn ($path) => str_contains($path, 'Model')))->toBeTrue();
+});
+
+test('watcher json includes the custom model metadata provider path', function () {
+    config()->set('ts-publish.watcher.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.model_metadata.enabled', true);
+    config()->set('ts-publish.model_metadata.provider_class', CustomModelMetadataProvider::class);
+
+    $writer = new WatcherJsonWriter(new Filesystem);
+    $paths = collect(json_decode($writer->write(), true));
+
+    expect($paths->contains(
+        fn (string $path): bool => str_ends_with($path, 'CustomModelMetadataProvider.php'),
+    ))->toBeTrue();
+});
+
+test('watcher json follows container substitutions for the model metadata provider', function () {
+    $provider = new CustomModelMetadataProvider;
+    app()->instance(InvalidModelMetadataProvider::class, $provider);
+    config()->set('ts-publish.watcher.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.model_metadata.enabled', true);
+    config()->set('ts-publish.model_metadata.provider_class', InvalidModelMetadataProvider::class);
+
+    $paths = collect(json_decode((new WatcherJsonWriter(new Filesystem))->write(), true));
+
+    expect($paths->contains(
+        fn (string $path): bool => str_ends_with($path, 'CustomModelMetadataProvider.php'),
+    ))->toBeTrue();
+});
+
+test('watcher json rejects an invalid custom model metadata provider', function () {
+    config()->set('ts-publish.watcher.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.model_metadata.enabled', true);
+    config()->set('ts-publish.model_metadata.provider_class', InvalidModelMetadataProvider::class);
+
+    expect(fn () => (new WatcherJsonWriter(new Filesystem))->write())
+        ->toThrow(InvalidArgumentException::class, 'must implement');
+});
+
+test('watcher json deduplicates a file collected as both a model and metadata provider', function () {
+    config()->set('ts-publish.watcher.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.models.enabled', false);
+    config()->set('ts-publish.model_metadata.enabled', true);
+    config()->set('ts-publish.model_metadata.included', [ModelMetadataProviderModel::class]);
+    config()->set('ts-publish.model_metadata.provider_class', ModelMetadataProviderModel::class);
+
+    $paths = json_decode((new WatcherJsonWriter(new Filesystem))->write(), true);
+    $providerPaths = array_filter(
+        $paths,
+        fn (string $path): bool => str_ends_with($path, 'ModelMetadataProviderModel.php'),
+    );
+
+    expect($providerPaths)->toHaveCount(1);
 });
 
 test('watcher json includes controllers when routes.enabled config is true', function () {

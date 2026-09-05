@@ -564,7 +564,7 @@ class LaravelTsPublish
      * extractImportableTypes() can't be reused: it skips '<'/'{' content, which docblock shapes routinely have.
      * Object-literal keys are stripped first so 'owner' in '{ owner: User }' isn't read as a value token.
      */
-    protected function shapeValueHasUnimportableToken(string $type): bool
+    public function shapeValueHasUnimportableToken(string $type): bool
     {
         $withoutKeys = (string) preg_replace('/\b\w+\s*:/', '', $type);
 

@@ -80,6 +80,17 @@ per-file flavour is correct today. The emitter is `resources/views/globals.blade
 `EnumResource::collection()`, which is not true in general — the array suffix can come out wrong. The
 assumption is written at the branch it governs, `src/Transformers/ResourceTransformer.php:471`.
 
+### Inertia shared data does not rewrite `EnumResource` types for Tolki
+
+An `EnumResource::make(...)` returned from `HandleInertiaRequests::share()` is analyzed as its bare enum
+type, but with Tolki enabled the shared-data analyzer neither rewrites it to `AsEnum<typeof Enum>` nor
+emits the enum's value import. This predates the `typeImports` consolidation: the removed
+`importStatements` channel was generated only from `#[TsCasts]` and contained only `import type` lines.
+
+Use an import-aware `#[TsCasts]` override for that shared property. Supporting the serialized enum shape
+requires the same type-rewrite and separate value-import pipeline used by resource generation; moving the
+value import into `typeImports` would be incorrect.
+
 ## Deliberate non-goals
 
 Absent on purpose. Do not "fix" these without raising it first.

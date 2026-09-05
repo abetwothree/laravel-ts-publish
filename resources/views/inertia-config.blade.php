@@ -1,12 +1,9 @@
-@foreach($typeImports as $path => $types)
+@foreach ($typeImports as $path => $types)
 import type { {{ implode(', ', $types) }} } from '{{ $path }}';
-@endforeach
-@foreach($importStatements as $import)
-{!! $import !!}
-@endforeach
-@if(count($typeImports) > 0 || count($importStatements) > 0)
+@if ($loop->last)
 
 @endif
+@endforeach
 declare global {
     namespace Inertia {
         type SharedData = {!! $sharedPageProps !!};

@@ -13,6 +13,13 @@ test('service provider configures package correctly', function () {
         ->and(config('ts-publish.enums'))->toBeArray();
 });
 
+test('package disables model metadata by default', function () {
+    /** @var array{model_metadata: array{enabled: bool}} $packageConfig */
+    $packageConfig = require __DIR__.'/../../config/ts-publish.php';
+
+    expect($packageConfig['model_metadata']['enabled'])->toBeFalse();
+});
+
 test('service provider registers the ts:publish command', function () {
     $this->artisan('ts:publish', ['--preview' => 'true'])
         ->assertSuccessful();

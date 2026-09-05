@@ -6,11 +6,14 @@ namespace AbeTwoThree\LaravelTsPublish\Runners;
 
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Collectors\Concerns\ValidatesCollectorFiles;
+use AbeTwoThree\LaravelTsPublish\Collectors\ModelMetadataCollector;
+use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
@@ -33,6 +36,10 @@ class RunnerForSource extends BaseRunner
         /** @var Collection<int, ModelGenerator> $modelGenerators */
         $modelGenerators = collect();
         $this->modelGenerators = $modelGenerators;
+
+        /** @var Collection<int, ModelMetadataGenerator> $modelMetadataGenerators */
+        $modelMetadataGenerators = collect();
+        $this->modelMetadataGenerators = $modelMetadataGenerators;
 
         /** @var Collection<int, ResourceGenerator> $resourceGenerators */
         $resourceGenerators = collect();
@@ -79,11 +86,33 @@ class RunnerForSource extends BaseRunner
 
             $this->generateEnum($fqcn);
         } elseif ($this->validateModel($reflection)) {
-            if (! $this->shouldPublishModels) {
-                throw new InvalidArgumentException("Model publishing is disabled: {$fqcn}");
+            if (! $this->shouldPublishModels && ! $this->shouldPublishModelMetadata) {
+                throw new InvalidArgumentException("Model and model metadata publishing are disabled: {$fqcn}");
             }
 
-            $this->generateModel($fqcn);
+            /** @var ModelsCollector $modelCollector */
+            $modelCollector = resolve(Config::string('ts-publish.models.collector_class', ModelsCollector::class));
+
+            /** @var ModelMetadataCollector $metadataCollector */
+            $metadataCollector = resolve(Config::string(
+                'ts-publish.model_metadata.collector_class',
+                ModelMetadataCollector::class,
+            ));
+
+            $publishModel = $this->shouldPublishModels && $modelCollector->allows($fqcn);
+            $publishMetadata = $this->shouldPublishModelMetadata && $metadataCollector->allows($fqcn);
+
+            if (! $publishModel && ! $publishMetadata) {
+                throw new InvalidArgumentException("Model and model metadata filters exclude: {$fqcn}");
+            }
+
+            if ($publishModel) {
+                $this->generateModel($fqcn);
+            }
+
+            if ($publishMetadata) {
+                $this->generateModelMetadata($fqcn);
+            }
         } elseif ($this->validateResource($reflection)) {
             if (! $this->shouldPublishResources) {
                 throw new InvalidArgumentException("Resource publishing is disabled: {$fqcn}");
@@ -150,6 +179,22 @@ class RunnerForSource extends BaseRunner
         );
 
         $this->modelGenerators = collect([$generator]);
+    }
+
+    /**
+     * Generate model metadata from its FQCN.
+     *
+     * @param  class-string  $fqcn  The fully qualified model class name.
+     */
+    protected function generateModelMetadata(string $fqcn): void
+    {
+        /** @var ModelMetadataGenerator $metadataGenerator */
+        $metadataGenerator = resolve(
+            Config::string('ts-publish.model_metadata.generator_class', ModelMetadataGenerator::class),
+            ['findable' => $fqcn],
+        );
+
+        $this->modelMetadataGenerators = collect([$metadataGenerator]);
     }
 
     protected function generateResource(string $fqcn): void

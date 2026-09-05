@@ -10,14 +10,17 @@ use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastChannelsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastEventsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\FormRequestsCollector;
+use AbeTwoThree\LaravelTsPublish\Collectors\ModelMetadataCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ResourcesCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\RoutesCollector;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
+use AbeTwoThree\LaravelTsPublish\Metadata\ModelMetadataProviderResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\BroadcastChannelsWriter;
@@ -31,6 +34,8 @@ use AbeTwoThree\LaravelTsPublish\Writers\ViteEnvWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\WatcherJsonWriter;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
+use InvalidArgumentException;
+use Throwable;
 
 class Runner extends BaseRunner
 {
@@ -47,6 +52,8 @@ class Runner extends BaseRunner
 
         $this->generateEnums();
         $this->generateModels();
+        $this->generateModelMetadata();
+        $this->generateModelBarrels();
         $this->generateResources();
         $this->generateInertiaConfig();
         $this->generateFormRequests();
@@ -119,9 +126,126 @@ class Runner extends BaseRunner
         }
 
         $this->modelGenerators = $modelGenerators;
-
-        $this->modelModularBarrels = $this->barrelWriter->writeModular($this->modelGenerators);
         $this->logger?->success('Models — '.$this->modelGenerators->count());
+    }
+
+    /**
+     * Generate runtime metadata independently from model interfaces.
+     */
+    protected function generateModelMetadata(): void
+    {
+        if (! $this->shouldPublishModelMetadata) {
+            /** @var Collection<int, ModelMetadataGenerator> $empty */
+            $empty = collect();
+            $this->modelMetadataGenerators = $empty;
+
+            return;
+        }
+
+        $this->logger?->subLabel('Model metadata…');
+
+        $modelClasses = $this->collectModelMetadataClasses();
+
+        /** @var class-string<ModelMetadataGenerator> $generatorClass */
+        $generatorClass = Config::string(
+            'ts-publish.model_metadata.generator_class',
+            ModelMetadataGenerator::class,
+        );
+        $this->validateModelMetadataConfiguration($generatorClass);
+
+        /** @var Collection<int, ModelMetadataGenerator> $generators */
+        $generators = collect();
+
+        foreach ($modelClasses as $modelClass) {
+            try {
+                $generators->push($this->cachedGenerate($modelClass, $generatorClass));
+            } catch (Throwable $exception) {
+                AnalysisWarnings::add($modelClass, $exception::class.': '.$exception->getMessage());
+                $this->shouldMergeModelBarrels = true;
+            }
+        }
+
+        $this->modelMetadataGenerators = $generators;
+        $this->logger?->success('Model metadata — '.$generators->count());
+    }
+
+    /**
+     * Validate metadata services before processing individual models.
+     *
+     * @param  class-string  $generatorClass
+     */
+    protected function validateModelMetadataConfiguration(string $generatorClass): void
+    {
+        resolve(ModelMetadataProviderResolver::class)->resolve();
+
+        if (! is_a($generatorClass, ModelMetadataGenerator::class, true)) {
+            throw new InvalidArgumentException(
+                "Configured model metadata generator [{$generatorClass}] must extend ".ModelMetadataGenerator::class.'.',
+            );
+        }
+    }
+
+    /**
+     * Collect model classes configured for metadata publishing.
+     *
+     * @return list<class-string>
+     */
+    protected function collectModelMetadataClasses(): array
+    {
+        /** @var ModelMetadataCollector $collector */
+        $collector = resolve(Config::string(
+            'ts-publish.model_metadata.collector_class',
+            ModelMetadataCollector::class,
+        ));
+
+        return array_values($collector->collect()->all());
+    }
+
+    /**
+     * Write the barrel files shared by models and their metadata companions.
+     */
+    protected function generateModelBarrels(): void
+    {
+        $generators = $this->modelGenerators->concat($this->modelMetadataGenerators);
+        $shouldMerge = $this->shouldMergeModelBarrels
+            || $this->shouldPublishModels !== $this->shouldPublishModelMetadata;
+
+        if (! $shouldMerge) {
+            $this->modelModularBarrels = $this->barrelWriter->writeModular($generators);
+
+            return;
+        }
+
+        if (! $this->barrelWriter->supportsModularMerging()) {
+            if (! Config::boolean('ts-publish.output_to_files') || ! $this->modelBarrelExists($generators)) {
+                $this->modelModularBarrels = $this->barrelWriter->writeModular($generators);
+
+                return;
+            }
+
+            $this->modelModularBarrels = [];
+            $this->logger?->warning('Model barrels were not updated because the configured writer does not support merging.');
+
+            return;
+        }
+
+        $this->modelModularBarrels = $this->barrelWriter->mergeModular($generators);
+    }
+
+    /**
+     * Determine whether any generated model namespace already has a barrel file.
+     *
+     * @param  Collection<int, ModelGenerator|ModelMetadataGenerator>  $generators
+     */
+    protected function modelBarrelExists(Collection $generators): bool
+    {
+        $outputDirectory = Config::string('ts-publish.output_directory');
+
+        return $generators->contains(
+            fn (ModelGenerator|ModelMetadataGenerator $generator): bool => is_file(
+                $outputDirectory.'/'.$generator->transformer->namespacePath.'/index.ts',
+            ),
+        );
     }
 
     protected function generateResources(): void

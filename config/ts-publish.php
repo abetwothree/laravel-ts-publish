@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Metadata\DefaultModelMetadataProvider;
+
 return [
     /*
     |--------------------------------------------------------------------------
@@ -222,6 +224,29 @@ return [
         // 'generator_class' => ModelGenerator::class,
         // 'transformer_class' => ModelTransformer::class,
         // 'writer_class' => ModelWriter::class,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Model Metadata
+    |--------------------------------------------------------------------------
+    |
+    | Optional companion files containing provider-defined runtime model values.
+    | This phase is independent from model interface publishing.
+    */
+
+    'model_metadata' => [
+        'enabled' => false,
+        'provider_class' => DefaultModelMetadataProvider::class,
+        'template' => 'laravel-ts-publish::model-meta',
+        // Omitted finder settings inherit from models; any explicitly configured value overrides them.
+        // 'additional_directories' => [],
+        // 'included' => [],
+        // 'excluded' => [],
+        // 'collector_class' => ModelMetadataCollector::class,
+        // 'generator_class' => ModelMetadataGenerator::class,
+        // 'transformer_class' => ModelMetadataTransformer::class,
+        // 'writer_class' => ModelMetadataWriter::class,
     ],
 
     /*

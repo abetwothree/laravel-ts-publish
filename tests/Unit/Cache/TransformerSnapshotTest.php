@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\FormRequestTransformer;
+use AbeTwoThree\LaravelTsPublish\Transformers\ModelMetadataTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
@@ -33,6 +34,21 @@ it('does not retain reflection state after restore', function () {
     $r = new ReflectionObject($restored);
 
     expect($r->getProperty('reflectionModel')->isInitialized($restored))->toBeFalse();
+});
+
+it('round-trips a model metadata transformer without transient transformation state', function () {
+    $original = new ModelMetadataTransformer(User::class);
+
+    $restored = unserialize(serialize($original));
+
+    expect($restored)->toBeInstanceOf(ModelMetadataTransformer::class)
+        ->and($restored->data()->toArray())->toBe($original->data()->toArray());
+
+    $reflection = new ReflectionObject($restored);
+
+    foreach (['modelInstance', 'provider', 'metadata', 'metadataTypes'] as $property) {
+        expect($reflection->getProperty($property)->isInitialized($restored))->toBeFalse();
+    }
 });
 
 it('round-trips a resource transformer through serialize without transients', function () {

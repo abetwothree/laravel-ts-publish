@@ -2,10 +2,17 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FailingModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\NonMergingBarrelWriter;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Broadcast;
 
 use function Orchestra\Testbench\workbench_path;
+
+use Workbench\App\Models\Post;
+use Workbench\App\Models\PostMeta;
+use Workbench\App\Models\User;
+use Workbench\App\Providers\AstInferredModelMetadataProvider;
 
 test('ts:publish command runs successfully', function () {
     config()->set('ts-publish.output_to_files', false);
@@ -28,11 +35,59 @@ test('ts:publish preview shows enum content', function () {
 
 test('ts:publish preview shows model content', function () {
     config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.model_metadata.enabled', true);
 
     $this->artisan('ts:publish', ['--preview' => 'true'])
         ->assertSuccessful()
         ->expectsOutputToContain('Models:')
-        ->expectsOutputToContain('export interface User');
+        ->expectsOutputToContain('export interface User')
+        ->expectsOutputToContain('Model Metadata:')
+        ->expectsOutputToContain('export const UserModelMetadata');
+});
+
+test('ts:publish preview shows model metadata warnings', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.model_metadata.enabled', true);
+    config()->set('ts-publish.models.included', [User::class]);
+    config()->set('ts-publish.model_metadata.provider_class', FailingModelMetadataProvider::class);
+
+    $this->artisan('ts:publish', ['--preview' => 'true'])
+        ->assertSuccessful()
+        ->expectsOutputToContain(User::class.': '.RuntimeException::class.': Metadata is unavailable for this model.');
+});
+
+test('ts:publish source keeps model metadata provider failures strict', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.model_metadata.enabled', true);
+    config()->set('ts-publish.model_metadata.provider_class', FailingModelMetadataProvider::class);
+
+    $this->artisan('ts:publish', [
+        '--preview' => 'true',
+        '--source' => User::class,
+        '--only-model-metadata' => true,
+    ])->assertFailed();
+});
+
+test('ts:publish preserves last-known-good metadata output after a provider failure', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-metadata-fallback-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.model_metadata.enabled', true);
+    config()->set('ts-publish.models.included', [User::class]);
+
+    $this->artisan('ts:publish', ['--preview' => 'false'])->assertSuccessful();
+
+    config()->set('ts-publish.model_metadata.provider_class', FailingModelMetadataProvider::class);
+
+    $this->artisan('ts:publish', ['--preview' => 'false'])->assertSuccessful();
+
+    $metadataPath = "$outputDir/workbench/app/models/user_meta.ts";
+    $barrelPath = "$outputDir/workbench/app/models/index.ts";
+
+    expect($metadataPath)->toBeFile()
+        ->and(file_get_contents($barrelPath))->toContain("export * from './user_meta';");
+
+    (new Filesystem)->deleteDirectory($outputDir);
 });
 
 test('ts:publish preview shows barrel files', function () {
@@ -57,6 +112,7 @@ test('ts:publish writes files to disk', function () {
     $outputDir = sys_get_temp_dir().'/laravel-ts-publish-test-'.uniqid();
     config()->set('ts-publish.output_directory', $outputDir);
     config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.model_metadata.enabled', true);
 
     $this->artisan('ts:publish', ['--preview' => 'false'])
         ->assertSuccessful()
@@ -66,8 +122,36 @@ test('ts:publish writes files to disk', function () {
         ->and(is_dir("$outputDir/workbench/app/models"))->toBeTrue()
         ->and(file_exists("$outputDir/workbench/app/enums/status.ts"))->toBeTrue()
         ->and(file_exists("$outputDir/workbench/app/models/user.ts"))->toBeTrue()
+        ->and(file_exists("$outputDir/workbench/app/models/user_meta.ts"))->toBeTrue()
         ->and(file_exists("$outputDir/workbench/app/enums/index.ts"))->toBeTrue()
         ->and(file_exists("$outputDir/workbench/app/models/index.ts"))->toBeTrue();
+
+    (new Filesystem)->deleteDirectory($outputDir);
+});
+
+test('model metadata does not overwrite a model whose name ends in Meta', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-meta-model-collision-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.model_metadata.enabled', true);
+    config()->set('ts-publish.models.included', [Post::class, PostMeta::class]);
+
+    $this->artisan('ts:publish', ['--preview' => 'false'])
+        ->assertSuccessful();
+
+    $modelPath = "$outputDir/workbench/app/models/post-meta.ts";
+    $metadataPath = "$outputDir/workbench/app/models/post_meta.ts";
+    $barrelPath = "$outputDir/workbench/app/models/index.ts";
+
+    expect(file_get_contents($modelPath))
+        ->toContain('export interface PostMeta')
+        ->not->toContain('export const PostModelMetadata')
+        ->and(file_get_contents($metadataPath))
+        ->toContain('export const PostModelMetadata')
+        ->not->toContain('export interface PostMeta')
+        ->and(file_get_contents($barrelPath))
+        ->toContain("export * from './post-meta';")
+        ->toContain("export * from './post_meta';");
 
     (new Filesystem)->deleteDirectory($outputDir);
 });
@@ -87,11 +171,17 @@ test('ts:publish writes model split template files', function () {
     config()->set('ts-publish.output_to_files', true);
     config()->set('ts-publish.routes.enabled', true);
     config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+    config()->set('ts-publish.model_metadata.enabled', true);
+    config()->set('ts-publish.model_metadata.included', [User::class]);
+    config()->set('ts-publish.model_metadata.provider_class', AstInferredModelMetadataProvider::class);
 
     $this->artisan('ts:publish', ['--preview' => 'false'])
         ->assertSuccessful();
 
-    expect(file_exists("$outputDir/app/http/controllers/post-controller.ts"))->toBeTrue();
+    expect(file_exists("$outputDir/app/http/controllers/post-controller.ts"))->toBeTrue()
+        ->and(file_get_contents("$outputDir/app/models/user_meta.ts"))
+        ->toContain("import type { RoleType } from '../enums';")
+        ->toContain('limits: { minimum: number; maximum: null };');
 });
 
 test('ts:publish writes model full template files', function () {
@@ -102,11 +192,17 @@ test('ts:publish writes model full template files', function () {
     config()->set('ts-publish.output_to_files', true);
     config()->set('ts-publish.routes.enabled', true);
     config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+    config()->set('ts-publish.model_metadata.enabled', true);
+    config()->set('ts-publish.model_metadata.included', [User::class]);
+    config()->set('ts-publish.model_metadata.provider_class', AstInferredModelMetadataProvider::class);
 
     $this->artisan('ts:publish', ['--preview' => 'false'])
         ->assertSuccessful();
 
-    expect(file_exists("$outputDir/app/http/controllers/post-controller.ts"))->toBeTrue();
+    expect(file_exists("$outputDir/app/http/controllers/post-controller.ts"))->toBeTrue()
+        ->and(file_get_contents("$outputDir/app/models/user_meta.ts"))
+        ->toContain("import type { RoleType } from '../enums';")
+        ->toContain('limits: { minimum: number; maximum: null };');
 });
 
 test('ts:publish writes modular files to namespace-based directories', function () {
@@ -116,6 +212,9 @@ test('ts:publish writes modular files to namespace-based directories', function 
     config()->set('ts-publish.output_to_files', true);
     config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
     config()->set('ts-publish.routes.enabled', true);
+    config()->set('ts-publish.model_metadata.enabled', true);
+    config()->set('ts-publish.model_metadata.included', [User::class]);
+    config()->set('ts-publish.model_metadata.provider_class', AstInferredModelMetadataProvider::class);
 
     $this->artisan('ts:publish', ['--preview' => 'false'])
         ->assertSuccessful();
@@ -124,6 +223,9 @@ test('ts:publish writes modular files to namespace-based directories', function 
         ->and(file_exists("$outputDir/app/http/controllers/index.ts"))->toBeTrue();
 
     expect(file_exists("$outputDir/app/models/user.ts"))->toBeTrue()
+        ->and(file_get_contents("$outputDir/app/models/user_meta.ts"))
+        ->toContain("import type { RoleType } from '../enums';")
+        ->toContain('limits: { minimum: number; maximum: null };')
         ->and(file_exists("$outputDir/app/enums/status.ts"))->toBeTrue()
         ->and(file_exists("$outputDir/app/models/index.ts"))->toBeTrue()
         ->and(file_exists("$outputDir/app/enums/index.ts"))->toBeTrue();
@@ -230,6 +332,19 @@ test('ts:publish --only-models shows only model content in preview', function ()
     $this->artisan('ts:publish', ['--preview' => 'true', '--only-models' => true])
         ->assertSuccessful()
         ->expectsOutputToContain('Models:')
+        ->doesntExpectOutputToContain('Model Metadata:')
+        ->doesntExpectOutputToContain('Enums:');
+});
+
+test('ts:publish --only-model-metadata shows only metadata content in preview', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.model_metadata.enabled', true);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-model-metadata' => true])
+        ->assertSuccessful()
+        ->expectsOutputToContain('Model Metadata:')
+        ->expectsOutputToContain('export const UserModelMetadata')
+        ->doesntExpectOutputToContain('Models:')
         ->doesntExpectOutputToContain('Enums:');
 });
 
@@ -256,9 +371,106 @@ test('ts:publish --only-models writes only model files to disk', function () {
         ->assertSuccessful();
 
     expect(is_dir("$outputDir/workbench/app/models"))->toBeTrue()
+        ->and(file_exists("$outputDir/workbench/app/models/user.ts"))->toBeTrue()
+        ->and(file_exists("$outputDir/workbench/app/models/user_meta.ts"))->toBeFalse()
+        ->and(file_get_contents("$outputDir/workbench/app/models/index.ts"))
+        ->toContain("export * from './user';")
         ->and(is_dir("$outputDir/workbench/app/enums"))->toBeFalse();
 
     (new Filesystem)->deleteDirectory($outputDir);
+});
+
+test('ts:publish --only-model-metadata writes only metadata files to disk', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-only-model-metadata-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.model_metadata.enabled', true);
+
+    $this->artisan('ts:publish', ['--preview' => 'false', '--only-model-metadata' => true])
+        ->assertSuccessful();
+
+    expect(file_exists("$outputDir/workbench/app/models/user_meta.ts"))->toBeTrue()
+        ->and(file_exists("$outputDir/workbench/app/models/user.ts"))->toBeFalse()
+        ->and(file_get_contents("$outputDir/workbench/app/models/index.ts"))
+        ->toContain("export * from './user_meta';")
+        ->and(file_exists("$outputDir/workbench/app/enums/status.ts"))->toBeFalse();
+
+    (new Filesystem)->deleteDirectory($outputDir);
+});
+
+test('partial model runs preserve exports from the skipped companion phase', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-partial-model-barrel-'.uniqid();
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.model_metadata.enabled', true);
+
+    $this->artisan('ts:publish', ['--preview' => 'false'])->assertSuccessful();
+    $this->artisan('ts:publish', ['--preview' => 'false', '--only-functional' => true])->assertSuccessful();
+
+    expect(file_exists("$outputDir/workbench/app/models/user.ts"))->toBeTrue()
+        ->and(file_exists("$outputDir/workbench/app/models/user_meta.ts"))->toBeTrue()
+        ->and(file_get_contents("$outputDir/workbench/app/models/index.ts"))
+        ->toContain("export * from './user';")
+        ->toContain("export * from './user_meta';");
+
+    $this->artisan('ts:publish', ['--preview' => 'false', '--only-model-metadata' => true])->assertSuccessful();
+
+    $barrel = file_get_contents("$outputDir/workbench/app/models/index.ts");
+
+    expect(file_exists("$outputDir/workbench/app/models/user.ts"))->toBeTrue()
+        ->and(file_exists("$outputDir/workbench/app/models/user_meta.ts"))->toBeTrue()
+        ->and($barrel)
+        ->toContain("export * from './user';")
+        ->toContain("export * from './user_meta';");
+
+    $this->artisan('ts:publish', ['--preview' => 'false', '--only-models' => true])->assertSuccessful();
+
+    expect(file_exists("$outputDir/workbench/app/models/user.ts"))->toBeTrue()
+        ->and(file_exists("$outputDir/workbench/app/models/user_meta.ts"))->toBeTrue()
+        ->and(file_get_contents("$outputDir/workbench/app/models/index.ts"))
+        ->toContain("export * from './user';")
+        ->toContain("export * from './user_meta';");
+
+    (new Filesystem)->deleteDirectory($outputDir);
+});
+
+test('partial model runs create missing barrels with custom writers without merge support', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-custom-partial-barrel-'.uniqid();
+    config()->set('ts-publish.barrel_writer_class', NonMergingBarrelWriter::class);
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+
+    try {
+        $this->artisan('ts:publish', ['--preview' => 'false', '--only-models' => true])->assertSuccessful();
+
+        expect(file_exists("$outputDir/workbench/app/models/user.ts"))->toBeTrue()
+            ->and(file_get_contents("$outputDir/workbench/app/models/index.ts"))
+            ->toContain("export * from './user';");
+    } finally {
+        (new Filesystem)->deleteDirectory($outputDir);
+    }
+});
+
+test('partial model runs preserve existing barrels with custom writers without merge support', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-custom-existing-barrel-'.uniqid();
+    $barrelDirectory = "$outputDir/workbench/app/models";
+    $filesystem = new Filesystem;
+    $filesystem->makeDirectory($barrelDirectory, recursive: true);
+    $filesystem->put("$barrelDirectory/index.ts", "export * from './existing';");
+
+    config()->set('ts-publish.barrel_writer_class', NonMergingBarrelWriter::class);
+    config()->set('ts-publish.output_directory', $outputDir);
+    config()->set('ts-publish.output_to_files', true);
+
+    try {
+        $this->artisan('ts:publish', ['--preview' => 'false', '--only-models' => true])
+            ->assertSuccessful();
+
+        expect(file_get_contents("$barrelDirectory/index.ts"))
+            ->toBe("export * from './existing';");
+    } finally {
+        (new Filesystem)->deleteDirectory($outputDir);
+    }
 });
 
 test('ts:publish fails when both --only-enums and --only-models are passed', function () {
@@ -268,10 +480,11 @@ test('ts:publish fails when both --only-enums and --only-models are passed', fun
         ->assertFailed();
 });
 
-test('ts:publish warns and exits when both config types are disabled', function () {
+test('ts:publish warns and exits when every publishing phase is disabled', function () {
     config()->set('ts-publish.output_to_files', false);
     config()->set('ts-publish.enums.enabled', false);
     config()->set('ts-publish.models.enabled', false);
+    config()->set('ts-publish.model_metadata.enabled', false);
     config()->set('ts-publish.resources.enabled', false);
     config()->set('ts-publish.routes.enabled', false);
     config()->set('ts-publish.form_requests.enabled', false);
@@ -296,11 +509,23 @@ test('ts:publish respects publish_enums false in config', function () {
 test('ts:publish respects publish_models false in config', function () {
     config()->set('ts-publish.output_to_files', false);
     config()->set('ts-publish.models.enabled', false);
+    config()->set('ts-publish.model_metadata.enabled', true);
 
     $this->artisan('ts:publish', ['--preview' => 'true'])
         ->assertSuccessful()
         ->expectsOutputToContain('Enums:')
+        ->expectsOutputToContain('Model Metadata:')
         ->doesntExpectOutputToContain('Models:');
+});
+
+test('ts:publish disables model metadata independently from models', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.model_metadata.enabled', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true'])
+        ->assertSuccessful()
+        ->expectsOutputToContain('Models:')
+        ->doesntExpectOutputToContain('Model Metadata:');
 });
 
 test('ts:publish verbose mode shows detailed tables', function () {
@@ -360,10 +585,11 @@ test('ts:publish quiet mode with --source produces no output', function () {
     (new Filesystem)->deleteDirectory($outputDir);
 });
 
-test('ts:publish --source exits successfully when both config types disabled', function () {
+test('ts:publish --source exits successfully when every publishing phase is disabled', function () {
     config()->set('ts-publish.output_to_files', false);
     config()->set('ts-publish.enums.enabled', false);
     config()->set('ts-publish.models.enabled', false);
+    config()->set('ts-publish.model_metadata.enabled', false);
     config()->set('ts-publish.resources.enabled', false);
     config()->set('ts-publish.routes.enabled', false);
     config()->set('ts-publish.form_requests.enabled', false);
@@ -397,6 +623,14 @@ test('ts:publish --only-models exits when config models disabled and non-interac
     config()->set('ts-publish.models.enabled', false);
 
     $this->artisan('ts:publish', ['--preview' => 'true', '--only-models' => true, '--no-interaction' => true])
+        ->assertSuccessful();
+});
+
+test('ts:publish --only-model-metadata exits when metadata is disabled and non-interactive', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.model_metadata.enabled', false);
+
+    $this->artisan('ts:publish', ['--preview' => 'true', '--only-model-metadata' => true, '--no-interaction' => true])
         ->assertSuccessful();
 });
 
@@ -519,14 +753,16 @@ test('ts:publish --only-routes writes only route files to disk', function () {
     (new Filesystem)->deleteDirectory($outputDir);
 });
 
-test('ts:publish --only-functional publishes only enums and routes', function () {
+test('ts:publish --only-functional publishes runtime TypeScript output', function () {
     config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.model_metadata.enabled', true);
     config()->set('ts-publish.routes.enabled', true);
 
     $this->artisan('ts:publish', ['--preview' => 'true', '--only-functional' => true])
         ->assertSuccessful()
         ->expectsOutputToContain('only functional content')
         ->expectsOutputToContain('Enums:')
+        ->expectsOutputToContain('Model Metadata:')
         ->expectsOutputToContain('Routes:')
         ->doesntExpectOutputToContain('Models:')
         ->doesntExpectOutputToContain('Resources:');
@@ -535,6 +771,7 @@ test('ts:publish --only-functional publishes only enums and routes', function ()
 test('ts:publish --only-functional warns when all functional options disabled', function () {
     config()->set('ts-publish.output_to_files', false);
     config()->set('ts-publish.enums.enabled', false);
+    config()->set('ts-publish.model_metadata.enabled', false);
     config()->set('ts-publish.routes.enabled', false);
     config()->set('ts-publish.form_requests.enabled', false);
     config()->set('ts-publish.broadcast_channels.enabled', false);

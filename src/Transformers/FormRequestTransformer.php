@@ -35,8 +35,6 @@ class FormRequestTransformer extends CoreTransformer
 
     public protected(set) string $filename;
 
-    public protected(set) string $namespacePath;
-
     public protected(set) bool $isDynamic = false;
 
     /** @var list<FormRequestFieldData> */

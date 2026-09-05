@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use Illuminate\Filesystem\Filesystem;
+use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\Shipping\Enums\Status as ShippingStatus;
@@ -145,4 +146,78 @@ test('writeModular falls back to output_directory when override is an empty stri
 
     $writer = new BarrelWriter($filesystem);
     $writer->writeModular($generators, '');
+});
+
+test('mergeModular adds missing exports without removing existing exports', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-merge-barrel-'.uniqid();
+    $barrelDir = "$outputDir/workbench/app/enums";
+    $filesystem = new Filesystem;
+    $filesystem->makeDirectory($barrelDir, recursive: true);
+    $filesystem->put("$barrelDir/index.ts", "export * from './role';\nexport * from './status';");
+
+    config()->set('ts-publish.output_to_files', true);
+    config()->set('ts-publish.output_directory', $outputDir);
+
+    $generators = collect([
+        resolve(EnumGenerator::class, ['findable' => Status::class]),
+        resolve(EnumGenerator::class, ['findable' => Priority::class]),
+    ]);
+
+    $content = (new BarrelWriter($filesystem))->mergeModular($generators);
+
+    expect($content['workbench/app/enums'])
+        ->toContain("export * from './role';")
+        ->toContain("export * from './priority';")
+        ->and(substr_count($content['workbench/app/enums'], "export * from './status';"))->toBe(1);
+
+    $filesystem->deleteDirectory($outputDir);
+});
+
+test('mergeModular includes existing exports when file output is disabled', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-preview-merge-barrel-'.uniqid();
+    $barrelDir = "$outputDir/workbench/app/enums";
+    $filesystem = new Filesystem;
+
+    try {
+        $filesystem->makeDirectory($barrelDir, recursive: true);
+        $filesystem->put("$barrelDir/index.ts", "export * from './role';");
+
+        config()->set('ts-publish.output_to_files', false);
+        config()->set('ts-publish.output_directory', $outputDir);
+
+        $generators = collect([
+            resolve(EnumGenerator::class, ['findable' => Status::class]),
+        ]);
+
+        expect((new BarrelWriter($filesystem))->mergeModular($generators)['workbench/app/enums'])
+            ->toContain("export * from './role';")
+            ->toContain("export * from './status';");
+    } finally {
+        $filesystem->deleteDirectory($outputDir);
+    }
+});
+
+test('mergeModular deduplicates exports from CRLF barrels', function () {
+    $outputDir = sys_get_temp_dir().'/laravel-ts-publish-crlf-barrel-'.uniqid();
+    $barrelDir = "$outputDir/workbench/app/enums";
+    $filesystem = new Filesystem;
+
+    try {
+        $filesystem->makeDirectory($barrelDir, recursive: true);
+        $filesystem->put("$barrelDir/index.ts", "export * from './role';\r\nexport * from './status';\r\n");
+
+        config()->set('ts-publish.output_to_files', false);
+        config()->set('ts-publish.output_directory', $outputDir);
+
+        $generators = collect([
+            resolve(EnumGenerator::class, ['findable' => Status::class]),
+        ]);
+
+        $content = (new BarrelWriter($filesystem))->mergeModular($generators)['workbench/app/enums'];
+
+        expect(substr_count($content, "export * from './status';"))->toBe(1)
+            ->and($content)->not->toContain("\r");
+    } finally {
+        $filesystem->deleteDirectory($outputDir);
+    }
 });

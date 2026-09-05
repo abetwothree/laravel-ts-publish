@@ -118,6 +118,8 @@ php artisan ts:publish --source="App\Http\Resources\UserResource"
 
 On a large project this is much faster than a full publish. The [Vite plugin](https://tolki.abe.dev/ts/vite-plugin.html) uses it automatically during development to republish only the file that changed.
 
+Single-file model publishing respects the model and model-metadata `included` and `excluded` settings independently. `additional_directories` affects discovery only and is not required for an explicitly supplied source.
+
 #### Automatic publishing after migrations
 
 By default, this package will automatically re-publish your TypeScript declaration types after running migrations. This ensures your TypeScript types stay in sync with your database schema changes.
@@ -167,17 +169,18 @@ Similar options are available for other content types like enums, events, resour
 
 #### Conditional publishing
 
-You can choose to publish only enums, only models, or only resources, either through configuration or command flags.
+You can choose which output phases to publish through configuration or command flags.
 
 ##### Via configuration
 
-Disable enum, model, or resource publishing entirely in the config file:
+Disable any publishing phase independently in the config file:
 
 ```php
 // config/ts-publish.php
 
 'enums' => ['enabled' => true],
 'models' => ['enabled' => true],
+'model_metadata' => ['enabled' => false],
 'resources' => ['enabled' => true],
 ```
 
@@ -185,17 +188,22 @@ Setting any to `false` will skip that type on every run, including automatic pos
 
 ##### Via command flags
 
-Use one of the `--only-*` flags to limit a single run to a specific type: `--only-enums`, `--only-models`, `--only-resources`, `--only-routes`, `--only-form-requests`, `--only-broadcast-channels`, or `--only-broadcast-events`.
+Use one of the `--only-*` flags to limit a single run to a specific type: `--only-enums`, `--only-models`, `--only-model-metadata`, `--only-resources`, `--only-routes`, `--only-form-requests`, `--only-broadcast-channels`, or `--only-broadcast-events`.
 
 ```bash
 php artisan ts:publish --only-enums
 php artisan ts:publish --only-models
+php artisan ts:publish --only-model-metadata
 php artisan ts:publish --only-resources
 ```
 
 The flags cannot be combined. Passing two returns an error.
 
-There's also `--only-functional`, which publishes only type-erasure-safe output (enums, routes, form requests, broadcast channels/events) while skipping models and resources. The [Vite plugin](https://tolki.abe.dev/ts/vite-plugin.html) appends it on `vite build`, since interfaces are erased at compile time anyway. Combined with another `--only-*` flag, it wins.
+There's also `--only-functional`, which publishes only runtime TypeScript output (enums, model metadata, routes, form requests, broadcast channels/events) while skipping model and resource interfaces. The [Vite plugin](https://tolki.abe.dev/ts/vite-plugin.html) appends it on `vite build`, since interfaces are erased at compile time anyway. Combined with another `--only-*` flag, it wins.
+
+Partial model or metadata publishes merge their generated exports into existing model barrels. They create barrels when missing and preserve exports owned by the skipped companion phase. Because partial runs cannot identify every stale export safely, run both model phases together to rebuild the complete barrel after removing models.
+
+Custom `barrel_writer_class` implementations can opt into partial merging by implementing `MergesModularBarrels`. Otherwise, partial model runs leave existing barrels untouched.
 
 ##### Config & flag conflicts
 
@@ -300,14 +308,80 @@ import type { User, UserMutators, UserRelations } from '@js/types/data/models';
 // UserRelations → posts: Post[]; posts_count: number; posts_exists: boolean
 ```
 
+Model runtime metadata is published beside each model by default:
+
+```typescript
+// models/user_meta.ts
+export const UserModelMetadata = {
+    morphClass: 'user',
+} as const satisfies {
+    morphClass: string;
+};
+```
+
+The configured provider's `provide()` method receives each model instance and returns its complete metadata payload. Prefer a precise `@return array{...}` shape so PHPStan or Psalm can validate that contract. When a provider only declares `array<string, mixed>`, import-free types fall back to inference from statically analyzable array returns. The PHPDoc shape overrides body inference and is required for optional or dynamically constructed keys; `#[TsCasts]` has final precedence and owns explicit overrides and imports. Providers are resolved through Laravel's container, so constructor dependencies are supported.
+
+Optional PHPDoc keys may be absent from a model's payload. When present, they are emitted as required properties because each generated metadata object represents that concrete payload. Required PHPDoc keys must always be present, and every returned key must have either an inferred or `#[TsCasts]` type.
+
+Scalar and nested inline-array types can be inferred directly from the method body. PHPDoc additionally supports scalar, container, and nested array-shape types. PHP class, enum, and other named TypeScript types need an explicit `#[TsCasts]` override because metadata does not infer their TypeScript import path.
+
+Metadata values may be `null`, scalars, arrays, enums, or objects implementing Laravel's `Arrayable` or PHP's `JsonSerializable` contract. These values can be nested and are normalized recursively. Unsupported objects, resources, non-finite floats, circular objects, and values nested more than 64 levels fail with the model and metadata property path instead of producing invalid TypeScript.
+
+```php
+use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
+use AbeTwoThree\LaravelTsPublish\Metadata\Contracts\ModelMetadataProvider;
+use Illuminate\Database\Eloquent\Model;
+
+final class AppModelMetadataProvider implements ModelMetadataProvider
+{
+    /**
+     * @return array{
+     *     morphClass: string,
+     *     identifiers: array{
+     *         primaryKey: string,
+     *         routeKey: string,
+     *     },
+     * }
+     */
+    #[TsCasts([
+        'identifiers' => [
+            'type' => 'ModelIdentifiers',
+            'import' => '@/types/model-identifiers',
+        ],
+    ])]
+    public function provide(Model $model): array
+    {
+        return [
+            'morphClass' => (string) $model->getMorphClass(),
+            'identifiers' => [
+                'primaryKey' => $model->getKeyName(),
+                'routeKey' => $model->getRouteKeyName(),
+            ],
+        ];
+    }
+}
+
+// config/ts-publish.php
+'model_metadata' => [
+    'enabled' => true,
+    'provider_class' => AppModelMetadataProvider::class,
+    'template' => 'laravel-ts-publish::model-meta',
+],
+```
+
+Model metadata is disabled by default. When enabled, the default provider publishes `morphClass` as a string and preserves configured morph-map aliases. Model metadata is a separate publishing phase. `models.enabled` and `--only-models` control only model interfaces; they do not generate or disable metadata. Use `model_metadata.enabled` and `--only-model-metadata` for metadata. Metadata discovery inherits `models.included`, `models.excluded`, and `models.additional_directories` when the corresponding key is omitted from `model_metadata`. An explicitly configured metadata value takes precedence, including an empty array.
+
+If your app calls `Relation::enforceMorphMap()`, every discovered model must appear in the map. Use `model_metadata.excluded` for models you do not map.
+
 Key capabilities:
 
 - **Split or full templates** — `models.template` controls whether properties/mutators/relations are generated as separate interfaces (default) or combined into one `model-full` interface.
 - **Smart nullable relations** — singular relations (`HasOne`, `BelongsTo`, `MorphOne`, ...) are automatically typed with `| null` based on the relation type and foreign key nullability, with a config to override the strategy per relation type.
 - **Annotate instead of configuring** — `@property` / `@property-read` tags, `@phpstan-type` aliases, `Attribute<>` generics, `@return MorphTo<A|B, $this>`, `AsEnumCollection::of()` / `AsCollection::of()`, and an `Arrayable` DTO's own typed properties all sharpen a column's type with no `#[TsCasts]` needed, and PHPStan/Larastan read the same annotations. See [Typing attributes without `#[TsCasts]`](https://tolki.abe.dev/ts/models.html#typing-attributes-without-tscasts).
 - **PHPDoc-aware** — class, column, mutator, and relation doc blocks are carried over as JSDoc comments automatically.
-- **`#[TsCasts]` / `#[TsType]`** — for more advanced TypeScript types for columns, mutators, relations, or an entire custom cast class, including custom types imported from your own files.
+- **`#[TsCasts]` / `#[TsType]`** — for more advanced TypeScript types for generated properties or an entire custom cast class, including custom types imported from your own files.
 - **`$hidden` and write-only accessors** — hidden attributes publish by default. `models.exclude_hidden` opts out for model *and* resource interfaces alike, so a resource's `except()` or whole-model delegation loses the column too, though `only(['password'])` still keeps one you name explicitly. A write-only `Attribute::make(set:)` resolves from its `@return Attribute<Get, Set>` generic, then from a same-named column, and failing both is omitted rather than emitted as `unknown`.
+- **Runtime metadata** — each `{model}_meta.ts` companion exports a `{Model}ModelMetadata` object whose values come from the configured provider. Prefer a precise return shape for static analysis; body inference is the fallback for generic array declarations, PHPDoc refines it, and `#[TsCasts]` owns explicit overrides and imports.
 - **`#[TsExclude]`** — exclude an entire model, or a specific accessor/relation, from the output.
 - **Laravel 13 model attributes** — `#[Table]`, `#[Hidden]`, `#[Visible]`, `#[Appends]`, and `#[Connection]` are honoured automatically, no configuration needed. See [Laravel 13 Model Attributes](https://tolki.abe.dev/ts/models.html#laravel-13-model-attributes) for the full attribute-by-attribute table.
 - **Enum-typed columns** also generate a matching `{Model}Resource` interface using `AsEnum<>`, for when you've resolved a raw enum column to a full enum instance (e.g. via `Status.from(user.status)`).
@@ -898,7 +972,7 @@ When `json.enabled` is enabled, a `laravel-ts-definitions.json` file is written 
 
 The file has one top-level object per feature (`models`, `enums`, `resources`, `formRequests`, `broadcastEvents`), and **every one of them is keyed by fully-qualified class name** (`"Workbench\\App\\Models\\User"`), not by short class name. Each entry carries a `name` field holding the short name that used to be the key. Keying by FQCN is deliberate: two classes sharing a basename across namespaces (`App\Models\User` and `Crm\Models\User`) are common in larger apps, and a short-name key silently overwrites one with the other. Key your lookups by FQCN and read `name` for display. **This is a breaking change** for anything written against the older bare-name-keyed file.
 
-The JSON output from `watcher.enabled` is designed to work with build tools and file watchers (like the [@tolki/ts Vite plugin](https://tolki.abe.dev/ts/vite-plugin.html)) that need to know which PHP source files were collected so they can trigger a re-publish when those files change.
+The JSON output from `watcher.enabled` is designed to work with build tools and file watchers (like the [@tolki/ts Vite plugin](https://tolki.abe.dev/ts/vite-plugin.html)) that need to know which PHP source files were collected so they can trigger a re-publish when those files change. When model metadata uses a custom provider, its PHP file is included because changing it can affect every metadata companion.
 
 ## Configuration reference
 

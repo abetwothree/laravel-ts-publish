@@ -7,10 +7,19 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FailingModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InvalidModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\NonMergingBarrelWriter;
+use Illuminate\Filesystem\Filesystem;
+use Laravel\Prompts\Support\Logger;
 use Workbench\App\Http\Resources\Registrar as BareRegistrarResource;
 use Workbench\App\Http\Resources\RegistrarResource;
+use Workbench\App\Models\Post;
+use Workbench\App\Models\User;
 use Workbench\Blog\Enums\ArticleStatus;
 use Workbench\Blog\Enums\ContentType;
 use Workbench\Blog\Models\Article;
@@ -38,6 +47,92 @@ test('runner populates modelGenerators collection', function () {
         ->and($runner->modelGenerators->first())->toBeInstanceOf(ModelGenerator::class);
 });
 
+test('runner populates a separate modelMetadataGenerators collection', function () {
+    $runner = new Runner;
+    $runner->run();
+
+    expect($runner->modelMetadataGenerators)->toBeCollection()
+        ->not->toBeEmpty()
+        ->and($runner->modelMetadataGenerators->first())->toBeInstanceOf(ModelMetadataGenerator::class);
+});
+
+test('runner skips one failing metadata model and records a warning', function () {
+    config()->set('ts-publish.models.included', [User::class, Post::class]);
+    config()->set('ts-publish.model_metadata.provider_class', FailingModelMetadataProvider::class);
+
+    $runner = new Runner;
+    $runner->run();
+
+    expect($runner->modelMetadataGenerators)->toHaveCount(1)
+        ->and($runner->modelMetadataGenerators->first()->findable)->toBe(Post::class)
+        ->and($runner->shouldMergeModelBarrels)->toBeTrue()
+        ->and(AnalysisWarnings::all())->toBe([
+            [
+                'subject' => User::class,
+                'message' => RuntimeException::class.': Metadata is unavailable for this model.',
+            ],
+        ]);
+});
+
+test('runner rejects an invalid metadata provider before processing models', function () {
+    config()->set('ts-publish.model_metadata.provider_class', InvalidModelMetadataProvider::class);
+
+    expect(fn () => (new Runner)->run())
+        ->toThrow(InvalidArgumentException::class, 'must implement');
+});
+
+test('runner rejects an invalid metadata generator before processing models', function () {
+    config()->set('ts-publish.model_metadata.generator_class', ModelGenerator::class);
+
+    expect(fn () => (new Runner)->run())
+        ->toThrow(InvalidArgumentException::class, 'must extend');
+});
+
+test('runner omits metadata generators when its phase is disabled', function () {
+    $runner = new Runner;
+    $runner->shouldPublishModelMetadata = false;
+    $runner->shouldMergeModelBarrels = true;
+    $runner->run();
+
+    expect($runner->modelGenerators)->not->toBeEmpty()
+        ->and($runner->modelMetadataGenerators)->toBeEmpty()
+        ->and($runner->modelModularBarrels['workbench/app/models'])
+        ->toContain("export * from './user';");
+});
+
+test('runner warns when an existing model barrel cannot be merged', function () {
+    $outputDirectory = sys_get_temp_dir().'/laravel-ts-publish-runner-barrel-warning-'.uniqid();
+    $barrelDirectory = "$outputDirectory/workbench/app/models";
+    $filesystem = new Filesystem;
+    $filesystem->makeDirectory($barrelDirectory, recursive: true);
+    $filesystem->put("$barrelDirectory/index.ts", "export * from './existing';");
+
+    $socket = fopen('php://memory', 'w+');
+
+    if ($socket === false) {
+        throw new RuntimeException('Unable to open the logger test stream.');
+    }
+
+    try {
+        config()->set('ts-publish.barrel_writer_class', NonMergingBarrelWriter::class);
+        config()->set('ts-publish.output_directory', $outputDirectory);
+        config()->set('ts-publish.output_to_files', true);
+
+        $runner = new Runner;
+        $runner->shouldPublishModelMetadata = false;
+        $runner->setLogger(new Logger('runner', $socket));
+        $runner->run();
+
+        rewind($socket);
+
+        expect(stream_get_contents($socket))
+            ->toContain('runner_warning:Model barrels were not updated because the configured writer does not support merging.');
+    } finally {
+        fclose($socket);
+        $filesystem->deleteDirectory($outputDirectory);
+    }
+});
+
 test('runner generates enum barrel content', function () {
     $runner = new Runner;
     $runner->run();
@@ -55,7 +150,8 @@ test('runner generates model barrel content', function () {
     expect($runner->modelModularBarrels)->toBeArray()
         ->toHaveKey('workbench/app/models')
         ->and($runner->modelModularBarrels['workbench/app/models'])
-        ->toContain("export * from './user'");
+        ->toContain("export * from './user'")
+        ->toContain("export * from './user_meta'");
 });
 
 test('runner generates globals content when enabled', function () {
@@ -131,7 +227,6 @@ describe('Runner namespaced output', function () {
             Article::class,
             Reaction::class,
         ]);
-
         $existingEnums = config()->array('ts-publish.enums.additional_directories');
         config()->set('ts-publish.enums.additional_directories', [
             ...$existingEnums,
@@ -205,26 +300,44 @@ describe('Runner conditional publishing', function () {
             ->and($runner->modelGenerators)->not->toBeEmpty();
     });
 
-    test('skips models when shouldPublishModels is false', function () {
+    test('skips models without skipping model metadata', function () {
         $runner = new Runner;
         $runner->shouldPublishModels = false;
+        $runner->shouldMergeModelBarrels = true;
         $runner->run();
 
         expect($runner->modelGenerators)->toBeEmpty()
-            ->and($runner->modelModularBarrels)->toBe([])
+            ->and($runner->modelMetadataGenerators)->not->toBeEmpty()
+            ->and($runner->modelModularBarrels['workbench/app/models'])
+            ->toContain("export * from './user_meta';")
+            ->toContain("export * from './user';")
             ->and($runner->enumGenerators)->not->toBeEmpty();
     });
 
-    test('skips both when both flags are false', function () {
+    test('skips enums and models without skipping model metadata', function () {
         $runner = new Runner;
         $runner->shouldPublishEnums = false;
         $runner->shouldPublishModels = false;
+        $runner->shouldMergeModelBarrels = true;
         $runner->run();
 
         expect($runner->enumGenerators)->toBeEmpty()
             ->and($runner->modelGenerators)->toBeEmpty()
+            ->and($runner->modelMetadataGenerators)->not->toBeEmpty()
             ->and($runner->enumModularBarrels)->toBe([])
-            ->and($runner->modelModularBarrels)->toBe([]);
+            ->and($runner->modelModularBarrels)->not->toBeEmpty();
+    });
+
+    test('skips model metadata without skipping models', function () {
+        $runner = new Runner;
+        $runner->shouldPublishModelMetadata = false;
+        $runner->shouldMergeModelBarrels = true;
+        $runner->run();
+
+        expect($runner->modelGenerators)->not->toBeEmpty()
+            ->and($runner->modelMetadataGenerators)->toBeEmpty()
+            ->and($runner->modelModularBarrels['workbench/app/models'])
+            ->toContain("export * from './user';");
     });
 
     test('globals only contains enums when models are skipped', function () {
@@ -281,9 +394,7 @@ describe('Runner conditional publishing', function () {
 
         $paths = collect($decoded);
 
-        // Watcher JSON should include both enum and model paths because
-        // both publish_enums and publish_models are true in config,
-        // even though the runner skipped model generation.
+        // The watcher follows enabled config phases even when this run skips model interfaces.
         expect($paths->contains(fn ($p) => str_contains($p, 'Enum')))->toBeTrue()
             ->and($paths->contains(fn ($p) => str_contains($p, 'Model')))->toBeTrue();
     });
@@ -307,7 +418,51 @@ describe('Runner conditional publishing', function () {
         $runner->run();
 
         expect($runner->modelGenerators)->toBeEmpty()
+            ->and($runner->modelMetadataGenerators)->not->toBeEmpty()
             ->and($runner->enumGenerators)->not->toBeEmpty();
+    });
+
+    test('respects model metadata config independently from models', function () {
+        config()->set('ts-publish.models.enabled', false);
+        config()->set('ts-publish.model_metadata.enabled', true);
+
+        $runner = new Runner;
+        $runner->shouldPublishModels = config()->boolean('ts-publish.models.enabled');
+        $runner->shouldPublishModelMetadata = config()->boolean('ts-publish.model_metadata.enabled');
+        $runner->run();
+
+        expect($runner->modelGenerators)->toBeEmpty()
+            ->and($runner->modelMetadataGenerators)->not->toBeEmpty()
+            ->and($runner->modelModularBarrels['workbench/app/models'])
+            ->toContain("export * from './user_meta';")
+            ->toContain("export * from './user';");
+    });
+
+    test('config-disabled metadata preserves its existing barrel exports', function () {
+        $outputDirectory = sys_get_temp_dir().'/laravel-ts-publish-config-partial-barrel-'.uniqid();
+        $barrelDirectory = "$outputDirectory/workbench/app/models";
+        $filesystem = new Filesystem;
+        $filesystem->makeDirectory($barrelDirectory, recursive: true);
+        $filesystem->put("$barrelDirectory/index.ts", "export * from './user_meta';");
+
+        config()->set('ts-publish.models.enabled', true);
+        config()->set('ts-publish.model_metadata.enabled', false);
+        config()->set('ts-publish.output_directory', $outputDirectory);
+
+        try {
+            $runner = new Runner;
+            $runner->shouldPublishModels = config()->boolean('ts-publish.models.enabled');
+            $runner->shouldPublishModelMetadata = config()->boolean('ts-publish.model_metadata.enabled');
+            $runner->run();
+
+            expect($runner->modelGenerators)->not->toBeEmpty()
+                ->and($runner->modelMetadataGenerators)->toBeEmpty()
+                ->and($runner->modelModularBarrels['workbench/app/models'])
+                ->toContain("export * from './user';")
+                ->toContain("export * from './user_meta';");
+        } finally {
+            $filesystem->deleteDirectory($outputDirectory);
+        }
     });
 });
 
@@ -330,7 +485,6 @@ test('runner generates inertiaConfigContent when inertia is enabled with mocked 
     $mockSharedData->shouldReceive('analyze')->andReturn([
         'sharedPageProps' => '{ appName: string }',
         'withAllErrors' => true,
-        'importStatements' => [],
         'typeImports' => [],
     ]);
 

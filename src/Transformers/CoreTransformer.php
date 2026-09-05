@@ -12,6 +12,9 @@ use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
  */
 abstract class CoreTransformer
 {
+    /** Namespace-based output directory path, e.g. 'workbench/app/models'. */
+    public protected(set) string $namespacePath;
+
     /**
      * @param  class-string<TTransformable>  $findable
      */

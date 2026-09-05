@@ -26,7 +26,6 @@ use ReflectionClass;
  * @phpstan-type SharedDataResult = array{
  *     sharedPageProps: string,
  *     withAllErrors: bool,
- *     importStatements: list<string>,
  *     typeImports: TypesImportMap,
  * }
  * @phpstan-type OverrideEntry = array{type: string, optional: bool}
@@ -116,8 +115,10 @@ class InertiaSharedDataAnalyzer
         return [
             'sharedPageProps' => $propsType,
             'withAllErrors' => $this->resolveWithAllErrors($middlewareClass),
-            'importStatements' => $resolvedTsCasts['importStatements'],
-            'typeImports' => $this->buildTypeImports($analysis, $propsType),
+            'typeImports' => $this->mergeTypeImports(
+                $this->buildTypeImports($analysis, $propsType),
+                $resolvedTsCasts['typeImports'],
+            ),
         ];
     }
 
@@ -179,6 +180,31 @@ class InertiaSharedDataAnalyzer
 
             $imports[$path] = $used;
         }
+
+        return $imports;
+    }
+
+    /**
+     * Merge type import maps and keep their paths and names deterministic.
+     *
+     * @param  TypesImportMap  ...$maps
+     * @return TypesImportMap
+     */
+    protected function mergeTypeImports(array ...$maps): array
+    {
+        $imports = [];
+
+        foreach ($maps as $map) {
+            foreach ($map as $path => $types) {
+                $imports[$path] = array_values(array_unique([
+                    ...($imports[$path] ?? []),
+                    ...$types,
+                ]));
+                sort($imports[$path]);
+            }
+        }
+
+        ksort($imports);
 
         return $imports;
     }

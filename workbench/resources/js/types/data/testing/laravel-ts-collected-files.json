@@ -229,6 +229,7 @@
     "app\/Models\/Order.php",
     "app\/Models\/OrderItem.php",
     "app\/Models\/Post.php",
+    "app\/Models\/PostMeta.php",
     "app\/Models\/Product.php",
     "app\/Models\/Profile.php",
     "app\/Models\/PropertyDocblockBase.php",

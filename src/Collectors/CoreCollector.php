@@ -86,6 +86,48 @@ abstract class CoreCollector
     }
 
     /**
+     * Determine whether an explicitly supplied class passes the configured include and exclude filters.
+     *
+     * @param  class-string  $class
+     */
+    public function allows(string $class): bool
+    {
+        $settings = $this->finderSettings();
+
+        return ! $this->matchesEntry($class, $settings['excluded'])
+            && ($settings['included'] === [] || $this->matchesEntry($class, $settings['included']));
+    }
+
+    /**
+     * Determine whether a class matches configured class names or directories.
+     *
+     * @param  class-string  $class
+     * @param  list<string>  $entries
+     */
+    private function matchesEntry(string $class, array $entries): bool
+    {
+        $directories = [];
+
+        foreach ($entries as $entry) {
+            if ($entry === $class) {
+                return true;
+            }
+
+            if (is_dir($entry)) {
+                $directories[] = $entry;
+            }
+        }
+
+        foreach ($directories as $directory) {
+            if (array_key_exists($class, ClassMapGenerator::createMap($directory))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Resolve a mixed list of class names and directory paths into a flat list of class names.
      *
      * @param  list<string>  $entries

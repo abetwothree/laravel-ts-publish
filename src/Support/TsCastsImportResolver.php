@@ -4,20 +4,23 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Support;
 
+use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use Illuminate\Support\Str;
 
 /**
- * Resolve TsCasts import statements and type-name collisions.
+ * @phpstan-import-type TypesImportMap from Datable
+ *
+ * Resolve TsCasts type imports and type-name collisions.
  *
  * @phpstan-type ResolvedImports = array{
  *     overrides: array<string, string>,
- *     importStatements: list<string>,
+ *     typeImports: TypesImportMap,
  * }
  */
 class TsCastsImportResolver
 {
     /**
-     * Resolve import aliases for TsCasts overrides and generate import statements.
+     * Resolve import aliases for TsCasts overrides and collect their type imports.
      *
      * @param  array<string, string>  $overrides
      * @param  array<string, string>  $importPaths
@@ -101,16 +104,27 @@ class TsCastsImportResolver
             $resolvedOverrides[$entry['prop']] = $resolvedByPair[$entry['pairKey']]['local'];
         }
 
-        /** @var list<string> $importStatements */
-        $importStatements = [];
+        /** @var TypesImportMap $typeImports */
+        $typeImports = [];
 
         foreach ($resolvedByPair as $resolved) {
-            $importStatements[] = "import type { {$resolved['importName']} } from '{$resolved['path']}';";
+            $typeImports[$resolved['path']][] = $resolved['importName'];
         }
+
+        $typeImports = array_map(
+            static function (array $types): array {
+                sort($types);
+
+                return $types;
+            },
+            $typeImports,
+        );
+
+        ksort($typeImports);
 
         return [
             'overrides' => $resolvedOverrides,
-            'importStatements' => $importStatements,
+            'typeImports' => $typeImports,
         ];
     }
 

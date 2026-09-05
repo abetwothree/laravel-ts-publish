@@ -23,6 +23,7 @@ export * from './model-with-trait-extends';
 export * from './order';
 export * from './order-item';
 export * from './post';
+export * from './post-meta';
 export * from './product';
 export * from './profile';
 export * from './property-docblock-base';

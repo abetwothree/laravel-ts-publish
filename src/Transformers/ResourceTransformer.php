@@ -51,8 +51,6 @@ class ResourceTransformer extends CoreTransformer
 
     public protected(set) string $filePath;
 
-    public protected(set) string $namespacePath;
-
     /** @var class-string<Model>|null */
     public protected(set) ?string $modelClass = null;
 

@@ -7,9 +7,9 @@ namespace AbeTwoThree\LaravelTsPublish\Attributes;
 use Attribute;
 
 /**
- * Attribute to specify the custom TypeScript types for a model's casts.
+ * Attribute to specify custom TypeScript types for generated properties.
  *
- * Can be applied on the model class itself, the $casts property, or the casts() method.
+ * Supported generators read it from their documented class, property, or method locations.
  *
  * ```php
  * #[TsCasts([

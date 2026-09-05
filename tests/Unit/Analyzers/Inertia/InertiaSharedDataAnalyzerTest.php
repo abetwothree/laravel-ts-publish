@@ -147,7 +147,6 @@ test('returns Record<string, never> when nothing is shared and nothing is overri
 
     expect($result)->not->toBeNull()
         ->and($result['sharedPageProps'])->toBe('Record<string, never>')
-        ->and($result['importStatements'])->toBe([])
         ->and($result['typeImports'])->toBe([]);
 });
 
@@ -159,7 +158,7 @@ test('applies class-level TsCasts overrides to shared data props', function () {
     // appName infers as number from the fixture body, so `string` proves the attribute won.
     expect($result)->not->toBeNull()
         ->and($result['sharedPageProps'])->toBe('{ appName: string, userId: number, flash: { success: string | null, error: string | null } }')
-        ->and($result['importStatements'])->toBe([]);
+        ->and($result['typeImports'])->toBe([]);
 });
 
 test('TsCasts adds keys not present in the inferred props', function () {
@@ -173,7 +172,7 @@ test('applies method-level TsCasts overrides to shared data props', function () 
 
     expect($result)->not->toBeNull()
         ->and($result['sharedPageProps'])->toBe('{ appName: string, userId: number }')
-        ->and($result['importStatements'])->toBe([]);
+        ->and($result['typeImports'])->toBe([]);
 });
 
 test('method-level TsCasts overrides class-level for same key', function () {
@@ -181,27 +180,27 @@ test('method-level TsCasts overrides class-level for same key', function () {
 
     expect($result)->not->toBeNull()
         ->and($result['sharedPageProps'])->toBe('{ appName: string, flash: { success: string | null, error: string | null } }')
-        ->and($result['importStatements'])->toBe([]);
+        ->and($result['typeImports'])->toBe([]);
 });
 
-test('TsCasts with import paths generates import statements', function () {
+test('TsCasts with import paths collects type imports', function () {
     $result = analyzeSharedDataFor(MiddlewareWithImportPaths::class);
 
     expect($result)->not->toBeNull()
         ->and($result['sharedPageProps'])->toBe('{ auth: AuthData, flash: FlashData, appName: string }')
-        ->and($result['importStatements'])->toBe([
-            "import type { AuthData } from '@js/types/auth';",
-            "import type { FlashData } from '@js/types/flash';",
+        ->and($result['typeImports'])->toBe([
+            '@js/types/auth' => ['AuthData'],
+            '@js/types/flash' => ['FlashData'],
         ]);
 });
 
-test('TsCasts with duplicate same-path imports deduplicates import statements', function () {
+test('TsCasts with duplicate same-path imports deduplicates type imports', function () {
     $result = analyzeSharedDataFor(MiddlewareWithDuplicateImports::class);
 
     expect($result)->not->toBeNull()
         ->and($result['sharedPageProps'])->toBe('{ auth: SharedData, flash: SharedData, appName: string }')
-        ->and($result['importStatements'])->toBe([
-            "import type { SharedData } from '@js/types/shared';",
+        ->and($result['typeImports'])->toBe([
+            '@js/types/shared' => ['SharedData'],
         ]);
 });
 
@@ -210,9 +209,9 @@ test('TsCasts with conflicting type names aliases later imports', function () {
 
     expect($result)->not->toBeNull()
         ->and($result['sharedPageProps'])->toBe('{ auth: AuthSharedData, flash: FlashSharedData, appName: string }')
-        ->and($result['importStatements'])->toBe([
-            "import type { SharedData as AuthSharedData } from '@js/types/auth';",
-            "import type { SharedData as FlashSharedData } from '@js/types/flash';",
+        ->and($result['typeImports'])->toBe([
+            '@js/types/auth' => ['SharedData as AuthSharedData'],
+            '@js/types/flash' => ['SharedData as FlashSharedData'],
         ]);
 });
 
@@ -224,7 +223,7 @@ test('docblock @return array shape provides type overrides when no TsCasts prese
     // Every key infers as number from the fixture body, so each rendered type proves the docblock won.
     expect($result)->not->toBeNull()
         ->and($result['sharedPageProps'])->toBe('{ auth: { user: { id: number; name: string; email: string } | null }, flash: { success: string | null; error: string | null }, appName: string }')
-        ->and($result['importStatements'])->toBe([]);
+        ->and($result['typeImports'])->toBe([]);
 });
 
 test('docblock optional key is emitted once, with its marker', function () {
@@ -253,10 +252,29 @@ test('TsCasts overrides win over docblock for same key', function () {
 
     expect($result)->not->toBeNull()
         ->and($result['sharedPageProps'])->toBe('{ auth: { user: { id: number; name: string; email: string } | null }, flash: FlashMessages, appName: string }')
-        ->and($result['importStatements'])->toBe([]);
+        ->and($result['typeImports'])->toBe([]);
 });
 
 // ─── import channels ─────────────────────────────────────────────
+
+test('combines inferred and TsCasts type imports', function () {
+    $analyzer = Mockery::mock(InertiaSharedDataAnalyzer::class)
+        ->makePartial()
+        ->shouldAllowMockingProtectedMethods();
+
+    $analyzer->shouldReceive('discoverMiddlewareClass')->andReturn(StarterKitArrayMergeMiddleware::class);
+    $analyzer->shouldReceive('parseTsCastsFromMiddleware')->andReturn([
+        'overrides' => ['flash' => 'FlashData'],
+        'importPaths' => ['flash' => '@js/types/flash'],
+    ]);
+
+    $result = $analyzer->analyze();
+
+    expect($result['typeImports'])->toBe([
+        './workbench/app/models' => ['User'],
+        '@js/types/flash' => ['FlashData'],
+    ]);
+});
 
 test('an override drops the type import the displaced type kept alive', function () {
     // StarterKitArrayMergeMiddleware infers `auth: { user: User | null }`; overriding the key must

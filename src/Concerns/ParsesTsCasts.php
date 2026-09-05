@@ -62,4 +62,22 @@ trait ParsesTsCasts
             'optionalOverrides' => $unpacked['optionalOverrides'],
         ];
     }
+
+    /**
+     * Normalize TsCasts definitions into types, imports, and optional flags.
+     *
+     * @param  array<string, string|array{type: string, import?: string, optional?: bool}>  $types
+     * @return TsCastsResult
+     */
+    protected function normalizeTsCasts(array $types): array
+    {
+        /** @var TsCastsUnpacked $unpacked */
+        $unpacked = resolve(TsCastsReader::class)->unpack([new TsCasts($types)]);
+
+        return [
+            'overrides' => $unpacked['overrides'],
+            'importPaths' => $unpacked['importPaths'],
+            'optionalOverrides' => $unpacked['optionalOverrides'],
+        ];
+    }
 }

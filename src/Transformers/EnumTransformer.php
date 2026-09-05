@@ -41,8 +41,6 @@ class EnumTransformer extends CoreTransformer
 
     public protected(set) string $filePath;
 
-    public protected(set) string $namespacePath;
-
     public protected(set) bool $backed;
 
     /** @var ReflectionEnum<UnitEnum> */

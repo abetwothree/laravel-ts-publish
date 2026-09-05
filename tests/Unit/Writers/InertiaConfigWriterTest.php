@@ -19,7 +19,6 @@ test('renders inertia config with shared props type', function () {
     $content = $writer->write([
         'sharedPageProps' => '{ appName: string, userId: number }',
         'withAllErrors' => false,
-        'importStatements' => [],
         'typeImports' => [],
     ]);
 
@@ -35,7 +34,6 @@ test('renders errorValueType when withAllErrors is true', function () {
     $content = $writer->write([
         'sharedPageProps' => '{ flash: string }',
         'withAllErrors' => true,
-        'importStatements' => [],
         'typeImports' => [],
     ]);
 
@@ -51,7 +49,6 @@ test('does not include errorValueType when withAllErrors is false', function () 
     $content = $writer->write([
         'sharedPageProps' => '{ name: string }',
         'withAllErrors' => false,
-        'importStatements' => [],
         'typeImports' => [],
     ]);
 
@@ -69,7 +66,6 @@ test('writes file to disk when output_to_files is enabled with inertia output_pa
     $writer->write([
         'sharedPageProps' => '{ test: boolean }',
         'withAllErrors' => false,
-        'importStatements' => [],
         'typeImports' => [],
     ]);
 
@@ -91,7 +87,6 @@ test('falls back to routes output_path when inertia output_path is null', functi
     $writer->write([
         'sharedPageProps' => '{ fallback: string }',
         'withAllErrors' => false,
-        'importStatements' => [],
         'typeImports' => [],
     ]);
 
@@ -111,7 +106,6 @@ test('falls back to output_directory when both inertia and routes output_path ar
     $writer->write([
         'sharedPageProps' => '{ default: number }',
         'withAllErrors' => false,
-        'importStatements' => [],
         'typeImports' => [],
     ]);
 
@@ -129,26 +123,24 @@ test('does not write file when output_to_files is disabled', function () {
     $writer->write([
         'sharedPageProps' => '{ nowrite: string }',
         'withAllErrors' => false,
-        'importStatements' => [],
         'typeImports' => [],
     ]);
 
     expect(file_exists("{$outputDir}/inertia-config.d.ts"))->toBeFalse();
 });
 
-// ─── write() import statements ───────────────────────────────────
+// ─── write() type imports ────────────────────────────────────────
 
-test('renders import statements before module declaration', function () {
+test('renders type imports before module declaration', function () {
     $writer = resolve(InertiaConfigWriter::class);
 
     $content = $writer->write([
         'sharedPageProps' => '{ auth: AuthData, flash: FlashData }',
         'withAllErrors' => false,
-        'importStatements' => [
-            "import type { AuthData } from '@js/types/auth';",
-            "import type { FlashData } from '@js/types/flash';",
+        'typeImports' => [
+            '@js/types/auth' => ['AuthData'],
+            '@js/types/flash' => ['FlashData'],
         ],
-        'typeImports' => [],
     ]);
 
     expect($content)
@@ -162,14 +154,16 @@ test('renders import statements before module declaration', function () {
     expect($importPos)->toBeLessThan($declarePos);
 });
 
-test('renders inferred type imports above the TsCasts import statements', function () {
+test('renders multiple type import paths above the declaration', function () {
     $writer = resolve(InertiaConfigWriter::class);
 
     $content = $writer->write([
         'sharedPageProps' => '{ auth: { user: User | null }, flash: FlashData }',
         'withAllErrors' => false,
-        'importStatements' => ["import type { FlashData } from '@js/types/flash';"],
-        'typeImports' => ['./app/models' => ['User']],
+        'typeImports' => [
+            './app/models' => ['User'],
+            '@js/types/flash' => ['FlashData'],
+        ],
     ]);
 
     expect($content)->toContain("import type { User } from './app/models';")
@@ -177,13 +171,12 @@ test('renders inferred type imports above the TsCasts import statements', functi
         ->and(strpos($content, 'import type { FlashData }'))->toBeLessThan(strpos($content, 'declare global'));
 });
 
-test('omits import block when importStatements is empty', function () {
+test('omits import block when typeImports is empty', function () {
     $writer = resolve(InertiaConfigWriter::class);
 
     $content = $writer->write([
         'sharedPageProps' => '{ appName: string }',
         'withAllErrors' => false,
-        'importStatements' => [],
         'typeImports' => [],
     ]);
 
@@ -200,7 +193,6 @@ test('renders declare global namespace Inertia SharedData block', function () {
     $content = $writer->write([
         'sharedPageProps' => '{ appName: string }',
         'withAllErrors' => false,
-        'importStatements' => [],
         'typeImports' => [],
     ]);
 
@@ -216,7 +208,6 @@ test('renders export {} at end to make file an ES module', function () {
     $content = $writer->write([
         'sharedPageProps' => '{ appName: string }',
         'withAllErrors' => false,
-        'importStatements' => [],
         'typeImports' => [],
     ]);
 
@@ -231,7 +222,6 @@ test('SharedData type in declare global matches sharedPageProps in declare modul
     $content = $writer->write([
         'sharedPageProps' => $sharedType,
         'withAllErrors' => false,
-        'importStatements' => [],
         'typeImports' => [],
     ]);
 
@@ -244,7 +234,6 @@ test('declare global block appears before declare module block', function () {
     $content = $writer->write([
         'sharedPageProps' => '{ appName: string }',
         'withAllErrors' => false,
-        'importStatements' => [],
         'typeImports' => [],
     ]);
 
