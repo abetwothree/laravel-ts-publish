@@ -134,12 +134,12 @@ test('a union of direct enums keeps both imports, which the engine keys by FQCN'
         ->and($analysis->typeImports)->toBe(['../enums' => ['RoleType', 'StatusType']]);
 });
 
-test('a trait-supplied provide() keeps its declared sources while body inference degrades', function () {
+test('a trait-supplied provide() in its own file infers its body and keeps its declared sources', function () {
     $analysis = analyzeMetadataTypesFor(TraitModelMetadataProvider::class, ['label', 'table', 'flag']);
 
-    expect($analysis->types)->toBe(['label' => 'string', 'flag' => 'boolean'])
-        ->and($analysis->sources)->toBe(['label' => 'docblock', 'flag' => 'casts'])
-        ->and($analysis->undeclaredKeys(['label', 'table', 'flag']))->toBe(['table']);
+    expect($analysis->types)->toBe(['table' => 'string', 'label' => 'string', 'flag' => 'boolean'])
+        ->and($analysis->sources)->toBe(['table' => 'inferred', 'label' => 'docblock', 'flag' => 'casts'])
+        ->and($analysis->undeclaredKeys(['label', 'table', 'flag']))->toBe([]);
 });
 
 test('the default provider still infers its cast morph class', function () {

@@ -22,6 +22,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\ExpressionDispatcher;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ThisPropertyHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
@@ -96,6 +97,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
      * @param  class-string<Model>|null  $modelClass
      * @param  list<ExpressionHandler>|null  $handlerProfile  overrides the resource profile
      * @param  AnalysisScope|null  $scope  a scope already seeded by AstEngine::bindingsFor(), used as-is
+     * @param  MethodContext|null  $context  a context already located for $methodName, used instead of locating one
      */
     public function __construct(
         protected ReflectionClass $resourceReflection,
@@ -103,6 +105,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         protected string $methodName = 'toArray',
         protected ?array $handlerProfile = null,
         ?AnalysisScope $scope = null,
+        protected ?MethodContext $context = null,
     ) {
         $this->scope = $scope ?? new AnalysisScope(
             self::genericReflection($this->resourceReflection->getName()),
@@ -169,7 +172,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
             DependencyRecorder::recordClass($this->scope->modelClass);
         }
 
-        $context = resolve(MethodLocator::class)->locateOwn($this->scope->subjectReflection->getName(), $this->methodName);
+        $context = $this->context
+            ?? resolve(MethodLocator::class)->locateOwn($this->scope->subjectReflection->getName(), $this->methodName);
         $toArrayMethod = $context?->method;
 
         if ($toArrayMethod === null || $toArrayMethod->stmts === null) {

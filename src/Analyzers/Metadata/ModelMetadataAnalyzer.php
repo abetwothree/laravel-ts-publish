@@ -194,7 +194,7 @@ class ModelMetadataAnalyzer
     {
         /** @var class-string $declaringClass */
         $declaringClass = $method->getDeclaringClass()->getName();
-        $context = resolve(MethodLocator::class)->locateOwn($declaringClass, $method->getName());
+        $context = resolve(MethodLocator::class)->locate($declaringClass, $method->getName());
 
         if ($context === null) {
             return resolve(AstEngine::class)->analyzeMethod($declaringClass, $method->getName());
@@ -202,7 +202,7 @@ class ModelMetadataAnalyzer
 
         $scope = resolve(AstEngine::class)->bindingsFor($context);
 
-        return new ResourceAstAnalyzer($context->reflection, null, $method->getName(), null, $scope)->analyze();
+        return new ResourceAstAnalyzer($context->reflection, null, $method->getName(), null, $scope, $context)->analyze();
     }
 
     /**
