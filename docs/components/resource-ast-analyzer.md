@@ -232,7 +232,7 @@ FQCNs (from ternary/union branches), and self-keyed FQCN entries (from embedded 
 relation filters). All three consumers live inside `ResourceTransformer::rewriteEnumResourceTypes()`:
 the `$isMixed` check is key-sensitive, testing whether a property name is a key in the map, while
 the other two — both import-garbage-collection loops — compare values only and work correctly for
-both entry kinds. `substituteEnumResourceType()` never reads this map at all.
+both entry kinds. The shared `LaravelTsPublish::substituteEnumType()` never reads this map at all.
 
 `InlineArrayHandler::analyzeInlineArray()` runs the identical `$isMixed` check for a *nested* key, against its own
 method-local `ResourceAnalysis` rather than `ResourceTransformer`'s instance maps — see
@@ -245,12 +245,13 @@ analyzer's own type string, in which the enum appears as its bare TS type name (
 `TypeScriptTypeInfo::$enumTypes[0]`, i.e. the `#[TsEnum]` name or the class basename, suffixed
 `Type`). With `enums.use_tolki_package` on, **both** rewrite paths turn that into
 `AsEnum<typeof Role>` by *substituting the bare token in place*, for the ordinary (non-mixed) case:
-`ResourceTransformer::substituteEnumResourceType()` for a top-level property, and
-`InlineArrayHandler::substituteEnumType()` for one nested inside an inline array literal.
-Both use the same word-boundary pattern — the lookbehind excludes `.` so a namespace-qualified
-`foo.RoleType` is left alone, the lookahead stops `RoleType` matching the prefix of
-`RoleTypeExtra`. A nested key whose ternary is *mixed* — wrapped in one arm, read directly in the
-other — instead goes through `InlineArrayHandler::expandMixedEnumType()`; see the next section.
+`ResourceTransformer::rewriteEnumResourceTypes()` for a top-level property, and
+`InlineArrayHandler::analyzeInlineArray()` for one nested inside an inline array literal. Both call
+the one shared `LaravelTsPublish::substituteEnumType()`, whose strict token pattern excludes `.` from
+its lookbehind so a namespace-qualified `foo.RoleType` is left alone, and whose lookahead stops
+`RoleType` matching the prefix of `RoleTypeExtra`. A nested key whose ternary is *mixed* — wrapped in
+one arm, read directly in the other — instead goes through
+`InlineArrayHandler::expandMixedEnumType()`; see the next section.
 
 Substitution matters because the analyzer's type is often richer than `X`/`X[]`, and the corpus
 pins two such shapes:
@@ -278,7 +279,7 @@ every arm that names the enum and leaving the rest of the union untouched.
 
 Both substitution paths above embed the enum's **bare** const name (`Role`, not whatever alias it
 may need) into `AsEnum<typeof {const}>`, because neither one can do otherwise:
-`InlineArrayHandler::substituteEnumType()` runs during analysis (`runAstAnalysis()`, step 6 of
+`InlineArrayHandler`'s `substituteEnumType()` call runs during analysis (`runAstAnalysis()`, step 6 of
 `ResourceTransformer::transform()`), before `resolveImportConflicts()` (step 10) has computed any
 alias at all. For a top-level property this is invisible: `rewriteEnumResourceTypes()` reads
 `$constImportAliases` itself and builds the *already-aliased* string directly
@@ -354,8 +355,9 @@ Two shapes reach this code, and the merged type string carries different informa
   what tells it the arms are already distinguishable, so it does not additionally spell out the
   wrapped arm the way the homogeneous case needs. `EnumCollectionResource::$wrapped_status_fallback`
   pins it: `{ status: AsEnum<typeof Status>[] | StatusType }`. Before this fix, the same blanket
-  `substituteEnumType()` call used for the homogeneous case matched *both* members (the word-boundary
-  regex does not stop at `[`), wrongly producing `AsEnum<typeof Status>[] | AsEnum<typeof Status>`.
+  `substituteEnumType()` call used for the homogeneous case matched *both* members (the token
+  pattern's lookahead does not stop at `[`), wrongly producing
+  `AsEnum<typeof Status>[] | AsEnum<typeof Status>`.
 
 This once deliberately did **not** mirror `rewriteEnumResourceTypes()`'s `isCollection`
 reconstruction, which wrapped the *entire* mixed union in `()[]`

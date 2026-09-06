@@ -2516,7 +2516,8 @@ describe('typeNameOccursIn', function () {
             ->and($s->typeNameOccursIn('StatusType', '{ a: StatusType[] }'))->toBeTrue()
             ->and($s->typeNameOccursIn('StatusType', 'foo.StatusType'))->toBeFalse()
             ->and($s->typeNameOccursIn('StatusType', '$StatusType'))->toBeFalse()
-            ->and($s->typeNameOccursIn('StatusType', 'CrmStatusType'))->toBeFalse();
+            ->and($s->typeNameOccursIn('StatusType', 'CrmStatusType'))->toBeFalse()
+            ->and($s->typeNameOccursIn('StatusType', 'StatusTypeExtra'))->toBeFalse();
     });
 });
 
