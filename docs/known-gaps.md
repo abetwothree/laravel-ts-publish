@@ -264,6 +264,32 @@ succeed by accident.
 
 Override the pair together. `tests/Fixtures/PrefixedModelMetadataTransformer.php` is the worked example.
 
+### A trait-supplied `provide()` in its own file contributes no inferred types
+
+`MethodLocator::findIn()` declines when the method's declaring file is not the class's own file, before it
+parses anything. A trait method's declaring file is the *trait's*, so a trait living in its own file — the
+ordinary way to ship one — always declines. `ModelMetadataAnalyzer::analyzeBody()` then falls back to
+`AstEngine::analyzeMethod()`, which seeds no `$model` binding.
+
+The consequence is wider than `$model` calls: that fallback contributes **no inferred types at all**. Every
+key needs a docblock or `#[TsCasts]`, including plain literals. `TraitModelMetadataProvider` pins it — its
+analysis is `['label' => 'docblock', 'flag' => 'casts']` with `table` undeclared, and `label` is a string
+literal typed only because the docblock names it.
+
+Only a *separate-file* trait degrades. A trait declared in the same file as the class using it binds and
+infers normally, so the shape is about file layout rather than traits as such.
+
+Closing it is a two-part change this package does not have today. `analyzeBody()` locates a `MethodContext`,
+uses it only for `bindingsFor()`, then discards the node; `ResourceAstAnalyzer::analyze()` re-runs
+`locateOwn()` for itself and misses again. It would need `ResourceAstAnalyzer` to accept a pre-located
+context, and `analyzeBody()` to switch from `locateOwn()` to `locate()`.
+
+Note that `docs/components/model-metadata.md` still explains this gap by the mechanism that preceded
+`MethodLocator`'s end-line matching — it says `locateOwn()` searches the using class's own file and finds no
+`provide()` node there. The outcome it describes is right for this shape, but the reasoning is not: the
+decline now happens from reflection alone. The old wording also predicts a *bind* when the using class's file
+happens to declare an unrelated `provide()`, which is exactly the case that used to bind to the wrong body.
+
 ## Deliberate non-goals
 
 Absent on purpose. Do not "fix" these without raising it first.
@@ -284,6 +310,22 @@ Absent on purpose. Do not "fix" these without raising it first.
   nothing in `src/` writes a `.php` file.
 
 ## Green signals that are narrower than they look
+
+### No metadata test exercises two `provide()` methods in one file
+
+`MethodLocator` itself is well covered: `MethodLocatorTest` asserts `locateOwn()` against two classes sharing
+a file, a method nested in an earlier anonymous class, and a trait method competing with an unrelated class
+declared before it.
+
+What nothing pins is the metadata phase's *dependence* on that disambiguation. No file in `src/`, `tests/` or
+`workbench/` declares two `function provide(`, so no metadata fixture reaches the path
+`ModelMetadataAnalyzer::analyzeBody()` actually relies on. That matters more than an ordinary coverage hole
+because of how this used to fail: before the end-line match, a provider sharing a file with an earlier
+same-named method had the *wrong body* analyzed, and the run published those types with `undeclaredKeys`
+empty — no exception, no gate signal, nothing to notice. A regression would be equally quiet.
+
+Closing it costs one fixture: a provider whose file declares a decoy `provide()` first, plus a case in
+`ModelMetadataAnalyzerTest` asserting the real body's types.
 
 ### Handler ordering is pinned pairwise, corpus-bounded
 
