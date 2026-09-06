@@ -36,6 +36,7 @@ export interface ImageDelegatedResource
     uploader_from_docblock: WorkbenchUser | null;
     config_from_docblock: MenuSettingsType;
     data_from_docblock: { recordedAt?: string; title: string; weight: number | null };
+    nested_optional_key_from_docblock: { inner: { assignedLater?: string; promoted: string }; label: string };
     uploaders_from_docblock: WorkbenchUser[] | Record<string, WorkbenchUser>;
     uploaders_from_docblock_int: WorkbenchUser[];
     uploaders_from_docblock_string: Record<string, WorkbenchUser>;

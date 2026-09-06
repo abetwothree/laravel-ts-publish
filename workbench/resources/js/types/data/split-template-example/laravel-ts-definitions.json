@@ -4836,6 +4836,10 @@
                     "type": "{ recordedAt?: string; title: string; weight: number | null }"
                 },
                 {
+                    "name": "nested_optional_key_from_docblock",
+                    "type": "{ inner: { assignedLater?: string; promoted: string }; label: string }"
+                },
+                {
                     "name": "uploaders_from_docblock",
                     "type": "ModelsUser[] | Record<string, ModelsUser>"
                 },
@@ -10423,6 +10427,11 @@
                 {
                     "name": "data_from_docblock",
                     "type": "{ recordedAt?: string; title: string; weight: number | null }",
+                    "optional": false
+                },
+                {
+                    "name": "nested_optional_key_from_docblock",
+                    "type": "{ inner: { assignedLater?: string; promoted: string }; label: string }",
                     "optional": false
                 },
                 {

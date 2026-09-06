@@ -379,6 +379,7 @@ declare global {
             uploader_from_docblock: User | null;
             config_from_docblock: MenuSettingsType;
             data_from_docblock: { recordedAt?: string; title: string; weight: number | null };
+            nested_optional_key_from_docblock: { inner: { assignedLater?: string; promoted: string }; label: string };
             uploaders_from_docblock: User[] | Record<string, User>;
             uploaders_from_docblock_int: User[];
             uploaders_from_docblock_string: Record<string, User>;
@@ -2470,6 +2471,7 @@ declare global {
             uploader_from_docblock: app.models.User | null;
             config_from_docblock: MenuSettingsType;
             data_from_docblock: { recordedAt?: string; title: string; weight: number | null };
+            nested_optional_key_from_docblock: { inner: { assignedLater?: string; promoted: string }; label: string };
             uploaders_from_docblock: app.models.User[] | Record<string, app.models.User>;
             uploaders_from_docblock_int: app.models.User[];
             uploaders_from_docblock_string: Record<string, app.models.User>;

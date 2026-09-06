@@ -41,6 +41,7 @@ export interface Image
     uploader_from_docblock: ModelsUser | null;
     config_from_docblock: MenuSettingsType;
     data_from_docblock: { recordedAt?: string; title: string; weight: number | null };
+    nested_optional_key_from_docblock: { inner: { assignedLater?: string; promoted: string }; label: string };
     uploaders_from_docblock: ModelsUser[] | Record<string, ModelsUser>;
     uploaders_from_docblock_int: ModelsUser[];
     uploaders_from_docblock_string: Record<string, ModelsUser>;
