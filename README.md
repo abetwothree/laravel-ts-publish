@@ -201,7 +201,7 @@ php artisan ts:publish --only-resources
 
 The flags cannot be combined. Passing two returns an error.
 
-There's also `--only-functional`, which publishes only runtime TypeScript output (enums, model metadata, routes, form requests, broadcast channels/events) while skipping model and resource interfaces. The [Vite plugin](https://tolki.abe.dev/ts/vite-plugin.html) appends it on `vite build`, since interfaces are erased at compile time anyway. Combined with another `--only-*` flag, it wins.
+There's also `--only-functional`, which skips model and resource interfaces and publishes every other enabled phase. The [Vite plugin](https://tolki.abe.dev/ts/vite-plugin.html) appends it on `vite build`, since those interfaces are erased at compile time anyway. Combined with another `--only-*` flag, it wins.
 
 Model interfaces and their metadata companions share one barrel, and every export in it belongs to exactly one of those two phases — the `_meta` suffix decides which. A phase that runs owns its exports outright, so a removed model's export is pruned. A phase that is enabled in config but skipped by an `--only-*` flag keeps its exports, while a phase disabled in config drops them. If a model's metadata provider throws, that model keeps its last-known-good companion export and the command exits non-zero.
 

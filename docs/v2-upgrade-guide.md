@@ -247,7 +247,7 @@ Additionally, if you were using the Vite plugin, update the package plugin impor
 import { laravelTsPublish } from "@tolki/ts/vite";
 ```
 
-Keep in mind that the Vite plugin from the `@tolki/enum` package calls the `ts:publish` command with the `--only-enums` option. The `@tolki/ts` Vite plugin calls the `ts:publish` command with the `--only-functional` option instead to publish enums and routes when building assets.
+Keep in mind that the Vite plugin from the `@tolki/enum` package calls the `ts:publish` command with the `--only-enums` option. The `@tolki/ts` Vite plugin calls the `ts:publish` command with the `--only-functional` option instead, which skips model and resource interfaces when building assets.
 
 Long term, this new `@tolki/ts` package will allow for further features related to other sections of Laravel to be added seamlessly.
 

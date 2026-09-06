@@ -55,7 +55,7 @@ class TsPublishCommand extends Command
         {--only-broadcast-channels : Only publish broadcast channel types (ignoring all other types)}
         {--only-broadcast-events : Only publish broadcast event types (ignoring all other types)}
         {--only-form-requests : Only publish form requests (ignoring all other types)}
-        {--only-functional : Only publish enabled functional content like enums, model metadata, and routes}
+        {--only-functional : Only publish enabled functional content, skipping model and resource interfaces}
         {--only-enums : Only publish enums (ignoring all other types)}
         {--only-model-metadata : Only publish model metadata (ignoring all other types)}
         {--only-models : Only publish model interfaces (ignoring all other types)}
@@ -87,7 +87,7 @@ class TsPublishCommand extends Command
 
         if ($onlyFunctional) {
             if (! $this->output->isQuiet()) {
-                info('The --only-functional flag is set. This will publish only functional content like enums, model metadata & routes. All other --only-* flags will be ignored.');
+                info('The --only-functional flag is set. This will publish only functional content, skipping model and resource interfaces. All other --only-* flags will be ignored.');
             }
 
             return self::SUCCESS;
@@ -293,7 +293,11 @@ class TsPublishCommand extends Command
         $onlyFunctional = (bool) $this->option('only-functional');
 
         // Publish-type registry in return-array order.
-        // 'functional' controls inclusion under --only-functional (models/resources are excluded).
+        // 'functional' controls inclusion under --only-functional (models/resources are excluded). It is a
+        // membership flag, not a claim about output shape: form requests emit types only. They stay in the
+        // set because a route's annotateRequestPayload<T>() import follows form_requests.enabled rather
+        // than this run's flag, so skipping the phase leaves that import pointing at a file no run wrote.
+        // Enums, routes, metadata and both broadcast index files are the ones that emit runtime values.
         /** @var array<string, array{config: string, option: string, label: string, functional: bool}> $types */
         $types = [
             'broadcast_channels' => ['config' => 'ts-publish.broadcast_channels.enabled', 'option' => 'only-broadcast-channels', 'label' => 'broadcast channels', 'functional' => true],
