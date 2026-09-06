@@ -61,9 +61,9 @@ hand-written constructor always assigns still renders `?:`, because a `readonly`
 a declaration default for static reflection to read — that `readonly` form is absent from the corpus.
 The same imprecision without `readonly` is present: `DeferredAssignmentDto::$assignedLater` and
 `DeclaredPropsEvent::$label` are assigned by every construction and still emit `?:`, which is what lets
-the former nest a `?:` inside a shape value for `NestedOptionalKeyDto`. It is deliberate there — the
-fixture needs an optional key — but it is the same heuristic, so a future fix to optionality has to
-expect those fixtures to move.
+the former nest a `?:` inside a shape value for `NestedOptionalKeyDto`. It is deliberate for the former
+— that fixture needs an optional key — but it is the same heuristic, so a future fix to optionality has
+to expect those fixtures to move.
 
 ### `#[TsCasts]` and the top-level spread flatten disagree by scope, in three separate ways
 
