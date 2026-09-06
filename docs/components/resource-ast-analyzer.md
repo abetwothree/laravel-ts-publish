@@ -390,11 +390,18 @@ dropping the direct arm entirely rather than under-suffixing it. `MethodAnalysis
 is already populated by the time `analyzeInlineArray()` reads `$analysis` — `TernaryHandler` does not
 distinguish top-level from nested — so `expandMixedEnumType()` now takes that per-arm shape and
 synthesizes `wrapped | direct` from the flags exactly as `rewriteEnumResourceTypes()` does, carrying
-over any member the two arms did not account for. `TeamStatusAuditResource::$audit` pins it:
+over any member the two arms did not account for — a nullable direct arm's `| null` reaches the
+emitted type only that way, where the top-level twin re-appends it from its own recorded
+`nullable` instead. `TeamStatusAuditResource::$audit` pins it:
 `{ status: AsEnum<typeof Status>[] | StatusType[] }`, with the direct arm's `StatusType` type import
 back alongside the wrapped arm's `Status` value import. The member-based reconstruction described in
-the two bullets above stays as the fallback for a mixed pair `TernaryHandler` declined to attribute
-(either arm itself ambiguously mixed), where no per-arm shape was recorded.
+the two bullets above stays as the fallback wherever no per-arm shape was recorded: a mixed pair
+`TernaryHandler` declined to attribute (either arm itself ambiguously mixed), and — the likelier one
+in real code — any mixed shape it never sees at all, such as a `??`, the same gap
+`rewriteEnumResourceTypes()` names at the top level. That fallback still substitutes the collapsed
+member outright, which is why `analyzeInlineArray()`'s occurrence filter has to drop the bare enum's
+import: the token it would name is no longer spelled in the emitted type, and this package's own
+`tsconfig.json` sets `noUnusedLocals`, so an unused import is a consumer build failure, not a wart.
 
 In the globals tree, `LaravelTsPublish::rewriteAsEnumToType()`'s pair pattern folds an *exact*
 `AsEnum<typeof Const> | EnumTypeName` adjacency — no `[]` anywhere in that span, neither between
