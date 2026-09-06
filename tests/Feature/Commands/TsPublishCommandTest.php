@@ -5,7 +5,6 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomBarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FailingModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InvalidModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\TypeScriptMap;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Broadcast;
 
@@ -479,11 +478,11 @@ test('a full publish drops barrel exports for models that no longer exist', func
         // Default config: models on, metadata off. Both stale exports must go.
         $this->artisan('ts:publish', ['--preview' => 'false'])->assertSuccessful();
 
-        expect(file_get_contents("$barrelDirectory/index.ts"))->toBe(<<<TypeScriptMap
+        expect(file_get_contents("$barrelDirectory/index.ts"))->toBe(<<<'TypeScriptMap'
 export * from './user';
 export * from './user_meta';
 TypeScriptMap
-);
+        );
     } finally {
         $filesystem->deleteDirectory($outputDir);
     }
