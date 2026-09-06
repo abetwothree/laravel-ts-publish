@@ -980,7 +980,7 @@ test('a page prop typed by an enum imports the #[TsEnum(name:)] type, not the ba
     $transformer = new RouteTransformer(InertiaShirtSizeController::class);
     $imported = collect($transformer->typeImports)->flatten()->all();
 
-    expect($imported)->toContain('SizeType')
-        ->and($imported)->not->toContain('ShirtSize')
-        ->and($imported)->not->toContain('ShirtSizeType');
+    // Exact, not toContain(): the page imports one type, so a wrong name shows up in the failure
+    // message instead of being masked by a short-circuited ->and() chain.
+    expect($imported)->toBe(['SizeType']);
 });
