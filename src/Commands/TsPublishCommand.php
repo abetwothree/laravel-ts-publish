@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
@@ -53,14 +54,15 @@ class TsPublishCommand extends Command
         {--fresh : Ignore and rebuild the generation cache from scratch (no-op with --source or --preview)}
         {--only-broadcast-channels : Only publish broadcast channel types (ignoring all other types)}
         {--only-broadcast-events : Only publish broadcast event types (ignoring all other types)}
-        {--only-form-requests : Only publish form requests (ignoring enums, models, resources, and routes)}
-        {--only-functional : Only publish enabled functional content like routes & enums}
-        {--only-enums : Only publish enums (ignoring models, resources, and routes)}
-        {--only-models : Only publish models (ignoring enums, resources, and routes)}
-        {--only-resources : Only publish resources (ignoring enums, models, and routes)}
-        {--only-routes : Only publish routes (ignoring enums, models, and resources)}';
+        {--only-form-requests : Only publish form requests (ignoring all other types)}
+        {--only-functional : Only publish enabled functional content like enums, model metadata, and routes}
+        {--only-enums : Only publish enums (ignoring all other types)}
+        {--only-model-metadata : Only publish model metadata (ignoring all other types)}
+        {--only-models : Only publish model interfaces (ignoring all other types)}
+        {--only-resources : Only publish resources (ignoring all other types)}
+        {--only-routes : Only publish routes (ignoring all other types)}';
 
-    protected $description = 'Publish TypeScript files from enums, models, resources, routes, form requests, broadcast channels, and broadcast events';
+    protected $description = 'Publish TypeScript files from enums, models, model metadata, resources, routes, form requests, broadcast channels, and broadcast events';
 
     public function handle(): int
     {
@@ -85,7 +87,7 @@ class TsPublishCommand extends Command
 
         if ($onlyFunctional) {
             if (! $this->output->isQuiet()) {
-                info('The --only-functional flag is set. This will publish only functional content like enums & routes. All other --only-* flags will be ignored.');
+                info('The --only-functional flag is set. This will publish only functional content like enums, model metadata & routes. All other --only-* flags will be ignored.');
             }
 
             return self::SUCCESS;
@@ -95,11 +97,12 @@ class TsPublishCommand extends Command
         $onlyBroadcastEvents = (bool) $this->option('only-broadcast-events');
         $onlyEnums = (bool) $this->option('only-enums');
         $onlyFormRequests = (bool) $this->option('only-form-requests');
+        $onlyModelMetadata = (bool) $this->option('only-model-metadata');
         $onlyModels = (bool) $this->option('only-models');
         $onlyResources = (bool) $this->option('only-resources');
         $onlyRoutes = (bool) $this->option('only-routes');
 
-        $onlyCount = (int) $onlyEnums + (int) $onlyModels + (int) $onlyResources + (int) $onlyRoutes + (int) $onlyFormRequests + (int) $onlyBroadcastChannels + (int) $onlyBroadcastEvents;
+        $onlyCount = (int) $onlyEnums + (int) $onlyModels + (int) $onlyModelMetadata + (int) $onlyResources + (int) $onlyRoutes + (int) $onlyFormRequests + (int) $onlyBroadcastChannels + (int) $onlyBroadcastEvents;
 
         if ($onlyCount > 1) {
             $this->reportError('Cannot use multiple --only-* options together. Please specify only one or none of these options.');
@@ -179,6 +182,7 @@ class TsPublishCommand extends Command
         [
             $runner->shouldPublishEnums,
             $runner->shouldPublishModels,
+            $runner->shouldPublishModelMetadata,
             $runner->shouldPublishResources,
             $runner->shouldPublishRoutes,
             $runner->shouldPublishFormRequests,
@@ -213,7 +217,17 @@ class TsPublishCommand extends Command
             } else {
                 $this->createPublishedFilesList($runner);
             }
+        }
 
+        if ($runner->modelMetadataFailures !== []) {
+            foreach ($runner->modelMetadataFailures as $failure) {
+                $this->reportError("{$failure['subject']}: {$failure['message']}");
+            }
+
+            return self::FAILURE;
+        }
+
+        if (! $this->output->isQuiet()) {
             outro('All done');
         }
 
@@ -242,6 +256,7 @@ class TsPublishCommand extends Command
             [
                 $runner->shouldPublishEnums,
                 $runner->shouldPublishModels,
+                $runner->shouldPublishModelMetadata,
                 $runner->shouldPublishResources,
                 $runner->shouldPublishRoutes,
                 $runner->shouldPublishFormRequests,
@@ -271,7 +286,7 @@ class TsPublishCommand extends Command
     /**
      * Resolve the final publish flags from config values and command options.
      *
-     * @return array{0: bool, 1: bool, 2: bool, 3: bool, 4: bool, 5: bool, 6: bool}|null [shouldPublishEnums, shouldPublishModels, shouldPublishResources, shouldPublishRoutes, shouldPublishFormRequests, shouldPublishBroadcastChannels, shouldPublishBroadcastEvents] or null to abort
+     * @return array{0: bool, 1: bool, 2: bool, 3: bool, 4: bool, 5: bool, 6: bool, 7: bool}|null [shouldPublishEnums, shouldPublishModels, shouldPublishModelMetadata, shouldPublishResources, shouldPublishRoutes, shouldPublishFormRequests, shouldPublishBroadcastChannels, shouldPublishBroadcastEvents] or null to abort
      */
     protected function resolvePublishFlags(): ?array
     {
@@ -286,6 +301,7 @@ class TsPublishCommand extends Command
             'form_requests' => ['config' => 'ts-publish.form_requests.enabled', 'option' => 'only-form-requests', 'label' => 'form requests', 'functional' => true],
             'enums' => ['config' => 'ts-publish.enums.enabled', 'option' => 'only-enums', 'label' => 'enums', 'functional' => true],
             'models' => ['config' => 'ts-publish.models.enabled', 'option' => 'only-models', 'label' => 'models', 'functional' => false],
+            'model_metadata' => ['config' => 'ts-publish.model_metadata.enabled', 'option' => 'only-model-metadata', 'label' => 'model metadata', 'functional' => true],
             'resources' => ['config' => 'ts-publish.resources.enabled', 'option' => 'only-resources', 'label' => 'resources', 'functional' => false],
             'routes' => ['config' => 'ts-publish.routes.enabled', 'option' => 'only-routes', 'label' => 'routes', 'functional' => true],
         ];
@@ -296,7 +312,7 @@ class TsPublishCommand extends Command
         foreach ($types as $key => $type) {
             $flags[$key] = ($onlyFunctional && ! $type['functional'])
                 ? false
-                : Config::boolean($type['config']);
+                : Config::boolean($type['config'], false);
         }
 
         if ($onlyFunctional) {
@@ -308,7 +324,7 @@ class TsPublishCommand extends Command
                 return null;
             }
 
-            return [$flags['enums'], $flags['models'], $flags['resources'], $flags['routes'], $flags['form_requests'], $flags['broadcast_channels'], $flags['broadcast_events']];
+            return [$flags['enums'], $flags['models'], $flags['model_metadata'], $flags['resources'], $flags['routes'], $flags['form_requests'], $flags['broadcast_channels'], $flags['broadcast_events']];
         }
 
         // validateOnlyOptions() already guaranteed at most one --only-* flag is set.
@@ -328,7 +344,7 @@ class TsPublishCommand extends Command
                 $flags[$k] = false;
             }
 
-            if (Config::boolean($activeType['config'])) {
+            if (Config::boolean($activeType['config'], false)) {
                 $flags[$onlyKey] = true;
             } else {
                 $flags[$onlyKey] = $this->promptConfigOverride($activeType['label']);
@@ -341,13 +357,13 @@ class TsPublishCommand extends Command
 
         if (! in_array(true, $flags, true)) {
             if (! $this->output->isQuiet()) {
-                warning('Enums, models, resources, routes, form requests, broadcast channels, and broadcast events are all disabled in config. Nothing to publish.');
+                warning('Enums, models, model metadata, resources, routes, form requests, broadcast channels, and broadcast events are all disabled in config. Nothing to publish.');
             }
 
             return null;
         }
 
-        return [$flags['enums'], $flags['models'], $flags['resources'], $flags['routes'], $flags['form_requests'], $flags['broadcast_channels'], $flags['broadcast_events']];
+        return [$flags['enums'], $flags['models'], $flags['model_metadata'], $flags['resources'], $flags['routes'], $flags['form_requests'], $flags['broadcast_channels'], $flags['broadcast_events']];
     }
 
     protected function promptConfigOverride(string $type): bool
@@ -387,6 +403,16 @@ class TsPublishCommand extends Command
             $this->newLine();
             $this->comment('Models:');
             foreach ($runner->modelGenerators as $generator) {
+                $this->newLine();
+                $this->comment("  {$generator->filename()}.ts");
+                $this->line($generator->content);
+            }
+        }
+
+        if (count($runner->modelMetadataGenerators) > 0) {
+            $this->newLine();
+            $this->comment('Model Metadata:');
+            foreach ($runner->modelMetadataGenerators as $generator) {
                 $this->newLine();
                 $this->comment("  {$generator->filename()}.ts");
                 $this->line($generator->content);
@@ -527,6 +553,8 @@ class TsPublishCommand extends Command
             $this->comment("  {$filename}");
             $this->line($runner->broadcastEventsEchoContent);
         }
+
+        $this->renderAnalysisWarnings();
     }
 
     protected function createPublishedFilesList(Runner|RunnerForSource $runner): void
@@ -557,6 +585,7 @@ class TsPublishCommand extends Command
         return array_filter([
             'enum' => $runner->enumGenerators->count(),
             'model' => $runner->modelGenerators->count(),
+            'model metadata' => $runner->modelMetadataGenerators->count(),
             'resource' => $runner->resourceGenerators->count(),
             'route controller' => $runner->routeGenerators->count(),
             'form request' => $runner->formRequestGenerators->count(),
@@ -669,6 +698,22 @@ class TsPublishCommand extends Command
             table(
                 headers: ['Model', 'File', 'Columns', 'Mutators', 'Relations'],
                 rows: $modelRows,
+            );
+        }
+
+        if (count($runner->modelMetadataGenerators) > 0) {
+            note('Model Metadata');
+
+            /** @var array<int, array<int, string>> $metadataRows */
+            $metadataRows = $runner->modelMetadataGenerators->map(fn (ModelMetadataGenerator $g) => [
+                $g->transformer->modelName,
+                $g->filename().'.ts',
+                (string) count($g->transformer->properties),
+            ])->toArray();
+
+            table(
+                headers: ['Model', 'File', 'Properties'],
+                rows: $metadataRows,
             );
         }
 

@@ -168,9 +168,11 @@ class GenerationManifest
 
     /**
      * Build the repository key for a class entry.
+     *
+     * Hashed because the key carries two FQCNs and store backends cap key length.
      */
     protected static function entryKey(string $fqcn): string
     {
-        return 'class:'.$fqcn;
+        return 'class:'.hash('xxh128', $fqcn);
     }
 }

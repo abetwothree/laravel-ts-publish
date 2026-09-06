@@ -41,8 +41,6 @@ class EnumTransformer extends CoreTransformer
 
     public protected(set) string $filePath;
 
-    public protected(set) string $namespacePath;
-
     public protected(set) bool $backed;
 
     /** @var ReflectionEnum<UnitEnum> */
@@ -186,7 +184,7 @@ class EnumTransformer extends CoreTransformer
 
             $override = $this->tsTypeOverrides[$caseName] ?? [];
 
-            $value = $caseValue instanceof BackedEnum ? $caseValue->value : $caseName;
+            $value = LaravelTsPublish::enumScalar($caseValue);
 
             $description = $override['description'] ?? '';
 

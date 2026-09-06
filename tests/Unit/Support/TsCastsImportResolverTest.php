@@ -16,10 +16,11 @@ describe('resolve', function () {
         expect($result['overrides'])->toBe([
             'auth' => 'AuthData',
             'appName' => 'string',
-        ])->and($result['importStatements'])->toBe([]);
+        ])->and($result['typeImports'])->toBe([])
+            ->and($result)->not->toHaveKey('importStatements');
     });
 
-    test('builds a single import statement for one imported type', function () {
+    test('collects one imported type under its path', function () {
         $resolver = new TsCastsImportResolver;
 
         $result = $resolver->resolve([
@@ -32,8 +33,8 @@ describe('resolve', function () {
         expect($result['overrides'])->toBe([
             'auth' => 'AuthData',
             'appName' => 'string',
-        ])->and($result['importStatements'])->toBe([
-            "import type { AuthData } from '@js/types/auth';",
+        ])->and($result['typeImports'])->toBe([
+            '@js/types/auth' => ['AuthData'],
         ]);
     });
 
@@ -53,8 +54,8 @@ describe('resolve', function () {
             'auth' => 'SharedData',
             'flash' => 'SharedData',
             'appName' => 'string',
-        ])->and($result['importStatements'])->toBe([
-            "import type { SharedData } from '@js/types/shared';",
+        ])->and($result['typeImports'])->toBe([
+            '@js/types/shared' => ['SharedData'],
         ]);
     });
 
@@ -72,9 +73,9 @@ describe('resolve', function () {
         expect($result['overrides'])->toBe([
             'auth' => 'AuthSharedData',
             'flash' => 'FlashSharedData',
-        ])->and($result['importStatements'])->toBe([
-            "import type { SharedData as AuthSharedData } from '@js/types/auth';",
-            "import type { SharedData as FlashSharedData } from '@js/types/flash';",
+        ])->and($result['typeImports'])->toBe([
+            '@js/types/auth' => ['SharedData as AuthSharedData'],
+            '@js/types/flash' => ['SharedData as FlashSharedData'],
         ]);
     });
 
@@ -95,10 +96,10 @@ describe('resolve', function () {
             'auth' => 'AuthSharedData',
             'flash' => 'FlashSharedData',
             'meta' => 'MetaSharedData',
-        ])->and($result['importStatements'])->toBe([
-            "import type { SharedData as AuthSharedData } from '@js/types/auth';",
-            "import type { SharedData as FlashSharedData } from '@js/types/flash';",
-            "import type { SharedData as MetaSharedData } from '@js/types/meta';",
+        ])->and($result['typeImports'])->toBe([
+            '@js/types/auth' => ['SharedData as AuthSharedData'],
+            '@js/types/flash' => ['SharedData as FlashSharedData'],
+            '@js/types/meta' => ['SharedData as MetaSharedData'],
         ]);
     });
 
@@ -113,7 +114,7 @@ describe('resolve', function () {
 
         expect($result['overrides'])->toBe([
             'appName' => 'string',
-        ])->and($result['importStatements'])->toBe([]);
+        ])->and($result['typeImports'])->toBe([]);
     });
 
     test('uses more path segments when conflicting types share the same basename', function () {
@@ -130,9 +131,9 @@ describe('resolve', function () {
         expect($result['overrides'])->toBe([
             'user' => 'ModelsUserUserType',
             'profile' => 'TypesUserUserType',
-        ])->and($result['importStatements'])->toBe([
-            "import type { UserType as ModelsUserUserType } from '@types/models/user';",
-            "import type { UserType as TypesUserUserType } from '@js/types/user';",
+        ])->and($result['typeImports'])->toBe([
+            '@js/types/user' => ['UserType as TypesUserUserType'],
+            '@types/models/user' => ['UserType as ModelsUserUserType'],
         ]);
     });
 
@@ -150,9 +151,9 @@ describe('resolve', function () {
         expect($result['overrides'])->toBe([
             'auth' => 'AuthSharedData',
             'flash' => 'FlashSharedData',
-        ])->and($result['importStatements'])->toBe([
-            "import type { SharedData as AuthSharedData } from '@types/auth.d.ts';",
-            "import type { SharedData as FlashSharedData } from '@types/flash.d.ts';",
+        ])->and($result['typeImports'])->toBe([
+            '@types/auth.d.ts' => ['SharedData as AuthSharedData'],
+            '@types/flash.d.ts' => ['SharedData as FlashSharedData'],
         ]);
     });
 
@@ -172,9 +173,9 @@ describe('resolve', function () {
         expect($result['overrides'])->toBe([
             'primary' => 'TypesAuth1AuthData',
             'secondary' => 'TypesAuth2AuthData',
-        ])->and($result['importStatements'])->toBe([
-            "import type { AuthData as TypesAuth1AuthData } from '@types/auth.ts';",
-            "import type { AuthData as TypesAuth2AuthData } from '@types/auth.d.ts';",
+        ])->and($result['typeImports'])->toBe([
+            '@types/auth.d.ts' => ['AuthData as TypesAuth2AuthData'],
+            '@types/auth.ts' => ['AuthData as TypesAuth1AuthData'],
         ]);
     });
 });

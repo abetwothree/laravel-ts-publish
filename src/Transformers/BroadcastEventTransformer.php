@@ -45,9 +45,6 @@ class BroadcastEventTransformer extends CoreTransformer
     /** Absolute path to the PHP source file. */
     public protected(set) string $filePath;
 
-    /** Namespace-based directory path, e.g. 'workbench/app/events'. */
-    public protected(set) string $namespacePath;
-
     /**
      * Payload property map: name → ['type' => 'number', 'optional' => false].
      *

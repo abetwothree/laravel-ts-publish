@@ -17,6 +17,9 @@ abstract class CoreCollector
 {
     use ValidatesCollectorFiles;
 
+    /** @var array<string, array<class-string, string>> Class maps by directory, for the life of the process. */
+    private static array $classMaps = [];
+
     abstract protected function defaultDirectory(): string;
 
     /** @param ReflectionClass<object> $reflection */
@@ -30,6 +33,14 @@ abstract class CoreCollector
      * }
      */
     abstract protected function finderSettings(): array;
+
+    /**
+     * Forget every memoized class map so a later run in the same process rescans the disk.
+     */
+    public static function flushClassMapCache(): void
+    {
+        self::$classMaps = [];
+    }
 
     /** @return Collection<int, class-string<TFindable>> */
     public function collect(): Collection
@@ -58,7 +69,7 @@ abstract class CoreCollector
             ->merge($includedDirs)
             ->when(is_dir($defaultDir), fn (Collection $dirs) => $dirs->add($defaultDir))
             ->unique()
-            ->flatMap(ClassMapGenerator::createMap(...))
+            ->flatMap(self::classMap(...))
             ->sortKeys()
             ->flip()
             ->merge($additionalClasses) // @phpstan-ignore argument.type
@@ -86,6 +97,60 @@ abstract class CoreCollector
     }
 
     /**
+     * Determine whether an explicitly supplied class passes the configured include and exclude filters.
+     *
+     * @param  class-string  $class
+     */
+    public function allows(string $class): bool
+    {
+        $settings = $this->finderSettings();
+
+        return ! $this->matchesEntry($class, $settings['excluded'])
+            && ($settings['included'] === [] || $this->matchesEntry($class, $settings['included']));
+    }
+
+    /**
+     * Class map for one directory, scanned once per process.
+     *
+     * @return array<class-string, string>
+     */
+    private static function classMap(string $directory): array
+    {
+        $key = realpath($directory) ?: $directory;
+
+        return self::$classMaps[$key] ??= ClassMapGenerator::createMap($directory);
+    }
+
+    /**
+     * Determine whether a class matches configured class names or directories.
+     *
+     * @param  class-string  $class
+     * @param  list<string>  $entries
+     */
+    private function matchesEntry(string $class, array $entries): bool
+    {
+        $directories = [];
+
+        foreach ($entries as $entry) {
+            if ($entry === $class) {
+                return true;
+            }
+
+            if (is_dir($entry)) {
+                $directories[] = $entry;
+            }
+        }
+
+        foreach ($directories as $directory) {
+            if (array_key_exists($class, self::classMap($directory))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Resolve a mixed list of class names and directory paths into a flat list of class names.
      *
      * @param  list<string>  $entries
@@ -96,7 +161,7 @@ abstract class CoreCollector
         return collect($entries)
             ->flatMap(function (string $entry) {
                 if (is_dir($entry)) {
-                    return array_keys(ClassMapGenerator::createMap($entry));
+                    return array_keys(self::classMap($entry));
                 }
 
                 return [$entry];

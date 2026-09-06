@@ -40,8 +40,6 @@ class RouteTransformer extends CoreTransformer
 
     public protected(set) string $filePath;
 
-    public protected(set) string $namespacePath;
-
     public protected(set) ?string $description;
 
     /** @var list<RouteActionData> */

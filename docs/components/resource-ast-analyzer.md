@@ -752,7 +752,7 @@ type alone — instead of `string | number, required`. The fix was checked again
 ### Which arm each analysis path reads
 
 - **`whenNotNull()`** (`stripNull: true`) analyzes argument 0, then strips a top-level `| null` arm from its
-  type via `ConditionalMethodHandler::stripNullArm()`: the `! is_null($value)` guard on the success arm proves that arm unreachable,
+  type via `ValueResult::stripNullArm()`: the `! is_null($value)` guard on the success arm proves that arm unreachable,
   so `whenNotNull($this->description)` emits `?string`, not `?string | null`.
 - **`whenNull()`** (`stripNull: false`) forces argument 0's contribution to the literal string `'null'`
   instead of analyzing it — the success arm always returns `null` when the guard holds, so the value's own
@@ -764,9 +764,10 @@ type alone — instead of `string | number, required`. The fix was checked again
 braces, parens, angle brackets, and square brackets, and filters out a member equal to exactly `'null'`.
 Only a union member sitting at depth zero is ever removed — `(string | null)[]` and `{ a: string; b: number
 | null }` both keep their nested `| null` untouched, since neither nested `null` is a top-level member of
-the outer type. `ConditionalMethodHandler` and `CoalesceHandler` each carry their own copy of this helper —
-the former to strip `whenNotNull()`'s success arm, the latter to strip the left operand of `??`
-(not-yet-consolidated duplicates — see their docblocks). One consequence: a left operand of exactly `null`
+the outer type. `ConditionalMethodHandler` (stripping `whenNotNull()`'s success arm) and `CoalesceHandler`
+(stripping the left operand of `??`) both call `ValueResult::stripNullArm()`, its single home; the splitter
+underneath is `TsTypeShape::splitTopLevel()`, which `splitTopLevelUnion()` delegates to.
+One consequence: a left operand of exactly `null`
 (`null ?? $x`) strips to `'unknown'` and falls through to the right arm, since `null ?? $x` always
 evaluates to `$x`.
 
