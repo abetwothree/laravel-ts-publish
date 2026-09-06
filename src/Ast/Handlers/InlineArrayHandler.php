@@ -361,10 +361,10 @@ final class InlineArrayHandler implements ExpressionHandler
         // wrapped one) must not claim an import the transformer would then emit unused.
         $embeddedEnumFqcns = array_values(array_filter(
             $embeddedEnumFqcns,
-            fn (string $fqcn): bool => preg_match(
-                '/\b'.preg_quote(LaravelTsPublish::toTsType($fqcn)['type'], '/').'\b/',
+            fn (string $fqcn): bool => LaravelTsPublish::typeNameOccursIn(
+                LaravelTsPublish::toTsType($fqcn)['type'],
                 $result['type'],
-            ) === 1,
+            ),
         ));
 
         if ($embeddedEnumFqcns !== []) {

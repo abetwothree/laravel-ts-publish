@@ -439,7 +439,7 @@ class ResourceTransformer extends CoreTransformer
         $rendered = implode("\n", array_column($this->properties, 'type'));
 
         foreach ($this->enumFqcnMap as $fqcn => $typeName) {
-            if (preg_match('/\b'.preg_quote($typeName, '/').'\b/', $rendered) !== 1) {
+            if (! LaravelTsPublish::typeNameOccursIn($typeName, $rendered)) {
                 unset($this->enumFqcnMap[$fqcn]);
             }
         }

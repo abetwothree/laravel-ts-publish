@@ -140,10 +140,7 @@ class ModelMetadataAnalyzer
         foreach (new AnalysisImports()->build($analysis, $namespacePath)['typeImports'] as $path => $names) {
             $used = array_values(array_filter(
                 $names,
-                static fn (string $name): bool => preg_match(
-                    '/(?<![A-Za-z0-9_$.])'.preg_quote($name, '/').'(?![A-Za-z0-9_$])/',
-                    $spelled,
-                ) === 1,
+                static fn (string $name): bool => LaravelTsPublish::typeNameOccursIn($name, $spelled),
             ));
 
             if ($used !== []) {

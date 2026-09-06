@@ -2174,6 +2174,17 @@ class LaravelTsPublish
     }
 
     /**
+     * Whether a TypeScript type name occurs as its own token, not inside a longer identifier.
+     *
+     * Only a leading `.` disqualifies: `foo.StatusType` is a property read, while `StatusType.foo`
+     * reads a member of the type and so still names it.
+     */
+    public function typeNameOccursIn(string $typeName, string $haystack): bool
+    {
+        return preg_match('/(?<![A-Za-z0-9_$.])'.preg_quote($typeName, '/').'(?![A-Za-z0-9_$])/', $haystack) === 1;
+    }
+
+    /**
      * Replace a bare enum type-name token with its AsEnum wrap, preserving every other union arm.
      *
      * The lookbehind's `.` keeps a namespace-qualified `foo.RoleType` unmatched; the lookahead keeps

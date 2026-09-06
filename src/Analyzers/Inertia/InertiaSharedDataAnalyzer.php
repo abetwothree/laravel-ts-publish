@@ -220,10 +220,7 @@ class InertiaSharedDataAnalyzer
         foreach ($imports as $path => $names) {
             $used = array_values(array_filter(
                 $names,
-                fn (string $name): bool => preg_match(
-                    '/(?<![A-Za-z0-9_$.])'.preg_quote($name, '/').'(?![A-Za-z0-9_$])/',
-                    $propsType,
-                ) === 1,
+                fn (string $name): bool => LaravelTsPublish::typeNameOccursIn($name, $propsType),
             ));
 
             if ($used === []) {

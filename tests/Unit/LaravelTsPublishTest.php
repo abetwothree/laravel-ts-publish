@@ -2509,6 +2509,17 @@ describe('hoistNull', function () {
     ]);
 });
 
+describe('typeNameOccursIn', function () {
+    test('typeNameOccursIn() matches a bare type token and not a member access or a longer identifier', function () {
+        $s = $this->service;
+        expect($s->typeNameOccursIn('StatusType', 'StatusType | null'))->toBeTrue()
+            ->and($s->typeNameOccursIn('StatusType', '{ a: StatusType[] }'))->toBeTrue()
+            ->and($s->typeNameOccursIn('StatusType', 'foo.StatusType'))->toBeFalse()
+            ->and($s->typeNameOccursIn('StatusType', '$StatusType'))->toBeFalse()
+            ->and($s->typeNameOccursIn('StatusType', 'CrmStatusType'))->toBeFalse();
+    });
+});
+
 /**
  * A class annotated with #[TsType] for testing step 2 resolution.
  */

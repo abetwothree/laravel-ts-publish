@@ -475,7 +475,7 @@ class InertiaPageAnalyzer
     {
         $structural = (string) preg_replace('/\b(?:'.implode('|', self::UTILITY_TYPES).')</', '<', $pageType);
 
-        return preg_match('/(?<![A-Za-z0-9_$.])'.preg_quote($name, '/').'(?![A-Za-z0-9_$])/', $structural) === 1;
+        return LaravelTsPublish::typeNameOccursIn($name, $structural);
     }
 
     /**
