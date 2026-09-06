@@ -64,9 +64,14 @@ interactive config-override prompt all fall out of that one rule with no special
 prompt's inverse, where a phase runs while its config says disabled and so preserves nothing.
 
 The predicate resolves the **configured** `model_metadata.transformer_class`, not the base class. A custom
-transformer that redefines `FILENAME_SUFFIX` names its own companion files, so only it can say which exports
-the metadata phase owns; `tests/Fixtures/SuffixedModelMetadataTransformer.php` pins a run where ownership
-follows `user.meta` rather than `user_meta`.
+transformer names its own companion files, so only it can say which exports the metadata phase owns.
+`tests/Fixtures/SuffixedModelMetadataTransformer.php` pins a run where ownership follows `user.meta` rather
+than `user_meta` by redefining `FILENAME_SUFFIX`; `tests/Fixtures/PrefixedModelMetadataTransformer.php` pins one
+that overrides `filenameFor()` and `isMetadataFilename()` outright, which only agrees with the written files
+because `ModelMetadataTransformer::filename()` dispatches through `static::`.
+
+Those two methods must be overridden together — one names a companion, the other recognises one, and ownership
+holds only while they agree.
 
 Failed models are matched by filename, not by class: `preservedModelBarrelExports()` maps every entry in
 `Runner::$modelMetadataFailures` through `$transformerClass::filenameFor()` and approves those filenames

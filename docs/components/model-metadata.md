@@ -265,9 +265,16 @@ its suffix alone. That property is what lets [the barrel writer](barrel-writer.m
 `index.ts` between two phases. `workbench/app/Models/PostMeta.php` exists to pin the near-miss (`post-meta.ts`
 next to `post_meta.ts`).
 
-Both methods are `static::`-dispatched, so a `transformer_class` subclass that redefines `FILENAME_SUFFIX` owns
-both the filenames it writes and the barrel exports it claims. `Runner::preservedModelBarrelExports()` resolves
-the **configured** transformer class for exactly that reason.
+Both methods read `static::FILENAME_SUFFIX`, and `filename()` dispatches through `static::filenameFor()`, so a
+`transformer_class` subclass owns both the filenames it writes and the barrel exports it claims — whether it
+redefines the constant or overrides the methods. `Runner::preservedModelBarrelExports()` resolves the
+**configured** transformer class for exactly that reason.
+
+`filenameFor()` and `isMetadataFilename()` are an override **pair**: the first names a companion, the second
+decides whether a barrel export is one, and ownership only works while they agree. Redefining `FILENAME_SUFFIX`
+keeps them in step for free. Overriding one method and inheriting the other does not, and nothing enforces it —
+`Runner::validateModelMetadataTransformer()` checks only `is_a()`, which cannot see the relationship. See
+[known-gaps.md](../known-gaps.md).
 
 ## Failure semantics
 

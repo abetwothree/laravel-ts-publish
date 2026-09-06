@@ -120,7 +120,9 @@ class ModelMetadataTransformer extends CoreTransformer
     #[Override]
     public function filename(): string
     {
-        return self::filenameFor($this->findable);
+        // Dispatched on the runtime class so a transformer_class that overrides filenameFor() names the files
+        // it writes the same way Runner::preservedModelBarrelExports() asks which exports the phase owns.
+        return static::filenameFor($this->findable);
     }
 
     /**

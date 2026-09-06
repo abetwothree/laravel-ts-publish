@@ -183,6 +183,26 @@ export to the metadata phase. PSR-1 class names do not carry underscores, so thi
 guarded. The rule lives at `ModelMetadataTransformer::FILENAME_SUFFIX` in
 `src/Transformers/ModelMetadataTransformer.php`.
 
+### A `transformer_class` that overrides only one of the two filename methods orphans its companions
+
+`ModelMetadataTransformer::filenameFor()` names a companion and `isMetadataFilename()` decides whether a barrel
+export is one. Barrel ownership holds only while the two agree, and nothing enforces that they do:
+`Runner::validateModelMetadataTransformer()` checks `is_a()`, which cannot see a relationship between two static
+methods.
+
+Redefining `FILENAME_SUFFIX` keeps them in step for free, because both read it through `static::`. Overriding one
+method and inheriting the other does not. A subclass overriding only `filenameFor()` writes `meta.user.ts` while
+the inherited predicate still asks `str_ends_with($filename, '_meta')`, so on a run that skips the metadata phase
+the export is pruned from the barrel and the file is left orphaned on disk. Overriding only `isMetadataFilename()`
+fails symmetrically: the phase claims exports it never wrote.
+
+This is not a consequence of dispatching `filename()` through `static::` — a half-overridden pair was already
+broken before that, in the failed-model preservation path, where `$transformerClass::filenameFor()` produced a
+name that never matched the written file. `static::` makes both paths fail consistently rather than one of them
+succeed by accident.
+
+Override the pair together. `tests/Fixtures/PrefixedModelMetadataTransformer.php` is the worked example.
+
 ## Deliberate non-goals
 
 Absent on purpose. Do not "fix" these without raising it first.

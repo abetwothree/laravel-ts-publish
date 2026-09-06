@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FailingModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HeaderedBarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InvalidModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MarkedModelMetadataGenerator;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\PrefixedModelMetadataTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SingleModelMetadataCollector;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SuffixedModelMetadataTransformer;
 use Illuminate\Filesystem\Filesystem;
@@ -534,6 +535,38 @@ describe('Runner conditional publishing', function () {
             // Ownership follows the configured transformer's suffix, not the default one.
             expect($runner->modelModularBarrels['workbench/app/models'])
                 ->toBe("export * from './user';\nexport * from './user.meta';");
+        } finally {
+            $filesystem->deleteDirectory($outputDirectory);
+        }
+    });
+
+    test('a custom transformer_class names the companions it writes the way it claims them', function () {
+        $outputDirectory = sys_get_temp_dir().'/laravel-ts-publish-custom-prefix-'.uniqid();
+        $filesystem = new Filesystem;
+
+        config()->set('ts-publish.model_metadata.transformer_class', PrefixedModelMetadataTransformer::class);
+        config()->set('ts-publish.models.enabled', true);
+        config()->set('ts-publish.model_metadata.enabled', true);
+        config()->set('ts-publish.models.included', [User::class]);
+        config()->set('ts-publish.output_directory', $outputDirectory);
+        config()->set('ts-publish.output_to_files', true);
+
+        try {
+            $published = new Runner;
+            $published->run();
+
+            // The written companion carries the configured transformer's name, not the base suffix.
+            expect($published->modelModularBarrels['workbench/app/models'])
+                ->toBe("export * from './meta.user';\nexport * from './user';")
+                ->and($filesystem->exists("$outputDirectory/workbench/app/models/meta.user.ts"))->toBeTrue();
+
+            $runner = new Runner;
+            $runner->shouldPublishModelMetadata = false;
+            $runner->run();
+
+            // Ownership asks the same class, so the skipped phase recognizes what the published run wrote.
+            expect($runner->modelModularBarrels['workbench/app/models'])
+                ->toBe("export * from './meta.user';\nexport * from './user';");
         } finally {
             $filesystem->deleteDirectory($outputDirectory);
         }
