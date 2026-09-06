@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\OutputRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
+use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublishServiceProvider;
 use AbeTwoThree\LaravelTsPublish\RelationMap;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
@@ -61,6 +62,7 @@ class TestCase extends Orchestra
         OutputRecorder::reset();
         PublishedResourceRegistry::reset();
         AnalysisWarnings::reset();
+        CoreCollector::flushClassMapCache();
 
         Factory::guessFactoryNamesUsing(
             fn (string $modelName) => 'AbeTwoThree\\LaravelTsPublish\\Database\\Factories\\'.class_basename($modelName).'Factory'
@@ -120,6 +122,7 @@ class TestCase extends Orchestra
             'ts-publish.routes.enabled' => true,
             'ts-publish.form_requests.enabled' => true,
             'ts-publish.broadcast_channels.enabled' => true,
+            'ts-publish.model_metadata.enabled' => true,
             'ts-publish.models.additional_directories' => [
                 DatabaseNotification::class,
                 Invoice::class,

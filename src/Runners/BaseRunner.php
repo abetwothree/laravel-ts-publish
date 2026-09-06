@@ -27,6 +27,9 @@ use Illuminate\Support\Facades\Config;
 use Laravel\Prompts\Support\Logger;
 use Throwable;
 
+/**
+ * @phpstan-type ModelMetadataFailure = array{subject: string, message: string}
+ */
 abstract class BaseRunner
 {
     protected BarrelWriter $barrelWriter;
@@ -41,8 +44,6 @@ abstract class BaseRunner
     public bool $shouldPublishModels = true;
 
     public bool $shouldPublishModelMetadata = true;
-
-    public bool $shouldMergeModelBarrels = false;
 
     public bool $shouldPublishResources = true;
 
@@ -68,6 +69,9 @@ abstract class BaseRunner
 
     /** @var array<string, string> Barrel contents keyed by namespace path */
     public protected(set) array $modelModularBarrels = [];
+
+    /** @var list<ModelMetadataFailure> Models whose metadata threw; the command exits non-zero after publishing. */
+    public protected(set) array $modelMetadataFailures = [];
 
     /** @var Collection<int, ResourceGenerator> */
     public protected(set) Collection $resourceGenerators;

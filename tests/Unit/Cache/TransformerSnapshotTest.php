@@ -46,7 +46,7 @@ it('round-trips a model metadata transformer without transient transformation st
 
     $reflection = new ReflectionObject($restored);
 
-    foreach (['modelInstance', 'provider', 'metadata', 'metadataTypes'] as $property) {
+    foreach (['modelInstance', 'provider', 'metadata', 'analysis'] as $property) {
         expect($reflection->getProperty($property)->isInitialized($restored))->toBeFalse();
     }
 });

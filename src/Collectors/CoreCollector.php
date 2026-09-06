@@ -17,6 +17,9 @@ abstract class CoreCollector
 {
     use ValidatesCollectorFiles;
 
+    /** @var array<string, array<class-string, string>> Class maps by directory, for the life of the process. */
+    private static array $classMaps = [];
+
     abstract protected function defaultDirectory(): string;
 
     /** @param ReflectionClass<object> $reflection */
@@ -30,6 +33,14 @@ abstract class CoreCollector
      * }
      */
     abstract protected function finderSettings(): array;
+
+    /**
+     * Forget every memoized class map so a later run in the same process rescans the disk.
+     */
+    public static function flushClassMapCache(): void
+    {
+        self::$classMaps = [];
+    }
 
     /** @return Collection<int, class-string<TFindable>> */
     public function collect(): Collection
@@ -58,7 +69,7 @@ abstract class CoreCollector
             ->merge($includedDirs)
             ->when(is_dir($defaultDir), fn (Collection $dirs) => $dirs->add($defaultDir))
             ->unique()
-            ->flatMap(ClassMapGenerator::createMap(...))
+            ->flatMap(self::classMap(...))
             ->sortKeys()
             ->flip()
             ->merge($additionalClasses) // @phpstan-ignore argument.type
@@ -99,6 +110,18 @@ abstract class CoreCollector
     }
 
     /**
+     * Class map for one directory, scanned once per process.
+     *
+     * @return array<class-string, string>
+     */
+    private static function classMap(string $directory): array
+    {
+        $key = realpath($directory) ?: $directory;
+
+        return self::$classMaps[$key] ??= ClassMapGenerator::createMap($directory);
+    }
+
+    /**
      * Determine whether a class matches configured class names or directories.
      *
      * @param  class-string  $class
@@ -119,7 +142,7 @@ abstract class CoreCollector
         }
 
         foreach ($directories as $directory) {
-            if (array_key_exists($class, ClassMapGenerator::createMap($directory))) {
+            if (array_key_exists($class, self::classMap($directory))) {
                 return true;
             }
         }
@@ -138,7 +161,7 @@ abstract class CoreCollector
         return collect($entries)
             ->flatMap(function (string $entry) {
                 if (is_dir($entry)) {
-                    return array_keys(ClassMapGenerator::createMap($entry));
+                    return array_keys(self::classMap($entry));
                 }
 
                 return [$entry];

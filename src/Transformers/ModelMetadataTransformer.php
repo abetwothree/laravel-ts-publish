@@ -4,18 +4,17 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
-use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
+use AbeTwoThree\LaravelTsPublish\Analyzers\Metadata\ModelMetadataAnalysis;
+use AbeTwoThree\LaravelTsPublish\Analyzers\Metadata\ModelMetadataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
-use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsModelMetadataDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Metadata\Contracts\ModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Metadata\ModelMetadataProviderResolver;
 use AbeTwoThree\LaravelTsPublish\Support\TsCastsImportResolver;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
-use BackedEnum;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
@@ -23,35 +22,26 @@ use InvalidArgumentException;
 use JsonSerializable;
 use Override;
 use ReflectionClass;
-use ReflectionMethod;
-use Throwable;
+use stdClass;
 use UnitEnum;
 
 /**
  * @extends CoreTransformer<Model>
  *
  * @phpstan-import-type TypesImportMap from Datable
- * @phpstan-import-type TsCastsResult from ParsesTsCasts
  *
- * @phpstan-type NormalizedModelMetadataValue null|bool|int|float|string|array<array-key, mixed>
- * @phpstan-type ProviderDeclaredTypes array{
- *     overrides: array<string, string>,
- *     requiredKeys: array<string, true>,
- *     optionalKeys: array<string, true>,
- * }
- * @phpstan-type ModelMetadataTypes array{
- *     overrides: array<string, string>,
- *     importPaths: array<string, string>,
- *     requiredKeys: array<string, true>,
- *     inferredKeys: array<string, true>,
- * }
+ * @phpstan-type NormalizedModelMetadataValue null|bool|int|float|string|array<array-key, mixed>|stdClass
  */
 class ModelMetadataTransformer extends CoreTransformer
 {
-    use ParsesTsCasts;
     use SnapshotsTransformerState;
 
+    /** Kebab-cased model names carry no underscore, so only a companion filename ends in this suffix. */
+    public const string FILENAME_SUFFIX = '_meta';
+
     private const int MAX_METADATA_VALUE_DEPTH = 64;
+
+    private const int MAX_SAFE_INTEGER = 9_007_199_254_740_991;
 
     public protected(set) string $modelName;
 
@@ -71,8 +61,23 @@ class ModelMetadataTransformer extends CoreTransformer
     /** @var array<string, mixed> */
     protected array $metadata;
 
-    /** @var ModelMetadataTypes */
-    protected array $metadataTypes;
+    protected ModelMetadataAnalysis $analysis;
+
+    /**
+     * Companion filename for a model class, without its TypeScript extension.
+     */
+    public static function filenameFor(string $modelClass): string
+    {
+        return Str::kebab(class_basename($modelClass)).static::FILENAME_SUFFIX;
+    }
+
+    /**
+     * Whether a barrel export names a metadata companion rather than a model interface.
+     */
+    public static function isMetadataFilename(string $filename): bool
+    {
+        return str_ends_with($filename, static::FILENAME_SUFFIX);
+    }
 
     /**
      * Transform a model into runtime metadata.
@@ -88,7 +93,8 @@ class ModelMetadataTransformer extends CoreTransformer
             ->transformPropertyTypes()
             ->validateProperties()
             ->resolveImports()
-            ->transformProperties();
+            ->transformProperties()
+            ->coerceEmptyArrays();
 
         return $this;
     }
@@ -114,7 +120,9 @@ class ModelMetadataTransformer extends CoreTransformer
     #[Override]
     public function filename(): string
     {
-        return Str::kebab($this->modelName).'_meta';
+        // Dispatched on the runtime class so a transformer_class that overrides filenameFor() names the files
+        // it writes the same way Runner::preservedModelBarrelExports() asks which exports the phase owns.
+        return static::filenameFor($this->findable);
     }
 
     /**
@@ -155,21 +163,23 @@ class ModelMetadataTransformer extends CoreTransformer
     }
 
     /**
-     * Parse declared and overridden property types.
+     * Resolve declared, overridden, and body-inferred property types.
      */
     protected function transformPropertyTypes(): static
     {
-        $this->metadataTypes = $this->parseProviderTypes($this->provider);
+        $this->analysis = resolve(ModelMetadataAnalyzer::class)
+            ->analyze($this->provider::class, array_keys($this->metadata), $this->namespacePath);
 
         return $this;
     }
 
     /**
-     * Validate the payload keys against its declared property types.
+     * Validate the payload keys against the analysis.
      */
     protected function validateProperties(): static
     {
-        $undeclaredKeys = array_keys(array_diff_key($this->metadata, $this->metadataTypes['overrides']));
+        $payloadKeys = array_keys($this->metadata);
+        $undeclaredKeys = $this->analysis->undeclaredKeys($payloadKeys);
 
         if ($undeclaredKeys !== []) {
             throw new InvalidArgumentException(
@@ -178,21 +188,21 @@ class ModelMetadataTransformer extends CoreTransformer
             );
         }
 
-        $missingKeys = array_keys(array_diff_key($this->metadataTypes['requiredKeys'], $this->metadata));
+        $missingKeys = $this->analysis->missingKeys($payloadKeys);
 
         if ($missingKeys !== []) {
             throw new InvalidArgumentException(
-                "Model metadata for model [{$this->findable}] is missing required keys: ["
-                .implode(', ', $missingKeys).']',
+                "Model metadata for model [{$this->findable}] is missing required keys: [".implode(', ', $missingKeys).']',
             );
         }
 
-        foreach (array_intersect_key($this->metadataTypes['inferredKeys'], $this->metadata) as $property => $_) {
-            $type = $this->metadataTypes['overrides'][$property];
+        foreach ($this->analysis->importFreeKeys($payloadKeys) as $property) {
+            $type = $this->analysis->types[$property];
 
-            if (LaravelTsPublish::shapeValueHasUnimportableToken($type)) {
+            if (LaravelTsPublish::shapeValueHasUnimportableToken($type, $this->analysis->importedNames())) {
                 throw new InvalidArgumentException(
-                    "Model metadata type [{$type}] for property [{$property}] cannot infer an import; declare it with #[TsCasts].",
+                    "Model metadata for model [{$this->findable}] property [{$property}] has type [{$type}] "
+                    .'whose import cannot be inferred; declare it with #[TsCasts].',
                 );
             }
         }
@@ -206,15 +216,41 @@ class ModelMetadataTransformer extends CoreTransformer
     protected function resolveImports(): static
     {
         $resolved = resolve(TsCastsImportResolver::class)->resolve(
-            array_intersect_key($this->metadataTypes['overrides'], $this->metadata),
-            array_intersect_key($this->metadataTypes['importPaths'], $this->metadata),
+            array_intersect_key($this->analysis->types, $this->metadata),
+            array_intersect_key($this->analysis->importPaths, $this->metadata),
         );
 
         foreach (array_keys($this->metadata) as $property) {
             $this->propertyTypes[$property] = $resolved['overrides'][$property];
         }
 
-        $this->typeImports = $resolved['typeImports'];
+        $typeImports = $resolved['typeImports'];
+
+        foreach ($this->analysis->typeImports as $path => $names) {
+            $typeImports[$path] = array_values(array_unique([...($typeImports[$path] ?? []), ...$names]));
+            sort($typeImports[$path]);
+        }
+
+        ksort($typeImports);
+
+        $seen = [];
+
+        foreach ($typeImports as $path => $names) {
+            foreach ($names as $name) {
+                $local = str_contains($name, ' as ') ? trim(substr($name, strrpos($name, ' as ') + 4)) : $name;
+
+                if (isset($seen[$local]) && $seen[$local] !== $path) {
+                    throw new InvalidArgumentException(
+                        "Model metadata for model [{$this->findable}] imports [{$local}] from both [{$seen[$local]}] and [{$path}]; "
+                        .'declare one of them with an import-aware #[TsCasts] whose type is a distinct name that module exports.',
+                    );
+                }
+
+                $seen[$local] = $path;
+            }
+        }
+
+        $this->typeImports = $typeImports;
 
         return $this;
     }
@@ -238,135 +274,22 @@ class ModelMetadataTransformer extends CoreTransformer
         return $this;
     }
 
+    /**
+     * Turn an empty PHP array into an empty object wherever its resolved type is object-like.
+     */
+    protected function coerceEmptyArrays(): static
+    {
+        foreach ($this->properties as $property => $value) {
+            $this->properties[$property] = $this->coerceEmptyArray($value, $this->propertyTypes[$property]);
+        }
+
+        return $this;
+    }
+
     /** @return list<string> */
     protected function transientProperties(): array
     {
-        return ['modelInstance', 'provider', 'metadata', 'metadataTypes'];
-    }
-
-    /**
-     * Combine body inference, return-shape declarations, and TsCasts overrides.
-     *
-     * @return ModelMetadataTypes
-     */
-    protected function parseProviderTypes(ModelMetadataProvider $provider): array
-    {
-        $method = new ReflectionMethod($provider, 'provide');
-
-        return $this->normalizeProviderTypes(
-            $this->inferProviderTypes($provider),
-            $this->parseProviderDeclaredTypes($method),
-            $this->parseProviderTsCasts($method),
-        );
-    }
-
-    /**
-     * Parse the provider's optional return-shape declarations.
-     *
-     * @return ProviderDeclaredTypes
-     */
-    protected function parseProviderDeclaredTypes(ReflectionMethod $method): array
-    {
-        $types = [];
-        $requiredKeys = [];
-        $optionalKeys = [];
-
-        foreach (LaravelTsPublish::parseDocblockReturnArrayShape($method) as $property => $type) {
-            $optional = str_ends_with($property, '?');
-            $property = $optional ? substr($property, 0, -1) : $property;
-            $types[$property] = $type;
-
-            if ($optional) {
-                $optionalKeys[$property] = true;
-            } else {
-                $requiredKeys[$property] = true;
-            }
-        }
-
-        return [
-            'overrides' => $types,
-            'requiredKeys' => $requiredKeys,
-            'optionalKeys' => $optionalKeys,
-        ];
-    }
-
-    /**
-     * Parse TsCasts declared on the provider method.
-     *
-     * @return TsCastsResult
-     */
-    protected function parseProviderTsCasts(ReflectionMethod $method): array
-    {
-        $castTypes = [];
-
-        foreach ($method->getAttributes(TsCasts::class) as $attribute) {
-            $castTypes = array_merge($castTypes, $attribute->newInstance()->types);
-        }
-
-        return $this->normalizeTsCasts($castTypes);
-    }
-
-    /**
-     * Normalize provider types with AST, PHPDoc, then TsCasts precedence.
-     *
-     * @param  array<string, string>  $inferredTypes
-     * @param  ProviderDeclaredTypes  $declaredTypes
-     * @param  TsCastsResult  $casts
-     * @return ModelMetadataTypes
-     */
-    protected function normalizeProviderTypes(array $inferredTypes, array $declaredTypes, array $casts): array
-    {
-        $types = [
-            ...array_diff_key($inferredTypes, $declaredTypes['overrides'], $casts['overrides']),
-            ...$declaredTypes['overrides'],
-        ];
-        $requiredKeys = $declaredTypes['requiredKeys'];
-
-        $inferredKeys = array_fill_keys(array_keys(array_diff_key($types, $casts['overrides'])), true);
-
-        foreach ($casts['overrides'] as $property => $type) {
-            $types[$property] = $type;
-
-            if ($casts['optionalOverrides'][$property] ?? isset($declaredTypes['optionalKeys'][$property])) {
-                unset($requiredKeys[$property]);
-            } else {
-                $requiredKeys[$property] = true;
-            }
-        }
-
-        return [
-            'overrides' => $types,
-            'importPaths' => $casts['importPaths'],
-            'requiredKeys' => $requiredKeys,
-            'inferredKeys' => $inferredKeys,
-        ];
-    }
-
-    /**
-     * Infer concrete, non-unknown property types from the provider method body.
-     *
-     * @return array<string, string>
-     */
-    protected function inferProviderTypes(ModelMetadataProvider $provider): array
-    {
-        try {
-            $analysis = resolve(AstEngine::class)->analyzeMethod($provider::class, 'provide');
-        } catch (Throwable) {
-            return [];
-        }
-
-        $types = [];
-
-        foreach ($analysis->properties as $property) {
-            if (! array_key_exists($property['name'], $this->metadata)
-                || preg_match('/\bunknown\b/', $property['type']) === 1) {
-                continue;
-            }
-
-            $types[$property['name']] = $property['type'];
-        }
-
-        return $types;
+        return ['modelInstance', 'provider', 'metadata', 'analysis'];
     }
 
     /**
@@ -377,12 +300,54 @@ class ModelMetadataTransformer extends CoreTransformer
      */
     private function validateMetadata(array $metadata): array
     {
-        if (array_filter(array_keys($metadata), 'is_int') !== []) {
-            throw new InvalidArgumentException('Model metadata payload must use string keys.');
+        $integerKeys = array_filter(array_keys($metadata), 'is_int');
+
+        if ($integerKeys !== []) {
+            throw new InvalidArgumentException(
+                "Model metadata for model [{$this->findable}] must use string keys; got integer keys: ["
+                .implode(', ', $integerKeys).']',
+            );
         }
 
         /** @var array<string, mixed> $metadata */
         return $metadata;
+    }
+
+    /**
+     * Walk one value alongside its declared type, spelling `[]` as `{}` where the type says object.
+     *
+     * PHP cannot tell `[]` from `{}`, and the engine's DTOs export only the type string, so an opaque type keeps `[]`.
+     *
+     * @param  NormalizedModelMetadataValue  $value
+     * @return NormalizedModelMetadataValue
+     */
+    private function coerceEmptyArray(
+        null|bool|int|float|string|array|stdClass $value,
+        ?string $type,
+    ): null|bool|int|float|string|array|stdClass {
+        if ($value === []) {
+            return $type !== null && TsTypeShape::isObjectLike($type) ? new stdClass : [];
+        }
+
+        if (! is_array($value) || $type === null) {
+            return $value;
+        }
+
+        // A PHP list can carry an object literal's numeric keys (`array{0: ..., 1: ...}`), so a list falls back
+        // to the member accessor. The reverse has no payload that it fixes: an object literal typed as an array
+        // fails tsc however its members are spelled, so an assoc array consults the member accessor only.
+        $isList = array_is_list($value);
+        $elementType = $isList ? TsTypeShape::elementType($type) : null;
+
+        foreach ($value as $key => $nested) {
+            /** @var NormalizedModelMetadataValue $nested */
+            $value[$key] = $this->coerceEmptyArray(
+                $nested,
+                $elementType ?? TsTypeShape::memberType($type, (string) $key),
+            );
+        }
+
+        return $value;
     }
 
     /**
@@ -396,7 +361,7 @@ class ModelMetadataTransformer extends CoreTransformer
         string $path,
         int $depth,
         array &$objectStack,
-    ): null|bool|int|float|string|array {
+    ): null|bool|int|float|string|array|stdClass {
         if ($depth > self::MAX_METADATA_VALUE_DEPTH) {
             throw new InvalidArgumentException(
                 "Model metadata for model [{$this->findable}] property [{$path}] exceeds the maximum nesting depth of "
@@ -404,7 +369,18 @@ class ModelMetadataTransformer extends CoreTransformer
             );
         }
 
-        if ($value === null || is_bool($value) || is_int($value) || is_string($value)) {
+        if ($value === null || is_bool($value) || is_string($value)) {
+            return $value;
+        }
+
+        if (is_int($value)) {
+            if (abs($value) > self::MAX_SAFE_INTEGER) {
+                throw new InvalidArgumentException(
+                    "Model metadata for model [{$this->findable}] property [{$path}] exceeds JavaScript's safe integer "
+                    .'range (±'.self::MAX_SAFE_INTEGER.'); return it as a string and declare the key as string.',
+                );
+            }
+
             return $value;
         }
 
@@ -418,12 +394,8 @@ class ModelMetadataTransformer extends CoreTransformer
             return $value;
         }
 
-        if ($value instanceof BackedEnum) {
-            return $this->normalizeMetadataValue($value->value, $path, $depth + 1, $objectStack);
-        }
-
         if ($value instanceof UnitEnum) {
-            return $value->name;
+            return $this->normalizeMetadataValue(LaravelTsPublish::enumScalar($value), $path, $depth, $objectStack);
         }
 
         if (is_array($value)) {
@@ -441,10 +413,10 @@ class ModelMetadataTransformer extends CoreTransformer
             return $normalized;
         }
 
-        if (! $value instanceof Arrayable && ! $value instanceof JsonSerializable) {
+        if (! $value instanceof stdClass && ! $value instanceof Arrayable && ! $value instanceof JsonSerializable) {
             throw new InvalidArgumentException(
                 "Model metadata for model [{$this->findable}] property [{$path}] returned unsupported value "
-                .'['.get_debug_type($value).']. Expected a scalar, array, enum, Arrayable, or JsonSerializable value.',
+                .'['.get_debug_type($value).']. Expected a scalar, array, enum, stdClass, Arrayable, or JsonSerializable value.',
             );
         }
 
@@ -459,9 +431,25 @@ class ModelMetadataTransformer extends CoreTransformer
         $objectStack[$objectId] = true;
 
         try {
+            if ($value instanceof stdClass) {
+                $properties = get_object_vars($value);
+
+                // The one value PHP can spell as an empty object; a bare [] is disambiguated later by its type.
+                return $properties === []
+                    ? new stdClass
+                    : $this->normalizeMetadataValue($properties, $path, $depth, $objectStack);
+            }
+
             $serialized = $value instanceof Arrayable ? $value->toArray() : $value->jsonSerialize();
 
-            return $this->normalizeMetadataValue($serialized, $path, $depth + 1, $objectStack);
+            // An object wrapping an array is not a level of its own; one wrapping another object must cost
+            // one, or a serializer returning a fresh object each call would recurse until memory ran out.
+            return $this->normalizeMetadataValue(
+                $serialized,
+                $path,
+                $depth + (is_array($serialized) ? 0 : 1),
+                $objectStack,
+            );
         } finally {
             unset($objectStack[$objectId]);
         }

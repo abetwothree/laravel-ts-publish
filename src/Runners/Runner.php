@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastChannelsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastEventsCollector;
+use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\FormRequestsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelMetadataCollector;
@@ -22,6 +23,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\Metadata\ModelMetadataProviderResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Transformers\ModelMetadataTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\BroadcastChannelsWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\BroadcastEventsEchoWriter;
@@ -32,6 +34,7 @@ use AbeTwoThree\LaravelTsPublish\Writers\JsonWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\RouteWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\ViteEnvWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\WatcherJsonWriter;
+use Closure;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
 use InvalidArgumentException;
@@ -45,10 +48,18 @@ class Runner extends BaseRunner
         // is what makes "this run publishes no resources" mean an empty registry, not the last run's set.
         PublishedResourceRegistry::reset();
         AnalysisWarnings::reset();
+        CoreCollector::flushClassMapCache();
 
         /** @var BarrelWriter $barrelWriter */
         $barrelWriter = resolve(Config::string('ts-publish.barrel_writer_class', BarrelWriter::class));
         $this->barrelWriter = $barrelWriter;
+
+        // Validated before any file is written, so a broken provider fails before the run leaves a half-built tree.
+        if ($this->shouldPublishModelMetadata) {
+            $this->validateModelMetadataConfiguration();
+        } elseif ($this->shouldPublishModels) {
+            $this->validateModelMetadataTransformer();
+        }
 
         $this->generateEnums();
         $this->generateModels();
@@ -144,24 +155,23 @@ class Runner extends BaseRunner
 
         $this->logger?->subLabel('Model metadata…');
 
-        $modelClasses = $this->collectModelMetadataClasses();
-
         /** @var class-string<ModelMetadataGenerator> $generatorClass */
         $generatorClass = Config::string(
             'ts-publish.model_metadata.generator_class',
             ModelMetadataGenerator::class,
         );
-        $this->validateModelMetadataConfiguration($generatorClass);
 
         /** @var Collection<int, ModelMetadataGenerator> $generators */
         $generators = collect();
 
-        foreach ($modelClasses as $modelClass) {
+        foreach ($this->collectModelMetadataClasses() as $modelClass) {
             try {
                 $generators->push($this->cachedGenerate($modelClass, $generatorClass));
             } catch (Throwable $exception) {
-                AnalysisWarnings::add($modelClass, $exception::class.': '.$exception->getMessage());
-                $this->shouldMergeModelBarrels = true;
+                $this->modelMetadataFailures[] = [
+                    'subject' => $modelClass,
+                    'message' => $exception::class.': '.$exception->getMessage(),
+                ];
             }
         }
 
@@ -170,17 +180,40 @@ class Runner extends BaseRunner
     }
 
     /**
-     * Validate metadata services before processing individual models.
-     *
-     * @param  class-string  $generatorClass
+     * Validate the configured metadata provider, generator, and transformer before any model is processed.
      */
-    protected function validateModelMetadataConfiguration(string $generatorClass): void
+    protected function validateModelMetadataConfiguration(): void
     {
         resolve(ModelMetadataProviderResolver::class)->resolve();
+
+        $generatorClass = Config::string('ts-publish.model_metadata.generator_class', ModelMetadataGenerator::class);
 
         if (! is_a($generatorClass, ModelMetadataGenerator::class, true)) {
             throw new InvalidArgumentException(
                 "Configured model metadata generator [{$generatorClass}] must extend ".ModelMetadataGenerator::class.'.',
+            );
+        }
+
+        $this->validateModelMetadataTransformer();
+    }
+
+    /**
+     * Validate the transformer class the barrel phase static-dispatches through.
+     *
+     * Checked on every run that touches a model barrel, not only on runs that publish metadata: a run that
+     * skips the metadata phase still asks the configured transformer which exports that phase owns.
+     */
+    protected function validateModelMetadataTransformer(): void
+    {
+        $transformerClass = Config::string(
+            'ts-publish.model_metadata.transformer_class',
+            ModelMetadataTransformer::class,
+        );
+
+        if (! is_a($transformerClass, ModelMetadataTransformer::class, true)) {
+            throw new InvalidArgumentException(
+                "Configured model metadata transformer [{$transformerClass}] must extend "
+                .ModelMetadataTransformer::class.'.',
             );
         }
     }
@@ -207,45 +240,46 @@ class Runner extends BaseRunner
     protected function generateModelBarrels(): void
     {
         $generators = $this->modelGenerators->concat($this->modelMetadataGenerators);
-        $shouldMerge = $this->shouldMergeModelBarrels
-            || $this->shouldPublishModels !== $this->shouldPublishModelMetadata;
+        $keepExisting = $this->preservedModelBarrelExports();
 
-        if (! $shouldMerge) {
-            $this->modelModularBarrels = $this->barrelWriter->writeModular($generators);
-
-            return;
-        }
-
-        if (! $this->barrelWriter->supportsModularMerging()) {
-            if (! Config::boolean('ts-publish.output_to_files') || ! $this->modelBarrelExists($generators)) {
-                $this->modelModularBarrels = $this->barrelWriter->writeModular($generators);
-
-                return;
-            }
-
-            $this->modelModularBarrels = [];
-            $this->logger?->warning('Model barrels were not updated because the configured writer does not support merging.');
-
-            return;
-        }
-
-        $this->modelModularBarrels = $this->barrelWriter->mergeModular($generators);
+        $this->modelModularBarrels = $keepExisting === null
+            ? $this->barrelWriter->writeModular($generators)
+            : $this->barrelWriter->writeModularPreserving($generators, $keepExisting);
     }
 
     /**
-     * Determine whether any generated model namespace already has a barrel file.
+     * Decide which existing model-barrel exports outlive this run; null rebuilds every barrel from scratch.
      *
-     * @param  Collection<int, ModelGenerator|ModelMetadataGenerator>  $generators
+     * A phase enabled in config but skipped this run keeps its exports; a model whose metadata failed keeps its
+     * last-known-good companion export. A phase disabled in config keeps nothing, so turning it off prunes it.
+     *
+     * @return (Closure(string): bool)|null
      */
-    protected function modelBarrelExists(Collection $generators): bool
+    protected function preservedModelBarrelExports(): ?Closure
     {
-        $outputDirectory = Config::string('ts-publish.output_directory');
+        $keepModels = ! $this->shouldPublishModels && Config::boolean('ts-publish.models.enabled', false);
+        $keepMetadata = ! $this->shouldPublishModelMetadata
+            && Config::boolean('ts-publish.model_metadata.enabled', false);
 
-        return $generators->contains(
-            fn (ModelGenerator|ModelMetadataGenerator $generator): bool => is_file(
-                $outputDirectory.'/'.$generator->transformer->namespacePath.'/index.ts',
-            ),
+        // The configured transformer names the companion files, so only it can say which exports the phase owns.
+        /** @var class-string<ModelMetadataTransformer> $transformerClass */
+        $transformerClass = Config::string(
+            'ts-publish.model_metadata.transformer_class',
+            ModelMetadataTransformer::class,
         );
+
+        $failed = array_map(
+            static fn (array $failure): string => $transformerClass::filenameFor($failure['subject']),
+            $this->modelMetadataFailures,
+        );
+
+        if (! $keepModels && ! $keepMetadata && $failed === []) {
+            return null;
+        }
+
+        return static fn (string $filename): bool => $transformerClass::isMetadataFilename($filename)
+            ? $keepMetadata || in_array($filename, $failed, true)
+            : $keepModels;
     }
 
     protected function generateResources(): void

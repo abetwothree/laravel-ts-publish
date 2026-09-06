@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
+use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
@@ -82,7 +83,18 @@ test('throws when source model and metadata filters both exclude the model', fun
     $runner->run();
 })->throws(
     InvalidArgumentException::class,
-    'Model and model metadata filters exclude: Workbench\\App\\Models\\User',
+    'Nothing to publish for Workbench\\App\\Models\\User: models are excluded by filters; model metadata is excluded by filters',
+);
+
+test('names the disabled phase when a flag skipped it and filters excluded the other', function () {
+    config()->set('ts-publish.model_metadata.excluded', ['Workbench\\App\\Models\\User']);
+
+    $runner = new RunnerForSource('Workbench\\App\\Models\\User');
+    $runner->shouldPublishModels = false;
+    $runner->run();
+})->throws(
+    InvalidArgumentException::class,
+    'Nothing to publish for Workbench\\App\\Models\\User: models are disabled; model metadata is excluded by filters',
 );
 
 test('generates single enum from file path', function () {
@@ -164,7 +176,7 @@ test('throws when enum publishing is disabled', function () {
     $runner = new RunnerForSource('Workbench\App\Enums\Status');
     $runner->shouldPublishEnums = false;
     $runner->run();
-})->throws(InvalidArgumentException::class, 'Enum publishing is disabled');
+})->throws(InvalidArgumentException::class, 'Nothing to publish for Workbench\\App\\Enums\\Status: enums are disabled');
 
 test('generates model metadata when model publishing is disabled', function () {
     $runner = new RunnerForSource('Workbench\App\Models\User');
@@ -180,7 +192,10 @@ test('throws when model and model metadata publishing are disabled', function ()
     $runner->shouldPublishModels = false;
     $runner->shouldPublishModelMetadata = false;
     $runner->run();
-})->throws(InvalidArgumentException::class, 'Model and model metadata publishing are disabled');
+})->throws(
+    InvalidArgumentException::class,
+    'Nothing to publish for Workbench\\App\\Models\\User: models are disabled; model metadata is disabled',
+);
 
 test('generates single resource from FQCN', function () {
     $runner = new RunnerForSource('Workbench\App\Http\Resources\PostResource');
@@ -196,7 +211,7 @@ test('throws when resource publishing is disabled', function () {
     $runner = new RunnerForSource('Workbench\App\Http\Resources\PostResource');
     $runner->shouldPublishResources = false;
     $runner->run();
-})->throws(InvalidArgumentException::class, 'Resource publishing is disabled');
+})->throws(InvalidArgumentException::class, 'resources are disabled');
 
 test('generates single route from controller FQCN', function () {
     $runner = new RunnerForSource('Workbench\App\Http\Controllers\PostController');
@@ -213,7 +228,7 @@ test('throws when route publishing is disabled', function () {
     $runner = new RunnerForSource('Workbench\App\Http\Controllers\PostController');
     $runner->shouldPublishRoutes = false;
     $runner->run();
-})->throws(InvalidArgumentException::class, 'Route publishing is disabled');
+})->throws(InvalidArgumentException::class, 'routes are disabled');
 
 test('throws for controller with TsExclude attribute', function () {
     $runner = new RunnerForSource('Workbench\App\Http\Controllers\ExcludedController');
@@ -245,7 +260,7 @@ test('throws when broadcast event publishing is disabled', function () {
     $runner = new RunnerForSource('Workbench\App\Events\OrderShipped');
     $runner->shouldPublishBroadcastEvents = false;
     $runner->run();
-})->throws(InvalidArgumentException::class, 'Broadcast event publishing is disabled');
+})->throws(InvalidArgumentException::class, 'broadcast events are disabled');
 
 test('a --source run clears a full run\'s stale registry instead of narrowing against it', function () {
     config()->set('ts-publish.resources.excluded', [UserResource::class]);
@@ -272,4 +287,14 @@ test('a --source run clears a leftover AnalysisWarnings entry instead of leaking
     $runner->run();
 
     expect(AnalysisWarnings::all())->toBe([]);
+});
+
+test('a --source run drops a class map memoized before it so the disk is rescanned', function () {
+    $cache = new ReflectionProperty(CoreCollector::class, 'classMaps');
+    $cache->setValue(null, ['/a/directory/scanned/by/an/earlier/run' => []]);
+
+    $runner = new RunnerForSource('Workbench\\App\\Enums\\Status');
+    $runner->run();
+
+    expect($cache->getValue())->not->toHaveKey('/a/directory/scanned/by/an/earlier/run');
 });

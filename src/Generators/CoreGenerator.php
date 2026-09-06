@@ -34,8 +34,8 @@ abstract class CoreGenerator
      */
     public function namespacePath(): string
     {
-        if (! isset($this->transformer) || ! $this->transformer instanceof CoreTransformer) {
-            throw new LogicException('The generator must have a core transformer to provide a namespace path.');
+        if (! isset($this->transformer) || ! $this->transformer instanceof CoreTransformer || ! isset($this->transformer->namespacePath)) {
+            throw new LogicException('The generator must have a core transformer with a namespace path to write barrels.');
         }
 
         return $this->transformer->namespacePath;

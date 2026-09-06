@@ -61,11 +61,14 @@ class ModelMetadataGenerator extends CoreGenerator implements ProvidesCacheSigna
 
         /** @var Model $model */
         $model = resolve($fqcn);
+
+        // Outside the try on purpose: a provider that throws is a real failure the runner must see.
         $metadata = $provider->provide($model);
 
         try {
             return hash('xxh128', serialize([$provider::class, $metadata]));
         } catch (Throwable) {
+            // Unserializable payload → force a miss every run rather than trust a hash we cannot compute.
             return hash('xxh128', $provider::class.random_bytes(16));
         }
     }

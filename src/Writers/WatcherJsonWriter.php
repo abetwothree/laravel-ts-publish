@@ -23,6 +23,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
 use ReflectionClass;
 use ReflectionEnum;
+use Throwable;
 use UnitEnum;
 
 class WatcherJsonWriter
@@ -104,7 +105,7 @@ class WatcherJsonWriter
             $models = $models->merge($collector->collect());
         }
 
-        if (Config::boolean('ts-publish.model_metadata.enabled')) {
+        if (Config::boolean('ts-publish.model_metadata.enabled', false)) {
             /** @var ModelMetadataCollector $collector */
             $collector = resolve(Config::string(
                 'ts-publish.model_metadata.collector_class',
@@ -137,11 +138,16 @@ class WatcherJsonWriter
      */
     protected function collectModelMetadataProviderPaths(): array
     {
-        if (! Config::boolean('ts-publish.model_metadata.enabled')) {
+        if (! Config::boolean('ts-publish.model_metadata.enabled', false)) {
             return [];
         }
 
-        $provider = resolve(ModelMetadataProviderResolver::class)->resolve();
+        try {
+            $provider = resolve(ModelMetadataProviderResolver::class)->resolve();
+        } catch (Throwable) {
+            // A provider that cannot resolve has no file to watch; the run that publishes metadata fails loudly instead.
+            return [];
+        }
 
         if ($provider instanceof DefaultModelMetadataProvider) {
             return [];

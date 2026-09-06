@@ -2,18 +2,31 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Metadata\ModelMetadataAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AliasedCastsAndInferredEnumMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AstEmptyValuesModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AstUnimportableModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BoundModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BranchedAstModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CircularJsonSerializableMetadataValue;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CollidingCastAndInferredEnumMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ConfigurableModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EmptyValuesModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FreshObjectJsonSerializableMetadataValue;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InheritedModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InvalidMetadataPayloadProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InvalidModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\JsonSerializableMetadataValue;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MismatchedModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MissingRequiredMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\OptionalModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\PrecedenceModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TupleShapeMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnimportableMetadataTypeProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnsafeIntegerBackedStatus;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnsafeIntegerMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnsupportedMetadataValue;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelMetadataTransformer;
 use Illuminate\Database\ClassMorphViolationException;
@@ -56,11 +69,54 @@ test('falls back to body inference for a provider with a generic array declarati
     ]);
 });
 
-test('does not accept named body values without an import-aware TsCasts declaration', function () {
+test('imports the enum a body-inferred value names', function () {
     config()->set('ts-publish.model_metadata.provider_class', AstUnimportableModelMetadataProvider::class);
 
-    expect(fn () => new ModelMetadataTransformer(User::class))
-        ->toThrow(InvalidArgumentException::class, 'cannot infer an import; declare it with #[TsCasts]');
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    expect($data->propertyTypes)->toBe(['role' => 'RoleType'])
+        ->and($data->typeImports)->toBe(['../enums' => ['RoleType']])
+        ->and($data->properties)->toBe(['role' => 'Admin']);
+});
+
+test('does not import a model for a model-typed value', function () {
+    $provider = new ConfigurableModelMetadataProvider(new User);
+    app()->instance(ConfigurableModelMetadataProvider::class, $provider);
+    config()->set('ts-publish.model_metadata.provider_class', ConfigurableModelMetadataProvider::class);
+
+    expect((new ModelMetadataTransformer(User::class))->data()->propertyTypes)->toBe(['value' => 'unknown'])
+        ->and(resolve(ModelMetadataAnalyzer::class)
+            ->analyze(BoundModelMetadataProvider::class, ['table'], 'workbench/app/models')->typeImports)
+        ->toBe([]);
+});
+
+test('aliases two same-named cast imports beside the unaliased name inference claims', function () {
+    config()->set('ts-publish.model_metadata.provider_class', AliasedCastsAndInferredEnumMetadataProvider::class);
+
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    expect($data->propertyTypes)->toBe([
+        'first' => 'FirstRoleType',
+        'second' => 'SecondRoleType',
+        'role' => 'RoleType',
+    ])->and($data->typeImports)->toBe([
+        '../enums' => ['RoleType'],
+        '@/types/first' => ['RoleType as FirstRoleType'],
+        '@/types/second' => ['RoleType as SecondRoleType'],
+    ]);
+});
+
+test('names the fix a cast import colliding with an inferred one actually has', function () {
+    // TsCastsImportResolver aliases only between cast entries, so no alias can separate these two.
+    config()->set('ts-publish.model_metadata.provider_class', CollidingCastAndInferredEnumMetadataProvider::class);
+
+    expect(fn () => (new ModelMetadataTransformer(User::class))->data())
+        ->toThrow(
+            InvalidArgumentException::class,
+            'Model metadata for model ['.User::class.'] imports [RoleType] from both [../enums] and '
+            .'[@/types/label]; declare one of them with an import-aware #[TsCasts] whose type is a distinct '
+            .'name that module exports.',
+        );
 });
 
 test('uses only body-inferred keys present in the concrete model payload', function () {
@@ -147,7 +203,10 @@ test('rejects metadata payloads without string property keys', function () {
     config()->set('ts-publish.model_metadata.provider_class', InvalidMetadataPayloadProvider::class);
 
     expect(fn () => new ModelMetadataTransformer(User::class))
-        ->toThrow(InvalidArgumentException::class, 'must use string keys');
+        ->toThrow(
+            InvalidArgumentException::class,
+            'model [Workbench\\App\\Models\\User] must use string keys; got integer keys: [0]',
+        );
 });
 
 test('rejects returned metadata keys without inferred or declared types', function () {
@@ -180,7 +239,10 @@ test('requires TsCasts for inferred types whose imports cannot be inferred', fun
     expect((new ModelMetadataTransformer(Address::class))->data()->properties)->toBe(['table' => 'addresses']);
 
     expect(fn () => new ModelMetadataTransformer(User::class))
-        ->toThrow(InvalidArgumentException::class, 'cannot infer an import; declare it with #[TsCasts]');
+        ->toThrow(
+            InvalidArgumentException::class,
+            'model [Workbench\\App\\Models\\User] property [role] has type [RoleType] whose import cannot be inferred',
+        );
 });
 
 test('normalizes supported nested metadata values', function () {
@@ -260,4 +322,185 @@ test('rejects metadata values exceeding the maximum nesting depth', function () 
 
     expect(fn () => new ModelMetadataTransformer(User::class))
         ->toThrow(InvalidArgumentException::class, 'exceeds the maximum nesting depth of 64');
+});
+
+test('names companions with a suffix no model interface filename can carry', function () {
+    expect(ModelMetadataTransformer::filenameFor(User::class))->toBe('user_meta')
+        ->and(ModelMetadataTransformer::filenameFor('Workbench\\App\\Models\\PostMeta'))->toBe('post-meta_meta')
+        ->and(ModelMetadataTransformer::isMetadataFilename('user_meta'))->toBeTrue()
+        ->and(ModelMetadataTransformer::isMetadataFilename('post-meta'))->toBeFalse()
+        ->and((new ModelMetadataTransformer(User::class))->filename())->toBe('user_meta');
+});
+
+test('infers string types for bound model method calls under a generic array declaration', function () {
+    config()->set('ts-publish.model_metadata.provider_class', BoundModelMetadataProvider::class);
+
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    expect($data->propertyTypes)->toBe([
+        'table' => 'string',
+        'keyName' => 'string',
+        'routeKeyName' => 'string',
+        'morphClass' => 'string',
+    ])->and($data->properties['table'])->toBe('users')
+        ->and($data->typeImports)->toBe([]);
+});
+
+test('an inherited provide() body infers with the model parameter bound', function () {
+    config()->set('ts-publish.model_metadata.provider_class', InheritedModelMetadataProvider::class);
+
+    expect((new ModelMetadataTransformer(User::class))->data()->propertyTypes)
+        ->toBe(['enabled' => 'boolean', 'table' => 'string']);
+});
+
+test('spells an empty PHP array as an empty object wherever its type is object-like', function () {
+    config()->set('ts-publish.model_metadata.provider_class', EmptyValuesModelMetadataProvider::class);
+
+    $data = (new ModelMetadataTransformer(User::class))->data();
+    $properties = $data->properties;
+
+    expect($properties['flags'])->toBeInstanceOf(stdClass::class)
+        ->and($properties['tags'])->toBe([])
+        ->and($properties['nested']['items'])->toBeInstanceOf(stdClass::class)
+        ->and($properties['nested']['ids'])->toBe([])
+        ->and($properties['opaque'])->toBe([])
+        ->and($properties['explicit'])->toBeInstanceOf(stdClass::class)
+        ->and($properties['maybe'])->toBe([]);
+
+    // A list under an array type: only elementType() answers here, and each element is object-like.
+    expect($data->propertyTypes['rows'])->toBe('Record<string, number>[]')
+        ->and($properties['rows'][0])->toBeInstanceOf(stdClass::class)
+        ->and($properties['rows'][1])->toBeInstanceOf(stdClass::class);
+});
+
+test('spells body-inferred empty containers by their inferred type', function () {
+    config()->set('ts-publish.model_metadata.provider_class', AstEmptyValuesModelMetadataProvider::class);
+
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    // A literal [] infers never[] (InlineArrayHandler); a helper's array<string, bool> infers Record<string, boolean>.
+    expect($data->propertyTypes['empty'])->toBe('never[]')
+        ->and($data->propertyTypes['nested'])->toContain('items: never[]')
+        ->and($data->propertyTypes['flags'])->toBe('Record<string, boolean>')
+        ->and($data->properties['empty'])->toBe([])
+        ->and($data->properties['nested'])->toBe(['items' => []])
+        ->and($data->properties['flags'])->toBeInstanceOf(stdClass::class);
+});
+
+test('normalizes a non-empty stdClass like an associative array', function () {
+    $provider = new ConfigurableModelMetadataProvider((object) ['nested' => (object) ['flag' => Status::Published]]);
+    app()->instance(ConfigurableModelMetadataProvider::class, $provider);
+    config()->set('ts-publish.model_metadata.provider_class', ConfigurableModelMetadataProvider::class);
+
+    expect((new ModelMetadataTransformer(User::class))->data()->properties['value'])
+        ->toBe(['nested' => ['flag' => 1]]);
+});
+
+test('rejects integers outside the JavaScript safe range with the property path', function () {
+    config()->set('ts-publish.model_metadata.provider_class', UnsafeIntegerMetadataProvider::class);
+
+    expect(fn () => new ModelMetadataTransformer(User::class))
+        ->toThrow(
+            InvalidArgumentException::class,
+            'property [snowflake] exceeds JavaScript\'s safe integer range (±9007199254740991); return it as a string and declare the key as string.',
+        );
+});
+
+test('rejects NAN like any other non-finite float', function () {
+    $provider = new ConfigurableModelMetadataProvider(['nested' => NAN]);
+    app()->instance(ConfigurableModelMetadataProvider::class, $provider);
+    config()->set('ts-publish.model_metadata.provider_class', ConfigurableModelMetadataProvider::class);
+
+    expect(fn () => new ModelMetadataTransformer(User::class))
+        ->toThrow(InvalidArgumentException::class, 'property [value.nested] returned a non-finite float');
+});
+
+test('counts nesting depth per array level and treats objects as transparent wrappers', function () {
+    $nest = function (int $levels, bool $wrapInObjects): mixed {
+        $value = 'leaf';
+
+        for ($level = 0; $level < $levels; $level++) {
+            $value = $wrapInObjects ? new JsonSerializableMetadataValue([$value]) : [$value];
+        }
+
+        return $value;
+    };
+
+    foreach ([false, true] as $wrapInObjects) {
+        $provider = new ConfigurableModelMetadataProvider($nest(64, $wrapInObjects));
+        app()->instance(ConfigurableModelMetadataProvider::class, $provider);
+        config()->set('ts-publish.model_metadata.provider_class', ConfigurableModelMetadataProvider::class);
+
+        expect((new ModelMetadataTransformer(User::class))->data()->properties['value'])->toBeArray();
+
+        $provider = new ConfigurableModelMetadataProvider($nest(65, $wrapInObjects));
+        app()->instance(ConfigurableModelMetadataProvider::class, $provider);
+
+        expect(fn () => new ModelMetadataTransformer(User::class))
+            ->toThrow(InvalidArgumentException::class, 'exceeds the maximum nesting depth of 64');
+    }
+});
+
+test('bounds a serializer that returns a fresh object on every call', function () {
+    $provider = new ConfigurableModelMetadataProvider(new FreshObjectJsonSerializableMetadataValue);
+    app()->instance(ConfigurableModelMetadataProvider::class, $provider);
+    config()->set('ts-publish.model_metadata.provider_class', ConfigurableModelMetadataProvider::class);
+
+    // No object identity ever repeats and no array level is crossed, so only the depth guard can stop this.
+    expect(fn () => new ModelMetadataTransformer(User::class))
+        ->toThrow(InvalidArgumentException::class, 'exceeds the maximum nesting depth of 64');
+});
+
+test('rejects an int-backed enum case outside the JavaScript safe range', function () {
+    $provider = new ConfigurableModelMetadataProvider(['snowflake' => UnsafeIntegerBackedStatus::Huge]);
+    app()->instance(ConfigurableModelMetadataProvider::class, $provider);
+    config()->set('ts-publish.model_metadata.provider_class', ConfigurableModelMetadataProvider::class);
+
+    expect(fn () => new ModelMetadataTransformer(User::class))
+        ->toThrow(
+            InvalidArgumentException::class,
+            'property [value.snowflake] exceeds JavaScript\'s safe integer range (±9007199254740991); return it as a string and declare the key as string.',
+        );
+});
+
+test('spells a list member by the object literal key its type declares', function () {
+    config()->set('ts-publish.model_metadata.provider_class', TupleShapeMetadataProvider::class);
+
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    expect($data->propertyTypes['tuple'])->toBe('{ 0: Record<string, number>; 1: number[] }')
+        ->and($data->properties['tuple'][0])->toBeInstanceOf(stdClass::class)
+        ->and($data->properties['tuple'][1])->toBe([]);
+});
+
+test('keeps an explicit empty stdClass under a type that is not object-like', function () {
+    $provider = new ConfigurableModelMetadataProvider(['a' => (object) [], 'b' => (object) []]);
+    app()->instance(ConfigurableModelMetadataProvider::class, $provider);
+    config()->set('ts-publish.model_metadata.provider_class', ConfigurableModelMetadataProvider::class);
+
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    // `unknown` is not object-like, so coercion cannot re-manufacture these: only the provider's (object) [] can.
+    expect($data->propertyTypes['value'])->toBe('unknown')
+        ->and($data->properties['value']['a'])->toBeInstanceOf(stdClass::class)
+        ->and($data->properties['value']['b'])->toBeInstanceOf(stdClass::class);
+});
+
+test('docblock beats body inference and TsCasts beats both on the same key', function () {
+    config()->set('ts-publish.model_metadata.provider_class', PrecedenceModelMetadataProvider::class);
+
+    // Guard: the fixture only proves precedence if body inference really disagrees with the docblock.
+    $inferred = collect(resolve(AstEngine::class)->analyzeMethod(PrecedenceModelMetadataProvider::class, 'provide')->properties)
+        ->firstWhere('name', 'count');
+
+    expect($inferred['type'] ?? null)->not->toBeNull()->not->toBe('string')->not->toContain('unknown');
+
+    // The analyzer records which source won each key.
+    expect(resolve(ModelMetadataAnalyzer::class)->analyze(PrecedenceModelMetadataProvider::class, ['count', 'label'])->sources)
+        ->toBe(['count' => 'docblock', 'label' => 'casts']);
+
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    expect($data->propertyTypes)->toBe(['count' => 'string', 'label' => 'LabelToken'])
+        ->and($data->typeImports)->toBe(['@/types/label-token' => ['LabelToken']]);
 });

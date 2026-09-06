@@ -83,13 +83,125 @@ assumption is written at the branch it governs, `src/Transformers/ResourceTransf
 ### Inertia shared data does not rewrite `EnumResource` types for Tolki
 
 An `EnumResource::make(...)` returned from `HandleInertiaRequests::share()` is analyzed as its bare enum
-type, but with Tolki enabled the shared-data analyzer neither rewrites it to `AsEnum<typeof Enum>` nor
-emits the enum's value import. This predates the `typeImports` consolidation: the removed
-`importStatements` channel was generated only from `#[TsCasts]` and contained only `import type` lines.
+type by `InertiaSharedDataAnalyzer::buildTypeImports()`, but with Tolki enabled the shared-data analyzer
+neither rewrites it to `AsEnum<typeof Enum>` nor emits the enum's value import. This predates the
+`typeImports` consolidation: the removed `importStatements` channel was generated only from `#[TsCasts]`
+and contained only `import type` lines.
 
 Use an import-aware `#[TsCasts]` override for that shared property. Supporting the serialized enum shape
 requires the same type-rewrite and separate value-import pipeline used by resource generation; moving the
 value import into `typeImports` would be incorrect.
+
+### Two same-named enums in one metadata companion collide instead of aliasing
+
+Model metadata imports the enums body inference resolves, so a value the AST reads as an enum contributes
+an `import type` line of its own. Those inferred imports are pruned by property name, except when the
+engine has no property name to prune by: a value two direct enums can produce merges through
+`embeddedEnumFqcns`, and `DispatchesFqcnResults` keys those by FQCN
+(`src/Ast/Concerns/DispatchesFqcnResults.php:64`). `ModelMetadataAnalyzer::inferredTypeImports()` spares
+FQCN-keyed entries deliberately — pruning them by key would drop the union's own imports — which leaves
+the still-spelled filter as their only owner, and that filter matches the *rendered* TypeScript name, not
+the FQCN. Two enums with the same basename in different namespaces both render `StatusType`, so it cannot
+tell a stale channel from a live one.
+
+A provider whose `@return array{...}` retypes a key holding `App\Status | Crm\Status`, alongside a live key
+typed `Crm\Status`, therefore emits `StatusType` from both paths and trips the collision guard in
+`ModelMetadataTransformer::resolveImports()`:
+
+```
+Model metadata for model [App\Models\User] imports [StatusType] from both [../../crm/enums]
+and [../enums]; declare one of them with an import-aware #[TsCasts] whose type is a distinct name
+that module exports.
+```
+
+This is a property of the inferred-import channel, not of the union case alone: two *live* keys typed
+`App\Status` and `Crm\Status` fail the same way. Re-declaring one of the two keys as
+`['type' => 'StatusType', 'import' => '../enums']` still collides, because `TsCastsImportResolver` aliases
+only when two *cast* entries share a name and cannot see the inferred import at all — which is why the
+guard asks for a *distinct* name that the module really exports:
+`['type' => 'AppStatusType', 'import' => '@/types/app-status']`, with that module re-exporting
+`export type { StatusType as AppStatusType }`. Writing the alias inline as `'Status as AppStatusType'` is
+not a substitute — it lands verbatim in the property type and emits invalid TypeScript.
+
+On the docblock-displaced union there is no handle at all: the channel is keyed by FQCN, so moving the key
+to `#[TsCasts]` does not prune it either. Drop that key to a single enum, which restores a property name
+for the prune to match.
+
+Fixing it means carrying the FQCN alongside the rendered name through the prune so the filter can compare
+identities rather than basenames, and then routing inferred imports through the same alias resolver the
+cast imports use. That is a channel change, not a patch at the filter.
+
+### An empty `[]` under an imported type alias still ships as `[]`
+
+Model metadata coerces an empty PHP array to `{}` wherever the property's resolved TypeScript type is
+object-like, because PHP cannot tell an empty map from an empty list and `[]` does not satisfy `Record<>`
+or an object literal. The decision is made by `TsTypeShape::isObjectLike()` reading the type *string*
+(`ModelMetadataTransformer::coerceEmptyArray()`, `src/Transformers/ModelMetadataTransformer.php:327`), and
+a bare imported identifier is opaque to it — `armIsObject()` recognises only `{...}` and `Record<`
+(`src/Support/TsTypeShape.php:183`). A `#[TsCasts]` type that names an imported alias therefore keeps `[]`,
+however object-like the alias resolves to on the TypeScript side.
+
+`tests/Fixtures/EmptyValuesModelMetadataProvider.php:27` pins exactly that shape — `'opaque' =>
+['type' => 'OpaqueShape', 'import' => '@/types/opaque-shape']` holding `[]`. Point the alias at the
+map it reads as (`export type OpaqueShape = Record<string, unknown>;`) and the emitted companion fails:
+
+```
+error TS2322: Type 'readonly []' is not assignable to type 'OpaqueShape'.
+  Index signature for type 'string' is missing in type 'readonly []'.
+```
+
+Every other property in that same companion type-checks clean, so this is the residue of a bug that used to
+hit every object-like property, not a new one. **The workaround is to return `(object) []`**, which the
+provider may now do explicitly and which survives coercion untouched.
+
+No gate catches it. The writer tests that render this companion all run with `ts-publish.output_to_files`
+false (`tests/Unit/Writers/ModelMetadataWriterTest.php:93`), so the file never reaches the generated tree
+the token gate compiles — read a green gate as saying nothing about this case either way.
+
+Fixing it means resolving the alias to a type the shape inspector can read, which puts a module-resolution
+step inside a transformer that today does pure string inspection. Widening `isObjectLike()` to guess that
+any unknown identifier is object-like is not the fix: it would spell `{}` for an alias of `string[]`,
+turning a narrow wrong answer into a broad one.
+
+### A body-inferred metadata enum that enum publishing excludes imports a file that is never written
+
+`ModelMetadataAnalyzer::inferredTypeImports()` in `src/Analyzers/Metadata/ModelMetadataAnalyzer.php` turns an
+enum a provider body returns into `import type { XType } from '../enums'` through `Ast\AnalysisImports`, which
+resolves the path from the enum's namespace and does not know whether `enums.excluded`, `#[TsExclude]`, or a
+directory outside `enums.additional_directories` keeps that enum out of the published tree. The companion then
+fails `tsc` — `TS2305` where the namespace published a barrel without that member, `TS2307` where it published
+nothing at all — rather than `ts:publish` failing. Include the enum, or declare the property with an
+import-aware `#[TsCasts]`. Resources have `PublishedResourceRegistry` for this gate; enums do not.
+
+### A model class name containing an underscore can collide with a metadata companion
+
+Companion files are `Str::kebab(ModelName).'_meta'`, and `Str::kebab()` never produces an underscore, so
+`UserMeta` (`user-meta.ts`) cannot collide with `User`'s `user_meta.ts`. A class literally named `User_meta`
+kebabs to `user_meta` and would share the companion's filename: the phase that writes last wins the file, the
+barrel carries one export for two things, and `ModelMetadataTransformer::isMetadataFilename()` hands that
+export to the metadata phase. PSR-1 class names do not carry underscores, so this is accepted rather than
+guarded. The rule lives at `ModelMetadataTransformer::FILENAME_SUFFIX` in
+`src/Transformers/ModelMetadataTransformer.php`.
+
+### A `transformer_class` that overrides only one of the two filename methods orphans its companions
+
+`ModelMetadataTransformer::filenameFor()` names a companion and `isMetadataFilename()` decides whether a barrel
+export is one. Barrel ownership holds only while the two agree, and nothing enforces that they do:
+`Runner::validateModelMetadataTransformer()` checks `is_a()`, which cannot see a relationship between two static
+methods.
+
+Redefining `FILENAME_SUFFIX` keeps them in step for free, because both read it through `static::`. Overriding one
+method and inheriting the other does not. A subclass overriding only `filenameFor()` writes `meta.user.ts` while
+the inherited predicate still asks `str_ends_with($filename, '_meta')`, so on a run that skips the metadata phase
+the export is pruned from the barrel and the file is left orphaned on disk. Overriding only `isMetadataFilename()`
+fails symmetrically: the phase claims exports it never wrote.
+
+This is not a consequence of dispatching `filename()` through `static::` — a half-overridden pair was already
+broken before that, in the failed-model preservation path, where `$transformerClass::filenameFor()` produced a
+name that never matched the written file. `static::` makes both paths fail consistently rather than one of them
+succeed by accident.
+
+Override the pair together. `tests/Fixtures/PrefixedModelMetadataTransformer.php` is the worked example.
 
 ## Deliberate non-goals
 
@@ -100,6 +212,13 @@ Absent on purpose. Do not "fix" these without raising it first.
 - **No `ts-publish.analyzer.handlers` config key.** You cannot append your own `ExpressionHandler`. Every
   extension point is a compatibility promise; worth adding only if someone asks.
 - **Form requests stay runtime.** They are resolved by instantiating and calling `rules()`, on purpose.
+- **Collector class maps are not invalidated mid-process.** `CoreCollector::classMap()` scans each directory
+  once per process, and `Runner::run()` / `RunnerForSource::run()` clear it first, so a `ts:publish` run
+  always reads the disk. Host code that calls `collect()` or `allows()` directly on either side of writing a
+  `.php` file — a custom collector, a `tinker` or test-helper loop that generates a model and re-collects —
+  gets the pre-write answer from both. Call `CoreCollector::flushClassMapCache()` between the write and the
+  second call. Stat-based invalidation would charge every run for a case no package run path reaches:
+  nothing in `src/` writes a `.php` file.
 
 ## Green signals that are narrower than they look
 

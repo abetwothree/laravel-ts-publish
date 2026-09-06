@@ -54,13 +54,13 @@ class TsPublishCommand extends Command
         {--fresh : Ignore and rebuild the generation cache from scratch (no-op with --source or --preview)}
         {--only-broadcast-channels : Only publish broadcast channel types (ignoring all other types)}
         {--only-broadcast-events : Only publish broadcast event types (ignoring all other types)}
-        {--only-form-requests : Only publish form requests (ignoring enums, models, resources, and routes)}
+        {--only-form-requests : Only publish form requests (ignoring all other types)}
         {--only-functional : Only publish enabled functional content like enums, model metadata, and routes}
-        {--only-enums : Only publish enums (ignoring models, resources, and routes)}
+        {--only-enums : Only publish enums (ignoring all other types)}
         {--only-model-metadata : Only publish model metadata (ignoring all other types)}
         {--only-models : Only publish model interfaces (ignoring all other types)}
-        {--only-resources : Only publish resources (ignoring enums, models, and routes)}
-        {--only-routes : Only publish routes (ignoring enums, models, and resources)}';
+        {--only-resources : Only publish resources (ignoring all other types)}
+        {--only-routes : Only publish routes (ignoring all other types)}';
 
     protected $description = 'Publish TypeScript files from enums, models, model metadata, resources, routes, form requests, broadcast channels, and broadcast events';
 
@@ -190,10 +190,6 @@ class TsPublishCommand extends Command
             $runner->shouldPublishBroadcastEvents,
         ] = $flags;
 
-        $runner->shouldMergeModelBarrels = (bool) $this->option('only-functional')
-            || (bool) $this->option('only-models')
-            || (bool) $this->option('only-model-metadata');
-
         try {
             if ($this->output->isQuiet()) {
                 $runner->run();
@@ -221,7 +217,17 @@ class TsPublishCommand extends Command
             } else {
                 $this->createPublishedFilesList($runner);
             }
+        }
 
+        if ($runner->modelMetadataFailures !== []) {
+            foreach ($runner->modelMetadataFailures as $failure) {
+                $this->reportError("{$failure['subject']}: {$failure['message']}");
+            }
+
+            return self::FAILURE;
+        }
+
+        if (! $this->output->isQuiet()) {
             outro('All done');
         }
 
@@ -306,7 +312,7 @@ class TsPublishCommand extends Command
         foreach ($types as $key => $type) {
             $flags[$key] = ($onlyFunctional && ! $type['functional'])
                 ? false
-                : Config::boolean($type['config']);
+                : Config::boolean($type['config'], false);
         }
 
         if ($onlyFunctional) {
@@ -338,7 +344,7 @@ class TsPublishCommand extends Command
                 $flags[$k] = false;
             }
 
-            if (Config::boolean($activeType['config'])) {
+            if (Config::boolean($activeType['config'], false)) {
                 $flags[$onlyKey] = true;
             } else {
                 $flags[$onlyKey] = $this->promptConfigOverride($activeType['label']);

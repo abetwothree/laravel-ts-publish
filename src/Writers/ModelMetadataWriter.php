@@ -26,7 +26,7 @@ class ModelMetadataWriter extends CoreWriter
     public function write(CoreTransformer $transformer): string
     {
         /** @var view-string $template */
-        $template = Config::string('ts-publish.model_metadata.template');
+        $template = Config::string('ts-publish.model_metadata.template', 'laravel-ts-publish::model-meta');
         $content = view($template, ['data' => $transformer->data()])->render();
 
         if (Config::boolean('ts-publish.output_to_files')) {

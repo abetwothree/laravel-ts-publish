@@ -186,6 +186,8 @@ Disable any publishing phase independently in the config file:
 
 Setting any to `false` will skip that type on every run, including automatic post-migration publishing.
 
+The `model_metadata` block is new in this release, so a `config/ts-publish.php` you published earlier does not carry it. The package config merges one level deep, so copy the **whole** block rather than one key — a partial block replaces the packaged one outright. Nothing breaks if you skip it: every `model_metadata` key falls back in code to the value the packaged config ships, so an older config keeps working until you enable the feature.
+
 ##### Via command flags
 
 Use one of the `--only-*` flags to limit a single run to a specific type: `--only-enums`, `--only-models`, `--only-model-metadata`, `--only-resources`, `--only-routes`, `--only-form-requests`, `--only-broadcast-channels`, or `--only-broadcast-events`.
@@ -201,9 +203,9 @@ The flags cannot be combined. Passing two returns an error.
 
 There's also `--only-functional`, which publishes only runtime TypeScript output (enums, model metadata, routes, form requests, broadcast channels/events) while skipping model and resource interfaces. The [Vite plugin](https://tolki.abe.dev/ts/vite-plugin.html) appends it on `vite build`, since interfaces are erased at compile time anyway. Combined with another `--only-*` flag, it wins.
 
-Partial model or metadata publishes merge their generated exports into existing model barrels. They create barrels when missing and preserve exports owned by the skipped companion phase. Because partial runs cannot identify every stale export safely, run both model phases together to rebuild the complete barrel after removing models.
+Model interfaces and their metadata companions share one barrel, and every export in it belongs to exactly one of those two phases — the `_meta` suffix decides which. A phase that runs owns its exports outright, so a removed model's export is pruned. A phase that is enabled in config but skipped by an `--only-*` flag keeps its exports, while a phase disabled in config drops them. If a model's metadata provider throws, that model keeps its last-known-good companion export and the command exits non-zero.
 
-Custom `barrel_writer_class` implementations can opt into partial merging by implementing `MergesModularBarrels`. Otherwise, partial model runs leave existing barrels untouched.
+A custom `barrel_writer_class` that overrides nothing inherits this behavior and needs no opt-in. One that overrides `writeModular()` to change the barrel format must override `writeModularPreserving()` the same way: partial runs call that method, and the inherited one would emit the base format for exactly the runs that preserve. Barrels are generated files: a hand-written line that is not an `export * from './x';` statement is not preserved.
 
 ##### Config & flag conflicts
 
@@ -308,7 +310,7 @@ import type { User, UserMutators, UserRelations } from '@js/types/data/models';
 // UserRelations → posts: Post[]; posts_count: number; posts_exists: boolean
 ```
 
-Model runtime metadata is published beside each model by default:
+Model runtime metadata can be published beside each model (opt-in via `model_metadata.enabled`):
 
 ```typescript
 // models/user_meta.ts
@@ -319,13 +321,9 @@ export const UserModelMetadata = {
 };
 ```
 
-The configured provider's `provide()` method receives each model instance and returns its complete metadata payload. Prefer a precise `@return array{...}` shape so PHPStan or Psalm can validate that contract. When a provider only declares `array<string, mixed>`, import-free types fall back to inference from statically analyzable array returns. The PHPDoc shape overrides body inference and is required for optional or dynamically constructed keys; `#[TsCasts]` has final precedence and owns explicit overrides and imports. Providers are resolved through Laravel's container, so constructor dependencies are supported.
+The configured provider's `provide()` receives each model instance and returns the payload; providers resolve through the container, so constructor dependencies work. Types come from `#[TsCasts]` on `provide()` first, then the `@return array{...}` shape (`key?:` marks an optional key), then inference over the method body — including calls on the `$model` parameter such as `getTable()` or `getMorphClass()`, and enum values, whose `{Name}Type` alias is imported for you. A class or enum named in the docblock, or a model-typed value, still needs an import-aware `#[TsCasts]`.
 
-Optional PHPDoc keys may be absent from a model's payload. When present, they are emitted as required properties because each generated metadata object represents that concrete payload. Required PHPDoc keys must always be present, and every returned key must have either an inferred or `#[TsCasts]` type.
-
-Scalar and nested inline-array types can be inferred directly from the method body. PHPDoc additionally supports scalar, container, and nested array-shape types. PHP class, enum, and other named TypeScript types need an explicit `#[TsCasts]` override because metadata does not infer their TypeScript import path.
-
-Metadata values may be `null`, scalars, arrays, enums, or objects implementing Laravel's `Arrayable` or PHP's `JsonSerializable` contract. These values can be nested and are normalized recursively. Unsupported objects, resources, non-finite floats, circular objects, and values nested more than 64 levels fail with the model and metadata property path instead of producing invalid TypeScript.
+Values may be `null`, scalars, arrays, enums, `stdClass`, or `Arrayable` / `JsonSerializable` objects, normalized recursively. Anything the companion could not express as valid TypeScript — an unsupported object, a non-finite float, an integer beyond ±2⁵³−1, a cycle, more than 64 nesting levels — fails with the model and property path. Return `(object) []` for an empty object; a bare `[]` follows its declared type.
 
 ```php
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
@@ -371,7 +369,9 @@ final class AppModelMetadataProvider implements ModelMetadataProvider
 
 Model metadata is disabled by default. When enabled, the default provider publishes `morphClass` as a string and preserves configured morph-map aliases. Model metadata is a separate publishing phase. `models.enabled` and `--only-models` control only model interfaces; they do not generate or disable metadata. Use `model_metadata.enabled` and `--only-model-metadata` for metadata. Metadata discovery inherits `models.included`, `models.excluded`, and `models.additional_directories` when the corresponding key is omitted from `model_metadata`. An explicitly configured metadata value takes precedence, including an empty array.
 
-If your app calls `Relation::enforceMorphMap()`, every discovered model must appear in the map. Use `model_metadata.excluded` for models you do not map.
+A provider that throws for a model — an enforced morph map missing it, say — keeps that model's last-known-good companion, finishes every other file, and exits non-zero so CI and the Vite plugin see it. Use `model_metadata.excluded` for models you do not map.
+
+For the provider contract, type precedence, value rules, barrel behavior, and failure semantics, see the full [Model Metadata documentation](https://tolki.abe.dev/ts/model-metadata.html). The pipeline, type precedence, value rules, and failure semantics are documented for contributors in [docs/components/model-metadata.md](docs/components/model-metadata.md); barrel ownership in [docs/components/barrel-writer.md](docs/components/barrel-writer.md).
 
 Key capabilities:
 
@@ -381,7 +381,7 @@ Key capabilities:
 - **PHPDoc-aware** — class, column, mutator, and relation doc blocks are carried over as JSDoc comments automatically.
 - **`#[TsCasts]` / `#[TsType]`** — for more advanced TypeScript types for generated properties or an entire custom cast class, including custom types imported from your own files.
 - **`$hidden` and write-only accessors** — hidden attributes publish by default. `models.exclude_hidden` opts out for model *and* resource interfaces alike, so a resource's `except()` or whole-model delegation loses the column too, though `only(['password'])` still keeps one you name explicitly. A write-only `Attribute::make(set:)` resolves from its `@return Attribute<Get, Set>` generic, then from a same-named column, and failing both is omitted rather than emitted as `unknown`.
-- **Runtime metadata** — each `{model}_meta.ts` companion exports a `{Model}ModelMetadata` object whose values come from the configured provider. Prefer a precise return shape for static analysis; body inference is the fallback for generic array declarations, PHPDoc refines it, and `#[TsCasts]` owns explicit overrides and imports.
+- **Runtime metadata** — each `{model}_meta.ts` companion exports a `{Model}ModelMetadata` object whose values come from the configured provider. Prefer a precise return shape for static analysis; body inference is the fallback for generic array declarations, PHPDoc refines it, and `#[TsCasts]` owns explicit overrides and declared imports.
 - **`#[TsExclude]`** — exclude an entire model, or a specific accessor/relation, from the output.
 - **Laravel 13 model attributes** — `#[Table]`, `#[Hidden]`, `#[Visible]`, `#[Appends]`, and `#[Connection]` are honoured automatically, no configuration needed. See [Laravel 13 Model Attributes](https://tolki.abe.dev/ts/models.html#laravel-13-model-attributes) for the full attribute-by-attribute table.
 - **Enum-typed columns** also generate a matching `{Model}Resource` interface using `AsEnum<>`, for when you've resolved a raw enum column to a full enum instance (e.g. via `Status.from(user.status)`).

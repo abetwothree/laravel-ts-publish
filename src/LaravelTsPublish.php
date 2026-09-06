@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsEnum;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use BackedEnum;
 use Closure;
 use Composer\ClassMapGenerator\PhpFileParser;
@@ -21,6 +22,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 use JsonSerializable;
 use PhpParser\Node;
 use PhpParser\Node\Stmt\GroupUse;
@@ -35,6 +37,7 @@ use ReflectionNamedType;
 use ReflectionProperty;
 use ReflectionType;
 use ReflectionUnionType;
+use stdClass;
 use UnitEnum;
 
 /**
@@ -563,15 +566,17 @@ class LaravelTsPublish
      *
      * extractImportableTypes() can't be reused: it skips '<'/'{' content, which docblock shapes routinely have.
      * Object-literal keys are stripped first so 'owner' in '{ owner: User }' isn't read as a value token.
+     *
+     * @param  list<string>  $importableNames  Local names an import already brings into the file.
      */
-    public function shapeValueHasUnimportableToken(string $type): bool
+    public function shapeValueHasUnimportableToken(string $type, array $importableNames = []): bool
     {
         $withoutKeys = (string) preg_replace('/\b\w+\s*:/', '', $type);
 
         $tokens = preg_split('/[<>{}()|,;\[\]\s]+/', $withoutKeys, -1, PREG_SPLIT_NO_EMPTY) ?: [];
 
         foreach ($tokens as $token) {
-            if (in_array($token, self::TS_PRIMITIVES, true)) {
+            if (in_array($token, self::TS_PRIMITIVES, true) || in_array($token, $importableNames, true)) {
                 continue;
             }
 
@@ -1706,20 +1711,29 @@ class LaravelTsPublish
             return $value ? 'true' : 'false';
         }
 
-        if (is_int($value) || is_float($value)) {
+        if (is_int($value)) {
             return (string) $value;
+        }
+
+        if (is_float($value)) {
+            if (! is_finite($value)) {
+                throw new InvalidArgumentException('A non-finite float has no TypeScript literal.');
+            }
+
+            // (string) rounds to the `precision` ini value; json_encode() emits the shortest round-trip form.
+            return (string) json_encode($value);
         }
 
         if (is_string($value)) {
             return "'".str_replace(['\\', "'", "\n", "\r", "\t"], ['\\\\', "\\'", '\\n', '\\r', '\\t'], $value)."'";
         }
 
-        if ($value instanceof BackedEnum) {
-            return $this->toJsLiteral($value->value);
+        if ($value instanceof UnitEnum) {
+            return $this->toJsLiteral($this->enumScalar($value));
         }
 
-        if ($value instanceof UnitEnum) {
-            return $this->toJsLiteral($value->name);
+        if ($value instanceof stdClass && get_object_vars($value) === []) {
+            return '{}';
         }
 
         if (is_object($value)) {
@@ -1740,6 +1754,14 @@ class LaravelTsPublish
         }
 
         return 'null';
+    }
+
+    /**
+     * The scalar an enum case serializes to: a backed case's value, a pure case's name.
+     */
+    public function enumScalar(UnitEnum $enum): int|string
+    {
+        return $enum instanceof BackedEnum ? $enum->value : $enum->name;
     }
 
     /**
@@ -2099,41 +2121,13 @@ class LaravelTsPublish
      * Split a type string into its top-level union members.
      *
      * Depth-aware over braces, parens, angle brackets, and square brackets, and skips
-     * single-quoted literals whole, so a nested `|` never splits.
+     * quoted literals whole, so a nested `|` never splits.
      *
      * @return list<string>
      */
     public function splitTopLevelUnion(string $typeStr): array
     {
-        $members = [];
-        $current = '';
-        $depth = 0;
-        $inString = false;
-
-        foreach (str_split($typeStr) as $char) {
-            if ($char === "'") {
-                $inString = ! $inString;
-            }
-
-            if (! $inString) {
-                if (str_contains('{(<[', $char)) {
-                    $depth++;
-                } elseif (str_contains('})>]', $char)) {
-                    $depth = max(0, $depth - 1);
-                } elseif ($char === '|' && $depth === 0) {
-                    $members[] = trim($current);
-                    $current = '';
-
-                    continue;
-                }
-            }
-
-            $current .= $char;
-        }
-
-        $members[] = trim($current);
-
-        return array_values(array_filter($members, fn (string $member): bool => $member !== ''));
+        return TsTypeShape::splitTopLevel($typeStr, ['|']);
     }
 
     /**

@@ -19,7 +19,15 @@ final class MismatchedModelMetadataProvider implements ModelMetadataProvider
     public function provide(Model $model): array
     {
         return [
-            'table' => $model->getTable(),
+            'table' => $this->untypedTable($model),
         ];
+    }
+
+    /**
+     * Return the table name through a signature the engine cannot type.
+     */
+    private function untypedTable(Model $model) // @phpstan-ignore missingType.return
+    {
+        return $model->getTable();
     }
 }

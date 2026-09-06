@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Runners;
 
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Collectors\Concerns\ValidatesCollectorFiles;
+use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelMetadataCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -70,6 +71,7 @@ class RunnerForSource extends BaseRunner
     {
         PublishedResourceRegistry::reset();
         AnalysisWarnings::reset();
+        CoreCollector::flushClassMapCache();
 
         $fqcn = $this->resolveSourceToFqcn();
 
@@ -81,15 +83,11 @@ class RunnerForSource extends BaseRunner
 
         if ($this->validateEnum($reflection)) {
             if (! $this->shouldPublishEnums) {
-                throw new InvalidArgumentException("Enum publishing is disabled: {$fqcn}");
+                throw new InvalidArgumentException("Nothing to publish for {$fqcn}: enums are disabled");
             }
 
             $this->generateEnum($fqcn);
         } elseif ($this->validateModel($reflection)) {
-            if (! $this->shouldPublishModels && ! $this->shouldPublishModelMetadata) {
-                throw new InvalidArgumentException("Model and model metadata publishing are disabled: {$fqcn}");
-            }
-
             /** @var ModelsCollector $modelCollector */
             $modelCollector = resolve(Config::string('ts-publish.models.collector_class', ModelsCollector::class));
 
@@ -103,7 +101,12 @@ class RunnerForSource extends BaseRunner
             $publishMetadata = $this->shouldPublishModelMetadata && $metadataCollector->allows($fqcn);
 
             if (! $publishModel && ! $publishMetadata) {
-                throw new InvalidArgumentException("Model and model metadata filters exclude: {$fqcn}");
+                $modelReason = $this->shouldPublishModels ? 'are excluded by filters' : 'are disabled';
+                $metadataReason = $this->shouldPublishModelMetadata ? 'is excluded by filters' : 'is disabled';
+
+                throw new InvalidArgumentException(
+                    "Nothing to publish for {$fqcn}: models {$modelReason}; model metadata {$metadataReason}",
+                );
             }
 
             if ($publishModel) {
@@ -115,25 +118,25 @@ class RunnerForSource extends BaseRunner
             }
         } elseif ($this->validateResource($reflection)) {
             if (! $this->shouldPublishResources) {
-                throw new InvalidArgumentException("Resource publishing is disabled: {$fqcn}");
+                throw new InvalidArgumentException("Nothing to publish for {$fqcn}: resources are disabled");
             }
 
             $this->generateResource($fqcn);
         } elseif ($this->validateController($reflection)) {
             if (! $this->shouldPublishRoutes) {
-                throw new InvalidArgumentException("Route publishing is disabled: {$fqcn}");
+                throw new InvalidArgumentException("Nothing to publish for {$fqcn}: routes are disabled");
             }
 
             $this->generateRoute($fqcn);
         } elseif ($this->validateFormRequest($reflection)) {
             if (! $this->shouldPublishFormRequests) {
-                throw new InvalidArgumentException("Form request publishing is disabled: {$fqcn}");
+                throw new InvalidArgumentException("Nothing to publish for {$fqcn}: form requests are disabled");
             }
 
             $this->generateFormRequest($fqcn);
         } elseif ($this->validateBroadcastEvent($reflection)) {
             if (! $this->shouldPublishBroadcastEvents) {
-                throw new InvalidArgumentException("Broadcast event publishing is disabled: {$fqcn}");
+                throw new InvalidArgumentException("Nothing to publish for {$fqcn}: broadcast events are disabled");
             }
 
             $this->generateBroadcastEvent($fqcn);
