@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\StarterKit\StarterKitMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TsCastsGuardRequest;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TsCastsOverrideRequest;
 use AbeTwoThree\LaravelTsPublish\Transformers\FormRequestTransformer;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -531,6 +532,31 @@ it('does not let a #[TsCasts] override resurrect a key validated() declines', fu
         ->and((new KnownMethodRuleHandler)->resolve($call('tags.*'), $scope, requestRuleEngine()))->toBeNull()
         ->and((new KnownMethodRuleHandler)->resolve($call('options.default'), $scope, requestRuleEngine()))
         ->toBe(['type' => 'string', 'optional' => true]);
+});
+
+// The rules alone answer both of these backwards: `title` is `required` and overridden optional, `note`
+// is neither and overridden required. The request's own interface reads `title?`/`note` from the same
+// overrides, so a rule-only answer here would contradict it in both directions.
+it('takes optionality from the override rather than the rule, both ways round', function () {
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $scope->requestVarNames = ['request' => TsCastsOverrideRequest::class];
+    $call = fn (string $key): MethodCall => new MethodCall(new Variable('request'), 'validated', [new Arg(new String_($key))]);
+
+    expect((new KnownMethodRuleHandler)->resolve($call('title'), $scope, requestRuleEngine()))
+        ->toBe(['type' => 'string', 'optional' => true])
+        ->and((new KnownMethodRuleHandler)->resolve($call('note'), $scope, requestRuleEngine()))
+        ->toBe(['type' => 'string', 'optional' => false]);
+});
+
+// `Record<string, unknown>` names nothing to import, so its override's `import` path must not reach
+// InertiaPageAnalyzer's externalImports carrying an empty list of names.
+it('emits no import for an override type with no importable token', function () {
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $scope->requestVarNames = ['request' => TsCastsOverrideRequest::class];
+    $call = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('meta'))]);
+
+    expect((new KnownMethodRuleHandler)->resolve($call, $scope, requestRuleEngine()))
+        ->toBe(['type' => 'Record<string, unknown>', 'optional' => true]);
 });
 
 // The assumption the dotted decline rests on: the transformer matches an override to a top-level

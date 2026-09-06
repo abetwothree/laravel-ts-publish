@@ -111,7 +111,7 @@ generated interface uses (`requestMethodRule()` in `src/Ast/Handlers/KnownMethod
 key walks that same rule trie by path (`FormRequestRulesAnalyzer::analyzeField()`), so
 `$request->validated('options.default')` types exactly as the request's own nested interface types
 `options.default`, and the request's own `#[TsCasts]` — the type, the optionality, and the import an
-`'import' => …` override declares — now reaches the property too. Two shapes still decline or diverge:
+`'import' => …` override declares — now reaches the property too. Three shapes still decline or diverge:
 
 - **A key containing a `*` segment declines.** `data_get()` — which `validated()` delegates to — expands
   `*` into a list of *every* match, so the trie node under `*` describes one element, not the value the
@@ -124,6 +124,12 @@ key walks that same rule trie by path (`FormRequestRulesAnalyzer::analyzeField()
   `analyze()` emits only top-level paths, so `#[TsCasts(['options.default' => 'number'])]` moves nothing in
   the request's own interface. `validatedKeyRule()` therefore ignores a dotted override key too: honouring
   it at one of the two call sites and not the other is the disagreement this whole entry is about.
+- **A dotted key beneath an *overridden ancestor* still types from the rules, and there the two really do
+  disagree.** An override on a parent replaces that whole subtree in the request's interface:
+  `#[TsCasts(['options' => 'MyOptions'])]` renders `options?: MyOptions;` and nothing else, while
+  `$request->validated('options.default')` still composes `string` from the rules the override replaced.
+  Closing it means indexing into a hand-written TypeScript type, which the handler cannot do; declining
+  every dotted key under an overridden prefix would trade the disagreement for an `unknown`.
 
 ### Inertia shared data does not rewrite `EnumResource` types for Tolki
 
