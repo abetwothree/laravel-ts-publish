@@ -82,6 +82,36 @@ final class AstEngine
     }
 
     /**
+     * Analyze a method and resolve its imports in one call — the whole contract a consumer needs,
+     * except for a $wrap = null collection, whose whole answer is MethodAnalysis::$flatTypeAlias.
+     *
+     * `$fromNamespacePath` is the generated file's own namespace path, so relative import paths
+     * resolve from where the file will live; pass '' for a file at the output root.
+     *
+     * Consumers that rewrite channels before importing (Inertia shared data, model metadata,
+     * broadcast events) keep calling analyzeMethod() and AnalysisImports::build() themselves; this
+     * method is the answer for everyone else.
+     *
+     * @param  class-string  $class
+     * @param  class-string<Model>|null  $modelClass
+     */
+    public function analyze(
+        string $class,
+        string $method = 'toArray',
+        ?string $modelClass = null,
+        string $fromNamespacePath = '',
+    ): AnalysisResult {
+        $analysis = $this->analyzeMethod($class, $method, $modelClass);
+        $imports = new AnalysisImports()->build($analysis, $fromNamespacePath);
+
+        return new AnalysisResult(
+            properties: $analysis->properties,
+            typeImports: $imports['typeImports'],
+            valueImports: $imports['valueImports'],
+        );
+    }
+
+    /**
      * Build the starting scope for a located method: its subject, the classes its parameters bind,
      * and the single-write local variables its body assigns.
      *

@@ -325,9 +325,33 @@ for the corpus evidence behind the dedupe rules above.
 ## Public API
 
 ```php
+AstEngine::analyze(string $class, string $method = 'toArray', ?string $modelClass = null, string $fromNamespacePath = ''): AnalysisResult
 AstEngine::analyzeMethod(string $class, string $method = 'toArray', ?string $modelClass = null): MethodAnalysis
 AstEngine::analyzePublicProperties(string $class): MethodAnalysis
 ```
+
+`analyze()` composes the two calls every consumer already made in sequence: `analyzeMethod()` for the
+raw DTO, then `AnalysisImports::build()` for that DTO's import maps, returning both as a readonly
+`AnalysisResult{properties, typeImports, valueImports}`. `$fromNamespacePath` is the generated file's
+own namespace path, so relative import paths resolve from where the file will live; `''` means the
+output root.
+
+`AnalysisResult` carries only those three fields, so a `$wrap = null` collection — whose entire answer
+lives in `MethodAnalysis`'s `flatTypeAlias`/`flatTypeAliasFqcn`, a channel `AnalysisImports::build()`
+never reads — comes back with all three empty, losing even the singular resource's type import.
+`PostFlatCollection` measures as `properties: []`, `typeImports: []`, `valueImports: []` against a
+`flatTypeAlias` of `PostResource[]`. Flat collections stay on `analyzeMethod()`.
+
+The other boundary is deliberate: consumers that rewrite a `MethodAnalysis`'s FQCN channels before
+importing must build from the mutated DTO, so they keep calling `analyzeMethod()` and
+`AnalysisImports::build()` themselves. There are three:
+
+- `InertiaSharedDataAnalyzer::buildTypeImports()` filters against an analysis it has already run
+  `forgetOverriddenChannels()` over.
+- `ModelMetadataAnalyzer` prunes the same channels inline before building.
+- `BroadcastEventTransformer::transformProperties()` unsets eight channels for each `#[TsCasts]`
+  override, needs the `MethodAnalysis` object itself for `resolveProperties()`, and reaches
+  `analyzePublicProperties()` instead when the event has no `broadcastWith()`.
 
 `analyzeMethod()` analyzes one method body's return shape. `$method` defaults to `'toArray'`, the
 resource case, but any class/method pair works identically. When

@@ -815,18 +815,21 @@ For the full per-feature pipeline-stage reference, every abstract base class's m
 
 ## Analyzer API
 
-The same static analysis engine that powers every feature above is also available directly, outside the `ts:publish` pipeline. `AstEngine` takes a class and a method name and returns a `MethodAnalysis` DTO of typed properties, plus the enum/model/resource references needed to build imports for them. It's the same output a resource's `toArray()` produces, but callable directly from your own code — a custom Artisan command, a package that wants this package's own typing — without running a full publish.
+The same static analysis engine that powers every feature above is also available directly, outside the `ts:publish` pipeline. `AstEngine::analyze()` takes a class and a method name and returns an `AnalysisResult` of the typed properties, the `import type` lines they need, and the value imports an `AsEnum<typeof X>` wrapper needs; `analyzeMethod()` beside it returns the raw `MethodAnalysis` DTO instead. It's the same output a resource's `toArray()` produces, but callable directly from your own code — a custom Artisan command, a package that wants this package's own typing — without running a full publish.
 
 ```php
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 
-$analysis = resolve(AstEngine::class)->analyzeMethod(App\Http\Resources\PostResource::class);
+$result = resolve(AstEngine::class)->analyze(App\Http\Resources\PostResource::class);
 
-// $analysis->properties is the same typed property list `ts:publish` would generate for PostResource.
+// $result->properties   — the typed property list ts:publish would generate for PostResource
+// $result->typeImports  — import path => type names the properties reference
+// $result->valueImports — import path => enum consts an AsEnum<typeof X> wrapper needs
 ```
 
 Key capabilities:
 
+- **`analyze()`** — one call, three things out for any resource, event or method that returns an array shape. A `$wrap = null` collection is the exception: its whole answer is `MethodAnalysis`'s `flatTypeAlias`, which an `AnalysisResult` has nowhere to put, so all three come back empty. `analyzeMethod()` remains for that case and for callers that need the raw FQCN channels.
 - **`analyzeMethod()`** — analyzes any method's return shape, not only `toArray()`; a `JsonResource` subclass still gets full resource semantics (conditional methods, `EnumResource`, nested resources, relation filters) with no extra setup.
 - **`analyzePublicProperties()`** — reads a class's properties directly instead of a method body (promoted constructor parameters and class-body declarations), skipping anything a used trait declares. Nullability is always `| null`, never `?`.
 - **`AnalysisImports::build()`** — turns a `MethodAnalysis`'s FQCN references into resolved import paths for one generated file, merging colliding paths; resolving a name collision between two imports is left to the caller.
