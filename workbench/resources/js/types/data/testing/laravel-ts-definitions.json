@@ -20,7 +20,7 @@
                 {
                     "name": "label",
                     "type": "string",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "tags",

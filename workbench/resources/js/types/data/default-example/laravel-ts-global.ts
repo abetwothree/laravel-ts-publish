@@ -4160,7 +4160,7 @@ declare global {
             kind: string;
         }
         export interface DeclaredPropsEvent {
-            label: string;
+            label?: string;
             tags: string[];
             id: number;
             note: string | null;

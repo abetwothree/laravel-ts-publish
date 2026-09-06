@@ -149,7 +149,9 @@ final class AstEngine
     /**
      * Analyze a class's public properties — promoted constructor params AND class-body declarations,
      * `@var` docblock first, native type second — into properties + enum/model FQCN channels.
-     * Never marks a property optional: nullability is `| null`, optionality is a #[TsCasts] concern.
+     * A property that is neither promoted nor defaulted is optional: `json_encode()` omits it when it
+     * was never assigned. Reflection cannot see a constructor assignment, so a property a constructor
+     * always assigns still renders `?:` — `DeclaredPropsEvent::$label` is exactly that case.
      *
      * @param  class-string  $class
      */
@@ -169,7 +171,8 @@ final class AstEngine
 
             $result = $resolver->resolve($reflection, $name) ?? ValueResult::unknown();
 
-            $analysis->addProperty($name, $result);
+            // json_encode() omits a typed property never assigned; a promoted or defaulted one is always present.
+            $analysis->addProperty($name, $result, optional: ! $property->hasDefaultValue() && ! $property->isPromoted());
         }
 
         return $analysis;

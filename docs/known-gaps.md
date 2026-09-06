@@ -54,30 +54,16 @@ ever runs, so it substitutes that single member and the direct arm's own presenc
 lost outright, not just under-suffixed. Verified against a throwaway fixture during Task 28's fix
 round; not reproduced as a committed test or golden-tree property, so nothing here pins it yet.
 
-### A broadcast event's own uninitialized typed property still types as required
+### A non-promoted property a constructor always assigns still renders optional
 
-Task 29 made an uninitialized typed public property optional wherever a class's shape is inlined —
-`LaravelTsPublish::publicPropertyShapeType()` (`src/LaravelTsPublish.php`), reached from `toTsType()`'s
-step 5c and from `arrayableShapeType()`'s no-docblock fallback. A broadcast event's own top-level
-property list never reaches that method: `AstEngine::analyzePublicProperties()` reflects the event
-class directly and hardcodes `'optional' => false` for every property, regardless of whether reflection
-says the property was ever assigned. An event with `public Carbon $occurredAt;` and no default therefore
-still emits `occurredAt: string;` in its generated `.ts` file — required — even though `json_encode()`
-would omit the key exactly as Task 29's fix accounts for everywhere else. Verified against a throwaway
-event fixture during Task 29's fix round, then removed once it stopped pinning anything the golden tree
-would show; not reproduced as a committed test or golden-tree property, so nothing here pins it yet.
-Fixing it means threading the same `hasDefaultValue()`/`isPromoted()` check into
-`analyzePublicProperties()`, which is a change to every existing broadcast event's blast radius, not a
-one-fixture addition — worth doing as its own task. `analyzePublicProperties()`'s own docblock already
-states it never marks a property optional — nullability is `| null`, optionality is a `#[TsCasts]`
-concern — so a future fix has to reconcile that deliberate boundary rather than be surprised by it. A
-related case is inherent rather than fixable: a public non-promoted `readonly` property that a
+This case is inherent rather than fixable: a public non-promoted `readonly` property that a
 hand-written constructor always assigns still renders `?:`, because a `readonly` property cannot carry
 a declaration default for static reflection to read — that `readonly` form is absent from the corpus.
-The same imprecision without `readonly` is present: `DeferredAssignmentDto::$assignedLater` is assigned
-by every construction and still emits `assignedLater?`, which is what lets it nest a `?:` inside a shape
-value for `NestedOptionalKeyDto`. It is deliberate there — the fixture needs an optional key — but it is
-the same heuristic, so a future fix to optionality has to expect that fixture to move.
+The same imprecision without `readonly` is present: `DeferredAssignmentDto::$assignedLater` and
+`DeclaredPropsEvent::$label` are assigned by every construction and still emit `?:`, which is what lets
+the former nest a `?:` inside a shape value for `NestedOptionalKeyDto`. It is deliberate there — the
+fixture needs an optional key — but it is the same heuristic, so a future fix to optionality has to
+expect those fixtures to move.
 
 ### `#[TsCasts]` and the top-level spread flatten disagree by scope, in three separate ways
 

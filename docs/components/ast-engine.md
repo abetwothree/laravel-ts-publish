@@ -363,9 +363,11 @@ disagree about which model a resource wraps) before constructing
 `analyzePublicProperties()` analyzes a class's public properties instead of a method body — promoted
 constructor parameters *and* class-body declarations, `@var` docblock first, native reflected type
 second. It skips any property a used trait declares (transitively), so a `#[TsExtends]` trait's own
-fields aren't emitted twice by the class that uses it. It never marks a property `optional`:
-nullability is expressed as `| null` in the type; whether the key is present at all is a `#[TsCasts]`
-concern, not something this method decides.
+fields aren't emitted twice by the class that uses it. A property that is neither promoted nor
+defaulted is marked `optional`, because `json_encode()` omits it when it was never assigned;
+nullability stays separate, expressed as `| null` in the type. Reflection cannot see a constructor
+assignment, so a property a hand-written constructor always assigns still renders `?:` —
+`DeclaredPropsEvent::$label` is exactly that case.
 
 `ReturnLiteralReader::stringLiteral(string $class, string $method): ?string` returns the one string
 literal a method returns, and `null` for anything else — several returns, no return, or an expression

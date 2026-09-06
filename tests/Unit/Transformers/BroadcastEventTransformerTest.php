@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
@@ -476,7 +477,7 @@ describe('native engine cutover fixtures', function () {
         $transformer = app(BroadcastEventTransformer::class, ['findable' => DeclaredPropsEvent::class]);
 
         expect($transformer->properties)->toBe([
-            'label' => ['type' => 'string', 'optional' => false],
+            'label' => ['type' => 'string', 'optional' => true],
             'tags' => ['type' => 'string[]', 'optional' => false],
             'id' => ['type' => 'number', 'optional' => false],
             'note' => ['type' => 'string | null', 'optional' => false],
@@ -516,4 +517,16 @@ describe('ReportSynced (same basename and same parent segment — import aliasin
         expect($transformer->properties['salesReport']['type'])->toBe('Partial<SalesReportReport>');
         expect($transformer->properties['marketingReport']['type'])->toBe('Partial<MarketingReportReport>');
     });
+});
+
+test('an uninitialized typed public property on an event is optional, a promoted or defaulted one is not', function () {
+    $analysis = resolve(AstEngine::class)->analyzePublicProperties(DeclaredPropsEvent::class);
+    $optional = array_column($analysis->properties, 'optional', 'name');
+
+    expect($optional)->toBe([
+        'label' => true,   // declared, typed, no default, assigned only in the constructor
+        'tags' => false,   // has a declaration default
+        'id' => false,     // promoted
+        'note' => false,   // promoted, nullable
+    ]);
 });
