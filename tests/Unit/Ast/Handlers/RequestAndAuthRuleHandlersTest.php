@@ -11,6 +11,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\StaticCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\StarterKit\StarterKitMiddleware;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TsCastsGuardRequest;
+use AbeTwoThree\LaravelTsPublish\Transformers\FormRequestTransformer;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -31,6 +33,7 @@ use Workbench\App\Http\Requests\ArrayRulesRequest;
 use Workbench\App\Http\Requests\DynamicRequest;
 use Workbench\App\Http\Requests\NestedEdgeCasesRequest;
 use Workbench\App\Http\Requests\StorePostRequest;
+use Workbench\App\Http\Requests\UpdatePostRequest;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\User;
@@ -483,4 +486,60 @@ it('declines a typed accessor on a config() receiver that already took a key, an
 
     expect((new KnownFunctionCallHandler)->resolve($onValue, requestRuleScope(), requestRuleEngine()))->toBeNull()
         ->and((new KnownFunctionCallHandler)->resolve($unknown, requestRuleScope(), requestRuleEngine()))->toBeNull();
+});
+
+// The request's own interface renders `rating?: number | bigint | null`: the override replaces the
+// rule's type, the rule's own nullability is still appended. A prop off that field must agree.
+it('validated() honours the request #[TsCasts] type and optional overrides', function () {
+    $call = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('rating'))]);
+
+    expect((new KnownMethodRuleHandler)->resolve($call, formRequestScope(), requestRuleEngine()))
+        ->toBe(['type' => 'number | bigint | null', 'optional' => true]);
+});
+
+// `tags` overrides the type with no `optional` key, so optionalOverrides carries no entry for it and
+// the rules stay the source of its optionality.
+it('reads optionality from the rules for an override that declares no optional key', function () {
+    $call = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('tags'))]);
+
+    expect((new KnownMethodRuleHandler)->resolve($call, formRequestScope(), requestRuleEngine()))
+        ->toBe(['type' => 'string[]', 'optional' => true]);
+});
+
+// An override naming an imported type has to carry its import, or the prop emits a token nothing
+// imports — the TS2304 the request's own file avoids only because it writes the import itself.
+it('carries the import an override declares next to its type', function () {
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $scope->requestVarNames = ['request' => UpdatePostRequest::class];
+    $call = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('attributes'))]);
+
+    expect((new KnownMethodRuleHandler)->resolve($call, $scope, requestRuleEngine()))->toBe([
+        'type' => 'PostAttributes',
+        'optional' => true,
+        'customImports' => ['@js/types/posts' => ['PostAttributes']],
+    ]);
+});
+
+// An override states a type, not that the key exists: the prohibited and wildcard declines stand, and
+// a dotted key keeps its rule type. FormRequestTransformer honours none of those three overrides.
+it('does not let a #[TsCasts] override resurrect a key validated() declines', function () {
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $scope->requestVarNames = ['request' => TsCastsGuardRequest::class];
+    $call = fn (string $key): MethodCall => new MethodCall(new Variable('request'), 'validated', [new Arg(new String_($key))]);
+
+    expect((new KnownMethodRuleHandler)->resolve($call('secret'), $scope, requestRuleEngine()))->toBeNull()
+        ->and((new KnownMethodRuleHandler)->resolve($call('tags.*'), $scope, requestRuleEngine()))->toBeNull()
+        ->and((new KnownMethodRuleHandler)->resolve($call('options.default'), $scope, requestRuleEngine()))
+        ->toBe(['type' => 'string', 'optional' => true]);
+});
+
+// The assumption the dotted decline rests on: the transformer matches an override to a top-level
+// field path, so those same three overrides move nothing in the request's own interface.
+it('leaves the dotted override out of the request interface, exactly as the handler does', function () {
+    $transformer = new FormRequestTransformer(TsCastsGuardRequest::class);
+    $output = view('laravel-ts-publish::form-request', ['data' => $transformer->data()])->render();
+
+    expect($output)->toContain('options?: { default?: string };')
+        ->and($output)->toContain('tags?: string[];')
+        ->and($output)->not->toContain('secret');
 });

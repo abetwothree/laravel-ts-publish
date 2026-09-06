@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
+use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Request;
@@ -44,6 +45,7 @@ final class KnownMethodRuleHandler implements ExpressionHandler
     use AppliesKnownMethodRules;
     use InspectsAstNodes;
     use InspectsResourceSubject;
+    use ParsesTsCasts;
     use ResolvesAuthHelperCalls;
     use ResolvesModelRelationTypes;
 
@@ -138,9 +140,9 @@ final class KnownMethodRuleHandler implements ExpressionHandler
     }
 
     /**
-     * Type `$request->validated('key')` from the bound FormRequest's rules() — the only source of
-     * validated()'s shape, since the method itself is untyped. Declines a non-literal key, a `*`
-     * segment, a key the rules never mention, or one rules() marks prohibited.
+     * Type `$request->validated('key')` from the bound FormRequest's rules() and its own `#[TsCasts]`
+     * — the only source of validated()'s shape, since the method itself is untyped. Declines a
+     * non-literal key, a `*` segment, a key the rules never mention, or one rules() marks prohibited.
      *
      * @param  class-string<FormRequest>  $formRequestClass
      * @return ValueExpressionResult|null
@@ -171,9 +173,32 @@ final class KnownMethodRuleHandler implements ExpressionHandler
             return null;
         }
 
+        // FormRequestTransformer matches an override to a top-level field path, so a dotted key never
+        // takes one there; honouring it here would describe the same field two different ways.
+        $casts = str_contains($key, '.')
+            ? ['overrides' => [], 'importPaths' => [], 'optionalOverrides' => []]
+            : $this->parseTsCastsFromReflection(new ReflectionClass($formRequestClass));
+
+        $type = $casts['overrides'][$key] ?? $field->tsType;
+        $importPath = $casts['importPaths'][$key] ?? null;
+        $customImports = [];
+
+        if ($importPath !== null) {
+            $importable = LaravelTsPublish::extractImportableTypes($type);
+
+            // A type with no importable token (`Record<string, unknown>`) must not materialise an
+            // empty list under its path.
+            if ($importable !== []) {
+                $customImports[$importPath] = $importable;
+            }
+        }
+
+        // The request's own interface renders the override and then appends ` | null` from the rule,
+        // so the suffix stays outside the override here too.
         return [
-            'type' => $field->tsType.($field->isNullable ? ' | null' : ''),
-            'optional' => ! $field->isRequired,
+            'type' => $type.($field->isNullable ? ' | null' : ''),
+            'optional' => $casts['optionalOverrides'][$key] ?? ! $field->isRequired,
+            ...($customImports !== [] ? ['customImports' => $customImports] : []),
         ];
     }
 

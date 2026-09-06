@@ -103,31 +103,27 @@ knowing which flattened properties are actually the host's own versus foreign, w
 `ResourceAnalysis::properties` list (name/type/optional/description only) does not carry. Both are scope
 changes to existing, working code paths, not one-fixture additions — worth doing as their own task.
 
-### `$request->validated('key')` ignores `#[TsCasts]`, and declines a wildcard key
+### `$request->validated('key')` declines a wildcard key, and ignores a dotted `#[TsCasts]` key
 
 A literal key on a bound `FormRequest` types from `rules()` — `$request->validated('title')` reads
 `StorePostRequest::rules()` through `FormRequestRulesAnalyzer`, the same analyzer the form request's own
 generated interface uses (`requestMethodRule()` in `src/Ast/Handlers/KnownMethodRuleHandler.php`). A dotted
-key now walks that same rule trie by path (`FormRequestRulesAnalyzer::analyzeField()`), so
+key walks that same rule trie by path (`FormRequestRulesAnalyzer::analyzeField()`), so
 `$request->validated('options.default')` types exactly as the request's own nested interface types
-`options.default`. Two shapes short of that decline or diverge silently rather than fixing:
+`options.default`, and the request's own `#[TsCasts]` — the type, the optionality, and the import an
+`'import' => …` override declares — now reaches the property too. Two shapes still decline or diverge:
 
-- **A `#[TsCasts]` override on the form request is not honoured.** `StorePostRequest::rating` carries a
-  `#[TsCasts]` override to `number | bigint`; `$request->validated('rating')` types as the raw-rule
-  `number | null` instead — verified directly: the handler returns `['type' => 'number | null', 'optional'
-  => true]`, not the override. The override is applied by `FormRequestTransformer::applyTsCastsOverrides()`
-  when the form request's own `.ts` interface is generated, a call site `KnownMethodRuleHandler` never
-  reaches. Two generated descriptions of the same field, disagreeing.
 - **A key containing a `*` segment declines.** `data_get()` — which `validated()` delegates to — expands
   `*` into a list of *every* match, so the trie node under `*` describes one element, not the value the
   call returns. `$request->validated('options.*')` would otherwise type `string | null` where the runtime
   value is `(string | null)[]`, so `validatedKeyRule()` declines the key outright and the property types as
   `unknown`. Typing it means array-wrapping the composed element type once per `*` hop, plus reproducing
   `Arr::collapse()`'s flattening for a key with more than one — its own task, not a guard.
-
-Fixing the first means either routing through `FormRequestTransformer`'s override application or
-duplicating its `#[TsCasts]` parsing at this call site. Both are scope changes beyond the single literal
-key this call site was built for.
+- **A `#[TsCasts]` key with a dot in it is ignored, on the request as well as here.**
+  `FormRequestTransformer::applyTsCastsOverrides()` matches an override against a top-level field path, and
+  `analyze()` emits only top-level paths, so `#[TsCasts(['options.default' => 'number'])]` moves nothing in
+  the request's own interface. `validatedKeyRule()` therefore ignores a dotted override key too: honouring
+  it at one of the two call sites and not the other is the disagreement this whole entry is about.
 
 ### Inertia shared data does not rewrite `EnumResource` types for Tolki
 
