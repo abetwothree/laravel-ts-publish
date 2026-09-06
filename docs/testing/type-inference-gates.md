@@ -146,9 +146,7 @@ every `.d.ts` it includes, not just its shape — the generated tree ships `.d.t
 Turning it off also checks `node_modules`, which is not this package's code to fix. So `gate_one()` counts
 only diagnostics whose path starts with `workbench/` or `tests/` — the two fail-open guards above still
 read the *whole* `tsc` output, since a config or parse error can print with no path prefix at all, but
-every subsequent count is scoped. The current example is `@tolki/types`'s own `collections.d.ts`, which
-raises one `TS2526` that shows in raw `tsc` output and nowhere else; it disappears once the dependency's
-own fix (tracked separately) is picked up here.
+every subsequent count is scoped.
 
 **All three baselines are `0`.** The app-side modules the generated tree imports are stubbed under
 `tests/types/stubs` (see [The app-side stubs](#the-app-side-stubs)), so the gate is an *identity* check
@@ -290,12 +288,11 @@ disappearing together), then `GlobalsWriter`'s form-request import loop, then `#
 analyzer references, then the stubs. Lowering a baseline once the defect behind it is gone was always the
 point; defending the number never was. There is no baseline left to defend.
 
-After the stubs, `npx tsc --noEmit -p tsconfig.json` over the generated tree reported two codes nothing
-gated on: **4** TS6196 (`declared but never used`) and, since `skipLibCheck` went off (above), **1** TS2526
-inside `@tolki/types`'s own shipped declaration file — a dependency bug, not ours. The four TS6196s were
-later fixed — `laravel-ts-global.ts` now emits the `extends` clause it imports for, and a `#[TsCasts]`
-override releases the enum import it replaces — and the code joined the main count above. TS2526 remains
-uncounted; it is a dependency bug, described [above](#unimportable-token-gatesh), not this package's to fix.
+After the stubs, `npx tsc --noEmit -p tsconfig.json` over the generated tree reports nothing outside the
+gated codes. Two once did: four TS6196s (`declared but never used`), fixed when `laravel-ts-global.ts`
+started emitting the `extends` clause it imports for and a `#[TsCasts]` override started releasing the
+enum import it replaces; and one TS2526 inside `@tolki/types`'s own shipped declaration file, which went
+with `@tolki/types` 1.6.0.
 
 ### The TS2307 sub-gates
 
