@@ -114,8 +114,13 @@ final class ValueResult
         // occurrences of each bare enum name in the merged union's rendered type.
         /** @var list<class-string> $embeddedEnumFqcns FQCNs embedded inside nested inline-object types */
         $embeddedEnumFqcns = [];
-        /** @var list<class-string> $embeddedModelFqcns */
+        // The embedded list is per-occurrence and never deduped: aliasPropertyType() walks it positionally
+        // against the rendered type. The branch-level list is one FQCN per branch, so it must be deduped --
+        // analyzeClosureUnion() collapses branches that render the same string, leaving no token to bind.
+        /** @var list<class-string> $embeddedModelFqcns FQCNs embedded inside nested inline-object types */
         $embeddedModelFqcns = [];
+        /** @var list<class-string> $branchModelFqcns one FQCN per whole-branch model */
+        $branchModelFqcns = [];
         /** @var list<class-string> $embeddedResourceFqcns */
         $embeddedResourceFqcns = [];
         /** @var TypesImportMap $customImports */
@@ -149,7 +154,7 @@ final class ValueResult
             }
 
             if (isset($inner['modelFqcn'])) {
-                $embeddedModelFqcns[] = $inner['modelFqcn'];
+                $branchModelFqcns[] = $inner['modelFqcn'];
             }
 
             foreach ($inner['customImports'] ?? [] as $path => $importTypes) {
@@ -161,7 +166,6 @@ final class ValueResult
 
         $enumResourceFqcns = array_values(array_unique($enumResourceFqcns));
         $enumDirectFqcns = array_values(array_unique($enumDirectFqcns));
-        $embeddedModelFqcns = array_values(array_unique($embeddedModelFqcns));
         $embeddedResourceFqcns = array_values(array_unique($embeddedResourceFqcns));
 
         if ($enumResourceFqcns !== []) {
@@ -195,6 +199,8 @@ final class ValueResult
         if ($embeddedEnumFqcns !== []) {
             $result['embeddedEnumFqcns'] = $embeddedEnumFqcns;
         }
+
+        $embeddedModelFqcns = [...array_values(array_unique($branchModelFqcns)), ...$embeddedModelFqcns];
 
         if ($embeddedModelFqcns !== []) {
             $result['embeddedModelFqcns'] = $embeddedModelFqcns;

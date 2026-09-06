@@ -191,6 +191,7 @@
     "app\/Http\/Resources\/RelationChainResource.php",
     "app\/Http\/Resources\/ResourceWrappedEnumResource.php",
     "app\/Http\/Resources\/RoutableResource.php",
+    "app\/Http\/Resources\/SameBasenameModelTrioResource.php",
     "app\/Http\/Resources\/SelfSpreadResource.php",
     "app\/Http\/Resources\/ServiceDeskResource.php",
     "app\/Http\/Resources\/ShadowedClosureParamResource.php",

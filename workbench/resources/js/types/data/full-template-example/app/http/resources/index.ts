@@ -109,6 +109,7 @@ export * from './registrar-resource';
 export * from './relation-chain-resource';
 export * from './resource-wrapped-enum-resource';
 export * from './routable-resource';
+export * from './same-basename-model-trio-resource';
 export * from './self-spread-resource';
 export * from './service-desk-resource';
 export * from './shadowed-closure-param-resource';

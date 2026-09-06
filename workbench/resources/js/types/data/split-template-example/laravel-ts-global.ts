@@ -3221,6 +3221,21 @@ declare global {
         export interface RoutableResource extends ResourceRoutes, Pick<Routable, "store" | "update"> {
         }
         /**
+         * The model-side twin of DealEnumTrioResource: two User models sharing a basename, read across a
+         * ternary so mergeUnion() builds the queue aliasPropertyType() consumes positionally. A ternary is
+         * required — an inline array alone never reaches mergeUnion().
+         *
+         * trio pins the embedded channel: three reads, three rendered tokens, so the queue must keep its
+         * repeat. collapsed_arms pins the branch-level channel against it: its two inner arms are the same
+         * class, so analyzeClosureUnion() folds them to one rendered token and the queue must drop the
+         * repeat — deduping both channels breaks trio, deduping neither breaks collapsed_arms.
+         */
+        export interface SameBasenameModelTrioResource {
+            id: number;
+            trio: { a: crm.models.User | null } | { b: app.models.User | null; c: crm.models.User | null };
+            collapsed_arms: crm.models.User | { c: app.models.User | null } | null;
+        }
+        /**
          * Regression (Task 32 review, C1): a resource spreading itself must not recurse until memory is
          * exhausted. AstEngine::analyzeMethod()'s cycle guard returns an empty analysis for the re-entrant
          * call, so only 'marker' should ever appear.

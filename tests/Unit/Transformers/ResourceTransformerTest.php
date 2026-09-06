@@ -47,6 +47,7 @@ use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\ProfileResource;
 use Workbench\App\Http\Resources\RelationChainResource;
 use Workbench\App\Http\Resources\ResourceWrappedEnumResource;
+use Workbench\App\Http\Resources\SameBasenameModelTrioResource;
 use Workbench\App\Http\Resources\ServiceDeskResource;
 use Workbench\App\Http\Resources\TeamStatusAuditResource;
 use Workbench\App\Http\Resources\TernaryResource;
@@ -2643,5 +2644,33 @@ describe('ResourceTransformer with NamedArgsConditionalResource', function () {
             ->and($properties['loaded_named_default']['optional'])->toBeFalse()
             ->and($properties['counted_named_out_of_order']['type'])->toBe('number')
             ->and($properties['counted_named_out_of_order']['optional'])->toBeFalse();
+    });
+});
+
+describe('ResourceTransformer with SameBasenameModelTrioResource', function () {
+    test('a repeated same-basename model inside one inline array keeps its own alias each time', function () {
+        $data = (new ResourceTransformer(SameBasenameModelTrioResource::class))->data();
+        $trio = $data->properties['trio']['type'];
+
+        // Capture the alias prefix rather than the whole name (they follow the namespace-prefix scheme
+        // import-name-registry.md documents), so a regression to the bare name still fails on the
+        // comparison below instead of on the count. Positions 1 and 3 must match while 2 differs.
+        preg_match_all('/(\w*)User\b/', $trio, $m);
+        expect($m[1])->toHaveCount(3)
+            ->and($m[1][0])->toBe($m[1][2])
+            ->and($m[1][1])->not->toBe($m[1][0])
+            // Pins the shape too: a flat inline array renders one object, never a union of two, and
+            // reaches InlineArrayHandler's own queue instead of mergeUnion().
+            ->and($trio)->toBe('{ a: CrmUser | null } | { b: WorkbenchUser | null; c: CrmUser | null }');
+    });
+
+    // collapsed_arms' two inner arms are both Crm\Models\User, so analyzeClosureUnion() folds them to
+    // one rendered token while keeping both branch results. The branch-level FQCNs must dedupe to match,
+    // or the manager in the second arm consumes the surplus entry and aliases as CrmUser.
+    test('branch arms that render one token consume one entry of the alias queue', function () {
+        $data = (new ResourceTransformer(SameBasenameModelTrioResource::class))->data();
+
+        expect($data->properties['collapsed_arms']['type'])
+            ->toBe('CrmUser | { c: WorkbenchUser | null } | null');
     });
 });

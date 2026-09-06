@@ -12633,6 +12633,26 @@
             "name": "RoutableResource",
             "properties": []
         },
+        "Workbench\\App\\Http\\Resources\\SameBasenameModelTrioResource": {
+            "name": "SameBasenameModelTrioResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "trio",
+                    "type": "{ a: CrmUser | null } | { b: WorkbenchUser | null; c: CrmUser | null }",
+                    "optional": false
+                },
+                {
+                    "name": "collapsed_arms",
+                    "type": "CrmUser | { c: WorkbenchUser | null } | null",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\SelfSpreadResource": {
             "name": "SelfSpreadResource",
             "properties": [
