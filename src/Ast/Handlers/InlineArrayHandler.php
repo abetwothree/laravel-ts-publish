@@ -29,6 +29,8 @@ use PhpParser\Node\Identifier;
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
  * @phpstan-type InlineSpreadArm = array{fqcn: class-string, isModel: bool, isCollection: bool}
+ *
+ * @internal
  */
 final class InlineArrayHandler implements ExpressionHandler
 {

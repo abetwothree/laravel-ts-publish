@@ -13,6 +13,8 @@ use ReflectionProperty;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypeScriptTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
+ *
+ * @internal
  */
 final class PropertyDocblockTypeReader
 {

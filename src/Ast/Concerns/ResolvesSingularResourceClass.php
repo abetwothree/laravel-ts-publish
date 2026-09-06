@@ -12,6 +12,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
  *
  * Kept apart from InspectsResourceSubject because this one needs InspectsAstNodes, which two of
  * that trait's consumers do not use. Requires the host to also use InspectsAstNodes.
+ *
+ * @internal
  */
 trait ResolvesSingularResourceClass
 {

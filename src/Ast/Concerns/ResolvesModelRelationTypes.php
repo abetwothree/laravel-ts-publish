@@ -14,6 +14,8 @@ use Illuminate\Database\Eloquent\Model;
  * The single home for this: five handlers plus ResourceAstAnalyzer carried byte-identical copies
  * before this trait. Any other trait the consuming class uses must not declare this name — PHP
  * collides on method name alone and PHPStan compiles the resulting fatal cleanly.
+ *
+ * @internal
  */
 trait ResolvesModelRelationTypes
 {

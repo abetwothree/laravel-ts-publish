@@ -35,6 +35,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\VariableHandler;
  * Builds the ordered ExpressionHandler lists ExpressionDispatcher runs. Registration order is
  * dispatch precedence for any node class more than one handler claims — see
  * docs/components/ast-engine.md's "Handler ordering" section for the contract this pins.
+ *
+ * @internal
  */
 final class ResourceExpressionHandlers
 {

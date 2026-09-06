@@ -20,6 +20,8 @@ use ReflectionMethod;
  * always absent from the initial response; a deferred scroll or an already-loaded once is runtime state.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 final class InertiaWrapperHandler implements ExpressionHandler
 {

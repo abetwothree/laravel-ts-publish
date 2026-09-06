@@ -22,6 +22,8 @@ use ReflectionClass;
  * `new SomeResource(...)`, `new EnumResource($this->prop)`, and `new SomeCollection($this->items)`.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 final class NewResourceHandler implements ExpressionHandler
 {

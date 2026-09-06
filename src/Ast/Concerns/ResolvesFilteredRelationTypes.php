@@ -15,6 +15,8 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
  * anonymous subclasses, which is the only coverage the except-branch column rule has.
  *
  * @phpstan-import-type TypesImportMap from Datable
+ *
+ * @internal
  */
 trait ResolvesFilteredRelationTypes
 {

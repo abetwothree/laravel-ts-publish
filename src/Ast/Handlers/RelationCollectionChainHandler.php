@@ -42,6 +42,8 @@ use ReflectionNamedType;
  * wrapped `$this->prop` receiver, and the generic `$this->method()` return-type reflection.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 final class RelationCollectionChainHandler implements ExpressionHandler
 {

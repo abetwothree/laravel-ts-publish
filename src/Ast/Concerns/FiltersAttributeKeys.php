@@ -16,6 +16,8 @@ use ReflectionMethod;
  *
  * The single home for both: FiltersModelAttributes composes this trait for `$this->only([...])`,
  * RelationFilterHandler for `$this->relation->only([...])`. Stateless — no host state is read.
+ *
+ * @internal
  */
 trait FiltersAttributeKeys
 {

@@ -13,6 +13,8 @@ use Illuminate\Http\Resources\Json\ResourceCollection;
  * `$resource` wraps, and whether it is a ResourceCollection.
  *
  * The single home for both.
+ *
+ * @internal
  */
 trait InspectsResourceSubject
 {

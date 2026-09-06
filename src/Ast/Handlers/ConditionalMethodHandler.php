@@ -33,6 +33,8 @@ use ReflectionMethod;
  * `whenAppended`, `whenExistsLoaded`, and `transform` — every one of them a `$this->` call.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 final class ConditionalMethodHandler implements ExpressionHandler
 {

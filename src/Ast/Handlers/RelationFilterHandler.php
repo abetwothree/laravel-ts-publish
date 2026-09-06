@@ -31,6 +31,8 @@ use ReflectionMethod;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypesImportMap from Datable
+ *
+ * @internal
  */
 final class RelationFilterHandler implements ExpressionHandler
 {

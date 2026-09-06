@@ -10,6 +10,8 @@ use ReflectionClass;
 
 /**
  * A located class method: its reflection, its ClassMethod AST node, and the parsed file it lives in.
+ *
+ * @internal
  */
 final readonly class MethodContext
 {

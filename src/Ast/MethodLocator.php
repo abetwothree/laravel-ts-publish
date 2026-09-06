@@ -12,6 +12,8 @@ use ReflectionMethod;
 
 /**
  * Finds a method's ClassMethod AST node, memoized, recording every parsed file as a cache dependency.
+ *
+ * @internal
  */
 class MethodLocator
 {

@@ -31,6 +31,8 @@ use stdClass;
  * `config()->get()` and its typed accessors, and `auth()->user()`/`auth()->id()`. Declines anything else.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 final class KnownFunctionCallHandler implements ExpressionHandler
 {

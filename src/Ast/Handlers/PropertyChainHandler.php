@@ -27,6 +27,8 @@ use ReflectionEnum;
  * `$this->resource->user->role` — traversing relation steps until the final property resolves.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 final class PropertyChainHandler implements ExpressionHandler
 {

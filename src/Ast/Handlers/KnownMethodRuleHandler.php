@@ -36,6 +36,8 @@ use ReflectionUnionType;
  * claimed — e.g. `$request->user()->can(…)`, whose receiver is itself a MethodCall. Registered last.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 final class KnownMethodRuleHandler implements ExpressionHandler
 {

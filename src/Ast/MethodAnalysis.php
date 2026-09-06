@@ -29,6 +29,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * @phpstan-type MultiEnumFqcnsMap = array<string, list<class-string>>
  * @phpstan-type EnumResourceArmShape = array{wrapIsCollection: bool, directIsArray: bool}
  * @phpstan-type EnumResourceArmShapeMap = array<string, EnumResourceArmShape>
+ *
+ * @internal
  */
 class MethodAnalysis
 {

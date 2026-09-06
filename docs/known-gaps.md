@@ -301,9 +301,11 @@ Absent on purpose. Do not "fix" these without raising it first.
 - **Non-Inertia and JSON responses are never typed.** Only `Inertia::render()` page props and the
   shared-data middleware are analyzed.
 - **No `ts-publish.analyzer.handlers` config key, and no supported extension of the AST engine.** The
-  only user-facing surface of the engine is `AstEngine`. Every handler, concern, resolver and value
+  only user-facing surface of the engine is `AstEngine`, plus the `AnalysisResult` its `analyze()` returns. Every handler, concern, resolver and value
   object under `src/Ast/` is internal and changes without notice as inference grows; nothing there is a
-  compatibility promise, and code that extends it is on its own.
+  compatibility promise, and code that extends it is on its own. Every class under `src/Ast/` other than
+  `AstEngine` and `AnalysisResult` is tagged `@internal`, so a consumer running PHPStan with bleedingEdge
+  (`internalTag`) — or any IDE — is warned when reaching past them.
 - **Form requests stay runtime.** They are resolved by instantiating and calling `rules()`, on purpose.
 - **Collector class maps are not invalidated mid-process.** `CoreCollector::classMap()` scans each directory
   once per process, and `Runner::run()` / `RunnerForSource::run()` clear it first, so a `ts:publish` run

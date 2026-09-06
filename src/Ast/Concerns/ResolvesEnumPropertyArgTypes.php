@@ -26,6 +26,8 @@ use PhpParser\Node\Name;
  * Requires the host to also `use InspectsAstNodes` (for `isThisPropertyFetch()`).
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 trait ResolvesEnumPropertyArgTypes
 {

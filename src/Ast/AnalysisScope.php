@@ -19,6 +19,8 @@ use ReflectionClass;
  * @phpstan-type VarCollectionBindingsMap array<string, array{type: string, modelFqcn: class-string<Model>}>
  * @phpstan-type LocalVarBindingsMap array<string, Expr>
  * @phpstan-type RequestVarNamesMap array<string, class-string<Request>>
+ *
+ * @internal
  */
 final class AnalysisScope
 {

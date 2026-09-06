@@ -15,6 +15,8 @@ use PhpParser\Node\Expr;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypesImportMap from Datable
+ *
+ * @internal
  */
 final class ValueResult
 {

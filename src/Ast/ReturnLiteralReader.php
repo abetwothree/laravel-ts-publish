@@ -16,6 +16,8 @@ use PhpParser\NodeVisitorAbstract;
  * Reads a method whose whole body is one string-literal return, e.g. `broadcastAs()`.
  *
  * Whole literal or nothing: a concatenation folded to its literal prefix ships a wrong Echo key.
+ *
+ * @internal
  */
 final class ReturnLiteralReader
 {

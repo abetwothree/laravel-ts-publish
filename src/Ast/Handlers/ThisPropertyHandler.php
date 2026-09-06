@@ -29,6 +29,8 @@ use PhpParser\Node\Identifier;
  * property extractor still used by the analyzer's own merge()/mergeWhen() resolution.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 final class ThisPropertyHandler implements ExpressionHandler
 {

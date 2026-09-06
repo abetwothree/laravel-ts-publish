@@ -26,6 +26,8 @@ use ReflectionClass;
  * resource wraps decides the rest: a paginator adds the pagination members, a plain collection does not.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 final class InertiaResourcePropHandler implements ExpressionHandler
 {

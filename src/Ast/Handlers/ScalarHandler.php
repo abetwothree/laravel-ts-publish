@@ -18,6 +18,8 @@ use PhpParser\Node\Scalar\String_;
  * Scalar literals — string/interpolated-string to `string`, int/float to `number`.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 final class ScalarHandler implements ExpressionHandler
 {

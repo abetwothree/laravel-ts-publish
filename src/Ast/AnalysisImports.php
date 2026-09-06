@@ -16,6 +16,8 @@ use Illuminate\Support\Facades\Config;
  * runs Support\ImportNameRegistry over the result itself.
  *
  * @phpstan-import-type TypesImportMap from Datable
+ *
+ * @internal
  */
 final class AnalysisImports
 {

@@ -18,6 +18,8 @@ use ReflectionNamedType;
 
 /**
  * Shared php-parser call predicates: matching static calls and reading typed `$this` property classes.
+ *
+ * @internal
  */
 class CallMatcher
 {

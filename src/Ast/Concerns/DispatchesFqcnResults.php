@@ -17,6 +17,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
  * @phpstan-import-type ClassMapType from MethodAnalysis
  * @phpstan-import-type MultiEnumFqcnsMap from MethodAnalysis
  * @phpstan-import-type EnumResourceArmShapeMap from MethodAnalysis
+ *
+ * @internal
  */
 trait DispatchesFqcnResults
 {

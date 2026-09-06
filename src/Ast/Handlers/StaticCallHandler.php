@@ -45,6 +45,8 @@ use ReflectionNamedType;
  * when nothing in scope declares the method, so anything appended behind it would see those.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 final class StaticCallHandler implements ExpressionHandler
 {

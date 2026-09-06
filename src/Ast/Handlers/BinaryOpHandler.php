@@ -20,6 +20,8 @@ use PhpParser\Node\Expr\UnaryPlus;
  * Arithmetic, comparison, logical, and unary +/- operators.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 final class BinaryOpHandler implements ExpressionHandler
 {

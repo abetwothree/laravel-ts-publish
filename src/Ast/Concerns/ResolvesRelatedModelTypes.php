@@ -16,6 +16,8 @@ use Illuminate\Database\Eloquent\Model;
  * default the ambient whenLoaded closure's related model.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 trait ResolvesRelatedModelTypes
 {

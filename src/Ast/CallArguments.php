@@ -16,6 +16,8 @@ use ReflectionMethod;
  * passedCount() emulates PHP's func_num_args(): a named argument for position N counts as passing 0..N,
  * which is the test Laravel's conditional family makes to tell an omitted argument from an explicit null.
  * Parameter names are reflected from the real target, memoized only where that target's identity is stable.
+ *
+ * @internal
  */
 final class CallArguments
 {

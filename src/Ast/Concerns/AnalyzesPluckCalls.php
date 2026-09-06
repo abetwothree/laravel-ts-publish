@@ -20,6 +20,8 @@ use ReflectionMethod;
  * VariableHandler through a bound variable. Requires the host to also use ResolvesRelatedModelTypes.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 trait AnalyzesPluckCalls
 {

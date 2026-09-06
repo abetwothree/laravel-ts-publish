@@ -17,6 +17,8 @@ use ReflectionClass;
  *
  * The one home for this order, so AstEngine's public entry and ResourceTransformer's pipeline
  * never disagree about which model a resource wraps.
+ *
+ * @internal
  */
 final class ModelClassResolver
 {

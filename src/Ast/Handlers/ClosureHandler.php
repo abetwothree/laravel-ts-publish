@@ -30,6 +30,8 @@ use PhpParser\Node\NullableType;
  *      directEnumFqcn?: class-string,
  *      modelFqcn?: class-string
  * }
+ *
+ * @internal
  */
 final class ClosureHandler implements ExpressionHandler
 {

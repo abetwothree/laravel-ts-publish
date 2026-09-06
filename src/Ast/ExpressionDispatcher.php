@@ -13,6 +13,8 @@ use PhpParser\Node\Expr;
  * the first non-null resolution. Order is load-bearing: it IS the legacy guard-chain's order.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 final class ExpressionDispatcher
 {

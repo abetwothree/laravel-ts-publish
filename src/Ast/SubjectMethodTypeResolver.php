@@ -18,6 +18,8 @@ use ReflectionClass;
  * `$this::staticMethod()` branch and RelationCollectionChainHandler's generic `$this->method()` guard.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 final class SubjectMethodTypeResolver
 {
