@@ -1210,6 +1210,31 @@
                 }
             }
         },
+        "Workbench\\App\\Enums\\ShirtSize": {
+            "name": "Size",
+            "cases": [
+                {
+                    "name": "Small",
+                    "value": "s",
+                    "description": ""
+                },
+                {
+                    "name": "Large",
+                    "value": "l",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'Small'",
+                "'Large'"
+            ],
+            "caseTypes": [
+                "'s'",
+                "'l'"
+            ],
+            "methods": [],
+            "staticMethods": []
+        },
         "Workbench\\App\\Enums\\Status": {
             "name": "Status",
             "cases": [
@@ -4834,6 +4859,10 @@
                 {
                     "name": "status_from_docblock",
                     "type": "StatusType | null"
+                },
+                {
+                    "name": "shirt_size",
+                    "type": "SizeType"
                 },
                 {
                     "name": "uploader_from_docblock",
@@ -10434,6 +10463,11 @@
                 {
                     "name": "status_from_docblock",
                     "type": "StatusType | null",
+                    "optional": false
+                },
+                {
+                    "name": "shirt_size",
+                    "type": "SizeType",
                     "optional": false
                 },
                 {

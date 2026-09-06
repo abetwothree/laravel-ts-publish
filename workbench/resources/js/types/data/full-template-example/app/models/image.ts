@@ -1,9 +1,9 @@
 import { type AsEnum } from '@tolki/ts';
 
-import { Status } from '../enums';
+import { Size, Status } from '../enums';
 import type { MenuSettingsType } from '@js/types/settings';
 import type { User as CrmUser } from '../../crm/models';
-import type { StatusType } from '../enums';
+import type { SizeType, StatusType } from '../enums';
 import type { Post, Product, User as ModelsUser } from '.';
 
 /** @see Workbench\App\Models\Image */
@@ -38,6 +38,8 @@ export interface Image
     flexible_id: string | number | null;
     optional_label: string | null;
     status_from_docblock: StatusType | null;
+    /** Shirt size, typed by an enum whose #[TsEnum(name:)] differs from its class basename. */
+    shirt_size: SizeType;
     uploader_from_docblock: ModelsUser | null;
     config_from_docblock: MenuSettingsType;
     data_from_docblock: { recordedAt?: string; title: string; weight: number | null };
@@ -64,7 +66,8 @@ export interface Image
     reviewable_exists: boolean;
 }
 
-export interface ImageResource extends Omit<Image, 'status_from_docblock'>
+export interface ImageResource extends Omit<Image, 'status_from_docblock' | 'shirt_size'>
 {
     status_from_docblock: AsEnum<typeof Status> | null;
+    shirt_size: AsEnum<typeof Size>;
 }

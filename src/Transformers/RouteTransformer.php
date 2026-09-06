@@ -671,7 +671,10 @@ class RouteTransformer extends CoreTransformer
 
             $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
             $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
-            $imports[$importPath][] = LaravelTsPublish::resourceTypeName($fqcn);
+            // An enum's TypeScript name follows #[TsEnum(name:)]; resourceTypeName() only knows #[TsResource].
+            $imports[$importPath][] = enum_exists($fqcn)
+                ? (LaravelTsPublish::toTsType($fqcn)['enumTypes'][0] ?? class_basename($fqcn).'Type')
+                : LaravelTsPublish::resourceTypeName($fqcn);
         }
 
         foreach ($this->actionExternalImports as $externalImports) {

@@ -376,6 +376,8 @@ declare global {
             flexible_id: string | number | null;
             optional_label: string | null;
             status_from_docblock: app.enums.StatusType | null;
+            /** Shirt size, typed by an enum whose #[TsEnum(name:)] differs from its class basename. */
+            shirt_size: app.enums.SizeType;
             uploader_from_docblock: User | null;
             config_from_docblock: MenuSettingsType;
             data_from_docblock: { recordedAt?: string; title: string; weight: number | null };
@@ -1593,6 +1595,15 @@ declare global {
         export type SeasonType = 'spring' | 'summer' | 'autumn' | 'winter';
         export type SeasonKind = 'Spring' | 'Summer' | 'Autumn' | 'Winter';
 
+        /** Fixture: a #[TsEnum(name:)] that differs from the class basename, reached from a page prop. */
+        export interface Size
+        {
+            Small: 's',
+            Large: 'l',
+        }
+        export type SizeType = 's' | 'l';
+        export type SizeKind = 'Small' | 'Large';
+
         export interface Status
         {
             Draft: 0,
@@ -2470,6 +2481,7 @@ declare global {
             flexible_id: string | number | null;
             optional_label: string | null;
             status_from_docblock: app.enums.StatusType | null;
+            shirt_size: app.enums.SizeType;
             uploader_from_docblock: app.models.User | null;
             config_from_docblock: MenuSettingsType;
             data_from_docblock: { recordedAt?: string; title: string; weight: number | null };

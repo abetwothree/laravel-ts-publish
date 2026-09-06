@@ -458,8 +458,10 @@ class InertiaPageAnalyzer
 
         return array_values(array_filter(
             array_unique($candidates),
+            // An enum's TypeScript name follows #[TsEnum(name:)], which neither of the first two spell.
             fn (string $fqcn): bool => $this->typeSpells($pageType, class_basename($fqcn))
-                || $this->typeSpells($pageType, LaravelTsPublish::resourceTypeName($fqcn)),
+                || $this->typeSpells($pageType, LaravelTsPublish::resourceTypeName($fqcn))
+                || (enum_exists($fqcn) && $this->typeSpells($pageType, LaravelTsPublish::toTsType($fqcn)['type'])),
         ));
     }
 

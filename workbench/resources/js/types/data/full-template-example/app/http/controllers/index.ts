@@ -15,6 +15,7 @@ export { default as InertiaNamedCollectionsController } from './inertia-named-co
 export { default as InertiaPaginationsController } from './inertia-paginations-controller';
 export { default as InertiaPreserveKeysController } from './inertia-preserve-keys-controller';
 export { default as InertiaResourceSharedTemplate } from './inertia-resource-shared-template';
+export { default as InertiaShirtSizeController } from './inertia-shirt-size-controller';
 export { default as InertiaSingleResourceController } from './inertia-single-resource-controller';
 export { default as InertiaTsCastsController } from './inertia-ts-casts-controller';
 export { default as InertiaUserShapesController } from './inertia-user-shapes-controller';
