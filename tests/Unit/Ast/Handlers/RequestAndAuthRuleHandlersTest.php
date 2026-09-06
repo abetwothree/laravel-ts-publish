@@ -28,6 +28,7 @@ use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\VariadicPlaceholder;
 use Workbench\App\Http\Requests\DynamicRequest;
+use Workbench\App\Http\Requests\NestedEdgeCasesRequest;
 use Workbench\App\Http\Requests\StorePostRequest;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Models\Comment;
@@ -277,6 +278,27 @@ it('declines validated() for a key the rules do not mention, and the zero-argume
 
     expect((new KnownMethodRuleHandler)->resolve($unknownKey, formRequestScope(), requestRuleEngine()))->toBeNull()
         ->and((new KnownMethodRuleHandler)->resolve($wholePayload, formRequestScope(), requestRuleEngine()))->toBeNull();
+});
+
+it('types validated() for a dotted key the rules declare', function () {
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $scope->requestVarNames = ['request' => NestedEdgeCasesRequest::class];
+    $call = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('options.default'))]);
+
+    expect((new KnownMethodRuleHandler)->resolve($call, $scope, requestRuleEngine()))
+        ->toBe(['type' => 'string', 'optional' => true]);
+});
+
+// data_get() expands `*` into a list of every match, so the `*` trie node types one element, not
+// the array validated() returns — declining beats confidently emitting the element type.
+it('declines validated() for a key with a wildcard segment', function () {
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $scope->requestVarNames = ['request' => NestedEdgeCasesRequest::class];
+    $element = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('options.*'))]);
+    $deeper = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('buckets.*.name'))]);
+
+    expect((new KnownMethodRuleHandler)->resolve($element, $scope, requestRuleEngine()))->toBeNull()
+        ->and((new KnownMethodRuleHandler)->resolve($deeper, $scope, requestRuleEngine()))->toBeNull();
 });
 
 it('declines validated() rather than letting a throwing rules() escape the analyzer', function () {

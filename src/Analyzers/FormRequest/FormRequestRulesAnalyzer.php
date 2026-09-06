@@ -88,6 +88,51 @@ class FormRequestRulesAnalyzer
     }
 
     /**
+     * Compose one rule by dotted path, so a caller typing `validated('a.b')` reads the same trie
+     * node the request's own interface nests under `a`.
+     *
+     * The walk splits on every `.`, so an escaped-dot key such as `'v1\.0'` is out of scope here.
+     *
+     * @param  class-string<FormRequest>  $fqcn
+     */
+    public function analyzeField(string $fqcn, string $dottedPath): ?FormRequestRuleNode
+    {
+        $this->isDynamic = false;
+
+        $rawRules = $this->resolveRules($fqcn);
+
+        if ($rawRules === null) {
+            $this->isDynamic = true;
+
+            return null;
+        }
+
+        $node = $this->buildRuleTrie($rawRules);
+
+        foreach (explode('.', $dottedPath) as $segment) {
+            if (! isset($node->children[$segment])) {
+                return null;
+            }
+
+            $node = $node->children[$segment];
+        }
+
+        $composed = $this->composeTrieNode($node);
+
+        return new FormRequestRuleNode(
+            fieldPath: $dottedPath,
+            tsType: $composed['tsType'],
+            isRequired: $composed['isRequired'],
+            isNullable: $composed['isNullable'],
+            isProhibited: $composed['isProhibited'],
+            jsDocMetadata: [
+                ...$composed['jsDocMetadata'],
+                ...$this->collectChildJsDoc($node->children, $dottedPath),
+            ],
+        );
+    }
+
+    /**
      * Instantiate the FormRequest and call `rules()`, or null when it needs HTTP context.
      *
      * @param  class-string<FormRequest>  $fqcn

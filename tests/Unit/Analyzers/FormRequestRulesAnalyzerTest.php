@@ -460,6 +460,31 @@ describe('FormRequestRulesAnalyzer', function () {
         });
     });
 
+    describe('analyzeField', function () {
+        it('composes a dotted path from the rule trie', function () {
+            $node = (new FormRequestRulesAnalyzer)->analyzeField(NestedEdgeCasesRequest::class, 'options.default');
+
+            expect($node)->not->toBeNull()
+                ->and($node->fieldPath)->toBe('options.default')
+                ->and($node->tsType)->toBe('string')
+                ->and($node->isProhibited)->toBeFalse();
+        });
+
+        it('returns null for a path the rules do not declare', function () {
+            expect((new FormRequestRulesAnalyzer)->analyzeField(NestedEdgeCasesRequest::class, 'options.missing'))->toBeNull();
+        });
+
+        it('tracks isDynamic across analyzeField() calls, like analyze() does', function () {
+            $analyzer = new FormRequestRulesAnalyzer;
+
+            expect($analyzer->analyzeField(DynamicRequest::class, 'name'))->toBeNull();
+            expect($analyzer->isDynamic)->toBeTrue();
+
+            expect($analyzer->analyzeField(NestedEdgeCasesRequest::class, 'options.default'))->not->toBeNull();
+            expect($analyzer->isDynamic)->toBeFalse();
+        });
+    });
+
     describe('nested array rule composition', function () {
         it('composes parent.*.child rules into a typed element object', function () {
             $analyzer = new FormRequestRulesAnalyzer;

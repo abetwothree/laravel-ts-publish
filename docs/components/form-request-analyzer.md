@@ -205,6 +205,30 @@ above — `roles: string[]` collapses identically to how it did before this comp
 the only difference being that the flat `"roles.*"` key is no longer also emitted alongside it
 (see below).
 
+## `analyzeField()`: one rule by dotted path
+
+`analyze()` composes the whole request — every top-level trie node, each with its descendants folded
+in — and is what `FormRequestTransformer` calls to build the request's `.ts` interface. `analyzeField()`
+answers a narrower question a single call site needs: given one dotted path, what does *that* node
+compose to? It builds the same trie from the same raw rules, walks it segment by segment, and returns a
+`FormRequestRuleNode` whose `fieldPath` echoes the path back — or `null` when a segment is not declared.
+
+Because it is the same trie and the same `composeTrieNode()`, the answer for `options.default` is
+necessarily the type the request's own interface nests under `options`: a sibling `options.*` wildcard is
+never consulted, since the walk descends into `children['default']` and the wildcard is `default`'s
+sibling, not its child. The node's own descendants still compose in, so `analyzeField('order')` on a
+request declaring `order.id` returns the composed object, JSDoc hoisting included.
+
+Two paths it deliberately does not reach. A `*` segment resolves to the *element* node, which describes
+one match rather than the list `data_get()` builds from all of them — `KnownMethodRuleHandler` declines
+such a key rather than emitting the element type (see
+[known gaps](../known-gaps.md)). And the walk splits on every `.`, unlike `buildRuleTrie()`, which first
+protects `\.` behind `DOT_PLACEHOLDER` — so the escaped-dot attribute `'v1\.0'` is unreachable by path.
+That matches `data_get()`, which splits the same way and cannot reach it either, so the two agree.
+
+`KnownMethodRuleHandler::validatedKeyRule()` is the only caller today: it is what makes
+`$request->validated('options.default')` type as `string` instead of `unknown`.
+
 ## JSDoc hoisting: a nested annotation still reaches the reader
 
 Composing `order.id` into `order` puts its type inside an opaque type string, and an inline object

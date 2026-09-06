@@ -139,8 +139,8 @@ final class KnownMethodRuleHandler implements ExpressionHandler
 
     /**
      * Type `$request->validated('key')` from the bound FormRequest's rules() — the only source of
-     * validated()'s shape, since the method itself is untyped. Declines a non-literal key, a key
-     * the rules never mention, or one rules() marks prohibited.
+     * validated()'s shape, since the method itself is untyped. Declines a non-literal key, a `*`
+     * segment, a key the rules never mention, or one rules() marks prohibited.
      *
      * @param  class-string<FormRequest>  $formRequestClass
      * @return ValueExpressionResult|null
@@ -159,18 +159,22 @@ final class KnownMethodRuleHandler implements ExpressionHandler
 
         $key = $keyArg->value->value;
 
-        foreach (resolve(FormRequestRulesAnalyzer::class)->analyze($formRequestClass) as $field) {
-            if ($field->fieldPath !== $key) {
-                continue;
-            }
-
-            return $field->isProhibited ? null : [
-                'type' => $field->tsType.($field->isNullable ? ' | null' : ''),
-                'optional' => ! $field->isRequired,
-            ];
+        // data_get() expands a `*` segment into a list of every match, so the trie node under `*`
+        // types one element, not the array this call returns.
+        if (in_array('*', explode('.', $key), true)) {
+            return null;
         }
 
-        return null;
+        $field = resolve(FormRequestRulesAnalyzer::class)->analyzeField($formRequestClass, $key);
+
+        if ($field === null || $field->isProhibited) {
+            return null;
+        }
+
+        return [
+            'type' => $field->tsType.($field->isNullable ? ' | null' : ''),
+            'optional' => ! $field->isRequired,
+        ];
     }
 
     /**

@@ -103,32 +103,31 @@ knowing which flattened properties are actually the host's own versus foreign, w
 `ResourceAnalysis::properties` list (name/type/optional/description only) does not carry. Both are scope
 changes to existing, working code paths, not one-fixture additions — worth doing as their own task.
 
-### `$request->validated('key')` only types a literal, top-level key
+### `$request->validated('key')` ignores `#[TsCasts]`, and declines a wildcard key
 
-A literal, top-level key on a bound `FormRequest` types from `rules()` — `$request->validated('title')`
-reads `StorePostRequest::rules()` through `FormRequestRulesAnalyzer`, the same analyzer the form request's
-own generated interface uses (`requestMethodRule()` in `src/Ast/Handlers/KnownMethodRuleHandler.php`). Two
-shapes short of that decline or diverge silently rather than fixing:
+A literal key on a bound `FormRequest` types from `rules()` — `$request->validated('title')` reads
+`StorePostRequest::rules()` through `FormRequestRulesAnalyzer`, the same analyzer the form request's own
+generated interface uses (`requestMethodRule()` in `src/Ast/Handlers/KnownMethodRuleHandler.php`). A dotted
+key now walks that same rule trie by path (`FormRequestRulesAnalyzer::analyzeField()`), so
+`$request->validated('options.default')` types exactly as the request's own nested interface types
+`options.default`. Two shapes short of that decline or diverge silently rather than fixing:
 
-- **A dotted key declines even when the rule defines it.** `FormRequestRulesAnalyzer::analyze()` returns
-  only the top-level trie nodes: a nested rule like `'options.default' => ['string']` composes into
-  `options`'s own object type, but never surfaces as its own `fieldPath` entry in the returned list.
-  `$request->validated('options.default')` on `Workbench\App\Http\Requests\NestedEdgeCasesRequest` — whose
-  `rules()` declares exactly that key — resolves to `null` and the property types as `unknown`, though the
-  rule is both defined and resolvable. Verified directly: the handler returns `null` for that call.
-  Nested validation rules (`'address.street' => 'required|string'`) are routine Laravel, so a user is
-  likely to hit this immediately after learning `validated()` is typed at all.
 - **A `#[TsCasts]` override on the form request is not honoured.** `StorePostRequest::rating` carries a
   `#[TsCasts]` override to `number | bigint`; `$request->validated('rating')` types as the raw-rule
   `number | null` instead — verified directly: the handler returns `['type' => 'number | null', 'optional'
   => true]`, not the override. The override is applied by `FormRequestTransformer::applyTsCastsOverrides()`
   when the form request's own `.ts` interface is generated, a call site `KnownMethodRuleHandler` never
-  reaches. Same shape as the entry above: two generated descriptions of the same field, disagreeing.
+  reaches. Two generated descriptions of the same field, disagreeing.
+- **A key containing a `*` segment declines.** `data_get()` — which `validated()` delegates to — expands
+  `*` into a list of *every* match, so the trie node under `*` describes one element, not the value the
+  call returns. `$request->validated('options.*')` would otherwise type `string | null` where the runtime
+  value is `(string | null)[]`, so `validatedKeyRule()` declines the key outright and the property types as
+  `unknown`. Typing it means array-wrapping the composed element type once per `*` hop, plus reproducing
+  `Arr::collapse()`'s flattening for a key with more than one — its own task, not a guard.
 
-Fixing the first means flattening `analyze()`'s trie output (or walking it by dotted path) instead of
-scanning only its top-level nodes; fixing the second means either routing through
-`FormRequestTransformer`'s override application or duplicating its `#[TsCasts]` parsing at this call site.
-Both are scope changes beyond the single literal top-level key this call site was built for.
+Fixing the first means either routing through `FormRequestTransformer`'s override application or
+duplicating its `#[TsCasts]` parsing at this call site. Both are scope changes beyond the single literal
+key this call site was built for.
 
 ### Inertia shared data does not rewrite `EnumResource` types for Tolki
 
