@@ -575,7 +575,9 @@ class LaravelTsPublish
      */
     public function shapeValueHasUnimportableToken(string $type, array $importableNames = []): bool
     {
-        $withoutKeys = (string) preg_replace('/\b\w+\s*:/', '', $type);
+        // The `?` of an optional key is not a token separator, so a key stripped without it survives as
+        // `name?` and reads as an unimportable value.
+        $withoutKeys = (string) preg_replace('/\b\w+\s*\??\s*:/', '', $type);
 
         $tokens = preg_split('/[<>{}()|,;\[\]\s]+/', $withoutKeys, -1, PREG_SPLIT_NO_EMPTY) ?: [];
 

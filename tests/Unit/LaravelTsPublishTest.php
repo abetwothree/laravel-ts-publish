@@ -518,6 +518,15 @@ describe('Arrayable DTO shape inference', function () {
             ->and($this->service->shapeValueHasUnimportableToken('RoleType', ['RoleType']))->toBeFalse()
             ->and($this->service->shapeValueHasUnimportableToken('{ role: RoleType; other: Foo }', ['RoleType']))->toBeTrue();
     });
+
+    test('shapeValueHasUnimportableToken reads an optional key as a key, not as a value', function () {
+        // `?` is not a token separator, so a key stripped without it would survive as `assignedLater?`
+        // and read as an unimportable value. An uninitialized typed public property emits exactly that.
+        expect($this->service->shapeValueHasUnimportableToken('{ assignedLater?: string; promoted: string }'))->toBeFalse()
+            ->and($this->service->shapeValueHasUnimportableToken('{ a ?: string }'))->toBeFalse()
+            ->and($this->service->shapeValueHasUnimportableToken('{ nested: { deep?: number } }'))->toBeFalse()
+            ->and($this->service->shapeValueHasUnimportableToken('{ owner?: User }'))->toBeTrue();
+    });
 });
 
 describe('Arrayable property-shape inference', function () {
