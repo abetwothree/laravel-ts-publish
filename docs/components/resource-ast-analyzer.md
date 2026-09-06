@@ -381,19 +381,20 @@ scalar-wrap case: `AsEnum<typeof Status> | StatusType[]`. `$wrapped_history_or_s
 `$wrapped_history_or_array` pin the collection-wrap case the old fixed convention got backwards:
 `AsEnum<typeof Status>[] | StatusType` and `AsEnum<typeof Status>[] | StatusType[]`.
 
-**The nested path is not reconciled with this.** `expandMixedEnumType()` has the identical collapse
-problem one level down, and there it is worse: when both arms render the same array-shaped string —
+**The nested path now reads the same signal.** `expandMixedEnumType()` had the identical collapse
+problem one level down, and there it was worse: when both arms render the same array-shaped string —
 an `EnumResource::collection()` wrap and a direct read of an already-list accessor, both `X[]` — the
 merged `$members` array collapses to the single member `'X[]'` before `expandMixedEnumType()` ever
-runs, and its `$member === $collectionType` branch maps that one member to `AsEnum<typeof Const>[]`,
-dropping the direct arm entirely rather than under-suffixing it — worse than the top-level bug just
-fixed, which at least kept both arms, just with the wrong one array-suffixed.
-`MethodAnalysis::$enumResourceArmShapes` *is* populated correctly by the time `analyzeInlineArray()`
-reads `$analysis` — `TernaryHandler` does not distinguish top-level from nested — so
-`expandMixedEnumType()` could read the same per-arm signal `rewriteEnumResourceTypes()` now does
-instead of reconstructing from the collapsed member list; that fix was left undone, deliberately, as
-outside this one's scope. See
-[docs/known-gaps.md](../known-gaps.md#enumresourcecollection-inside-a-mixed-ternary-nested-one-level-down).
+ran, and its `$member === $collectionType` branch mapped that one member to `AsEnum<typeof Const>[]`,
+dropping the direct arm entirely rather than under-suffixing it. `MethodAnalysis::$enumResourceArmShapes`
+is already populated by the time `analyzeInlineArray()` reads `$analysis` — `TernaryHandler` does not
+distinguish top-level from nested — so `expandMixedEnumType()` now takes that per-arm shape and
+synthesizes `wrapped | direct` from the flags exactly as `rewriteEnumResourceTypes()` does, carrying
+over any member the two arms did not account for. `TeamStatusAuditResource::$audit` pins it:
+`{ status: AsEnum<typeof Status>[] | StatusType[] }`, with the direct arm's `StatusType` type import
+back alongside the wrapped arm's `Status` value import. The member-based reconstruction described in
+the two bullets above stays as the fallback for a mixed pair `TernaryHandler` declined to attribute
+(either arm itself ambiguously mixed), where no per-arm shape was recorded.
 
 In the globals tree, `LaravelTsPublish::rewriteAsEnumToType()`'s pair pattern folds an *exact*
 `AsEnum<typeof Const> | EnumTypeName` adjacency — no `[]` anywhere in that span, neither between

@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
@@ -27,6 +28,7 @@ use PhpParser\Node\Identifier;
  * resource, a bound model's toArray(), or a bound collection's toArray() into intersection arms.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type EnumResourceArmShape from MethodAnalysis
  *
  * @phpstan-type InlineSpreadArm = array{fqcn: class-string, isModel: bool, isCollection: bool}
  *
@@ -269,7 +271,12 @@ final class InlineArrayHandler implements ExpressionHandler
                 $members = LaravelTsPublish::splitTopLevelUnion($prop['type']);
 
                 $prop['type'] = $isMixed
-                    ? $this->expandMixedEnumType($members, $bareTypeName, $asEnumType)
+                    ? $this->expandMixedEnumType(
+                        $members,
+                        $bareTypeName,
+                        $asEnumType,
+                        $analysis->enumResourceArmShapes[$prop['name']] ?? null,
+                    )
                     : LaravelTsPublish::substituteEnumType($prop['type'], $bareTypeName, $asEnumType);
             }
 
@@ -475,14 +482,26 @@ final class InlineArrayHandler implements ExpressionHandler
      * Rejoin a mixed wrap/direct enum union's split members, naming the wrapped arm without
      * losing the direct one.
      *
-     * An array-shaped member is the arm EnumResource::collection() forced, so it substitutes and the
-     * bare member stays as the direct arm. With no such member both arms rendered the same token and
-     * deduped to one, so the wrapped arm is spelled out beside it instead of overwriting it.
+     * With each arm's own shape recorded, the union is synthesised from those flags — the merged
+     * members alone cannot tell two arms that rendered the same string apart. Without it, an
+     * array-shaped member is taken as the arm EnumResource::collection() forced.
      *
      * @param  list<string>  $members
+     * @param  EnumResourceArmShape|null  $armShape
      */
-    private function expandMixedEnumType(array $members, string $bareTypeName, string $asEnumType): string
+    private function expandMixedEnumType(array $members, string $bareTypeName, string $asEnumType, ?array $armShape): string
     {
+        if ($armShape !== null) {
+            $wrapped = $asEnumType.($armShape['wrapIsCollection'] ? '[]' : '');
+            $direct = $bareTypeName.($armShape['directIsArray'] ? '[]' : '');
+            $others = array_values(array_filter(
+                $members,
+                fn (string $member): bool => $member !== $bareTypeName && $member !== $bareTypeName.'[]',
+            ));
+
+            return implode(' | ', [$wrapped, $direct, ...$others]);
+        }
+
         $collectionType = $bareTypeName.'[]';
         $hasCollectionArm = in_array($collectionType, $members, true);
 

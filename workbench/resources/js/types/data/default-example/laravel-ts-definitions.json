@@ -13737,7 +13737,7 @@
                 },
                 {
                     "name": "audit",
-                    "type": "{ status: AsEnum<typeof Status>[] }",
+                    "type": "{ status: AsEnum<typeof Status>[] | StatusType[] }",
                     "optional": false
                 }
             ]

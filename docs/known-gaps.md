@@ -41,19 +41,6 @@ on both versions, as does the `FooCollection` → `FooResource` naming conventio
 [docs/laravel-version-guards.md](./laravel-version-guards.md) for how the version floor was established and
 which tests are skipped below it.
 
-### `EnumResource::collection()` inside a mixed ternary, nested one level down
-
-Task 28 fixed `ResourceTransformer::rewriteEnumResourceTypes()`'s top-level `$isMixed` branch, which
-assumed the wrapped arm of a mixed EnumResource/direct-access ternary was always scalar.
-`InlineArrayHandler::expandMixedEnumType()` (`src/Ast/Handlers/InlineArrayHandler.php`) has the same
-defect for the identical ternary shape nested inside an inline array literal, and there it is worse:
-when both arms independently render the same array-shaped type string — an
-`EnumResource::collection()` wrap and a direct read of an already-list accessor, both `X[]` — the
-merge that builds the property's type collapses them to one member before `expandMixedEnumType()`
-ever runs, so it substitutes that single member and the direct arm's own presence in the union is
-lost outright, not just under-suffixed. Verified against a throwaway fixture during Task 28's fix
-round; not reproduced as a committed test or golden-tree property, so nothing here pins it yet.
-
 ### A non-promoted property a constructor always assigns still renders optional
 
 This case is inherent rather than fixable: a public non-promoted `readonly` property that a

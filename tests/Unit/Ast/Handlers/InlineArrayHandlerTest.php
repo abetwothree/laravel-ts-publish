@@ -13,6 +13,7 @@ use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Scalar\String_;
+use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\NestedResourceSpreadResource;
 use Workbench\App\Models\User;
 
@@ -103,4 +104,37 @@ it('declines a non-array expression', function () {
     $result = (new InlineArrayHandler)->resolve($expr, $scope, inlineArrayHandlerThrowingEngine());
 
     expect($result)->toBeNull();
+});
+
+it('keeps both arms of a nested mixed EnumResource ternary that rendered the same string', function () {
+    // Mirrors TeamStatusAuditResource::$audit's inner key: both arms read the same list-shaped
+    // accessor, so the union merge collapsed them to one member before the enum rewrite ran. Only
+    // the per-arm shape still says the [] belongs on both.
+    config()->set('ts-publish.enums.use_tolki_package', true);
+
+    $array = new Array_([
+        new ArrayItem(new Variable('placeholder'), new String_('history')),
+    ]);
+
+    $analysis = new ResourceAnalysis(
+        properties: [
+            ['name' => 'history', 'type' => 'StatusType[]', 'optional' => false, 'description' => ''],
+        ],
+        enumResources: ['history' => Status::class],
+        directEnumFqcns: ['history' => Status::class],
+        enumResourceArmShapes: ['history' => ['wrapIsCollection' => true, 'directIsArray' => true]],
+    );
+
+    $scope = new AnalysisScope(new ReflectionClass(NestedResourceSpreadResource::class));
+
+    $engine = new InlineArrayHandlerReturnArrayStubEngine($array, $analysis);
+
+    $result = (new InlineArrayHandler)->resolve($array, $scope, $engine);
+
+    expect($result)->toBe([
+        'type' => '{ history: AsEnum<typeof Status>[] | StatusType[] }',
+        'optional' => false,
+        'embeddedEnumFqcns' => [Status::class],
+        'embeddedEnumResourceFqcns' => [Status::class],
+    ]);
 });

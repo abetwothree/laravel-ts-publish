@@ -2467,11 +2467,15 @@ describe('ResourceTransformer with PostSpotlightResource', function () {
 });
 
 describe('ResourceTransformer with TeamStatusAuditResource', function () {
-    test('an inline enum member whose bare type was substituted away claims no type import', function () {
+    // Both arms read the same list-shaped accessor, so the merged union kept one member and only the
+    // per-arm shape still says the [] belongs on both. The direct arm surviving means its bare type
+    // token is spelled in the emitted type, so its type import has to travel out with it.
+    test('a nested mixed EnumResource ternary keeps both arms and the direct arm keeps its type import', function () {
         $transformer = new ResourceTransformer(TeamStatusAuditResource::class);
-        $transformer->data();
+        $data = $transformer->data();
 
-        expect(implode(' ', array_merge(...array_values($transformer->typeImports))))->not->toContain('StatusType')
+        expect($data->properties['audit']['type'])->toBe('{ status: AsEnum<typeof Status>[] | StatusType[] }')
+            ->and(implode(' ', array_merge(...array_values($transformer->typeImports))))->toContain('StatusType')
             ->and(implode(' ', array_merge(...array_values($transformer->valueImports))))->toContain('Status');
     });
 });
