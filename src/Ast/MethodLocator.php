@@ -23,8 +23,9 @@ class MethodLocator
     public function __construct(protected AstParser $parser) {}
 
     /**
-     * Locate a method in the class's OWN file only — an inherited method is deliberately a miss,
-     * which is how callers detect delegation/inheritance cases.
+     * Locate a method in the class's OWN file only — the gate is file-scoped, not class-scoped: a method
+     * inherited from another file is deliberately a miss, which is how callers detect delegation, while a
+     * parent declared in the same file is a hit and yields the ancestor's body.
      *
      * Callers pass names straight from route action strings, so the AST is searched for the name as
      * declared rather than as spelled; PHP dispatches either, and a mismatch would silently type nothing.
@@ -86,7 +87,7 @@ class MethodLocator
     /**
      * Find the named ClassMethod with a non-null body.
      * Matches PHP's own reflected end line when a file declares more than one candidate under the name,
-     * and rejects up front when $method isn't declared in $file, so locateOwn() still misses inherited methods.
+     * and rejects when $method isn't declared in $file, so locateOwn() misses a method inherited from another file.
      *
      * @param  ReflectionClass<object>  $reflection
      */
@@ -134,6 +135,8 @@ class MethodLocator
      * Prefer the candidate whose closing line matches reflection's own end line.
      * An attribute group shifts a node's AST start line earlier than PHP reports, but never its end line,
      * so this still resolves two same-named methods sharing a file to whichever PHP actually dispatches to.
+     * Two closing on one physical line would tie and the first would win; none of the tree's 2,089 methods
+     * do, and Pint reflows the one-line form that is the only way to write it.
      *
      * @param  list<ClassMethod>  $candidates
      */
