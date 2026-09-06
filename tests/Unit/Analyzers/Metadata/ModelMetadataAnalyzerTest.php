@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Metadata\DefaultModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AstUnimportableModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BoundModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ClassNamedKeyMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CollidingProvideDecoyProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\DocblockOverridesEnumMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumAndScalarMetadataProvider;
@@ -140,6 +141,14 @@ test('a trait-supplied provide() in its own file infers its body and keeps its d
     expect($analysis->types)->toBe(['table' => 'string', 'label' => 'string', 'flag' => 'boolean'])
         ->and($analysis->sources)->toBe(['table' => 'inferred', 'label' => 'docblock', 'flag' => 'casts'])
         ->and($analysis->undeclaredKeys(['label', 'table', 'flag']))->toBe([]);
+});
+
+test('a decoy provide() earlier in the same file does not displace the real body', function () {
+    $analysis = analyzeMetadataTypesFor(CollidingProvideDecoyProvider::class, ['label', 'real']);
+
+    expect($analysis->types)->toBe(['label' => 'string', 'real' => 'number'])
+        ->and($analysis->sources)->toBe(['label' => 'inferred', 'real' => 'inferred'])
+        ->and($analysis->undeclaredKeys(['label', 'real']))->toBe([]);
 });
 
 test('the default provider still infers its cast morph class', function () {

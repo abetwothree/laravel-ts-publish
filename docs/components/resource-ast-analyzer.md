@@ -1283,55 +1283,41 @@ agree by construction:
 ## `mergeReturnBranches()` carries every `MethodAnalysis::merge()` channel, plus two flat scalars
 
 A resource with multiple direct `return [...]` branches (`if`/`elseif`/`else`, loop bodies, guard
-clauses) is analyzed per-branch, then unioned by `mergeReturnBranches()`. It carries the same ten
-channels `MethodAnalysis::merge()` does — `properties`, `enumResources`, `nestedResources`,
-`directEnumFqcns`, `modelFqcns`, `customImports`, `multiEnumResourceFqcns`, and the three inline
-maps (`inlineEnumFqcns`, `inlineModelFqcns`, `inlineEnumResourceFqcns`) — unioning each inline map
-per property key, exactly like `MethodAnalysis::merge()`. Missing this union silently drops a property's
-only enum/model reference when that reference sits inside an inline array literal in one branch,
-emitting a type token with no import.
+clauses) is analyzed per-branch, then unioned by `mergeReturnBranches()`. The method now does exactly
+one thing of its own — union each key's per-branch property rows through its `propertyMap`, which is
+the part a field-by-field merge cannot express — and accumulates all ten map channels by calling
+`MethodAnalysis::merge()` on a scratch analysis, discarding its `properties` each round. The two
+cannot drift apart any more; before, they were parallel hand-written loops, and a channel added to one
+and forgotten in the other silently dropped a property's only enum/model reference whenever that
+reference sat inside an inline array literal in one branch, emitting a type token with no import. See
+[AST engine § `addProperty()` is the only way a value becomes a property](ast-engine.md#addproperty-is-the-only-way-a-value-becomes-a-property)
+for the same argument on the collector side.
 
-**`inlineModelFqcns` unions per occurrence; the two enum inline maps still dedupe.** Both merge
-paths used to `array_unique` all three inline maps, which lost real multiplicity whenever a merged
-or branched property named the same model twice — `aliasPropertyType()`'s per-occurrence queue then
-fell back to its shorter-than-occurrence-count clamp and mistyped the missing occurrence.
+**All three inline maps concatenate per occurrence; none of them dedupe.** They used to be
+`array_unique`d, which lost real multiplicity whenever a merged or branched property named the same
+FQCN twice — `aliasPropertyType()`'s per-occurrence queue then fell back to its
+shorter-than-occurrence-count clamp and mistyped the missing occurrence.
 `BranchedInlineFqcnResource` pins the branch-merge case; `ChildInlineFqcnResource` pins the
 `MethodAnalysis::merge()` case.
 
-`inlineEnumFqcns` and `inlineEnumResourceFqcns` stay deduped **even though they feed the same
-per-occurrence queue**, so this is an asymmetry the code has, not a difference in what the maps are
-for. Both reach `aliasPropertyType()`: `inlineEnumResourceFqcns` becomes
+All three reach `aliasPropertyType()`, by two different routes: `inlineEnumResourceFqcns` becomes
 `ResourceTransformer::$propertyInlineEnumResourceFqcns` and is walked directly by
-`rewriteEnumResourceTypes()`, and `inlineEnumFqcns` becomes `$propertyInlineEnumFqcns`, which
-`mergePropertyFqcnMaps()` folds into the list `rewriteTypeReferences()` passes to the same helper —
-and `mergePropertyFqcnMaps()`'s own docblock ends "never dedupe it". `array_unique` was dropped
-from `inlineModelFqcns` only; the two enum maps kept theirs.
+`rewriteEnumResourceTypes()`, while `inlineEnumFqcns` and `inlineModelFqcns` become
+`$propertyInlineEnumFqcns`/`$propertyInlineModelFqcns`, which `mergePropertyFqcnMaps()` folds into
+the list `rewriteTypeReferences()` passes to the same helper — and that method's own docblock ends
+"never dedupe it".
 
-What makes the dedupe safe today is the corpus, not the design. The exact rule, established by invoking
-`aliasPropertyType()` directly rather than by reading it: **dropping duplicates is lossless if and only if
-the queue is its distinct FQCNs in first-appearance order followed only by repeats of the last one.**
-Everything else mistypes an occurrence. The trailing run is free because the
-`min($cursor + 1, count($queues[$name]) - 1)` clamp keeps re-serving the final entry. Run against the real
-function, the rule agrees with observed behavior on every shape tried: `[A, B]`, `[A, A, A]`, `[A, B, B]`
-and `[A, B, B, B]` are lossless; `[A, A, B]`, `[A, B, A]`, `[B, A, B]`, `[A, B, A, B]` and `[A, A, B, B]`
-are not.
+That instruction is not a style preference, and the rule behind it is why no dedupe may be
+reintroduced at any point on these three channels. Established by invoking `aliasPropertyType()`
+directly rather than by reading it: **dropping duplicates is lossless if and only if the queue is its
+distinct FQCNs in first-appearance order followed only by repeats of the last one.** Everything else
+mistypes an occurrence. The trailing run is free because the
+`min($cursor + 1, count($queues[$name]) - 1)` clamp keeps re-serving the final entry. Run against the
+real function, the rule agrees with observed behavior on every shape tried: `[A, B]`, `[A, A, A]`,
+`[A, B, B]` and `[A, B, B, B]` are lossless; `[A, A, B]`, `[A, B, A]`, `[B, A, B]`, `[A, B, A, B]` and
+`[A, A, B, B]` are not — and nothing constrains a resource to the lossless shapes.
 
-**Two** corpus properties meet the precondition for that to bite — one property naming two distinct
-members of a same-basename FQCN group — and both are lossless. The corpus has exactly one such group
-(`Workbench\App\Enums\Status`, `Workbench\Crm\Enums\Status`, `Workbench\Shipping\Enums\Status`).
-Enumerating every generated property line whose *type* side names two distinct members of it, and
-collapsing each enum's const and type names together, returns exactly two property names, each in all four
-example trees: `DealResource::$status_pair` and `DealEnumInlineResource::$summary`. Both are the on-point
-shape rather than a curiosity — both are inline `EnumResource::make()` wraps, so both populate
-`inlineEnumResourceFqcns`, the map this paragraph is about. Both name each FQCN exactly once, so each
-queue is `[d1, d2]` and there is no multiplicity to lose. (`EnumCollectionResource::$wrapped_status_fallback`
-is a near-miss, not a third: its `Status` and `StatusType` tokens are the const and type names of the
-*same* FQCN, both imported from `'../../enums'`.)
-
-Treat the two `array_unique` calls as a latent bug with no current trigger rather than a decision to
-preserve — the plan's Out of Scope section records the fixture that would be needed to fix it.
-
-**A single inline array member's own multi-FQCN accessor now contributes its own arms too.** The three
+**A single inline array member's own multi-FQCN accessor now contributes its own arms too.** The
 fixes above only cover *merging* an already-populated queue across branches or inheritance. A member whose
 own value is a multi-FQCN accessor (`Attribute<CrmUser|User, never>`) never populated that queue at all:
 `resolveModelAttributeTypeInfo()` discarded `classFqcns`, so `ThisPropertyHandler::analyzeThisProperty()` had nothing to attach
@@ -1347,7 +1333,7 @@ rendering `User | User` and losing the CRM arm entirely in `laravel-ts-global.ts
 collapse to `app.models.User | app.models.User`.
 
 `analyzeReturnArray()`'s child-overrides-parent `unset()` now clears all three inline maps for the
-overridden key, not just the five non-inline maps it always cleared. Without that, a
+overridden key, not just the six non-inline maps it always cleared. Without that, a
 `...parent::toArray()` spread's stale inline-model entries for a key the child then overrides
 survive into the child's own push, so the child's occurrences consume the parent's leftover queue
 instead of their own — `ChildInlineFqcnResource`'s `regional_hub_contacts` pins this; its

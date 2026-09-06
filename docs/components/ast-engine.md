@@ -284,7 +284,7 @@ recording happens; neither method records anything itself.
 ## MethodAnalysis
 
 `MethodAnalysis` (`src/Ast/MethodAnalysis.php`) is the unified analysis DTO — the generalized
-`ResourceAnalysis`, which now `extends MethodAnalysis {}` with an empty body. Its twelve constructor
+`ResourceAnalysis`, which now `extends MethodAnalysis {}` with an empty body. Its thirteen constructor
 properties are the whole surface a `toArray()`-style method analysis carries:
 
 | Field | Shape | Carries |
@@ -299,28 +299,57 @@ properties are the whole surface a `toArray()`-style method analysis carries:
 | `inlineModelFqcns` | `array<string, list<class-string>>` | Property name => model FQCNs embedded in an inline object type string. |
 | `multiEnumResourceFqcns` | `array<string, list<class-string>>` | Property name => ordered enum FQCNs, for a multi-`EnumResource` ternary/union branch (feeds the `AsEnum` rewrite). |
 | `inlineEnumResourceFqcns` | `array<string, list<class-string>>` | Property name => enum FQCNs embedded via `EnumResource` inside an inline object type string (value-import channel). |
+| `enumResourceArmShapes` | `array<string, {wrapIsCollection, directIsArray}>` | Property name => each arm's own array shape, for a mixed `EnumResource`/direct-access ternary whose merged type string already collapsed which arm was the collection. |
 | `flatTypeAlias` | `string\|null` | When set, the collection emits `export type X = SingularResource[]` instead of an interface. |
 | `flatTypeAliasFqcn` | `class-string<JsonResource>\|null` | FQCN of the singular resource for the flat type alias. |
+
+### `addProperty()` is the only way a value becomes a property
+
+`addProperty(string $name, array $result, bool $optional = false, string $description = '')` takes a
+handler's `ValueExpressionResult` and turns it into one property row plus every FQCN channel that
+result carries — the single-value maps and `enumResourceArmShapes` through
+`DispatchesFqcnResults::dispatchFqcnResults()`, then the three inline queues and `customImports`
+directly.
+
+**Why one entry point rather than each collector doing it.** The collectors used to assemble the DTO
+by hand, at eight sites across `ResourceAstAnalyzer`, `ResolvesModelTypes`, `ThisPropertyHandler` and
+`AstEngine`. Adding a channel meant finding and updating every one, and the failure mode when one was
+missed is the expensive kind: nothing throws, the property still gets a plausible type, and only the
+generated TypeScript says the import or the alias went missing. Routing every collector through
+`addProperty()` means a channel added to `ValueExpressionResult` reaches all of them at once.
+
+Widening `analyzePublicProperties()` onto it is the one place behaviour changed. It dispatched the
+single-value channels and queued no inline FQCNs at all, so a broadcast event property whose `@var`
+unions two same-basename models rendered `User | User` against imports already aliased apart.
+`SameBasenameModelEvent::$actor` now emits `AppUser | CrmUser`.
+
+**Why the three inline queues append instead of assigning or deduping.** `inlineEnumFqcns`,
+`inlineModelFqcns` and `inlineEnumResourceFqcns` reach
+`LaravelTsPublish::aliasPropertyType()` as positional queues, walked against the type-name tokens in
+the rendered type string. A property whose inline object names the same FQCN twice needs two entries
+or the second token draws the first token's alias, so a repeat has to survive as a repeat.
+
+### Merge rules
 
 `merge(self $source)` folds another analysis into this one, field by field, and each field's merge
 rule differs on purpose:
 
 - `properties` **appends**.
-- `enumResources`, `nestedResources`, `directEnumFqcns`, `modelFqcns`, `multiEnumResourceFqcns` are
-  single-value class maps: spread-merged, source wins on a colliding key.
+- `enumResources`, `nestedResources`, `directEnumFqcns`, `modelFqcns`, `multiEnumResourceFqcns` and
+  `enumResourceArmShapes` are single-value maps: spread-merged, source wins on a colliding key.
 - `customImports` merges per import path, concatenating each path's type-name list.
-- `inlineEnumFqcns` and `inlineEnumResourceFqcns` union per property key **with `array_unique`**.
-- `inlineModelFqcns` unions per property key **without** deduping — the one field that deliberately
-  never collapses a repeat. Its own docblock states the invariant directly: `aliasPropertyType()`
-  consumes it as a positional queue against the rendered type string, so a real repeated FQCN
-  occurrence has to survive as a repeat or a later occurrence gets the wrong alias.
+- `inlineEnumFqcns`, `inlineModelFqcns` and `inlineEnumResourceFqcns` concatenate per property key
+  **without** deduping, for the positional-queue reason above. `merge()`'s own docblock states the
+  invariant directly.
 
-`mergeReturnBranches()` (still on `ResourceAstAnalyzer`, not `MethodAnalysis` itself — it needs a
-per-branch `propertyMap` for union-typing shared property names, which a plain field-by-field merge
-can't do) carries the identical ten channels `merge()` does, plus the two `flatTypeAlias*` scalars
-`merge()` never touches (first non-null branch wins there instead). See
+`mergeReturnBranches()` stays on `ResourceAstAnalyzer` rather than moving onto `MethodAnalysis`: it
+needs a per-branch `propertyMap` to union-type a property name several branches set, which a
+field-by-field merge cannot express. It now unions only that `propertyMap` itself and accumulates
+every channel by calling `merge()` on a scratch analysis, so the two can no longer drift apart. It
+still resolves the two `flatTypeAlias*` scalars `merge()` never touches (first non-null branch wins).
+See
 [ResourceAstAnalyzer § `mergeReturnBranches()` carries every `MethodAnalysis::merge()` channel](resource-ast-analyzer.md#mergereturnbranches-carries-every-methodanalysismerge-channel-plus-two-flat-scalars)
-for the corpus evidence behind the dedupe rules above.
+for the corpus evidence behind the per-occurrence rule.
 
 ## Public API
 

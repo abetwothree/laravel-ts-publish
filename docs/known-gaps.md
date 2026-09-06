@@ -36,7 +36,9 @@ it rejects only `null` and `undefined` — so the type reads as specific while c
 
 Laravel's own `collects()` cannot resolve the attribute on 12 either, so the package mirrors the framework
 rather than guessing. **The workaround is fully supported:** `public $collects = PostResource::class;` works
-on both versions, as does the `FooCollection` → `FooResource` naming convention. The guard is in
+on both versions. So does the `FooCollection` → `FooResource` naming convention, with one condition the
+explicit property does not carry: `resolveCollectedResourceClass()` gates the guess on
+`isPublishedResourceClass()`, so a `FooResource` the run excludes is not guessed into. The guard is in
 `src/Analyzers/Concerns/InspectsAstNodes.php`; see
 [docs/laravel-version-guards.md](./laravel-version-guards.md) for how the version floor was established and
 which tests are skipped below it.
@@ -54,7 +56,7 @@ to expect those fixtures to move.
 
 ### `#[TsCasts]` and the top-level spread flatten disagree by scope, in three separate ways
 
-Task 32 flattens a top-level `...SomeResource::make(...)->resolve()`, `...$model->toArray()`, or
+The analyzer flattens a top-level `...SomeResource::make(...)->resolve()`, `...$model->toArray()`, or
 `...$collection->toArray()` spread into the host resource's own properties
 (`ResourceAstAnalyzer::analyzeSpreadArm()` and its three arm builders, `src/Analyzers/ResourceAstAnalyzer.php`).
 Only one of the three places `#[TsCasts]` can apply is wired up for it, and a fourth interaction —
@@ -137,7 +139,32 @@ import names the rendered type actually spells, and the type spells `RoleType`/`
 No workbench fixture uses this shape, so the token gate is green over it. Use an import-aware
 `#[TsCasts]` override on that shared key, or give both arms the same enum.
 
-### Two same-named enums in one metadata companion collide instead of aliasing
+### A mixed enum ternary whose arms are both array-shaped ships a duplicated union member in the globals
+
+`laravel-ts-global.ts` carries two lines of the form `app.enums.StatusType[] | app.enums.StatusType[]`
+in every one of the four generated trees — `EnumCollectionResource::$wrapped_history_or_array` and the
+`status` key inside `TeamStatusAuditResource::$audit`, and a depth-aware scan of every generated `.ts`
+finds no third line of that form. Both are a mixed ternary whose wrap arm is
+`EnumResource::collection($this->status_history)` and whose direct arm reads the same list-shaped
+accessor, so the resource's own file renders two genuinely different tokens —
+`AsEnum<typeof Status>[] | StatusType[]` — and only the globals file, which has no `AsEnum` import,
+collapses them onto one qualified name.
+
+`LaravelTsPublish::rewriteAsEnumToType()` exists to fold that adjacency before it duplicates, and its
+pair pattern requires the wrap's `>` to be followed directly by the `|` and ends in a
+`(?![A-Za-z0-9_$\[])` lookahead. An array suffix on *either* arm defeats one half or the other, so the
+both-array case never matches; the single-arm substitution then runs anyway and qualifies both arms to
+the same name. Driving the four shapes through the real patterns: `AsEnum<typeof X> | XType` folds,
+`AsEnum<typeof X> | XType[]` and `AsEnum<typeof X>[] | XType` correctly do not (their arms differ, and
+folding would delete one), and `AsEnum<typeof X>[] | XType[]` — the only wrong answer — does not either.
+
+**This is cosmetic, and it is recorded because it is shipped output rather than despite being
+cosmetic.** `A[] | A[]` denotes exactly `A[]`, so `tsc` reports nothing, the token gate's baselines
+never move, and no consumer behaves differently. What a reader of `laravel-ts-global.ts` sees is a line
+that looks like a bug. The lookahead is not the thing to delete when fixing it: it is load-bearing for
+the two genuinely-different pairs above. The fold has to learn the both-array case as its own shape.
+
+### Two same-named enums collide instead of aliasing: a companion throws, a route file ships invalid TS
 
 Model metadata imports the enums body inference resolves, so a value the AST reads as an enum contributes
 an `import type` line of its own. Those inferred imports are pruned by property name, except when the
@@ -175,6 +202,20 @@ for the prune to match.
 Fixing it means carrying the FQCN alongside the rendered name through the prune so the filter can compare
 identities rather than basenames, and then routing inferred imports through the same alias resolver the
 cast imports use. That is a channel change, not a patch at the filter.
+
+**The companion is not the only file this shape reaches, and it is the one that fails loudest.**
+`RouteTransformer::resolvePageTypeImports()` builds a route file's page-prop imports by appending each
+FQCN's rendered name under the path its namespace resolves to, and there is no alias resolver and no
+collision guard on that path at all. Two page props typed by same-basename enums in different namespaces
+therefore emit two `import type { StatusType } from …` lines into one route file and ship it — `TS2300:
+Duplicate identifier 'StatusType'` in the consumer's build, with nothing thrown at publish time.
+Confirmed by driving the method with `Workbench\App\Enums\Status` and `Workbench\Crm\Enums\Status`:
+`['../../../crm/enums' => ['StatusType'], '../../enums' => ['StatusType']]`. `ResourceTransformer` is the
+only one of the three that aliases — `DealResource` imports `StatusType as WorkbenchStatusType` alongside
+`StatusType as CrmStatusType` — so the metadata guard's exception and the route file's silence are two
+different responses to one missing step. The gate that would catch it — `TS2300` over the compiled trees
+— has no corpus route to compile, so read it as saying nothing here. Give one of the two enums a distinct
+`#[TsEnum(name:)]`, as `Workbench\Shipping\Enums\Status` does.
 
 ### An empty `[]` under an imported type alias still ships as `[]`
 
@@ -253,7 +294,8 @@ Override the pair together. `tests/Fixtures/PrefixedModelMetadataTransformer.php
 
 Absent on purpose. Do not "fix" these without raising it first.
 
-- **Non-Inertia and JSON responses are never typed.** Only `Inertia::render()` page props and the
+- **Non-Inertia and JSON responses are never typed.** Only render-call page props — `Inertia::render()`,
+  the `inertia()` helper and `inertia()->render()`, all three matched by `InertiaRenderLocator` — and the
   shared-data middleware are analyzed.
 - **No `ts-publish.analyzer.handlers` config key, and no supported extension of the AST engine.** The
   only user-facing surface of the engine is `AstEngine`, plus the `AnalysisResult` its `analyze()` returns. Every handler, concern, resolver and value
@@ -271,22 +313,6 @@ Absent on purpose. Do not "fix" these without raising it first.
   nothing in `src/` writes a `.php` file.
 
 ## Green signals that are narrower than they look
-
-### No metadata test exercises two `provide()` methods in one file
-
-`MethodLocator` itself is well covered: `MethodLocatorTest` asserts `locateOwn()` against two classes sharing
-a file, a method nested in an earlier anonymous class, and a trait method competing with an unrelated class
-declared before it.
-
-What nothing pins is the metadata phase's *dependence* on that disambiguation. No file in `src/`, `tests/` or
-`workbench/` declares two `function provide(`, so no metadata fixture reaches the path
-`ModelMetadataAnalyzer::analyzeBody()` actually relies on. That matters more than an ordinary coverage hole
-because of how this used to fail: before the end-line match, a provider sharing a file with an earlier
-same-named method had the *wrong body* analyzed, and the run published those types with `undeclaredKeys`
-empty — no exception, no gate signal, nothing to notice. A regression would be equally quiet.
-
-Closing it costs one fixture: a provider whose file declares a decoy `provide()` first, plus a case in
-`ModelMetadataAnalyzerTest` asserting the real body's types.
 
 ### Handler ordering is pinned pairwise, corpus-bounded
 
