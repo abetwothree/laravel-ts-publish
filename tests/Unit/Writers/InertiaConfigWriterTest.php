@@ -216,17 +216,56 @@ test('renders the tolki AsEnum import and the enum value imports above the type 
         ->and(strpos($content, 'import type { RoleType }'))->toBeLessThan(strpos($content, 'declare global'));
 });
 
-test('omits the tolki AsEnum import when the tolki package is disabled', function () {
+test('the disabled tolki render carries the bare enum type and no value import', function () {
+    // What the analyzer really hands over with the flag off: buildValueImports() returns [], so the
+    // fixture must too — a value import here would render an unused `import { Role }` nothing notices.
     config()->set('ts-publish.enums.use_tolki_package', false);
 
     $content = resolve(InertiaConfigWriter::class)->write([
         'sharedPageProps' => '{ role: RoleType }',
         'withAllErrors' => false,
         'typeImports' => ['./app/enums' => ['RoleType']],
-        'valueImports' => ['./app/enums' => ['Role']],
+        'valueImports' => [],
     ]);
 
-    expect($content)->not->toContain('@tolki/ts');
+    expect($content)
+        ->not->toContain('@tolki/ts')
+        ->not->toContain('import { Role }')
+        ->toContain("import type { RoleType } from './app/enums';");
+});
+
+test('the tolki AsEnum import is gated on the config flag, not on the value imports alone', function () {
+    $payload = [
+        'sharedPageProps' => '{ role: AsEnum<typeof Role> }',
+        'withAllErrors' => false,
+        'typeImports' => [],
+        'valueImports' => ['./app/enums' => ['Role']],
+    ];
+
+    $enabled = resolve(InertiaConfigWriter::class)->write($payload);
+
+    config()->set('ts-publish.enums.use_tolki_package', false);
+
+    $disabled = resolve(InertiaConfigWriter::class)->write($payload);
+
+    // The flag gates only the @tolki/ts line; the value imports themselves still render, which is why
+    // the analyzer, not the view, is what stops emitting them.
+    expect($enabled)->toContain("import { type AsEnum } from '@tolki/ts';")
+        ->and($disabled)->not->toContain('@tolki/ts')
+        ->and($disabled)->toContain("import { Role } from './app/enums';");
+});
+
+test('a payload predating the valueImports key still renders', function () {
+    // write() is public API; an external caller built its array before the key existed.
+    $content = resolve(InertiaConfigWriter::class)->write([
+        'sharedPageProps' => '{ appName: string }',
+        'withAllErrors' => false,
+        'typeImports' => [],
+    ]);
+
+    expect($content)
+        ->toContain('type SharedData = { appName: string }')
+        ->not->toContain('import');
 });
 
 test('a value import alone still separates the import block from declare global', function () {

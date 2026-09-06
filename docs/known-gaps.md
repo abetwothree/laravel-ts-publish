@@ -118,6 +118,25 @@ key walks that same rule trie by path (`FormRequestRulesAnalyzer::analyzeField()
   Closing it means indexing into a hand-written TypeScript type, which the handler cannot do; declining
   every dotted key under an overridden prefix would trade the disagreement for an `unknown`.
 
+### A multi-enum ternary in Inertia shared data emits both enum names with no imports
+
+`HandleInertiaRequests::share()` rewrites an `EnumResource::make(...)` prop to `AsEnum<typeof Enum>` and
+emits the enum's value import, but only for the single-enum shape. A ternary whose two arms wrap
+*different* enums — `$cond ? EnumResource::make(Role::Admin) : EnumResource::make(Status::Draft)` —
+renders `{ either: RoleType | StatusType }` with **both** import maps empty, so the augmentation file
+spells two type names it never imports (`TS2304` twice in a consumer's build).
+
+The rewrite keys off `MethodAnalysis::$enumResources`, and a multi-enum ternary does not land there: its
+FQCNs go to `$multiEnumResourceFqcns` instead. `AnalysisImports::asEnumWrappedOnlyFqcns()` meanwhile
+treats every branch FQCN as wrapped-only and drops its type import, which is correct for the resource
+generator (whose own rewrite does replace those branch tokens) but leaves shared data holding names with
+no importable source. The value imports die on the other side: `InertiaSharedDataAnalyzer` keeps only
+import names the rendered type actually spells, and the type spells `RoleType`/`StatusType`, never
+`Role`/`Status`.
+
+No workbench fixture uses this shape, so the token gate is green over it. Use an import-aware
+`#[TsCasts]` override on that shared key, or give both arms the same enum.
+
 ### Two same-named enums in one metadata companion collide instead of aliasing
 
 Model metadata imports the enums body inference resolves, so a value the AST reads as an enum contributes

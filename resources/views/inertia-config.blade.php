@@ -1,3 +1,7 @@
+@php
+// write() is public: a caller predating the valueImports key must still render, not fatal in count().
+$valueImports ??= [];
+@endphp
 @if ($usesTolkiPackage && count($valueImports) > 0)
 import { type AsEnum } from '@tolki/ts';
 @endif
