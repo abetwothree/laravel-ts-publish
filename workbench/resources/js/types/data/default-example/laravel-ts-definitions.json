@@ -14218,6 +14218,16 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\ViewerPermissionsResource": {
+            "name": "ViewerPermissionsResource",
+            "properties": [
+                {
+                    "name": "can_publish",
+                    "type": "boolean",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\WarehouseResource": {
             "name": "WarehouseResource",
             "properties": [

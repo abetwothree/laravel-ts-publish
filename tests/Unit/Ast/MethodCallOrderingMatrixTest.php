@@ -6,9 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationCollectionChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationFilterHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ToResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
@@ -35,17 +33,14 @@ use Workbench\App\Models\User;
 
 /**
  * Every disagreeing unordered pair of MethodCall claimants, keyed by its two class basenames sorted
- * alphabetically, naming the class that must win. Every other pair is inert; one entry here is a
- * questionable-but-real winner — see docs/known-gaps.md for which, and why.
+ * alphabetically, naming the class that must win. Every other pair is inert.
  */
 const METHOD_CALL_PINNED = [
     'ConditionalMethodHandler|FirstClassCallableHandler' => FirstClassCallableHandler::class,
     'FirstClassCallableHandler|ToResourceHandler' => FirstClassCallableHandler::class,
     'FirstClassCallableHandler|KnownFunctionCallHandler' => FirstClassCallableHandler::class,
-    'ConditionalMethodHandler|RelationCollectionChainHandler' => ConditionalMethodHandler::class,
     'RelationCollectionChainHandler|ToResourceHandler' => ToResourceHandler::class,
     'RelationCollectionChainHandler|RelationFilterHandler' => RelationFilterHandler::class,
-    'KnownMethodRuleHandler|RelationCollectionChainHandler' => RelationCollectionChainHandler::class,
 ];
 
 /**

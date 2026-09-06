@@ -135,4 +135,5 @@ export * from './user-except-resource';
 export * from './user-only-hidden-resource';
 export * from './user-resource';
 export * from './var-return-spread-resource';
+export * from './viewer-permissions-resource';
 export * from './warehouse-resource';

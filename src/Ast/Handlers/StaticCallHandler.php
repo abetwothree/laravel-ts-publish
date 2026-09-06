@@ -41,6 +41,9 @@ use ReflectionNamedType;
  * The internal guard order below reproduces the pre-extraction chain exactly and is load-bearing —
  * several guards must precede others, as each inline comment explains.
  *
+ * Not quite the unconditional `StaticCall` floor the ordering notes call it: the `$this::` arm declines
+ * when nothing in scope declares the method, so anything appended behind it would see those.
+ *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  */
 final class StaticCallHandler implements ExpressionHandler

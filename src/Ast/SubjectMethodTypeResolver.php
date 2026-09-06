@@ -24,9 +24,11 @@ final class SubjectMethodTypeResolver
     use InspectsResourceSubject;
 
     /**
-     * @return ValueExpressionResult
+     * @return ValueExpressionResult|null null when nothing in scope declares the method, or declares it
+     *                                    with a return type the acceptor rejects, so the handler
+     *                                    declines and dispatch reaches the next claimant
      */
-    public function resolve(AnalysisScope $scope, string $methodName): array
+    public function resolve(AnalysisScope $scope, string $methodName): ?array
     {
         $own = $this->resolveOn($scope->subjectReflection, $methodName);
 
@@ -57,7 +59,7 @@ final class SubjectMethodTypeResolver
             }
         }
 
-        return ValueResult::unknown();
+        return null;
     }
 
     /**
