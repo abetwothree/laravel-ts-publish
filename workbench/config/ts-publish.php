@@ -234,10 +234,9 @@ return [
     | default provider publishes the model's morph class. This phase is
     | independent from model interface publishing.
     |
-    | To publish your own values, implement
+    | To publish a custom set of metadata, extend
     | AbeTwoThree\LaravelTsPublish\Metadata\Contracts\ModelMetadataProvider
-    | and set 'provider_class' to it. When adding this block to an existing
-    | config file, copy it whole: keys you omit are not merged back in.
+    | and set 'provider_class' to it.
     */
 
     'model_metadata' => [
