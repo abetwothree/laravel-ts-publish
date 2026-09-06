@@ -6,7 +6,6 @@ namespace AbeTwoThree\LaravelTsPublish\Analyzers\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesFilteredRelationTypes;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\RelationNullable;
 use Illuminate\Database\Eloquent\Model;
@@ -20,9 +19,6 @@ use ReflectionClass;
  * and provides thin wrappers that preserve the return shapes expected by callers.
  * Requires the host to expose `AnalysisScope $scope`.
  *
- * @phpstan-import-type ResourcePropertyInfoList from MethodAnalysis
- * @phpstan-import-type ClassMapType from MethodAnalysis
- * @phpstan-import-type InlineModelFqcnsMap from MethodAnalysis
  * @phpstan-import-type AttributeInfo from \AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo
  * @phpstan-import-type RelationInfo from \AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo
  *
@@ -97,14 +93,7 @@ trait ResolvesModelTypes
         $dropHidden = $excludeHidden && $resolver->excludeHiddenAttributes();
         $dbColumns = $resolver->databaseColumnNames($modelClass);
 
-        /** @var ResourcePropertyInfoList $properties */
-        $properties = [];
-        /** @var ClassMapType $directEnumFqcns */
-        $directEnumFqcns = [];
-        /** @var ClassMapType $modelFqcns */
-        $modelFqcns = [];
-        /** @var InlineModelFqcnsMap $inlineModelFqcns */
-        $inlineModelFqcns = [];
+        $analysis = new ResourceAnalysis;
 
         foreach ($this->modelAttributes as $attr) {
             if ($dropHidden && $attr['hidden']) {
@@ -123,16 +112,11 @@ trait ResolvesModelTypes
 
             $info = $this->resolveModelAttributeTypeInfo($attr['name']);
 
-            $properties[] = [
-                'name' => $attr['name'],
+            $analysis->addProperty($attr['name'], [
                 'type' => $info['type'],
                 'optional' => false,
-                'description' => '',
-            ];
-
-            if ($info['enumFqcn'] !== null) {
-                $directEnumFqcns[$attr['name']] = $info['enumFqcn'];
-            }
+                ...($info['enumFqcn'] !== null ? ['directEnumFqcn' => $info['enumFqcn']] : []),
+            ]);
         }
 
         // Also include relations so they can be referenced by only()/except() filters
@@ -141,32 +125,19 @@ trait ResolvesModelTypes
                 $info = $this->resolveModelRelationTypeInfo($relation['name'], $this->scope);
 
                 if ($info['type'] !== 'unknown') {
-                    $properties[] = [
-                        'name' => $relation['name'],
+                    // Morph arms travel as embedded FQCNs: self-keyed in modelFqcns so every arm of a
+                    // MorphTo union is imported, and queued per property so ResourceTransformer can
+                    // alias same-basename parents apart.
+                    $analysis->addProperty($relation['name'], [
                         'type' => $info['type'],
                         'optional' => false,
-                        'description' => '',
-                    ];
-
-                    if ($info['modelFqcn'] !== null) {
-                        $modelFqcns[$relation['name']] = $info['modelFqcn'];
-                    }
-
-                    // Self-keyed so every arm of a MorphTo union is imported; the per-property list
-                    // additionally lets ResourceTransformer alias same-basename parents apart.
-                    foreach ($info['morphFqcns'] as $morphFqcn) {
-                        $modelFqcns[$morphFqcn] = $morphFqcn;
-                        $inlineModelFqcns[$relation['name']][] = $morphFqcn;
-                    }
+                        ...($info['modelFqcn'] !== null ? ['modelFqcn' => $info['modelFqcn']] : []),
+                        'embeddedModelFqcns' => $info['morphFqcns'],
+                    ]);
                 }
             }
         }
 
-        return new ResourceAnalysis(
-            properties: $properties,
-            directEnumFqcns: $directEnumFqcns,
-            modelFqcns: $modelFqcns,
-            inlineModelFqcns: $inlineModelFqcns,
-        );
+        return $analysis;
     }
 }

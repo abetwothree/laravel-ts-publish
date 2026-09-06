@@ -200,6 +200,18 @@
                 }
             ]
         },
+        "Workbench\\App\\Events\\SameBasenameModelEvent": {
+            "name": "SameBasenameModelEvent",
+            "eventName": "SameBasenameModelEvent",
+            "broadcastName": ".Workbench.App.Events.SameBasenameModelEvent",
+            "properties": [
+                {
+                    "name": "actor",
+                    "type": "AppUser | CrmUser",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Events\\ServerCreated": {
             "name": "ServerCreated",
             "eventName": "ServerCreated",

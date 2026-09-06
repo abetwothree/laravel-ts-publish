@@ -4165,6 +4165,9 @@ declare global {
             salesReport: Partial<app.models.sales.report.Report>;
             marketingReport: Partial<app.models.marketing.report.Report>;
         }
+        export interface SameBasenameModelEvent {
+            actor: app.models.User | crm.models.User;
+        }
         export interface ServerCreated extends BroadcastableEvent {
             serverId: number;
             serverName: string;

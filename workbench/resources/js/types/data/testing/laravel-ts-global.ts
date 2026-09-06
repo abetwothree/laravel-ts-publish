@@ -4165,6 +4165,9 @@ declare global {
             salesReport: Partial<workbench.app.models.sales.report.Report>;
             marketingReport: Partial<workbench.app.models.marketing.report.Report>;
         }
+        export interface SameBasenameModelEvent {
+            actor: workbench.app.models.User | workbench.crm.models.User;
+        }
         export interface ServerCreated extends BroadcastableEvent {
             serverId: number;
             serverName: string;

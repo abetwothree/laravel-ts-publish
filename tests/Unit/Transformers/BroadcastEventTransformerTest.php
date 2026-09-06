@@ -15,6 +15,7 @@ use Workbench\App\Events\PayloadDiffersEvent;
 use Workbench\App\Events\PostPublishedEvent;
 use Workbench\App\Events\PureEnumEvent;
 use Workbench\App\Events\ReportSynced;
+use Workbench\App\Events\SameBasenameModelEvent;
 use Workbench\App\Events\ServerCreated;
 use Workbench\App\Events\TeamMessageSent;
 use Workbench\App\Events\UserNotification;
@@ -163,6 +164,30 @@ describe('MultiModelEvent (Post + User, same namespace)', function () {
         $types = array_values($transformer->typeImports)[0];
         expect($types)->toContain('Post');
         expect($types)->toContain('User');
+    });
+});
+
+describe('SameBasenameModelEvent (@var union of two same-basename models, no broadcastWith)', function () {
+    // analyzePublicProperties() routes embeddedModelFqcns into the inlineModelFqcns queue, which is
+    // the only channel that tells aliasPropertyType() which `User` each token is.
+    it('aliases each User apart instead of emitting the ambiguous name twice', function () {
+        $transformer = app(BroadcastEventTransformer::class, ['findable' => SameBasenameModelEvent::class]);
+
+        expect($transformer->properties['actor']['type'])->toBe('AppUser | CrmUser');
+    });
+
+    it('leaves no token in the emitted type without an import under that name', function () {
+        $transformer = app(BroadcastEventTransformer::class, ['findable' => SameBasenameModelEvent::class]);
+
+        $imported = array_map(
+            fn (string $entry) => str_contains($entry, ' as ') ? explode(' as ', $entry)[1] : $entry,
+            array_merge(...array_values($transformer->typeImports)),
+        );
+        $tokens = preg_split('/\s*\|\s*/', $transformer->properties['actor']['type']) ?: [];
+
+        expect($imported)->toContain('AppUser')
+            ->and($imported)->toContain('CrmUser')
+            ->and(array_values(array_diff($tokens, $imported)))->toBe([]);
     });
 });
 

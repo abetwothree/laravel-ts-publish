@@ -8,6 +8,7 @@ import type { PayloadDiffersEvent } from './app/events/PayloadDiffersEvent';
 import type { PostPublishedEvent } from './app/events/PostPublishedEvent';
 import type { PureEnumEvent } from './app/events/PureEnumEvent';
 import type { ReportSynced } from './app/events/ReportSynced';
+import type { SameBasenameModelEvent } from './app/events/SameBasenameModelEvent';
 import type { ServerCreated } from './app/events/ServerCreated';
 import type { StatusSynced } from './crm/events/StatusSynced';
 import type { TeamMessageSent } from './app/events/TeamMessageSent';
@@ -27,6 +28,7 @@ export type BroadcastEvent =
     | '.Workbench.App.Events.PostPublishedEvent'
     | '.Workbench.App.Events.PureEnumEvent'
     | '.Workbench.App.Events.ReportSynced'
+    | '.Workbench.App.Events.SameBasenameModelEvent'
     | 'server.created'
     | '.Workbench.Crm.Events.StatusSynced'
     | '.Workbench.App.Events.TeamMessageSent'
@@ -46,6 +48,7 @@ export const BroadcastEvents = Object.freeze({
     PostPublishedEvent: '.Workbench.App.Events.PostPublishedEvent',
     PureEnumEvent: '.Workbench.App.Events.PureEnumEvent',
     ReportSynced: '.Workbench.App.Events.ReportSynced',
+    SameBasenameModelEvent: '.Workbench.App.Events.SameBasenameModelEvent',
     ServerCreated: 'server.created',
     StatusSynced: '.Workbench.Crm.Events.StatusSynced',
     TeamMessageSent: '.Workbench.App.Events.TeamMessageSent',
@@ -66,6 +69,7 @@ export type {
     PostPublishedEvent,
     PureEnumEvent,
     ReportSynced,
+    SameBasenameModelEvent,
     ServerCreated,
     StatusSynced,
     TeamMessageSent,

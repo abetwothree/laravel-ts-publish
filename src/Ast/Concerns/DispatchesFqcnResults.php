@@ -10,8 +10,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 /**
  * Fan a value expression's FQCN channels out into the caller's per-key tracking maps.
  *
- * The single home for this: the analyzer's own return-array walk and ThisPropertyHandler's
- * array-literal extractor both build the same maps from the same result shape.
+ * Kept apart from MethodAnalysis::addProperty(), its only caller, so the channel routing reads as
+ * one table rather than as a tail on the property append.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type ClassMapType from MethodAnalysis

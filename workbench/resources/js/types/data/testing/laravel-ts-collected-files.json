@@ -22,6 +22,7 @@
     "app\/Events\/PostPublishedEvent.php",
     "app\/Events\/PureEnumEvent.php",
     "app\/Events\/ReportSynced.php",
+    "app\/Events\/SameBasenameModelEvent.php",
     "app\/Events\/ServerCreated.php",
     "app\/Events\/TeamMessageSent.php",
     "app\/Events\/UserNotification.php",

@@ -6,7 +6,6 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DispatchesFqcnResults;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -20,7 +19,6 @@ use ReflectionProperty;
 final class AstEngine
 {
     use CollectsLocalVarBindings;
-    use DispatchesFqcnResults;
 
     /** @var array<string, true> class@method@modelClass keys currently on the call stack — cycle guard. */
     private array $analyzing = [];
@@ -171,26 +169,7 @@ final class AstEngine
 
             $result = $resolver->resolve($reflection, $name) ?? ValueResult::unknown();
 
-            $analysis->properties[] = [
-                'name' => $name,
-                'type' => $result['type'],
-                'optional' => false,
-                'description' => '',
-            ];
-
-            $this->dispatchFqcnResults(
-                $name,
-                $result,
-                $analysis->enumResources,
-                $analysis->directEnumFqcns,
-                $analysis->nestedResources,
-                $analysis->modelFqcns,
-                $analysis->multiEnumResourceFqcns,
-            );
-
-            foreach ($result['customImports'] ?? [] as $path => $types) {
-                $analysis->customImports[$path] = [...($analysis->customImports[$path] ?? []), ...$types];
-            }
+            $analysis->addProperty($name, $result);
         }
 
         return $analysis;

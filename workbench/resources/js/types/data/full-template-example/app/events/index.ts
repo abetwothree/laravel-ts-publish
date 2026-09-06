@@ -8,6 +8,7 @@ export * from './PayloadDiffersEvent';
 export * from './PostPublishedEvent';
 export * from './PureEnumEvent';
 export * from './ReportSynced';
+export * from './SameBasenameModelEvent';
 export * from './ServerCreated';
 export * from './TeamMessageSent';
 export * from './UserNotification';

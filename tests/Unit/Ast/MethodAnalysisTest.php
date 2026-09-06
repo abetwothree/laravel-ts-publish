@@ -146,3 +146,60 @@ it('merges properties without letting the source flat-type alias overwrite the t
         ->and($target->flatTypeAlias)->toBe('Foo')
         ->and($target->flatTypeAliasFqcn)->toBe('App\\Foo');
 });
+
+describe('MethodAnalysis::addProperty()', function () {
+    test('routes every channel a resolved value can carry', function () {
+        $analysis = new MethodAnalysis;
+
+        $analysis->addProperty('status', [
+            'type' => 'StatusType | null',
+            'optional' => false,
+            'enumFqcn' => 'Workbench\App\Enums\Status',
+            'directEnumFqcn' => 'Workbench\App\Enums\Status',
+            'resourceFqcn' => 'Workbench\App\Http\Resources\PostResource',
+            'modelFqcn' => 'Workbench\App\Models\Post',
+            'multiEnumResourceFqcns' => ['Workbench\App\Enums\Status', 'Workbench\App\Enums\Role'],
+            'wrapIsCollection' => true,
+            'directIsArray' => false,
+            'embeddedEnumFqcns' => ['Workbench\App\Enums\Role', 'Workbench\App\Enums\Role'],
+            'embeddedModelFqcns' => ['Workbench\App\Models\User', 'Workbench\Crm\Models\User', 'Workbench\App\Models\User'],
+            'embeddedEnumResourceFqcns' => ['Workbench\App\Enums\Season'],
+            'embeddedResourceFqcns' => ['Workbench\App\Http\Resources\TagResource'],
+            'customImports' => ['@/types/x' => ['XType']],
+        ], optional: true, description: 'doc');
+
+        expect($analysis->properties)->toBe([[
+            'name' => 'status', 'type' => 'StatusType | null', 'optional' => true, 'description' => 'doc',
+        ]])
+            ->and($analysis->enumResources)->toBe(['status' => 'Workbench\App\Enums\Status'])
+            ->and($analysis->directEnumFqcns)->toBe([
+                'status' => 'Workbench\App\Enums\Status',
+                'Workbench\App\Enums\Role' => 'Workbench\App\Enums\Role',
+            ])
+            ->and($analysis->nestedResources)->toBe([
+                'status' => 'Workbench\App\Http\Resources\PostResource',
+                'Workbench\App\Http\Resources\TagResource' => 'Workbench\App\Http\Resources\TagResource',
+            ])
+            ->and($analysis->modelFqcns)->toBe([
+                'status' => 'Workbench\App\Models\Post',
+                'Workbench\App\Models\User' => 'Workbench\App\Models\User',
+                'Workbench\Crm\Models\User' => 'Workbench\Crm\Models\User',
+            ])
+            ->and($analysis->multiEnumResourceFqcns)->toBe(['status' => ['Workbench\App\Enums\Status', 'Workbench\App\Enums\Role']])
+            ->and($analysis->enumResourceArmShapes)->toBe(['status' => ['wrapIsCollection' => true, 'directIsArray' => false]])
+            // The three inline queues keep repeats: aliasPropertyType() consumes them positionally.
+            ->and($analysis->inlineEnumFqcns)->toBe(['status' => ['Workbench\App\Enums\Role', 'Workbench\App\Enums\Role']])
+            ->and($analysis->inlineModelFqcns)->toBe(['status' => ['Workbench\App\Models\User', 'Workbench\Crm\Models\User', 'Workbench\App\Models\User']])
+            ->and($analysis->inlineEnumResourceFqcns)->toBe(['status' => ['Workbench\App\Enums\Season']])
+            ->and($analysis->customImports)->toBe(['@/types/x' => ['XType']]);
+    });
+
+    test('optional is the union of the caller flag and the value result', function () {
+        $analysis = new MethodAnalysis;
+        $analysis->addProperty('a', ['type' => 'string', 'optional' => true]);
+        $analysis->addProperty('b', ['type' => 'string', 'optional' => false], optional: true);
+        $analysis->addProperty('c', ['type' => 'string', 'optional' => false]);
+
+        expect(array_column($analysis->properties, 'optional', 'name'))->toBe(['a' => true, 'b' => true, 'c' => false]);
+    });
+});
