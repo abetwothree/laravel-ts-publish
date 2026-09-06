@@ -105,7 +105,7 @@ declare global {
 @if($property['description'])
 {!! LaravelTsPublish::formatJsDoc($property['description'], 12) !!}
 @endif
-            {!! LaravelTsPublish::validJsObjectKey($name) !!}{!! $property['optional'] ? '?' : '' !!}: {!! LaravelTsPublish::qualifyGlobalType(LaravelTsPublish::rewriteAsEnumToType($property['type'], $transformer->globalEnumConstMap()), $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
+            {!! LaravelTsPublish::validJsObjectKey($name, allowIndexSignature: true) !!}{!! $property['optional'] ? '?' : '' !!}: {!! LaravelTsPublish::qualifyGlobalType(LaravelTsPublish::rewriteAsEnumToType($property['type'], $transformer->globalEnumConstMap()), $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
 @endforeach
         }
 @endif
@@ -120,7 +120,7 @@ declare global {
 @if($transformer->isDynamic)
         export type {{ $transformer->typeName }} = Record<string, unknown>;
 @else
-        export interface {{ $transformer->typeName }} {
+        export interface {{ $transformer->typeName }}{!! count($transformer->tsExtends) > 0 ? ' extends '.implode(', ', $transformer->tsExtends) : '' !!} {
 @foreach ($transformer->fields as $field)
 @if(!$field['isProhibited'])
 @php
@@ -143,7 +143,7 @@ $optional = ! $field['isRequired'] ? '?' : '';
 @if ($transformers->count() > 0)
     export namespace {{ $namespace }} {
 @foreach ($transformers as $transformer)
-        export interface {{ $transformer->eventName }} {
+        export interface {{ $transformer->eventName }}{!! count($transformer->tsExtends) > 0 ? ' extends '.implode(', ', $transformer->tsExtends) : '' !!} {
 @foreach ($transformer->properties as $name => $prop)
 @php
 $optional = $prop['optional'] ? '?' : '';

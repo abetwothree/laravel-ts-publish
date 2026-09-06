@@ -12,7 +12,7 @@ on:
       - "composer.lock"
       - "package-lock.json"
       - "testbench.yaml"
-      - "tsconfig.json"
+      - "tsconfig*.json"
 
 permissions:
   contents: write
@@ -144,11 +144,17 @@ jobs:
           fi
           echo "PASS - @tolki/ts types resolve"
 
+      - name: Gate - docs cite symbols, not line numbers
+        run: .github/scripts/docs-anchor-gate.sh
+
       - name: Gate - no type token emitted without its import
         run: .github/scripts/unimportable-token-gate.sh 0 0 0
 
       - name: Gate - unknown-regression-gate parser self-test
         run: python3 .github/scripts/unknown-regression-gate.py --parsetest
+
+      - name: Gate - token gate self-test
+        run: .github/scripts/unimportable-token-gate.sh --selftest
 
       - name: Gate - no property regressed to unknown
         run: |
@@ -195,7 +201,10 @@ jobs:
           fi
           echo "Comparing $base..HEAD"
           git worktree add /tmp/base "$base"
+          cp composer.lock /tmp/base/composer.lock
           composer install --prefer-dist --no-interaction --working-dir=/tmp/base
+          echo "base: $(composer show laravel/framework --working-dir=/tmp/base | grep '^versions')"
+          echo "head: $(composer show laravel/framework | grep '^versions')"
 
       - name: Gate - publish speed vs merge-base
         run: bash .github/scripts/publish-bench.sh /tmp/base "$PWD"

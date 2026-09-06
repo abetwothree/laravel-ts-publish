@@ -32,11 +32,11 @@ class ConditionalDefaultsResource extends JsonResource
             // Laravel distinguishes it from an omitted argument via func_num_args(), not `=== null`.
             'not_null_explicit_null_default' => $this->whenNotNull($this->full_address, null),
 
-            // A named argument makes position meaningless, so hasExplicitDefaultArg() bails to `false` —
-            // this behaves as if no default were passed at all (optional, value arm only).
+            // A named default is read by name: Laravel's func_num_args() sees it as a second argument, so
+            // it is a real default — required, and unioned in — exactly like the positional form above.
             'not_null_named_default' => $this->whenNotNull($this->full_address, default: 0),
 
-            // Same bail-out for a spread argument at the default position.
+            // A spread argument at the default position makes the count unknowable, so it bails out.
             'not_null_spread_default' => $this->whenNotNull($this->full_address, ...[0]),
 
             'when_no_default' => $this->when($this->id > 0, $this->full_address),

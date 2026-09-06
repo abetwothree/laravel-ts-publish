@@ -365,12 +365,35 @@ happened to end in `[]` — a shape that is only correct when *both* arms are ar
 was later fixed to match: it now array-suffixes only the bare arm
 (`AsEnum<typeof Const> | EnumTypeName[]`) instead of wrapping the whole union, the same principle
 `expandMixedEnumType()` already applied — an array-shaped arm keeps its own `[]`, a scalar arm
-never gains one it didn't earn — even though the two reach it by different means: this section's
-member-position matching versus the top-level rewrite's fixed convention that the wrapped arm is
-always scalar and the direct arm is the one that can be array-shaped, since it still has no
-per-member signal from the analyzer's own (collapsed-when-same-shaped) merged string to inspect.
-`EnumCollectionResource::$latest_status_or_history` pins the corrected top-level shape:
-`AsEnum<typeof Status> | StatusType[]`.
+never gains one it didn't earn. That fix still assumed the wrapped arm itself was always scalar,
+true only while every wrap was `EnumResource::make()`; a wrap arm using `EnumResource::collection()`
+needs its own `[]` too, and the top-level rewrite had no member-position signal of its own to tell
+the two apart — its merged type string collapses to one token whenever both arms render the same
+way. `TernaryHandler::analyzeTernary()` now closes that gap directly: once the merged result shows
+a mixed pair it re-resolves both arms once each (declining when either arm is itself ambiguously
+mixed, e.g. a nested ternary), records their own shapes (`wrapIsCollection`, `directIsArray`) on the
+result, and threads them through `MethodAnalysis::$enumResourceArmShapes` for
+`rewriteEnumResourceTypes()` to read back — a per-arm signal the merged type string alone cannot
+carry, from `analyzeReturnArray()` and every other collector that builds a `ResourceAnalysis`
+(`mergeReturnBranches()`, `ThisPropertyHandler::extractPropertiesFromArray()`,
+`collectVariableArrayAssignments()`). `EnumCollectionResource::$latest_status_or_history` pins the
+scalar-wrap case: `AsEnum<typeof Status> | StatusType[]`. `$wrapped_history_or_scalar` and
+`$wrapped_history_or_array` pin the collection-wrap case the old fixed convention got backwards:
+`AsEnum<typeof Status>[] | StatusType` and `AsEnum<typeof Status>[] | StatusType[]`.
+
+**The nested path is not reconciled with this.** `expandMixedEnumType()` has the identical collapse
+problem one level down, and there it is worse: when both arms render the same array-shaped string —
+an `EnumResource::collection()` wrap and a direct read of an already-list accessor, both `X[]` — the
+merged `$members` array collapses to the single member `'X[]'` before `expandMixedEnumType()` ever
+runs, and its `$member === $collectionType` branch maps that one member to `AsEnum<typeof Const>[]`,
+dropping the direct arm entirely rather than under-suffixing it — worse than the top-level bug just
+fixed, which at least kept both arms, just with the wrong one array-suffixed.
+`MethodAnalysis::$enumResourceArmShapes` *is* populated correctly by the time `analyzeInlineArray()`
+reads `$analysis` — `TernaryHandler` does not distinguish top-level from nested — so
+`expandMixedEnumType()` could read the same per-arm signal `rewriteEnumResourceTypes()` now does
+instead of reconstructing from the collapsed member list; that fix was left undone, deliberately, as
+outside this one's scope. See
+[docs/known-gaps.md](../known-gaps.md#enumresourcecollection-inside-a-mixed-ternary-nested-one-level-down).
 
 In the globals tree, `LaravelTsPublish::rewriteAsEnumToType()`'s pair pattern folds an *exact*
 `AsEnum<typeof Const> | EnumTypeName` adjacency — no `[]` anywhere in that span, neither between
@@ -655,8 +678,8 @@ keys are strings, so the two cannot collide, and `Omit<T, number>` on a string-k
 subtract nothing anyway.
 
 The shape that *would* collide is a numeric explicit sibling key — `[...$members->toArray(), 5 => 'x']`
-puts `5` in both halves. It is unreachable rather than unhandled: `resolveKeyName()`
-(`src/Analyzers/Concerns/InspectsAstNodes.php:116`) returns a name only for a `String_` key, and
+puts `5` in both halves. It is unreachable rather than unhandled: `resolveKeyName()` in
+`src/Analyzers/Concerns/InspectsAstNodes.php` returns a name only for a `String_` key, and
 `analyzeReturnArray()` skips every item whose key resolves to `null`, so a numeric key never becomes
 a property in the first place. `QuirkyResource` pins that independently — it writes `42 => $this->total`
 and `42 => 'number_keyed'`, and the generated `QuirkyResource` interface has no `42` member. So the
@@ -1056,11 +1079,12 @@ analyze against an empty registry even in the same process as an earlier full ru
 set from that run narrows this run's own convention guess and a real type silently collapses to `unknown`.
 Failing closed there would also silently strip the regenerated file's *convention-guessed* nested resource
 references. Only those. The registry is consulted at four candidate-inventing sites:
-`ToResourceHandler.php:181`, `:227` and `:238`, plus the naming-convention branch of
-`InspectsAstNodes::resolveCollectedResourceClass()`, which tries two candidates (`:203`, `:209`). An
-explicitly named reference never reaches it and would survive — `SomeResource::make()` and
-`::collection()` (`StaticCallHandler.php:187`, `:201`) test `isResourceClass()` rather than
-`isPublishedResourceClass()`, and so do the explicit-argument arms of
+`ToResourceHandler::resolveResourceForModel()`'s naming-convention loop,
+`resolveResourceCollectionForModel()`'s two naming-convention loops (the `{Guessed}Collection`
+candidates, then the bare guessed resources), plus the candidate list inside the naming-convention
+branch of `InspectsAstNodes::resolveCollectedResourceClass()`. An explicitly named reference never
+reaches it and would survive — `SomeResource::make()` and the `::collection()` arm of `StaticCallHandler`
+test `isResourceClass()` rather than `isPublishedResourceClass()`, and so do the explicit-argument arms of
 `ToResourceHandler::analyzeToResourceCall()` and `analyzeToResourceCollectionCall()`.
 
 ### Both runners reset the registry at the top of `run()`, once per run
@@ -1071,12 +1095,12 @@ runners enforce that as the first statement of `run()`: `Runner::run()` calls
 same — its own reset, not a side effect of skipping `register()`.
 
 Placement matters. `Runner::generateResources()` returns early, before it would otherwise call
-`register()`, whenever `shouldPublishResources` is `false` (see "Populated once, before the generate
-loop" below). A reset placed next to that `register()` call would never run on a resources-disabled run,
-so the registry would still hold the *previous* run's set — the wrong kind of narrowing, not the
-intended "allow everything" of an empty registry. Resetting at the top of `run()` instead means a
-resources-disabled run reaches every convention-guessed resource unfiltered, exactly like the
-single-FQCN `RunnerForSource` path above, rather than being gated by stale state.
+`register()`, whenever `shouldPublishResources` is `false` (e.g. `--only-routes`) (see "Populated
+once, before the generate loop" below). A reset placed next to that `register()` call would never run
+on a resources-disabled run, so the registry would still hold the *previous* run's set — the wrong
+kind of narrowing, not the intended "allow everything" of an empty registry. Resetting at the top of
+`run()` instead means a resources-disabled run reaches every convention-guessed resource unfiltered,
+exactly like the single-FQCN `RunnerForSource` path above, rather than being gated by stale state.
 
 This also closes the other direction: two full `Runner::run()` calls in one process, the second with a
 narrower `ts-publish.resources.excluded`, no longer leave the first run's classes registered — a
@@ -1196,9 +1220,11 @@ where Laravel's `JsonResource::collection()` checks `static::class` — the sing
 on, not a separate collection class. The other is `toResourceCollection(SomeResource::class)`, because
 `TransformsToResourceCollection::toResourceCollection()` returns `$resourceClass::collection($this)` and
 so lands in that same method. The remaining sites reflect on whatever class Laravel instantiates — the
-`ResourceCollection` subclass for `make()`, `new`, and the collection-delegated path. The argument-less
-`toResourceCollection()` arm (`ToResourceHandler.php:125`) is the one that varies: it reflects on
-`resolveResourceCollectionForModel()`'s `collectionFqcn`, and that is only sometimes a collection class.
+`ResourceCollection` subclass for `make()`, `new`, and the collection-delegated path. The
+argument-less `toResourceCollection()` arm — the no-explicit-argument branch of
+`analyzeToResourceCollectionCall()` — is the one that varies: it reflects on
+`resolveResourceCollectionForModel()`'s `collectionFqcn`, and that is only sometimes a collection
+class.
 Of the method's four value-returning arms, the two that resolve *through a collection class*
 (`#[UseResourceCollection]`, and the `{Guessed}Collection` naming branch) set it to that class; the two
 that find **no collection class at all** — the `#[UseResource]` arm and the naming-convention fallback
@@ -1399,23 +1425,24 @@ default `$wrap`) and `LeafCollection extends MidCollection` (`#[Collects(UserRes
 `$wrap` of its own) both analyze to `{ data: PostResource[] }` — `LeafCollection` emits its parent's
 collected type, not its own.
 
-**The carve-out: a parent with `$wrap === null` breaks the inheritance.**
+A parent with `$wrap === null` still breaks the `properties !== []` guard the same way:
 `buildCollectionDelegatedAnalysis()` returns `new ResourceAnalysis(flatTypeAlias: $elementType,
 flatTypeAliasFqcn: $singular)` when `$wrap` resolves `null`/empty — `properties` stays at its `[]`
-default, which *fails* the `properties !== []` guard. `LeafCollection::analyze()` then falls through
-instead of returning the parent's result, reaches `isResourceCollection()`, and calls its **own**
-`buildCollectionDelegatedAnalysis()` — this time resolving `$collects` from `LeafCollection`'s own
-reflection, so its own override *is* honoured here.
+default, so `LeafCollection::analyze()` falls through instead of returning the parent's result,
+reaches `isResourceCollection()`, and calls its **own** `buildCollectionDelegatedAnalysis()` — this
+time resolving `$collects` from `LeafCollection`'s own reflection, so its own override *is* honoured.
 
-That recomputation does not inherit the parent's `$wrap = null`, though.
-`buildCollectionDelegatedAnalysis()` only reads `$wrap` when `ReflectionProperty::getDeclaringClass()`
-is the class currently being analyzed (`Read $wrap declared on this class only`). Since `LeafCollection`
-doesn't redeclare `$wrap` itself, its declaring class resolves to `MidCollection`, not `LeafCollection`,
-so that check fails and `$wrapKey` falls back to the method's hardcoded `'data'` default. The same
-probe's `$wrap = null` variant (`MidCollection` declares `public static $wrap = null;`,
-`LeafCollection` does not) confirms it: `LeafCollection` analyzes to `{ data: UserResource[] }`, the
-wrapped shape, not the flat `UserResource[]` its parent's `$wrap = null` would suggest. A body-less
-child only reproduces an ancestor's flat shape if it redeclares `$wrap = null` itself.
+> `$wrap` is read through reflection from wherever it is declared — the collection itself, a parent
+> collection, or `JsonResource`'s own `'data'` default — so an abstract base that sets `public static
+> $wrap = null` unwraps every body-less subclass.
+
+That recomputation inherits the parent's `$wrap = null` for the same reason:
+`buildCollectionDelegatedAnalysis()` reads `ReflectionProperty::getDefaultValue()` with no
+declaring-class check, so `LeafCollection` resolving `$wrap` on its own reflection still finds the
+value `MidCollection` declared. The same probe's `$wrap = null` variant (`MidCollection` declares
+`public static $wrap = null;`, `LeafCollection` does not) confirms it: `LeafCollection` now analyzes
+to the flat `UserResource[]` — its own `$collects` combined with the parent's inherited `$wrap = null`
+— not the `{ data: UserResource[] }` shape a declaring-class check would have produced.
 
 ### The explicit `parent::toArray($request)` forms are unchanged
 

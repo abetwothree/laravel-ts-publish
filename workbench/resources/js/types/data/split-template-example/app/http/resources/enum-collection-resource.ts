@@ -19,10 +19,12 @@ export interface EnumCollectionResource
     week_days: AsEnum<typeof WeekDays>[] | null;
     wrapped_week_days: { week_days: AsEnum<typeof WeekDays>[] | null };
     week_days_when_has?: AsEnum<typeof WeekDays>[] | null;
-    week_days_when_has_default: AsEnum<typeof WeekDays>[] | null | string;
+    week_days_when_has_default: AsEnum<typeof WeekDays>[] | string | null;
     status_history_when_appended?: AsEnum<typeof Status>[];
     members_via_var?: AsEnum<typeof Role>[];
     member_role_snapshot?: ({ role: RoleType | null })[];
     wrapped_status_fallback: { status: AsEnum<typeof Status>[] | StatusType };
     latest_status_or_history: AsEnum<typeof Status> | StatusType[];
+    wrapped_history_or_scalar: AsEnum<typeof Status>[] | StatusType;
+    wrapped_history_or_array: AsEnum<typeof Status>[] | StatusType[];
 }

@@ -9,14 +9,17 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\StaticCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ToResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
+use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use Workbench\App\Enums\Status;
@@ -44,7 +47,7 @@ function staticCallHandlerThrowingEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        public function returnArrayAnalysis(Array_ $array): MethodAnalysis
+        public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
         {
             throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
         }
@@ -77,9 +80,22 @@ final class StaticCallHandlerArmStubEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    public function returnArrayAnalysis(Array_ $array): MethodAnalysis
+    public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
     {
         throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
+    }
+}
+
+/**
+ * A resource whose constructor names its payload parameter something other than `resource` —
+ * pins that resourcePayloadArguments() reflects the concrete receiver's own constructor, not
+ * JsonResource's, so a subclass departing from the base parameter name still resolves.
+ */
+final class NamedPayloadResource extends JsonResource
+{
+    public function __construct(mixed $payload)
+    {
+        parent::__construct($payload);
     }
 }
 
@@ -92,6 +108,18 @@ it('declines a method call named neither toResource nor toResourceCollection', f
     $result = (new ToResourceHandler)->resolve($expr, $scope, staticCallHandlerThrowingEngine());
 
     expect($result)->toBeNull();
+});
+
+it('reads toResource(resourceClass: …) and toResourceCollection(resourceClass: …) by name', function () {
+    $explicit = fn (): Arg => new Arg(new ClassConstFetch(new Name(PostResource::class), 'class'), name: new Identifier('resourceClass'));
+    $single = new MethodCall(new Variable('model'), 'toResource', [$explicit()]);
+    $many = new MethodCall(new Variable('models'), 'toResourceCollection', [$explicit()]);
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class));
+
+    expect((new ToResourceHandler)->resolve($single, $scope, staticCallHandlerThrowingEngine()))
+        ->toBe(['type' => 'PostResource', 'optional' => false, 'resourceFqcn' => PostResource::class])
+        ->and((new ToResourceHandler)->resolve($many, $scope, staticCallHandlerThrowingEngine()))
+        ->toBe(['type' => 'PostResource[]', 'optional' => false, 'resourceFqcn' => PostResource::class]);
 });
 
 // StaticCallHandler
@@ -203,4 +231,67 @@ it('declines a node outside its claimed New_ class', function () {
     $result = (new NewResourceHandler)->resolve($expr, $scope, staticCallHandlerThrowingEngine());
 
     expect($result)->toBeNull();
+});
+
+// Resource payloads written by name — `resource:` is JsonResource::__construct()'s and ::collection()'s
+// parameter, and make() forwards it there through `new static(...$parameters)`.
+
+it('resolves PostResource::collection(resource: $this->whenLoaded(…)) as optional through the named payload', function () {
+    $expr = new StaticCall(new Name(PostResource::class), 'collection', [
+        new Arg(new MethodCall(new Variable('this'), 'whenLoaded', [new Arg(new String_('posts'))]), name: new Identifier('resource')),
+    ]);
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class));
+
+    $result = (new StaticCallHandler)->resolve($expr, $scope, staticCallHandlerThrowingEngine());
+
+    expect($result)->toBe([
+        'type' => 'PostResource[]',
+        'optional' => true,
+        'resourceFqcn' => PostResource::class,
+    ]);
+});
+
+it('resolves EnumResource::make(resource: $this->status) to the enum channel', function () {
+    $expr = new StaticCall(new Name(EnumResource::class), 'make', [
+        new Arg(new PropertyFetch(new Variable('this'), 'status'), name: new Identifier('resource')),
+    ]);
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+
+    $result = (new StaticCallHandler)->resolve($expr, $scope, staticCallHandlerThrowingEngine());
+
+    expect($result)->toBe([
+        'type' => 'StatusType',
+        'optional' => false,
+        'enumFqcn' => Status::class,
+    ]);
+});
+
+it('resolves new PostResource(resource: $this->when(…)) as optional through the named payload', function () {
+    $expr = new New_(new Name(PostResource::class), [
+        new Arg(new MethodCall(new Variable('this'), 'when', [new Arg(new Variable('flag')), new Arg(new Variable('post'))]), name: new Identifier('resource')),
+    ]);
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class));
+
+    $result = (new NewResourceHandler)->resolve($expr, $scope, staticCallHandlerThrowingEngine());
+
+    expect($result)->toBe([
+        'type' => 'PostResource',
+        'optional' => true,
+        'resourceFqcn' => PostResource::class,
+    ]);
+});
+
+it('resolves new NamedPayloadResource(payload: $this->whenLoaded(…)) through the concrete constructor, not JsonResource\'s', function () {
+    $expr = new New_(new Name(NamedPayloadResource::class), [
+        new Arg(new MethodCall(new Variable('this'), 'whenLoaded', [new Arg(new String_('x'))]), name: new Identifier('payload')),
+    ]);
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class));
+
+    $result = (new NewResourceHandler)->resolve($expr, $scope, staticCallHandlerThrowingEngine());
+
+    expect($result)->toBe([
+        'type' => 'NamedPayloadResource',
+        'optional' => true,
+        'resourceFqcn' => NamedPayloadResource::class,
+    ]);
 });

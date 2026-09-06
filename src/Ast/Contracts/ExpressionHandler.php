@@ -26,7 +26,9 @@ use PhpParser\Node\Expr;
  *      embeddedModelFqcns?: list<class-string>,
  *      embeddedResourceFqcns?: list<class-string>,
  *      multiEnumResourceFqcns?: list<class-string>,
- *      customImports?: TypesImportMap
+ *      customImports?: TypesImportMap,
+ *      wrapIsCollection?: bool,
+ *      directIsArray?: bool
  * }
  */
 interface ExpressionHandler

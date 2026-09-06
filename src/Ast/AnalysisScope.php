@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Request;
 use PhpParser\Node\Expr;
 use ReflectionClass;
 
@@ -17,6 +18,7 @@ use ReflectionClass;
  * @phpstan-type VarModelBindingsMap array<string, class-string<Model>>
  * @phpstan-type VarCollectionBindingsMap array<string, array{type: string, modelFqcn: class-string<Model>}>
  * @phpstan-type LocalVarBindingsMap array<string, Expr>
+ * @phpstan-type RequestVarNamesMap array<string, class-string<Request>>
  */
 final class AnalysisScope
 {
@@ -86,10 +88,11 @@ final class AnalysisScope
     public array $visitedSpreadMethods = [];
 
     /**
-     * Variable names holding an `Illuminate\Http\Request`, so the Request method rules fire on
-     * `$request->user()` and stay off an unrelated receiver that happens to share a method name.
+     * Variable names holding an `Illuminate\Http\Request`, keyed to the bound class so the Request
+     * method rules fire on `$request->user()`, stay off an unrelated same-named receiver, and
+     * `validated()` resolves against the actual `FormRequest` subclass rather than the base class.
      *
-     * @var array<string, true>
+     * @var RequestVarNamesMap
      */
     public array $requestVarNames = [];
 

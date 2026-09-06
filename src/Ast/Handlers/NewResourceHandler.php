@@ -67,13 +67,9 @@ final class NewResourceHandler implements ExpressionHandler
 
         // new EnumResource($this->prop)
         if ($this->isEnumResourceClass($className)) {
-            $args = $expr->getArgs();
+            $payload = $this->resourcePayloadArguments($expr, $className)->at(0)?->value;
 
-            if (count($args) >= 1) {
-                return $this->resolveEnumFromPropertyArg($args[0]->value, $scope) ?? $result;
-            }
-
-            return $result;
+            return $payload === null ? $result : ($this->resolveEnumFromPropertyArg($payload, $scope) ?? $result);
         }
 
         // new SomeCollection($this->items) — resolve the collected element type. Must precede the
@@ -85,7 +81,7 @@ final class NewResourceHandler implements ExpressionHandler
                 return [
                     ...$result,
                     'type' => $this->wrapCollectionElementType(LaravelTsPublish::resourceTypeName($collected), new ReflectionClass($className)),
-                    'optional' => $this->hasConditionalNewArgument($expr),
+                    'optional' => $this->hasConditionalNewArgument($expr, $className),
                     'resourceFqcn' => $collected,
                 ];
             }
@@ -96,7 +92,7 @@ final class NewResourceHandler implements ExpressionHandler
         }
 
         $resourceName = LaravelTsPublish::resourceTypeName($className);
-        $optional = $this->hasConditionalNewArgument($expr);
+        $optional = $this->hasConditionalNewArgument($expr, $className);
 
         /** @var class-string $className */
         return [

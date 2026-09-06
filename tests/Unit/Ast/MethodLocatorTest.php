@@ -3,7 +3,16 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ChildOfParentOwnedMethod;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ChildOverridesParentWithTrait;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NestedAnonymousClassMethod;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TwoClassesFirst;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TwoClassesSecond;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UsesClassBeforeTraitLabel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UsesInsteadofTraits;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UsesLabelledTrait;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Models\User;
@@ -15,6 +24,9 @@ $declaredElsewhere = function (string $class, string $method): bool {
 
     return $reflection->getMethod($method)->getFileName() !== $reflection->getFileName();
 };
+
+// Reads the single `return '<literal>';` statement a fixture's label() method returns.
+$literal = fn (?MethodContext $ctx): ?string => $ctx?->method->stmts[0]->expr->value ?? null;
 
 it('locates a method declared in the class own file', function () {
     $locator = new MethodLocator(new AstParser);
@@ -92,7 +104,26 @@ it('returns null for a missing class or method', function () {
         ->and($locator->locateOwn(User::class, 'notAMethod'))->toBeNull();
 });
 
-it('memoizes a miss so a repeated lookup never re-parses the file', function () {
+it('locateOwn detects an inherited miss from reflection alone, without ever parsing', function () {
+    // The file-name gate rejects an inherited method before parseFile() runs at all.
+    $parser = new class extends AstParser
+    {
+        public int $calls = 0;
+
+        public function parseFile(string $path): array
+        {
+            $this->calls++;
+
+            return parent::parseFile($path);
+        }
+    };
+    $locator = new MethodLocator($parser);
+
+    expect($locator->locateOwn(User::class, 'save'))->toBeNull()
+        ->and($parser->calls)->toBe(0);
+});
+
+it('memoizes a hit so a repeated lookup never re-parses the file', function () {
     // A spy AstParser counts parseFile() calls so we can prove the second lookup skips parsing entirely,
     // not merely that it returns an equal result.
     $parser = new class extends AstParser
@@ -108,11 +139,69 @@ it('memoizes a miss so a repeated lookup never re-parses the file', function () 
     };
     $locator = new MethodLocator($parser);
 
-    expect($locator->locateOwn(User::class, 'save'))->toBeNull();
+    expect($locator->locateOwn(PostResource::class, 'toArray'))->not->toBeNull();
 
-    $callsAfterFirstMiss = $parser->calls;
+    $callsAfterFirstHit = $parser->calls;
 
-    expect($callsAfterFirstMiss)->toBeGreaterThan(0)
-        ->and($locator->locateOwn(User::class, 'save'))->toBeNull()
-        ->and($parser->calls)->toBe($callsAfterFirstMiss);
+    expect($callsAfterFirstHit)->toBeGreaterThan(0)
+        ->and($locator->locateOwn(PostResource::class, 'toArray'))->not->toBeNull()
+        ->and($parser->calls)->toBe($callsAfterFirstHit);
+});
+
+it('returns each class its own body when two classes share a file and a method name', function () use ($literal) {
+    require_once __DIR__.'/Fixtures/TwoClassesOneFile.php';
+    $locator = new MethodLocator(new AstParser);
+
+    expect($literal($locator->locateOwn(TwoClassesFirst::class, 'label')))->toBe('first')
+        ->and($literal($locator->locateOwn(TwoClassesSecond::class, 'label')))->toBe('second')
+        ->and($literal($locator->locate(TwoClassesSecond::class, 'label')))->toBe('second');
+});
+
+it('locate still resolves a method inherited from a parent in another file', function () use ($literal) {
+    // Only ParentOwnedMethod declares label(); the two-file split is what locate()'s $file switch
+    // exercises, and one matching owner never reaches the two-classes disambiguation path at all.
+    $locator = new MethodLocator(new AstParser);
+
+    expect($literal($locator->locate(ChildOfParentOwnedMethod::class, 'label')))->toBe('from parent');
+});
+
+it('locate still resolves a method imported from a trait', function () use ($literal) {
+    // The trait file's only candidate is the trait's own label(); no disambiguation is needed.
+    $locator = new MethodLocator(new AstParser);
+
+    expect($literal($locator->locate(UsesLabelledTrait::class, 'label')))->toBe('from trait');
+});
+
+it('locate resolves the outer method, not a same-named one nested in an earlier anonymous class', function () use ($literal) {
+    // A recursive AST search sees both label() declarations; only the end-line match is unambiguous.
+    $locator = new MethodLocator(new AstParser);
+
+    expect($literal($locator->locate(NestedAnonymousClassMethod::class, 'label')))->toBe('outer');
+});
+
+it('locate resolves a trait method over an unrelated class declared earlier in the same file', function () {
+    require_once __DIR__.'/Fixtures/ClassBeforeTraitInOneFile.php';
+    $locator = new MethodLocator(new AstParser);
+
+    $literal = fn (?MethodContext $ctx): ?string => $ctx?->method->stmts[0]->expr->value ?? null;
+
+    expect($literal($locator->locate(UsesClassBeforeTraitLabel::class, 'label')))->toBe('from trait');
+});
+
+it('locate resolves an insteadof-selected trait method over its sibling trait in the same file', function () {
+    require_once __DIR__.'/Fixtures/InsteadofTraitsInOneFile.php';
+    $locator = new MethodLocator(new AstParser);
+
+    $literal = fn (?MethodContext $ctx): ?string => $ctx?->method->stmts[0]->expr->value ?? null;
+
+    expect($literal($locator->locate(UsesInsteadofTraits::class, 'label')))->toBe('from A');
+});
+
+it('locate resolves a trait method PHP prefers over an inherited parent method in the same file', function () {
+    require_once __DIR__.'/Fixtures/ParentPlusTraitInOneFile.php';
+    $locator = new MethodLocator(new AstParser);
+
+    $literal = fn (?MethodContext $ctx): ?string => $ctx?->method->stmts[0]->expr->value ?? null;
+
+    expect($literal($locator->locate(ChildOverridesParentWithTrait::class, 'label')))->toBe('from trait override');
 });

@@ -1,0 +1,8 @@
+{
+    "extends": "./tsconfig.json",
+    "include": [
+        "workbench/resources/js/types/data/split-template-example/**/*.ts",
+        "workbench/resources/js/types/data/split-template-example/**/*.d.ts",
+        "tests/types/**/*.ts"
+    ]
+}

@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\ModelClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclaredProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\EdgeCaseDocblocks;
+use Illuminate\Http\Request;
 use Workbench\App\Enums\Role;
 use Workbench\App\Events\OrderShipped;
 use Workbench\App\Events\UserNotification;
@@ -156,5 +157,5 @@ it('seeds a scope from a located method: bound models, request parameters and lo
     $requestContext = resolve(MethodLocator::class)->locateOwn(InertiaUserShapesController::class, 'profile');
     $requestScope = resolve(AstEngine::class)->bindingsFor($requestContext);
 
-    expect($requestScope->requestVarNames)->toBe(['request' => true]);
+    expect($requestScope->requestVarNames)->toBe(['request' => Request::class]);
 });

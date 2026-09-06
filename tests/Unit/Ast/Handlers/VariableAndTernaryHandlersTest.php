@@ -16,10 +16,14 @@ use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Ternary;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
+use PhpParser\Node\Name;
+use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use Workbench\App\Http\Resources\CommentResource;
@@ -45,7 +49,7 @@ function variableHandlersThrowingEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        public function returnArrayAnalysis(Array_ $array): MethodAnalysis
+        public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
         {
             throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
         }
@@ -77,7 +81,7 @@ final class VariableHandlersLoopEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    public function returnArrayAnalysis(Array_ $array): MethodAnalysis
+    public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
     {
         throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
     }
@@ -248,4 +252,33 @@ it('declines a method call no known-method rule matches', function () {
     );
 
     expect($result)->toBeNull();
+});
+
+it('reads $variable->pluck(key: …, value: …) by name', function () {
+    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
+    $scope->closureRelationModelClass = User::class;
+
+    $result = (new VariableHandler)->resolve(
+        new MethodCall(new Variable('users'), 'pluck', [
+            new Arg(new String_('id'), name: new Identifier('key')),
+            new Arg(new String_('name'), name: new Identifier('value')),
+        ]),
+        $scope,
+        variableHandlersThrowingEngine(),
+    );
+
+    expect($result)->toBe(['type' => 'string[]', 'optional' => false]);
+});
+
+it('reads $variable->map(callback: …) by name', function () {
+    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
+    $body = new PropertyFetch(new Variable('user'), 'name');
+    $closure = new ArrowFunction([
+        'params' => [new Param(new Variable('user'), type: new Name(User::class))],
+        'expr' => $body,
+    ]);
+    $expr = new MethodCall(new Variable('users'), 'map', [new Arg($closure, name: new Identifier('callback'))]);
+    $engine = new VariableHandlersLoopEngine([new VariableHandler], $scope);
+
+    expect((new VariableHandler)->resolve($expr, $scope, $engine))->toBe(['type' => 'string[]', 'optional' => false]);
 });

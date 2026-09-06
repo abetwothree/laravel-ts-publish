@@ -90,6 +90,20 @@ class EnumCollectionResource extends JsonResource
             'latest_status_or_history' => $this->is_active
                 ? EnumResource::make($this->latest_status)
                 : $this->status_history,
+
+            // Mixed ternary, wrap arm first this time and a collection rather than a scalar make():
+            // the [] belongs on the wrap arm here, not the direct one. Exercises the general case
+            // rewriteEnumResourceTypes()'s $isMixed branch previously assumed away (Task 28).
+            'wrapped_history_or_scalar' => $request->boolean('wrap')
+                ? EnumResource::collection($this->status_history)
+                : $this->latest_status,
+
+            // Both arms are independently array-shaped, so their raw type strings dedupe to one
+            // merged union member — only per-arm tracking still tells rewriteEnumResourceTypes()
+            // the [] belongs on both, not just whichever arm the merged string happened to keep.
+            'wrapped_history_or_array' => $request->boolean('wrap')
+                ? EnumResource::collection($this->status_history)
+                : $this->status_history,
         ];
     }
 }

@@ -8,6 +8,7 @@ use Illuminate\Console\Events\CommandFinished;
 use Illuminate\Contracts\Console\Kernel as Artisan;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
+use Symfony\Component\Console\Output\NullOutput;
 
 test('handle runs ts:publish with --fresh when shouldRun is true', function () {
     PostMigrateRunner::$shouldRun = true;
@@ -70,3 +71,25 @@ test('handle resets shouldRun to false after execution', function () {
     // Second call should not trigger artisan
     $listener->handle($event);
 });
+
+it('does not republish when the command that finished after migrations was not migrate', function () {
+    PostMigrateRunner::$shouldRun = true;
+
+    $artisan = Mockery::mock(Artisan::class);
+    $artisan->shouldNotReceive('call');
+
+    (new PostMigrateRunner($artisan))->handle(new CommandFinished('app:deploy', new ArrayInput([]), new NullOutput, 0));
+
+    expect(PostMigrateRunner::$shouldRun)->toBeTrue();
+});
+
+it('republishes after any migrate:* command', function (string $command) {
+    PostMigrateRunner::$shouldRun = true;
+
+    $artisan = Mockery::mock(Artisan::class);
+    $artisan->shouldReceive('call')->once()->withArgs(fn ($cmd, $args) => $args === ['--fresh' => true]);
+
+    (new PostMigrateRunner($artisan))->handle(new CommandFinished($command, new ArrayInput([]), new NullOutput, 0));
+
+    expect(PostMigrateRunner::$shouldRun)->toBeFalse();
+})->with(['migrate', 'migrate:fresh', 'migrate:refresh', 'migrate:rollback']);

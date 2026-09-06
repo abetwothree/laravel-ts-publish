@@ -15,6 +15,7 @@ use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\Int_;
@@ -52,7 +53,7 @@ function conditionalMethodHandlerThrowingEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        public function returnArrayAnalysis(Array_ $array): MethodAnalysis
+        public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
         {
             throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
         }
@@ -85,7 +86,7 @@ final class ConditionalMethodHandlerArmStubEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    public function returnArrayAnalysis(Array_ $array): MethodAnalysis
+    public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
     {
         throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
     }
@@ -129,7 +130,7 @@ final class ConditionalMethodHandlerScopeSpyEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    public function returnArrayAnalysis(Array_ $array): MethodAnalysis
+    public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
     {
         throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
     }
@@ -287,4 +288,171 @@ it('declines $this->merge(), a later slice\'s guard, without calling the engine'
     $result = (new ConditionalMethodHandler)->resolve($expr, conditionalMethodHandlerScope(), conditionalMethodHandlerThrowingEngine());
 
     expect($result)->toBeNull();
+});
+
+// ConditionalMethodHandler — named arguments. PHP binds them by name, then Laravel tests func_num_args().
+
+it('reads whenNotNull($value, default: …) as a real default, required and unioned', function () {
+    $valueExpr = new PropertyFetch(new Variable('this'), 'full_address');
+    $defaultExpr = new Int_(0);
+    $expr = new MethodCall(new Variable('this'), 'whenNotNull', [
+        new Arg($valueExpr),
+        new Arg($defaultExpr, name: new Identifier('default')),
+    ]);
+    $engine = new ConditionalMethodHandlerArmStubEngine([
+        [$valueExpr, ['type' => 'string | null', 'optional' => false]],
+        [$defaultExpr, ['type' => 'number', 'optional' => false]],
+    ]);
+
+    $result = (new ConditionalMethodHandler)->resolve($expr, conditionalMethodHandlerScope(), $engine);
+
+    expect($result)->toBe(['type' => 'string | number', 'optional' => false]);
+});
+
+it('reads when() with every argument named, written in reverse order', function () {
+    $condition = new BinaryOp\Greater(new PropertyFetch(new Variable('this'), 'id'), new Int_(0));
+    $valueExpr = new Variable('valueArm');
+    $defaultExpr = new Int_(0);
+    $expr = new MethodCall(new Variable('this'), 'when', [
+        new Arg($defaultExpr, name: new Identifier('default')),
+        new Arg($valueExpr, name: new Identifier('value')),
+        new Arg($condition, name: new Identifier('condition')),
+    ]);
+    $engine = new ConditionalMethodHandlerArmStubEngine([
+        [$valueExpr, ['type' => 'string', 'optional' => false]],
+        [$defaultExpr, ['type' => 'number', 'optional' => false]],
+    ]);
+
+    $result = (new ConditionalMethodHandler)->resolve($expr, conditionalMethodHandlerScope(), $engine);
+
+    expect($result)->toBe(['type' => 'string | number', 'optional' => false]);
+});
+
+// whenLoaded('rel', default: …) is three arguments to Laravel, which then swaps the null $value for the
+// identity closure — so the loaded arm is still the relation, and the model import travels with it.
+it('types whenLoaded(relation, default: …) from the relation, required, with the default unioned in', function () {
+    $defaultExpr = new ConstFetch(new Name('null'));
+    $expr = new MethodCall(new Variable('this'), 'whenLoaded', [
+        new Arg(new String_('profile')),
+        new Arg($defaultExpr, name: new Identifier('default')),
+    ]);
+    $scope = new AnalysisScope(new ReflectionClass(UserResource::class), User::class);
+    $engine = new ConditionalMethodHandlerArmStubEngine([
+        [$defaultExpr, ['type' => 'null', 'optional' => false]],
+    ]);
+
+    $result = (new ConditionalMethodHandler)->resolve($expr, $scope, $engine);
+
+    expect($result)->toMatchArray(['type' => 'Profile | null', 'optional' => false, 'embeddedModelFqcns' => [Profile::class]]);
+});
+
+it('reads whenCounted(default: …, relationship: …) written out of order as required', function () {
+    $defaultExpr = new Int_(0);
+    $expr = new MethodCall(new Variable('this'), 'whenCounted', [
+        new Arg($defaultExpr, name: new Identifier('default')),
+        new Arg(new String_('posts'), name: new Identifier('relationship')),
+    ]);
+    $engine = new ConditionalMethodHandlerArmStubEngine([
+        [$defaultExpr, ['type' => 'number', 'optional' => false]],
+    ]);
+
+    $result = (new ConditionalMethodHandler)->resolve($expr, conditionalMethodHandlerScope(), $engine);
+
+    expect($result)->toBe(['type' => 'number', 'optional' => false]);
+});
+
+it('reads whenAggregated(…, default: …) at the family\'s deepest default position', function () {
+    $defaultExpr = new String_('none');
+    $expr = new MethodCall(new Variable('this'), 'whenAggregated', [
+        new Arg(new String_('items')),
+        new Arg(new String_('price')),
+        new Arg(new String_('sum')),
+        new Arg($defaultExpr, name: new Identifier('default')),
+    ]);
+    $engine = new ConditionalMethodHandlerArmStubEngine([
+        [$defaultExpr, ['type' => 'string', 'optional' => false]],
+    ]);
+
+    $result = (new ConditionalMethodHandler)->resolve($expr, conditionalMethodHandlerScope(), $engine);
+
+    expect($result)->toBe(['type' => 'number | string', 'optional' => false]);
+});
+
+// whenHas('attr', default: …) skips $value: Laravel counts three arguments and evaluates value(null, …),
+// so the present arm is null — the attribute's own type never surfaces.
+it('types whenHas(attribute, default: …) with the value skipped as null unioned with the default', function () {
+    $defaultExpr = new String_('none');
+    $expr = new MethodCall(new Variable('this'), 'whenHas', [
+        new Arg(new String_('name')),
+        new Arg($defaultExpr, name: new Identifier('default')),
+    ]);
+    $engine = new ConditionalMethodHandlerArmStubEngine([
+        [$defaultExpr, ['type' => 'string', 'optional' => false]],
+    ]);
+
+    $result = (new ConditionalMethodHandler)->resolve($expr, conditionalMethodHandlerScope(), $engine);
+
+    expect($result)->toBe(['type' => 'string | null', 'optional' => false]);
+});
+
+// whenAppended('attr', default: …) skips $value the same way whenHas() does: Laravel counts three
+// arguments and evaluates value(null, …), so the present arm is null, not the appended accessor's type.
+it('types whenAppended(attribute, default: …) with the value skipped as null unioned with the default', function () {
+    $defaultExpr = new String_('none');
+    $expr = new MethodCall(new Variable('this'), 'whenAppended', [
+        new Arg(new String_('name')),
+        new Arg($defaultExpr, name: new Identifier('default')),
+    ]);
+    $scope = new AnalysisScope(new ReflectionClass(UserResource::class), User::class);
+    $engine = new ConditionalMethodHandlerArmStubEngine([
+        [$defaultExpr, ['type' => 'string', 'optional' => false]],
+    ]);
+
+    $result = (new ConditionalMethodHandler)->resolve($expr, $scope, $engine);
+
+    expect($result)->toBe(['type' => 'string | null', 'optional' => false]);
+});
+
+// whenExistsLoaded('rel', default: …) skips $value: unlike whenLoaded(), there is no identity-closure
+// swap here, so Laravel evaluates value(null, …) and the present arm is null, not the exists flag.
+it('types whenExistsLoaded(relationship, default: …) with the value skipped as null unioned with the default', function () {
+    $defaultExpr = new String_('none');
+    $expr = new MethodCall(new Variable('this'), 'whenExistsLoaded', [
+        new Arg(new String_('posts')),
+        new Arg($defaultExpr, name: new Identifier('default')),
+    ]);
+    $scope = new AnalysisScope(new ReflectionClass(UserResource::class), User::class);
+    $engine = new ConditionalMethodHandlerArmStubEngine([
+        [$defaultExpr, ['type' => 'string', 'optional' => false]],
+    ]);
+
+    $result = (new ConditionalMethodHandler)->resolve($expr, $scope, $engine);
+
+    expect($result)->toBe(['type' => 'string | null', 'optional' => false]);
+});
+
+it('still treats a spread at the default position as no default', function () {
+    $expr = new MethodCall(new Variable('this'), 'whenCounted', [
+        new Arg(new String_('posts')),
+        new Arg(new Array_([]), unpack: true),
+    ]);
+
+    $result = (new ConditionalMethodHandler)->resolve($expr, conditionalMethodHandlerScope(), conditionalMethodHandlerThrowingEngine());
+
+    expect($result)->toBe(['type' => 'number', 'optional' => true]);
+});
+
+// valueSkipped() reads the same unreliable passedCount() hasExplicitDefaultArg() already bails on for a
+// spread, so it must bail too: a spread before a named default must not be misread as a skipped $value.
+it('does not report a skipped value when a spread precedes a named default', function () {
+    $expr = new MethodCall(new Variable('this'), 'whenHas', [
+        new Arg(new String_('name')),
+        new Arg(new Variable('rest'), unpack: true),
+        new Arg(new String_('x'), name: new Identifier('default')),
+    ]);
+    $scope = new AnalysisScope(new ReflectionClass(UserResource::class), User::class);
+
+    $result = (new ConditionalMethodHandler)->resolve($expr, $scope, conditionalMethodHandlerThrowingEngine());
+
+    expect($result)->toBe(['type' => 'string', 'optional' => true]);
 });

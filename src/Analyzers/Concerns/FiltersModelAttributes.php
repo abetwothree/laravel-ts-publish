@@ -6,9 +6,11 @@ namespace AbeTwoThree\LaravelTsPublish\Analyzers\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
+use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
+use ReflectionMethod;
 
 /**
  * Handles $this->only([...]), $this->except([...]) and other attribute filter
@@ -33,7 +35,7 @@ trait FiltersModelAttributes
             return null; // @codeCoverageIgnore
         }
 
-        $keys = $this->extractFilterKeys($call);
+        $keys = $this->extractFilterKeys($call, new ReflectionMethod(Model::class, $methodName));
 
         if ($keys === null || $keys === []) {
             return null;

@@ -43,6 +43,16 @@ class UsersController
 
         return inertia()->render('Users/Branched', ['b' => 2]);
     }
+
+    public function named()
+    {
+        return Inertia::render(props: ['a' => 1], component: 'Users/Named');
+    }
+
+    public function namedHelper()
+    {
+        return inertia(props: ['b' => 2], component: 'Users/NamedHelper');
+    }
 }
 PHP;
 
@@ -111,4 +121,20 @@ it('reports a render call with no props argument as a null propsArg, and finds n
     expect($calls)->toHaveCount(1)
         ->and($calls[0]->propsArg)->not->toBeInstanceOf(Array_::class)
         ->and($locator->findRenderCalls(findControllerMethod('edit')))->toBe([]);
+});
+
+it('reads component: and props: by name in either order, for the facade and the helper', function () {
+    $locator = new InertiaRenderLocator(new CallMatcher);
+
+    $render = $locator->findRenderCall(findControllerMethod('named'));
+    $calls = $locator->findRenderCalls(findControllerMethod('namedHelper'));
+
+    expect($render)->not->toBeNull()
+        ->and($locator->componentName($render))->toBe('Users/Named')
+        ->and($locator->propsArray($render))->not->toBeNull()
+        ->and($locator->propsArray($render)->items)->toHaveCount(1)
+        ->and($calls)->toHaveCount(1)
+        ->and($calls[0]->nameArg)->toBeInstanceOf(String_::class)
+        ->and($calls[0]->nameArg->value)->toBe('Users/NamedHelper')
+        ->and($calls[0]->propsArg)->toBeInstanceOf(Array_::class);
 });

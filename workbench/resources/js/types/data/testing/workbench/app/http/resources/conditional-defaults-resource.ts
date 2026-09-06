@@ -13,9 +13,9 @@ export interface ConditionalDefaultsResource
     not_null_no_default?: string;
     not_null_with_default: string | number;
     not_null_same_type_default: number;
-    null_with_default: null | string;
+    null_with_default: string | null;
     not_null_explicit_null_default: string | null;
-    not_null_named_default?: string;
+    not_null_named_default: string | number;
     not_null_spread_default?: string;
     when_no_default?: string;
     when_with_default: string | number;

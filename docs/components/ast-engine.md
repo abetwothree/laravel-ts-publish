@@ -65,7 +65,7 @@ The executable ordering contract lives in `tests/Unit/Ast/ResourceExpressionHand
 - One test asserts `make()`'s exact class-name sequence, so an accidental reorder fails a test
   instead of silently changing generated output.
 - One test asserts `generic()`'s exclusion set and relative order.
-- Four tests pin the *behavioral* precedence between handlers that both really claim a shared node
+- Six tests pin the *behavioral* precedence between handlers that both really claim a shared node
   class — proven by mutation: swap the pinned pair, watch the pinned test fail, revert.
   - `FirstClassCallableHandler` before `ConditionalMethodHandler` for a first-class-callable
     `$this->when(...)`. `ConditionalMethodHandler::isThisMethodCall()` matches on method name
@@ -82,6 +82,18 @@ The executable ordering contract lives in `tests/Unit/Ast/ResourceExpressionHand
   - `InertiaWrapperHandler` before `StaticCallHandler` for `Inertia::always(...)`. `StaticCallHandler`'s
     last arm claims every `StaticCall` and never declines, so if it ran first it would reflect the
     wrapper as an ordinary static method and floor the prop at `unknown` instead of the wrapped value.
+  - `FirstClassCallableHandler` before `KnownFunctionCallHandler` for a first-class-callable
+    `auth()->user(...)`. `KnownFunctionCallHandler` gates only the inner `auth()` call on
+    `isFirstClassCallable()`, never the outer `MethodCall`, so if it ran first it would answer with
+    the guard's model — a confident type for what is actually a `Closure`.
+  - `FirstClassCallableHandler` before `ToResourceHandler` for a first-class-callable
+    `$this->post->toResource(...)`. `ToResourceHandler` matches on the method name alone and then
+    calls `getArgs()`, which asserts `!isFirstClassCallable()` and fatals without the guard ahead of it.
+
+`MethodCall` gets a further, exhaustive layer on top of the six pins above:
+`tests/Unit/Ast/MethodCallOrderingMatrixTest.php` runs every one of its nine claimants' 36 unordered
+pairs in both orders over a curated corpus, the same mutate/watch-fail/revert method proves each pin
+with, rather than trusting a hand-picked example per pair — see that node class's inventory row below.
 
 ### Controller profile
 
@@ -113,23 +125,23 @@ special case in the handlers.
 ### The honest ordering inventory
 
 Not every node class more than one handler claims has a pin. The table below is the full inventory of
-contested node classes — pinned pairs, and pairs explicitly proven inert (the two arms
-never both actually claim the same expression, so their relative order cannot change output), and, for
-one class, pairs neither pinned nor proven — flagged as a gap rather than glossed over.
+contested node classes — pinned pairs, and pairs explicitly proven inert (the two arms never both
+actually claim the same expression, so their relative order cannot change output).
 
 | Node class | Claimants | Status |
 | --- | --- | --- |
-| `MethodCall` | `FirstClassCallableHandler`, `KnownFunctionCallHandler`, `ConditionalMethodHandler`, `ToResourceHandler`, `StaticCallHandler`, `RelationFilterHandler`, `RelationCollectionChainHandler`, `VariableHandler`, `KnownMethodRuleHandler` (9) | Three pairs pinned, all with `FirstClassCallableHandler` as the winner: before `ConditionalMethodHandler` and before `ToResourceHandler` (both crash-level — the loser calls `getArgs()`, which asserts `!isFirstClassCallable()`), and before `KnownFunctionCallHandler` (a silent divergence: `auth()->user(...)` as a first-class callable resolves to the guard's model instead of `unknown`). `KnownFunctionCallHandler` claims this node class for `auth()->user()`/`auth()->id()` only, and declines every other receiver. The remaining pairwise interactions within this candidate list are **live and unpinned** — untraced, unverified, could be inert or could silently change output on a reorder; see [Known gaps](../known-gaps.md#handler-ordering-is-pinned-by-example-not-by-the-suite). |
+| `MethodCall` | `FirstClassCallableHandler`, `KnownFunctionCallHandler`, `ConditionalMethodHandler`, `ToResourceHandler`, `StaticCallHandler`, `RelationFilterHandler`, `RelationCollectionChainHandler`, `VariableHandler`, `KnownMethodRuleHandler` (9) | Seven of the 36 unordered pairs are pinned: `FirstClassCallableHandler` before `ConditionalMethodHandler` and before `ToResourceHandler` (both crash-level — the loser calls `getArgs()`, which asserts `!isFirstClassCallable()`); `FirstClassCallableHandler` before `KnownFunctionCallHandler` (a silent divergence: `auth()->user(...)` as a first-class callable resolves to the guard's model instead of `unknown`); `ConditionalMethodHandler` before `RelationCollectionChainHandler` (its generic `$this->method()` reflection fallback would otherwise answer `$this->when(...)`/`$this->whenLoaded(...)` first, flooring the value arm at `unknown, optional: false`); `ToResourceHandler` and `RelationFilterHandler` each before `RelationCollectionChainHandler` (its separate `$this->anyProp->method()` branch would otherwise answer first — e.g. flooring `$this->post->toResource()` at `unknown` instead of resolving the guessed resource); and `RelationCollectionChainHandler` before `KnownMethodRuleHandler` for `$this->can(...)`/`cannot(...)`/`canAny(...)`. That last pin's practical reach is narrow, but the divergence condition itself is not what "resolves the model" alone: the two orders diverge whenever the resource's model — resolved or not — does not declare `can()`, since `RelationCollectionChainHandler`'s generic `$this->method()` fallback gates on `method_exists($scope->modelClass, $methodName)`, which fails the same way for a `null` model as for a real, resolved one that simply lacks `can()` (this row's own `CommentResource`/`Comment` corpus case). They agree once the model resolves to something Authorizable, since that same `method_exists()` check then reaches `Authorizable::can(): bool` — see [Known gaps](../known-gaps.md#handler-ordering-is-pinned-pairwise-corpus-bounded) for the full breakdown. Every unordered pair is run in both orders by `tests/Unit/Ast/MethodCallOrderingMatrixTest.php` over a curated corpus: the pairs in its `METHOD_CALL_PINNED` map disagree and are held in the direction `handlers()` lists them; every other pair is proven inert on that corpus (a new expression shape that makes an inert pair disagree fails the matrix, which is the signal to pin it). In the controller profile `ControllerExpressionHandlers` splices `ModelFinderHandler` (`StaticCall` + `MethodCall`) ahead of `StaticCallHandler`, making ten claimants there. |
 | `NullsafeMethodCall` | `RelationFilterHandler`, `MethodChainHandler` (2) | Pinned — the whole candidate list, full coverage. |
 | `PropertyFetch` | `ThisPropertyHandler`, `PropertyChainHandler`, `VariableHandler` (3) | One pair pinned (`ThisPropertyHandler` before `PropertyChainHandler`). The other two pairs are **inert-proven**: `ThisPropertyHandler` vs. `VariableHandler` never both claim the same expression (`isThisPropertyFetch()` requires a `$this` receiver; `VariableHandler`'s property branch requires the receiver not be `$this`); `PropertyChainHandler` vs. `VariableHandler` likewise — `PropertyChainHandler`'s fallback declines any chain not rooted at `$this`, which is exactly `VariableHandler`'s territory. |
 | `BinaryOp\Coalesce` | `BinaryOpHandler`, `CoalesceHandler` (2) | Inert-proven — `BinaryOpHandler::resolve()` has no branch matching `BinaryOp\Coalesce`, so it always declines regardless of registration position. |
 | `StaticCall` | `InertiaWrapperHandler`, `StaticCallHandler` (2) | Pinned — the whole candidate list, full coverage. |
 | `FuncCall` | `ArrayMergeHandler`, `KnownFunctionCallHandler` (2) | Inert-proven — `KnownFunctionCallHandler` declines `array_merge`: its reflected return type is `unknown[]`, and `resolveKnownFunctionCallType()` rejects any type containing `unknown`. `ArrayMergeHandler` is still registered first, so the specific handler keeps winning if that ever changes. |
 
-`MethodCall`'s unpinned handlers are the open item: their pairwise interactions were enumerated
-(by tracing the dispatcher's own candidate list against the current registration order) but not
-individually fixture-verified. Read the pin count as "the divergences someone has actually gone and
-found," not "the only divergences that exist."
+`MethodCall` is now the most thoroughly verified row in this table: every one of its 36 unordered
+pairs is run in both orders, not merely enumerated by inspection. Its residual limit is the matrix's
+own corpus — an expression shape the corpus never constructs cannot disagree there, however plausible
+it looks by inspection. Read the pin counts elsewhere in this table the way this file always has: as
+the divergences someone has actually gone and found, not as the only divergences that exist.
 
 ## AnalysisScope
 
@@ -151,7 +163,7 @@ itself reaches the same instance as `$this->scope`.
 | `localVarBindings` | `array<string, Expr>` | Top-level `$var = expr;` bindings for the method last analyzed, so a bare `Variable` value expression resolves through its bound expression instead of degrading to `unknown`. Only variables written exactly once are recorded; `analyzeThisMethodSpread()` saves and restores this per method. |
 | `resolvingLocalVars` | `array<string, true>` | Re-entrancy guard: variable names currently mid-resolution, so a self- or mutually-referential binding (`$a = $b; $b = $a;`) resolves as `unknown` instead of recursing forever. |
 | `visitedSpreadMethods` | `array<string, true>` | Spread methods currently on the analysis stack, so a method that spreads itself — directly or through a cycle — degrades to an empty analysis instead of recursing until memory runs out. |
-| `requestVarNames` | `array<string, true>` | Variable names holding an `Illuminate\Http\Request`, so `KnownMethodRuleHandler`'s reflected Request rule (`url()`, `user()`, `integer()`, …) fires on `$request->user()` and stays off an unrelated receiver sharing a method name. Seeded in `ResourceAstAnalyzer::__construct()` from the analyzed method's `Request`-typed parameters — **except for a `JsonResource` subject**, whose `toArray(Request $request)` would otherwise start typing request calls and move committed resource output. |
+| `requestVarNames` | `array<string, class-string<Request>>` | Variable names holding an `Illuminate\Http\Request`, mapped to the bound class, so `KnownMethodRuleHandler`'s reflected Request rule (`url()`, `ip()`, `integer()`, …) fires on `$request->ip()` and stays off an unrelated receiver sharing a method name; the bound class is what `validated()` is resolved against, reading the `FormRequest` subclass's own `rules()`. `user()` is answered ahead of reflection, from the configured auth model. Seeded in `AstEngine::bindingsFor()` from a located method's `Request`-typed parameters, and in `ResourceAstAnalyzer::resolveRequestVarNames()` for a directly-constructed resource analysis — **except for a `JsonResource` subject**, whose `toArray(Request $request)` would otherwise start typing request calls and move committed resource output. |
 
 **Snapshot/restore, not immutable copies.** `AnalysisScope` is one mutable object shared for the whole
 `analyze()` call, not a value threaded through with `mergeWith()`-style copying. A writer that needs a

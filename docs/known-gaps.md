@@ -19,34 +19,12 @@ if neither, it does not go in this file.
 
 ## Types the generator will not give you
 
-### `$request->validated('key')` is never typed
+### `config()` on an absent key with no default types as null
 
-The Inertia page path types `$request->url()`, `->integer()` and friends by reflecting the method off
-`Illuminate\Http\Request` — `requestMethodRule()` in `src/Ast/Handlers/KnownMethodRuleHandler.php:79`
-(`->user()` is the one name answered ahead of reflection, from the configured auth model). `validated()`
-is declared on `Illuminate\Foundation\Http\FormRequest`, and the scope records only that a variable holds
-*a* `Request`, never which subclass, so reflecting against the base class finds no such method and the
-rule declines. `Inertia::render('X', ['title' => $request->validated('title')])` — a headline user shape
-— therefore ships `title: unknown`. It is in the golden tree today:
-`workbench/app/Http/Controllers/InertiaFormRequestController.php:35` emits
-`export type StorePageProps = Inertia.SharedData & { title: unknown };` at
-`workbench/resources/js/types/data/default-example/app/http/controllers/inertia-form-request-controller.ts:15`.
-
-Deferred, not overlooked — but only one of the two reasons is a real obstacle. The scope tracks *that* a
-variable is a `Request`, not *which* `FormRequest` subclass it is; that is a data-shape widening with a
-known blast radius, not a wall. The objection that actually holds is the second: resolving the rules means
-instantiating the form request and calling `rules()` during type resolution, which runs application code
-inside the analyzer. Worth doing as its own change with that trade-off argued explicitly.
-
-### `config()` calls have three residual cases
-
-`config('key', $default)` types from the default expression when the key is unset. Still imperfect:
-a single-argument `config('unset.key')` types as `null`; only positional arguments are understood, so
-`config(default: 'x', key: 'k')` reads the wrong one; and a key explicitly set to `null` with a default
-types as the default, where Laravel would hand you `null`.
-
-All three are read from the config as it stands when `ts:publish` runs. If the machine generating types has
-a different `.env` from production, the emitted type follows the generating machine.
+`config('key', $default)` types from the default expression only when the key is absent; a key set to
+`null` types as `null`, and named arguments are honoured. The one residual: `config('unset.key')` with
+no default types as `null`, which is the live value on the generating machine. All reads follow that
+machine's config, so a `.env` that differs from production changes the emitted type.
 
 ### On Laravel 12, `#[Collects]` cannot be resolved — use the `$collects` property
 
@@ -63,22 +41,108 @@ on both versions, as does the `FooCollection` → `FooResource` naming conventio
 [docs/laravel-version-guards.md](./laravel-version-guards.md) for how the version floor was established and
 which tests are skipped below it.
 
-### `laravel-ts-global.ts` drops the `extends` clause it imports for
+### `EnumResource::collection()` inside a mixed ternary, nested one level down
 
-On the global flavour, a type that should compose via `#[TsExtends]` gets the *import* but not the
-`extends` clause — `BroadcastableEvent`, `FormRequestBase` and `HasValidationMeta` are imported while
-`ServerCreated`, `StringRulesRequest` and `NumberRulesRequest` are emitted with no base. The per-file
-flavour emits both halves correctly.
+Task 28 fixed `ResourceTransformer::rewriteEnumResourceTypes()`'s top-level `$isMixed` branch, which
+assumed the wrapped arm of a mixed EnumResource/direct-access ternary was always scalar.
+`InlineArrayHandler::expandMixedEnumType()` (`src/Ast/Handlers/InlineArrayHandler.php`) has the same
+defect for the identical ternary shape nested inside an inline array literal, and there it is worse:
+when both arms independently render the same array-shaped type string — an
+`EnumResource::collection()` wrap and a direct read of an already-list accessor, both `X[]` — the
+merge that builds the property's type collapses them to one member before `expandMixedEnumType()`
+ever runs, so it substitutes that single member and the direct arm's own presence in the union is
+lost outright, not just under-suffixed. Verified against a throwaway fixture during Task 28's fix
+round; not reproduced as a committed test or golden-tree property, so nothing here pins it yet.
 
-So on the global flavour those interfaces are silently missing their inherited members, and the only trace
-is an unused import. If you are on the global flavour and a base member is missing, this is why; the
-per-file flavour is correct today. The emitter is `resources/views/globals.blade.php`.
+### A broadcast event's own uninitialized typed property still types as required
 
-### `EnumResource::collection()` inside a mixed ternary arm
+Task 29 made an uninitialized typed public property optional wherever a class's shape is inlined —
+`LaravelTsPublish::publicPropertyShapeType()` (`src/LaravelTsPublish.php`), reached from `toTsType()`'s
+step 5c and from `arrayableShapeType()`'s no-docblock fallback. A broadcast event's own top-level
+property list never reaches that method: `AstEngine::analyzePublicProperties()` reflects the event
+class directly and hardcodes `'optional' => false` for every property, regardless of whether reflection
+says the property was ever assigned. An event with `public Carbon $occurredAt;` and no default therefore
+still emits `occurredAt: string;` in its generated `.ts` file — required — even though `json_encode()`
+would omit the key exactly as Task 29's fix accounts for everywhere else. Verified against a throwaway
+event fixture during Task 29's fix round, then removed once it stopped pinning anything the golden tree
+would show; not reproduced as a committed test or golden-tree property, so nothing here pins it yet.
+Fixing it means threading the same `hasDefaultValue()`/`isPromoted()` check into
+`analyzePublicProperties()`, which is a change to every existing broadcast event's blast radius, not a
+one-fixture addition — worth doing as its own task. `analyzePublicProperties()`'s own docblock already
+states it never marks a property optional — nullability is `| null`, optionality is a `#[TsCasts]`
+concern — so a future fix has to reconcile that deliberate boundary rather than be surprised by it. A
+related case is inherent rather than fixable: a public non-promoted `readonly` property that a
+hand-written constructor always assigns still renders `?:`, because a `readonly` property cannot carry
+a declaration default for static reflection to read — that `readonly` form is absent from the corpus.
+The same imprecision without `readonly` is present: `DeferredAssignmentDto::$assignedLater` is assigned
+by every construction and still emits `assignedLater?`, which is what lets it nest a `?:` inside a shape
+value for `NestedOptionalKeyDto`. It is deliberate there — the fixture needs an optional key — but it is
+the same heuristic, so a future fix to optionality has to expect that fixture to move.
 
-`ResourceTransformer` assumes the wrapping arm of a mixed enum ternary is never
-`EnumResource::collection()`, which is not true in general — the array suffix can come out wrong. The
-assumption is written at the branch it governs, `src/Transformers/ResourceTransformer.php:471`.
+### `#[TsCasts]` and the top-level spread flatten disagree by scope, in three separate ways
+
+Task 32 flattens a top-level `...SomeResource::make(...)->resolve()`, `...$model->toArray()`, or
+`...$collection->toArray()` spread into the host resource's own properties
+(`ResourceAstAnalyzer::analyzeSpreadArm()` and its three arm builders, `src/Analyzers/ResourceAstAnalyzer.php`).
+Only one of the three places `#[TsCasts]` can apply is wired up for it, and a fourth interaction —
+unrelated to spreading — makes the gap sharper than "missing", not just narrower than it looks.
+
+- **A spread resource's own `#[TsCasts]` is skipped.** `analyzeResourceSpreadArm()` calls
+  `AstEngine::analyzeMethod($resourceFqcn, 'toArray')`, which runs `ResourceAstAnalyzer::analyze()`
+  directly — never `ResourceTransformer::parseResourceTsCastsOverrides()`/`applyOverrides()`, which is
+  where a resource's own `#[TsCasts]` attribute is read and applied. A `#[TsCasts]` override declared on
+  `PostResource` itself would apply when `PostResource.ts` is generated standalone, and silently not
+  apply to the identical property once `PostResource` is spread into another resource.
+- **The spread resource's own backing model's `#[TsCasts]` is skipped for the same reason** — it is
+  `ResourceTransformer::parseModelTsCastsOverrides()` that reads it, and the resource arm never reaches
+  that transformer either.
+- **The model and collection arms *do* apply the spread target's own `#[TsCasts]`** (`analyzeModelSpreadArm()`,
+  same file) — that half is fixed, and it is why `User::options`, cast to a plain array at the DB/Eloquent
+  level, still flattens as `Record<string, unknown> | null` and not `unknown[] | null`: `Address::$appends`'s
+  `full_address` gets the same treatment.
+- **The host resource's own `#[TsCasts]` is applied by property name, blind to where the property actually
+  came from.** `ResourceTransformer::applyOverrides()` walks `$this->modelTsCastsOverrides` (from the *host*
+  resource's own backing model) and rewrites `$this->properties[$property]` by name alone — it has no
+  notion that a flattened property named `created_at` or `settings` came from a *different* model than
+  the host's own. A host resource's `#[TsCasts]` entry for `created_at` — a common override, since raw
+  `datetime` casts rarely need one but developers add them anyway for consistency — silently overwrites
+  a same-named column flattened from an entirely unrelated spread arm, in whichever direction the
+  override happens to point.
+
+None of this is a regression to `unknown`: every case above still emits a real, plausible-looking type —
+just possibly the wrong one, or missing a refinement its own standalone file carries. Fixing the first two
+cleanly means giving the resource arm a path to the spread resource's and its model's own overrides without
+re-running the whole `ResourceTransformer` pipeline recursively; fixing the fourth means `applyOverrides()`
+knowing which flattened properties are actually the host's own versus foreign, which the current
+`ResourceAnalysis::properties` list (name/type/optional/description only) does not carry. Both are scope
+changes to existing, working code paths, not one-fixture additions — worth doing as their own task.
+
+### `$request->validated('key')` only types a literal, top-level key
+
+A literal, top-level key on a bound `FormRequest` types from `rules()` — `$request->validated('title')`
+reads `StorePostRequest::rules()` through `FormRequestRulesAnalyzer`, the same analyzer the form request's
+own generated interface uses (`requestMethodRule()` in `src/Ast/Handlers/KnownMethodRuleHandler.php`). Two
+shapes short of that decline or diverge silently rather than fixing:
+
+- **A dotted key declines even when the rule defines it.** `FormRequestRulesAnalyzer::analyze()` returns
+  only the top-level trie nodes: a nested rule like `'options.default' => ['string']` composes into
+  `options`'s own object type, but never surfaces as its own `fieldPath` entry in the returned list.
+  `$request->validated('options.default')` on `Workbench\App\Http\Requests\NestedEdgeCasesRequest` — whose
+  `rules()` declares exactly that key — resolves to `null` and the property types as `unknown`, though the
+  rule is both defined and resolvable. Verified directly: the handler returns `null` for that call.
+  Nested validation rules (`'address.street' => 'required|string'`) are routine Laravel, so a user is
+  likely to hit this immediately after learning `validated()` is typed at all.
+- **A `#[TsCasts]` override on the form request is not honoured.** `StorePostRequest::rating` carries a
+  `#[TsCasts]` override to `number | bigint`; `$request->validated('rating')` types as the raw-rule
+  `number | null` instead — verified directly: the handler returns `['type' => 'number | null', 'optional'
+  => true]`, not the override. The override is applied by `FormRequestTransformer::applyTsCastsOverrides()`
+  when the form request's own `.ts` interface is generated, a call site `KnownMethodRuleHandler` never
+  reaches. Same shape as the entry above: two generated descriptions of the same field, disagreeing.
+
+Fixing the first means flattening `analyze()`'s trie output (or walking it by dotted path) instead of
+scanning only its top-level nodes; fixing the second means either routing through
+`FormRequestTransformer`'s override application or duplicating its `#[TsCasts]` parsing at this call site.
+Both are scope changes beyond the single literal top-level key this call site was built for.
 
 ### Inertia shared data does not rewrite `EnumResource` types for Tolki
 
@@ -97,8 +161,8 @@ value import into `typeImports` would be incorrect.
 Model metadata imports the enums body inference resolves, so a value the AST reads as an enum contributes
 an `import type` line of its own. Those inferred imports are pruned by property name, except when the
 engine has no property name to prune by: a value two direct enums can produce merges through
-`embeddedEnumFqcns`, and `DispatchesFqcnResults` keys those by FQCN
-(`src/Ast/Concerns/DispatchesFqcnResults.php:64`). `ModelMetadataAnalyzer::inferredTypeImports()` spares
+`embeddedEnumFqcns`, and `DispatchesFqcnResults::dispatchFqcnResults()` keys those by FQCN.
+`ModelMetadataAnalyzer::inferredTypeImports()` spares
 FQCN-keyed entries deliberately — pruning them by key would drop the union's own imports — which leaves
 the still-spelled filter as their only owner, and that filter matches the *rendered* TypeScript name, not
 the FQCN. Two enums with the same basename in different namespaces both render `StatusType`, so it cannot
@@ -136,12 +200,12 @@ cast imports use. That is a channel change, not a patch at the filter.
 Model metadata coerces an empty PHP array to `{}` wherever the property's resolved TypeScript type is
 object-like, because PHP cannot tell an empty map from an empty list and `[]` does not satisfy `Record<>`
 or an object literal. The decision is made by `TsTypeShape::isObjectLike()` reading the type *string*
-(`ModelMetadataTransformer::coerceEmptyArray()`, `src/Transformers/ModelMetadataTransformer.php:327`), and
-a bare imported identifier is opaque to it — `armIsObject()` recognises only `{...}` and `Record<`
-(`src/Support/TsTypeShape.php:183`). A `#[TsCasts]` type that names an imported alias therefore keeps `[]`,
+(`ModelMetadataTransformer::coerceEmptyArray()`), and
+a bare imported identifier is opaque to it — `TsTypeShape::armIsObject()` recognises only `{...}` and
+`Record<`. A `#[TsCasts]` type that names an imported alias therefore keeps `[]`,
 however object-like the alias resolves to on the TypeScript side.
 
-`tests/Fixtures/EmptyValuesModelMetadataProvider.php:27` pins exactly that shape — `'opaque' =>
+`EmptyValuesModelMetadataProvider`'s `opaque` key pins exactly that shape — `'opaque' =>
 ['type' => 'OpaqueShape', 'import' => '@/types/opaque-shape']` holding `[]`. Point the alias at the
 map it reads as (`export type OpaqueShape = Record<string, unknown>;`) and the emitted companion fails:
 
@@ -155,7 +219,8 @@ hit every object-like property, not a new one. **The workaround is to return `(o
 provider may now do explicitly and which survives coercion untouched.
 
 No gate catches it. The writer tests that render this companion all run with `ts-publish.output_to_files`
-false (`tests/Unit/Writers/ModelMetadataWriterTest.php:93`), so the file never reaches the generated tree
+false (`ModelMetadataWriterTest` → *renders empty containers in the spelling their types require*), so
+the file never reaches the generated tree
 the token gate compiles — read a green gate as saying nothing about this case either way.
 
 Fixing it means resolving the alias to a type the shape inspector can read, which puts a module-resolution
@@ -203,14 +268,42 @@ succeed by accident.
 
 Override the pair together. `tests/Fixtures/PrefixedModelMetadataTransformer.php` is the worked example.
 
+### A trait-supplied `provide()` in its own file contributes no inferred types
+
+`MethodLocator::findIn()` declines when the method's declaring file is not the class's own file, before it
+parses anything. A trait method's declaring file is the *trait's*, so a trait living in its own file — the
+ordinary way to ship one — always declines. `ModelMetadataAnalyzer::analyzeBody()` then falls back to
+`AstEngine::analyzeMethod()`, which seeds no `$model` binding.
+
+The consequence is wider than `$model` calls: that fallback contributes **no inferred types at all**. Every
+key needs a docblock or `#[TsCasts]`, including plain literals. `TraitModelMetadataProvider` pins it — its
+analysis is `['label' => 'docblock', 'flag' => 'casts']` with `table` undeclared, and `label` is a string
+literal typed only because the docblock names it.
+
+Only a *separate-file* trait degrades. A trait declared in the same file as the class using it binds and
+infers normally, so the shape is about file layout rather than traits as such.
+
+Closing it is a two-part change this package does not have today. `analyzeBody()` locates a `MethodContext`,
+uses it only for `bindingsFor()`, then discards the node; `ResourceAstAnalyzer::analyze()` re-runs
+`locateOwn()` for itself and misses again. It would need `ResourceAstAnalyzer` to accept a pre-located
+context, and `analyzeBody()` to switch from `locateOwn()` to `locate()`.
+
+Note that `docs/components/model-metadata.md` still explains this gap by the mechanism that preceded
+`MethodLocator`'s end-line matching — it says `locateOwn()` searches the using class's own file and finds no
+`provide()` node there. The outcome it describes is right for this shape, but the reasoning is not: the
+decline now happens from reflection alone. The old wording also predicts a *bind* when the using class's file
+happens to declare an unrelated `provide()`, which is exactly the case that used to bind to the wrong body.
+
 ## Deliberate non-goals
 
 Absent on purpose. Do not "fix" these without raising it first.
 
 - **Non-Inertia and JSON responses are never typed.** Only `Inertia::render()` page props and the
   shared-data middleware are analyzed.
-- **No `ts-publish.analyzer.handlers` config key.** You cannot append your own `ExpressionHandler`. Every
-  extension point is a compatibility promise; worth adding only if someone asks.
+- **No `ts-publish.analyzer.handlers` config key, and no supported extension of the AST engine.** The
+  only user-facing surface of the engine is `AstEngine`. Every handler, concern, resolver and value
+  object under `src/Ast/` is internal and changes without notice as inference grows; nothing there is a
+  compatibility promise, and code that extends it is on its own.
 - **Form requests stay runtime.** They are resolved by instantiating and calling `rules()`, on purpose.
 - **Collector class maps are not invalidated mid-process.** `CoreCollector::classMap()` scans each directory
   once per process, and `Runner::run()` / `RunnerForSource::run()` clear it first, so a `ts:publish` run
@@ -222,49 +315,58 @@ Absent on purpose. Do not "fix" these without raising it first.
 
 ## Green signals that are narrower than they look
 
-### Handler ordering is pinned by example, not by the suite
+### No metadata test exercises two `provide()` methods in one file
+
+`MethodLocator` itself is well covered: `MethodLocatorTest` asserts `locateOwn()` against two classes sharing
+a file, a method nested in an earlier anonymous class, and a trait method competing with an unrelated class
+declared before it.
+
+What nothing pins is the metadata phase's *dependence* on that disambiguation. No file in `src/`, `tests/` or
+`workbench/` declares two `function provide(`, so no metadata fixture reaches the path
+`ModelMetadataAnalyzer::analyzeBody()` actually relies on. That matters more than an ordinary coverage hole
+because of how this used to fail: before the end-line match, a provider sharing a file with an earlier
+same-named method had the *wrong body* analyzed, and the run published those types with `undeclaredKeys`
+empty — no exception, no gate signal, nothing to notice. A regression would be equally quiet.
+
+Closing it costs one fixture: a provider whose file declares a decoy `provide()` first, plus a case in
+`ModelMetadataAnalyzerTest` asserting the real body's types.
+
+### Handler ordering is pinned pairwise, corpus-bounded
 
 Nine of the twenty-four handlers in the resource profile claim `MethodCall`
 (`src/Ast/ResourceExpressionHandlers.php`), so for a `$this->foo()` expression the dispatcher's registration
-order is what decides which one answers. Three of those ordered pairs have a dedicated ordering pin in
-`tests/Unit/Ast/ResourceExpressionHandlersTest.php`. Every other pair among the nine is held only by
-whichever end-to-end fixture happens to traverse it.
+order is what decides which one answers. Every one of the 36 unordered pairs among those nine is now run
+in both orders by `tests/Unit/Ast/MethodCallOrderingMatrixTest.php`: seven pairs disagree and are held in
+the direction `handlers()` lists them (its `METHOD_CALL_PINNED` map, and the `MethodCall` row of the ordering table in
+[docs/components/ast-engine.md](./components/ast-engine.md#the-honest-ordering-inventory)); the other 29
+are proven inert against that same corpus.
 
-Each of the three pins exists because a mutation found a reordering the rest of the suite did not catch —
-two crash-level, one a silent type divergence. Nobody has traced the remaining pairs the same way, so a
-green `composer test` is not evidence that reordering `handlers()` is safe. The full per-node-class
-inventory — which pairs are pinned, which are proven inert, and which are neither — is the ordering table
-in [docs/components/ast-engine.md](./components/ast-engine.md#the-honest-ordering-inventory). Read the pin
-count as "the divergences someone has gone and found", not "the only divergences that exist".
+The residual limit is the corpus, not the method: an expression shape the matrix never constructs cannot
+be proven to disagree there, however plausible it looks by inspection — a new shape that turns an inert
+pair into a disagreeing one fails the matrix, which is the signal to pin it. One of the seven pins has a
+narrower practical consequence than "seven pins" alone suggests: `RelationCollectionChainHandler` wins
+over `KnownMethodRuleHandler` for `$this->can(...)`/`cannot(...)`/`canAny(...)`. The two orders diverge
+whenever the resource's model — resolved or not — does not declare `can()`: `RelationCollectionChainHandler`'s
+generic `$this->method()` fallback gates its model check on `method_exists($scope->modelClass,
+$methodName)`, which fails identically whether `scope->modelClass` is `null` or a real, resolved class
+that simply has no `can()` (this matrix's own `CommentResource`/`Comment` corpus row is exactly that
+case: the model resolves fine, but `Comment` declares no `can()`, so `RelationCollectionChainHandler`
+floors at `unknown` while `KnownMethodRuleHandler`'s unconditional rule still answers `boolean`). The two
+orders already agree in the mainstream case, though: whenever the model resolves to something
+Authorizable (e.g. `UserResource`/`User`), `RelationCollectionChainHandler`'s fallback reaches
+`Authorizable::can(): bool` through that same `method_exists()` check and lands on `boolean` too. A
+resource over a model with no `can()` at all is not shipping code regardless of which order wins:
+`$this->can(...)` there would throw `BadMethodCallException` at runtime (neither `Comment` nor
+`JsonResource` declares `can()`, and `JsonResource::__call()` forwards to a receiver that doesn't have
+it either) — that's why the practical impact is small, not why the divergence condition is narrow. The
+matrix pins the order `handlers()` actually uses; it does not change it, since reordering `handlers()`
+is outside this pin's scope. Read the pin count the same way as before: "the divergences someone has
+actually gone and found", not "the only divergences that exist" — now bounded by the matrix's corpus
+rather than by nothing at all.
 
-### The token gate type-checks one of the four generated trees
+### The publish-speed gate is one-sided
 
-`tsconfig.json`'s `include` covers `data/default-example/**` and `tests/types/**` only, so
-`.github/scripts/unimportable-token-gate.sh` never compiles `data/testing`, `data/full-template-example` or
-`data/split-template-example`. A bad token — or a parse error, the fail-open shape the gate was hardened
-against — appearing in only one of those three is invisible to it. Low likelihood, because all four trees
-come from one pipeline over one fixture set, but do not read a green gate as covering all four.
-
-### `skipLibCheck` hides every generated `.d.ts` from that same gate
-
-`tsconfig.json:43` sets `skipLibCheck: true`, so `tsc` never checks the body of a declaration file. The
-generated tree contains `.d.ts` files and lists them in `include` on purpose, so their imports are read and
-then checked against nothing — straight through the zero-tolerance relative-specifier sub-gate the script's
-header calls out as having no legitimate non-zero cause.
-
-Confirmed by mutation, not inferred: pointing a relative import in a generated `.d.ts` at a nonexistent
-module produces no diagnostic at all, and the gate still passes. Turning the flag off is not a one-line
-fix — it also starts checking `node_modules`, which surfaces a failure this package does not own.
-
-### The publish-speed gate is one-sided and its two arms are not pinned
-
-`.github/scripts/publish-bench.sh` runs and passes in CI. Two things it does not do.
-
-**It is a one-sided guard.** It fails only when head is **slower** than base by more than `MAX_RATIO=1.25`.
-Nothing ratchets: whenever a branch lands a large speedup, that whole win becomes headroom the next branch
-can spend without tripping the gate. Read a PASS as "no blowup", never as "the speed held".
-
-**Its two arms are not pinned.** `composer.lock` is gitignored, so the base and head worktrees each run an
-independent `composer install` and re-resolve from scratch. They have agreed on the same framework version
-in every run so far, but nothing enforces it — a release landing between the two installs would put
-different vendor code under the two arms, and the ratio would measure that instead of your change.
+`.github/scripts/publish-bench.sh` fails only when head is slower than the merge-base by more than
+`MAX_RATIO=1.25`. A large speedup becomes headroom the next branch can spend, so after merging one,
+fast-forward `main` so the fast side becomes the base. Both arms install from the same `composer.lock`,
+and the run prints each arm's framework version.

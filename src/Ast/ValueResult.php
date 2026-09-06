@@ -9,7 +9,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use PhpParser\Node\Expr;
-use PhpParser\Node\Expr\ConstFetch;
 
 /**
  * Shared building blocks for ExpressionHandler results.
@@ -70,20 +69,10 @@ final class ValueResult
     {
         /** @var list<string> $types */
         $types = [];
-        /** @var list<ValueExpressionResult> $branchResults every non-null, non-unknown branch, for channel merging */
+        /** @var list<ValueExpressionResult> $branchResults every non-unknown branch, for channel merging */
         $branchResults = [];
-        $hasNull = false;
 
         foreach ($returns as $returnExpr) {
-            // A guard-clause `return null;` is intercepted here so the standalone `null` union member is
-            // tracked apart from object-shape branches; null as an *array value* goes through ConstFetch.
-            if ($returnExpr instanceof ConstFetch
-                && $returnExpr->name->toLowerString() === 'null') {
-                $hasNull = true;
-
-                continue;
-            }
-
             $inner = $engine->resolve($returnExpr);
 
             if ($inner['type'] === 'unknown') {
@@ -94,34 +83,7 @@ final class ValueResult
             $branchResults[] = $inner;
         }
 
-        if ($hasNull) {
-            $types[] = 'null';
-        }
-
         $types = array_values(array_unique($types));
-
-        // Drop a standalone 'null' when another member already carries null (e.g. 'number | null' from a
-        // nullable column), which would otherwise render 'number | null | null'. Splitting on ' | ' is
-        // safe for inline object types, since their trailing `}` prevents 'null }' from matching.
-        $explicitNullIndex = array_search('null', $types, true);
-
-        if ($explicitNullIndex !== false && count($types) > 1) {
-            $otherTypes = array_values(array_filter($types, fn (string $t): bool => $t !== 'null'));
-            $alreadyHasNull = false;
-
-            foreach ($otherTypes as $t) {
-                if (in_array('null', explode(' | ', $t), true)) {
-                    $alreadyHasNull = true;
-
-                    break;
-                }
-            }
-
-            if ($alreadyHasNull) {
-                unset($types[$explicitNullIndex]);
-                $types = array_values($types);
-            }
-        }
 
         if ($types === []) {
             return self::unknown(); // @codeCoverageIgnore
@@ -146,6 +108,8 @@ final class ValueResult
         $enumResourceFqcns = [];
         /** @var list<class-string> $enumDirectFqcns FQCNs from direct $this->prop enum-access branches */
         $enumDirectFqcns = [];
+        // Never deduped: aliasPropertyType() walks this list positionally against left-to-right
+        // occurrences of each bare enum name in the merged union's rendered type.
         /** @var list<class-string> $embeddedEnumFqcns FQCNs embedded inside nested inline-object types */
         $embeddedEnumFqcns = [];
         /** @var list<class-string> $embeddedModelFqcns */
@@ -191,11 +155,10 @@ final class ValueResult
             }
         }
 
-        $result = ['type' => implode(' | ', $types), 'optional' => false];
+        $result = ['type' => LaravelTsPublish::hoistNull($types), 'optional' => false];
 
         $enumResourceFqcns = array_values(array_unique($enumResourceFqcns));
         $enumDirectFqcns = array_values(array_unique($enumDirectFqcns));
-        $embeddedEnumFqcns = array_values(array_unique($embeddedEnumFqcns));
         $embeddedModelFqcns = array_values(array_unique($embeddedModelFqcns));
         $embeddedResourceFqcns = array_values(array_unique($embeddedResourceFqcns));
 
@@ -218,11 +181,13 @@ final class ValueResult
                 $result['multiEnumResourceFqcns'] = $enumResourceFqcns;
             } else {
                 // Multiple different FQCNs or complex mixed branches: fall back to embedded imports.
-                $embeddedEnumFqcns = array_values(array_unique([...$allBranchFqcns, ...$embeddedEnumFqcns]));
+                // Never deduped, same positional reasoning as $embeddedEnumFqcns's own @var above.
+                $embeddedEnumFqcns = [...$allBranchFqcns, ...$embeddedEnumFqcns];
             }
         } elseif ($enumDirectFqcns !== []) {
-            // Only direct-access enum branches: existing embedded behaviour.
-            $embeddedEnumFqcns = array_values(array_unique([...$enumDirectFqcns, ...$embeddedEnumFqcns]));
+            // Only direct-access enum branches: existing embedded behaviour. Never deduped,
+            // same positional reasoning as $embeddedEnumFqcns's own @var above.
+            $embeddedEnumFqcns = [...$enumDirectFqcns, ...$embeddedEnumFqcns];
         }
 
         if ($embeddedEnumFqcns !== []) {

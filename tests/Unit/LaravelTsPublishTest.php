@@ -518,13 +518,22 @@ describe('Arrayable DTO shape inference', function () {
             ->and($this->service->shapeValueHasUnimportableToken('RoleType', ['RoleType']))->toBeFalse()
             ->and($this->service->shapeValueHasUnimportableToken('{ role: RoleType; other: Foo }', ['RoleType']))->toBeTrue();
     });
+
+    test('shapeValueHasUnimportableToken reads an optional key as a key, not as a value', function () {
+        // `?` is not a token separator, so a key stripped without it would survive as `assignedLater?`
+        // and read as an unimportable value. An uninitialized typed public property emits exactly that.
+        expect($this->service->shapeValueHasUnimportableToken('{ assignedLater?: string; promoted: string }'))->toBeFalse()
+            ->and($this->service->shapeValueHasUnimportableToken('{ a ?: string }'))->toBeFalse()
+            ->and($this->service->shapeValueHasUnimportableToken('{ nested: { deep?: number } }'))->toBeFalse()
+            ->and($this->service->shapeValueHasUnimportableToken('{ owner?: User }'))->toBeTrue();
+    });
 });
 
 describe('Arrayable property-shape inference', function () {
     test('typed public properties produce the object shape when no docblock shape exists', function () {
         $result = $this->service->toTsType(ArrayableData::class);
 
-        expect($result['type'])->toBe('{ title: string; weight: number | null }');
+        expect($result['type'])->toBe('{ recordedAt?: string; title: string; weight: number | null }');
     });
 
     test('promoted readonly properties with a generic toArray docblock resolve', function () {
@@ -586,6 +595,23 @@ describe('Arrayable property-shape inference', function () {
 
         expect($this->service->toTsType(MutualPropertyDtoB::class)['type'])
             ->toBe('{ label: string; sibling: { label: string; sibling: unknown[] | null } | null }');
+    });
+
+    it('marks an uninitialized typed public property optional, and a promoted or defaulted one required', function () {
+        $fixture = new class(2)
+        {
+            public int $defaulted = 1;
+
+            public int $uninitialized;
+
+            public function __construct(public int $promoted) {}
+        };
+
+        $type = $this->service->toTsType($fixture::class)['type'];
+
+        expect($type)->toContain('defaulted: number')
+            ->and($type)->toContain('uninitialized?: number')
+            ->and($type)->toContain('promoted: number');
     });
 });
 
@@ -1514,6 +1540,12 @@ describe('validJsObjectKey', function () {
         expect($this->service->validJsObjectKey('my-key'))->toBe('"my-key"')
             ->and($this->service->validJsObjectKey('has space'))->toBe('"has space"')
             ->and($this->service->validJsObjectKey('123start'))->toBe('"123start"');
+    });
+
+    test('an index signature key is quoted unless allowIndexSignature is true', function () {
+        expect($this->service->validJsObjectKey('[key: number]'))->toBe('"[key: number]"')
+            ->and($this->service->validJsObjectKey('[key: number]', allowIndexSignature: true))->toBe('[key: number]')
+            ->and($this->service->validJsObjectKey('[key: string]', allowIndexSignature: true))->toBe('[key: string]');
     });
 });
 
@@ -2464,6 +2496,17 @@ describe('splitTopLevelUnion', function () {
         expect($this->service->splitTopLevelUnion('{ theme: "light" | "dark" } | null'))
             ->toBe(['{ theme: "light" | "dark" }', 'null']);
     });
+});
+
+describe('hoistNull', function () {
+    it('hoists every top-level null to one trailing member', function (array $types, string $expected) {
+        expect($this->service->hoistNull($types))->toBe($expected);
+    })->with([
+        'two nullable arms' => [['string | null', 'number | null'], 'string | number | null'],
+        'null arm only' => [['{ a: string | null }', 'null'], '{ a: string | null } | null'],
+        'no null' => [['string', 'number'], 'string | number'],
+        'duplicate member across arms' => [['A | null', 'A'], 'A | null'],
+    ]);
 });
 
 /**

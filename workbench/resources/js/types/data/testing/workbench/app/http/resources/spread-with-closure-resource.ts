@@ -40,6 +40,7 @@ export interface SpreadWithClosureResource
     comments: Comment[];
     orders: Order[];
     addresses: Address[];
+    primaryAddress: Address | null;
     teams: Team[];
     ownedTeams: Team[];
     images: Image[];

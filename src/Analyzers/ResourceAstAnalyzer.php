@@ -9,6 +9,8 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\FiltersModelAttributes;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ResolvesModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DispatchesFqcnResults;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
@@ -18,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesSingularResourceClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ExpressionDispatcher;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ThisPropertyHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
@@ -25,8 +28,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesClassNames;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -66,7 +71,9 @@ use ReflectionNamedType;
  * @phpstan-import-type InlineEnumFqcnsMap from MethodAnalysis
  * @phpstan-import-type InlineModelFqcnsMap from MethodAnalysis
  * @phpstan-import-type MultiEnumFqcnsMap from MethodAnalysis
+ * @phpstan-import-type EnumResourceArmShapeMap from MethodAnalysis
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type RequestVarNamesMap from AnalysisScope
  */
 class ResourceAstAnalyzer implements ExpressionEngine
 {
@@ -76,6 +83,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
     use FiltersModelAttributes;
     use InspectsAstNodes;
     use InspectsResourceSubject;
+    use ParsesTsCasts;
     use ResolvesClassNames;
     use ResolvesModelRelationTypes;
     use ResolvesModelTypes;
@@ -120,12 +128,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Request-typed parameter names of one method, keyed for O(1) lookup.
+     * Request-typed parameter names of one method, keyed to their bound class for O(1) lookup.
      *
      * Resources take `toArray(Request $request)` too, but their committed output was inferred without
      * the Request rules; seeding them there would move it, so the resource path opts out.
      *
-     * @return array<string, true>
+     * @return RequestVarNamesMap
      */
     private function resolveRequestVarNames(string $methodName): array
     {
@@ -140,7 +148,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $type = $parameter->getType();
 
             if ($type instanceof ReflectionNamedType && is_a($type->getName(), Request::class, true)) {
-                $names[$parameter->getName()] = true;
+                /** @var class-string<Request> $class */
+                $class = $type->getName();
+                $names[$parameter->getName()] = $class;
             }
         }
 
@@ -257,20 +267,21 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
     /**
      * Spread-analyze a named method on the subject under analysis. ExpressionEngine entry point
-     * for a handler that resolves a self-returning chain onto a non-preserving method body.
+     * for a handler that resolves a self-returning chain onto a non-preserving method body, whose
+     * result becomes one value's inline type — never the flatten target, so not top-level.
      */
     public function spreadAnalysis(string $methodName): ?ResourceAnalysis
     {
-        return $this->analyzeThisMethodSpread($methodName);
+        return $this->analyzeThisMethodSpread($methodName, topLevel: false);
     }
 
     /**
-     * Array-literal-analyze an expression's items. ExpressionEngine entry point for InlineArrayHandler,
-     * reusing the same machinery a resource's top-level return array uses (parent/filter/method spreads).
+     * Array-literal-analyze an expression's items. ExpressionEngine entry point for a caller
+     * delegating array analysis — see the interface docblock for what $topLevel means here.
      */
-    public function returnArrayAnalysis(Array_ $array): ResourceAnalysis
+    public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): ResourceAnalysis
     {
-        return $this->analyzeReturnArray($array);
+        return $this->analyzeReturnArray($array, $topLevel);
     }
 
     /**
@@ -314,8 +325,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
     /**
      * Analyze a returned array literal into properties, spreads, and FQCN tracking maps.
+     *
+     * $topLevel gates the top-level-only resolve()/toArray() spread flatten (A24): true when this
+     * literal IS a whole return shape (a resource's own, or an opted-in caller like Inertia's props);
+     * false — one value's own inline type — threads down through every method this recurses into.
      */
-    protected function analyzeReturnArray(Array_ $array): ResourceAnalysis
+    protected function analyzeReturnArray(Array_ $array, bool $topLevel = true): ResourceAnalysis
     {
         $analysis = new ResourceAnalysis;
 
@@ -353,7 +368,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 && $item->value->var instanceof Variable
                 && $item->value->var->name === 'this'
                 && $item->value->name instanceof Identifier) {
-                $spreadAnalysis = $this->analyzeThisMethodSpread($item->value->name->toString());
+                $spreadAnalysis = $this->analyzeThisMethodSpread($item->value->name->toString(), $topLevel);
 
                 if ($spreadAnalysis !== null) {
                     $analysis->merge($spreadAnalysis);
@@ -371,7 +386,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                     $funcName = $funcCallName->getLast();
 
                     if ($this->scope->subjectReflection->hasMethod($funcName)) {
-                        $spreadAnalysis = $this->analyzeThisMethodSpread($funcName);
+                        $spreadAnalysis = $this->analyzeThisMethodSpread($funcName, $topLevel);
 
                         if ($spreadAnalysis !== null) {
                             $analysis->merge($spreadAnalysis);
@@ -380,6 +395,17 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 }
 
                 continue;
+            }
+
+            // Handle a top-level resolve()/toArray() spread — flatten it into this resource's own properties.
+            if ($topLevel && $item->key === null && $item->unpack) {
+                $armAnalysis = $this->analyzeSpreadArm($item->value);
+
+                if ($armAnalysis !== null) {
+                    $analysis->merge($armAnalysis);
+
+                    continue;
+                }
             }
 
             // Handle $this->merge([...]) or $this->mergeWhen(condition, [...])
@@ -408,6 +434,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 $analysis->enumResources[$keyName], $analysis->nestedResources[$keyName], $analysis->directEnumFqcns[$keyName],
                 $analysis->modelFqcns[$keyName], $analysis->multiEnumResourceFqcns[$keyName], $analysis->inlineEnumFqcns[$keyName],
                 $analysis->inlineModelFqcns[$keyName], $analysis->inlineEnumResourceFqcns[$keyName],
+                $analysis->enumResourceArmShapes[$keyName],
             );
 
             $analysis->properties[] = [
@@ -420,6 +447,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $this->dispatchFqcnResults(
                 $keyName, $result, $analysis->enumResources, $analysis->directEnumFqcns,
                 $analysis->nestedResources, $analysis->modelFqcns, $analysis->multiEnumResourceFqcns,
+                $analysis->enumResourceArmShapes,
             );
 
             foreach ($result['embeddedEnumFqcns'] ?? [] as $fqcn) {
@@ -440,6 +468,136 @@ class ResourceAstAnalyzer implements ExpressionEngine
         }
 
         return $analysis;
+    }
+
+    /**
+     * Classify a top-level spread's value expression via InlineArrayHandler::classifySpreadArm()
+     * and flatten its shape into this resource's own properties. Null for anything the classifier
+     * declines, so the caller falls through to $this->merge()'s own handling.
+     */
+    private function analyzeSpreadArm(Expr $expr): ?MethodAnalysis
+    {
+        $arm = InlineArrayHandler::classifySpreadArm($expr, $this->scope, $this);
+
+        if ($arm === null) {
+            return null;
+        }
+
+        if (! $arm['isModel']) {
+            /** @var class-string<JsonResource> $resourceFqcn */
+            $resourceFqcn = $arm['fqcn'];
+
+            return $this->analyzeResourceSpreadArm($resourceFqcn);
+        }
+
+        /** @var class-string<Model> $modelFqcn */
+        $modelFqcn = $arm['fqcn'];
+
+        return $arm['isCollection']
+            ? $this->analyzeCollectionSpreadArm($modelFqcn)
+            : $this->analyzeModelSpreadArm($modelFqcn);
+    }
+
+    /**
+     * Flatten a spread resource's own toArray() into this resource, the way analyzeThisMethodSpread()
+     * merges a spread method's analysis — nested resources, model FQCNs, and enum channels travel
+     * with it via MethodAnalysis::merge().
+     *
+     * @param  class-string<JsonResource>  $resourceFqcn
+     */
+    private function analyzeResourceSpreadArm(string $resourceFqcn): MethodAnalysis
+    {
+        DependencyRecorder::recordClass($resourceFqcn);
+
+        return resolve(AstEngine::class)->analyzeMethod($resourceFqcn, 'toArray');
+    }
+
+    /**
+     * Flatten a spread model's toArray() into one property per published column, typed the same
+     * way ThisPropertyHandler types a `$this->column` access, honoring that model's own #[TsCasts]
+     * overrides — the same refinement the canonical model interface a bare-model arm references gets.
+     *
+     * @param  class-string<Model>  $modelFqcn
+     */
+    private function analyzeModelSpreadArm(string $modelFqcn): ResourceAnalysis
+    {
+        DependencyRecorder::recordClass($modelFqcn);
+
+        $resolver = resolve(ModelAttributeResolver::class);
+        $tsCasts = $this->parseTsCastsFromReflection(new ReflectionClass($modelFqcn));
+        $properties = [];
+        $directEnumFqcns = [];
+        $customImports = [];
+
+        // toArray() is columns plus $appends (accessor attributes explicitly opted into
+        // serialization) — a mutator with no $appends entry never reaches it, so stays out.
+        $appends = $resolver->getInstance($modelFqcn)?->getAppends() ?? [];
+        $names = [...$resolver->publishedColumnNames($modelFqcn), ...$appends];
+
+        foreach ($names as $column) {
+            $override = $tsCasts['overrides'][$column] ?? null;
+
+            if ($override !== null) {
+                $type = $override;
+                $enumFqcn = null;
+
+                $importPath = $tsCasts['importPaths'][$column] ?? null;
+
+                if ($importPath !== null) {
+                    foreach (LaravelTsPublish::extractImportableTypes($type) as $importName) {
+                        $customImports[$importPath][] = $importName;
+                    }
+                }
+            } else {
+                $tsInfo = $resolver->resolveAttribute($modelFqcn, $column);
+
+                // Mirrors ModelTransformer::resolveMutatorType()'s own omit check: no getter, no
+                // docblock generic, no backing column — nothing to publish for this name.
+                if ($tsInfo['omit'] ?? false) {
+                    continue;
+                }
+
+                $type = $tsInfo['type'];
+                $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
+            }
+
+            $properties[] = [
+                'name' => $column,
+                'type' => $type,
+                'optional' => $tsCasts['optionalOverrides'][$column] ?? false,
+                'description' => '',
+            ];
+
+            if ($enumFqcn !== null) {
+                $directEnumFqcns[$column] = $enumFqcn;
+            }
+        }
+
+        return new ResourceAnalysis(properties: $properties, directEnumFqcns: $directEnumFqcns, customImports: $customImports);
+    }
+
+    /**
+     * Flatten a spread collection's toArray() into an index-signature member: spreading a collection
+     * renumbers its elements 0..n at runtime, so no single named property can stand in for it. Same
+     * `Record<number, Model>` shape InlineArrayHandler emits for a nested spread, spelled as a member.
+     *
+     * @param  class-string<Model>  $modelFqcn
+     */
+    private function analyzeCollectionSpreadArm(string $modelFqcn): ResourceAnalysis
+    {
+        DependencyRecorder::recordClass($modelFqcn);
+
+        $indexKey = '[key: number]';
+
+        return new ResourceAnalysis(
+            properties: [[
+                'name' => $indexKey,
+                'type' => LaravelTsPublish::resourceTypeName($modelFqcn),
+                'optional' => false,
+                'description' => '',
+            ]],
+            modelFqcns: [$indexKey => $modelFqcn],
+        );
     }
 
     /**
@@ -495,24 +653,21 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $isMergeUnless = $this->isThisMethodCall($call, 'mergeUnless');
 
         if (! $isMerge && ! $isMergeWhen && ! $isMergeUnless) {
-            return new ResourceAnalysis; // @codeCoverageIgnore
+            return new ResourceAnalysis;
         }
 
         if ($call->isFirstClassCallable()) {
             return new ResourceAnalysis; // @codeCoverageIgnore
         }
 
-        $args = $call->getArgs();
+        $method = $isMerge ? 'merge' : ($isMergeWhen ? 'mergeWhen' : 'mergeUnless');
+        $value = CallArguments::for($call, new ReflectionMethod(JsonResource::class, $method))->named('value');
 
-        if ($isMerge && count($args) >= 1) {
-            return $this->resolveArrayOrClosureToProperties($args[0]->value, optional: false);
+        if ($value === null) {
+            return new ResourceAnalysis;
         }
 
-        if (($isMergeWhen || $isMergeUnless) && count($args) >= 2) {
-            return $this->resolveArrayOrClosureToProperties($args[1]->value, optional: true);
-        }
-
-        return new ResourceAnalysis;
+        return $this->resolveArrayOrClosureToProperties($value->value, optional: ! $isMerge);
     }
 
     /**
@@ -570,12 +725,11 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Resolve and analyze a $this->method() spread from a trait or the class itself.
-     *
-     * $localVarBindings/$resolvingLocalVars/$varModelBindings are saved, cleared, and restored via
-     * `finally`, since a spread can recurse while the caller's own analysis is still mid-flight.
+     * Resolve and analyze a $this->method() spread; $topLevel carries the caller's own
+     * flatten-eligibility down into the target's own return (see analyzeReturnArray()).
+     * $localVarBindings/$resolvingLocalVars/$varModelBindings save/clear/restore via `finally`.
      */
-    protected function analyzeThisMethodSpread(string $methodName): ?ResourceAnalysis
+    protected function analyzeThisMethodSpread(string $methodName, bool $topLevel = true): ?ResourceAnalysis
     {
         if (! $this->scope->subjectReflection->hasMethod($methodName)) {
             return null; // @codeCoverageIgnore
@@ -585,15 +739,15 @@ class ResourceAstAnalyzer implements ExpressionEngine
             return null;
         }
 
-        $this->scope->visitedSpreadMethods[$methodName] = true;
-
         $method = $this->scope->subjectReflection->getMethod($methodName);
         $context = resolve(MethodLocator::class)->locate($this->scope->subjectReflection->getName(), $methodName);
         $targetMethod = $context?->method;
 
         if ($targetMethod === null || $targetMethod->stmts === null) {
-            return null; // @codeCoverageIgnore
+            return null;
         }
+
+        $this->scope->visitedSpreadMethods[$methodName] = true;
 
         $finder = new NodeFinder;
 
@@ -615,17 +769,17 @@ class ResourceAstAnalyzer implements ExpressionEngine
             });
 
             if ($returnStmt instanceof Return_ && $returnStmt->expr instanceof Array_) {
-                $analysis = $this->analyzeReturnArray($returnStmt->expr);
+                $analysis = $this->analyzeReturnArray($returnStmt->expr, $topLevel);
             } elseif ($returnStmt instanceof Return_ && $returnStmt->expr instanceof Variable
                 && is_string($returnStmt->expr->name)) {
-                $analysis = $this->resolveVariableReturnAnalysis($targetMethod->stmts, $returnStmt->expr->name);
+                $analysis = $this->resolveVariableReturnAnalysis($targetMethod->stmts, $returnStmt->expr->name, $topLevel);
             } elseif ($returnStmt instanceof Return_ && $returnStmt->expr instanceof MethodCall) {
                 $filtered = $this->analyzeThisAttributeFilter($returnStmt->expr);
 
                 if ($filtered !== null) {
                     $analysis = $filtered;
                 } elseif ($this->hasThisReceiver($returnStmt->expr) && $returnStmt->expr->name instanceof Identifier) {
-                    $analysis = $this->analyzeThisMethodSpread($returnStmt->expr->name->toString()) ?? new ResourceAnalysis;
+                    $analysis = $this->analyzeThisMethodSpread($returnStmt->expr->name->toString(), $topLevel) ?? new ResourceAnalysis;
                 } else {
                     $analysis = new ResourceAnalysis;
                 }
@@ -718,7 +872,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
      *
      * @param  array<Node\Stmt>  $stmts
      */
-    protected function resolveVariableReturnAnalysis(array $stmts, string $varName): ResourceAnalysis
+    protected function resolveVariableReturnAnalysis(array $stmts, string $varName, bool $topLevel = true): ResourceAnalysis
     {
         /** @var ResourcePropertyInfoList $properties */
         $properties = [];
@@ -740,12 +894,14 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $multiEnumResourceFqcns = [];
         /** @var InlineEnumFqcnsMap $inlineEnumResourceFqcns */
         $inlineEnumResourceFqcns = [];
+        /** @var EnumResourceArmShapeMap $enumResourceArmShapes */
+        $enumResourceArmShapes = [];
 
         $this->collectVariableArrayAssignments(
             $stmts, $varName, false,
             $properties, $enumResources, $nestedResources,
             $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
-            $inlineEnumResourceFqcns,
+            $inlineEnumResourceFqcns, $enumResourceArmShapes, $topLevel,
         );
 
         return new ResourceAnalysis(
@@ -759,6 +915,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             inlineModelFqcns: $inlineModelFqcns,
             multiEnumResourceFqcns: $multiEnumResourceFqcns,
             inlineEnumResourceFqcns: $inlineEnumResourceFqcns,
+            enumResourceArmShapes: $enumResourceArmShapes,
         );
     }
 
@@ -778,6 +935,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
      * @param  InlineModelFqcnsMap  $inlineModelFqcns
      * @param  MultiEnumFqcnsMap  $multiEnumResourceFqcns
      * @param  InlineEnumFqcnsMap  $inlineEnumResourceFqcns
+     * @param  EnumResourceArmShapeMap  $enumResourceArmShapes
      */
     protected function collectVariableArrayAssignments(
         array $stmts,
@@ -793,6 +951,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
         array &$inlineModelFqcns,
         array &$multiEnumResourceFqcns = [],
         array &$inlineEnumResourceFqcns = [],
+        array &$enumResourceArmShapes = [],
+        bool $topLevel = true,
     ): void {
         foreach ($stmts as $stmt) {
             if (! $stmt instanceof ExpressionStmt && ! $stmt instanceof If_
@@ -807,7 +967,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 && $stmt->expr->var instanceof Variable
                 && $stmt->expr->var->name === $varName
                 && $stmt->expr->expr instanceof Array_) {
-                $baseAnalysis = $this->analyzeReturnArray($stmt->expr->expr);
+                $baseAnalysis = $this->analyzeReturnArray($stmt->expr->expr, $topLevel);
 
                 if ($isConditional) {
                     foreach ($baseAnalysis->properties as &$prop) {
@@ -826,6 +986,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                     inlineModelFqcns: $inlineModelFqcns,
                     multiEnumResourceFqcns: $multiEnumResourceFqcns,
                     inlineEnumResourceFqcns: $inlineEnumResourceFqcns,
+                    enumResourceArmShapes: $enumResourceArmShapes,
                 );
                 $accumulator->merge($baseAnalysis);
 
@@ -839,6 +1000,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 $inlineModelFqcns = $accumulator->inlineModelFqcns;
                 $multiEnumResourceFqcns = $accumulator->multiEnumResourceFqcns;
                 $inlineEnumResourceFqcns = $accumulator->inlineEnumResourceFqcns;
+                $enumResourceArmShapes = $accumulator->enumResourceArmShapes;
 
                 continue;
             }
@@ -886,9 +1048,13 @@ class ResourceAstAnalyzer implements ExpressionEngine
                     $directEnumFqcns[$keyName],
                     $modelFqcns[$keyName],
                     $multiEnumResourceFqcns[$keyName],
+                    $enumResourceArmShapes[$keyName],
                 );
 
-                $this->dispatchFqcnResults($keyName, $result, $enumResources, $directEnumFqcns, $nestedResources, $modelFqcns, $multiEnumResourceFqcns);
+                $this->dispatchFqcnResults(
+                    $keyName, $result, $enumResources, $directEnumFqcns, $nestedResources, $modelFqcns,
+                    $multiEnumResourceFqcns, $enumResourceArmShapes,
+                );
 
                 foreach ($result['embeddedEnumFqcns'] ?? [] as $fqcn) {
                     $inlineEnumFqcns[$keyName][] = $fqcn;
@@ -914,7 +1080,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                     $stmt->stmts, $varName, true,
                     $properties, $enumResources, $nestedResources,
                     $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
-                    $inlineEnumResourceFqcns,
+                    $inlineEnumResourceFqcns, $enumResourceArmShapes, $topLevel,
                 );
 
                 foreach ($stmt->elseifs as $elseif) {
@@ -922,7 +1088,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                         $elseif->stmts, $varName, true,
                         $properties, $enumResources, $nestedResources,
                         $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
-                        $inlineEnumResourceFqcns,
+                        $inlineEnumResourceFqcns, $enumResourceArmShapes, $topLevel,
                     );
                 }
 
@@ -931,7 +1097,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                         $stmt->else->stmts, $varName, true,
                         $properties, $enumResources, $nestedResources,
                         $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
-                        $inlineEnumResourceFqcns,
+                        $inlineEnumResourceFqcns, $enumResourceArmShapes, $topLevel,
                     );
                 }
             }
@@ -943,7 +1109,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                     $stmt->stmts, $varName, true,
                     $properties, $enumResources, $nestedResources,
                     $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
-                    $inlineEnumResourceFqcns,
+                    $inlineEnumResourceFqcns, $enumResourceArmShapes, $topLevel,
                 );
             }
         }
@@ -1026,17 +1192,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
             return new ResourceAnalysis;
         }
 
-        // Read $wrap declared on this class only — inherited, JsonResource's static default is 'data'.
-        $wrapKey = 'data';
-
-        if ($this->scope->subjectReflection->hasProperty('wrap')) {
-            $wrapProp = $this->scope->subjectReflection->getProperty('wrap');
-
-            if ($wrapProp->getDeclaringClass()->getName() === $this->scope->subjectReflection->getName()) {
-                /** @var string|null $wrapKey */
-                $wrapKey = $wrapProp->getDefaultValue();
-            }
-        }
+        // JsonResource declares `public static $wrap = 'data'`, so reflection always finds a value; an
+        // inherited `$wrap = null` is as deliberate as an own one.
+        /** @var string|null $wrapKey */
+        $wrapKey = $this->scope->subjectReflection->hasProperty('wrap')
+            ? $this->scope->subjectReflection->getProperty('wrap')->getDefaultValue()
+            : 'data';
 
         $elementType = $this->wrapCollectionElementType(LaravelTsPublish::resourceTypeName($singular), $this->scope->subjectReflection);
 
@@ -1126,6 +1287,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $inlineModelFqcns = [];
         /** @var InlineEnumFqcnsMap $inlineEnumResourceFqcns */
         $inlineEnumResourceFqcns = [];
+        /** @var EnumResourceArmShapeMap $enumResourceArmShapes */
+        $enumResourceArmShapes = [];
         $flatTypeAlias = null;
         $flatTypeAliasFqcn = null;
 
@@ -1139,6 +1302,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $directEnumFqcns = [...$directEnumFqcns, ...$analysis->directEnumFqcns];
             $modelFqcns = [...$modelFqcns, ...$analysis->modelFqcns];
             $multiEnumResourceFqcns = [...$multiEnumResourceFqcns, ...$analysis->multiEnumResourceFqcns];
+            $enumResourceArmShapes = [...$enumResourceArmShapes, ...$analysis->enumResourceArmShapes];
             $flatTypeAlias ??= $analysis->flatTypeAlias;
             $flatTypeAliasFqcn ??= $analysis->flatTypeAliasFqcn;
 
@@ -1149,10 +1313,10 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 ]));
             } // @codeCoverageIgnoreEnd
 
+            // inlineEnumFqcns/inlineEnumResourceFqcns append WITHOUT deduping, same as
+            // MethodAnalysis::merge() — aliasPropertyType() consumes each positionally.
             foreach ($analysis->inlineEnumFqcns as $propName => $fqcns) {
-                $inlineEnumFqcns[$propName] = array_values(array_unique(
-                    [...($inlineEnumFqcns[$propName] ?? []), ...$fqcns]
-                ));
+                $inlineEnumFqcns[$propName] = [...($inlineEnumFqcns[$propName] ?? []), ...$fqcns];
             }
 
             foreach ($analysis->inlineModelFqcns as $propName => $fqcns) {
@@ -1160,9 +1324,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             }
 
             foreach ($analysis->inlineEnumResourceFqcns as $propName => $fqcns) {
-                $inlineEnumResourceFqcns[$propName] = array_values(array_unique(
-                    [...($inlineEnumResourceFqcns[$propName] ?? []), ...$fqcns]
-                ));
+                $inlineEnumResourceFqcns[$propName] = [...($inlineEnumResourceFqcns[$propName] ?? []), ...$fqcns];
             }
         }
 
@@ -1175,7 +1337,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
             $presentInAll = count($entries) === $branchCount;
             $anyOptional = (bool) array_filter($entries, fn (array $e) => $e['optional']);
-            $optional = ! $presentInAll || $anyOptional;
+            // An index signature (e.g. `[key: number]`) can never carry `?:` — it's a syntax
+            // error — regardless of whether every branch produced it.
+            $optional = ! self::isIndexSignatureKey($name) && (! $presentInAll || $anyOptional);
 
             // Use the first non-empty description found
             $description = '';
@@ -1207,9 +1371,19 @@ class ResourceAstAnalyzer implements ExpressionEngine
             inlineModelFqcns: $inlineModelFqcns,
             multiEnumResourceFqcns: $multiEnumResourceFqcns,
             inlineEnumResourceFqcns: $inlineEnumResourceFqcns,
+            enumResourceArmShapes: $enumResourceArmShapes,
             flatTypeAlias: $flatTypeAlias,
             flatTypeAliasFqcn: $flatTypeAliasFqcn,
         );
+    }
+
+    /**
+     * Whether a property name is a generated `[key: number]`/`[key: string]` index signature —
+     * those can never carry `?:`, unlike a merely-missing-in-some-branch named property.
+     */
+    private static function isIndexSignatureKey(string $name): bool
+    {
+        return (bool) preg_match('/^\[[a-zA-Z_$][a-zA-Z0-9_$]*: (?:string|number)\]$/', $name);
     }
 
     /**
@@ -1220,26 +1394,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
      */
     private function unionBranchTypes(array $types): string
     {
-        $members = [];
-        $nullable = false;
-
-        foreach ($types as $type) {
-            foreach (LaravelTsPublish::splitTopLevelUnion($type) as $member) {
-                if ($member === 'null') {
-                    $nullable = true;
-
-                    continue;
-                }
-
-                $members[] = $member;
-            }
-        }
-
-        if ($nullable) {
-            $members[] = 'null';
-        }
-
-        return implode(' | ', $members);
+        return LaravelTsPublish::hoistNull($types);
     }
 
     /**

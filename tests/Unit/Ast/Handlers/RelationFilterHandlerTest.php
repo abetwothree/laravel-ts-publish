@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationFilterHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use Illuminate\Support\Facades\Schema;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -13,6 +14,7 @@ use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
 use PhpParser\Node\Scalar\String_;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
@@ -20,6 +22,7 @@ use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\Tag;
 
 /**
  * An engine that fails the test if a handler calls back into it, proving the handler resolved or
@@ -39,7 +42,7 @@ function relationFilterHandlerThrowingEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        public function returnArrayAnalysis(Array_ $array): MethodAnalysis
+        public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
         {
             throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
         }
@@ -134,4 +137,58 @@ it('declines a method call whose name is not only/except', function () {
     $result = (new RelationFilterHandler)->resolve($expr, $scope, relationFilterHandlerThrowingEngine());
 
     expect($result)->toBeNull();
+});
+
+it('emits Pick<Model, never> when except() names every published column', function () {
+    $columns = Schema::getColumnListing((new Tag)->getTable());
+
+    $type = (fn () => $this->relationFilterModelReference(Tag::class, $columns, false))
+        ->call(new RelationFilterHandler);
+
+    expect($type)->toBe('Pick<Tag, never>');
+});
+
+it('reads only(attributes: [...]) by name, matching Model::only()\'s own parameter', function () {
+    $expr = new MethodCall(
+        new PropertyFetch(new Variable('this'), 'post'),
+        'only',
+        [new Arg(new Array_([new ArrayItem(new String_('id')), new ArrayItem(new String_('title'))]), name: new Identifier('attributes'))],
+    );
+    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
+
+    $result = (new RelationFilterHandler)->resolve($expr, $scope, relationFilterHandlerThrowingEngine());
+
+    expect($result)->toBe(['type' => "Pick<Post, 'id' | 'title'>", 'optional' => false, 'modelFqcn' => Post::class]);
+});
+
+// func_get_args() on a lone named argument is [that value], so a single-key named call is a one-key list.
+it('reads a lone only(attributes: \'id\') as a single-key list', function () {
+    $expr = new MethodCall(new PropertyFetch(new Variable('this'), 'post'), 'only', [
+        new Arg(new String_('id'), name: new Identifier('attributes')),
+    ]);
+    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
+
+    $result = (new RelationFilterHandler)->resolve($expr, $scope, relationFilterHandlerThrowingEngine());
+
+    expect($result)->toBe(['type' => "Pick<Post, 'id'>", 'optional' => false, 'modelFqcn' => Post::class]);
+});
+
+// Post::comments() is a HasMany, so the relation resolves through Illuminate\Database\Eloquent\Collection,
+// whose only() parameter is `keys` — not Model::only()'s `attributes`. A wrong reflected receiver here
+// makes named('keys') miss and the filter keys silently vanish; this pins the Collection-side name.
+it('reads only(keys: [...]) by name on a to-many relation, matching Collection::only()\'s own parameter', function () {
+    $expr = new MethodCall(
+        new PropertyFetch(new Variable('this'), 'comments'),
+        'only',
+        [new Arg(new Array_([new ArrayItem(new String_('id')), new ArrayItem(new String_('content'))]), name: new Identifier('keys'))],
+    );
+    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Post::class);
+
+    $result = (new RelationFilterHandler)->resolve($expr, $scope, relationFilterHandlerThrowingEngine());
+
+    expect($result)->toBe([
+        'type' => "Pick<Comment, 'id' | 'content'>[]",
+        'optional' => false,
+        'modelFqcn' => Comment::class,
+    ]);
 });

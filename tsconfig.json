@@ -40,7 +40,7 @@
         "isolatedModules": true,
         "noUncheckedSideEffectImports": true,
         "moduleDetection": "force",
-        "skipLibCheck": true,
+        "skipLibCheck": false,
     },
     "include": [
         "workbench/resources/js/types/data/default-example/**/*.ts",

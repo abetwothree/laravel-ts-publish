@@ -4444,6 +4444,10 @@
                     "type": "number"
                 },
                 {
+                    "name": "parent_id",
+                    "type": "number | null"
+                },
+                {
                     "name": "is_flagged",
                     "type": "boolean"
                 },
@@ -4476,6 +4480,10 @@
                     "type": "User"
                 },
                 {
+                    "name": "replies",
+                    "type": "Comment[]"
+                },
+                {
                     "name": "post_count",
                     "type": "number"
                 },
@@ -4484,11 +4492,19 @@
                     "type": "number"
                 },
                 {
+                    "name": "replies_count",
+                    "type": "number"
+                },
+                {
                     "name": "post_exists",
                     "type": "boolean"
                 },
                 {
                     "name": "user_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "replies_exists",
                     "type": "boolean"
                 }
             ]
@@ -4817,7 +4833,11 @@
                 },
                 {
                     "name": "data_from_docblock",
-                    "type": "{ title: string; weight: number | null }"
+                    "type": "{ recordedAt?: string; title: string; weight: number | null }"
+                },
+                {
+                    "name": "nested_optional_key_from_docblock",
+                    "type": "{ inner: { assignedLater?: string; promoted: string }; label: string }"
                 },
                 {
                     "name": "uploaders_from_docblock",
@@ -5697,6 +5717,10 @@
                 {
                     "name": "reading_time",
                     "type": "string"
+                },
+                {
+                    "name": "latest_comment",
+                    "type": "Comment | null"
                 },
                 {
                     "name": "author",
@@ -7022,6 +7046,10 @@
                     "type": "Address[]"
                 },
                 {
+                    "name": "primary_address",
+                    "type": "Address | null"
+                },
+                {
                     "name": "teams",
                     "type": "Team[]"
                 },
@@ -7058,6 +7086,10 @@
                     "type": "number"
                 },
                 {
+                    "name": "primary_address_count",
+                    "type": "number"
+                },
+                {
                     "name": "teams_count",
                     "type": "number"
                 },
@@ -7091,6 +7123,10 @@
                 },
                 {
                     "name": "addresses_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "primary_address_exists",
                     "type": "boolean"
                 },
                 {
@@ -8817,6 +8853,231 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\CommentComposedResource": {
+            "name": "CommentComposedResource",
+            "properties": [
+                {
+                    "name": "morphValue",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "title",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "content",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "status",
+                    "type": "AsEnum<typeof Status>",
+                    "optional": false
+                },
+                {
+                    "name": "status_new",
+                    "type": "AsEnum<typeof Status>",
+                    "optional": false
+                },
+                {
+                    "name": "visibility",
+                    "type": "AsEnum<typeof Visibility> | null",
+                    "optional": false
+                },
+                {
+                    "name": "visibility_new",
+                    "type": "AsEnum<typeof Visibility> | null",
+                    "optional": false
+                },
+                {
+                    "name": "priority",
+                    "type": "AsEnum<typeof Priority> | null",
+                    "optional": false
+                },
+                {
+                    "name": "priority_new",
+                    "type": "AsEnum<typeof Priority> | null",
+                    "optional": false
+                },
+                {
+                    "name": "comments",
+                    "type": "{ id: number; content: string; user: User }[]",
+                    "optional": false
+                },
+                {
+                    "name": "comments_limited",
+                    "type": "Pick<Comment, 'id' | 'content'>[]",
+                    "optional": false
+                },
+                {
+                    "name": "published",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "rating_display",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "word_count",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "heading_content",
+                    "type": "{ title: string; summary: string }",
+                    "optional": false
+                },
+                {
+                    "name": "publishable",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "comments_count",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "is_featured",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "category_is_first",
+                    "type": "boolean | null",
+                    "optional": true
+                },
+                {
+                    "name": "category_is_active",
+                    "type": "boolean | null",
+                    "optional": true
+                },
+                {
+                    "name": "category_breadcrumb",
+                    "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "comments_resolved",
+                    "type": "CommentResource[]",
+                    "optional": true
+                },
+                {
+                    "name": "post_class_name",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "post_table_name",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "category_class_name",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "category_table_name",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "name",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "email",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "email_verified_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "password",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "options",
+                    "type": "Record<string, unknown> | null",
+                    "optional": false
+                },
+                {
+                    "name": "remember_token",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "role",
+                    "type": "RoleType | null",
+                    "optional": false
+                },
+                {
+                    "name": "membership_level",
+                    "type": "MembershipLevelType | null",
+                    "optional": false
+                },
+                {
+                    "name": "phone",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "avatar",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "bio",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "settings",
+                    "type": "{ theme: \"light\" | \"dark\"; notifications: boolean; locale: string } | null",
+                    "optional": false
+                },
+                {
+                    "name": "last_login_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "last_login_ip",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "[key: number]",
+                    "type": "Tag",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\CommentResource": {
             "name": "CommentResource",
             "properties": [
@@ -9007,7 +9268,7 @@
                 },
                 {
                     "name": "null_with_default",
-                    "type": "null | string",
+                    "type": "string | null",
                     "optional": false
                 },
                 {
@@ -9017,8 +9278,8 @@
                 },
                 {
                     "name": "not_null_named_default",
-                    "type": "string",
-                    "optional": true
+                    "type": "string | number",
+                    "optional": false
                 },
                 {
                     "name": "not_null_spread_default",
@@ -9167,7 +9428,7 @@
                 },
                 {
                     "name": "notes_when_null",
-                    "type": "null | string",
+                    "type": "string | null",
                     "optional": false
                 },
                 {
@@ -9535,6 +9796,11 @@
                     "optional": false
                 },
                 {
+                    "name": "primaryAddress",
+                    "type": "Address | null",
+                    "optional": false
+                },
+                {
                     "name": "teams",
                     "type": "Team[]",
                     "optional": false
@@ -9684,6 +9950,11 @@
                     "optional": false
                 },
                 {
+                    "name": "primaryAddress",
+                    "type": "Address | null",
+                    "optional": false
+                },
+                {
                     "name": "teams",
                     "type": "Team[]",
                     "optional": false
@@ -9735,7 +10006,7 @@
                 },
                 {
                     "name": "week_days_when_has_default",
-                    "type": "AsEnum<typeof WeekDays>[] | null | string",
+                    "type": "AsEnum<typeof WeekDays>[] | string | null",
                     "optional": false
                 },
                 {
@@ -9761,6 +10032,16 @@
                 {
                     "name": "latest_status_or_history",
                     "type": "AsEnum<typeof Status> | StatusType[]",
+                    "optional": false
+                },
+                {
+                    "name": "wrapped_history_or_scalar",
+                    "type": "AsEnum<typeof Status>[] | StatusType",
+                    "optional": false
+                },
+                {
+                    "name": "wrapped_history_or_array",
+                    "type": "AsEnum<typeof Status>[] | StatusType[]",
                     "optional": false
                 }
             ]
@@ -9945,6 +10226,26 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\GuardedCollectionSpreadResource": {
+            "name": "GuardedCollectionSpreadResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "archived",
+                    "type": "boolean",
+                    "optional": true
+                },
+                {
+                    "name": "[key: number]",
+                    "type": "OrderItem",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\HelperCallResource": {
             "name": "HelperCallResource",
             "properties": [
@@ -10125,7 +10426,12 @@
                 },
                 {
                     "name": "data_from_docblock",
-                    "type": "{ title: string; weight: number | null }",
+                    "type": "{ recordedAt?: string; title: string; weight: number | null }",
+                    "optional": false
+                },
+                {
+                    "name": "nested_optional_key_from_docblock",
+                    "type": "{ inner: { assignedLater?: string; promoted: string }; label: string }",
                     "optional": false
                 },
                 {
@@ -10190,6 +10496,21 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\ImageDimensionsResource": {
+            "name": "ImageDimensionsResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "box",
+                    "type": "{ width: number | null; height: number | null } | { width: number | null }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\ImageMorphResource": {
             "name": "ImageMorphResource",
             "properties": [
@@ -10212,6 +10533,26 @@
                     "name": "imageable_when_loaded",
                     "type": "Post | Product | WorkbenchUser | CrmUser",
                     "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\ImageNullableArmsResource": {
+            "name": "ImageNullableArmsResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "size",
+                    "type": "number | string | null",
+                    "optional": false
+                },
+                {
+                    "name": "label",
+                    "type": "string | number | null",
+                    "optional": false
                 }
             ]
         },
@@ -10670,6 +11011,51 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\MixedEnumMergedResource": {
+            "name": "MixedEnumMergedResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "wrapped_history_or_scalar_merged",
+                    "type": "AsEnum<typeof Status>[] | StatusType",
+                    "optional": false
+                },
+                {
+                    "name": "assigned_marker",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "wrapped_history_or_scalar_assigned",
+                    "type": "AsEnum<typeof Status>[] | StatusType",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\MixedEnumReturnBranchesResource": {
+            "name": "MixedEnumReturnBranchesResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "branch_active",
+                    "type": "boolean",
+                    "optional": true
+                },
+                {
+                    "name": "wrapped_history_or_scalar",
+                    "type": "AsEnum<typeof Status>[] | StatusType",
+                    "optional": true
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\ModelWrappedPropResource": {
             "name": "ModelWrappedPropResource",
             "properties": [
@@ -10680,12 +11066,67 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\MutualSpreadAResource": {
+            "name": "MutualSpreadAResource",
+            "properties": [
+                {
+                    "name": "a_marker",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "b_marker",
+                    "type": "boolean",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\MutualSpreadBResource": {
+            "name": "MutualSpreadBResource",
+            "properties": [
+                {
+                    "name": "a_marker",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "b_marker",
+                    "type": "boolean",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\MutuallyRecursiveSpreadResource": {
             "name": "MutuallyRecursiveSpreadResource",
             "properties": [
                 {
                     "name": "name",
                     "type": "string",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\NamedArgsConditionalResource": {
+            "name": "NamedArgsConditionalResource",
+            "properties": [
+                {
+                    "name": "not_null_named_default",
+                    "type": "string | number",
+                    "optional": false
+                },
+                {
+                    "name": "when_all_named",
+                    "type": "string | number",
+                    "optional": false
+                },
+                {
+                    "name": "loaded_named_default",
+                    "type": "Comment[]",
+                    "optional": false
+                },
+                {
+                    "name": "counted_named_out_of_order",
+                    "type": "number",
                     "optional": false
                 }
             ]
@@ -10747,6 +11188,11 @@
                     "name": "members_resource_then_model_spread",
                     "type": "(Omit<UserResource, 'flag' | keyof User | keyof UserResource> & Omit<User, 'flag' | keyof UserResource> & Omit<UserResource, 'flag'> & { flag: boolean })[]",
                     "optional": true
+                },
+                {
+                    "name": "owner_relation_spread",
+                    "type": "Omit<User, 'flag'> & { flag: boolean }",
+                    "optional": false
                 }
             ]
         },
@@ -11344,6 +11790,21 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\PostEnumTrioResource": {
+            "name": "PostEnumTrioResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "trio",
+                    "type": "{ a: StatusType; b: StatusType; c: PriorityType | null }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\PostFlatCollection": {
             "name": "PostFlatCollection",
             "typeAlias": "PostResource[]"
@@ -11487,6 +11948,30 @@
                     "optional": true
                 }
             ]
+        },
+        "Workbench\\App\\Http\\Resources\\PostSpotlightResource": {
+            "name": "PostSpotlightResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "headline",
+                    "type": "Comment | null",
+                    "optional": false
+                },
+                {
+                    "name": "spotlight",
+                    "type": "{ comment: Comment | null }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\PostUnwrappedCollection": {
+            "name": "PostUnwrappedCollection",
+            "typeAlias": "PostResource[]"
         },
         "Workbench\\App\\Http\\Resources\\PreserveKeysCollection": {
             "name": "PreserveKeysCollection",
@@ -12126,6 +12611,16 @@
             "name": "RoutableResource",
             "properties": []
         },
+        "Workbench\\App\\Http\\Resources\\SelfSpreadResource": {
+            "name": "SelfSpreadResource",
+            "properties": [
+                {
+                    "name": "marker",
+                    "type": "boolean",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\ServiceDeskResource": {
             "name": "ServiceDeskResource",
             "properties": [
@@ -12290,6 +12785,11 @@
                     "optional": false
                 },
                 {
+                    "name": "primaryAddress",
+                    "type": "Address | null",
+                    "optional": false
+                },
+                {
                     "name": "teams",
                     "type": "Team[]",
                     "optional": false
@@ -12437,6 +12937,11 @@
                 {
                     "name": "addresses",
                     "type": "Address[]",
+                    "optional": false
+                },
+                {
+                    "name": "primaryAddress",
+                    "type": "Address | null",
                     "optional": false
                 },
                 {
@@ -13146,6 +13651,21 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\TeamStatusAuditResource": {
+            "name": "TeamStatusAuditResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "audit",
+                    "type": "{ status: AsEnum<typeof Status>[] }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\TernaryResource": {
             "name": "TernaryResource",
             "properties": [
@@ -13502,6 +14022,11 @@
                 {
                     "name": "addresses",
                     "type": "Address[]",
+                    "optional": false
+                },
+                {
+                    "name": "primaryAddress",
+                    "type": "Address | null",
                     "optional": false
                 },
                 {
@@ -14007,6 +14532,26 @@
                 {
                     "name": "summary",
                     "type": "{ app_status: AsEnum<typeof WorkbenchStatus>; crm_status: AsEnum<typeof CrmStatus> }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\Crm\\Http\\Resources\\DealEnumTrioResource": {
+            "name": "DealEnumTrioResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "trio",
+                    "type": "{ a: WorkbenchStatusType; b: CrmStatusType; c: WorkbenchStatusType }",
+                    "optional": false
+                },
+                {
+                    "name": "matrix",
+                    "type": "{ a: WorkbenchStatusType; b: CrmStatusType; c: WorkbenchStatusType }[]",
                     "optional": false
                 }
             ]

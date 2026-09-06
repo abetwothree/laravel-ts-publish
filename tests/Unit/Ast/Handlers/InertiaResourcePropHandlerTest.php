@@ -13,6 +13,7 @@ use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
 use Workbench\App\Http\Controllers\InertiaController;
@@ -104,4 +105,12 @@ it('declines a singular resource, an enum resource, and a non-collection static 
     expect(inertiaResourcePropResult($singular))->toBeNull()
         ->and(inertiaResourcePropResult($enumCollection))->toBeNull()
         ->and(inertiaResourcePropResult($make))->toBeNull();
+});
+
+it('reads the wrapped paginator by the constructor and collection() parameter name', function () {
+    $named = new New_(new Name(PostCollection::class), [new Arg(paginatorArg()->value, name: new Identifier('resource'))]);
+    $collection = new StaticCall(new Name(PostResource::class), 'collection', [new Arg(paginatorArg()->value, name: new Identifier('resource'))]);
+
+    expect(inertiaResourcePropResult($named)['type'])->toBe('PostCollection & ResourcePagination')
+        ->and(inertiaResourcePropResult($collection)['type'])->toBe('JsonResourcePaginator<PostResource>');
 });

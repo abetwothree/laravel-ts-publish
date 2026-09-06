@@ -526,7 +526,11 @@ class LaravelTsPublish
                     $type = 'unknown';
                 }
 
-                $parts[] = $property->getName().': '.$type;
+                // json_encode() omits a typed property that was never assigned; a promoted or defaulted
+                // one is always present.
+                $optional = ! $property->hasDefaultValue() && ! $property->isPromoted();
+
+                $parts[] = $property->getName().($optional ? '?' : '').': '.$type;
             }
         } finally {
             unset($this->shapeExpansionStack[$guard]);
@@ -571,7 +575,9 @@ class LaravelTsPublish
      */
     public function shapeValueHasUnimportableToken(string $type, array $importableNames = []): bool
     {
-        $withoutKeys = (string) preg_replace('/\b\w+\s*:/', '', $type);
+        // The `?` of an optional key is not a token separator, so a key stripped without it survives as
+        // `name?` and reads as an unimportable value.
+        $withoutKeys = (string) preg_replace('/\b\w+\s*\??\s*:/', '', $type);
 
         $tokens = preg_split('/[<>{}()|,;\[\]\s]+/', $withoutKeys, -1, PREG_SPLIT_NO_EMPTY) ?: [];
 
@@ -1668,9 +1674,15 @@ class LaravelTsPublish
         }
     }
 
-    public function validJsObjectKey(string $key): string
+    /**
+     * $allowIndexSignature: a generated `[key: number]`/`[key: string]` is valid TS only in a type
+     * position — pass true only there. In a value position (an object literal) it's a syntax error,
+     * so every other caller must keep the default and never risk emitting it unquoted.
+     */
+    public function validJsObjectKey(string $key, bool $allowIndexSignature = false): string
     {
-        if (preg_match('/^[a-zA-Z_$][a-zA-Z0-9_$]*$/', $key)) {
+        if (preg_match('/^[a-zA-Z_$][a-zA-Z0-9_$]*$/', $key)
+            || ($allowIndexSignature && preg_match('/^\[[a-zA-Z_$][a-zA-Z0-9_$]*: (?:string|number)\]$/', $key))) {
             return $key;
         }
 
@@ -2128,6 +2140,50 @@ class LaravelTsPublish
     public function splitTopLevelUnion(string $typeStr): array
     {
         return TsTypeShape::splitTopLevel($typeStr, ['|']);
+    }
+
+    /**
+     * Joins union members with a single trailing `null`, whichever arms the nulls came from.
+     *
+     * @param  list<string>  $types
+     */
+    public function hoistNull(array $types): string
+    {
+        $members = [];
+        $nullable = false;
+
+        foreach ($types as $type) {
+            foreach ($this->splitTopLevelUnion($type) as $member) {
+                if ($member === 'null') {
+                    $nullable = true;
+
+                    continue;
+                }
+
+                $members[] = $member;
+            }
+        }
+
+        $members = array_unique($members);
+
+        if ($nullable) {
+            $members[] = 'null';
+        }
+
+        return implode(' | ', $members);
+    }
+
+    /**
+     * Replace a bare enum type-name token with its AsEnum wrap, preserving every other union arm.
+     *
+     * The lookbehind's `.` keeps a namespace-qualified `foo.RoleType` unmatched; the lookahead keeps
+     * `RoleTypeExtra` unmatched.
+     */
+    public static function substituteEnumType(string $typeStr, string $bareTypeName, string $asEnumType): string
+    {
+        $pattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($bareTypeName, '/').'(?![A-Za-z0-9_$])/';
+
+        return preg_replace($pattern, $asEnumType, $typeStr) ?? $typeStr;
     }
 
     /**

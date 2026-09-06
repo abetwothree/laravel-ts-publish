@@ -30,6 +30,11 @@ use ReflectionClass;
  * @phpstan-import-type TypesImportMap from TsResourceDto
  * @phpstan-import-type ValuesImportMap from TsResourceDto
  * @phpstan-import-type ImportMapType from MethodAnalysis
+ * @phpstan-import-type EnumResourceArmShapeMap from MethodAnalysis
+ *
+ * @phpstan-type EnumResourcePropertyInfo = array{
+ *     fqcn: class-string, nullable: bool, isCollection: bool, wrapIsCollection: bool, directIsArray: bool
+ * }
  *
  * @extends CoreTransformer<JsonResource>
  */
@@ -78,7 +83,11 @@ class ResourceTransformer extends CoreTransformer
     /** @var array<class-string, string> FQCN => resource interface name */
     protected array $resourceFqcnMap = [];
 
-    /** @var array<string, array{fqcn: class-string, nullable: bool, isCollection: bool}> property => enum info for EnumResource::make()/::collection() properties */
+    /**
+     * Property => enum info for EnumResource::make()/::collection() properties.
+     *
+     * @var array<string, EnumResourcePropertyInfo>
+     */
     protected array $enumResourceProperties = [];
 
     /** @var array<class-string, string> FQCN => model interface name */
@@ -144,6 +153,7 @@ class ResourceTransformer extends CoreTransformer
             ->parseResourceTsCastsOverrides()
             ->runAstAnalysis()
             ->applyOverrides()
+            ->pruneOverriddenEnumImports()
             ->resolveMultiClassAccessorFqcns()
             ->resolveMultiEnumAccessorFqcns()
             ->resolveImportConflicts()
@@ -305,7 +315,17 @@ class ResourceTransformer extends CoreTransformer
             $nullable = str_contains($type, 'null');
             // $type itself may already carry '| null' here, so the suffix check must strip it first.
             $isCollection = str_ends_with(rtrim(str_replace('| null', '', $type)), '[]');
-            $this->enumResourceProperties[$propName] = ['fqcn' => $fqcn, 'nullable' => $nullable, 'isCollection' => $isCollection];
+            // TernaryHandler records each arm's own shape for a mixed EnumResource/direct-access
+            // ternary; anything else mixed (e.g. a `??`) falls back to the merged-string guess,
+            // which never marks the wrap arm collection — the behaviour this replaces preserved.
+            $armShape = $analysis->enumResourceArmShapes[$propName] ?? null;
+            $this->enumResourceProperties[$propName] = [
+                'fqcn' => $fqcn,
+                'nullable' => $nullable,
+                'isCollection' => $isCollection,
+                'wrapIsCollection' => $armShape['wrapIsCollection'] ?? false,
+                'directIsArray' => $armShape['directIsArray'] ?? $isCollection,
+            ];
             $this->propertyEnumFqcns[$propName] = $fqcn;
         }
 
@@ -410,6 +430,24 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
+     * Drops enum-map entries whose bare type no longer appears in any property after #[TsCasts] overrides.
+     *
+     * @return $this
+     */
+    protected function pruneOverriddenEnumImports(): self
+    {
+        $rendered = implode("\n", array_column($this->properties, 'type'));
+
+        foreach ($this->enumFqcnMap as $fqcn => $typeName) {
+            if (preg_match('/\b'.preg_quote($typeName, '/').'\b/', $rendered) !== 1) {
+                unset($this->enumFqcnMap[$fqcn]);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
      * Build the type and value import maps from accumulated FQCNs and custom imports.
      */
     protected function buildResolvedImports(): self
@@ -462,12 +500,9 @@ class ResourceTransformer extends CoreTransformer
             if ($isMixed) {
                 // Mixed ternary: one branch wraps the enum, the other reads it directly. The
                 // analyzer collapses both to a single deduped bare type name, so substitution can't
-                // tell the arms apart here — synthesize the union explicitly instead.
-                $wrappedTypeName = 'AsEnum<typeof '.$constName.'>';
-
-                // EnumResource::make() is always scalar; the direct arm's own shape decides the array suffix.
-                // Assumes the wrap arm is never EnumResource::collection() — not true in general, and known.
-                $directTypeName = $info['isCollection'] ? $enumTypeName.'[]' : $enumTypeName;
+                // tell the arms apart here — synthesize the union from each arm's own recorded shape.
+                $wrappedTypeName = 'AsEnum<typeof '.$constName.'>'.($info['wrapIsCollection'] ? '[]' : '');
+                $directTypeName = $enumTypeName.($info['directIsArray'] ? '[]' : '');
 
                 $type = $wrappedTypeName.' | '.$directTypeName;
 
@@ -482,7 +517,7 @@ class ResourceTransformer extends CoreTransformer
                 // Substitute the bare enum type-name token inside the analyzer's own type string,
                 // so any richer shape (an extra default arm, a keyed Record arm) round-trips
                 // untouched — only the wrapped enum's own token changes.
-                $type = $this->substituteEnumResourceType(
+                $type = LaravelTsPublish::substituteEnumType(
                     $this->properties[$propName]['type'],
                     $searchTypeName,
                     'AsEnum<typeof '.$constName.'>',
@@ -541,7 +576,7 @@ class ResourceTransformer extends CoreTransformer
                 continue; // @codeCoverageIgnore
             }
 
-            $tokens = explode(' | ', $this->properties[$propName]['type']);
+            $tokens = LaravelTsPublish::splitTopLevelUnion($this->properties[$propName]['type']);
             $fqcnIndex = 0;
             $rewritten = [];
 
@@ -608,19 +643,6 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * Replace every word-boundary-safe occurrence of a bare enum type name with its AsEnum wrap.
-     *
-     * Preserves everything else in the analyzer's type string — unions, Record arms, extra default
-     * arms — since only the wrapped enum's own token changes, not the shape around it.
-     */
-    protected function substituteEnumResourceType(string $typeStr, string $bareTypeName, string $asEnumType): string
-    {
-        $pattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($bareTypeName, '/').'(?![A-Za-z0-9_$])/';
-
-        return preg_replace($pattern, $asEnumType, $typeStr) ?? $typeStr;
-    }
-
-    /**
      * Register both enum FQCNs of accessors typed Attribute<EnumA|EnumB, never> so they can be aliased.
      */
     protected function resolveMultiEnumAccessorFqcns(): self
@@ -632,8 +654,8 @@ class ResourceTransformer extends CoreTransformer
         $resolver = resolve(ModelAttributeResolver::class);
 
         foreach (array_keys($this->properties) as $propName) {
-            if (isset($this->propertyEnumFqcnsList[$propName])) {
-                continue; // @codeCoverageIgnore
+            if (isset($this->propertyEnumFqcnsList[$propName]) || isset($this->propertyInlineEnumFqcns[$propName])) {
+                continue;
             }
 
             $tsInfo = $resolver->resolveAttribute($this->modelClass, $propName);

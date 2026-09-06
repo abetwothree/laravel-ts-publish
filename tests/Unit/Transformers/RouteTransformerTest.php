@@ -16,6 +16,7 @@ use Workbench\App\Http\Controllers\DocBlockInvokableController;
 use Workbench\App\Http\Controllers\DomainController;
 use Workbench\App\Http\Controllers\EnumBoundController;
 use Workbench\App\Http\Controllers\ExcludableController;
+use Workbench\App\Http\Controllers\InertiaAddressController;
 use Workbench\App\Http\Controllers\InertiaController;
 use Workbench\App\Http\Controllers\InertiaFormRequestController;
 use Workbench\App\Http\Controllers\InvokableController;
@@ -963,4 +964,13 @@ test('isInvokable is true for invokable controllers and false otherwise', functi
     expect((new RouteTransformer(InvokableController::class))->data()->isInvokable)->toBeTrue()
         ->and((new RouteTransformer(InvokableModelBoundPlusController::class))->data()->isInvokable)->toBeTrue()
         ->and((new RouteTransformer(PostController::class))->data()->isInvokable)->toBeFalse();
+});
+
+test('page-prop imports use the resource type name, not the class basename', function () {
+    $transformer = new RouteTransformer(InertiaAddressController::class);
+    $transformer->data();
+    $imports = implode(' ', array_merge(...array_values($transformer->typeImports)));
+
+    expect($imports)->toContain('Address')
+        ->and($imports)->not->toContain('AddressResource');
 });

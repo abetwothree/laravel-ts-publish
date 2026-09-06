@@ -15,6 +15,7 @@ use Workbench\App\Http\Controllers\DomainController;
 use Workbench\App\Http\Controllers\EnumBoundController;
 use Workbench\App\Http\Controllers\ExcludableController;
 use Workbench\App\Http\Controllers\ExcludedController;
+use Workbench\App\Http\Controllers\InertiaAddressController;
 use Workbench\App\Http\Controllers\InertiaController;
 use Workbench\App\Http\Controllers\InertiaFormRequestController;
 use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
@@ -113,6 +114,7 @@ Route::get('/inertia/settings', [InertiaController::class, 'settings'])->name('i
 Route::get('/inertia/about', [InertiaController::class, 'about'])->name('inertia.about');
 Route::get('/inertia/conditional', [InertiaController::class, 'conditional'])->name('inertia.conditional');
 Route::get('/inertia/post/{post}', [InertiaController::class, 'post'])->name('inertia.post');
+Route::get('/addresses/{address}', [InertiaAddressController::class, 'show'])->name('addresses.show');
 
 Route::resource('posts-inertia', PostInertiaController::class, ['parameters' => ['posts-inertia' => 'post']]);
 

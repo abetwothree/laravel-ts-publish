@@ -6,10 +6,13 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AuthUserResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use Illuminate\Config\Repository;
 use Illuminate\Support\Facades\Config;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\FuncCall;
@@ -17,11 +20,15 @@ use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
+use ReflectionClass;
+use ReflectionFunction;
+use ReflectionMethod;
+use stdClass;
 
 /**
  * A call to a known PHP built-in function (`count(...)`, `strtoupper(...)`, etc.), typed from its
- * reflected return type, plus the two Laravel helpers whose shape is knowable: `config('literal')`
- * and `auth()->user()`/`auth()->id()`. Declines anything else.
+ * reflected return type, plus the Laravel helpers whose shape is knowable: `config('literal')`,
+ * `config()->get()` and its typed accessors, and `auth()->user()`/`auth()->id()`. Declines anything else.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  */
@@ -39,14 +46,14 @@ final class KnownFunctionCallHandler implements ExpressionHandler
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         if ($expr instanceof MethodCall) {
-            return $this->authHelperMethodRule($expr);
+            return $this->authHelperMethodRule($expr) ?? $this->typedConfigAccessorRule($expr, $engine);
         }
 
         if ($expr instanceof FuncCall && $expr->name instanceof Name) {
             $name = $expr->name->getLast();
 
             if ($name === 'config') {
-                return $this->resolveConfigCallType($expr, $engine);
+                return $this->resolveConfigCallType(CallArguments::for($expr, new ReflectionFunction('config')), $engine);
             }
 
             $tsType = $this->resolveKnownFunctionCallType($name);
@@ -74,11 +81,40 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             || ! $expr->var->name instanceof Name
             || $expr->var->name->getLast() !== 'auth'
             || $expr->var->isFirstClassCallable()
-            || $expr->var->getArgs() !== []) {
+            || ! CallArguments::for($expr->var, new ReflectionFunction('auth'))->isEmpty()) {
             return null;
         }
 
         return $this->authMethodResult($expr->name->toString(), resolve(AuthUserResolver::class)->model());
+    }
+
+    /**
+     * Resolve `config()->integer('key', 0)` and the other typed accessors from Repository's declared return
+     * type — the default never changes it — and `config()->get(...)` exactly like `config(...)`.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function typedConfigAccessorRule(MethodCall $expr, ExpressionEngine $engine): ?array
+    {
+        if (! $expr->name instanceof Identifier
+            || ! $expr->var instanceof FuncCall
+            || ! $expr->var->name instanceof Name
+            || $expr->var->name->getLast() !== 'config'
+            || $expr->var->isFirstClassCallable()
+            || ! CallArguments::for($expr->var, new ReflectionFunction('config'))->isEmpty()
+            || ! method_exists(Repository::class, $expr->name->toString())) {
+            return null;
+        }
+
+        $method = $expr->name->toString();
+
+        if ($method === 'get') {
+            return $this->resolveConfigCallType(CallArguments::for($expr, new ReflectionMethod(Repository::class, 'get')), $engine);
+        }
+
+        $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass(Repository::class), $method);
+
+        return resolve(ReflectedTypeAcceptor::class)->accept($tsInfo);
     }
 
     /**
@@ -89,24 +125,29 @@ final class KnownFunctionCallHandler implements ExpressionHandler
      *
      * @return ValueExpressionResult|null
      */
-    private function resolveConfigCallType(FuncCall $expr, ExpressionEngine $engine): ?array
+    private function resolveConfigCallType(CallArguments $args, ExpressionEngine $engine): ?array
     {
-        if ($expr->isFirstClassCallable()) {
+        $keyArg = $args->named('key');
+
+        if (! $keyArg?->value instanceof String_) {
             return null;
         }
 
-        $args = $expr->getArgs();
+        $absent = new stdClass;
+        $value = Config::get($keyArg->value->value, $absent);
 
-        if ($args === [] || ! $args[0]->value instanceof String_) {
-            return null;
-        }
+        // Only an ABSENT key falls through to the default; a key set to null hands the caller null.
+        // Unlike Request methods, config()'s default is the whole value when the key is absent, so it is
+        // typed. The typed accessors (config()->integer() etc., typedConfigAccessorRule()) follow the Request
+        // rule instead: declared return type, default ignored. See requestMethodRule() for the other half.
+        if ($value === $absent) {
+            $defaultArg = $args->named('default');
 
-        $value = Config::get($args[0]->value->value);
+            if ($defaultArg !== null) {
+                return $engine->resolve($defaultArg->value);
+            }
 
-        // An unset key returns the second argument, so answering `null` would be confidently wrong
-        // for the common config('services.x.key', 'fallback') shape. Type the default instead.
-        if ($value === null && isset($args[1])) {
-            return $engine->resolve($args[1]->value);
+            $value = null;
         }
 
         $type = match (true) {

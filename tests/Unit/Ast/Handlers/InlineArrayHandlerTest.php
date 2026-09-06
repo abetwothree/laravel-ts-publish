@@ -34,7 +34,7 @@ function inlineArrayHandlerThrowingEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        public function returnArrayAnalysis(Array_ $array): MethodAnalysis
+        public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
         {
             throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
         }
@@ -59,7 +59,7 @@ final class InlineArrayHandlerReturnArrayStubEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    public function returnArrayAnalysis(Array_ $array): MethodAnalysis
+    public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
     {
         if ($array !== $this->expectedArray) {
             throw new RuntimeException('Unexpected array passed to InlineArrayHandlerReturnArrayStubEngine');

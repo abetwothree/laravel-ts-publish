@@ -15,6 +15,8 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\NodeFinder;
+use ReflectionFunction;
+use ReflectionMethod;
 
 /**
  * Locates a method's Inertia render calls and reads their component names and props arguments.
@@ -67,9 +69,12 @@ class InertiaRenderLocator
                 continue; // @codeCoverageIgnore
             }
 
-            $args = $node->isFirstClassCallable() ? [] : $node->getArgs();
+            $args = $this->renderArguments($node);
 
-            $calls[] = new RenderCall($args[0]->value ?? null, $args[1]->value ?? null);
+            $calls[] = new RenderCall(
+                ($args->named('component') ?? $args->at(0))?->value,
+                ($args->named('props') ?? $args->at(1))?->value,
+            );
         }
 
         return $calls;
@@ -80,13 +85,10 @@ class InertiaRenderLocator
      */
     public function componentName(StaticCall $render): ?string
     {
-        $firstArg = $render->args[0] ?? null;
+        $args = $this->renderArguments($render);
+        $component = ($args->named('component') ?? $args->at(0))?->value;
 
-        if (! $firstArg instanceof Node\Arg || ! $firstArg->value instanceof String_) {
-            return null;
-        }
-
-        return $firstArg->value->value;
+        return $component instanceof String_ ? $component->value : null;
     }
 
     /**
@@ -94,9 +96,9 @@ class InertiaRenderLocator
      */
     public function propsArg(StaticCall $render): ?Expr
     {
-        $secondArg = $render->args[1] ?? null;
+        $args = $this->renderArguments($render);
 
-        return $secondArg instanceof Node\Arg ? $secondArg->value : null;
+        return ($args->named('props') ?? $args->at(1))?->value;
     }
 
     /**
@@ -107,6 +109,28 @@ class InertiaRenderLocator
         $expr = $this->propsArg($render);
 
         return $expr instanceof Array_ ? $expr : null;
+    }
+
+    /**
+     * A render call's arguments mapped against the signature it reaches: ResponseFactory::render() for the
+     * facade and helper-chain forms, the inertia() helper for the function form — both name (component, props).
+     * Without the adapter installed only positions are known, which the `?? at()` fallbacks above read.
+     */
+    protected function renderArguments(StaticCall|FuncCall|MethodCall $call): CallArguments
+    {
+        if ($call instanceof FuncCall && function_exists('inertia')) {
+            return CallArguments::for($call, new ReflectionFunction('inertia'));
+        }
+
+        // The Inertia adapter is a dev dependency, so it is named by string rather than imported —
+        // an import would declare a hard requirement this package does not have.
+        $factory = 'Inertia\\ResponseFactory';
+
+        if (! $call instanceof FuncCall && class_exists($factory)) {
+            return CallArguments::for($call, new ReflectionMethod($factory, 'render'));
+        }
+
+        return CallArguments::fromNames($call->isFirstClassCallable() ? [] : $call->getArgs(), []);
     }
 
     /**

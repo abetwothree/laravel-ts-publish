@@ -8,6 +8,7 @@ use PhpParser\Node;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\NodeFinder;
 use ReflectionClass;
+use ReflectionMethod;
 
 /**
  * Finds a method's ClassMethod AST node, memoized, recording every parsed file as a cache dependency.
@@ -81,20 +82,30 @@ class MethodLocator
     }
 
     /**
-     * Run the finder over a parsed file for the named ClassMethod with a non-null body.
+     * Find the named ClassMethod with a non-null body.
+     * Matches PHP's own reflected end line when a file declares more than one candidate under the name,
+     * and rejects up front when $method isn't declared in $file, so locateOwn() still misses inherited methods.
      *
      * @param  ReflectionClass<object>  $reflection
      */
     protected function findIn(ReflectionClass $reflection, string $file, string $method, bool $caseSensitive): ?MethodContext
     {
+        $declaration = $reflection->getMethod($method);
+
+        if ($declaration->getFileName() !== $file) {
+            return null;
+        }
+
         $stmts = $this->parser->parseFile($file);
 
-        /** @var ClassMethod|null $node */
-        $node = (new NodeFinder)->findFirst($stmts, function (Node $node) use ($method, $caseSensitive): bool {
+        /** @var list<ClassMethod> $candidates */
+        $candidates = (new NodeFinder)->find($stmts, function (Node $node) use ($method, $caseSensitive): bool {
             return $node instanceof ClassMethod && ($caseSensitive
                 ? $node->name->toString() === $method
                 : strcasecmp($node->name->toString(), $method) === 0);
         });
+
+        $node = $this->matchingDeclaration($candidates, $declaration) ?? $candidates[0] ?? null;
 
         if (! $node instanceof ClassMethod || $node->stmts === null) {
             return null;
@@ -115,5 +126,25 @@ class MethodLocator
         }
 
         return $this->located[$key] = $resolve();
+    }
+
+    /**
+     * Prefer the candidate whose closing line matches reflection's own end line.
+     * An attribute group shifts a node's AST start line earlier than PHP reports, but never its end line,
+     * so this still resolves two same-named methods sharing a file to whichever PHP actually dispatches to.
+     *
+     * @param  list<ClassMethod>  $candidates
+     */
+    private function matchingDeclaration(array $candidates, ReflectionMethod $declaration): ?ClassMethod
+    {
+        $endLine = $declaration->getEndLine();
+
+        foreach ($candidates as $candidate) {
+            if ($endLine !== false && $candidate->getEndLine() === $endLine) {
+                return $candidate;
+            }
+        }
+
+        return null;
     }
 }

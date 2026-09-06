@@ -24,6 +24,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * @phpstan-type InlineEnumFqcnsMap = array<string, list<class-string>>
  * @phpstan-type InlineModelFqcnsMap = array<string, list<class-string>>
  * @phpstan-type MultiEnumFqcnsMap = array<string, list<class-string>>
+ * @phpstan-type EnumResourceArmShape = array{wrapIsCollection: bool, directIsArray: bool}
+ * @phpstan-type EnumResourceArmShapeMap = array<string, EnumResourceArmShape>
  */
 class MethodAnalysis
 {
@@ -38,6 +40,8 @@ class MethodAnalysis
      * @param  InlineModelFqcnsMap  $inlineModelFqcns  property name => list of model FQCNs embedded in inline object type strings
      * @param  MultiEnumFqcnsMap  $multiEnumResourceFqcns  property name => ordered list of enum FQCNs (for multi-EnumResource ternary/union branches, used for AsEnum rewrite)
      * @param  InlineEnumFqcnsMap  $inlineEnumResourceFqcns  property name => list of enum FQCNs embedded via EnumResource in inline object type strings (used for value imports)
+     * @param  EnumResourceArmShapeMap  $enumResourceArmShapes  property name => each arm's own array shape,
+     *                                                          for a mixed EnumResource/direct-access ternary
      * @param  string|null  $flatTypeAlias  when set, the collection emits `export type X = SingularResource[]` instead of an interface
      * @param  class-string<JsonResource>|null  $flatTypeAliasFqcn  FQCN of the singular resource for the flat type alias
      */
@@ -52,6 +56,7 @@ class MethodAnalysis
         public array $inlineModelFqcns = [],
         public array $multiEnumResourceFqcns = [],
         public array $inlineEnumResourceFqcns = [],
+        public array $enumResourceArmShapes = [],
         public ?string $flatTypeAlias = null,
         public ?string $flatTypeAliasFqcn = null,
     ) {}
@@ -60,8 +65,8 @@ class MethodAnalysis
      * Merge another analysis's maps into this one.
      *
      * `properties` appends; the single-value class maps spread-merge with the source winning on
-     * collision. `inlineModelFqcns` appends WITHOUT deduping — unlike its sibling inline maps —
-     * since aliasPropertyType() consumes it as a positional queue against the rendered type string.
+     * collision. `inlineModelFqcns`, `inlineEnumFqcns` and `inlineEnumResourceFqcns` append WITHOUT
+     * deduping — aliasPropertyType() consumes each as a positional queue against the rendered type.
      */
     public function merge(self $source): void
     {
@@ -71,15 +76,14 @@ class MethodAnalysis
         $this->directEnumFqcns = [...$this->directEnumFqcns, ...$source->directEnumFqcns];
         $this->modelFqcns = [...$this->modelFqcns, ...$source->modelFqcns];
         $this->multiEnumResourceFqcns = [...$this->multiEnumResourceFqcns, ...$source->multiEnumResourceFqcns];
+        $this->enumResourceArmShapes = [...$this->enumResourceArmShapes, ...$source->enumResourceArmShapes];
 
         foreach ($source->customImports as $path => $types) {
             $this->customImports[$path] = [...($this->customImports[$path] ?? []), ...$types];
         }
 
         foreach ($source->inlineEnumFqcns as $propName => $fqcns) {
-            $this->inlineEnumFqcns[$propName] = array_values(array_unique(
-                [...($this->inlineEnumFqcns[$propName] ?? []), ...$fqcns]
-            ));
+            $this->inlineEnumFqcns[$propName] = [...($this->inlineEnumFqcns[$propName] ?? []), ...$fqcns];
         }
 
         foreach ($source->inlineModelFqcns as $propName => $fqcns) {
@@ -87,9 +91,9 @@ class MethodAnalysis
         }
 
         foreach ($source->inlineEnumResourceFqcns as $propName => $fqcns) {
-            $this->inlineEnumResourceFqcns[$propName] = array_values(array_unique(
-                [...($this->inlineEnumResourceFqcns[$propName] ?? []), ...$fqcns]
-            ));
+            $this->inlineEnumResourceFqcns[$propName] = [
+                ...($this->inlineEnumResourceFqcns[$propName] ?? []), ...$fqcns,
+            ];
         }
     }
 }

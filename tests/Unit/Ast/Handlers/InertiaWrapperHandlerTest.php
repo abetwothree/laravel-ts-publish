@@ -14,6 +14,7 @@ use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\VariadicPlaceholder;
@@ -35,7 +36,7 @@ function inertiaWrapperEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        public function returnArrayAnalysis(Array_ $array): MethodAnalysis
+        public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
         {
             throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
         }
@@ -105,4 +106,40 @@ it('types a deferred closure over an Eloquent finder through the controller prof
         'optional' => true,
         'modelFqcn' => Post::class,
     ]);
+});
+
+// The only realistic named form: the group first, the callback by name. Position 0 is then a string,
+// and typing the prop from it would be confidently wrong.
+it('reads the wrapped value by name when the group is written first', function () {
+    $callback = new ArrowFunction(['expr' => new StaticCall(new Name(Post::class), 'all')]);
+    $expr = new StaticCall(new Name('Inertia'), 'defer', [
+        new Arg(new String_('sidebar'), name: new Identifier('group')),
+        new Arg($callback, name: new Identifier('callback')),
+    ]);
+    $engine = new class($callback) implements ExpressionEngine
+    {
+        public function __construct(private Expr $only) {}
+
+        public function resolve(Expr $expr): array
+        {
+            if ($expr !== $this->only) {
+                throw new RuntimeException('resolved the group string instead of the callback');
+            }
+
+            return ['type' => 'Post[]', 'optional' => false];
+        }
+
+        public function spreadAnalysis(string $methodName): ?MethodAnalysis
+        {
+            throw new RuntimeException('spreadAnalysis() must not be called in this case');
+        }
+
+        public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
+        {
+            throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
+        }
+    };
+
+    expect((new InertiaWrapperHandler)->resolve($expr, inertiaWrapperScope(), $engine))
+        ->toBe(['type' => 'Post[]', 'optional' => true]);
 });

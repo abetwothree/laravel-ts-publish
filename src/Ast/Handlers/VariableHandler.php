@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\AnalyzesPluckCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesMapProxyElementModels;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
@@ -13,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
@@ -22,6 +24,7 @@ use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use ReflectionMethod;
 
 /**
  * Expressions rooted at a bound variable rather than `$this` — `$item->name`, `$items->map(…)`,
@@ -71,7 +74,7 @@ final class VariableHandler implements ExpressionHandler
             && $expr->var->name !== 'this'
             && $expr->name instanceof Identifier
             && $expr->name->toString() === 'map'
-            && $expr->getArgs() !== []
+            && ! $this->mapArguments($expr)->isEmpty()
         ) {
             $mapResult = $this->analyzeVariableMapCall($expr, $scope, $engine);
 
@@ -168,13 +171,11 @@ final class VariableHandler implements ExpressionHandler
      */
     private function analyzeVariableMapCall(MethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        $args = $call->getArgs();
+        $closureArg = $this->mapArguments($call)->named('callback')?->value;
 
-        if ($args === []) {
+        if ($closureArg === null) {
             return null;
         }
-
-        $closureArg = $args[0]->value;
 
         if ($closureArg instanceof ArrowFunction) {
             $params = $closureArg->params;
@@ -225,5 +226,13 @@ final class VariableHandler implements ExpressionHandler
         $bodyResult['optional'] = false;
 
         return $bodyResult;
+    }
+
+    /**
+     * A `$variable->map(...)` call's arguments mapped against Collection::map(callable $callback).
+     */
+    private function mapArguments(MethodCall $call): CallArguments
+    {
+        return CallArguments::for($call, new ReflectionMethod(EloquentCollection::class, 'map'));
     }
 }
