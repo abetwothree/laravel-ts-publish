@@ -187,8 +187,8 @@ class ModelMetadataAnalyzer
     /**
      * Run the engine over the body that declares provide(), with its Model parameter bound to its declared type.
      *
-     * The declaring class is the subject: ResourceAstAnalyzer walks to a parent without the seeded scope, so an
-     * inherited body analyzed from the subclass would lose the binding.
+     * The declaring class is the subject so `self::` and `parent::` resolve against the file the body lives in.
+     * Passing the context below short-circuits ResourceAstAnalyzer's parent walk, so nothing pins that today.
      */
     protected function analyzeBody(ReflectionMethod $method): MethodAnalysis
     {

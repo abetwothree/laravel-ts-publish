@@ -98,11 +98,14 @@ the engine the same way: shared data calls `AstEngine::analyzeMethod()`, which s
 metadata locates and binds by hand:
 
 - **`MethodLocator::locate($declaringClass, 'provide')`** — the **declaring** class from
-  `ReflectionMethod::getDeclaringClass()`, not the configured provider class. `ResourceAstAnalyzer`'s
-  parent walk rebuilds the analyzer *without* the seeded scope, so an inherited body located from the
-  subclass would lose its binding. Locating the declaring class instead keeps it
-  (`tests/Fixtures/InheritedModelMetadataProvider.php` pins an inherited `provide()` still typing
-  `$model->getTable()` as `string`).
+  `ReflectionMethod::getDeclaringClass()`, not the configured provider class. This narrowing used to carry
+  the binding: a miss fell through to `ResourceAstAnalyzer`'s parent walk, which rebuilds the analyzer
+  *without* the seeded scope. Passing the located context in (below) removed that fall-through, so the
+  narrowing now decides only which class the body resolves against — `self::`, `parent::` and
+  `$this->method()` — and **no test distinguishes it any more**: locating from the configured provider class
+  instead leaves the whole suite green. It is kept because the declaring class is the one whose file the body
+  actually lives in. `tests/Fixtures/InheritedModelMetadataProvider.php` still pins that an inherited
+  `provide()` types `$model->getTable()` as `string`, but it no longer pins the narrowing.
 - **`locate()`, not `locateOwn()`, so a trait in its own file still binds.** For a trait method the
   declaring class is the *using* class, whose own file holds no `provide()` node, and `locateOwn()` declines
   on exactly that shape — it rejects when `ReflectionMethod::getFileName()` is not the class's own file.
