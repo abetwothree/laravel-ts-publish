@@ -73,7 +73,11 @@ states it never marks a property optional — nullability is `| null`, optionali
 concern — so a future fix has to reconcile that deliberate boundary rather than be surprised by it. A
 related case is inherent rather than fixable: a public non-promoted `readonly` property that a
 hand-written constructor always assigns still renders `?:`, because a `readonly` property cannot carry
-a declaration default for static reflection to read — absent from the corpus today.
+a declaration default for static reflection to read — that `readonly` form is absent from the corpus.
+The same imprecision without `readonly` is present: `DeferredAssignmentDto::$assignedLater` is assigned
+by every construction and still emits `assignedLater?`, which is what lets it nest a `?:` inside a shape
+value for `NestedOptionalKeyDto`. It is deliberate there — the fixture needs an optional key — but it is
+the same heuristic, so a future fix to optionality has to expect that fixture to move.
 
 ### `#[TsCasts]` and the top-level spread flatten disagree by scope, in three separate ways
 
