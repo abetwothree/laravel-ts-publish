@@ -89,9 +89,11 @@ class FormRequestRulesAnalyzer
 
     /**
      * Compose one rule by dotted path, so a caller typing `validated('a.b')` reads the same trie
-     * node the request's own interface nests under `a`.
+     * node the request's own interface nests under `a`. Null when the path is undeclared, or runs
+     * through a prohibited node, whose subtree the composed type drops.
      *
-     * The walk splits on every `.`, so an escaped-dot key such as `'v1\.0'` is out of scope here.
+     * Splitting on every `.` matches `data_get()`, which cannot reach an escaped-dot key (`'v1\.0'`)
+     * either — null is that key's correct answer, not a shortfall.
      *
      * @param  class-string<FormRequest>  $fqcn
      */
@@ -110,6 +112,12 @@ class FormRequestRulesAnalyzer
         $node = $this->buildRuleTrie($rawRules);
 
         foreach (explode('.', $dottedPath) as $segment) {
+            // composeObjectNode() drops a prohibited child outright, so nothing beneath one reaches
+            // the composed type: a path through it names a key that can never exist.
+            if ($node->own !== null && $node->own['isProhibited']) {
+                return null;
+            }
+
             if (! isset($node->children[$segment])) {
                 return null;
             }

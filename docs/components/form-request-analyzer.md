@@ -211,23 +211,40 @@ the only difference being that the flat `"roles.*"` key is no longer also emitte
 in — and is what `FormRequestTransformer` calls to build the request's `.ts` interface. `analyzeField()`
 answers a narrower question a single call site needs: given one dotted path, what does *that* node
 compose to? It builds the same trie from the same raw rules, walks it segment by segment, and returns a
-`FormRequestRuleNode` whose `fieldPath` echoes the path back — or `null` when a segment is not declared.
+`FormRequestRuleNode` whose `fieldPath` echoes the path back.
 
 Because it is the same trie and the same `composeTrieNode()`, the answer for `options.default` is
 necessarily the type the request's own interface nests under `options`: a sibling `options.*` wildcard is
 never consulted, since the walk descends into `children['default']` and the wildcard is `default`'s
 sibling, not its child. The node's own descendants still compose in, so `analyzeField('order')` on a
-request declaring `order.id` returns the composed object, JSDoc hoisting included.
+request declaring `order.id` returns the composed object with `@format uuid order.id` hoisted onto it —
+`collectChildJsDoc()` runs exactly as `normalizeRules()` runs it, so the two entry points cannot drift.
 
-Two paths it deliberately does not reach. A `*` segment resolves to the *element* node, which describes
-one match rather than the list `data_get()` builds from all of them — `KnownMethodRuleHandler` declines
-such a key rather than emitting the element type (see
-[known gaps](../known-gaps.md)). And the walk splits on every `.`, unlike `buildRuleTrie()`, which first
-protects `\.` behind `DOT_PLACEHOLDER` — so the escaped-dot attribute `'v1\.0'` is unreachable by path.
-That matches `data_get()`, which splits the same way and cannot reach it either, so the two agree.
+### When it returns `null`
 
-`KnownMethodRuleHandler::validatedKeyRule()` is the only caller today: it is what makes
-`$request->validated('options.default')` type as `string` instead of `unknown`.
+- **An undeclared segment.** Nothing in the rules reaches that path.
+- **A prohibited node anywhere *on* the path.** `composeObjectNode()` drops a prohibited child outright,
+  so nothing beneath one appears in the composed type either. `ArrayRulesRequest` declares `order.secret`
+  prohibited and `order.secret.token` required; `order` composes to `{ id: string; items: … }` with no
+  `secret` key, so `analyzeField('order.secret.token')` must decline rather than describe a key no payload
+  can carry. Only ancestors are filtered here — a prohibited *target* is returned with `isProhibited`
+  set, leaving the caller to decide, which is what `validatedKeyRule()` already did.
+- **An escaped-dot key.** The walk splits on every `.`, unlike `buildRuleTrie()`, which first protects
+  `\.` behind `DOT_PLACEHOLDER`, so `'v1\.0'` is unreachable by path. This is the correct answer rather
+  than a shortfall: `data_get()` splits the key the same way and cannot reach the attribute either.
+
+A `*` segment is *not* filtered here — the element node it resolves to is a truthful trie answer. It is
+the caller's expansion semantics that differ, so `KnownMethodRuleHandler` declines those keys itself (see
+[known gaps](../known-gaps.md)).
+
+### Behaviour change: `validated()` on an escaped-dot key
+
+`KnownMethodRuleHandler::validatedKeyRule()` is the only caller today. Before it looked up by path, it
+scanned `analyze()`'s top-level nodes for a matching `fieldPath` — and `'v1\.0'` *is* a top-level node,
+named `v1.0`. So `$request->validated('v1.0')` used to type as a non-optional `string` while the runtime
+call returns `null`, because `data_get('v1.0')` splits on the dot and never finds the attribute. It now
+declines and the property types as `unknown`. That is a property moving from a real type to `unknown`,
+but the real type was wrong; `unknown` is the honest answer for a call that returns `null`.
 
 ## JSDoc hoisting: a nested annotation still reaches the reader
 

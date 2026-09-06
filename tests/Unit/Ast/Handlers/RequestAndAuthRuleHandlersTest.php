@@ -27,6 +27,7 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\VariadicPlaceholder;
+use Workbench\App\Http\Requests\ArrayRulesRequest;
 use Workbench\App\Http\Requests\DynamicRequest;
 use Workbench\App\Http\Requests\NestedEdgeCasesRequest;
 use Workbench\App\Http\Requests\StorePostRequest;
@@ -287,6 +288,21 @@ it('types validated() for a dotted key the rules declare', function () {
 
     expect((new KnownMethodRuleHandler)->resolve($call, $scope, requestRuleEngine()))
         ->toBe(['type' => 'string', 'optional' => true]);
+});
+
+// A prohibited rule keeps the key out of the generated interface entirely, so neither it nor
+// anything nested under it can reach a payload — the whole subtree declines.
+it('declines validated() for a prohibited key and for one under a prohibited ancestor', function () {
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $scope->requestVarNames = ['request' => NestedEdgeCasesRequest::class];
+    $prohibited = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('meta.secret'))]);
+
+    $nested = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $nested->requestVarNames = ['request' => ArrayRulesRequest::class];
+    $underProhibited = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('order.secret.token'))]);
+
+    expect((new KnownMethodRuleHandler)->resolve($prohibited, $scope, requestRuleEngine()))->toBeNull()
+        ->and((new KnownMethodRuleHandler)->resolve($underProhibited, $nested, requestRuleEngine()))->toBeNull();
 });
 
 // data_get() expands `*` into a list of every match, so the `*` trie node types one element, not
