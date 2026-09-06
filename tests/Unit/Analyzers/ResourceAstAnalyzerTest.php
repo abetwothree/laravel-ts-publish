@@ -4446,6 +4446,7 @@ describe('ResourceAstAnalyzer with ConditionalDefaultsResource — explicit defa
         expect($props['when_no_default']['optional'])->toBeTrue()
             ->and($props['when_with_default']['optional'])->toBeFalse()
             ->and($props['has_with_default']['optional'])->toBeFalse()
+            ->and($props['has_with_null']['optional'])->toBeFalse()
             ->and($props['counted_with_default']['optional'])->toBeFalse();
     });
 
@@ -4469,10 +4470,12 @@ describe('ResourceAstAnalyzer with ConditionalDefaultsResource — explicit defa
 
         expect($props['when_with_default']['type'])->toBe('string | number');
         expect($props['has_with_default']['type'])->toBe('string | number');
+        expect($props['has_with_null']['type'])->toBe('number | null');
         expect($props['counted_with_default']['type'])->toBe('number | string');
         expect($props['aggregated_with_default']['type'])->toBe('number | string');
         expect($props['appended_with_default']['type'])->toBe('string | number');
-        expect($props['exists_with_default']['type'])->toBe('boolean | string');
+        expect($props['appended_with_null']['type'])->toBe('number | null');
+        expect($props['exists_with_default']['type'])->toBe('string | null');
         expect($props['unless_with_default']['type'])->toBe('string | number');
     });
 
@@ -4537,7 +4540,8 @@ describe('ResourceAstAnalyzer with ConditionalDefaultsResource — unless/whenAp
 
         expect($props['appended_no_default']['type'])->toBe('string')
             ->and($props['appended_no_default']['optional'])->toBeTrue()
-            ->and($props['appended_with_default']['optional'])->toBeFalse();
+            ->and($props['appended_with_default']['optional'])->toBeFalse()
+            ->and($props['appended_with_null']['optional'])->toBeFalse();
     });
 
     it('types whenExistsLoaded as a boolean-ish existence flag', function () {

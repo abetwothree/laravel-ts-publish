@@ -9314,6 +9314,11 @@
                     "optional": false
                 },
                 {
+                    "name": "has_with_null",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
                     "name": "loaded_with_default",
                     "type": "User | null",
                     "optional": false
@@ -9374,13 +9379,18 @@
                     "optional": false
                 },
                 {
+                    "name": "appended_with_null",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
                     "name": "exists_no_default",
                     "type": "boolean",
                     "optional": true
                 },
                 {
                     "name": "exists_with_default",
-                    "type": "boolean | string",
+                    "type": "string | null",
                     "optional": false
                 },
                 {

@@ -998,8 +998,21 @@ binding.
 properties (the `_exists` suffix → `boolean` fallback, mirroring `_count` → `number`).
 `ConditionalMethodHandler::analyzeWhenExistsLoaded()` emits that same `boolean`, deliberately: a resource and the model it wraps
 disagreeing about the type of the same underlying flag is exactly the kind of divergence this package
-exists to prevent. An explicit default still unions its own type alongside that `boolean`, since the
-runtime can return it in place of the flag.
+exists to prevent. An explicit default unions its own type alongside that `boolean` — but only when a real
+`$value` is passed too, per the next section.
+
+### A null `$value` makes the arm `null`, not the attribute or the flag
+
+`whenHas()`, `whenAppended()` and `whenExistsLoaded()` have no identity-closure swap: none of them
+substitutes the attribute for an unhelpful `$value` the way `whenLoaded()` and `whenCounted()` do. So a
+`$value` that is skipped by a later named argument, or written as a literal `null`, leaves Laravel
+evaluating `value(null, $attribute)` — or, for `whenAppended()`, `value(null)` with no extra argument, per
+[above](#whenappended-types-from-the-named-attribute-like-whenhas). Both are `null`.
+`ConditionalMethodHandler::valueSkipped()` recognises both spellings and the three handlers emit a `null`
+arm for them, leaving only the default to carry a type:
+`whenExistsLoaded('user', null, 'absent')` is `string | null`, never `boolean | string`. A genuinely
+absent `$value` is different again — Laravel's one-argument branch returns the attribute itself, so
+`whenExistsLoaded('user')` stays an optional `boolean`.
 
 ### `transform()` types from the callback's return, not `$value`'s
 
