@@ -247,11 +247,11 @@ return [
         // 'additional_directories' => [],
         // 'included' => [],
         // 'excluded' => [],
+        // 'provider_class' => DefaultModelMetadataProvider::class,
         // 'collector_class' => ModelMetadataCollector::class,
         // 'generator_class' => ModelMetadataGenerator::class,
         // 'transformer_class' => ModelMetadataTransformer::class,
         // 'writer_class' => ModelMetadataWriter::class,
-        // 'provider_class' => DefaultModelMetadataProvider::class,
     ],
 
     /*
