@@ -346,7 +346,7 @@ The other boundary is deliberate: consumers that rewrite a `MethodAnalysis`'s FQ
 importing must build from the mutated DTO, so they keep calling `analyzeMethod()` and
 `AnalysisImports::build()` themselves. There are three:
 
-- `InertiaSharedDataAnalyzer::buildTypeImports()` filters against an analysis it has already run
+- `InertiaSharedDataAnalyzer::buildInferredImports()` filters against an analysis it has already run
   `forgetOverriddenChannels()` over.
 - `ModelMetadataAnalyzer` prunes the same channels inline before building.
 - `BroadcastEventTransformer::transformProperties()` unsets eight channels for each `#[TsCasts]`

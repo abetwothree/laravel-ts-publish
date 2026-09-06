@@ -118,18 +118,6 @@ key walks that same rule trie by path (`FormRequestRulesAnalyzer::analyzeField()
   Closing it means indexing into a hand-written TypeScript type, which the handler cannot do; declining
   every dotted key under an overridden prefix would trade the disagreement for an `unknown`.
 
-### Inertia shared data does not rewrite `EnumResource` types for Tolki
-
-An `EnumResource::make(...)` returned from `HandleInertiaRequests::share()` is analyzed as its bare enum
-type by `InertiaSharedDataAnalyzer::buildTypeImports()`, but with Tolki enabled the shared-data analyzer
-neither rewrites it to `AsEnum<typeof Enum>` nor emits the enum's value import. This predates the
-`typeImports` consolidation: the removed `importStatements` channel was generated only from `#[TsCasts]`
-and contained only `import type` lines.
-
-Use an import-aware `#[TsCasts]` override for that shared property. Supporting the serialized enum shape
-requires the same type-rewrite and separate value-import pipeline used by resource generation; moving the
-value import into `typeImports` would be incorrect.
-
 ### Two same-named enums in one metadata companion collide instead of aliasing
 
 Model metadata imports the enums body inference resolves, so a value the AST reads as an enum contributes

@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Support\TsCastsImportResolver;
 use Composer\ClassMapGenerator\ClassMapGenerator;
+use Illuminate\Support\Facades\Config;
 use ReflectionClass;
 
 /**
@@ -27,6 +28,7 @@ use ReflectionClass;
  *     sharedPageProps: string,
  *     withAllErrors: bool,
  *     typeImports: TypesImportMap,
+ *     valueImports: TypesImportMap,
  * }
  * @phpstan-type OverrideEntry = array{type: string, optional: bool}
  * @phpstan-type SharedPropMap = array<string, OverrideEntry>
@@ -110,15 +112,21 @@ class InertiaSharedDataAnalyzer
 
         $this->forgetOverriddenChannels($analysis, $mergedOverrides);
 
-        $propsType = $this->buildTypeStringWithOverrides($this->collectProps($analysis), $mergedOverrides);
+        $propsType = $this->buildTypeStringWithOverrides(
+            $this->rewriteEnumResourceTypes($this->collectProps($analysis), $analysis),
+            $mergedOverrides,
+        );
+
+        $inferredImports = $this->buildInferredImports($analysis, $propsType);
 
         return [
             'sharedPageProps' => $propsType,
             'withAllErrors' => $this->resolveWithAllErrors($middlewareClass),
             'typeImports' => $this->mergeTypeImports(
-                $this->buildTypeImports($analysis, $propsType),
+                $inferredImports['typeImports'],
                 $resolvedTsCasts['typeImports'],
             ),
+            'valueImports' => $inferredImports['valueImports'],
         ];
     }
 
@@ -153,16 +161,62 @@ class InertiaSharedDataAnalyzer
     }
 
     /**
-     * Resolve the type imports the inferred props need, keeping only names the rendered type spells.
+     * Rewrite each EnumResource-wrapped prop to `AsEnum<typeof Const>`, as resource generation does.
+     *
+     * Applied per property rather than to the whole rendered type, so an enum some other prop still
+     * reads bare keeps that prop's plain type name — and with it its type import.
+     *
+     * @param  SharedPropMap  $props
+     * @return SharedPropMap
+     */
+    protected function rewriteEnumResourceTypes(array $props, MethodAnalysis $analysis): array
+    {
+        if (! Config::boolean('ts-publish.enums.use_tolki_package')) {
+            return $props;
+        }
+
+        foreach ($analysis->enumResources as $name => $fqcn) {
+            if (! isset($props[$name])) {
+                continue;
+            }
+
+            $tsInfo = LaravelTsPublish::toTsType($fqcn);
+
+            $props[$name]['type'] = LaravelTsPublish::substituteEnumType(
+                $props[$name]['type'],
+                $tsInfo['enumTypes'][0] ?? class_basename($fqcn).'Type',
+                'AsEnum<typeof '.($tsInfo['enums'][0] ?? class_basename($fqcn)).'>',
+            );
+        }
+
+        return $props;
+    }
+
+    /**
+     * Resolve the imports the inferred props need, keeping only names the rendered type spells.
      *
      * An override replaces a whole prop, so the type it displaced must not keep an import alive.
      *
+     * @return array{typeImports: TypesImportMap, valueImports: TypesImportMap}
+     */
+    protected function buildInferredImports(MethodAnalysis $analysis, string $propsType): array
+    {
+        $imports = new AnalysisImports()->build($analysis, '');
+
+        return [
+            'typeImports' => $this->keepSpelledNames($imports['typeImports'], $propsType),
+            'valueImports' => $this->keepSpelledNames($imports['valueImports'], $propsType),
+        ];
+    }
+
+    /**
+     * Drop every import name the rendered props type never spells, and any path left empty.
+     *
+     * @param  TypesImportMap  $imports
      * @return TypesImportMap
      */
-    protected function buildTypeImports(MethodAnalysis $analysis, string $propsType): array
+    protected function keepSpelledNames(array $imports, string $propsType): array
     {
-        $imports = new AnalysisImports()->build($analysis, '')['typeImports'];
-
         foreach ($imports as $path => $names) {
             $used = array_values(array_filter(
                 $names,
