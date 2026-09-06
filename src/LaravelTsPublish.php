@@ -2190,7 +2190,7 @@ class LaravelTsPublish
      * The lookbehind's `.` keeps a namespace-qualified `foo.RoleType` unmatched; the lookahead keeps
      * `RoleTypeExtra` unmatched.
      */
-    public static function substituteEnumType(string $typeStr, string $bareTypeName, string $asEnumType): string
+    public function substituteEnumType(string $typeStr, string $bareTypeName, string $asEnumType): string
     {
         $pattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($bareTypeName, '/').'(?![A-Za-z0-9_$])/';
 
