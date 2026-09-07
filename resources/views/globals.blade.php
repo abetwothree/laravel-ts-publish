@@ -1,5 +1,5 @@
 @use('AbeTwoThree\LaravelTsPublish\Facades\JsEmitter')
-@use('AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish')
+@use('AbeTwoThree\LaravelTsPublish\Facades\TsTypeString')
 /* eslint-disable */
 // biome-ignore lint: disable
 // oxlint-disable
@@ -30,7 +30,7 @@ declare global {
 @if($column['description'])
 {!! JsEmitter::formatJsDoc($column['description'], 12) !!}
 @endif
-            {!! JsEmitter::validJsObjectKey($name) !!}{{ $column['optional'] ? '?' : '' }}: {!! LaravelTsPublish::qualifyGlobalType($column['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
+            {!! JsEmitter::validJsObjectKey($name) !!}{{ $column['optional'] ? '?' : '' }}: {!! TsTypeString::qualifyGlobalType($column['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
 @endforeach
 @endif
 @if (count($transformer->mutators) > 0 || count($transformer->appends) > 0)
@@ -39,13 +39,13 @@ declare global {
 @if($mutator['description'])
 {!! JsEmitter::formatJsDoc($mutator['description'], 12) !!}
 @endif
-            {!! JsEmitter::validJsObjectKey($name) !!}{{ $mutator['optional'] ? '?' : '' }}: {!! LaravelTsPublish::qualifyGlobalType($mutator['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
+            {!! JsEmitter::validJsObjectKey($name) !!}{{ $mutator['optional'] ? '?' : '' }}: {!! TsTypeString::qualifyGlobalType($mutator['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
 @endforeach
 @foreach($transformer->appends as $name => $append)
 @if($append['description'])
 {!! JsEmitter::formatJsDoc($append['description'], 12) !!}
 @endif
-            {!! JsEmitter::validJsObjectKey($name) !!}{{ $append['optional'] ? '?' : '' }}: {!! LaravelTsPublish::qualifyGlobalType($append['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
+            {!! JsEmitter::validJsObjectKey($name) !!}{{ $append['optional'] ? '?' : '' }}: {!! TsTypeString::qualifyGlobalType($append['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
 @endforeach
 @endif
 @if (count($transformer->relations) > 0)
@@ -54,7 +54,7 @@ declare global {
 @if($relation['description'])
 {!! JsEmitter::formatJsDoc($relation['description'], 12) !!}
 @endif
-            {!! JsEmitter::validJsObjectKey($name) !!}: {!! LaravelTsPublish::qualifyGlobalType($relation['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
+            {!! JsEmitter::validJsObjectKey($name) !!}: {!! TsTypeString::qualifyGlobalType($relation['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
             {!! JsEmitter::validJsObjectKey($name.'_count') !!}: number;
             {!! JsEmitter::validJsObjectKey($name.'_exists') !!}: boolean;
 @endforeach
@@ -99,14 +99,14 @@ declare global {
 {!! JsEmitter::formatJsDoc($transformer->description, 8) !!}
 @endif
 @if($transformer->typeAlias !== null)
-        export type {{ $transformer->resourceName }} = {!! LaravelTsPublish::qualifyGlobalType($transformer->typeAlias, $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
+        export type {{ $transformer->resourceName }} = {!! TsTypeString::qualifyGlobalType($transformer->typeAlias, $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
 @else
         export interface {{ $transformer->resourceName }}{!! count($transformer->tsExtends) > 0 ? ' extends '.implode(', ', $transformer->tsExtends) : '' !!} {
 @foreach ($transformer->properties as $name => $property)
 @if($property['description'])
 {!! JsEmitter::formatJsDoc($property['description'], 12) !!}
 @endif
-            {!! JsEmitter::validJsObjectKey($name, allowIndexSignature: true) !!}{!! $property['optional'] ? '?' : '' !!}: {!! LaravelTsPublish::qualifyGlobalType(LaravelTsPublish::rewriteAsEnumToType($property['type'], $transformer->globalEnumConstMap()), $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
+            {!! JsEmitter::validJsObjectKey($name, allowIndexSignature: true) !!}{!! $property['optional'] ? '?' : '' !!}: {!! TsTypeString::qualifyGlobalType(TsTypeString::rewriteAsEnumToType($property['type'], $transformer->globalEnumConstMap()), $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
 @endforeach
         }
 @endif
@@ -149,7 +149,7 @@ $optional = ! $field['isRequired'] ? '?' : '';
 @php
 $optional = $prop['optional'] ? '?' : '';
 @endphp
-            {!! JsEmitter::validJsObjectKey($name) !!}{{ $optional }}: {!! LaravelTsPublish::qualifyGlobalType($prop['type'], $globalTypesByNamespace, $namespace, $transformer->globalTypeReferenceMap()) !!};
+            {!! JsEmitter::validJsObjectKey($name) !!}{{ $optional }}: {!! TsTypeString::qualifyGlobalType($prop['type'], $globalTypesByNamespace, $namespace, $transformer->globalTypeReferenceMap()) !!};
 @endforeach
         }
 @endforeach

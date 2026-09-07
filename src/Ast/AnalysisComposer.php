@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
@@ -89,7 +90,7 @@ final class AnalysisComposer
                 continue;
             }
 
-            $this->properties[$propName]['type'] = LaravelTsPublish::aliasPropertyType(
+            $this->properties[$propName]['type'] = TsTypeString::aliasPropertyType(
                 $this->properties[$propName]['type'],
                 $fqcns,
                 $nameMap,
@@ -209,7 +210,7 @@ final class AnalysisComposer
                     .' | '.$typeName.($arm['directIsArray'] ? '[]' : '')
                     .($arm['nullable'] ? ' | null' : '');
             } else {
-                $type = LaravelTsPublish::substituteEnumType(
+                $type = TsTypeString::substituteEnumType(
                     $this->properties[$propName]['type'],
                     $typeName,
                     'AsEnum<typeof '.$constName.'>',
@@ -237,7 +238,7 @@ final class AnalysisComposer
                 continue;
             }
 
-            $this->properties[$propName]['type'] = LaravelTsPublish::aliasPropertyType(
+            $this->properties[$propName]['type'] = TsTypeString::aliasPropertyType(
                 $this->properties[$propName]['type'],
                 $fqcns,
                 $this->enumConstMap,
@@ -256,7 +257,7 @@ final class AnalysisComposer
         $rewritten = [];
         $index = 0;
 
-        foreach (LaravelTsPublish::splitTopLevelUnion($type) as $token) {
+        foreach (TsTypeString::splitTopLevelUnion($type) as $token) {
             if ($token === 'null' || ! isset($fqcns[$index])) {
                 $rewritten[] = $token;
 
@@ -363,7 +364,7 @@ final class AnalysisComposer
         foreach ($imports as $path => $names) {
             $kept = array_values(array_filter(
                 $names,
-                fn (string $name): bool => LaravelTsPublish::typeNameOccursIn($this->localName($name), $rendered),
+                fn (string $name): bool => TsTypeString::typeNameOccursIn($this->localName($name), $rendered),
             ));
 
             if ($kept === []) {

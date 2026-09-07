@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
@@ -475,7 +476,7 @@ class InertiaPageAnalyzer
     {
         $structural = (string) preg_replace('/\b(?:'.implode('|', self::UTILITY_TYPES).')</', '<', $pageType);
 
-        return LaravelTsPublish::typeNameOccursIn($name, $structural);
+        return TsTypeString::typeNameOccursIn($name, $structural);
     }
 
     /**

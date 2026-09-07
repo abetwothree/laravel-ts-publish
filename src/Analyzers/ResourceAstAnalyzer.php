@@ -31,6 +31,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesClassNames;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
@@ -513,7 +514,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 $importPath = $tsCasts['importPaths'][$column] ?? null;
 
                 if ($importPath !== null) {
-                    $importable = LaravelTsPublish::extractImportableTypes($type);
+                    $importable = TsTypeString::extractImportableTypes($type);
 
                     // A type with no importable token (e.g. `Record<string, unknown>`) must not
                     // materialise an empty list under its path.
@@ -825,7 +826,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 }
 
                 if (is_array($value) && isset($value['import'])) {
-                    foreach (LaravelTsPublish::extractImportableTypes($type) as $importName) {
+                    foreach (TsTypeString::extractImportableTypes($type) as $importName) {
                         $analysis->customImports[$value['import']][] = $importName;
                     }
                 }
@@ -1202,7 +1203,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
      */
     private function unionBranchTypes(array $types): string
     {
-        return LaravelTsPublish::hoistNull($types);
+        return TsTypeString::hoistNull($types);
     }
 
     /**

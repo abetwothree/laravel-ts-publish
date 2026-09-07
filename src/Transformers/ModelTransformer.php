@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsModelDto;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\ModelInspector;
 use AbeTwoThree\LaravelTsPublish\RelationNullable;
@@ -217,7 +218,7 @@ class ModelTransformer extends CoreTransformer
         $this->optionalOverrides = $result['optionalOverrides'];
 
         foreach ($result['importPaths'] as $column => $importPath) {
-            foreach (LaravelTsPublish::extractImportableTypes($result['overrides'][$column]) as $importName) {
+            foreach (TsTypeString::extractImportableTypes($result['overrides'][$column]) as $importName) {
                 $this->customImports[$importPath][] = $importName;
             }
         }
@@ -604,25 +605,25 @@ class ModelTransformer extends CoreTransformer
         $nameMap = $this->enumFqcnMap + $this->modelFqcnMap;
 
         foreach ($this->columns as $key => $entry) {
-            $this->columns[$key]['type'] = LaravelTsPublish::aliasPropertyType(
+            $this->columns[$key]['type'] = TsTypeString::aliasPropertyType(
                 $entry['type'], $this->columnFqcns[$key] ?? [], $nameMap, $this->importAliases,
             );
         }
 
         foreach ($this->mutators as $key => $entry) {
-            $this->mutators[$key]['type'] = LaravelTsPublish::aliasPropertyType(
+            $this->mutators[$key]['type'] = TsTypeString::aliasPropertyType(
                 $entry['type'], $this->mutatorFqcns[$key] ?? [], $nameMap, $this->importAliases,
             );
         }
 
         foreach ($this->appends as $key => $entry) {
-            $this->appends[$key]['type'] = LaravelTsPublish::aliasPropertyType(
+            $this->appends[$key]['type'] = TsTypeString::aliasPropertyType(
                 $entry['type'], $this->appendsFqcns[$key] ?? [], $nameMap, $this->importAliases,
             );
         }
 
         foreach ($this->relations as $key => $entry) {
-            $this->relations[$key]['type'] = LaravelTsPublish::aliasPropertyType(
+            $this->relations[$key]['type'] = TsTypeString::aliasPropertyType(
                 $entry['type'], $this->relationFqcns[$key] ?? [], $nameMap, $this->importAliases,
             );
         }

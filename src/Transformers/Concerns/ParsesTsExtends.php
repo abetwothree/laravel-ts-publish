@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Transformers\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExtends;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 use ReflectionClass;
@@ -76,7 +76,7 @@ trait ParsesTsExtends
             } else {
                 /** @var array{extends: string, import?: string, types?: list<string>} $entry */
                 $typeNames = isset($entry['import'])
-                    ? ($entry['types'] ?? LaravelTsPublish::extractImportableTypes($entry['extends']))
+                    ? ($entry['types'] ?? TsTypeString::extractImportableTypes($entry['extends']))
                     : [];
                 $rawEntries[] = [
                     'extends' => $entry['extends'],
@@ -102,7 +102,7 @@ trait ParsesTsExtends
         foreach ($reflection->getAttributes(TsExtends::class) as $attr) {
             $instance = $attr->newInstance();
             $typeNames = $instance->import !== null
-                ? ($instance->types ?? LaravelTsPublish::extractImportableTypes($instance->extends))
+                ? ($instance->types ?? TsTypeString::extractImportableTypes($instance->extends))
                 : [];
             $entries[] = [
                 'extends' => $instance->extends,

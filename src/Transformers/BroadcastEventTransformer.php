@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
@@ -407,7 +408,7 @@ class BroadcastEventTransformer extends CoreTransformer
         $nameMap = $this->enumFqcnMap + $this->modelFqcnMap;
 
         foreach ($this->properties as $key => $entry) {
-            $this->properties[$key]['type'] = LaravelTsPublish::aliasPropertyType(
+            $this->properties[$key]['type'] = TsTypeString::aliasPropertyType(
                 $entry['type'],
                 $this->propertyFqcns[$key] ?? [],
                 $nameMap,
@@ -451,7 +452,7 @@ class BroadcastEventTransformer extends CoreTransformer
             $type = $this->tsTypeOverrides[$property] ?? null;
 
             if ($type !== null) {
-                foreach (LaravelTsPublish::extractImportableTypes($type) as $importName) {
+                foreach (TsTypeString::extractImportableTypes($type) as $importName) {
                     $imports[$importPath][] = $importName;
                 }
             }

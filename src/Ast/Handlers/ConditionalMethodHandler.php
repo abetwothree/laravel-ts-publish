@@ -13,7 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
@@ -163,8 +163,8 @@ final class ConditionalMethodHandler implements ExpressionHandler
         }
 
         $members = array_values(array_unique([
-            ...LaravelTsPublish::splitTopLevelUnion($value['type']),
-            ...LaravelTsPublish::splitTopLevelUnion($default['type']),
+            ...TsTypeString::splitTopLevelUnion($value['type']),
+            ...TsTypeString::splitTopLevelUnion($default['type']),
         ]));
 
         // `[]` is assignable to every array type, so an empty-array arm beside a real one would only

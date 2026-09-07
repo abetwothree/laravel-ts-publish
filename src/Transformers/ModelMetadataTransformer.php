@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsModelMetadataDto;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Metadata\Contracts\ModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Metadata\ModelMetadataProviderResolver;
 use AbeTwoThree\LaravelTsPublish\Support\TsCastsImportResolver;
@@ -200,7 +201,7 @@ class ModelMetadataTransformer extends CoreTransformer
         foreach ($this->analysis->importFreeKeys($payloadKeys) as $property) {
             $type = $this->analysis->types[$property];
 
-            if (LaravelTsPublish::shapeValueHasUnimportableToken($type, $this->analysis->importedNames())) {
+            if (TsTypeString::shapeValueHasUnimportableToken($type, $this->analysis->importedNames())) {
                 throw new InvalidArgumentException(
                     "Model metadata for model [{$this->findable}] property [{$property}] has type [{$type}] "
                     .'whose import cannot be inferred; declare it with #[TsCasts].',

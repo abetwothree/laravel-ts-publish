@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsCastsImportResolver;
 use Composer\ClassMapGenerator\ClassMapGenerator;
 use Illuminate\Support\Facades\Config;
@@ -182,7 +183,7 @@ class InertiaSharedDataAnalyzer
 
             $tsInfo = LaravelTsPublish::toTsType($fqcn);
 
-            $props[$name]['type'] = LaravelTsPublish::substituteEnumType(
+            $props[$name]['type'] = TsTypeString::substituteEnumType(
                 $props[$name]['type'],
                 $tsInfo['enumTypes'][0] ?? class_basename($fqcn).'Type',
                 'AsEnum<typeof '.($tsInfo['enums'][0] ?? class_basename($fqcn)).'>',
@@ -220,7 +221,7 @@ class InertiaSharedDataAnalyzer
         foreach ($imports as $path => $names) {
             $used = array_values(array_filter(
                 $names,
-                fn (string $name): bool => LaravelTsPublish::typeNameOccursIn($name, $propsType),
+                fn (string $name): bool => TsTypeString::typeNameOccursIn($name, $propsType),
             ));
 
             if ($used === []) {

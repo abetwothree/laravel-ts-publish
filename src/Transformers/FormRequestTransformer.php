@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsFormRequestDto;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
 use Illuminate\Foundation\Http\FormRequest;
@@ -217,7 +218,7 @@ class FormRequestTransformer extends CoreTransformer
             $type = $this->tsTypeOverrides[$field] ?? null;
 
             if ($type !== null) {
-                foreach (LaravelTsPublish::extractImportableTypes($type) as $importName) {
+                foreach (TsTypeString::extractImportableTypes($type) as $importName) {
                     $imports[$importPath][] = $importName;
                 }
             }

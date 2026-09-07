@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Config;
@@ -268,7 +269,7 @@ final class InlineArrayHandler implements ExpressionHandler
                 // A mixed wrap/direct ternary needs both arms named, whether or not the merged union
                 // still shows them apart; blanket substitution would rewrite the direct arm too.
                 $isMixed = ($analysis->directEnumFqcns[$prop['name']] ?? null) === $fqcn;
-                $members = LaravelTsPublish::splitTopLevelUnion($prop['type']);
+                $members = TsTypeString::splitTopLevelUnion($prop['type']);
 
                 $prop['type'] = $isMixed
                     ? $this->expandMixedEnumType(
@@ -277,7 +278,7 @@ final class InlineArrayHandler implements ExpressionHandler
                         $asEnumType,
                         $analysis->enumResourceArmShapes[$prop['name']] ?? null,
                     )
-                    : LaravelTsPublish::substituteEnumType($prop['type'], $bareTypeName, $asEnumType);
+                    : TsTypeString::substituteEnumType($prop['type'], $bareTypeName, $asEnumType);
             }
 
             unset($prop);
@@ -361,7 +362,7 @@ final class InlineArrayHandler implements ExpressionHandler
         // wrapped one) must not claim an import the transformer would then emit unused.
         $embeddedEnumFqcns = array_values(array_filter(
             $embeddedEnumFqcns,
-            fn (string $fqcn): bool => LaravelTsPublish::typeNameOccursIn(
+            fn (string $fqcn): bool => TsTypeString::typeNameOccursIn(
                 LaravelTsPublish::toTsType($fqcn)['type'],
                 $result['type'],
             ),
