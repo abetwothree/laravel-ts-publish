@@ -150,7 +150,7 @@ accessor, so the resource's own file renders two genuinely different tokens —
 `AsEnum<typeof Status>[] | StatusType[]` — and only the globals file, which has no `AsEnum` import,
 collapses them onto one qualified name.
 
-`LaravelTsPublish::rewriteAsEnumToType()` exists to fold that adjacency before it duplicates, and its
+`TsTypeString::rewriteAsEnumToType()` exists to fold that adjacency before it duplicates, and its
 pair pattern requires the wrap's `>` to be followed directly by the `|` and ends in a
 `(?![A-Za-z0-9_$\[])` lookahead. An array suffix on *either* arm defeats one half or the other, so the
 both-array case never matches; the single-arm substitution then runs anyway and qualifies both arms to

@@ -39,7 +39,7 @@ docblock resolves this to `{ value: number; label: string }` instead.
 
 ### What counts as "vague"
 
-`isVagueTsType(string $type): bool` — a single predicate, defined once on `LaravelTsPublish`
+`isVagueTsType(string $type): bool` — a single predicate, defined once on `Support\TsTypeString`
 (reused by `Concerns\ResolvesAccessorType`'s accessor-closure-vs-docblock check and by
 `ModelAttributeResolver::refineWithPropertyDocblock()`'s `@property` refinement below, both of
 which follow the same "keep looking while still vague" shape) — treats a type as vague when it

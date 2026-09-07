@@ -232,7 +232,7 @@ FQCNs (from ternary/union branches), and self-keyed FQCN entries (from embedded 
 relation filters). All three consumers live inside `ResourceTransformer::rewriteEnumResourceTypes()`:
 the `$isMixed` check is key-sensitive, testing whether a property name is a key in the map, while
 the other two — both import-garbage-collection loops — compare values only and work correctly for
-both entry kinds. The shared `LaravelTsPublish::substituteEnumType()` never reads this map at all.
+both entry kinds. The shared `TsTypeString::substituteEnumType()` never reads this map at all.
 
 `InlineArrayHandler::analyzeInlineArray()` runs the identical `$isMixed` check for a *nested* key, against its own
 method-local `ResourceAnalysis` rather than `ResourceTransformer`'s instance maps — see
@@ -247,7 +247,7 @@ analyzer's own type string, in which the enum appears as its bare TS type name (
 `AsEnum<typeof Role>` by *substituting the bare token in place*, for the ordinary (non-mixed) case:
 `ResourceTransformer::rewriteEnumResourceTypes()` for a top-level property, and
 `InlineArrayHandler::analyzeInlineArray()` for one nested inside an inline array literal. Both call
-the one shared `LaravelTsPublish::substituteEnumType()`, whose strict token pattern excludes `.` from
+the one shared `TsTypeString::substituteEnumType()`, whose strict token pattern excludes `.` from
 its lookbehind so a namespace-qualified `foo.RoleType` is left alone, and whose lookahead stops
 `RoleType` matching the prefix of `RoleTypeExtra`. A nested key whose ternary is *mixed* — wrapped in
 one arm, read directly in the other — instead goes through
@@ -290,7 +290,7 @@ For a wrap nested inside an inline array, the bare-const string *is* what leaves
 `InlineArrayHandler::analyzeInlineArray()`'s substituted type string travels out flat, keyed by the *outer* property
 name, with no alias information attached. `ResourceTransformer::rewriteEnumResourceTypes()`
 corrects it in a dedicated final pass, after `resolveImportConflicts()` has run: for each property
-in `$propertyInlineEnumResourceFqcns` it calls `LaravelTsPublish::aliasPropertyType()`, keyed on
+in `$propertyInlineEnumResourceFqcns` it calls `TsTypeString::aliasPropertyType()`, keyed on
 `$this->enumConstMap` (the unaliased name) and `$this->constImportAliases` (the alias, when one
 exists), walking the FQCN list in the same order `analyzeInlineArray()` built it in. That order
 matters: two inline members can wrap *different* FQCNs that happen to share one bare const name —
@@ -405,7 +405,7 @@ member outright, which is why `analyzeInlineArray()`'s occurrence filter has to 
 import: the token it would name is no longer spelled in the emitted type, and this package's own
 `tsconfig.json` sets `noUnusedLocals`, so an unused import is a consumer build failure, not a wart.
 
-In the globals tree, `LaravelTsPublish::rewriteAsEnumToType()`'s pair pattern folds an *exact*
+In the globals tree, `TsTypeString::rewriteAsEnumToType()`'s pair pattern folds an *exact*
 `AsEnum<typeof Const> | EnumTypeName` adjacency — no `[]` anywhere in that span, neither between
 the two names nor trailing the bare one — to a single qualified reference —
 `status_when_not_null_arrow`'s top-level homogeneous pair collapses to one `StatusType` reference,
@@ -480,9 +480,9 @@ Three things had to change together to make each arm reachable, not just one:
   emits `Pick<CrmUser, 'id' | 'name'> | Pick<ModelsUser, 'id' | 'name'> | null` — two arms, matching
   the two real models. The FQCN push into `embeddedModelFqcns` also moved outside the
   "type accepted" guard it used to share with the string dedupe, and the returned list is no longer
-  passed through `array_unique()`: `LaravelTsPublish::aliasPropertyType()` consumes that list
+  passed through `array_unique()`: `TsTypeString::aliasPropertyType()` consumes that list
   positionally against left-to-right occurrences of each basename in the rendered type — its own
-  docblock in `LaravelTsPublish.php` states the contract directly: never dedupe it, since a caller
+  docblock in `Support/TsTypeString.php` states the contract directly: never dedupe it, since a caller
   may need more entries than real occurrences, and the method only ever consumes the matching
   prefix. A real repeated occurrence has to survive as a repeat, not collapse to one entry.
 
@@ -770,7 +770,7 @@ type alone — instead of `string | number, required`. The fix was checked again
 
 ### `stripNullArm()` only drops the top-level `null` arm
 
-`stripNullArm()` splits the type on `LaravelTsPublish::splitTopLevelUnion()`, a depth-aware splitter over
+`stripNullArm()` splits the type on `TsTypeString::splitTopLevelUnion()`, a depth-aware splitter over
 braces, parens, angle brackets, and square brackets, and filters out a member equal to exactly `'null'`.
 Only a union member sitting at depth zero is ever removed — `(string | null)[]` and `{ a: string; b: number
 | null }` both keep their nested `| null` untouched, since neither nested `null` is a top-level member of
@@ -1056,7 +1056,7 @@ explicit `SomeResource::class` argument, a `#[UseResource]`/`#[UseResourceCollec
 Laravel's naming convention (`ToResourceHandler::guessResourceNames()`). Only the last one *invents* a class name, and
 `isResourceClass()` accepts whatever `class_exists()` finds — including a third-party or `#[TsExclude]`d
 resource this package never writes a file for. `ResourceTransformer` would then emit the
-`class_basename()` token plus an import built by `LaravelTsPublish::namespaceToPath()`, which is pure
+`class_basename()` token plus an import built by `TsNaming::namespaceToPath()`, which is pure
 string transformation and never touches the filesystem, so the import names a module that does not exist.
 
 `PublishedResourceRegistry` holds the resource classes the current run will actually emit.
@@ -1368,7 +1368,7 @@ deduped whole (`array_unique` over the strings) and then joined. Two branches th
 are both nullable — `$this->regional_hub?->only(['primaryContact', 'manager'])` against
 `->only(['manager', 'secondaryContact', 'primaryContact'])` — survive that dedupe as two distinct
 strings, so a plain `implode(' | ', …)` repeated the nullable marker once per arm: `A | null | B | null`.
-`unionBranchTypes()` splits every arm on its top-level `|` via `LaravelTsPublish::splitTopLevelUnion()`
+`unionBranchTypes()` splits every arm on its top-level `|` via `TsTypeString::splitTopLevelUnion()`
 (depth-aware over `{`, `(`, `<` and `[`, and it skips single-quoted literals whole), drops the top-level
 `null` members, and appends one trailing `| null` if any arm carried one. A nested null — `| null` on a
 member inside `{ … }` — sits inside a group, so the splitter never yields it and it is left alone. Arm

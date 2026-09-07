@@ -325,7 +325,7 @@ unions two same-basename models rendered `User | User` against imports already a
 
 **Why the three inline queues append instead of assigning or deduping.** `inlineEnumFqcns`,
 `inlineModelFqcns` and `inlineEnumResourceFqcns` reach
-`LaravelTsPublish::aliasPropertyType()` as positional queues, walked against the type-name tokens in
+`TsTypeString::aliasPropertyType()` as positional queues, walked against the type-name tokens in
 the rendered type string. A property whose inline object names the same FQCN twice needs two entries
 or the second token draws the first token's alias, so a repeat has to survive as a repeat.
 
