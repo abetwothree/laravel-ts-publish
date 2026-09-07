@@ -4,10 +4,17 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
+use AbeTwoThree\LaravelTsPublish\Support\JsEmitter as JsEmitterService;
+use AbeTwoThree\LaravelTsPublish\Support\TsNaming as TsNamingService;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
+
+use function Orchestra\Testbench\workbench_path;
+
 use Workbench\App\Enums\Status;
+use Workbench\App\Http\Resources\AddressResource;
 
 test('LaravelTsPublish still answers every JsEmitter helper, byte-equal to JsEmitter', function () {
     $routeArgs = [
@@ -103,4 +110,55 @@ test('every TsTypeString delegation input is one the helper actually transforms'
         ->toBe('AsEnum<typeof RoleEnum> | null')
         ->and(TsTypeString::rewriteAsEnumToType('AsEnum<typeof StatusEnum> | Status', ['StatusEnum' => 'enums.Status']))
         ->toBe('enums.Status');
+});
+
+test('LaravelTsPublish still answers every TsNaming helper, byte-equal to TsNaming', function () {
+    $imports = ['../enums' => ['Status'], 'luxon' => ['DateTime'], './types' => ['UserType']];
+    $insidePath = base_path('src/Nested/Thing.php');
+    $statusFile = workbench_path('app/Enums/Status.php');
+
+    // CoreTransformer and WatcherJsonWriter call resolveRelativePath statically on the concrete
+    // class, so the static form is pinned here alongside the facade form.
+    expect(LaravelTsPublishService::resolveRelativePath($insidePath))->toBe(TsNaming::resolveRelativePath($insidePath))
+        ->and(LaravelTsPublishService::resolveRelativePath(__FILE__))->toBe(TsNaming::resolveRelativePath(__FILE__))
+        ->and(LaravelTsPublish::resolveRelativePath($insidePath))->toBe(TsNaming::resolveRelativePath($insidePath))
+        ->and(LaravelTsPublish::keyCase('some_relation', 'camel'))->toBe(TsNaming::keyCase('some_relation', 'camel'))
+        ->and(LaravelTsPublish::keyCase('some_relation', 'pascal'))->toBe(TsNaming::keyCase('some_relation', 'pascal'))
+        ->and(LaravelTsPublish::resourceTypeName(AddressResource::class))
+        ->toBe(TsNaming::resourceTypeName(AddressResource::class))
+        ->and(LaravelTsPublish::namespaceToPath('App\\UserSettings\\AccountPreference'))
+        ->toBe(TsNaming::namespaceToPath('App\\UserSettings\\AccountPreference'))
+        ->and(LaravelTsPublish::relativeImportPath('app/domain/billing/models', 'shipping/enums'))
+        ->toBe(TsNaming::relativeImportPath('app/domain/billing/models', 'shipping/enums'))
+        ->and(LaravelTsPublish::sortImportPaths($imports))->toBe(TsNaming::sortImportPaths($imports))
+        ->and(LaravelTsPublish::resolveClassFromFile($statusFile))->toBe(TsNaming::resolveClassFromFile($statusFile));
+});
+
+// Guards the assertions above, and pins the second parameter of each two-argument helper: keyCase's
+// $case, and relativeImportPath's $toNamespacePath, whose order a delegation could silently swap.
+test('every TsNaming delegation input is one the helper actually transforms', function () {
+    $insidePath = base_path('src/Nested/Thing.php');
+
+    expect(TsNaming::resolveRelativePath($insidePath))->toBe('src/Nested/Thing.php')
+        ->and(TsNaming::keyCase('some_relation', 'camel'))->toBe('someRelation')
+        ->and(TsNaming::keyCase('some_relation', 'pascal'))->toBe('SomeRelation')
+        ->and(TsNaming::resourceTypeName(AddressResource::class))->toBe('Address')
+        ->and(TsNaming::namespaceToPath('App\\UserSettings\\AccountPreference'))->toBe('app/user-settings')
+        ->and(TsNaming::relativeImportPath('app/domain/billing/models', 'shipping/enums'))
+        ->toBe('../../../../shipping/enums')
+        ->and(TsNaming::relativeImportPath('shipping/enums', 'app/domain/billing/models'))
+        ->toBe('../../app/domain/billing/models')
+        ->and(array_keys(TsNaming::sortImportPaths(['../enums' => ['Status'], 'luxon' => ['DateTime'], './types' => ['UserType']])))
+        ->toBe(['luxon', '../enums', './types'])
+        ->and(TsNaming::resolveClassFromFile(workbench_path('app/Enums/Status.php')))
+        ->toBe('Workbench\\App\\Enums\\Status');
+});
+
+// Every delegation reaches these helpers through their facade, which memoises the instance itself, so
+// the container bindings change nothing observable today. They stop being decoration the moment a
+// caller is constructor-injected: TsNaming's $resourceTypeNames cache would then never warm.
+test('each extracted helper is bound as one shared instance', function () {
+    expect(app(JsEmitterService::class))->toBe(app(JsEmitterService::class))
+        ->and(app(TsTypeStringService::class))->toBe(app(TsTypeStringService::class))
+        ->and(app(TsNamingService::class))->toBe(app(TsNamingService::class));
 });
