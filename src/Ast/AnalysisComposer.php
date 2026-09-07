@@ -154,6 +154,9 @@ final class AnalysisComposer
      */
     private function resolveImportConflicts(): void
     {
+        $this->importAliases = [];
+        $this->constImportAliases = [];
+
         $skip = ['Models', 'Enums', 'Http', 'Resources', 'App'];
 
         $registry = new ImportNameRegistry($skip);
