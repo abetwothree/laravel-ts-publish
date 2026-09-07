@@ -83,6 +83,10 @@ final class AstEngine
      * Analyze a method and resolve its imports in one call — the whole contract a consumer needs,
      * except for a $wrap = null collection, whose whole answer is MethodAnalysis::$flatTypeAlias.
      *
+     * The three fields agree with each other: same-basename imports are aliased apart and the
+     * property types spell the aliases, an `EnumResource::make()` property is already wrapped as
+     * `AsEnum<typeof Const>`, and nothing is imported that no property type names.
+     *
      * `$fromNamespacePath` is the generated file's own namespace path, so relative import paths
      * resolve from where the file will live; pass '' for a file at the output root.
      *
@@ -99,13 +103,9 @@ final class AstEngine
         ?string $modelClass = null,
         string $fromNamespacePath = '',
     ): AnalysisResult {
-        $analysis = $this->analyzeMethod($class, $method, $modelClass);
-        $imports = new AnalysisImports()->build($analysis, $fromNamespacePath);
-
-        return new AnalysisResult(
-            properties: $analysis->properties,
-            typeImports: $imports['typeImports'],
-            valueImports: $imports['valueImports'],
+        return new AnalysisComposer()->compose(
+            $this->analyzeMethod($class, $method, $modelClass),
+            $fromNamespacePath,
         );
     }
 
