@@ -213,12 +213,19 @@ answers a narrower question a single call site needs: given one dotted path, wha
 compose to? It builds the same trie from the same raw rules, walks it segment by segment, and returns a
 `FormRequestRuleNode` whose `fieldPath` echoes the path back.
 
-Because it is the same trie and the same `composeTrieNode()`, the answer for `options.default` is
-necessarily the type the request's own interface nests under `options`: a sibling `options.*` wildcard is
-never consulted, since the walk descends into `children['default']` and the wildcard is `default`'s
-sibling, not its child. The node's own descendants still compose in, so `analyzeField('order')` on a
-request declaring `order.id` returns the composed object with `@format uuid order.id` hoisted onto it —
-`collectChildJsDoc()` runs exactly as `normalizeRules()` runs it, so the two entry points cannot drift.
+Because it is the same trie and the same `composeTrieNode()`, the answer for `options.default` is the
+type the request's own interface nests under `options` **as the rules describe it**: a sibling `options.*`
+wildcard is never consulted, since the walk descends into `children['default']` and the wildcard is
+`default`'s sibling, not its child. The node's own descendants still compose in, so
+`analyzeField('order')` on a request declaring `order.id` returns the composed object with
+`@format uuid order.id` hoisted onto it — `collectChildJsDoc()` runs exactly as `normalizeRules()` runs
+it, so the two entry points cannot drift.
+
+The qualifier is load-bearing. Nothing above the trie is shared: a `#[TsCasts(['options' => 'MyOptions'])]`
+on the request replaces that whole subtree in the emitted interface, which `FormRequestTransformer` applies
+*after* calling `analyze()`, while `analyzeField('options.default')` still composes the rule the override
+replaced. That divergence is recorded in [known gaps](../known-gaps.md); this section describes the trie,
+not the emitted file.
 
 ### When it returns `null`
 

@@ -89,8 +89,8 @@ class FormRequestRulesAnalyzer
 
     /**
      * Compose one rule by dotted path, so a caller typing `validated('a.b')` reads the same trie
-     * node the request's own interface nests under `a`. Null when the path is undeclared, or runs
-     * through a prohibited node, whose subtree the composed type drops.
+     * node the request's interface nests under `a` — unless a `#[TsCasts]` override replaced that
+     * whole subtree, which only the interface honours. Null for an undeclared or prohibited path.
      *
      * Splitting on every `.` matches `data_get()`, which cannot reach an escaped-dot key (`'v1\.0'`)
      * either — null is that key's correct answer, not a shortfall.
