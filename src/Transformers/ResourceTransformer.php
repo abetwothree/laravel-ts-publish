@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\ModelClassResolver;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsResourceDto;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
@@ -200,10 +201,10 @@ class ResourceTransformer extends CoreTransformer
             $this->resourceName = $tsResourceInstance->name ?? $this->reflectionResource->getShortName();
             $this->description = $tsResourceInstance->description !== ''
                 ? $tsResourceInstance->description
-                : LaravelTsPublish::parseDocBlockDescription($this->reflectionResource->getDocComment());
+                : JsEmitter::parseDocBlockDescription($this->reflectionResource->getDocComment());
         } else {
             $this->resourceName = $this->reflectionResource->getShortName();
-            $this->description = LaravelTsPublish::parseDocBlockDescription($this->reflectionResource->getDocComment());
+            $this->description = JsEmitter::parseDocBlockDescription($this->reflectionResource->getDocComment());
         }
 
         return $this;

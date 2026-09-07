@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Metadata\ModelMetadataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsModelMetadataDto;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Metadata\Contracts\ModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Metadata\ModelMetadataProviderResolver;
@@ -395,7 +396,7 @@ class ModelMetadataTransformer extends CoreTransformer
         }
 
         if ($value instanceof UnitEnum) {
-            return $this->normalizeMetadataValue(LaravelTsPublish::enumScalar($value), $path, $depth, $objectStack);
+            return $this->normalizeMetadataValue(JsEmitter::enumScalar($value), $path, $depth, $objectStack);
         }
 
         if (is_array($value)) {

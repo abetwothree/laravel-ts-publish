@@ -1,4 +1,4 @@
-@use('AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish')
+@use('AbeTwoThree\LaravelTsPublish\Facades\JsEmitter')
 @foreach ($data->typeImports as $path => $types)
 import type { {{ implode(', ', $types) }} } from '{{ $path }}';
 @endforeach
@@ -14,10 +14,10 @@ if ($data->isDynamic) {
 }
 @endphp
 @if($data->isDynamic)
-{!! LaravelTsPublish::formatJsDoc($formRequestDoc) !!}
+{!! JsEmitter::formatJsDoc($formRequestDoc) !!}
 export type {{ $data->typeName }} = Record<string, unknown>;
 @else
-{!! LaravelTsPublish::formatJsDoc($formRequestDoc) !!}
+{!! JsEmitter::formatJsDoc($formRequestDoc) !!}
 export interface {{ $data->typeName }}{!! count($data->tsExtends) > 0 ? ' extends ' . implode(', ', $data->tsExtends) : '' !!} {
 @foreach ($data->fields as $field)
 @if($field['isProhibited'])
@@ -30,9 +30,9 @@ if ($field['isNullable']) {
 $optional = ! $field['isRequired'] ? '?' : '';
 @endphp
 @if(count($field['jsDocMetadata']) > 0)
-{!! LaravelTsPublish::formatJsDoc(implode("\n", $field['jsDocMetadata']), 4) !!}
+{!! JsEmitter::formatJsDoc(implode("\n", $field['jsDocMetadata']), 4) !!}
 @endif
-    {!! LaravelTsPublish::validJsObjectKey($field['fieldPath']) !!}{{ $optional }}: {!! $fieldType !!};
+    {!! JsEmitter::validJsObjectKey($field['fieldPath']) !!}{{ $optional }}: {!! $fieldType !!};
 @endif
 @endforeach
 }

@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Concerns\FiltersRoutes;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsRouteDto;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
@@ -122,7 +123,7 @@ class RouteTransformer extends CoreTransformer
         $this->controllerName = $this->reflectionController->getShortName();
         $this->filePath = (string) $this->reflectionController->getFileName();
         $this->namespacePath = LaravelTsPublish::namespaceToPath($this->findable);
-        $this->description = LaravelTsPublish::parseDocBlockDescription($this->reflectionController->getDocComment());
+        $this->description = JsEmitter::parseDocBlockDescription($this->reflectionController->getDocComment());
 
         return $this;
     }
@@ -256,7 +257,7 @@ class RouteTransformer extends CoreTransformer
         $description = null;
 
         if ($this->reflectionController->hasMethod($originalMethodName)) {
-            $desc = LaravelTsPublish::parseDocBlockDescription(
+            $desc = JsEmitter::parseDocBlockDescription(
                 $this->reflectionController->getMethod($originalMethodName)->getDocComment()
             );
             $description = $desc !== '' ? $desc : null;
@@ -390,7 +391,7 @@ class RouteTransformer extends CoreTransformer
         }
 
         // Mirror Wayfinder: the export name is the action method name, never the route name.
-        return LaravelTsPublish::safeJsIdentifier(
+        return JsEmitter::safeJsIdentifier(
             LaravelTsPublish::keyCase($actionMethod, $casing),
             'Method'
         );

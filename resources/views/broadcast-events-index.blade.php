@@ -1,4 +1,4 @@
-@use('AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish')
+@use('AbeTwoThree\LaravelTsPublish\Facades\JsEmitter')
 @if($isEmpty)
 export {};
 @else
@@ -8,12 +8,12 @@ export {};
 
 export type BroadcastEvent =
 @foreach($events as $event)
-    | {!! LaravelTsPublish::toJsLiteral($event['broadcastName']) !!}{{ $loop->last ? ';' : '' }}
+    | {!! JsEmitter::toJsLiteral($event['broadcastName']) !!}{{ $loop->last ? ';' : '' }}
 @endforeach
 
 export const BroadcastEvents = Object.freeze({
 @foreach($events as $event)
-    {!! $event['constKey'] !!}: {!! LaravelTsPublish::toJsLiteral($event['broadcastName']) !!},
+    {!! $event['constKey'] !!}: {!! JsEmitter::toJsLiteral($event['broadcastName']) !!},
 @endforeach
 } as const);
 

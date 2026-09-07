@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 
 /**
  * Flatten an analysis's properties into an inline TypeScript object literal type.
@@ -36,7 +36,7 @@ trait BuildsInlineObjectTypes
         }
 
         $parts = array_map(function (array $prop): string {
-            $key = LaravelTsPublish::validJsObjectKey($prop['name']);
+            $key = JsEmitter::validJsObjectKey($prop['name']);
 
             return $prop['optional'] ? "{$key}?: {$prop['type']}" : "{$key}: {$prop['type']}";
         }, array_values($collapsed));

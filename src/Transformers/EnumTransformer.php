@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsEnumMethod;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnumStaticMethod;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsEnumDto;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
 use BackedEnum;
@@ -125,10 +126,10 @@ class EnumTransformer extends CoreTransformer
             $this->enumName = $tsEnumInstance->name;
             $this->description = $tsEnumInstance->description !== ''
                 ? $tsEnumInstance->description
-                : LaravelTsPublish::parseDocBlockDescription($this->reflectionEnum->getDocComment());
+                : JsEmitter::parseDocBlockDescription($this->reflectionEnum->getDocComment());
         } else {
             $this->enumName = $this->reflectionEnum->getShortName();
-            $this->description = LaravelTsPublish::parseDocBlockDescription($this->reflectionEnum->getDocComment());
+            $this->description = JsEmitter::parseDocBlockDescription($this->reflectionEnum->getDocComment());
         }
 
         $this->filePath = $this->resolveRelativePath((string) $this->reflectionEnum->getFileName());
@@ -184,7 +185,7 @@ class EnumTransformer extends CoreTransformer
 
             $override = $this->tsTypeOverrides[$caseName] ?? [];
 
-            $value = LaravelTsPublish::enumScalar($caseValue);
+            $value = JsEmitter::enumScalar($caseValue);
 
             $description = $override['description'] ?? '';
 
@@ -192,7 +193,7 @@ class EnumTransformer extends CoreTransformer
                 $constant = $this->reflectionEnum->getReflectionConstant($caseName);
 
                 if ($constant !== false) {
-                    $description = LaravelTsPublish::parseDocBlockDescription($constant->getDocComment());
+                    $description = JsEmitter::parseDocBlockDescription($constant->getDocComment());
                 }
             }
 
@@ -243,7 +244,7 @@ class EnumTransformer extends CoreTransformer
             $description = $tsEnumMethodInstance->description ?? '';
 
             if ($description === '') {
-                $description = LaravelTsPublish::parseDocBlockDescription($method->getDocComment());
+                $description = JsEmitter::parseDocBlockDescription($method->getDocComment());
             }
 
             // get the returns, we need to call the method with each case instance and collect the return values to know which TS types to import
@@ -305,7 +306,7 @@ class EnumTransformer extends CoreTransformer
             $description = $tsEnumMethodInstance->description ?? '';
 
             if ($description === '') {
-                $description = LaravelTsPublish::parseDocBlockDescription($method->getDocComment());
+                $description = JsEmitter::parseDocBlockDescription($method->getDocComment());
             }
 
             // For methods, we just call it once and get the return value. It should be a primitive or an array of primitives that can be transformed to JavaScript for functional use.

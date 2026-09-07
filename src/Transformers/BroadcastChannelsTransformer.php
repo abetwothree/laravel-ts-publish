@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
 use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastChannelsDto;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use InvalidArgumentException;
@@ -236,7 +236,7 @@ class BroadcastChannelsTransformer
             );
 
             $isFinalSegment = $children === [];
-            $tsKey = LaravelTsPublish::validJsObjectKey((string) $key);
+            $tsKey = JsEmitter::validJsObjectKey((string) $key);
 
             if ($isFinalSegment) {
                 $returnValue = '`'.$this->toTemplateString($originalName).'` as const';

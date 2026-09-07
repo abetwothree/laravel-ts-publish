@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\FormRequest\FormRequestRuleNode;
 use AbeTwoThree\LaravelTsPublish\Analyzers\FormRequest\FormRequestRulesAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsFormRequestDto;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
@@ -142,13 +143,13 @@ class FormRequestTransformer extends CoreTransformer
         $description = '';
 
         if ($this->reflection->hasMethod('rules')) {
-            $description = LaravelTsPublish::parseDocBlockDescription(
+            $description = JsEmitter::parseDocBlockDescription(
                 $this->reflection->getMethod('rules')->getDocComment()
             );
         }
 
         if ($description === '') {
-            $description = LaravelTsPublish::parseDocBlockDescription($this->reflection->getDocComment());
+            $description = JsEmitter::parseDocBlockDescription($this->reflection->getDocComment());
         }
 
         $this->description = $description;

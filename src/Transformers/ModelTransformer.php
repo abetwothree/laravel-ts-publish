@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesAccessorType;
 use AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsModelDto;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\ModelInspector;
@@ -190,7 +191,7 @@ class ModelTransformer extends CoreTransformer
         $this->modelName = $this->reflectionModel->getShortName();
         $this->filePath = $this->resolveRelativePath((string) $this->reflectionModel->getFileName());
         $this->namespacePath = LaravelTsPublish::namespaceToPath($this->findable);
-        $this->description = LaravelTsPublish::parseDocBlockDescription($this->reflectionModel->getDocComment());
+        $this->description = JsEmitter::parseDocBlockDescription($this->reflectionModel->getDocComment());
 
         return $this;
     }
@@ -478,7 +479,7 @@ class ModelTransformer extends CoreTransformer
 
             $description = '';
             if ($this->reflectionModel->hasMethod($relation['name'])) {
-                $description = LaravelTsPublish::parseDocBlockDescription(
+                $description = JsEmitter::parseDocBlockDescription(
                     $this->reflectionModel->getMethod($relation['name'])->getDocComment()
                 );
             }
@@ -531,7 +532,7 @@ class ModelTransformer extends CoreTransformer
         $oldStyle = 'get'.Str::studly($name).'Attribute';
 
         if ($this->reflectionModel->hasMethod($newStyle)) {
-            $desc = LaravelTsPublish::parseDocBlockDescription(
+            $desc = JsEmitter::parseDocBlockDescription(
                 $this->reflectionModel->getMethod($newStyle)->getDocComment()
             );
 
@@ -541,7 +542,7 @@ class ModelTransformer extends CoreTransformer
         }
 
         if ($this->reflectionModel->hasMethod($oldStyle)) {
-            return LaravelTsPublish::parseDocBlockDescription(
+            return JsEmitter::parseDocBlockDescription(
                 $this->reflectionModel->getMethod($oldStyle)->getDocComment()
             );
         }
