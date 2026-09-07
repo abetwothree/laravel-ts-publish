@@ -15,7 +15,10 @@ use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Scalar\String_;
+use Workbench\App\Enums\Priority;
+use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\UserResource;
+use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 
@@ -160,4 +163,15 @@ it('leaves a model-backed scope on the model, never on the subject own property'
     $result = (new ThisPropertyHandler)->resolve($expr, $scope, thisPropertyHandlerThrowingEngine());
 
     expect($result)->toBe(['type' => 'unknown', 'optional' => false]);
+});
+
+// An accessor typed Attribute<Status|Priority, never> spells both enum names, and only the first
+// fits directEnumFqcn — the rest reached no channel at all, so nothing could import PriorityType.
+it('routes every enum FQCN of a multi-enum accessor, not only the first', function () {
+    $analysis = resolve(AstEngine::class)->analyzeMethod(WarehouseResource::class);
+    $property = collect($analysis->properties)->firstWhere('name', 'review_priority');
+
+    expect($property['type'])->toBe('StatusType | PriorityType | null')
+        ->and($analysis->inlineEnumFqcns['review_priority'] ?? null)->toBe([Status::class, Priority::class])
+        ->and($analysis->directEnumFqcns)->not->toHaveKey('review_priority');
 });

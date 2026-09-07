@@ -113,7 +113,11 @@ final class ThisPropertyHandler implements ExpressionHandler
                 'type' => $info['type'],
             ];
 
-            if ($info['enumFqcn'] !== null) {
+            // An accessor typed Attribute<StatusA|StatusB, never> spells both names; only the first
+            // reaches directEnumFqcn, so the rest travel per-occurrence the way classFqcns do below.
+            if (count($info['enumFqcns']) > 1) {
+                $result['embeddedEnumFqcns'] = $info['enumFqcns'];
+            } elseif ($info['enumFqcn'] !== null) {
                 $result['directEnumFqcn'] = $info['enumFqcn'];
             }
 
