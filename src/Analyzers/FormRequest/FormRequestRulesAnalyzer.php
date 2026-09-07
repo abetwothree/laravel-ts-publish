@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\FormRequest;
 
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use BackedEnum;
 use Illuminate\Auth\GenericUser;
 use Illuminate\Foundation\Http\FormRequest;
@@ -85,6 +85,59 @@ class FormRequestRulesAnalyzer
         }
 
         return $this->normalizeRules($rules);
+    }
+
+    /**
+     * Compose one rule by dotted path, so a caller typing `validated('a.b')` reads the same trie
+     * node the request's interface nests under `a` — unless a `#[TsCasts]` override replaced that
+     * whole subtree, which only the interface honours. Null for an undeclared or prohibited path.
+     *
+     * Splitting on every `.` matches `data_get()`, which cannot reach an escaped-dot key (`'v1\.0'`)
+     * either — null is that key's correct answer, not a shortfall.
+     *
+     * @param  class-string<FormRequest>  $fqcn
+     */
+    public function analyzeField(string $fqcn, string $dottedPath): ?FormRequestRuleNode
+    {
+        $this->isDynamic = false;
+
+        $rawRules = $this->resolveRules($fqcn);
+
+        if ($rawRules === null) {
+            $this->isDynamic = true;
+
+            return null;
+        }
+
+        $node = $this->buildRuleTrie($rawRules);
+
+        foreach (explode('.', $dottedPath) as $segment) {
+            // composeObjectNode() drops a prohibited child outright, so nothing beneath one reaches
+            // the composed type: a path through it names a key that can never exist.
+            if ($node->own !== null && $node->own['isProhibited']) {
+                return null;
+            }
+
+            if (! isset($node->children[$segment])) {
+                return null;
+            }
+
+            $node = $node->children[$segment];
+        }
+
+        $composed = $this->composeTrieNode($node);
+
+        return new FormRequestRuleNode(
+            fieldPath: $dottedPath,
+            tsType: $composed['tsType'],
+            isRequired: $composed['isRequired'],
+            isNullable: $composed['isNullable'],
+            isProhibited: $composed['isProhibited'],
+            jsDocMetadata: [
+                ...$composed['jsDocMetadata'],
+                ...$this->collectChildJsDoc($node->children, $dottedPath),
+            ],
+        );
     }
 
     /**
@@ -393,7 +446,7 @@ class FormRequestRulesAnalyzer
             $childType = $child['tsType'].($child['isNullable'] ? ' | null' : '');
             $optional = $child['isRequired'] ? '' : '?';
 
-            $parts[] = LaravelTsPublish::validJsObjectKey((string) $key).$optional.': '.$childType;
+            $parts[] = JsEmitter::validJsObjectKey((string) $key).$optional.': '.$childType;
         }
 
         return [
@@ -627,7 +680,7 @@ class FormRequestRulesAnalyzer
         }
 
         $literals = array_map(
-            fn (mixed $v): string => LaravelTsPublish::toJsLiteral($v),
+            fn (mixed $v): string => JsEmitter::toJsLiteral($v),
             array_filter($values, fn (mixed $v): bool => $v !== null && $v !== ''),
         );
 
@@ -653,7 +706,7 @@ class FormRequestRulesAnalyzer
         $numeric = $this->hasNumericTypeSibling($rules);
 
         $literals = array_map(
-            fn (mixed $v): string => LaravelTsPublish::toJsLiteral(
+            fn (mixed $v): string => JsEmitter::toJsLiteral(
                 $numeric && is_string($v) && is_numeric($v) && $v === (string) ($v + 0) ? $v + 0 : $v,
             ),
             array_filter($params, fn (mixed $v): bool => $v !== null && $v !== ''),
@@ -750,7 +803,7 @@ class FormRequestRulesAnalyzer
         }
 
         $values = array_map(
-            fn (BackedEnum $case): string => LaravelTsPublish::toJsLiteral($case),
+            fn (BackedEnum $case): string => JsEmitter::toJsLiteral($case),
             $cases,
         );
 

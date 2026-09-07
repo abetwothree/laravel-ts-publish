@@ -2,16 +2,21 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
+use Workbench\App\Events\ComputedNameEvent;
+use Workbench\App\Events\DeclaredPropsEvent;
 use Workbench\App\Events\EnumBroadcastEvent;
 use Workbench\App\Events\MixedTypesEvent;
 use Workbench\App\Events\MultiModelEvent;
 use Workbench\App\Events\OrderShipped;
+use Workbench\App\Events\PayloadDiffersEvent;
 use Workbench\App\Events\PostPublishedEvent;
 use Workbench\App\Events\PureEnumEvent;
 use Workbench\App\Events\ReportSynced;
+use Workbench\App\Events\SameBasenameModelEvent;
 use Workbench\App\Events\ServerCreated;
 use Workbench\App\Events\TeamMessageSent;
 use Workbench\App\Events\UserNotification;
@@ -160,6 +165,30 @@ describe('MultiModelEvent (Post + User, same namespace)', function () {
         $types = array_values($transformer->typeImports)[0];
         expect($types)->toContain('Post');
         expect($types)->toContain('User');
+    });
+});
+
+describe('SameBasenameModelEvent (@var union of two same-basename models, no broadcastWith)', function () {
+    // analyzePublicProperties() routes embeddedModelFqcns into the inlineModelFqcns queue, which is
+    // the only channel that tells aliasPropertyType() which `User` each token is.
+    it('aliases each User apart instead of emitting the ambiguous name twice', function () {
+        $transformer = app(BroadcastEventTransformer::class, ['findable' => SameBasenameModelEvent::class]);
+
+        expect($transformer->properties['actor']['type'])->toBe('AppUser | CrmUser');
+    });
+
+    it('leaves no token in the emitted type without an import under that name', function () {
+        $transformer = app(BroadcastEventTransformer::class, ['findable' => SameBasenameModelEvent::class]);
+
+        $imported = array_map(
+            fn (string $entry) => str_contains($entry, ' as ') ? explode(' as ', $entry)[1] : $entry,
+            array_merge(...array_values($transformer->typeImports)),
+        );
+        $tokens = preg_split('/\s*\|\s*/', $transformer->properties['actor']['type']) ?: [];
+
+        expect($imported)->toContain('AppUser')
+            ->and($imported)->toContain('CrmUser')
+            ->and(array_values(array_diff($tokens, $imported)))->toBe([]);
     });
 });
 
@@ -335,7 +364,7 @@ describe('TsCasts overrides', function () {
             expect($allTypes)->not->toContain('Post');
         });
 
-        it('still resolves non-overridden properties via Surveyor', function () {
+        it('still infers the non-overridden properties', function () {
             $transformer = app(BroadcastEventTransformer::class, ['findable' => MixedTypesEvent::class]);
             expect($transformer->properties['status']['type'])->toBe('StatusType');
             expect($transformer->properties['message']['type'])->toBe('string');
@@ -431,6 +460,37 @@ describe('TsExtends on BroadcastEventTransformer', function () {
     });
 });
 
+// Cutover discriminators. Only ComputedNameEvent changed at the cutover (its Echo key used to
+// fold to "order."); the other two were already correct and pin that the engine did not regress them.
+describe('native engine cutover fixtures', function () {
+    it('takes PayloadDiffersEvent properties from broadcastWith(), not the public properties', function () {
+        $transformer = app(BroadcastEventTransformer::class, ['findable' => PayloadDiffersEvent::class]);
+
+        expect($transformer->properties)->toBe([
+            'team' => ['type' => 'number', 'optional' => false],
+            'kind' => ['type' => 'string', 'optional' => false],
+            'count' => ['type' => 'number', 'optional' => false],
+        ]);
+    });
+
+    it('reads DeclaredPropsEvent class-body properties, its @var list and its nullable promoted param', function () {
+        $transformer = app(BroadcastEventTransformer::class, ['findable' => DeclaredPropsEvent::class]);
+
+        expect($transformer->properties)->toBe([
+            'label' => ['type' => 'string', 'optional' => true],
+            'tags' => ['type' => 'string[]', 'optional' => false],
+            'id' => ['type' => 'number', 'optional' => false],
+            'note' => ['type' => 'string | null', 'optional' => false],
+        ]);
+    });
+
+    it('falls back to the class-name convention when broadcastAs() is not a whole literal', function () {
+        $transformer = app(BroadcastEventTransformer::class, ['findable' => ComputedNameEvent::class]);
+
+        expect($transformer->broadcastName)->toBe('.Workbench.App.Events.ComputedNameEvent');
+    });
+});
+
 describe('ReportSynced (same basename and same parent segment — import aliasing)', function () {
     it('assigns distinct aliases to both Report models', function () {
         // Both Report models morphMany to Kpi under 'reportable'; their nearest namespace
@@ -457,4 +517,16 @@ describe('ReportSynced (same basename and same parent segment — import aliasin
         expect($transformer->properties['salesReport']['type'])->toBe('Partial<SalesReportReport>');
         expect($transformer->properties['marketingReport']['type'])->toBe('Partial<MarketingReportReport>');
     });
+});
+
+test('an uninitialized typed public property on an event is optional, a promoted or defaulted one is not', function () {
+    $analysis = resolve(AstEngine::class)->analyzePublicProperties(DeclaredPropsEvent::class);
+    $optional = array_column($analysis->properties, 'optional', 'name');
+
+    expect($optional)->toBe([
+        'label' => true,   // declared, typed, no default, assigned only in the constructor
+        'tags' => false,   // has a declaration default
+        'id' => false,     // promoted
+        'note' => false,   // promoted, nullable
+    ]);
 });

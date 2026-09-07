@@ -277,6 +277,7 @@ declare global {
             content: string;
             post_id: number;
             user_id: number;
+            parent_id: number | null;
             is_flagged: boolean;
             flagged_at: string | null;
             metadata: Record<string, unknown>;
@@ -292,6 +293,10 @@ declare global {
             user: User;
             user_count: number;
             user_exists: boolean;
+            /** Self-referencing: replies to this comment */
+            replies: Comment[];
+            replies_count: number;
+            replies_exists: boolean;
         }
         export interface CompositeComment {
             // Columns
@@ -389,9 +394,12 @@ declare global {
             flexible_id: string | number | null;
             optional_label: string | null;
             status_from_docblock: workbench.app.enums.StatusType | null;
+            /** Shirt size, typed by an enum whose #[TsEnum(name:)] differs from its class basename. */
+            shirt_size: workbench.app.enums.SizeType;
             uploader_from_docblock: User | null;
             config_from_docblock: MenuSettingsType;
-            data_from_docblock: { title: string; weight: number | null };
+            data_from_docblock: { recordedAt?: string; title: string; weight: number | null };
+            nested_optional_key_from_docblock: { inner: { assignedLater?: string; promoted: string }; label: string };
             uploaders_from_docblock: User[] | Record<string, User>;
             uploaders_from_docblock_int: User[];
             uploaders_from_docblock_string: Record<string, User>;
@@ -657,6 +665,8 @@ declare global {
             excerpt: string | null;
             /** Estimated reading time formatted */
             reading_time: string;
+            /** Newest comment, typed by a single model FQCN and deliberately not appended. */
+            latest_comment: Comment | null;
             // Relations
             author: User;
             author_count: number;
@@ -679,6 +689,29 @@ declare global {
             attachment: Attachment | null;
             attachment_count: number;
             attachment_exists: boolean;
+        }
+        export interface PostMeta {
+            // Columns
+            id: number;
+            title: string;
+            content: string;
+            user_id: number;
+            status: boolean;
+            published_at: string | null;
+            metadata: string | null;
+            rating: number | null;
+            category: string;
+            options: string | null;
+            deleted_at: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            category_id: number | null;
+            visibility: string | null;
+            priority: number | null;
+            word_count: number | null;
+            reading_time_minutes: number | null;
+            featured_image_url: string | null;
+            is_pinned: boolean;
         }
         export interface Product {
             // Columns
@@ -1140,6 +1173,10 @@ declare global {
             addresses: Address[];
             addresses_count: number;
             addresses_exists: boolean;
+            /** Singular relation onto an $appends-bearing model, for the top-level spread appends regression. */
+            primary_address: Address | null;
+            primary_address_count: number;
+            primary_address_exists: boolean;
             teams: Team[];
             teams_count: number;
             teams_exists: boolean;
@@ -1558,6 +1595,15 @@ declare global {
         export type SeasonType = 'spring' | 'summer' | 'autumn' | 'winter';
         export type SeasonKind = 'Spring' | 'Summer' | 'Autumn' | 'Winter';
 
+        /** Fixture: a #[TsEnum(name:)] that differs from the class basename, reached from a page prop. */
+        export interface Size
+        {
+            Small: 's',
+            Large: 'l',
+        }
+        export type SizeType = 's' | 'l';
+        export type SizeKind = 'Small' | 'Large';
+
         export interface Status
         {
             Draft: 0,
@@ -1974,6 +2020,56 @@ declare global {
             buyer: workbench.app.models.User | null;
             status: workbench.app.enums.OrderStatusType;
         }
+        /**
+         * Three key-less spreads at the top level of toArray(): a resource's resolve(), a model's toArray(),
+         * and a collection's toArray(). Each flattens into this resource's own properties.
+         */
+        export interface CommentComposedResource {
+            morphValue: string;
+            id: number;
+            title: string;
+            content: string;
+            status: workbench.app.enums.StatusType;
+            status_new: workbench.app.enums.StatusType;
+            visibility: workbench.app.enums.VisibilityType | null;
+            visibility_new: workbench.app.enums.VisibilityType | null;
+            priority: workbench.app.enums.PriorityType | null;
+            priority_new: workbench.app.enums.PriorityType | null;
+            comments: { id: number; content: string; user: workbench.app.models.User }[];
+            comments_limited: Pick<workbench.app.models.Comment, 'id' | 'content'>[];
+            published: boolean;
+            rating_display: number;
+            word_count: string;
+            heading_content: { title: string; summary: string };
+            publishable: boolean;
+            comments_count: number;
+            is_featured: boolean;
+            category_is_first?: boolean | null;
+            category_is_active?: boolean | null;
+            category_breadcrumb?: string | null;
+            comments_resolved?: CommentResource[];
+            post_class_name: string;
+            post_table_name: string;
+            category_class_name?: string;
+            category_table_name?: string;
+            name: string;
+            email: string;
+            email_verified_at: string | null;
+            password: string;
+            options: Record<string, unknown> | null;
+            remember_token: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            role: workbench.app.enums.RoleType | null;
+            membership_level: workbench.app.enums.MembershipLevelType | null;
+            phone: string | null;
+            avatar: string | null;
+            bio: string | null;
+            settings: { theme: "light" | "dark"; notifications: boolean; locale: string } | null;
+            last_login_at: string | null;
+            last_login_ip: string | null;
+            [key: number]: workbench.app.models.Tag;
+        }
         export interface CommentResource {
             id: number;
             content: string;
@@ -2018,13 +2114,14 @@ declare global {
             not_null_no_default?: string;
             not_null_with_default: string | number;
             not_null_same_type_default: number;
-            null_with_default: null | string;
+            null_with_default: string | null;
             not_null_explicit_null_default: string | null;
-            not_null_named_default?: string;
+            not_null_named_default: string | number;
             not_null_spread_default?: string;
             when_no_default?: string;
             when_with_default: string | number;
             has_with_default: string | number;
+            has_with_null: number | null;
             loaded_with_default: workbench.app.models.User | null;
             counted_with_default: number | string;
             aggregated_no_default?: number;
@@ -2037,8 +2134,9 @@ declare global {
             unless_with_default: string | number;
             appended_no_default?: string;
             appended_with_default: string | number;
+            appended_with_null: number | null;
             exists_no_default?: boolean;
-            exists_with_default: boolean | string;
+            exists_with_default: string | null;
             transform_no_default?: boolean;
             transform_with_default: boolean | number;
             transform_with_one_param_default: boolean | number;
@@ -2058,7 +2156,7 @@ declare global {
             user_summary?: { id: number; email: string; name: string };
             notes_or_default?: string;
             user_meta?: { profile: { name: string; email: string }; verified: boolean };
-            notes_when_null: null | string;
+            notes_when_null: string | null;
             flagged_notes_present?: (string | null)[];
         }
         /**
@@ -2190,6 +2288,7 @@ declare global {
             comments: workbench.app.models.Comment[];
             orders: workbench.app.models.Order[];
             addresses: Address[];
+            primaryAddress: Address | null;
             teams: workbench.app.models.Team[];
             ownedTeams: workbench.app.models.Team[];
             images: workbench.app.models.Image[];
@@ -2224,6 +2323,7 @@ declare global {
             comments: workbench.app.models.Comment[];
             orders: workbench.app.models.Order[];
             addresses: Address[];
+            primaryAddress: Address | null;
             teams: workbench.app.models.Team[];
             ownedTeams: workbench.app.models.Team[];
             images: workbench.app.models.Image[];
@@ -2242,12 +2342,14 @@ declare global {
             week_days: workbench.app.enums.WeekDaysType[] | null;
             wrapped_week_days: { week_days: workbench.app.enums.WeekDaysType[] | null };
             week_days_when_has?: workbench.app.enums.WeekDaysType[] | null;
-            week_days_when_has_default: workbench.app.enums.WeekDaysType[] | null | string;
+            week_days_when_has_default: workbench.app.enums.WeekDaysType[] | string | null;
             status_history_when_appended?: workbench.app.enums.StatusType[];
             members_via_var?: workbench.app.enums.RoleType[];
             member_role_snapshot?: ({ role: workbench.app.enums.RoleType | null })[];
             wrapped_status_fallback: { status: workbench.app.enums.StatusType[] | workbench.app.enums.StatusType };
             latest_status_or_history: workbench.app.enums.StatusType | workbench.app.enums.StatusType[];
+            wrapped_history_or_scalar: workbench.app.enums.StatusType[] | workbench.app.enums.StatusType;
+            wrapped_history_or_array: workbench.app.enums.StatusType[] | workbench.app.enums.StatusType[];
         }
         /** Resource for testing @var null|Type docblock ordering (null-first convention). */
         export interface EnumNullFirstResource {
@@ -2315,6 +2417,15 @@ declare global {
             buyer?: { name: string; email: string } | null;
         }
         /**
+         * A guard-clause branch alongside a top-level `[key: number]` collection spread — regression
+         * fixture for mergeReturnBranches() over-marking an index signature optional.
+         */
+        export interface GuardedCollectionSpreadResource {
+            id: number;
+            archived?: boolean;
+            [key: number]: workbench.app.models.OrderItem;
+        }
+        /**
          * Exercises userland global-helper reflection (route()), Carbon
          * receiver-method inference on a datetime-cast attribute, and the
          * can()/count() known-method rules (Task 11).
@@ -2370,9 +2481,11 @@ declare global {
             flexible_id: string | number | null;
             optional_label: string | null;
             status_from_docblock: workbench.app.enums.StatusType | null;
+            shirt_size: workbench.app.enums.SizeType;
             uploader_from_docblock: workbench.app.models.User | null;
             config_from_docblock: MenuSettingsType;
-            data_from_docblock: { title: string; weight: number | null };
+            data_from_docblock: { recordedAt?: string; title: string; weight: number | null };
+            nested_optional_key_from_docblock: { inner: { assignedLater?: string; promoted: string }; label: string };
             uploaders_from_docblock: workbench.app.models.User[] | Record<string, workbench.app.models.User>;
             uploaders_from_docblock_int: workbench.app.models.User[];
             uploaders_from_docblock_string: Record<string, workbench.app.models.User>;
@@ -2386,12 +2499,26 @@ declare global {
             imageable: workbench.app.models.Post | workbench.app.models.Product | workbench.app.models.User | workbench.crm.models.User;
             reviewable: workbench.crm.models.User | workbench.app.models.User | null;
         }
+        /**
+         * Both when() arms are inline objects whose members are nullable, so the union must be split at the
+         * top level only.
+         */
+        export interface ImageDimensionsResource {
+            id: number;
+            box: { width: number | null; height: number | null } | { width: number | null };
+        }
         /** Exercises a morphTo relation exposed through a resource: the emitted union needs every parent imported. */
         export interface ImageMorphResource {
             id: number;
             imageable: workbench.app.models.Post | workbench.app.models.Product | workbench.app.models.User | workbench.crm.models.User;
             uploaders_from_docblock: workbench.app.models.User[] | Record<string, workbench.app.models.User>;
             imageable_when_loaded?: workbench.app.models.Post | workbench.app.models.Product | workbench.app.models.User | workbench.crm.models.User;
+        }
+        /** Ternary and Elvis arms that are each nullable: the union must carry one trailing null. */
+        export interface ImageNullableArmsResource {
+            id: number;
+            size: number | string | null;
+            label: string | number | null;
         }
         /** Exercises: whenNotNull on multiple nullable columns. */
         export interface ImageResource {
@@ -2601,9 +2728,48 @@ declare global {
         export interface MiscCollection {
             data: unknown;
         }
+        /**
+         * Regression fixture: a mixed EnumResource::collection()/direct-access ternary's per-arm shape
+         * (Task 28) must survive every result collector, not only analyzeReturnArray(). Each property
+         * below reaches a different collector that used to drop the shape and silently reproduce the
+         * pre-fix (missing `[]`) answer.
+         */
+        export interface MixedEnumMergedResource {
+            id: number;
+            wrapped_history_or_scalar_merged: workbench.app.enums.StatusType[] | workbench.app.enums.StatusType;
+            assigned_marker: boolean;
+            wrapped_history_or_scalar_assigned: workbench.app.enums.StatusType[] | workbench.app.enums.StatusType;
+        }
+        /**
+         * Regression fixture: a mixed EnumResource::collection()/direct-access ternary's per-arm shape
+         * (Task 28) must survive ResourceAstAnalyzer::mergeReturnBranches(), not only the single-branch
+         * analyzeReturnArray() path. Each `if`/`else` here returns its own array, so toArray() has more
+         * than one top-level `return` and is merged rather than analyzed directly.
+         */
+        export interface MixedEnumReturnBranchesResource {
+            id: number;
+            branch_active?: boolean;
+            wrapped_history_or_scalar?: workbench.app.enums.StatusType[] | workbench.app.enums.StatusType;
+        }
         /** Resource for testing that $this->resource->prop on a model-backed resource resolves to the model attribute type. */
         export interface ModelWrappedPropResource {
             title: string;
+        }
+        /**
+         * Regression (Task 32 review, C1): two resources spreading each other must not recurse until
+         * memory is exhausted. Mirrors MutualSpreadBResource — see its docblock for the shared rationale.
+         */
+        export interface MutualSpreadAResource {
+            a_marker: boolean;
+            b_marker: boolean;
+        }
+        /**
+         * Regression (Task 32 review, C1): the other half of the mutual pair. A spreads B, B spreads A —
+         * AstEngine::analyzeMethod()'s cycle guard must break the loop wherever it's first re-entered.
+         */
+        export interface MutualSpreadBResource {
+            a_marker: boolean;
+            b_marker: boolean;
         }
         /**
          * Two methods that spread each other. Without a visited-method guard this recurses until the
@@ -2611,6 +2777,16 @@ declare global {
          */
         export interface MutuallyRecursiveSpreadResource {
             name: string;
+        }
+        /**
+         * The conditional family called with named arguments. PHP binds each argument to its parameter by name
+         * and Laravel then tests func_num_args(), so a named `default:` is a real default however it is written.
+         */
+        export interface NamedArgsConditionalResource {
+            not_null_named_default: string | number;
+            when_all_named: string | number;
+            loaded_named_default: workbench.app.models.Comment[];
+            counted_named_out_of_order: number;
         }
         /**
          * Exercises spreading a resolved resource inside a NESTED inline array literal — a map()
@@ -2632,8 +2808,11 @@ declare global {
             members_colliding_spread?: (Omit<UserResource, keyof TeamMemberResource> & TeamMemberResource)[];
             members_model_then_resource_spread?: (Omit<workbench.app.models.User, 'flag' | keyof UserResource | keyof workbench.app.models.User> & Omit<UserResource, 'flag' | keyof workbench.app.models.User> & Omit<workbench.app.models.User, 'flag'> & { flag: boolean })[];
             members_resource_then_model_spread?: (Omit<UserResource, 'flag' | keyof workbench.app.models.User | keyof UserResource> & Omit<workbench.app.models.User, 'flag' | keyof UserResource> & Omit<UserResource, 'flag'> & { flag: boolean })[];
+            owner_relation_spread: Omit<workbench.app.models.User, 'flag'> & { flag: boolean };
         }
         export interface NonArrayReturnResource {
+            id: number;
+            name: string;
         }
         /**
          * outer() returns $this->helper()->wrongCall() — a method call chained off a non-$this receiver. The
@@ -2803,6 +2982,11 @@ declare global {
         export interface PostCollection {
             data: PostResource[];
         }
+        /** Three enum members, two of them the same enum: the import queue must carry three entries, not two. */
+        export interface PostEnumTrioResource {
+            id: number;
+            trio: { a: workbench.app.enums.StatusType; b: workbench.app.enums.StatusType; c: workbench.app.enums.PriorityType | null };
+        }
         /**
          * A ResourceCollection with $wrap = null so the collection IS the array,
          * not wrapped in a 'data' key. Uses #[Collects] to identify the singular resource.
@@ -2837,6 +3021,17 @@ declare global {
             category_class_name?: string;
             category_table_name?: string;
         }
+        /**
+         * Reads a single-model accessor inside an inline member and under a key that differs from the
+         * accessor name, so neither the top-level fallback nor the inline import gatherer rescues it.
+         */
+        export interface PostSpotlightResource {
+            id: number;
+            headline: workbench.app.models.Comment | null;
+            spotlight: { comment: workbench.app.models.Comment | null };
+        }
+        /** Inherits `$wrap = null` and declares nothing else — the delegated analysis must still see it. */
+        export type PostUnwrappedCollection = PostResource[];
         /**
          * A collection that keeps its source keys, so the payload is a JSON object rather than an array.
          * Uses Laravel 13's #[PreserveKeys] attribute.
@@ -3038,6 +3233,35 @@ declare global {
         export interface RoutableResource extends ResourceRoutes, Pick<Routable, "store" | "update"> {
         }
         /**
+         * The model-side twin of DealEnumTrioResource: two User models sharing a basename, read across a
+         * ternary so mergeUnion() builds the queue aliasPropertyType() consumes positionally. A ternary is
+         * required — an inline array alone never reaches mergeUnion().
+         *
+         * trio pins the embedded channel: three reads, three rendered tokens, so the queue must keep its
+         * repeat. collapsed_arms pins the branch-level channel against it: its two inner arms are the same
+         * class, so analyzeClosureUnion() folds them to one rendered token and the queue must drop the
+         * repeat — deduping both channels breaks trio, deduping neither breaks collapsed_arms.
+         *
+         * reversed_arms and control_arms are one expression with its arms swapped, pinning that a branch-level
+         * FQCN keeps its loop position in the queue. Prepending it queues [Crm, App] for both orientations, so
+         * reversed_arms silently exchanges the two User identities while control_arms stays right.
+         */
+        export interface SameBasenameModelTrioResource {
+            id: number;
+            trio: { a: workbench.crm.models.User | null } | { b: workbench.app.models.User | null; c: workbench.crm.models.User | null };
+            collapsed_arms: workbench.crm.models.User | { c: workbench.app.models.User | null } | null;
+            reversed_arms: { c: workbench.app.models.User | null } | workbench.crm.models.User | null;
+            control_arms: workbench.crm.models.User | { c: workbench.app.models.User | null } | null;
+        }
+        /**
+         * Regression (Task 32 review, C1): a resource spreading itself must not recurse until memory is
+         * exhausted. AstEngine::analyzeMethod()'s cycle guard returns an empty analysis for the re-entrant
+         * call, so only 'marker' should ever appear.
+         */
+        export interface SelfSpreadResource {
+            marker: boolean;
+        }
+        /**
          * Exercises the inline model FQCN collision scenario.
          *
          * Two relations point to classes with the same basename: Crm\Models\User (direct, via crm_agent)
@@ -3087,6 +3311,7 @@ declare global {
             comments: workbench.app.models.Comment[];
             orders: workbench.app.models.Order[];
             addresses: Address[];
+            primaryAddress: Address | null;
             teams: workbench.app.models.Team[];
             ownedTeams: workbench.app.models.Team[];
             images: workbench.app.models.Image[];
@@ -3128,6 +3353,7 @@ declare global {
             comments: workbench.app.models.Comment[];
             orders: workbench.app.models.Order[];
             addresses: Address[];
+            primaryAddress: Address | null;
             teams: workbench.app.models.Team[];
             ownedTeams: workbench.app.models.Team[];
             images: workbench.app.models.Image[];
@@ -3319,6 +3545,16 @@ declare global {
             settings?: Record<string, unknown> | null;
         }
         /**
+         * A mixed EnumResource/direct-access ternary nested one level down, where both arms read the same
+         * list-shaped accessor: they render the same string and the union merge collapses them, so only
+         * each arm's own recorded shape still says the [] belongs on both. The direct arm's bare enum type
+         * survives the rewrite, so its type import has to come back with it.
+         */
+        export interface TeamStatusAuditResource {
+            id: number;
+            audit: { status: workbench.app.enums.StatusType[] | workbench.app.enums.StatusType[] };
+        }
+        /**
          * Exercises: ternary operator in various return-value positions.
          *
          * All properties in this resource use the ternary operator (`? :`) or the
@@ -3431,6 +3667,7 @@ declare global {
             comments: workbench.app.models.Comment[];
             orders: workbench.app.models.Order[];
             addresses: Address[];
+            primaryAddress: Address | null;
             teams: workbench.app.models.Team[];
             ownedTeams: workbench.app.models.Team[];
             images: workbench.app.models.Image[];
@@ -3477,6 +3714,14 @@ declare global {
             whileKey?: string;
             doWhileKey?: string;
             status: string;
+        }
+        /**
+         * Fixture for a resource whose model nothing can resolve — no TsResource attribute, no mixin or
+         * extends tag, no typed $resource, no naming-convention match. Constructed over an Authorizable, so
+         * `can()` forwards through JsonResource::__call and must type as boolean with the model arm gone.
+         */
+        export interface ViewerPermissionsResource {
+            can_publish: boolean;
         }
         /**
          * Resource with no @mixin or TsResource — tests convention-based model guess.
@@ -3579,6 +3824,16 @@ declare global {
         export interface DealEnumInlineResource {
             id: number;
             summary: { app_status: workbench.app.enums.StatusType; crm_status: workbench.crm.enums.StatusType };
+        }
+        /**
+         * Two Status enums sharing a basename catch what a distinct-named pair (Status/Priority)
+         * cannot: aliasPropertyType() matches text, not FQCNs, so a repeat only misaligns once two
+         * colliding enums force it to substitute per occurrence instead of reusing one bare name.
+         */
+        export interface DealEnumTrioResource {
+            id: number;
+            trio: { a: workbench.app.enums.StatusType; b: workbench.crm.enums.StatusType; c: workbench.app.enums.StatusType };
+            matrix: { a: workbench.app.enums.StatusType; b: workbench.crm.enums.StatusType; c: workbench.app.enums.StatusType }[];
         }
         /**
          * Exercises: dual enum conflict — $this->status (App\Enums\Status direct access)
@@ -3731,7 +3986,7 @@ declare global {
             buckets?: ({ name?: string } & Record<string, string>)[];
             settings?: { color?: string } & Record<string, never>;
         }
-        export interface NumberRulesRequest {
+        export interface NumberRulesRequest extends HasValidationMeta {
             score: number;
             price: number;
             exchange_rate: number;
@@ -3796,7 +4051,7 @@ declare global {
             email: string;
             tags?: string[];
         }
-        export interface StringRulesRequest {
+        export interface StringRulesRequest extends FormRequestBase {
             website: string;
             first_name: string;
             username: string;
@@ -3909,6 +4164,15 @@ declare global {
         }
     }
     export namespace workbench.app.events {
+        export interface ComputedNameEvent {
+            kind: string;
+        }
+        export interface DeclaredPropsEvent {
+            label?: string;
+            tags: string[];
+            id: number;
+            note: string | null;
+        }
         export interface EnumBroadcastEvent {
             status: workbench.app.enums.StatusType;
             color: workbench.app.enums.ColorType;
@@ -3928,6 +4192,11 @@ declare global {
             carrier: string;
             metadata?: Record<string, unknown>;
         }
+        export interface PayloadDiffersEvent {
+            team: number;
+            kind: string;
+            count: number;
+        }
         export interface PostPublishedEvent {
             post: Partial<workbench.app.models.Post>;
             message: string;
@@ -3941,7 +4210,10 @@ declare global {
             salesReport: Partial<workbench.app.models.sales.report.Report>;
             marketingReport: Partial<workbench.app.models.marketing.report.Report>;
         }
-        export interface ServerCreated {
+        export interface SameBasenameModelEvent {
+            actor: workbench.app.models.User | workbench.crm.models.User;
+        }
+        export interface ServerCreated extends BroadcastableEvent {
             serverId: number;
             serverName: string;
         }
@@ -3949,7 +4221,7 @@ declare global {
             teamId: number;
             content: string;
         }
-        export interface UserNotification {
+        export interface UserNotification extends HasTimestamps {
             userId: number;
             title: string;
             message: string;

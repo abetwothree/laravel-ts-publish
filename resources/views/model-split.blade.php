@@ -1,4 +1,4 @@
-@use('AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish')
+@use('AbeTwoThree\LaravelTsPublish\Facades\JsEmitter')
 @if($usesTolkiPackage && (count($data->enumColumns) > 0 || count($data->enumMutators) > 0 || count($data->enumAppends) > 0))
 import { type AsEnum } from '@tolki/ts';
 
@@ -19,20 +19,20 @@ import type { {{ implode(', ', $types) }} } from '{{ $path }}';
 
     $description .= "@see {$data->fqcn}";
 @endphp
-{!! LaravelTsPublish::formatJsDoc($description) !!}
+{!! JsEmitter::formatJsDoc($description) !!}
 export interface {{ $data->modelName }}{!! count($data->tsExtends) > 0 ? ' extends ' . implode(', ', $data->tsExtends) : '' !!}
 {
 @foreach ($data->columns as $name => $column)
 @if($column['description'])
-{!! LaravelTsPublish::formatJsDoc($column['description'], 4) !!}
+{!! JsEmitter::formatJsDoc($column['description'], 4) !!}
 @endif
-    {!! LaravelTsPublish::validJsObjectKey($name) !!}{{ $column['optional'] ? '?' : '' }}: {!!  $column['type'] !!};
+    {!! JsEmitter::validJsObjectKey($name) !!}{{ $column['optional'] ? '?' : '' }}: {!!  $column['type'] !!};
 @endforeach
 @foreach ($data->appends as $name => $append)
 @if($append['description'])
-{!! LaravelTsPublish::formatJsDoc($append['description'], 4) !!}
+{!! JsEmitter::formatJsDoc($append['description'], 4) !!}
 @endif
-    {!! LaravelTsPublish::validJsObjectKey($name) !!}{{ $append['optional'] ? '?' : '' }}: {!!  $append['type'] !!};
+    {!! JsEmitter::validJsObjectKey($name) !!}{{ $append['optional'] ? '?' : '' }}: {!!  $append['type'] !!};
 @endforeach
 }
 @if($usesTolkiPackage && (count($data->enumColumns) > 0 || count($data->enumAppends) > 0))
@@ -44,10 +44,10 @@ export interface {{ $data->modelName }}{!! count($data->tsExtends) > 0 ? ' exten
 export interface {{ $data->modelName }}Resource extends {!! $hasEnumsExtends !!}
 {
 @foreach ($data->enumColumns as $name => $enum)
-    {!! LaravelTsPublish::validJsObjectKey($name) !!}: AsEnum<typeof {!! $enum['constName'] !!}>{!! $enum['isCollection'] ? '[]' : '' !!}{!! $enum['nullable'] ? ' | null' : '' !!};
+    {!! JsEmitter::validJsObjectKey($name) !!}: AsEnum<typeof {!! $enum['constName'] !!}>{!! $enum['isCollection'] ? '[]' : '' !!}{!! $enum['nullable'] ? ' | null' : '' !!};
 @endforeach
 @foreach ($data->enumAppends as $name => $enum)
-    {!! LaravelTsPublish::validJsObjectKey($name) !!}: AsEnum<typeof {!! $enum['constName'] !!}>{!! $enum['isCollection'] ? '[]' : '' !!}{!! $enum['nullable'] ? ' | null' : '' !!};
+    {!! JsEmitter::validJsObjectKey($name) !!}: AsEnum<typeof {!! $enum['constName'] !!}>{!! $enum['isCollection'] ? '[]' : '' !!}{!! $enum['nullable'] ? ' | null' : '' !!};
 @endforeach
 }
 @endif{{-- end $data->enumColumns --}}
@@ -57,9 +57,9 @@ export interface {{ $data->modelName }}Mutators
 {
 @foreach ($data->mutators as $name => $mutator)
 @if($mutator['description'])
-{!! LaravelTsPublish::formatJsDoc($mutator['description'], 4) !!}
+{!! JsEmitter::formatJsDoc($mutator['description'], 4) !!}
 @endif
-    {!! LaravelTsPublish::validJsObjectKey($name) !!}{{ $mutator['optional'] ? '?' : '' }}: {!!  $mutator['type'] !!};
+    {!! JsEmitter::validJsObjectKey($name) !!}{{ $mutator['optional'] ? '?' : '' }}: {!!  $mutator['type'] !!};
 @endforeach
 }
 @if($usesTolkiPackage && count($data->enumMutators) > 0)
@@ -71,7 +71,7 @@ export interface {{ $data->modelName }}Mutators
 export interface {{ $data->modelName }}MutatorsResource extends {!! $hasEnumsExtends !!}
 {
 @foreach ($data->enumMutators as $name => $enum)
-    {!! LaravelTsPublish::validJsObjectKey($name) !!}: AsEnum<typeof {!! $enum['constName'] !!}>{!! $enum['isCollection'] ? '[]' : '' !!}{!! $enum['nullable'] ? ' | null' : '' !!};
+    {!! JsEmitter::validJsObjectKey($name) !!}: AsEnum<typeof {!! $enum['constName'] !!}>{!! $enum['isCollection'] ? '[]' : '' !!}{!! $enum['nullable'] ? ' | null' : '' !!};
 @endforeach
 }
 @endif{{-- end $data->enumMutators --}}
@@ -83,17 +83,17 @@ export interface {{ $data->modelName }}Relations
     // Relations
 @foreach ($data->relations as $name => $relation)
 @if($relation['description'])
-{!! LaravelTsPublish::formatJsDoc($relation['description'], 4) !!}
+{!! JsEmitter::formatJsDoc($relation['description'], 4) !!}
 @endif
-    {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!!  $relation['type'] !!};
+    {!! JsEmitter::validJsObjectKey($name) !!}: {!!  $relation['type'] !!};
 @endforeach
     // Counts
 @foreach ($data->relations as $name => $relation)
-    {!! LaravelTsPublish::validJsObjectKey($name . '_count') !!}: number;
+    {!! JsEmitter::validJsObjectKey($name . '_count') !!}: number;
 @endforeach
     // Exists
 @foreach ($data->relations as $name => $relation)
-    {!! LaravelTsPublish::validJsObjectKey($name . '_exists') !!}: boolean;
+    {!! JsEmitter::validJsObjectKey($name . '_exists') !!}: boolean;
 @endforeach
 }
 @endif{{-- end $data->relations --}}

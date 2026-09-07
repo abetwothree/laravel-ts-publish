@@ -1,7 +1,17 @@
-@foreach($importStatements as $import)
-{!! $import !!}
+@php
+// write() is public: a caller predating the valueImports key must still render, not fatal in count().
+$valueImports ??= [];
+@endphp
+@if ($usesTolkiPackage && count($valueImports) > 0)
+import { type AsEnum } from '@tolki/ts';
+@endif
+@foreach ($valueImports as $path => $names)
+import { {{ implode(', ', $names) }} } from '{{ $path }}';
 @endforeach
-@if(count($importStatements) > 0)
+@foreach ($typeImports as $path => $types)
+import type { {{ implode(', ', $types) }} } from '{{ $path }}';
+@endforeach
+@if (count($valueImports) > 0 || count($typeImports) > 0)
 
 @endif
 declare global {

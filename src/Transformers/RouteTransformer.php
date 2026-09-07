@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Analyzers\SurveyorTypeMapper;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Concerns\FiltersRoutes;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsRouteDto;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
 use BackedEnum;
 use Illuminate\Database\Eloquent\Model;
@@ -39,8 +41,6 @@ class RouteTransformer extends CoreTransformer
     public protected(set) string $controllerName;
 
     public protected(set) string $filePath;
-
-    public protected(set) string $namespacePath;
 
     public protected(set) ?string $description;
 
@@ -123,8 +123,8 @@ class RouteTransformer extends CoreTransformer
         $this->reflectionController = new ReflectionClass($this->findable);
         $this->controllerName = $this->reflectionController->getShortName();
         $this->filePath = (string) $this->reflectionController->getFileName();
-        $this->namespacePath = LaravelTsPublish::namespaceToPath($this->findable);
-        $this->description = LaravelTsPublish::parseDocBlockDescription($this->reflectionController->getDocComment());
+        $this->namespacePath = TsNaming::namespaceToPath($this->findable);
+        $this->description = JsEmitter::parseDocBlockDescription($this->reflectionController->getDocComment());
 
         return $this;
     }
@@ -185,7 +185,7 @@ class RouteTransformer extends CoreTransformer
             }
         }
 
-        $this->typeImports = LaravelTsPublish::sortImportPaths($merged);
+        $this->typeImports = TsNaming::sortImportPaths($merged);
 
         return $this;
     }
@@ -258,7 +258,7 @@ class RouteTransformer extends CoreTransformer
         $description = null;
 
         if ($this->reflectionController->hasMethod($originalMethodName)) {
-            $desc = LaravelTsPublish::parseDocBlockDescription(
+            $desc = JsEmitter::parseDocBlockDescription(
                 $this->reflectionController->getMethod($originalMethodName)->getDocComment()
             );
             $description = $desc !== '' ? $desc : null;
@@ -363,12 +363,12 @@ class RouteTransformer extends CoreTransformer
 
             $paramReflection = new ReflectionClass($paramClass);
             $shortName = $paramReflection->getShortName();
-            $requestNamespacePath = LaravelTsPublish::namespaceToPath($paramClass);
+            $requestNamespacePath = TsNaming::namespaceToPath($paramClass);
             $requestFilename = Str::kebab($shortName);
 
             $action['requestFqcn'] = $paramClass;
             $action['requestTypeAlias'] = $shortName;
-            $action['requestImportPath'] = LaravelTsPublish::relativeImportPath(
+            $action['requestImportPath'] = TsNaming::relativeImportPath(
                 $this->namespacePath,
                 $requestNamespacePath,
             ).'/'.$requestFilename;
@@ -392,8 +392,8 @@ class RouteTransformer extends CoreTransformer
         }
 
         // Mirror Wayfinder: the export name is the action method name, never the route name.
-        return LaravelTsPublish::safeJsIdentifier(
-            LaravelTsPublish::keyCase($actionMethod, $casing),
+        return JsEmitter::safeJsIdentifier(
+            TsNaming::keyCase($actionMethod, $casing),
             'Method'
         );
     }
@@ -664,16 +664,19 @@ class RouteTransformer extends CoreTransformer
         $imports = [];
 
         foreach ($allFqcns as $fqcn) {
-            // FQCNs in TOLKI_TYPES_MAP are imported from '@tolki/types' rather than a relative path
-            if (isset(SurveyorTypeMapper::TOLKI_TYPES_MAP[$fqcn])) {
-                $imports['@tolki/types'][] = SurveyorTypeMapper::TOLKI_TYPES_MAP[$fqcn];
+            // FQCNs in TolkiTypes::MAP are imported from '@tolki/types' rather than a relative path
+            if (isset(TolkiTypes::MAP[$fqcn])) {
+                $imports['@tolki/types'][] = TolkiTypes::MAP[$fqcn];
 
                 continue;
             }
 
-            $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
-            $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
-            $imports[$importPath][] = class_basename($fqcn);
+            $targetPath = TsNaming::namespaceToPath($fqcn);
+            $importPath = TsNaming::relativeImportPath($this->namespacePath, $targetPath);
+            // An enum's TypeScript name follows #[TsEnum(name:)]; resourceTypeName() only knows #[TsResource].
+            $imports[$importPath][] = enum_exists($fqcn)
+                ? (LaravelTsPublish::toTsType($fqcn)['enumTypes'][0] ?? class_basename($fqcn).'Type')
+                : TsNaming::resourceTypeName($fqcn);
         }
 
         foreach ($this->actionExternalImports as $externalImports) {
@@ -692,7 +695,7 @@ class RouteTransformer extends CoreTransformer
             $imports[$path] = $unique;
         }
 
-        return LaravelTsPublish::sortImportPaths($imports);
+        return TsNaming::sortImportPaths($imports);
     }
 
     /**
@@ -794,7 +797,7 @@ class RouteTransformer extends CoreTransformer
 
             foreach ($paths as $path) {
                 $tail = array_slice($split($path), -$depth);
-                $keys[$path] = LaravelTsPublish::keyCase(implode(' ', $tail), $casing);
+                $keys[$path] = TsNaming::keyCase(implode(' ', $tail), $casing);
             }
 
             if (count(array_unique(array_values($keys))) === count($paths)) {
@@ -806,7 +809,7 @@ class RouteTransformer extends CoreTransformer
         $keys = [];
 
         foreach ($paths as $path) {
-            $keys[$path] = LaravelTsPublish::keyCase($path, $casing);
+            $keys[$path] = TsNaming::keyCase($path, $casing);
         }
 
         return $keys;

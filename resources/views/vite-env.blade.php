@@ -1,9 +1,9 @@
-@use('AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish')
+@use('AbeTwoThree\LaravelTsPublish\Facades\JsEmitter')
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
 @foreach ($variables as $variable)
-  readonly {!! LaravelTsPublish::validJsObjectKey($variable) !!}: string;
+  readonly {!! JsEmitter::validJsObjectKey($variable) !!}: string;
 @endforeach
 }
 

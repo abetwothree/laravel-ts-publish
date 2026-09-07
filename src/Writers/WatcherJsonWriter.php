@@ -7,18 +7,23 @@ namespace AbeTwoThree\LaravelTsPublish\Writers;
 use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastEventsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\FormRequestsCollector;
+use AbeTwoThree\LaravelTsPublish\Collectors\ModelMetadataCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ResourcesCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\RoutesCollector;
-use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Metadata\DefaultModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Metadata\ModelMetadataProviderResolver;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\EnsuresDirectoryExists;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
 use BackedEnum;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
 use ReflectionClass;
 use ReflectionEnum;
+use Throwable;
 use UnitEnum;
 
 class WatcherJsonWriter
@@ -36,14 +41,15 @@ class WatcherJsonWriter
             return '';
         }
 
-        $paths = [
+        $paths = array_values(array_unique([
             ...$this->collectEnumPaths(),
             ...$this->collectModelPaths(),
+            ...$this->collectModelMetadataProviderPaths(),
             ...$this->collectResourcePaths(),
             ...$this->collectRoutePaths(),
             ...$this->collectFormRequestPaths(),
             ...$this->collectBroadcastEventPaths(),
-        ];
+        ]));
 
         sort($paths, SORT_STRING);
 
@@ -79,7 +85,7 @@ class WatcherJsonWriter
                     /** @var class-string<UnitEnum|BackedEnum> $fqcn */
                     $reflection = new ReflectionEnum($fqcn);
 
-                    return LaravelTsPublish::resolveRelativePath((string) $reflection->getFileName());
+                    return TsNaming::resolveRelativePath((string) $reflection->getFileName());
                 })
                 ->all()
         );
@@ -90,23 +96,66 @@ class WatcherJsonWriter
      */
     protected function collectModelPaths(): array
     {
-        if (! Config::boolean('ts-publish.models.enabled')) {
+        /** @var Collection<int, class-string<Model>> $models */
+        $models = collect();
+
+        if (Config::boolean('ts-publish.models.enabled')) {
+            /** @var ModelsCollector $collector */
+            $collector = resolve(Config::string('ts-publish.models.collector_class', ModelsCollector::class));
+            $models = $models->merge($collector->collect());
+        }
+
+        if (Config::boolean('ts-publish.model_metadata.enabled', false)) {
+            /** @var ModelMetadataCollector $collector */
+            $collector = resolve(Config::string(
+                'ts-publish.model_metadata.collector_class',
+                ModelMetadataCollector::class,
+            ));
+            $models = $models->merge($collector->collect());
+        }
+
+        if ($models->isEmpty()) {
             return [];
         }
 
-        /** @var ModelsCollector $collector */
-        $collector = resolve(Config::string('ts-publish.models.collector_class', ModelsCollector::class));
-
         return array_values(
-            $collector->collect()
+            $models
+                ->unique()
                 ->map(function (string $fqcn): string {
                     /** @var class-string<Model> $fqcn */
                     $reflection = new ReflectionClass($fqcn);
 
-                    return LaravelTsPublish::resolveRelativePath((string) $reflection->getFileName());
+                    return TsNaming::resolveRelativePath((string) $reflection->getFileName());
                 })
                 ->all()
         );
+    }
+
+    /**
+     * Collect the custom metadata provider path that can affect every metadata companion.
+     *
+     * @return list<string>
+     */
+    protected function collectModelMetadataProviderPaths(): array
+    {
+        if (! Config::boolean('ts-publish.model_metadata.enabled', false)) {
+            return [];
+        }
+
+        try {
+            $provider = resolve(ModelMetadataProviderResolver::class)->resolve();
+        } catch (Throwable) {
+            // A provider that cannot resolve has no file to watch; the run that publishes metadata fails loudly instead.
+            return [];
+        }
+
+        if ($provider instanceof DefaultModelMetadataProvider) {
+            return [];
+        }
+
+        $reflection = new ReflectionClass($provider);
+
+        return [TsNaming::resolveRelativePath((string) $reflection->getFileName())];
     }
 
     /**
@@ -126,7 +175,7 @@ class WatcherJsonWriter
                 ->map(function (string $fqcn): string {
                     $reflection = new ReflectionClass($fqcn);
 
-                    return LaravelTsPublish::resolveRelativePath((string) $reflection->getFileName());
+                    return TsNaming::resolveRelativePath((string) $reflection->getFileName());
                 })
                 ->all()
         );
@@ -149,7 +198,7 @@ class WatcherJsonWriter
                 ->map(function (string $fqcn): string {
                     $reflection = new ReflectionClass($fqcn);
 
-                    return LaravelTsPublish::resolveRelativePath((string) $reflection->getFileName());
+                    return TsNaming::resolveRelativePath((string) $reflection->getFileName());
                 })
                 ->all()
         );
@@ -172,7 +221,7 @@ class WatcherJsonWriter
                 ->map(function (string $fqcn): string {
                     $reflection = new ReflectionClass($fqcn);
 
-                    return LaravelTsPublish::resolveRelativePath((string) $reflection->getFileName());
+                    return TsNaming::resolveRelativePath((string) $reflection->getFileName());
                 })
                 ->all()
         );
@@ -195,7 +244,7 @@ class WatcherJsonWriter
                 ->map(function (string $fqcn): string {
                     $reflection = new ReflectionClass($fqcn);
 
-                    return LaravelTsPublish::resolveRelativePath((string) $reflection->getFileName());
+                    return TsNaming::resolveRelativePath((string) $reflection->getFileName());
                 })
                 ->all()
         );

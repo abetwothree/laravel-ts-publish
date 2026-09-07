@@ -139,6 +139,11 @@ class NestedResourceSpreadResource extends JsonResource
                     'flag' => true,
                 ]
             )),
+
+            // Task 32 review, IMPORTANT-2: the relation-chain predicate classifySpreadArm() gained
+            // for the top-level flatten path also fires here, one level down inside an inline array
+            // — nested, so it still intersects (Omit<User, 'flag'> & {...}), never flattens.
+            'owner_relation_spread' => [...$this->owner->toArray(), 'flag' => true],
         ];
     }
 }

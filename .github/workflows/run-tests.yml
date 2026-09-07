@@ -12,7 +12,7 @@ on:
       - "composer.lock"
       - "package-lock.json"
       - "testbench.yaml"
-      - "tsconfig.json"
+      - "tsconfig*.json"
 
 permissions:
   contents: write
@@ -144,11 +144,17 @@ jobs:
           fi
           echo "PASS - @tolki/ts types resolve"
 
+      - name: Gate - docs cite symbols, not line numbers
+        run: .github/scripts/docs-anchor-gate.sh
+
       - name: Gate - no type token emitted without its import
-        run: .github/scripts/unimportable-token-gate.sh 10 0
+        run: .github/scripts/unimportable-token-gate.sh 0 0 0
 
       - name: Gate - unknown-regression-gate parser self-test
         run: python3 .github/scripts/unknown-regression-gate.py --parsetest
+
+      - name: Gate - token gate self-test
+        run: .github/scripts/unimportable-token-gate.sh --selftest
 
       - name: Gate - no property regressed to unknown
         run: |
@@ -158,3 +164,47 @@ jobs:
           fi
           echo "Comparing $base..HEAD"
           python3 .github/scripts/unknown-regression-gate.py "$base" HEAD
+
+  publish-bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    name: publish speed (A/B vs merge-base)
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: 8.4
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv, imagick, fileinfo
+          coverage: none
+
+      - name: Install hyperfine
+        run: sudo apt-get update && sudo apt-get install -y hyperfine
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-interaction
+
+      - name: Set up the merge-base worktree
+        run: |
+          # This workflow triggers on push (see `on:` above), not pull_request, so
+          # github.base_ref is never populated - follow the same origin/main-with-
+          # HEAD~1-fallback pattern the "no property regressed to unknown" gate above
+          # already uses instead of relying on it.
+          base=$(git merge-base origin/main HEAD 2>/dev/null || true)
+          if [ -z "$base" ] || [ "$base" = "$(git rev-parse HEAD)" ]; then
+            base=$(git rev-parse HEAD~1)
+          fi
+          echo "Comparing $base..HEAD"
+          git worktree add /tmp/base "$base"
+          cp composer.lock /tmp/base/composer.lock
+          composer install --prefer-dist --no-interaction --working-dir=/tmp/base
+          echo "base: $(composer show laravel/framework --working-dir=/tmp/base | grep '^versions')"
+          echo "head: $(composer show laravel/framework | grep '^versions')"
+
+      - name: Gate - publish speed vs merge-base
+        run: bash .github/scripts/publish-bench.sh /tmp/base "$PWD"

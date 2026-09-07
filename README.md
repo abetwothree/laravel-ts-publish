@@ -2,6 +2,8 @@
 
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/abetwothree/laravel-ts-publish.svg?style=flat-square)](https://packagist.org/packages/abetwothree/laravel-ts-publish)
 [![Laravel Compatibility](https://badge.laravel.cloud/badge/abetwothree/laravel-ts-publish)](https://packagist.org/packages/abetwothree/laravel-ts-publish)
+[![PHP Compatibility](https://badge.laravel.cloud/php-badge/abetwothree/laravel-ts-publish)](https://packagist.org/packages/abetwothree/laravel-ts-publish)
+[![Laravel Boost](https://badge.laravel.cloud/boost-badge.svg)](https://github.com/laravel/boost)
 [![GitHub Tests Action Status](https://img.shields.io/github/actions/workflow/status/abetwothree/laravel-ts-publish/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/abetwothree/laravel-ts-publish/actions?query=workflow%3Arun-tests+branch%3Amain)
 [![Coverage](assets/coverage.svg)](https://github.com/abetwothree/laravel-ts-publish/actions?query=workflow%3Arun-tests+branch%3Amain)
 [![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/abetwothree/laravel-ts-publish/fix-php-code-style-issues.yml?branch=main&label=code%20style&style=flat-square)](https://github.com/abetwothree/laravel-ts-publish/actions?query=workflow%3A"Fix+PHP+code+style+issues"+branch%3Amain)
@@ -41,6 +43,7 @@ For examples of the generated TypeScript output, see [these output examples](wor
 - 🌐 [Enum API resource](#json-enum-http-api-resource)
 - 📂 [Modular publishing](#modular-publishing)
 - 🔧 [Customizing the pipeline](#extending--customizing-the-pipeline)
+- 🔍 [Analyzer API](#analyzer-api)
 - ⚡ [Pre-command hook](#pre-command-hook)
 - 💾 [Cache generation](#cache-generation)
 - 📤 [Output options](#output-options)
@@ -117,6 +120,8 @@ php artisan ts:publish --source="App\Http\Resources\UserResource"
 
 On a large project this is much faster than a full publish. The [Vite plugin](https://tolki.abe.dev/ts/vite-plugin.html) uses it automatically during development to republish only the file that changed.
 
+Single-file model publishing respects the model and model-metadata `included` and `excluded` settings independently. `additional_directories` affects discovery only and is not required for an explicitly supplied source.
+
 #### Automatic publishing after migrations
 
 By default, this package will automatically re-publish your TypeScript declaration types after running migrations. This ensures your TypeScript types stay in sync with your database schema changes.
@@ -166,35 +171,43 @@ Similar options are available for other content types like enums, events, resour
 
 #### Conditional publishing
 
-You can choose to publish only enums, only models, or only resources, either through configuration or command flags.
+You can choose which output phases to publish through configuration or command flags.
 
 ##### Via configuration
 
-Disable enum, model, or resource publishing entirely in the config file:
+Disable any publishing phase independently in the config file:
 
 ```php
 // config/ts-publish.php
 
 'enums' => ['enabled' => true],
 'models' => ['enabled' => true],
+'model_metadata' => ['enabled' => false],
 'resources' => ['enabled' => true],
 ```
 
 Setting any to `false` will skip that type on every run, including automatic post-migration publishing.
 
+The `model_metadata` block is new in this release, so a `config/ts-publish.php` you published earlier does not carry it. The package config merges one level deep, so copy the **whole** block rather than one key — a partial block replaces the packaged one outright. Nothing breaks if you skip it: every `model_metadata` key falls back in code to the value the packaged config ships, so an older config keeps working until you enable the feature.
+
 ##### Via command flags
 
-Use one of the `--only-*` flags to limit a single run to a specific type: `--only-enums`, `--only-models`, `--only-resources`, `--only-routes`, `--only-form-requests`, `--only-broadcast-channels`, or `--only-broadcast-events`.
+Use one of the `--only-*` flags to limit a single run to a specific type: `--only-enums`, `--only-models`, `--only-model-metadata`, `--only-resources`, `--only-routes`, `--only-form-requests`, `--only-broadcast-channels`, or `--only-broadcast-events`.
 
 ```bash
 php artisan ts:publish --only-enums
 php artisan ts:publish --only-models
+php artisan ts:publish --only-model-metadata
 php artisan ts:publish --only-resources
 ```
 
 The flags cannot be combined. Passing two returns an error.
 
-There's also `--only-functional`, which publishes only type-erasure-safe output (enums, routes, form requests, broadcast channels/events) while skipping models and resources. The [Vite plugin](https://tolki.abe.dev/ts/vite-plugin.html) appends it on `vite build`, since interfaces are erased at compile time anyway. Combined with another `--only-*` flag, it wins.
+There's also `--only-functional`, which skips model and resource interfaces and publishes every other enabled phase. The [Vite plugin](https://tolki.abe.dev/ts/vite-plugin.html) appends it on `vite build`, since those interfaces are erased at compile time anyway. Combined with another `--only-*` flag, it wins.
+
+Model interfaces and their metadata companions share one barrel, and every export in it belongs to exactly one of those two phases — the `_meta` suffix decides which. A phase that runs owns its exports outright, so a removed model's export is pruned. A phase that is enabled in config but skipped by an `--only-*` flag keeps its exports, while a phase disabled in config drops them. If a model's metadata provider throws, that model keeps its last-known-good companion export and the command exits non-zero.
+
+A custom `barrel_writer_class` that overrides nothing inherits this behavior and needs no opt-in. One that overrides `writeModular()` to change the barrel format must override `writeModularPreserving()` the same way: partial runs call that method, and the inherited one would emit the base format for exactly the runs that preserve. Barrels are generated files: a hand-written line that is not an `export * from './x';` statement is not preserved.
 
 ##### Config & flag conflicts
 
@@ -299,14 +312,32 @@ import type { User, UserMutators, UserRelations } from '@js/types/data/models';
 // UserRelations → posts: Post[]; posts_count: number; posts_exists: boolean
 ```
 
+Model runtime metadata can be published beside each model. Turn it on with `model_metadata.enabled`:
+
+```typescript
+// models/user_meta.ts
+export const UserModelMetadata = {
+    morphClass: 'user',
+} as const satisfies {
+    morphClass: string;
+};
+```
+
+A configurable provider builds the payload for every model. The default one publishes `morphClass` and keeps your morph-map aliases. Types come from `#[TsCasts]` first, then the `@return array{...}` shape, then inference over the method body, so `getTable()` and enum values type themselves.
+
+Metadata is its own publishing phase with its own `--only-model-metadata` flag. Its `included`, `excluded`, and `additional_directories` settings fall back to the model ones when you omit them. A provider that throws keeps that model's last good companion, finishes every other file, and exits non-zero.
+
+For the provider contract, type precedence, value rules, and failure semantics, see the full [Model Metadata documentation](https://tolki.abe.dev/ts/model-metadata.html). Contributors: [docs/components/model-metadata.md](docs/components/model-metadata.md) and [docs/components/barrel-writer.md](docs/components/barrel-writer.md).
+
 Key capabilities:
 
 - **Split or full templates** — `models.template` controls whether properties/mutators/relations are generated as separate interfaces (default) or combined into one `model-full` interface.
 - **Smart nullable relations** — singular relations (`HasOne`, `BelongsTo`, `MorphOne`, ...) are automatically typed with `| null` based on the relation type and foreign key nullability, with a config to override the strategy per relation type.
 - **Annotate instead of configuring** — `@property` / `@property-read` tags, `@phpstan-type` aliases, `Attribute<>` generics, `@return MorphTo<A|B, $this>`, `AsEnumCollection::of()` / `AsCollection::of()`, and an `Arrayable` DTO's own typed properties all sharpen a column's type with no `#[TsCasts]` needed, and PHPStan/Larastan read the same annotations. See [Typing attributes without `#[TsCasts]`](https://tolki.abe.dev/ts/models.html#typing-attributes-without-tscasts).
 - **PHPDoc-aware** — class, column, mutator, and relation doc blocks are carried over as JSDoc comments automatically.
-- **`#[TsCasts]` / `#[TsType]`** — for more advanced TypeScript types for columns, mutators, relations, or an entire custom cast class, including custom types imported from your own files.
+- **`#[TsCasts]` / `#[TsType]`** — for more advanced TypeScript types for generated properties or an entire custom cast class, including custom types imported from your own files.
 - **`$hidden` and write-only accessors** — hidden attributes publish by default. `models.exclude_hidden` opts out for model *and* resource interfaces alike, so a resource's `except()` or whole-model delegation loses the column too, though `only(['password'])` still keeps one you name explicitly. A write-only `Attribute::make(set:)` resolves from its `@return Attribute<Get, Set>` generic, then from a same-named column, and failing both is omitted rather than emitted as `unknown`.
+- **Runtime metadata** — each `{model}_meta.ts` companion exports a `{Model}ModelMetadata` object whose values come from the configured provider.
 - **`#[TsExclude]`** — exclude an entire model, or a specific accessor/relation, from the output.
 - **Laravel 13 model attributes** — `#[Table]`, `#[Hidden]`, `#[Visible]`, `#[Appends]`, and `#[Connection]` are honoured automatically, no configuration needed. See [Laravel 13 Model Attributes](https://tolki.abe.dev/ts/models.html#laravel-13-model-attributes) for the full attribute-by-attribute table.
 - **Enum-typed columns** also generate a matching `{Model}Resource` interface using `AsEnum<>`, for when you've resolved a raw enum column to a full enum instance (e.g. via `Status.from(user.status)`).
@@ -403,7 +434,7 @@ Key capabilities:
 - **Query strings** — extra keys become query parameters automatically, with a `_query` escape hatch and a `mergeQuery` option for updating the current page's query string.
 - **`.form()` helper** — builds `{ action, method }` for HTML forms, including Laravel's `_method` spoofing for `PUT`/`PATCH`/`DELETE`, and mapping `HEAD` to a plain GET form action (HTML forms can't submit `HEAD`).
 - **Inertia integration** — page-prop types and the component name are inferred and attached automatically when `inertia.enabled` is on.
-- **Inertia UI Table typing** — routes rendering an [Inertia UI Table](https://inertiaui.com/) get an automatically typed `TableResource<Model>` page prop without evaluating the table, with table-tainted controllers safely falling back instead of erroring.
+- **Inertia UI Table typing** — routes rendering an [Inertia UI Table](https://inertiaui.com/) get an automatically typed `TableResource<Model>` page prop, resolved by reflection and AST only so the table is never instantiated or serialized. Sibling actions on the same controller are typed normally.
 - **Form Request payloads** — a controller method's `FormRequest` type-hint automatically attaches its generated interface to the route.
 - **Filtering** — `#[TsExclude]`, wildcard/negation route-name patterns (`routes.only` / `routes.except`), middleware exclusion, and named-routes-only mode.
 
@@ -481,7 +512,7 @@ For the dot-notation tree algorithm, parameter typing, and quoted-key handling, 
 
 ## Broadcast events
 
-Every `ShouldBroadcast` and `ShouldBroadcastNow` event gets its own interface, built from its `broadcastWith()` return shape or, when there is none, its public constructor properties. A combined `broadcast-events.ts` index adds a `BroadcastEvent` union and a flat `BroadcastEvents` const of every Echo event name.
+Every `ShouldBroadcast` and `ShouldBroadcastNow` event gets its own interface, built from its `broadcastWith()` return shape or, when there is none, its public properties. A combined `broadcast-events.ts` index adds a `BroadcastEvent` union and a flat `BroadcastEvents` const of every Echo event name.
 
 ```php
 class OrderShipped implements ShouldBroadcast
@@ -510,9 +541,9 @@ export interface OrderShipped {
 
 Key capabilities:
 
-- **`broadcastWith()` or public properties** — when present, `broadcastWith()`'s return shape drives the interface (handy for hiding private fields); otherwise every public constructor-promoted property is used.
-- **Model & enum-aware** — a property typed as an Eloquent model resolves to `Partial<Model>`, and a PHP enum property resolves to the enum's `{Name}Type` alias, both with automatic imports.
-- **`broadcastAs()` support** — a custom Echo event name from `broadcastAs()` is used as-is; otherwise the Echo name defaults to Laravel's `.Fully.Qualified.ClassName` convention.
+- **`broadcastWith()` or public properties** — when present, `broadcastWith()`'s return shape drives the interface (handy for hiding private fields); otherwise both constructor-promoted and class-body public properties are used, with a `@var` docblock preferred over the native declaration. Every trait-declared property is skipped, `#[TsExtends]` traits included — their fields already arrive through the `extends` clause.
+- **Model & enum-aware** — a property typed as an Eloquent model resolves to `Partial<Model>`, and a PHP enum property resolves to the enum's `{Name}Type` alias (honouring `#[TsEnum(name:)]`), both with automatic imports.
+- **`broadcastAs()` support** — a custom Echo event name is used when `broadcastAs()` returns one whole string literal; a computed name (`'order.'.$this->kind`) falls back to Laravel's `.Fully.Qualified.ClassName` convention rather than shipping a half-built key.
 - **`#[TsCasts]` / `#[TsExtends]`** — override property types or extend shared interfaces, the same attributes used by models, resources, and form requests.
 - **`#[TsExclude]`** — exclude an entire event class from the output. See [Excluding with `#[TsExclude]`](#excluding-with-tsexclude).
 - **Echo module augmentation** — optionally generates an `echo-broadcast-events.d.ts` file that augments `@laravel/echo`'s (or `@laravel/echo-vue`/`-react`/`-svelte`'s, auto-detected) `Events` interface for fully-typed `Echo.private(...).listen()` calls.
@@ -531,34 +562,44 @@ class HandleInertiaRequests extends Middleware
     {
         return [
             ...parent::share($request),
+            'name' => config('app.name'),
             'auth' => ['user' => $request->user()],
+            'sidebarOpen' => ! $request->hasCookie('sidebar_state'),
         ];
     }
 }
 ```
 
 ```typescript
+import type { User } from './app/models';
+
 declare global {
     namespace Inertia {
-        type SharedData = { auth: { user: { id: number; name: string; email: string } | null }; /* ... */ };
+        type SharedData = { name: string, auth: { user: User | null }, sidebarOpen: boolean };
     }
 }
 
 declare module '@inertiajs/core' {
     export interface InertiaConfig {
-        sharedPageProps: Inertia.SharedData;
+        sharedPageProps: { name: string, auth: { user: User | null }, sidebarOpen: boolean };
     }
 }
 ```
 
 Key capabilities:
 
-- **Static `share()` analysis** — every key returned from `share()` (including a spread `...parent::share($request)`) is statically resolved to a TypeScript type, no running the app required.
-- **`#[TsCasts]` / `@return` docblock overrides** — override or add types for keys Surveyor can't infer on its own, the same `#[TsCasts]` attribute used everywhere else in the package.
+- **Static `share()` analysis** — every key returned from `share()` is statically resolved to a TypeScript type, no running the app required. Both composition forms are read: a `...parent::share($request)` spread and `array_merge(parent::share($request), [...])`, up the whole middleware inheritance chain, with a later key overriding an earlier one exactly as PHP does.
+- **`$request->user()` typed through your auth config** — resolved via `auth.defaults.guard` → its provider → that provider's model, so the prop is typed `User | null` with the model's import written for you. `auth()->user()`, `auth()->id()`, `Auth::user()` and `Auth::id()` resolve the same way, and `$request->url()`, `->path()`, `->integer()`, `->boolean()`, `->string()`, `->cookie()` and `->hasCookie()` are typed from Laravel's own signatures.
+- **`config('some.key')`** — a literal key is typed from the live configuration value, since the package runs inside your booted application. A computed key stays `unknown`.
+- **Inertia v2 prop wrappers** — `Inertia::defer()`, `optional()`, `lazy()`, `always()`, `merge()` and `deepMerge()` are typed as the value they wrap; the three that a partial reload can omit produce an optional key.
+- **`errors` is left to Inertia** — `@inertiajs/core` already types `page.props.errors`, so the package never infers a weaker `errors` entry of its own. A `#[TsCasts]` or `@return` docblock entry for it still wins if you want one.
+- **`#[TsCasts]` / `@return` docblock overrides** — override or add types for keys the analyzer can't infer on its own, the same `#[TsCasts]` attribute used everywhere else in the package.
 - **`errorValueType`** — automatically added to the augmentation when the middleware's `$withAllErrors` property is `true`, matching Inertia's validation error bag shape.
 - **Route-linked page props** — a related but separate piece: a controller action's `Inertia::render()` call gets its own page-prop type that intersects with `Inertia.SharedData`, threaded into that route's generated file automatically. See [Inertia Integration](https://tolki.abe.dev/ts/routing.html#inertia-integration) in the Routing docs.
+- **Page props read the expression you wrote** — Eloquent finders (`Post::findOrFail($id)` → `Post`, `Post::find($id)` → `Post | null`, `User::all()` → `User[]`, `->paginate()` → `LengthAwarePaginator<Post>`), route-bound model parameters, `$request->user()`, the v2 prop wrappers, `compact('post', 'comments')`, `array_merge($base, [...])`, and a props array assigned from a ternary all type without an annotation. Two renders of the same component merge into one type, and a key only one branch sets becomes optional.
 - **Preserve-keys resource collections** — a paginated `Inertia::render()` prop backed by a `#[PreserveKeys]`/`$preserveKeys` resource collection types its `data` member as `Record<string, T>`, matching Laravel's key-preserving JSON shape instead of the default array.
 - **Inline paginators** — a paginator called directly inside the render array (`'teams' => new TeamCollection(Team::query()->paginate(10))`) is typed as a paginator, with no intermediate variable needed. `paginate()`, `simplePaginate()`, and `cursorPaginate()` are all recognised, in both the `new SomeCollection(...)` and `SomeResource::collection(...)` forms — see [Paginating Inline in the Render Call](https://tolki.abe.dev/ts/inertia.html#paginating-inline-in-the-render-call).
+- **Degrades instead of aborting** — an action whose props can't be analyzed is reported as a warning after the run and typed as `Inertia.SharedData` alone, rather than failing the whole `ts:publish` run.
 
 For the full middleware discovery rules, the type-override priority order, and the generated file anatomy, see the full [Inertia documentation](https://tolki.abe.dev/ts/inertia.html).
 
@@ -772,6 +813,29 @@ Key capabilities:
 
 For the full per-feature pipeline-stage reference, every abstract base class's method contract, and the cache rehydration mechanics, see the full [Customizing the Pipeline documentation](https://tolki.abe.dev/ts/customizing-the-pipeline.html).
 
+## Analyzer API
+
+The same static analysis engine that powers every feature above is also available directly, outside the `ts:publish` pipeline. `AstEngine::analyze()` takes a class and a method name and returns an `AnalysisResult` of the typed properties, the `import type` lines they need, and the value imports an `AsEnum<typeof X>` wrapper needs. It's the same output a resource's `toArray()` produces, but callable directly from your own code — a custom Artisan command, a package that wants this package's own typing — without running a full publish.
+
+```php
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+
+$result = resolve(AstEngine::class)->analyze(App\Http\Resources\PostResource::class);
+
+// $result->properties   — the typed property list ts:publish would generate for PostResource
+// $result->typeImports  — import path => type names the properties reference
+// $result->valueImports — import path => enum consts an AsEnum<typeof X> wrapper needs
+```
+
+Key capabilities:
+
+- **The three fields agree with each other** — render them and they compile. Two same-basename classes are aliased apart in the property types as well as in the imports, an `EnumResource::make()` property arrives already wrapped as `AsEnum<typeof X>` beside the value import that wrapper reads, and nothing is imported that no property type names.
+- **Any class, any method** — not only `toArray()`. A `JsonResource` subclass gets full resource semantics (conditional methods, `EnumResource`, nested resources, relation filters) with no extra setup, and `analyze($event, 'broadcastWith')` is the payload interface `ts:publish` writes for that event. A model needs its own class passed as `$modelClass`: without one there is no `toArray()` body to read and all three fields come back empty.
+- **`analyze()` and `AnalysisResult` are the whole surface** — every other class under `src/Ast`, and `AstEngine`'s remaining methods, are `@internal`: they change without notice as inference grows, so code reaching past them is on its own.
+- **Shapes it does not answer** — a form request's published interface comes from its runtime `rules()` analyzer rather than the engine, so `analyze($request, 'rules')` types that method's own return shape, not the validated payload. Inertia layers its own resolution on top of the engine — a seeded scope, dropped framework-owned keys, docblock overrides — so `analyze($middleware, 'share')` is the raw method shape rather than the published `SharedData`, and page props run from an `Inertia::render()` call's props argument, which has no public entry point at all. A `$wrap = null` collection's whole answer is a flat type alias `AnalysisResult` has nowhere to put, so all three fields come back empty. And a `morphTo` union needs the morph target map a publish run builds by scanning every model, so outside one that property is omitted.
+
+For the full walkthrough, including the analysis DTO's fields and the engine's limits, see the full [Analyzer API documentation](https://tolki.abe.dev/ts/analyzer-api.html).
+
 ## Pre-command hook
 
 Register a closure with `LaravelTsPublish::callCommandUsing()` to run logic right before `ts:publish` executes, whether that is building directory lists, swapping pipeline classes, or reacting to feature flags. The closure only runs when the command actually runs, not at service provider boot time, so it never adds overhead to a normal request.
@@ -865,7 +929,7 @@ When `json.enabled` is enabled, a `laravel-ts-definitions.json` file is written 
 
 The file has one top-level object per feature (`models`, `enums`, `resources`, `formRequests`, `broadcastEvents`), and **every one of them is keyed by fully-qualified class name** (`"Workbench\\App\\Models\\User"`), not by short class name. Each entry carries a `name` field holding the short name that used to be the key. Keying by FQCN is deliberate: two classes sharing a basename across namespaces (`App\Models\User` and `Crm\Models\User`) are common in larger apps, and a short-name key silently overwrites one with the other. Key your lookups by FQCN and read `name` for display. **This is a breaking change** for anything written against the older bare-name-keyed file.
 
-The JSON output from `watcher.enabled` is designed to work with build tools and file watchers (like the [@tolki/ts Vite plugin](https://tolki.abe.dev/ts/vite-plugin.html)) that need to know which PHP source files were collected so they can trigger a re-publish when those files change.
+The JSON output from `watcher.enabled` is designed to work with build tools and file watchers (like the [@tolki/ts Vite plugin](https://tolki.abe.dev/ts/vite-plugin.html)) that need to know which PHP source files were collected so they can trigger a re-publish when those files change. When model metadata uses a custom provider, its PHP file is included because changing it can affect every metadata companion.
 
 ## Configuration reference
 

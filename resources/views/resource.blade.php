@@ -1,4 +1,4 @@
-@use('AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish')
+@use('AbeTwoThree\LaravelTsPublish\Facades\JsEmitter')
 @if($usesTolkiPackage && count($data->valueImports) > 0)
 import { type AsEnum } from '@tolki/ts';
 
@@ -19,7 +19,7 @@ if ($description) {
 
 $description .= "@see {$data->fqcn}";
 @endphp
-{!! LaravelTsPublish::formatJsDoc($description) !!}
+{!! JsEmitter::formatJsDoc($description) !!}
 @if($data->typeAlias !== null)
 export type {{ $data->resourceName }} = {!! $data->typeAlias !!};
 @else
@@ -27,9 +27,9 @@ export interface {{ $data->resourceName }}{!! count($data->tsExtends) > 0 ? ' ex
 {
 @foreach ($data->properties as $name => $property)
 @if($property['description'])
-{!! LaravelTsPublish::formatJsDoc($property['description'], 4) !!}
+{!! JsEmitter::formatJsDoc($property['description'], 4) !!}
 @endif
-    {!! LaravelTsPublish::validJsObjectKey($name) !!}{!! $property['optional'] ? '?' : '' !!}: {!! $property['type'] !!};
+    {!! JsEmitter::validJsObjectKey($name, allowIndexSignature: true) !!}{!! $property['optional'] ? '?' : '' !!}: {!! $property['type'] !!};
 @endforeach
 }
 @endif

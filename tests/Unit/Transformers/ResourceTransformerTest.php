@@ -5,6 +5,8 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
+use Workbench\App\Enums\Priority;
+use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\AddressExtendsResource;
 use Workbench\App\Http\Resources\AddressMixinResource;
 use Workbench\App\Http\Resources\AddressResource;
@@ -16,6 +18,7 @@ use Workbench\App\Http\Resources\BranchedInlineFqcnResource;
 use Workbench\App\Http\Resources\CategoryResource;
 use Workbench\App\Http\Resources\ChildInlineFqcnResource;
 use Workbench\App\Http\Resources\ChildSharedResource;
+use Workbench\App\Http\Resources\CommentComposedResource;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\DelegatingWithMixinResource;
 use Workbench\App\Http\Resources\EmptyResource;
@@ -24,20 +27,29 @@ use Workbench\App\Http\Resources\EnumCollectionResource;
 use Workbench\App\Http\Resources\EventLogResource;
 use Workbench\App\Http\Resources\FqcnMixinResource;
 use Workbench\App\Http\Resources\ImageDelegatedResource;
+use Workbench\App\Http\Resources\ImageDimensionsResource;
 use Workbench\App\Http\Resources\ImageMorphResource;
+use Workbench\App\Http\Resources\ImageNullableArmsResource;
 use Workbench\App\Http\Resources\InheritedInlineFqcnResource;
 use Workbench\App\Http\Resources\KpiResource;
 use Workbench\App\Http\Resources\MediaTypeInstanceOfResource;
 use Workbench\App\Http\Resources\MediaTypeResource;
 use Workbench\App\Http\Resources\MediaTypeUnknownResource;
+use Workbench\App\Http\Resources\MixedEnumMergedResource;
+use Workbench\App\Http\Resources\MixedEnumReturnBranchesResource;
+use Workbench\App\Http\Resources\NamedArgsConditionalResource;
 use Workbench\App\Http\Resources\OrderResource;
+use Workbench\App\Http\Resources\PostEnumTrioResource;
 use Workbench\App\Http\Resources\PostFlatCollection;
 use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Http\Resources\PostSpotlightResource;
 use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\ProfileResource;
 use Workbench\App\Http\Resources\RelationChainResource;
 use Workbench\App\Http\Resources\ResourceWrappedEnumResource;
+use Workbench\App\Http\Resources\SameBasenameModelTrioResource;
 use Workbench\App\Http\Resources\ServiceDeskResource;
+use Workbench\App\Http\Resources\TeamStatusAuditResource;
 use Workbench\App\Http\Resources\TernaryResource;
 use Workbench\App\Http\Resources\ToArrayCastsResource;
 use Workbench\App\Http\Resources\TraitSpreadCoverageResource;
@@ -60,6 +72,7 @@ use Workbench\App\Models\Warehouse;
 use Workbench\App\Resources\DirectResource;
 use Workbench\Blog\Http\Resources\ApiArticleResource;
 use Workbench\Crm\Http\Resources\DealEnumInlineResource;
+use Workbench\Crm\Http\Resources\DealEnumTrioResource;
 use Workbench\Crm\Http\Resources\DealResource;
 use Workbench\Crm\Http\Resources\UserResource as CrmUserResource;
 use Workbench\Crm\Models\User as CrmUser;
@@ -618,6 +631,13 @@ describe('ResourceTransformer with ToArrayCastsResource — #[TsCasts] on toArra
 
         expect($data->properties['id']['type'])->toBe('number');
         expect($data->properties['name']['type'])->toBe('string');
+    });
+
+    test('a #[TsCasts] override removes the enum import the analyzer had claimed', function () {
+        $transformer = new ResourceTransformer(ToArrayCastsResource::class);
+        $transformer->data();
+
+        expect(implode(' ', array_merge(...array_values($transformer->typeImports))))->not->toContain('RoleType');
     });
 });
 
@@ -1209,6 +1229,21 @@ describe('ResourceTransformer with parent::toArray spread', function () {
     });
 });
 
+describe('ResourceTransformer with CommentComposedResource — top-level spreads flatten', function () {
+    test('top-level resolve()/toArray() spreads flatten into the resource properties', function () {
+        $properties = (new ResourceTransformer(CommentComposedResource::class))->data()->properties;
+        $names = array_keys($properties);
+
+        expect($names)->toContain('id')
+            ->and($names)->toContain('title')   // from PostResource
+            ->and($names)->toContain('email')   // from User::toArray()
+            // from Post::tags()->toArray() — an index signature, not a named key: spreading a
+            // collection renumbers its elements 0..n, the same shape buildSpreadArmTypes() wraps
+            // as `Record<number, Tag>` for the identical spread one level down inside an inline array.
+            ->and($properties['[key: number]']['type'])->toBe('Tag');
+    });
+});
+
 describe('ResourceTransformer with trait method spread', function () {
     test('PostResource morphValue has string type from PHPDoc array shape', function () {
         $data = (new ResourceTransformer(PostResource::class))->data();
@@ -1433,6 +1468,22 @@ describe('ResourceTransformer import collision deconfliction', function () {
         expect($data->properties['summary']['type'])
             ->toBe('{ app_status: AsEnum<typeof EnumsStatus>; crm_status: AsEnum<typeof CrmStatus> }');
     });
+
+    test('two colliding Status enums, one repeated, keep their own alias through the positional queue', function () {
+        $data = (new ResourceTransformer(DealEnumTrioResource::class))->data();
+
+        // App\Enums\Status and Crm\Enums\Status share a basename, so both render the same bare
+        // 'StatusType' token — aliasPropertyType() is the only thing telling occurrence 'c' apart
+        // from 'b', and it can only do that if the FQCN queue kept all three entries in order.
+        expect($data->properties['trio']['type'])
+            ->toBe('{ a: WorkbenchStatusType; b: CrmStatusType; c: WorkbenchStatusType }');
+
+        // Same collision, reached through a class-constant array of one record: the record's own
+        // positional list (analyzeConstantRecordValue()) must survive analyzeConstantListValue()'s
+        // list-element handling instead of being re-deduped there.
+        expect($data->properties['matrix']['type'])
+            ->toBe('{ a: WorkbenchStatusType; b: CrmStatusType; c: WorkbenchStatusType }[]');
+    });
 });
 
 describe('ResourceTransformer with ApiArticleResource (abstract parent + trait spreads)', function () {
@@ -1623,6 +1674,23 @@ describe('ResourceTransformer mergePropertyFqcnMaps() overlap guard', function (
         // Without the guard the accessor pass re-adds its own [CrmUser, User] ahead of the inline
         // entries, producing a 4-entry queue for what is really 2 occurrences and misaligning the prefix.
         expect($merged['last_user_activity_by'])->toBe([User::class, CrmUser::class]);
+    });
+});
+
+describe('ResourceTransformer resolveMultiEnumAccessorFqcns() overlap guard', function () {
+    test('a property already carrying inline enum FQCNs is not re-queued by the accessor pass', function () {
+        $transformer = new ResourceTransformer(WarehouseResource::class);
+
+        (function () {
+            unset($this->propertyEnumFqcnsList['review_priority']);
+            $this->propertyInlineEnumFqcns['review_priority'] = [Priority::class, Status::class];
+        })->call($transformer);
+
+        (fn () => $this->resolveMultiEnumAccessorFqcns())->call($transformer);
+
+        $list = (fn () => $this->propertyEnumFqcnsList)->call($transformer);
+
+        expect($list)->not->toHaveKey('review_priority');
     });
 });
 
@@ -2260,7 +2328,7 @@ describe('ResourceTransformer with EnumCollectionResource — EnumResource::coll
         $data = (new ResourceTransformer(EnumCollectionResource::class))->data();
 
         expect($data->properties['week_days_when_has_default']['type'])
-            ->toBe('AsEnum<typeof WeekDays>[] | null | string')
+            ->toBe('AsEnum<typeof WeekDays>[] | string | null')
             ->and($data->properties['week_days_when_has_default']['optional'])->toBeFalse();
     });
 
@@ -2283,8 +2351,8 @@ describe('ResourceTransformer with EnumCollectionResource — EnumResource::coll
     });
 
     // No other property in this file keeps a bare StatusType token; it survives only because
-    // wrapped_status_fallback's direct fallback arm genuinely needs it (Task 14) — that property
-    // alone is why this now asserts the opposite of its old name.
+    // wrapped_status_fallback's direct fallback arm genuinely needs it — that property alone is why
+    // this asserts the opposite of what its old name claimed.
     test('bare StatusType type import survives only because of a genuine direct reader, not stale substitution', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(EnumCollectionResource::class))->data();
@@ -2332,6 +2400,91 @@ describe('ResourceTransformer with EnumCollectionResource — EnumResource::coll
 
         expect($data->properties['latest_status_or_history']['type'])
             ->toBe('AsEnum<typeof Status> | StatusType[]');
+    });
+
+    test('a mixed ternary suffixes [] on whichever arm is a collection', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+        $properties = (new ResourceTransformer(EnumCollectionResource::class))->data()->properties;
+
+        expect($properties['wrapped_history_or_scalar']['type'])->toBe('AsEnum<typeof Status>[] | StatusType')
+            ->and($properties['wrapped_history_or_array']['type'])->toBe('AsEnum<typeof Status>[] | StatusType[]');
+    });
+});
+
+// Regression: the mixed-ternary arm shape (Task 28) is recorded once, in TernaryHandler, but is
+// only useful if every ResourceAnalysis-building collector threads it through to the transformer —
+// not only ResourceAstAnalyzer::analyzeReturnArray(), the single path the first fix wired up.
+describe('ResourceTransformer with mixed-ternary collector regressions', function () {
+    test('mergeReturnBranches() carries the arm shape across multiple return branches', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+        $properties = (new ResourceTransformer(MixedEnumReturnBranchesResource::class))->data()->properties;
+
+        expect($properties['wrapped_history_or_scalar']['type'])->toBe('AsEnum<typeof Status>[] | StatusType');
+    });
+
+    test('ThisPropertyHandler::extractPropertiesFromArray() carries the arm shape through $this->merge()', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+        $properties = (new ResourceTransformer(MixedEnumMergedResource::class))->data()->properties;
+
+        expect($properties['wrapped_history_or_scalar_merged']['type'])->toBe('AsEnum<typeof Status>[] | StatusType');
+    });
+
+    test('collectVariableArrayAssignments() carries the arm shape through a variable-building spread method', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+        $properties = (new ResourceTransformer(MixedEnumMergedResource::class))->data()->properties;
+
+        expect($properties['wrapped_history_or_scalar_assigned']['type'])->toBe('AsEnum<typeof Status>[] | StatusType');
+    });
+});
+
+describe('ResourceTransformer with ImageDimensionsResource', function () {
+    test('a when() default keeps both inline-object arms intact', function () {
+        $properties = (new ResourceTransformer(ImageDimensionsResource::class))->data()->properties;
+
+        expect($properties['box']['type'])
+            ->toBe('{ width: number | null; height: number | null } | { width: number | null }');
+    });
+});
+
+describe('ResourceTransformer with ImageNullableArmsResource', function () {
+    test('ternary and Elvis arms share one trailing null', function () {
+        $properties = (new ResourceTransformer(ImageNullableArmsResource::class))->data()->properties;
+
+        expect($properties['size']['type'])->toBe('number | string | null')
+            ->and($properties['label']['type'])->toBe('string | number | null');
+    });
+});
+
+describe('ResourceTransformer with PostSpotlightResource', function () {
+    test('a single-FQCN accessor imports its model under a foreign key and inside an inline member', function () {
+        $transformer = new ResourceTransformer(PostSpotlightResource::class);
+        $properties = $transformer->data()->properties;
+
+        expect($properties['headline']['type'])->toBe('Comment | null')
+            ->and($properties['spotlight']['type'])->toBe('{ comment: Comment | null }')
+            ->and(array_merge(...array_values($transformer->typeImports)))->toContain('Comment');
+    });
+});
+
+describe('ResourceTransformer with TeamStatusAuditResource', function () {
+    // Both arms read the same list-shaped accessor, so the merged union kept one member and only the
+    // per-arm shape still says the [] belongs on both. The direct arm surviving means its bare type
+    // token is spelled in the emitted type, so its type import has to travel out with it.
+    test('a nested mixed EnumResource ternary keeps both arms and the direct arm keeps its type import', function () {
+        $transformer = new ResourceTransformer(TeamStatusAuditResource::class);
+        $data = $transformer->data();
+
+        expect($data->properties['audit']['type'])->toBe('{ status: AsEnum<typeof Status>[] | StatusType[] }')
+            ->and(implode(' ', array_merge(...array_values($transformer->typeImports))))->toContain('StatusType')
+            ->and(implode(' ', array_merge(...array_values($transformer->valueImports))))->toContain('Status');
+    });
+});
+
+describe('ResourceTransformer with PostEnumTrioResource', function () {
+    test('repeated enum members keep their own type through the positional queue', function () {
+        $properties = (new ResourceTransformer(PostEnumTrioResource::class))->data()->properties;
+
+        expect($properties['trio']['type'])->toBe('{ a: StatusType; b: StatusType; c: PriorityType | null }');
     });
 });
 
@@ -2480,5 +2633,60 @@ describe('ResourceTransformer inline model FQCN multiplicity through analyzer me
 
         expect($data->properties['probe_nested']['type'])
             ->toBe('{ first: CrmUser | ModelsUser | null; second: ModelsUser | null }');
+    });
+});
+
+describe('ResourceTransformer with NamedArgsConditionalResource', function () {
+    test('reads the conditional family\'s named arguments the way Laravel binds them', function () {
+        $properties = (new ResourceTransformer(NamedArgsConditionalResource::class))->data()->properties;
+
+        expect($properties['not_null_named_default']['type'])->toBe('string | number')
+            ->and($properties['not_null_named_default']['optional'])->toBeFalse()
+            ->and($properties['when_all_named']['type'])->toBe('string | number')
+            ->and($properties['when_all_named']['optional'])->toBeFalse()
+            ->and($properties['loaded_named_default']['type'])->toBe('Comment[]')
+            ->and($properties['loaded_named_default']['optional'])->toBeFalse()
+            ->and($properties['counted_named_out_of_order']['type'])->toBe('number')
+            ->and($properties['counted_named_out_of_order']['optional'])->toBeFalse();
+    });
+});
+
+describe('ResourceTransformer with SameBasenameModelTrioResource', function () {
+    test('a repeated same-basename model inside one inline array keeps its own alias each time', function () {
+        $data = (new ResourceTransformer(SameBasenameModelTrioResource::class))->data();
+        $trio = $data->properties['trio']['type'];
+
+        // Capture the alias prefix rather than the whole name (they follow the namespace-prefix scheme
+        // import-name-registry.md documents), so a regression to the bare name still fails on the
+        // comparison below instead of on the count. Positions 1 and 3 must match while 2 differs.
+        preg_match_all('/(\w*)User\b/', $trio, $m);
+        expect($m[1])->toHaveCount(3)
+            ->and($m[1][0])->toBe($m[1][2])
+            ->and($m[1][1])->not->toBe($m[1][0])
+            // Pins the shape too: a flat inline array renders one object, never a union of two, and
+            // reaches InlineArrayHandler's own queue instead of mergeUnion().
+            ->and($trio)->toBe('{ a: CrmUser | null } | { b: WorkbenchUser | null; c: CrmUser | null }');
+    });
+
+    // collapsed_arms' two inner arms are both Crm\Models\User, so analyzeClosureUnion() folds them to
+    // one rendered token while keeping both branch results. The branch-level FQCNs must dedupe to match,
+    // or the manager in the second arm consumes the surplus entry and aliases as CrmUser.
+    test('branch arms that render one token consume one entry of the alias queue', function () {
+        $data = (new ResourceTransformer(SameBasenameModelTrioResource::class))->data();
+
+        expect($data->properties['collapsed_arms']['type'])
+            ->toBe('CrmUser | { c: WorkbenchUser | null } | null');
+    });
+
+    // reversed_arms and control_arms are one expression with its arms swapped, so both hold the same two
+    // FQCNs. Prepending the branch-level entry queues [Crm, App] for both, which silently exchanges the
+    // two User identities in the reversed orientation while leaving the control one right.
+    test('a whole-branch model arm keeps its position against an inline-object arm', function () {
+        $data = (new ResourceTransformer(SameBasenameModelTrioResource::class))->data();
+
+        expect($data->properties['reversed_arms']['type'])
+            ->toBe('{ c: WorkbenchUser | null } | CrmUser | null')
+            ->and($data->properties['control_arms']['type'])
+            ->toBe('CrmUser | { c: WorkbenchUser | null } | null');
     });
 });

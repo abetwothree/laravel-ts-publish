@@ -1,0 +1,19 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Fixture for parseFileUseStatements()'s AST-backed group-use support.
+ *
+ * A `.php.stub` file so Pint's import fixers never touch these deliberately unusual
+ * imports: an unreferenced function/const import would otherwise get flagged or removed.
+ */
+use App\Models\{Post, User as Person};
+use App\Services\Reporting as Reporter;
+use App\Support\{Widget, function helperFunction, const HELPER_CONST};
+use function Laravel\Prompts\warning;
+use const App\Constants\FOO;
+
+class GroupUseFixture
+{
+}

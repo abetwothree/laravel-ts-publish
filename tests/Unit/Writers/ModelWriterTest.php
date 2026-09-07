@@ -21,10 +21,37 @@ test('writes model content from transformer', function () {
 
     expect($content)
         ->toContain('export interface User')
+        ->not->toContain('UserMorphClass')
+        ->not->toContain('UserModelMetadata')
         ->toContain('id: number')
         ->toContain('name: string')
         ->toContain('email: string');
 });
+
+test('keeps model metadata out of model templates', function (string $template) {
+    $writer = new ModelWriter(new Filesystem);
+    $transformer = new ModelTransformer(User::class);
+
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.models.template', $template);
+
+    $content = $writer->write($transformer);
+
+    expect($content)
+        ->toContain(<<<'TYPESCRIPT'
+/**
+ * Application user account
+ *
+ * @see Workbench\App\Models\User
+ */
+export interface User
+TYPESCRIPT)
+        ->and($content)->not->toContain('UserMorphClass')
+        ->and($content)->not->toContain('UserModelMetadata');
+})->with([
+    'full template' => 'laravel-ts-publish::model-full',
+    'split template' => 'laravel-ts-publish::model-split',
+]);
 
 test('writes model file to disk when output_to_files is enabled', function () {
     $filesystem = Mockery::mock(Filesystem::class);

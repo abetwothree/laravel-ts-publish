@@ -6,11 +6,10 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures;
 
 use Illuminate\Http\Request;
 
+/** Every key infers as number, so each rendered type can only have come from the docblock. */
 class MiddlewareWithDocblockReturn
 {
     /**
-     * Define the props that are shared by default.
-     *
      * @return array{
      *      auth: array{
      *          user: array{
@@ -28,6 +27,10 @@ class MiddlewareWithDocblockReturn
      */
     public function share(Request $request): array
     {
-        return [];
+        return [
+            'auth' => 1,
+            'flash' => 2,
+            'appName' => 3,
+        ];
     }
 }

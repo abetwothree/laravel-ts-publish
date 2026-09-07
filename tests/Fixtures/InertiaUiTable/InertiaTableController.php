@@ -53,9 +53,9 @@ class InertiaTableController
     }
 
     /**
-     * Tainted sibling route with a #[TsCasts] escape hatch declaring prop types statically.
+     * Sibling route whose #[TsCasts] narrows a prop past what the props expression alone infers.
      */
-    #[TsCasts(['mode' => 'string'])]
+    #[TsCasts(['mode' => "'create' | 'edit'"])]
     public function castedCreate(Request $request): Response
     {
         return Inertia::render('Tables/Create', $this->resource->create());

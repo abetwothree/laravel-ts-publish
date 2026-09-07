@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Cache\FileCacheRepository;
 use AbeTwoThree\LaravelTsPublish\Cache\GenerationManifest;
+use AbeTwoThree\LaravelTsPublish\Cache\StoreCacheRepository;
+use Illuminate\Support\Facades\Cache;
 
 beforeEach(function () {
     $this->dir = sys_get_temp_dir().'/ts-publish-manifest-'.uniqid();
@@ -96,4 +98,22 @@ it('prunes classes not seen during the run on save', function () {
 
     expect($reloaded->hit('App\\Models\\User', 'fp-1'))->toBeTrue()
         ->and($reloaded->snapshot('App\\Models\\Post'))->toBeNull();
+});
+
+test('entry keys are hashed so store backends never see a long class pair', function () {
+    $store = Cache::store('array');
+    $store->clear();
+    $repository = new StoreCacheRepository($store, 'ts-publish');
+    $manifest = GenerationManifest::load($repository, 'test', 'hash');
+    $manifest->record(str_repeat('Very\\Long\\Namespace\\', 12).'Generator::'.str_repeat('App\\Models\\', 12).'User', 'fp', 'file', [], [], base64_encode('s'));
+    $manifest->save();
+
+    // The index holds bare logical keys. A length-capped backend (memcached: 250 bytes) receives its
+    // own configured cache prefix, then this repository's, then the key — so budget against all three.
+    $prefix = (string) config('cache.prefix').'ts-publish:';
+    $keys = collect($store->get('ts-publish:__index__', []))->map(fn (string $key): string => $prefix.$key);
+
+    expect($keys)->not->toBeEmpty()
+        ->and($keys->every(fn (string $key): bool => strlen($key) < 250))->toBeTrue()
+        ->and($keys->contains(fn (string $key): bool => preg_match('/^'.preg_quote($prefix, '/').'class:[0-9a-f]{32}$/', $key) === 1))->toBeTrue();
 });

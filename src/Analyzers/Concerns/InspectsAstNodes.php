@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Concerns;
 
+use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
+use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\PropertyFetch;
@@ -28,6 +32,7 @@ use PhpParser\Node\Stmt\Switch_;
 use PhpParser\Node\Stmt\TryCatch;
 use PhpParser\Node\Stmt\While_;
 use ReflectionClass;
+use ReflectionMethod;
 
 /**
  * AST node inspection and predicate helpers for resource analysis.
@@ -42,46 +47,50 @@ trait InspectsAstNodes
     ];
 
     /**
-     * Check if a static call's first argument is a conditional expression such as `$this->whenLoaded(...)`.
+     * Check if a static call's payload argument is a conditional expression such as `$this->whenLoaded(...)`.
+     *
+     * @param  string  $className  the resolved receiver class, whose constructor names the payload parameter
      */
-    protected function hasConditionalArgument(StaticCall $call): bool
+    protected function hasConditionalArgument(StaticCall $call, string $className): bool
     {
-        if ($call->isFirstClassCallable()) {
-            return false;
-        }
+        $inner = $this->resourcePayloadArguments($call, $className)->at(0)?->value;
 
-        $args = $call->getArgs();
-
-        if (count($args) < 1) {
-            return false;
-        }
-
-        $inner = $args[0]->value;
-
-        foreach ($this->conditionalMethods as $method) {
-            if ($this->isThisMethodCall($inner, $method)) {
-                return true;
-            }
-        }
-
-        return false;
+        return $inner !== null && $this->isConditionalMethodCall($inner);
     }
 
     /**
-     * Check if a `new Resource(...)` call's first argument is a conditional expression.
+     * Check if a `new Resource(...)` call's payload argument is a conditional expression.
      */
-    protected function hasConditionalNewArgument(New_ $expr): bool
+    protected function hasConditionalNewArgument(New_ $expr, string $className): bool
     {
-        $args = $expr->getArgs();
+        $inner = $this->resourcePayloadArguments($expr, $className)->at(0)?->value;
 
-        if (count($args) < 1) {
-            return false; // @codeCoverageIgnore
+        return $inner !== null && $this->isConditionalMethodCall($inner);
+    }
+
+    /**
+     * A resource construction call's arguments mapped against the signature its payload lands in: `new X(...)`
+     * and `X::make(...)` both bind through X's constructor (make() spreads into `new static`), `X::collection(...)`
+     * through JsonResource::collection($resource).
+     */
+    protected function resourcePayloadArguments(StaticCall|New_ $call, string $className): CallArguments
+    {
+        if ($call instanceof StaticCall && $call->name instanceof Identifier && $call->name->toString() === 'collection') {
+            return CallArguments::for($call, new ReflectionMethod(JsonResource::class, 'collection'));
         }
 
-        $inner = $args[0]->value;
+        $constructor = class_exists($className) ? new ReflectionClass($className)->getConstructor() : null;
 
+        return CallArguments::for($call, $constructor ?? new ReflectionMethod(JsonResource::class, '__construct'));
+    }
+
+    /**
+     * Whether an expression is one of the `$this->when*()` family, whose result can be a MissingValue.
+     */
+    protected function isConditionalMethodCall(Expr $expr): bool
+    {
         foreach ($this->conditionalMethods as $method) {
-            if ($this->isThisMethodCall($inner, $method)) {
+            if ($this->isThisMethodCall($expr, $method)) {
                 return true;
             }
         }
@@ -215,15 +224,61 @@ trait InspectsAstNodes
     }
 
     /**
-     * Check if an expression is a parent::toArray() call.
+     * Re-express an `array_merge(...)` call as the one array literal it evaluates to, or null when an
+     * argument hides keys that cannot be read statically. One literal, not one analysis per argument:
+     * only a single walk lets a later key clear the FQCN channels an earlier one registered.
+     *
+     * @param  array<string, Expr>  $localVarBindings  substituted for a variable argument when supplied
      */
-    protected function isParentToArrayCall(Expr $expr): bool
+    protected function mergedArrayLiteral(FuncCall $call, ?string $parentMethodName = null, array $localVarBindings = []): ?Array_
+    {
+        if (! $call->name instanceof Name || $call->name->getLast() !== 'array_merge' || $call->isFirstClassCallable()) {
+            return null;
+        }
+
+        $items = [];
+
+        foreach ($call->getArgs() as $arg) {
+            $value = $arg->value;
+
+            if ($value instanceof Variable && is_string($value->name)) {
+                $value = $localVarBindings[$value->name] ?? $value;
+            }
+
+            if ($value instanceof Array_) {
+                $items = [...$items, ...$value->items];
+
+                continue;
+            }
+
+            if (! $this->isParentCallTo($value, $parentMethodName)) {
+                return null;
+            }
+
+            $items[] = new ArrayItem($value, byRef: false, unpack: true);
+        }
+
+        return new Array_($items);
+    }
+
+    /**
+     * Check if an expression is a `parent::{$methodName}()` call, or any parent:: call when null.
+     */
+    protected function isParentCallTo(Expr $expr, ?string $methodName = null): bool
     {
         return $expr instanceof StaticCall
             && $expr->class instanceof Name
             && $expr->class->toLowerString() === 'parent'
             && $expr->name instanceof Identifier
-            && $expr->name->toString() === 'toArray';
+            && ($methodName === null || $expr->name->toString() === $methodName);
+    }
+
+    /**
+     * Check if an expression is a parent::toArray() call.
+     */
+    protected function isParentToArrayCall(Expr $expr): bool
+    {
+        return $this->isParentCallTo($expr, 'toArray');
     }
 
     /**

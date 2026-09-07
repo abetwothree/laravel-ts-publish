@@ -21,7 +21,7 @@ export const create = annotatePageProps<CreatePageProps>()(defineRoute({
     component: 'Posts/Create',
 }));
 
-export type StorePageProps = Inertia.SharedData & { post: string };
+export type StorePageProps = Inertia.SharedData & { post: Post };
 
 export const store = annotatePageProps<StorePageProps>()(defineRoute({
     name: 'posts-inertia.store',

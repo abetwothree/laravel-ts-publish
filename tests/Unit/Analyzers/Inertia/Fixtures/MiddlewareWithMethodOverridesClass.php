@@ -21,6 +21,9 @@ class MiddlewareWithMethodOverridesClass
     ])]
     public function share(Request $request): array
     {
-        return [];
+        return [
+            'appName' => 'Laravel',
+            'flash' => 1,
+        ];
     }
 }

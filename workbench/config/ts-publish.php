@@ -226,6 +226,35 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Model Metadata
+    |--------------------------------------------------------------------------
+    |
+    | Optional runtime companion files ({model}_meta.ts) beside each model
+    | interface, holding the values a provider returns for that model. The
+    | default provider publishes the model's morph class. This phase is
+    | independent from model interface publishing.
+    |
+    | To publish a custom set of metadata, extend
+    | AbeTwoThree\LaravelTsPublish\Metadata\Contracts\ModelMetadataProvider
+    | and set 'provider_class' to it.
+    */
+
+    'model_metadata' => [
+        'enabled' => false,
+        'template' => 'laravel-ts-publish::model-meta',
+        // Omitted finder settings inherit from models; any explicitly configured value overrides them.
+        // 'additional_directories' => [],
+        // 'included' => [],
+        // 'excluded' => [],
+        // 'provider_class' => DefaultModelMetadataProvider::class,
+        // 'collector_class' => ModelMetadataCollector::class,
+        // 'generator_class' => ModelMetadataGenerator::class,
+        // 'transformer_class' => ModelMetadataTransformer::class,
+        // 'writer_class' => ModelMetadataWriter::class,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Resources
     |--------------------------------------------------------------------------
     |

@@ -1,8 +1,8 @@
 import { defineRoute, annotatePageProps } from '@tolki/ts';
 
-import type { Post } from '../../models';
+import type { Post, User } from '../../models';
 
-export type DashboardPageProps = Inertia.SharedData & { stats: { users: number, posts: number, views: number }, recentActivity: [] };
+export type DashboardPageProps = Inertia.SharedData & { stats: { users: number; posts: number; views: number }, recentActivity: never[] };
 
 /** Display the dashboard page. */
 export const dashboard = annotatePageProps<DashboardPageProps>()(defineRoute({
@@ -12,7 +12,7 @@ export const dashboard = annotatePageProps<DashboardPageProps>()(defineRoute({
     component: 'Dashboard',
 }));
 
-export type SettingsPageProps = Inertia.SharedData & { user: { name: string, email: string }, preferences: { theme: string, notifications: true } };
+export type SettingsPageProps = Inertia.SharedData & { user: { name: string; email: string }, preferences: { theme: string; notifications: boolean } };
 
 /** Display the settings page. */
 export const settings = annotatePageProps<SettingsPageProps>()(defineRoute({
@@ -32,7 +32,7 @@ export const about = annotatePageProps<AboutPageProps>()(defineRoute({
     component: 'About',
 }));
 
-export type ConditionalAuthenticatedPageProps = Inertia.SharedData & { user: unknown };
+export type ConditionalAuthenticatedPageProps = Inertia.SharedData & { user: User | null };
 export type ConditionalGuestPageProps = Inertia.SharedData & { message: string };
 
 /** Conditional rendering based on auth state. */

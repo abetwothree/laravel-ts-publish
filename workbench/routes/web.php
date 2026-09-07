@@ -15,14 +15,17 @@ use Workbench\App\Http\Controllers\DomainController;
 use Workbench\App\Http\Controllers\EnumBoundController;
 use Workbench\App\Http\Controllers\ExcludableController;
 use Workbench\App\Http\Controllers\ExcludedController;
+use Workbench\App\Http\Controllers\InertiaAddressController;
 use Workbench\App\Http\Controllers\InertiaController;
 use Workbench\App\Http\Controllers\InertiaFormRequestController;
 use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
 use Workbench\App\Http\Controllers\InertiaPaginationsController;
 use Workbench\App\Http\Controllers\InertiaPreserveKeysController;
 use Workbench\App\Http\Controllers\InertiaResourceSharedTemplate;
+use Workbench\App\Http\Controllers\InertiaShirtSizeController;
 use Workbench\App\Http\Controllers\InertiaSingleResourceController;
 use Workbench\App\Http\Controllers\InertiaTsCastsController;
+use Workbench\App\Http\Controllers\InertiaUserShapesController;
 use Workbench\App\Http\Controllers\InvokableController;
 use Workbench\App\Http\Controllers\InvokableInertiaController;
 use Workbench\App\Http\Controllers\InvokableModelBoundController;
@@ -112,6 +115,8 @@ Route::get('/inertia/settings', [InertiaController::class, 'settings'])->name('i
 Route::get('/inertia/about', [InertiaController::class, 'about'])->name('inertia.about');
 Route::get('/inertia/conditional', [InertiaController::class, 'conditional'])->name('inertia.conditional');
 Route::get('/inertia/post/{post}', [InertiaController::class, 'post'])->name('inertia.post');
+Route::get('/addresses/{address}', [InertiaAddressController::class, 'show'])->name('addresses.show');
+Route::get('/shirts/{image}', [InertiaShirtSizeController::class, 'show'])->name('shirts.show');
 
 Route::resource('posts-inertia', PostInertiaController::class, ['parameters' => ['posts-inertia' => 'post']]);
 
@@ -146,3 +151,13 @@ Route::get('/preserve-keys/anonymous-inline-paginated', [InertiaPreserveKeysCont
 Route::get('/ts-casts', [InertiaTsCastsController::class, 'index'])->name('ts-casts.index');
 Route::get('/inertia-form-request/create', [InertiaFormRequestController::class, 'create'])->name('inertia-form-request.create');
 Route::post('/inertia-form-request', [InertiaFormRequestController::class, 'store'])->name('inertia-form-request.store');
+
+Route::get('/user-shapes', [InertiaUserShapesController::class, 'index'])->name('user-shapes.index');
+Route::get('/user-shapes/show/{id}', [InertiaUserShapesController::class, 'show'])->name('user-shapes.show');
+Route::get('/user-shapes/deferred', [InertiaUserShapesController::class, 'deferred'])->name('user-shapes.deferred');
+Route::get('/user-shapes/compacted/{id}', [InertiaUserShapesController::class, 'compacted'])->name('user-shapes.compacted');
+Route::get('/user-shapes/toggled', [InertiaUserShapesController::class, 'toggled'])->name('user-shapes.toggled');
+Route::get('/user-shapes/profile', [InertiaUserShapesController::class, 'profile'])->name('user-shapes.profile');
+Route::get('/user-shapes/merged', [InertiaUserShapesController::class, 'merged'])->name('user-shapes.merged');
+Route::get('/user-shapes/branched', [InertiaUserShapesController::class, 'branched'])->name('user-shapes.branched');
+Route::get('/user-shapes/bound/{post}', [InertiaUserShapesController::class, 'bound'])->name('user-shapes.bound');

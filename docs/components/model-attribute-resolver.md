@@ -39,7 +39,7 @@ docblock resolves this to `{ value: number; label: string }` instead.
 
 ### What counts as "vague"
 
-`isVagueTsType(string $type): bool` — a single predicate, defined once on `LaravelTsPublish`
+`isVagueTsType(string $type): bool` — a single predicate, defined once on `Support\TsTypeString`
 (reused by `Concerns\ResolvesAccessorType`'s accessor-closure-vs-docblock check and by
 `ModelAttributeResolver::refineWithPropertyDocblock()`'s `@property` refinement below, both of
 which follow the same "keep looking while still vague" shape) — treats a type as vague when it
@@ -120,25 +120,27 @@ package publishes no file, so step 5's token has nothing to import. `Coordinate`
 **Publication is a real axis, not a constant, and 5c does not test it.** The step-5 path below builds its
 import from `classFqcns` through `namespaceToPath()` and `relativeImportPath()` with no published-set check,
 so "unimportable" is an assumption about the classes that happen to arrive here, not something either step
-verifies. The workbench contains a whole family that contradicts it: **all 12** classes in
+verifies. The workbench contains a whole family that contradicts it: **12 of the 15** classes in
 `workbench/app/Events/` are plain, non-`Model`, non-`JsonSerializable`, have no `__toString()` and no
-`#[TsType]`, and carry typed public promoted properties — so every one of them reaches 5c and inlines when
-`toTsType()` is called on it directly. Probed against the real service:
+`#[TsType]`, and carry typed public properties — so each of those reaches 5c and inlines when
+`toTsType()` is called on it directly. (The three broadcast-event entries use `InteractsWithSockets`, whose
+untyped `public $socket` fails `hasFullyTypedPublicProperties()`, so they fall through to step 5's bare
+class name instead.) Probed against the real service:
 
 ```
 EnumBroadcastEvent  -> { status: unknown; color: unknown }
 OrderShipped        -> { orderId: number; trackingNumber: string; carrier: string; metadata: unknown[] | null }
 ServerCreated       -> { serverId: number; serverName: string }
-…12 of 12
+…12 of the 12 that qualify
 ```
 
-And the package **does** publish a file for each: the two sets are identical, 12 PHP fixtures against 12
+And the package **does** publish a file for each: the two sets are identical, 15 PHP fixtures against 15
 `.ts` files in `app/events/` plus an `index.ts` that re-exports them, so `'../events'` — what step 5 would
 have derived for `Workbench\App\Events\OrderShipped` — is a directory this package writes.
 
-This costs nothing today. `src/Transformers/BroadcastEventTransformer.php` contains **no** reference to
-`toTsType` — it resolves a class-typed event property itself in `convertClassType()` (enum → `XType`,
-`Model` → `Partial<X>`, else `SurveyorTypeMapper::convert()`) — so the shapes above are never consulted when
+This costs nothing today. `src/Transformers/BroadcastEventTransformer.php` reaches `toTsType()` for enum
+FQCNs only, which resolve at step 3; a class-typed event property is typed by the AST engine and presented
+by the transformer (`Model` → `Partial<X>`) — so the shapes above are never consulted when
 an event file is written. Confirmed against the output as well: all 12 inlined shapes were searched, as
 exact strings, across every file under `workbench/resources/js/types/`, and matched **zero** files. Treat
 this as a standing caveat on the reasoning rather than a defect: if some future path *does* send a published
@@ -209,7 +211,7 @@ an outcome today:
 
 `Workbench\App\ValueObjects\OpaqueHandle` is still the fixture that pins the property-less path end to end:
 its promoted property is `protected` on purpose, so `StaticCallResource.money_value` stays `unknown` and
-`ResourceAstAnalyzer::acceptReflectedTypeInfo()`'s rejection branch keeps its coverage. What the mutation
+`ReflectedTypeAcceptor::accept()`'s rejection branch keeps its coverage. What the mutation
 above shows is that `$found` is not the *mechanism* keeping it there — `publicPropertyShapeType()`'s own
 `null` is.
 
@@ -468,7 +470,7 @@ Which of the two a call site wants turns on the question it is asking. `publishe
 answers "may I name this key against the generated interface?", so it must track what
 `transformColumns()` emitted. `databaseColumnNames()` answers "is this name a real column at all?",
 which is what the runtime-fidelity call sites need and why `$hidden` membership is irrelevant to
-them: `ResourceAstAnalyzer::resolveFilteredRelationType()`'s except branch intersects the related
+them: `Ast\Concerns\ResolvesFilteredRelationTypes::resolveFilteredRelationType()`'s except branch intersects the related
 model's attribute list with it so an inlined `$this->relation->except([...])` expands to columns
 only, matching `HasAttributes::except()`, and `buildModelDelegatedAnalysis()` reads it as
 `$dbColumns` to keep `isOmittedMutator()` from ever dropping a real column. Both apply
@@ -495,7 +497,7 @@ resolver instance) and must be re-read every time rather than trapped in that ca
 
 ## `#[UseResource]` model-guessing is Laravel-version-guarded
 
-`ResourceTransformer::guessModelFromUseResourceAttribute()` — the counterpart lookup that finds
+`Ast\ModelClassResolver::guessModelFromUseResourceAttribute()` — the counterpart lookup that finds
 which model a resource belongs to — checks for `Illuminate\Database\Eloquent\Attributes\UseResource`
 behind `class_exists()` rather than a `use` import, because the package still supports Laravel 12
 releases older than 12.29 that don't ship the attribute. See [Version-guarded Laravel
@@ -514,13 +516,13 @@ into that instance's ordinary state (`$table`/`$connection`/`$hidden`/`$visible`
 This package only ever reads that state back through plain instance calls, the same four call
 sites that already made `protected $table = '...'` etc. work before Laravel 13 existed:
 
-- `ModelTransformer::initInstance()` (`src/Transformers/ModelTransformer.php:185`) calls
+- `ModelTransformer::initInstance()` (`src/Transformers/ModelTransformer.php`) calls
   `$this->modelInstance->getConnection()->getSchemaBuilder()->getColumnListing($this->modelInstance->getTable())`
   — honours `#[Table]` and `#[Connection]` together, since both feed into which schema is queried
   for which table name.
-- `ModelTransformer::initInstance()` (`src/Transformers/ModelTransformer.php:187`) calls
+- `ModelTransformer::initInstance()` (`src/Transformers/ModelTransformer.php`) also calls
   `$this->modelInstance->getAppends()` — honours `#[Appends]`.
-- `ModelAttributeResolver` (`src/ModelAttributeResolver.php:487`) calls
+- `ModelAttributeResolver::databaseColumnNames()` (`src/ModelAttributeResolver.php`) calls
   `$ctx['instance']->getTable()` and `getConnection()` again when resolving a column's type.
 - `ModelInspector::getAttributes()` (Laravel's own, in `vendor/laravel/framework/.../ModelInspector.php`,
   which `AbeTwoThree\LaravelTsPublish\ModelInspector` extends) calls `attributeIsHidden($column,

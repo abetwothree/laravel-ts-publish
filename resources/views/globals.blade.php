@@ -1,4 +1,5 @@
-@use('AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish')
+@use('AbeTwoThree\LaravelTsPublish\Facades\JsEmitter')
+@use('AbeTwoThree\LaravelTsPublish\Facades\TsTypeString')
 /* eslint-disable */
 // biome-ignore lint: disable
 // oxlint-disable
@@ -20,42 +21,42 @@ declare global {
     export namespace {{ $namespace }} {
 @foreach ($transformers as $transformer)
 @if($transformer->description)
-{!! LaravelTsPublish::formatJsDoc($transformer->description, 8) !!}
+{!! JsEmitter::formatJsDoc($transformer->description, 8) !!}
 @endif
         export interface {{ $transformer->modelName }}{!! count($transformer->tsExtends) > 0 ? ' extends '.implode(', ', $transformer->tsExtends) : '' !!} {
 @if (count($transformer->columns) > 0)
             // Columns
 @foreach($transformer->columns as $name => $column)
 @if($column['description'])
-{!! LaravelTsPublish::formatJsDoc($column['description'], 12) !!}
+{!! JsEmitter::formatJsDoc($column['description'], 12) !!}
 @endif
-            {!! LaravelTsPublish::validJsObjectKey($name) !!}{{ $column['optional'] ? '?' : '' }}: {!! LaravelTsPublish::qualifyGlobalType($column['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
+            {!! JsEmitter::validJsObjectKey($name) !!}{{ $column['optional'] ? '?' : '' }}: {!! TsTypeString::qualifyGlobalType($column['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
 @endforeach
 @endif
 @if (count($transformer->mutators) > 0 || count($transformer->appends) > 0)
             // Mutators
 @foreach($transformer->mutators as $name => $mutator)
 @if($mutator['description'])
-{!! LaravelTsPublish::formatJsDoc($mutator['description'], 12) !!}
+{!! JsEmitter::formatJsDoc($mutator['description'], 12) !!}
 @endif
-            {!! LaravelTsPublish::validJsObjectKey($name) !!}{{ $mutator['optional'] ? '?' : '' }}: {!! LaravelTsPublish::qualifyGlobalType($mutator['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
+            {!! JsEmitter::validJsObjectKey($name) !!}{{ $mutator['optional'] ? '?' : '' }}: {!! TsTypeString::qualifyGlobalType($mutator['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
 @endforeach
 @foreach($transformer->appends as $name => $append)
 @if($append['description'])
-{!! LaravelTsPublish::formatJsDoc($append['description'], 12) !!}
+{!! JsEmitter::formatJsDoc($append['description'], 12) !!}
 @endif
-            {!! LaravelTsPublish::validJsObjectKey($name) !!}{{ $append['optional'] ? '?' : '' }}: {!! LaravelTsPublish::qualifyGlobalType($append['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
+            {!! JsEmitter::validJsObjectKey($name) !!}{{ $append['optional'] ? '?' : '' }}: {!! TsTypeString::qualifyGlobalType($append['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
 @endforeach
 @endif
 @if (count($transformer->relations) > 0)
             // Relations
 @foreach($transformer->relations as $name => $relation)
 @if($relation['description'])
-{!! LaravelTsPublish::formatJsDoc($relation['description'], 12) !!}
+{!! JsEmitter::formatJsDoc($relation['description'], 12) !!}
 @endif
-            {!! LaravelTsPublish::validJsObjectKey($name) !!}: {!! LaravelTsPublish::qualifyGlobalType($relation['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
-            {!! LaravelTsPublish::validJsObjectKey($name.'_count') !!}: number;
-            {!! LaravelTsPublish::validJsObjectKey($name.'_exists') !!}: boolean;
+            {!! JsEmitter::validJsObjectKey($name) !!}: {!! TsTypeString::qualifyGlobalType($relation['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
+            {!! JsEmitter::validJsObjectKey($name.'_count') !!}: number;
+            {!! JsEmitter::validJsObjectKey($name.'_exists') !!}: boolean;
 @endforeach
 @endif
         }
@@ -68,15 +69,15 @@ declare global {
     export namespace {{ $namespace }} {
 @foreach ($transformers as $transformer)
 @if($transformer->description)
-{!! LaravelTsPublish::formatJsDoc($transformer->description, 8) !!}
+{!! JsEmitter::formatJsDoc($transformer->description, 8) !!}
 @endif
         export interface {{ $transformer->enumName }}
         {
 @foreach($transformer->cases as $case)
 @if($case['description'])
-{!! LaravelTsPublish::formatJsDoc($case['description'], 12) !!}
+{!! JsEmitter::formatJsDoc($case['description'], 12) !!}
 @endif
-            {!! LaravelTsPublish::validJsObjectKey($case['name']) !!}: {!! LaravelTsPublish::toJsLiteral($case['value']) !!},
+            {!! JsEmitter::validJsObjectKey($case['name']) !!}: {!! JsEmitter::toJsLiteral($case['value']) !!},
 @endforeach
         }
         export type {{ $transformer->enumName }}Type = {!! implode(' | ', $transformer->caseTypes) !!};
@@ -95,17 +96,17 @@ declare global {
     export namespace {{ $namespace }} {
 @foreach ($transformers as $transformer)
 @if($transformer->description)
-{!! LaravelTsPublish::formatJsDoc($transformer->description, 8) !!}
+{!! JsEmitter::formatJsDoc($transformer->description, 8) !!}
 @endif
 @if($transformer->typeAlias !== null)
-        export type {{ $transformer->resourceName }} = {!! LaravelTsPublish::qualifyGlobalType($transformer->typeAlias, $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
+        export type {{ $transformer->resourceName }} = {!! TsTypeString::qualifyGlobalType($transformer->typeAlias, $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
 @else
         export interface {{ $transformer->resourceName }}{!! count($transformer->tsExtends) > 0 ? ' extends '.implode(', ', $transformer->tsExtends) : '' !!} {
 @foreach ($transformer->properties as $name => $property)
 @if($property['description'])
-{!! LaravelTsPublish::formatJsDoc($property['description'], 12) !!}
+{!! JsEmitter::formatJsDoc($property['description'], 12) !!}
 @endif
-            {!! LaravelTsPublish::validJsObjectKey($name) !!}{!! $property['optional'] ? '?' : '' !!}: {!! LaravelTsPublish::qualifyGlobalType(LaravelTsPublish::rewriteAsEnumToType($property['type'], $transformer->globalEnumConstMap()), $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
+            {!! JsEmitter::validJsObjectKey($name, allowIndexSignature: true) !!}{!! $property['optional'] ? '?' : '' !!}: {!! TsTypeString::qualifyGlobalType(TsTypeString::rewriteAsEnumToType($property['type'], $transformer->globalEnumConstMap()), $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
 @endforeach
         }
 @endif
@@ -120,7 +121,7 @@ declare global {
 @if($transformer->isDynamic)
         export type {{ $transformer->typeName }} = Record<string, unknown>;
 @else
-        export interface {{ $transformer->typeName }} {
+        export interface {{ $transformer->typeName }}{!! count($transformer->tsExtends) > 0 ? ' extends '.implode(', ', $transformer->tsExtends) : '' !!} {
 @foreach ($transformer->fields as $field)
 @if(!$field['isProhibited'])
 @php
@@ -130,7 +131,7 @@ if ($field['isNullable']) {
 }
 $optional = ! $field['isRequired'] ? '?' : '';
 @endphp
-            {!! LaravelTsPublish::validJsObjectKey($field['fieldPath']) !!}{{ $optional }}: {!! $fieldType !!};
+            {!! JsEmitter::validJsObjectKey($field['fieldPath']) !!}{{ $optional }}: {!! $fieldType !!};
 @endif
 @endforeach
         }
@@ -143,12 +144,12 @@ $optional = ! $field['isRequired'] ? '?' : '';
 @if ($transformers->count() > 0)
     export namespace {{ $namespace }} {
 @foreach ($transformers as $transformer)
-        export interface {{ $transformer->eventName }} {
+        export interface {{ $transformer->eventName }}{!! count($transformer->tsExtends) > 0 ? ' extends '.implode(', ', $transformer->tsExtends) : '' !!} {
 @foreach ($transformer->properties as $name => $prop)
 @php
 $optional = $prop['optional'] ? '?' : '';
 @endphp
-            {!! LaravelTsPublish::validJsObjectKey($name) !!}{{ $optional }}: {!! LaravelTsPublish::qualifyGlobalType($prop['type'], $globalTypesByNamespace, $namespace, $transformer->globalTypeReferenceMap()) !!};
+            {!! JsEmitter::validJsObjectKey($name) !!}{{ $optional }}: {!! TsTypeString::qualifyGlobalType($prop['type'], $globalTypesByNamespace, $namespace, $transformer->globalTypeReferenceMap()) !!};
 @endforeach
         }
 @endforeach

@@ -9,7 +9,10 @@ use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesAccessorType;
 use AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsModelDto;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\ModelInspector;
 use AbeTwoThree\LaravelTsPublish\RelationNullable;
@@ -57,8 +60,6 @@ class ModelTransformer extends CoreTransformer
     public protected(set) string $modelName;
 
     public protected(set) string $filePath;
-
-    public protected(set) string $namespacePath;
 
     public protected(set) string $description = '';
 
@@ -183,9 +184,7 @@ class ModelTransformer extends CoreTransformer
         $modelInstance = resolve($this->findable);
         $this->modelInstance = $modelInstance;
         $this->dbColumns = $this->modelInstance->getConnection()->getSchemaBuilder()->getColumnListing($this->modelInstance->getTable());
-        /** @var list<string> $appends */
-        $appends = array_values($this->modelInstance->getAppends());
-        $this->appendedAttributes = $appends;
+        $this->appendedAttributes = $this->modelInstance->getAppends();
         $this->modelInspect = resolve(ModelInspector::class)->inspect($this->findable);
         /** @var Collection<int, AttributeInfo> $attributes */
         $attributes = $this->modelInspect->attributes;
@@ -193,8 +192,8 @@ class ModelTransformer extends CoreTransformer
         $this->reflectionModel = new ReflectionClass($this->findable);
         $this->modelName = $this->reflectionModel->getShortName();
         $this->filePath = $this->resolveRelativePath((string) $this->reflectionModel->getFileName());
-        $this->namespacePath = LaravelTsPublish::namespaceToPath($this->findable);
-        $this->description = LaravelTsPublish::parseDocBlockDescription($this->reflectionModel->getDocComment());
+        $this->namespacePath = TsNaming::namespaceToPath($this->findable);
+        $this->description = JsEmitter::parseDocBlockDescription($this->reflectionModel->getDocComment());
 
         return $this;
     }
@@ -220,7 +219,7 @@ class ModelTransformer extends CoreTransformer
         $this->optionalOverrides = $result['optionalOverrides'];
 
         foreach ($result['importPaths'] as $column => $importPath) {
-            foreach (LaravelTsPublish::extractImportableTypes($result['overrides'][$column]) as $importName) {
+            foreach (TsTypeString::extractImportableTypes($result['overrides'][$column]) as $importName) {
                 $this->customImports[$importPath][] = $importName;
             }
         }
@@ -478,11 +477,11 @@ class ModelTransformer extends CoreTransformer
                 $relationType .= ' | null';
             }
 
-            $relationName = LaravelTsPublish::keyCase($relation['name'], $case);
+            $relationName = TsNaming::keyCase($relation['name'], $case);
 
             $description = '';
             if ($this->reflectionModel->hasMethod($relation['name'])) {
-                $description = LaravelTsPublish::parseDocBlockDescription(
+                $description = JsEmitter::parseDocBlockDescription(
                     $this->reflectionModel->getMethod($relation['name'])->getDocComment()
                 );
             }
@@ -535,7 +534,7 @@ class ModelTransformer extends CoreTransformer
         $oldStyle = 'get'.Str::studly($name).'Attribute';
 
         if ($this->reflectionModel->hasMethod($newStyle)) {
-            $desc = LaravelTsPublish::parseDocBlockDescription(
+            $desc = JsEmitter::parseDocBlockDescription(
                 $this->reflectionModel->getMethod($newStyle)->getDocComment()
             );
 
@@ -545,7 +544,7 @@ class ModelTransformer extends CoreTransformer
         }
 
         if ($this->reflectionModel->hasMethod($oldStyle)) {
-            return LaravelTsPublish::parseDocBlockDescription(
+            return JsEmitter::parseDocBlockDescription(
                 $this->reflectionModel->getMethod($oldStyle)->getDocComment()
             );
         }
@@ -607,25 +606,25 @@ class ModelTransformer extends CoreTransformer
         $nameMap = $this->enumFqcnMap + $this->modelFqcnMap;
 
         foreach ($this->columns as $key => $entry) {
-            $this->columns[$key]['type'] = LaravelTsPublish::aliasPropertyType(
+            $this->columns[$key]['type'] = TsTypeString::aliasPropertyType(
                 $entry['type'], $this->columnFqcns[$key] ?? [], $nameMap, $this->importAliases,
             );
         }
 
         foreach ($this->mutators as $key => $entry) {
-            $this->mutators[$key]['type'] = LaravelTsPublish::aliasPropertyType(
+            $this->mutators[$key]['type'] = TsTypeString::aliasPropertyType(
                 $entry['type'], $this->mutatorFqcns[$key] ?? [], $nameMap, $this->importAliases,
             );
         }
 
         foreach ($this->appends as $key => $entry) {
-            $this->appends[$key]['type'] = LaravelTsPublish::aliasPropertyType(
+            $this->appends[$key]['type'] = TsTypeString::aliasPropertyType(
                 $entry['type'], $this->appendsFqcns[$key] ?? [], $nameMap, $this->importAliases,
             );
         }
 
         foreach ($this->relations as $key => $entry) {
-            $this->relations[$key]['type'] = LaravelTsPublish::aliasPropertyType(
+            $this->relations[$key]['type'] = TsTypeString::aliasPropertyType(
                 $entry['type'], $this->relationFqcns[$key] ?? [], $nameMap, $this->importAliases,
             );
         }
@@ -676,10 +675,10 @@ class ModelTransformer extends CoreTransformer
 
         foreach ($this->importAliases as $fqcn => $alias) {
             if (isset($this->enumFqcnMap[$fqcn])) {
-                $ns = str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn));
+                $ns = str_replace('/', '.', TsNaming::namespaceToPath($fqcn));
                 $map[$alias] = $ns.'.'.$this->enumFqcnMap[$fqcn];
             } elseif (isset($this->modelFqcnMap[$fqcn])) {
-                $ns = str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn));
+                $ns = str_replace('/', '.', TsNaming::namespaceToPath($fqcn));
                 $map[$alias] = $ns.'.'.$this->modelFqcnMap[$fqcn];
             }
         }

@@ -3,205 +3,240 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\MethodContext;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaInlineTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaServiceTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaTableController;
-use Laravel\Ranger\Collectors\Response as ResponseCollector;
-use Laravel\Ranger\Components\JsonResponse;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithDelegatedProps;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithSpreadProps;
 use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
 use Workbench\App\Http\Controllers\InertiaPaginationsController;
+use Workbench\App\Http\Controllers\InertiaPreserveKeysController;
 use Workbench\App\Http\Controllers\InertiaResourceSharedTemplate;
 use Workbench\App\Http\Controllers\InertiaSingleResourceController;
 use Workbench\App\Http\Controllers\InertiaTsCastsController;
+use Workbench\App\Http\Controllers\InertiaUserShapesController;
 use Workbench\App\Http\Controllers\PostInertiaController;
-use Workbench\App\Http\Resources\Ledger;
-use Workbench\App\Http\Resources\LedgerCollection;
-use Workbench\App\Http\Resources\LedgerResource;
-use Workbench\App\Http\Resources\PostCollection;
-use Workbench\App\Http\Resources\PostFlatCollection;
-use Workbench\App\Http\Resources\PostResource;
-use Workbench\App\Http\Resources\PreserveKeysFlatCollection;
-use Workbench\App\Http\Resources\PreserveKeysTeamResource;
-use Workbench\App\Http\Resources\TeamResource;
 use Workbench\App\Http\Resources\WarehouseResource;
+use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\User;
+
+/** Analyze one `Controller@action` through the page analyzer. */
+function pageData(string $uses): ?array
+{
+    return new InertiaPageAnalyzer()->analyze(['uses' => $uses]);
+}
 
 // ─── componentToFqn() ─────────────────────────────────────────────
 
 test('converts simple component name to FQN', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-    $analyzer = new InertiaPageAnalyzer($mock);
-
-    expect($analyzer->componentToFqn('Dashboard'))
+    expect(new InertiaPageAnalyzer()->componentToFqn('Dashboard'))
         ->toBe('Inertia.Pages.Dashboard');
 });
 
 test('converts slash-separated component to dot-separated FQN', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-    $analyzer = new InertiaPageAnalyzer($mock);
-
-    expect($analyzer->componentToFqn('Settings/General'))
+    expect(new InertiaPageAnalyzer()->componentToFqn('Settings/General'))
         ->toBe('Inertia.Pages.Settings.General');
 });
 
 test('converts kebab-case component segments to StudlyCase', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-    $analyzer = new InertiaPageAnalyzer($mock);
-
-    expect($analyzer->componentToFqn('settings/two-factor'))
+    expect(new InertiaPageAnalyzer()->componentToFqn('settings/two-factor'))
         ->toBe('Inertia.Pages.Settings.TwoFactor');
 });
 
 test('converts double-colon separator to dots', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-    $analyzer = new InertiaPageAnalyzer($mock);
-
-    expect($analyzer->componentToFqn('Admin::Dashboard'))
+    expect(new InertiaPageAnalyzer()->componentToFqn('Admin::Dashboard'))
         ->toBe('Inertia.Pages.Admin.Dashboard');
 });
 
-// ─── analyze() with mocked collector ─────────────────────────────
-
-test('returns null when collector returns empty array', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-    $mock->shouldReceive('parseResponse')->andReturn([]);
-
-    $analyzer = new InertiaPageAnalyzer($mock);
-
-    expect($analyzer->analyze(['uses' => 'Foo@bar']))->toBeNull();
+test('treats dots as directory separators like the Inertia view finder', function () {
+    expect(new InertiaPageAnalyzer()->componentToFqn('PaymentMethods.ManagePaymentMethods'))
+        ->toBe('Inertia.Pages.PaymentMethods.ManagePaymentMethods');
 });
 
-test('returns null when collector returns only non-string responses', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-    $mock->shouldReceive('parseResponse')->andReturn([
-        new JsonResponse(['key' => 'value']),
-    ]);
-
-    $analyzer = new InertiaPageAnalyzer($mock);
-
-    expect($analyzer->analyze(['uses' => 'Foo@bar']))->toBeNull();
+test('studly-cases every segment of a kebab-case dotted component', function () {
+    expect(new InertiaPageAnalyzer()->componentToFqn('payment-methods.manage-payment-methods'))
+        ->toBe('Inertia.Pages.PaymentMethods.ManagePaymentMethods');
 });
 
-// ─── rewriteResourceCollections() ────────────────────────────────
+test('normalizes a component mixing all three separators', function () {
+    expect(new InertiaPageAnalyzer()->componentToFqn('Admin::billing.payment-methods/Index'))
+        ->toBe('Inertia.Pages.Admin.Billing.PaymentMethods.Index');
+});
 
-test('rewriteResourceCollections passes through TOLKI_TYPES_MAP FQCNs unchanged', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
+test('drops empty segments rather than emitting doubled dots', function () {
+    expect(new InertiaPageAnalyzer()->componentToFqn('Settings//General'))
+        ->toBe('Inertia.Pages.Settings.General')
+        ->and(new InertiaPageAnalyzer()->componentToFqn('Settings.'))
+        ->toBe('Inertia.Pages.Settings')
+        ->and(new InertiaPageAnalyzer()->componentToFqn(''))
+        ->toBe('Inertia.Pages');
+});
 
-    $analyzer = new class($mock) extends InertiaPageAnalyzer
+// ─── analyze() prop inference ─────────────────────────────────────
+
+it('types Eloquent finders, collections and paginators from the model their chain is rooted at', function () {
+    $show = pageData(InertiaUserShapesController::class.'@show');
+    $index = pageData(InertiaUserShapesController::class.'@index');
+    $paginated = pageData(PostInertiaController::class.'@index');
+
+    expect($show['pageType'])->toBe('Inertia.SharedData & { post: Post, draft: Post | null }')
+        ->and($show['classFqcns'])->toBe([Post::class])
+        ->and($index['pageType'])->toBe('Inertia.SharedData & { users: User[], posts: Post[], page: number }')
+        ->and($index['classFqcns'])->toBe([User::class, Post::class])
+        ->and($paginated['pageType'])->toBe('Inertia.SharedData & { posts: LengthAwarePaginator<Post> }')
+        ->and($paginated['externalImports'])->toBe(['@tolki/types' => ['LengthAwarePaginator']]);
+});
+
+it('marks the lazy Inertia wrappers optional and keeps the wrapped value type', function () {
+    $data = pageData(InertiaUserShapesController::class.'@deferred');
+
+    expect($data['pageType'])->toBe('Inertia.SharedData & { comments?: Comment[], tally?: number }')
+        ->and($data['classFqcns'])->toBe([Comment::class]);
+});
+
+it('reads compact() keys and array_merge() props as the array literal each is equivalent to', function () {
+    $compacted = pageData(InertiaUserShapesController::class.'@compacted');
+    $merged = pageData(InertiaUserShapesController::class.'@merged');
+
+    expect($compacted['pageType'])->toBe('Inertia.SharedData & { post: Post, comments: Comment[] }')
+        ->and($merged['pageType'])->toBe('Inertia.SharedData & { title: string, extra: boolean }');
+});
+
+it('merges a ternary-assigned props array so a key only one arm sets is optional', function () {
+    $data = pageData(InertiaUserShapesController::class.'@toggled');
+
+    expect($data['component'])->toBe('UserShapes/Toggled')
+        ->and($data['pageType'])->toBe('Inertia.SharedData & { post: Post | null, views?: number }')
+        ->and($data['classFqcns'])->toBe([Post::class]);
+});
+
+// Both branches name Post, so a merge that appended per occurrence instead of per key would emit
+// the FQCN twice and the transformer would import it twice.
+it('merges two renders of one component into a single page type and one import per class', function () {
+    $data = pageData(InertiaUserShapesController::class.'@branched');
+
+    expect($data['component'])->toBe('UserShapes/Branched')
+        ->and($data['pageType'])->toBe('Inertia.SharedData & { post: Post | null, detail?: string }')
+        ->and($data['classFqcns'])->toBe([Post::class]);
+});
+
+it('falls back to bare SharedData for a render with no props', function () {
+    $data = pageData(PostInertiaController::class.'@show');
+    $none = pageData(PostInertiaController::class.'@create');
+
+    expect($data['pageType'])->toBe('Inertia.SharedData & { post: Post }')
+        ->and($none['pageType'])->toBe('Inertia.SharedData')
+        ->and($none['classFqcns'])->toBe([]);
+});
+
+it('types the route-bound model parameter and the injected service call', function () {
+    $data = pageData(InertiaUserShapesController::class.'@bound');
+
+    expect($data['pageType'])->toBe('Inertia.SharedData & { post: Post, stats: { views: number; likes: number } }');
+});
+
+it('types a resource collection from what it wraps', function () {
+    $paginated = pageData(InertiaSingleResourceController::class.'@resourcePaginatedCollection');
+    $anonymous = pageData(InertiaSingleResourceController::class.'@resourceAnonymousCollection');
+
+    expect($paginated['pageType'])->toBe('Inertia.SharedData & { warehouses: JsonResourcePaginator<WarehouseResource> }')
+        ->and($paginated['classFqcns'])->toBe([WarehouseResource::class])
+        ->and($paginated['externalImports'])->toBe(['@tolki/types' => ['JsonResourcePaginator']])
+        ->and($anonymous['pageType'])->toBe(
+            'Inertia.SharedData & { warehouse_get: AnonymousResourceCollection<WarehouseResource>, warehouse_all: AnonymousResourceCollection<WarehouseResource> }'
+        );
+});
+
+it('types props delegated to a collaborator, and reads both inertia() helper forms', function () {
+    $delegated = pageData(ControllerWithDelegatedProps::class.'@index');
+    $helper = pageData(ControllerWithDelegatedProps::class.'@helper');
+    $chain = pageData(ControllerWithDelegatedProps::class.'@helperChain');
+
+    expect($delegated['component'])->toBe('Dashboard/Delegated')
+        ->and($delegated['pageType'])->toBe('Inertia.SharedData & { heading: string, total: number }')
+        ->and($helper['component'])->toBe('Dashboard/Helper')
+        ->and($helper['pageType'])->toBe('Inertia.SharedData & { label: string }')
+        ->and($chain['component'])->toBe('Dashboard/HelperChain')
+        ->and($chain['pageType'])->toBe('Inertia.SharedData & { label: string }');
+});
+
+// Task 32 review, fix round 2: the props array literal passed to Inertia::render() is a whole
+// return shape in its own right, so a top-level resource spread inside it must flatten too.
+it('flattens a top-level resource spread inside the render props array', function () {
+    $data = pageData(ControllerWithSpreadProps::class.'@index');
+
+    expect($data['component'])->toBe('Dashboard/Spread')
+        ->and($data['pageType'])->toBe(
+            'Inertia.SharedData & { id: number, name: string, email: string, role: RoleType | null, '.
+            'profile?: Profile | null, posts?: PostResource[], phone?: string | null, avatar?: string, '.
+            'posts_count?: number, comments_count?: number, flag: boolean }'
+        );
+});
+
+it('returns null for an action that renders no Inertia response', function () {
+    expect(pageData(PostInertiaController::class.'@destroy'))->toBeNull()
+        ->and(pageData(PostInertiaController::class.'@missingMethod'))->toBeNull()
+        ->and(pageData('NonExistent\\Controller@index'))->toBeNull()
+        ->and(pageData('Closure'))->toBeNull();
+});
+
+// A class basename colliding with a TypeScript utility head must not be kept alive by the
+// `Record<string, X>` a preserve-keys collection renders — that would import a type the page
+// never names, which is the TS2304 shape the token gate exists to catch.
+it('does not treat a TypeScript utility head as a class the page type names', function () {
+    $analyzer = new class extends InertiaPageAnalyzer
     {
-        /** @return array{string, list<class-string>, array<string, list<string>>} */
-        public function expose(string $typeString, array $fqcns): array
+        public function expose(string $pageType, string $name): bool
         {
-            return $this->rewriteResourceCollections($typeString, $fqcns);
+            return $this->typeSpells($pageType, $name);
         }
     };
 
-    $fqcn = 'Illuminate\\Http\\Resources\\Json\\AnonymousResourceCollection';
-    $typeString = 'Inertia.SharedData & { posts: AnonymousResourceCollection<unknown> }';
+    $preserveKeys = "Inertia.SharedData & { teams: Omit<JsonResourcePaginator<TeamResource>, 'data'> & { data: Record<string, TeamResource> } }";
 
-    [$resultType, $resultFqcns, $externalImports] = $analyzer->expose($typeString, [$fqcn]);
-
-    expect($resultType)->toBe($typeString)
-        ->and($resultFqcns)->toBe([$fqcn])
-        ->and($externalImports)->toBeEmpty();
+    expect($analyzer->expose($preserveKeys, 'Record'))->toBeFalse()
+        ->and($analyzer->expose($preserveKeys, 'Omit'))->toBeFalse()
+        ->and($analyzer->expose($preserveKeys, 'TeamResource'))->toBeTrue()
+        ->and($analyzer->expose('Inertia.SharedData & { audit: Record }', 'Record'))->toBeTrue();
 });
 
-test('rewriteResourceCollections rewrites named ResourceCollection subclass', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
+// ─── analyze() exception boundary ─────────────────────────────────
 
-    $analyzer = new class($mock) extends InertiaPageAnalyzer
+test('analyze() degrades to null and records a warning when analysis throws', function () {
+    $analyzer = new class extends InertiaPageAnalyzer
     {
-        /** @return array{string, list<class-string>, array<string, list<string>>} */
-        public function expose(string $typeString, array $fqcns): array
+        protected function analyzerFor(MethodContext $context, AnalysisScope $scope): never
         {
-            return $this->rewriteResourceCollections($typeString, $fqcns);
+            throw new TypeError('addComponent(): Argument #2 must be of type ArrayType');
         }
     };
 
-    $fqcn = PostCollection::class;
-    $typeString = 'Inertia.SharedData & { posts: Workbench.App.Http.Resources.PostCollection }';
+    $result = $analyzer->analyze(['uses' => PostInertiaController::class.'@index']);
 
-    [$resultType, $resultFqcns, $externalImports] = $analyzer->expose($typeString, [$fqcn]);
+    expect($result)->toBeNull();
 
-    expect($resultType)->toBe('Inertia.SharedData & { posts: PostCollection }')
-        ->and($resultFqcns)->toBe([PostCollection::class])
-        ->and($externalImports)->toBeEmpty();
+    $warnings = AnalysisWarnings::all();
+
+    expect($warnings)->toHaveCount(1)
+        ->and($warnings[0]['subject'])->toBe(PostInertiaController::class.'@index')
+        ->and($warnings[0]['message'])->toContain('TypeError');
 });
 
-// ─── resolveSingularResourceFqcn() ───────────────────────────────
+// ─── #[TsCasts] overrides ─────────────────────────────────────────
 
-test('resolveSingularResourceFqcn resolves PostCollection to PostResource via #[Collects] attribute', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
+it('applies #[TsCasts] overrides and their imports', function () {
+    $data = pageData(InertiaTsCastsController::class.'@index');
 
-    $analyzer = new class($mock) extends InertiaPageAnalyzer
-    {
-        public function expose(string $fqcn): ?string
-        {
-            return $this->resolveSingularResourceFqcn($fqcn);
-        }
-    };
-
-    expect($analyzer->expose(PostCollection::class))->toBe(PostResource::class);
+    expect($data['pageType'])->toBe('Inertia.SharedData & { count: string, meta: PageMeta }')
+        ->and($data['externalImports'])->toBe(['@workbench/types' => ['PageMeta']]);
 });
 
-test('resolveSingularResourceFqcn resolves PostCollection to PostResource via naming convention', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-
-    $analyzer = new class($mock) extends InertiaPageAnalyzer
-    {
-        public function expose(string $fqcn): ?string
-        {
-            return $this->resolveSingularResourceFqcn($fqcn);
-        }
-    };
-
-    expect($analyzer->expose(PostCollection::class))->toBe(PostResource::class);
-});
-
-test('resolveSingularResourceFqcn returns null for non-naming-convention collection', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-
-    $analyzer = new class($mock) extends InertiaPageAnalyzer
-    {
-        public function expose(string $fqcn): ?string
-        {
-            return $this->resolveSingularResourceFqcn($fqcn);
-        }
-    };
-
-    // A ResourceCollection without $collects and without XCollection→XResource match
-    expect($analyzer->expose('Illuminate\\Http\\Resources\\Json\\ResourceCollection'))->toBeNull();
-});
-
-test('resolveSingularResourceFqcn rejects a naming-convention candidate outside the published set', function () {
-    // Non-vacuous: both losing candidates genuinely exist — only #[TsExclude] keeps them out of
-    // the published set, so class_exists() alone would accept either as LedgerCollection's element.
-    expect(class_exists(LedgerResource::class))->toBeTrue()
-        ->and(class_exists(Ledger::class))->toBeTrue();
-
-    PublishedResourceRegistry::register([TeamResource::class]);
-
-    $mock = Mockery::mock(ResponseCollector::class);
-
-    $analyzer = new class($mock) extends InertiaPageAnalyzer
-    {
-        public function expose(string $fqcn): ?string
-        {
-            return $this->resolveSingularResourceFqcn($fqcn);
-        }
-    };
-
-    expect($analyzer->expose(LedgerCollection::class))->toBeNull();
-
-    PublishedResourceRegistry::reset();
-});
-
-// ─── parseTsCastsFromMethod() ─────────────────────────────────────
-
-test('parseTsCastsFromMethod returns empty arrays for non-existent class', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-
-    $analyzer = new class($mock) extends InertiaPageAnalyzer
+test('parseTsCastsFromMethod returns empty arrays for a non-existent class', function () {
+    $analyzer = new class extends InertiaPageAnalyzer
     {
         /** @return array{overrides: array<string, string>, importMap: array<string, list<string>>} */
         public function expose(string $class, string $method): array
@@ -216,10 +251,8 @@ test('parseTsCastsFromMethod returns empty arrays for non-existent class', funct
         ->and($result['importMap'])->toBeEmpty();
 });
 
-test('parseTsCastsFromMethod returns empty arrays when method has no TsCasts attribute', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-
-    $analyzer = new class($mock) extends InertiaPageAnalyzer
+test('parseTsCastsFromMethod returns empty arrays when the method has no TsCasts attribute', function () {
+    $analyzer = new class extends InertiaPageAnalyzer
     {
         /** @return array{overrides: array<string, string>, importMap: array<string, list<string>>} */
         public function expose(string $class, string $method): array
@@ -228,17 +261,14 @@ test('parseTsCastsFromMethod returns empty arrays when method has no TsCasts att
         }
     };
 
-    // InertiaPageAnalyzer itself has no TsCasts on __construct
     $result = $analyzer->expose(InertiaPageAnalyzer::class, '__construct');
 
     expect($result['overrides'])->toBeEmpty()
         ->and($result['importMap'])->toBeEmpty();
 });
 
-test('parseTsCastsFromMethod extracts plain string overrides from TsCasts attribute', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-
-    $analyzer = new class($mock) extends InertiaPageAnalyzer
+test('parseTsCastsFromMethod extracts both the overrides and the import map', function () {
+    $analyzer = new class extends InertiaPageAnalyzer
     {
         /** @return array{overrides: array<string, string>, importMap: array<string, list<string>>} */
         public function expose(string $class, string $method): array
@@ -250,332 +280,89 @@ test('parseTsCastsFromMethod extracts plain string overrides from TsCasts attrib
     $result = $analyzer->expose(InertiaTsCastsController::class, 'index');
 
     expect($result['overrides'])->toHaveKey('count', 'string')
-        ->and($result['overrides'])->toHaveKey('meta', 'PageMeta');
+        ->and($result['overrides'])->toHaveKey('meta', 'PageMeta')
+        ->and($result['importMap'])->toBe(['@workbench/types' => ['PageMeta']]);
 });
 
-test('parseTsCastsFromMethod extracts import map from TsCasts attribute with import key', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
+// ─── analyze() paginated Resource::collection() ───────────────────
 
-    $analyzer = new class($mock) extends InertiaPageAnalyzer
-    {
-        /** @return array{overrides: array<string, string>, importMap: array<string, list<string>>} */
-        public function expose(string $class, string $method): array
-        {
-            return $this->parseTsCastsFromMethod($class, $method);
-        }
-    };
-
-    $result = $analyzer->expose(InertiaTsCastsController::class, 'index');
-
-    expect($result['importMap'])->toBe(['@workbench/types' => ['PageMeta']]);
-});
-
-// ─── analyze() with externalImports ──────────────────────────────
-
-test('analyze returns externalImports from TsCasts attribute on route method', function () {
-    // InertiaComponents::getComponent() returns an empty InertiaResponse for unregistered
-    // components. TsCasts overrides prevent the early-return path in buildPageType().
-
-    $mock = Mockery::mock(ResponseCollector::class);
-    $mock->shouldReceive('parseResponse')->andReturn(['TsCasts/Index']);
-
-    $analyzer = new InertiaPageAnalyzer($mock);
-
-    $result = $analyzer->analyze(['uses' => InertiaTsCastsController::class.'@index']);
+test('analyze() types Resource::collection($paginator) as JsonResourcePaginator for InertiaNamedCollectionsController@resourceAnonymousPaginated', function () {
+    $result = pageData(InertiaNamedCollectionsController::class.'@resourceAnonymousPaginated');
 
     expect($result)->not->toBeNull()
-        ->and($result['externalImports'])->toBe(['@workbench/types' => ['PageMeta']]);
+        ->and($result['pageType'])->toContain('JsonResourcePaginator<PostResource>')
+        ->and($result['pageType'])->not->toContain('AnonymousResourceCollection<unknown>');
 });
 
-// ─── rewritePaginatorGenerics() ───────────────────────────────────
+test('analyze() types Resource::collection($paginator) as JsonResourcePaginator for InertiaSingleResourceController@resourcePaginatedCollection', function () {
+    $result = pageData(InertiaSingleResourceController::class.'@resourcePaginatedCollection');
 
-test('rewritePaginatorGenerics returns type unchanged when map is empty', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-
-    $analyzer = new class($mock) extends InertiaPageAnalyzer
-    {
-        /**
-         * @param  list<class-string>  $fqcns
-         * @param  array<string, class-string>  $paginatorModelMap
-         * @return array{string, list<class-string>}
-         */
-        public function expose(string $typeString, array $fqcns, array $paginatorModelMap): array
-        {
-            return $this->rewritePaginatorGenerics($typeString, $fqcns, $paginatorModelMap);
-        }
-    };
-
-    $fqcn = 'Illuminate\\Pagination\\LengthAwarePaginator';
-    $typeString = 'Inertia.SharedData & { posts: Illuminate.Pagination.LengthAwarePaginator<unknown> }';
-
-    [$resultType, $resultFqcns] = $analyzer->expose($typeString, [$fqcn], []);
-
-    expect($resultType)->toBe($typeString)
-        ->and($resultFqcns)->toBe([$fqcn]);
+    expect($result)->not->toBeNull()
+        ->and($result['pageType'])->toContain('JsonResourcePaginator<WarehouseResource>')
+        ->and($result['pageType'])->not->toContain('AnonymousResourceCollection<unknown>');
 });
 
-test('rewritePaginatorGenerics replaces <unknown> with model dot-notation for LengthAwarePaginator', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
+test('analyze() types Resource::collection($paginator) as JsonResourcePaginator for InertiaResourceSharedTemplate@resourcePaginatedCollection', function () {
+    $result = pageData(InertiaResourceSharedTemplate::class.'@resourcePaginatedCollection');
 
-    $analyzer = new class($mock) extends InertiaPageAnalyzer
-    {
-        /**
-         * @param  list<class-string>  $fqcns
-         * @param  array<string, class-string>  $paginatorModelMap
-         * @return array{string, list<class-string>}
-         */
-        public function expose(string $typeString, array $fqcns, array $paginatorModelMap): array
-        {
-            return $this->rewritePaginatorGenerics($typeString, $fqcns, $paginatorModelMap);
-        }
-    };
-
-    $paginatorFqcn = 'Illuminate\\Pagination\\LengthAwarePaginator';
-    $modelFqcn = 'Workbench\\App\\Models\\Post';
-    $typeString = 'Inertia.SharedData & { posts: Illuminate.Pagination.LengthAwarePaginator<unknown> }';
-
-    [$resultType, $resultFqcns] = $analyzer->expose($typeString, [$paginatorFqcn], ['posts' => $modelFqcn]);
-
-    expect($resultType)->toBe('Inertia.SharedData & { posts: Illuminate.Pagination.LengthAwarePaginator<Workbench.App.Models.Post> }')
-        ->and($resultFqcns)->toContain($paginatorFqcn)
-        ->and($resultFqcns)->toContain($modelFqcn);
+    expect($result)->not->toBeNull()
+        ->and($result['pageType'])->toContain('JsonResourcePaginator<WarehouseResource>')
+        ->and($result['pageType'])->not->toContain('AnonymousResourceCollection<unknown>');
 });
 
-test('rewritePaginatorGenerics adds model FQCN to fqcns list', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
+// ─── analyze() paginator generics ─────────────────────────────────
 
-    $analyzer = new class($mock) extends InertiaPageAnalyzer
-    {
-        /**
-         * @param  list<class-string>  $fqcns
-         * @param  array<string, class-string>  $paginatorModelMap
-         * @return array{string, list<class-string>}
-         */
-        public function expose(string $typeString, array $fqcns, array $paginatorModelMap): array
-        {
-            return $this->rewritePaginatorGenerics($typeString, $fqcns, $paginatorModelMap);
-        }
-    };
+test('analyze() types the LengthAwarePaginator generic as the model for InertiaPaginationsController@lengthAware', function () {
+    $result = pageData(InertiaPaginationsController::class.'@lengthAware');
 
-    $paginatorFqcn = 'Illuminate\\Pagination\\LengthAwarePaginator';
-    $modelFqcn = 'Workbench\\App\\Models\\Post';
-    $typeString = 'Inertia.SharedData & { posts: Illuminate.Pagination.LengthAwarePaginator<unknown> }';
-
-    [, $resultFqcns] = $analyzer->expose($typeString, [$paginatorFqcn], ['posts' => $modelFqcn]);
-
-    expect($resultFqcns)->toHaveCount(2)
-        ->and($resultFqcns)->toContain($modelFqcn);
+    expect($result)->not->toBeNull()
+        ->and($result['pageType'])->toContain('LengthAwarePaginator<Post>')
+        ->and($result['pageType'])->not->toContain('<number, string>');
 });
 
-test('rewritePaginatorGenerics does not duplicate model FQCN when already in fqcns', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
+test('analyze() types the SimplePaginator generic as the model for InertiaPaginationsController@simple', function () {
+    $result = pageData(InertiaPaginationsController::class.'@simple');
 
-    $analyzer = new class($mock) extends InertiaPageAnalyzer
-    {
-        /**
-         * @param  list<class-string>  $fqcns
-         * @param  array<string, class-string>  $paginatorModelMap
-         * @return array{string, list<class-string>}
-         */
-        public function expose(string $typeString, array $fqcns, array $paginatorModelMap): array
-        {
-            return $this->rewritePaginatorGenerics($typeString, $fqcns, $paginatorModelMap);
-        }
-    };
-
-    $paginatorFqcn = 'Illuminate\\Pagination\\LengthAwarePaginator';
-    $modelFqcn = 'Workbench\\App\\Models\\Post';
-    $typeString = 'Inertia.SharedData & { posts: Illuminate.Pagination.LengthAwarePaginator<unknown> }';
-
-    [, $resultFqcns] = $analyzer->expose($typeString, [$paginatorFqcn, $modelFqcn], ['posts' => $modelFqcn]);
-
-    expect(array_count_values($resultFqcns)[$modelFqcn])->toBe(1);
+    expect($result)->not->toBeNull()
+        ->and($result['pageType'])->toContain('SimplePaginator<Post>')
+        ->and($result['pageType'])->not->toContain('<number, string>');
 });
 
-test('rewritePaginatorGenerics skips prop key not found in type string', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
+test('analyze() types the CursorPaginator generic as the model for InertiaPaginationsController@cursor', function () {
+    $result = pageData(InertiaPaginationsController::class.'@cursor');
 
-    $analyzer = new class($mock) extends InertiaPageAnalyzer
-    {
-        /**
-         * @param  list<class-string>  $fqcns
-         * @param  array<string, class-string>  $paginatorModelMap
-         * @return array{string, list<class-string>}
-         */
-        public function expose(string $typeString, array $fqcns, array $paginatorModelMap): array
-        {
-            return $this->rewritePaginatorGenerics($typeString, $fqcns, $paginatorModelMap);
-        }
-    };
-
-    $paginatorFqcn = 'Illuminate\\Pagination\\LengthAwarePaginator';
-    $modelFqcn = 'Workbench\\App\\Models\\Post';
-    $typeString = 'Inertia.SharedData & { posts: Illuminate.Pagination.LengthAwarePaginator<unknown> }';
-
-    // 'items' key does not exist in the type string
-    [$resultType, $resultFqcns] = $analyzer->expose($typeString, [$paginatorFqcn], ['items' => $modelFqcn]);
-
-    expect($resultType)->toBe($typeString)
-        ->and($resultFqcns)->not->toContain($modelFqcn);
+    expect($result)->not->toBeNull()
+        ->and($result['pageType'])->toContain('CursorPaginator<Post>')
+        ->and($result['pageType'])->not->toContain('<number, string>');
 });
 
-test('rewritePaginatorGenerics replaces non-unknown generic with model dot-notation for LengthAwarePaginator', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
+// ─── analyze() paginated resource collections ─────────────────────
 
-    $analyzer = new class($mock) extends InertiaPageAnalyzer
-    {
-        /**
-         * @param  list<class-string>  $fqcns
-         * @param  array<string, class-string>  $paginatorModelMap
-         * @return array{string, list<class-string>}
-         */
-        public function expose(string $typeString, array $fqcns, array $paginatorModelMap): array
-        {
-            return $this->rewritePaginatorGenerics($typeString, $fqcns, $paginatorModelMap);
-        }
-    };
+test('analyze() intersects a wrapped paginated collection with ResourcePagination', function () {
+    $named = pageData(InertiaPreserveKeysController::class.'@namedPaginated');
+    $inline = pageData(InertiaPreserveKeysController::class.'@inlinePaginated');
 
-    $paginatorFqcn = 'Illuminate\\Pagination\\LengthAwarePaginator';
-    $modelFqcn = 'Workbench\\App\\Models\\Post';
-    // Surveyor may produce concrete generics (e.g. <number, string>) instead of <unknown>
-    $typeString = 'Inertia.SharedData & { posts: Illuminate.Pagination.LengthAwarePaginator<number, string> }';
-
-    [$resultType] = $analyzer->expose($typeString, [$paginatorFqcn], ['posts' => $modelFqcn]);
-
-    expect($resultType)->toBe('Inertia.SharedData & { posts: Illuminate.Pagination.LengthAwarePaginator<Workbench.App.Models.Post> }');
+    expect($named['pageType'])->toBe('Inertia.SharedData & { teams: PreserveKeysCollection & ResourcePagination }')
+        ->and($named['externalImports'])->toBe(['@tolki/types' => ['ResourcePagination']])
+        ->and($inline['pageType'])->toBe('Inertia.SharedData & { teams: PreserveKeysCollection & ResourcePagination }');
 });
 
-// ─── rewritePaginatedResourceProps() ──────────────────────────────
+test('analyze() emits the keyed record shape for a preserve-keys paginated collection', function () {
+    $flat = pageData(InertiaPreserveKeysController::class.'@flatPaginated');
+    $anonymous = pageData(InertiaPreserveKeysController::class.'@anonymousPaginated');
 
-test('rewritePaginatedResourceProps returns unchanged when map is empty', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-
-    $analyzer = new class($mock) extends InertiaPageAnalyzer
-    {
-        /** @return array{string, list<class-string>, array<string, list<string>>} */
-        public function expose(string $typeString, array $fqcns, array $paginatedResourceProps): array
-        {
-            return $this->rewritePaginatedResourceProps($typeString, $fqcns, $paginatedResourceProps);
-        }
-    };
-
-    $typeString = 'Inertia.SharedData & { posts: WarehouseResource }';
-    [$resultType, $resultFqcns, $externalImports] = $analyzer->expose($typeString, [WarehouseResource::class], []);
-
-    expect($resultType)->toBe($typeString)
-        ->and($resultFqcns)->toBe([WarehouseResource::class])
-        ->and($externalImports)->toBeEmpty();
-});
-
-test('rewritePaginatedResourceProps appends & ResourcePagination for non-flat resource', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-
-    $analyzer = new class($mock) extends InertiaPageAnalyzer
-    {
-        /** @return array{string, list<class-string>, array<string, list<string>>} */
-        public function expose(string $typeString, array $fqcns, array $paginatedResourceProps): array
-        {
-            return $this->rewritePaginatedResourceProps($typeString, $fqcns, $paginatedResourceProps);
-        }
-    };
-
-    $typeString = 'Inertia.SharedData & { posts: WarehouseResource }';
-    [$resultType, $resultFqcns, $externalImports] = $analyzer->expose($typeString, [WarehouseResource::class], ['posts' => WarehouseResource::class]);
-
-    expect($resultType)->toBe('Inertia.SharedData & { posts: WarehouseResource & ResourcePagination }')
-        ->and($resultFqcns)->toBe([WarehouseResource::class])
-        ->and($externalImports)->toBe(['@tolki/types' => ['ResourcePagination']]);
-});
-
-test('rewritePaginatedResourceProps appends & ResourcePagination for named ResourceCollection (non-flat)', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-
-    $analyzer = new class($mock) extends InertiaPageAnalyzer
-    {
-        /** @return array{string, list<class-string>, array<string, list<string>>} */
-        public function expose(string $typeString, array $fqcns, array $paginatedResourceProps): array
-        {
-            return $this->rewritePaginatedResourceProps($typeString, $fqcns, $paginatedResourceProps);
-        }
-    };
-
-    $typeString = 'Inertia.SharedData & { posts: PostCollection }';
-    [$resultType, $resultFqcns, $externalImports] = $analyzer->expose($typeString, [PostCollection::class], ['posts' => PostCollection::class]);
-
-    expect($resultType)->toBe('Inertia.SharedData & { posts: PostCollection & ResourcePagination }')
-        ->and($resultFqcns)->toBe([PostCollection::class])
-        ->and($externalImports)->toBe(['@tolki/types' => ['ResourcePagination']]);
-});
-
-test('rewritePaginatedResourceProps rewrites flat collection to JsonResourcePaginator<SingularType>', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-
-    $analyzer = new class($mock) extends InertiaPageAnalyzer
-    {
-        /** @return array{string, list<class-string>, array<string, list<string>>} */
-        public function expose(string $typeString, array $fqcns, array $paginatedResourceProps): array
-        {
-            return $this->rewritePaginatedResourceProps($typeString, $fqcns, $paginatedResourceProps);
-        }
-    };
-
-    $typeString = 'Inertia.SharedData & { posts: PostFlatCollection }';
-    [$resultType, $resultFqcns, $externalImports] = $analyzer->expose($typeString, [PostFlatCollection::class], ['posts' => PostFlatCollection::class]);
-
-    expect($resultType)->toBe('Inertia.SharedData & { posts: JsonResourcePaginator<PostResource> }')
-        ->and($resultFqcns)->not->toContain(PostFlatCollection::class)
-        ->and($resultFqcns)->toContain(PostResource::class)
-        ->and($externalImports)->toBe(['@tolki/types' => ['JsonResourcePaginator']]);
-})->skip(fn () => ! version_compare(app()->version(), '13', '>='));
-
-test('rewritePaginatedResourceProps leaves a non-preserving flat collection as a plain JsonResourcePaginator (control)', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-
-    $analyzer = new class($mock) extends InertiaPageAnalyzer
-    {
-        /** @return array{string, list<class-string>, array<string, list<string>>} */
-        public function expose(string $typeString, array $fqcns, array $paginatedResourceProps): array
-        {
-            return $this->rewritePaginatedResourceProps($typeString, $fqcns, $paginatedResourceProps);
-        }
-    };
-
-    $typeString = 'Inertia.SharedData & { posts: PostFlatCollection }';
-    [$resultType] = $analyzer->expose($typeString, [PostFlatCollection::class], ['posts' => PostFlatCollection::class]);
-
-    expect($resultType)->toContain('JsonResourcePaginator<')
-        ->and($resultType)->not->toContain('Omit<')
-        ->and($resultType)->not->toContain('Record<string,');
-});
-
-test('rewritePaginatedResourceProps emits the keyed record shape for a preserve-keys flat collection', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-
-    $analyzer = new class($mock) extends InertiaPageAnalyzer
-    {
-        /** @return array{string, list<class-string>, array<string, list<string>>} */
-        public function expose(string $typeString, array $fqcns, array $paginatedResourceProps): array
-        {
-            return $this->rewritePaginatedResourceProps($typeString, $fqcns, $paginatedResourceProps);
-        }
-    };
-
-    $typeString = 'Inertia.SharedData & { teams: PreserveKeysFlatCollection }';
-    [$resultType, $resultFqcns, $externalImports] = $analyzer->expose($typeString, [PreserveKeysFlatCollection::class], ['teams' => PreserveKeysFlatCollection::class]);
-
-    expect($resultType)->toBe("Inertia.SharedData & { teams: Omit<JsonResourcePaginator<TeamResource>, 'data'> & { data: Record<string, TeamResource> } }")
-        ->and($resultFqcns)->not->toContain(PreserveKeysFlatCollection::class)
-        ->and($resultFqcns)->toContain(TeamResource::class)
-        ->and($externalImports)->toBe(['@tolki/types' => ['JsonResourcePaginator']]);
+    expect($flat['pageType'])->toBe(
+        "Inertia.SharedData & { teams: Omit<JsonResourcePaginator<TeamResource>, 'data'> & { data: Record<string, TeamResource> } }"
+    )
+        ->and($anonymous['pageType'])->toBe(
+            "Inertia.SharedData & { teams: Omit<JsonResourcePaginator<PreserveKeysTeamResource>, 'data'> & { data: Record<string, PreserveKeysTeamResource> } }"
+        );
 });
 
 // ─── analyze() shared-template isolation ──────────────────────────
 
 test('analyze() isolates props when different methods share the same component name - paginated collection method', function () {
-    $collector = app(ResponseCollector::class);
-    $analyzer = new InertiaPageAnalyzer($collector);
-
-    $result = $analyzer->analyze(['uses' => InertiaResourceSharedTemplate::class.'@resourcePaginatedCollection']);
+    $result = pageData(InertiaResourceSharedTemplate::class.'@resourcePaginatedCollection');
 
     // Must only contain the prop declared in this method
     expect($result)->not->toBeNull()
@@ -583,10 +370,7 @@ test('analyze() isolates props when different methods share the same component n
 });
 
 test('analyze() isolates props when different methods share the same component name - anon collection method', function () {
-    $collector = app(ResponseCollector::class);
-    $analyzer = new InertiaPageAnalyzer($collector);
-
-    $result = $analyzer->analyze(['uses' => InertiaResourceSharedTemplate::class.'@resourceAnonymousCollection']);
+    $result = pageData(InertiaResourceSharedTemplate::class.'@resourceAnonymousCollection');
 
     // Must only contain props declared in this method
     expect($result)->not->toBeNull()
@@ -598,10 +382,7 @@ test('analyze() isolates props when different methods share the same component n
 });
 
 test('analyze() isolates props when different methods share the same component name - resource method', function () {
-    $collector = app(ResponseCollector::class);
-    $analyzer = new InertiaPageAnalyzer($collector);
-
-    $result = $analyzer->analyze(['uses' => InertiaResourceSharedTemplate::class.'@resource']);
+    $result = pageData(InertiaResourceSharedTemplate::class.'@resource');
 
     // Must only contain props declared in this method
     expect($result)->not->toBeNull()
@@ -612,222 +393,10 @@ test('analyze() isolates props when different methods share the same component n
         ->and($result['pageType'])->not->toContain('warehouse_all');
 });
 
-// ─── rewritePaginatedStaticCollectionProps() ──────────────────────
-
-test('rewritePaginatedStaticCollectionProps returns unchanged when map is empty', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-
-    $analyzer = new class($mock) extends InertiaPageAnalyzer
-    {
-        /** @return array{string, list<class-string>, array<string, list<string>>} */
-        public function expose(string $typeString, array $fqcns, array $paginatedStaticCollectionProps): array
-        {
-            return $this->rewritePaginatedStaticCollectionProps($typeString, $fqcns, $paginatedStaticCollectionProps);
-        }
-    };
-
-    $anonFqcn = 'Illuminate\\Http\\Resources\\Json\\AnonymousResourceCollection';
-    $typeString = 'Inertia.SharedData & { warehouses: AnonymousResourceCollection<unknown> }';
-
-    [$resultType, $resultFqcns, $externalImports] = $analyzer->expose($typeString, [$anonFqcn, WarehouseResource::class], []);
-
-    expect($resultType)->toBe($typeString)
-        ->and($resultFqcns)->toBe([$anonFqcn, WarehouseResource::class])
-        ->and($externalImports)->toBeEmpty();
-});
-
-test('rewritePaginatedStaticCollectionProps rewrites AnonymousResourceCollection to JsonResourcePaginator', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-
-    $analyzer = new class($mock) extends InertiaPageAnalyzer
-    {
-        /** @return array{string, list<class-string>, array<string, list<string>>} */
-        public function expose(string $typeString, array $fqcns, array $paginatedStaticCollectionProps): array
-        {
-            return $this->rewritePaginatedStaticCollectionProps($typeString, $fqcns, $paginatedStaticCollectionProps);
-        }
-    };
-
-    $anonFqcn = 'Illuminate\\Http\\Resources\\Json\\AnonymousResourceCollection';
-    $typeString = 'Inertia.SharedData & { warehouses: AnonymousResourceCollection<unknown> }';
-
-    [$resultType, $resultFqcns, $externalImports] = $analyzer->expose($typeString, [$anonFqcn, WarehouseResource::class], ['warehouses' => WarehouseResource::class]);
-
-    expect($resultType)->toBe('Inertia.SharedData & { warehouses: JsonResourcePaginator<WarehouseResource> }')
-        ->and($externalImports)->toBe(['@tolki/types' => ['JsonResourcePaginator']]);
-});
-
-test('rewritePaginatedStaticCollectionProps adds resource FQCN to fqcns if not already present', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-
-    $analyzer = new class($mock) extends InertiaPageAnalyzer
-    {
-        /** @return array{string, list<class-string>, array<string, list<string>>} */
-        public function expose(string $typeString, array $fqcns, array $paginatedStaticCollectionProps): array
-        {
-            return $this->rewritePaginatedStaticCollectionProps($typeString, $fqcns, $paginatedStaticCollectionProps);
-        }
-    };
-
-    $anonFqcn = 'Illuminate\\Http\\Resources\\Json\\AnonymousResourceCollection';
-    $typeString = 'Inertia.SharedData & { warehouses: AnonymousResourceCollection<unknown> }';
-
-    [, $resultFqcns] = $analyzer->expose($typeString, [$anonFqcn], ['warehouses' => WarehouseResource::class]);
-
-    expect($resultFqcns)->toContain(WarehouseResource::class);
-});
-
-test('rewritePaginatedStaticCollectionProps leaves non-paginated props unchanged', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-
-    $analyzer = new class($mock) extends InertiaPageAnalyzer
-    {
-        /** @return array{string, list<class-string>, array<string, list<string>>} */
-        public function expose(string $typeString, array $fqcns, array $paginatedStaticCollectionProps): array
-        {
-            return $this->rewritePaginatedStaticCollectionProps($typeString, $fqcns, $paginatedStaticCollectionProps);
-        }
-    };
-
-    $anonFqcn = 'Illuminate\\Http\\Resources\\Json\\AnonymousResourceCollection';
-    $typeString = 'Inertia.SharedData & { warehouses: AnonymousResourceCollection<unknown>, items: AnonymousResourceCollection<unknown> }';
-
-    // Only 'warehouses' is paginated — 'items' should be left alone
-    [$resultType] = $analyzer->expose($typeString, [$anonFqcn, WarehouseResource::class], ['warehouses' => WarehouseResource::class]);
-
-    expect($resultType)->toContain('items: AnonymousResourceCollection<unknown>')
-        ->and($resultType)->toContain('warehouses: JsonResourcePaginator<WarehouseResource>');
-});
-
-test('rewritePaginatedStaticCollectionProps leaves a non-preserving resource as a plain JsonResourcePaginator (control)', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-
-    $analyzer = new class($mock) extends InertiaPageAnalyzer
-    {
-        /** @return array{string, list<class-string>, array<string, list<string>>} */
-        public function expose(string $typeString, array $fqcns, array $paginatedStaticCollectionProps): array
-        {
-            return $this->rewritePaginatedStaticCollectionProps($typeString, $fqcns, $paginatedStaticCollectionProps);
-        }
-    };
-
-    $typeString = 'Inertia.SharedData & { posts: AnonymousResourceCollection<unknown> }';
-    [$resultType, , $externalImports] = $analyzer->expose($typeString, [], ['posts' => PostResource::class]);
-
-    expect($resultType)->toBe('Inertia.SharedData & { posts: JsonResourcePaginator<PostResource> }')
-        ->and($externalImports)->toBe(['@tolki/types' => ['JsonResourcePaginator']]);
-});
-
-test('rewritePaginatedStaticCollectionProps emits the keyed record shape for a preserve-keys resource', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-
-    $analyzer = new class($mock) extends InertiaPageAnalyzer
-    {
-        /** @return array{string, list<class-string>, array<string, list<string>>} */
-        public function expose(string $typeString, array $fqcns, array $paginatedStaticCollectionProps): array
-        {
-            return $this->rewritePaginatedStaticCollectionProps($typeString, $fqcns, $paginatedStaticCollectionProps);
-        }
-    };
-
-    $typeString = 'Inertia.SharedData & { teams: AnonymousResourceCollection<unknown> }';
-    [$resultType, $resultFqcns, $externalImports] = $analyzer->expose($typeString, [], ['teams' => PreserveKeysTeamResource::class]);
-
-    expect($resultType)->toBe("Inertia.SharedData & { teams: Omit<JsonResourcePaginator<PreserveKeysTeamResource>, 'data'> & { data: Record<string, PreserveKeysTeamResource> } }")
-        ->and($resultFqcns)->toContain(PreserveKeysTeamResource::class)
-        ->and($externalImports)->toBe(['@tolki/types' => ['JsonResourcePaginator']]);
-});
-
-// ─── analyze() paginated Resource::collection() ───────────────────
-
-test('analyze() rewrites Resource::collection($paginator) to JsonResourcePaginator for InertiaNamedCollectionsController@resourceAnonymousPaginated', function () {
-    $collector = app(ResponseCollector::class);
-    $analyzer = new InertiaPageAnalyzer($collector);
-
-    $result = $analyzer->analyze(['uses' => InertiaNamedCollectionsController::class.'@resourceAnonymousPaginated']);
-
-    expect($result)->not->toBeNull()
-        ->and($result['pageType'])->toContain('JsonResourcePaginator<PostResource>')
-        ->and($result['pageType'])->not->toContain('AnonymousResourceCollection<unknown>');
-});
-
-test('analyze() rewrites Resource::collection($paginator) to JsonResourcePaginator for InertiaSingleResourceController@resourcePaginatedCollection', function () {
-    $collector = app(ResponseCollector::class);
-    $analyzer = new InertiaPageAnalyzer($collector);
-
-    $result = $analyzer->analyze(['uses' => InertiaSingleResourceController::class.'@resourcePaginatedCollection']);
-
-    expect($result)->not->toBeNull()
-        ->and($result['pageType'])->toContain('JsonResourcePaginator<WarehouseResource>')
-        ->and($result['pageType'])->not->toContain('AnonymousResourceCollection<unknown>');
-});
-
-test('analyze() rewrites Resource::collection($paginator) to JsonResourcePaginator for InertiaResourceSharedTemplate@resourcePaginatedCollection', function () {
-    $collector = app(ResponseCollector::class);
-    $analyzer = new InertiaPageAnalyzer($collector);
-
-    $result = $analyzer->analyze(['uses' => InertiaResourceSharedTemplate::class.'@resourcePaginatedCollection']);
-
-    expect($result)->not->toBeNull()
-        ->and($result['pageType'])->toContain('JsonResourcePaginator<WarehouseResource>')
-        ->and($result['pageType'])->not->toContain('AnonymousResourceCollection<unknown>');
-});
-
-// ─── analyze() paginator generic rewriting ───────────────────────
-
-test('analyze() rewrites LengthAwarePaginator generic to model type for InertiaPaginationsController@lengthAware', function () {
-    $collector = app(ResponseCollector::class);
-    $analyzer = new InertiaPageAnalyzer($collector);
-
-    $result = $analyzer->analyze(['uses' => InertiaPaginationsController::class.'@lengthAware']);
-
-    expect($result)->not->toBeNull()
-        ->and($result['pageType'])->toContain('LengthAwarePaginator<Post>')
-        ->and($result['pageType'])->not->toContain('<number, string>');
-});
-
-test('analyze() rewrites SimplePaginator generic to model type for InertiaPaginationsController@simple', function () {
-    $collector = app(ResponseCollector::class);
-    $analyzer = new InertiaPageAnalyzer($collector);
-
-    $result = $analyzer->analyze(['uses' => InertiaPaginationsController::class.'@simple']);
-
-    expect($result)->not->toBeNull()
-        ->and($result['pageType'])->toContain('SimplePaginator<Post>')
-        ->and($result['pageType'])->not->toContain('<number, string>');
-});
-
-test('analyze() rewrites CursorPaginator generic to model type for InertiaPaginationsController@cursor', function () {
-    $collector = app(ResponseCollector::class);
-    $analyzer = new InertiaPageAnalyzer($collector);
-
-    $result = $analyzer->analyze(['uses' => InertiaPaginationsController::class.'@cursor']);
-
-    expect($result)->not->toBeNull()
-        ->and($result['pageType'])->toContain('CursorPaginator<Post>')
-        ->and($result['pageType'])->not->toContain('<number, string>');
-});
-
-test('analyze() rewrites LengthAwarePaginator generic to model type for PostInertiaController@index', function () {
-    $collector = app(ResponseCollector::class);
-    $analyzer = new InertiaPageAnalyzer($collector);
-
-    $result = $analyzer->analyze(['uses' => PostInertiaController::class.'@index']);
-
-    expect($result)->not->toBeNull()
-        ->and($result['pageType'])->toContain('LengthAwarePaginator<Post>')
-        ->and($result['pageType'])->not->toContain('<number, string>');
-});
-
 // ─── Inertia UI Table props ───────────────────────────────────────
 
-test('analyze() short-circuits Inertia UI Table props before Ranger parses the response', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-    $mock->shouldNotReceive('parseResponse');
-
-    $analyzer = new InertiaPageAnalyzer($mock);
-
-    $result = $analyzer->analyze(['uses' => InertiaTableController::class.'@direct']);
+test('analyze() short-circuits Inertia UI Table props to the table analyzer', function () {
+    $result = pageData(InertiaTableController::class.'@direct');
 
     expect($result)->not->toBeNull()
         ->and($result['component'])->toBe('Tables/Index')
@@ -836,13 +405,8 @@ test('analyze() short-circuits Inertia UI Table props before Ranger parses the r
         ->and($result['externalImports'])->toBe(['@inertiaui/table-vue' => ['TableResource']]);
 });
 
-test('analyze() short-circuits service-layer Inertia UI Table props before Ranger parses the response', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-    $mock->shouldNotReceive('parseResponse');
-
-    $analyzer = new InertiaPageAnalyzer($mock);
-
-    $result = $analyzer->analyze(['uses' => InertiaTableController::class.'@service']);
+test('analyze() short-circuits service-layer Inertia UI Table props to the table analyzer', function () {
+    $result = pageData(InertiaTableController::class.'@service');
 
     expect($result)->not->toBeNull()
         ->and($result['component'])->toBe('Tables/Index')
@@ -851,50 +415,44 @@ test('analyze() short-circuits service-layer Inertia UI Table props before Range
         ->and($result['externalImports'])->toBe(['@inertiaui/table-vue' => ['TableResource']]);
 });
 
-// ─── analyze() taint branch ───────────────────────────────────────
-
-test('analyze() skips Ranger for a tainted sibling route and emits no page type', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-    $mock->shouldNotReceive('parseResponse');
-
-    $analyzer = new InertiaPageAnalyzer($mock);
-
-    $result = $analyzer->analyze(['uses' => InertiaTableController::class.'@serviceCreate']);
-
-    expect($result)->not->toBeNull()
-        ->and($result['component'])->toBe('Tables/Create')
-        ->and($result['pageType'])->toBeNull()
-        ->and($result['classFqcns'])->toBe([])
-        ->and($result['externalImports'] ?? [])->toBe([]);
-});
-
-test('analyze() builds a page type from #[TsCasts] on a tainted route without Ranger', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-    $mock->shouldNotReceive('parseResponse');
-
-    $analyzer = new InertiaPageAnalyzer($mock);
-
-    $result = $analyzer->analyze(['uses' => InertiaTableController::class.'@castedCreate']);
-
-    expect($result)->not->toBeNull()
-        ->and($result['pageType'])->toBe('Inertia.SharedData & { mode: string }');
-});
-
-test('analyze() returns null for a tainted non-Inertia action without calling Ranger', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-    $mock->shouldNotReceive('parseResponse');
-    $analyzer = new InertiaPageAnalyzer($mock);
-
-    expect($analyzer->analyze(['uses' => InertiaServiceTableController::class.'@store']))->toBeNull();
-});
-
-test('analyze() short-circuits the Inertia index action on a service-backed table controller', function () {
-    $mock = Mockery::mock(ResponseCollector::class);
-    $mock->shouldNotReceive('parseResponse');
-    $analyzer = new InertiaPageAnalyzer($mock);
-
-    $result = $analyzer->analyze(['uses' => InertiaServiceTableController::class.'@index']);
+test('analyze() resolves the table model from a query() method rather than a $resource property', function () {
+    $result = pageData(InertiaTableController::class.'@queryBased');
 
     expect($result)->not->toBeNull()
         ->and($result['pageType'])->toBe('Inertia.SharedData & { posts: TableResource<Post> }');
+});
+
+test('analyze() short-circuits the Inertia index action on a service-backed table controller', function () {
+    $result = pageData(InertiaServiceTableController::class.'@index');
+
+    expect($result)->not->toBeNull()
+        ->and($result['pageType'])->toBe('Inertia.SharedData & { posts: TableResource<Post> }');
+});
+
+// ─── Sibling actions of a table-bearing controller ────────────────
+
+// These used to lose their page type: the whole file was treated as unanalyzable because deep
+// analysis of a table risked autoloading its optional export dependencies. The engine reads the
+// props expression instead, so a table-free sibling action is typed like any other.
+test('analyze() types a table-free sibling action on a table-bearing controller', function () {
+    $service = pageData(InertiaTableController::class.'@serviceCreate');
+    $inline = pageData(InertiaInlineTableController::class.'@form');
+
+    expect($service['component'])->toBe('Tables/Create')
+        ->and($service['pageType'])->toBe('Inertia.SharedData & { mode: string }')
+        ->and($inline['component'])->toBe('Tables/Form')
+        ->and($inline['pageType'])->toBe('Inertia.SharedData & { mode: string }');
+});
+
+// The literal 'create' the props expression carries infers as `string`, so the narrowed union is
+// only reachable through the attribute — the sibling at @serviceCreate above pins the inferred half.
+test('analyze() applies the #[TsCasts] override on a sibling of a table action', function () {
+    $result = pageData(InertiaTableController::class.'@castedCreate');
+
+    expect($result)->not->toBeNull()
+        ->and($result['pageType'])->toBe("Inertia.SharedData & { mode: 'create' | 'edit' }");
+});
+
+test('analyze() returns null for a non-Inertia action on a table-bearing controller', function () {
+    expect(pageData(InertiaServiceTableController::class.'@store'))->toBeNull();
 });
