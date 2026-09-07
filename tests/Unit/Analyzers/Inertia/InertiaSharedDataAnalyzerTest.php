@@ -10,14 +10,18 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithConflictingImports;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDocblockReturn;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDuplicateImports;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithEnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithEnumResourceErrors;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithImportPaths;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithInertiaWrappers;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMethodOverridesClass;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMethodTsCasts;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMultiEnumTernary;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithOptionalDocblockKey;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithoutShareMethod;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithTsCastsAndDocblock;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithUnsharedOptionalKey;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithWrappedAndBareEnum;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\SpreadShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\StarterKitArrayMergeMiddleware;
 
@@ -290,4 +294,64 @@ test('an override drops the type import the displaced type kept alive', function
 
     expect($result['sharedPageProps'])->toContain('auth: { user: null }')
         ->and($result['typeImports'])->toBe([]);
+});
+
+// ─── EnumResource props ──────────────────────────────────────────
+
+test('an EnumResource shared prop is rewritten to AsEnum and imports the enum const', function () {
+    $result = analyzeSharedDataFor(MiddlewareWithEnumResource::class);
+
+    // The type import is gone on purpose: no prop spells the bare RoleType/StatusType any more, so
+    // keeping it would emit an import the augmentation file never uses.
+    expect($result)->not->toBeNull()
+        ->and($result['sharedPageProps'])->toBe(
+            '{ role: AsEnum<typeof Role>, status: AsEnum<typeof Status>, nested: { role: AsEnum<typeof Role> } }'
+        )
+        ->and($result['valueImports'])->toBe(['./workbench/app/enums' => ['Role', 'Status']])
+        ->and($result['typeImports'])->toBe([]);
+});
+
+test('an enum read both wrapped and bare keeps its type import alongside the value import', function () {
+    // The GC runs the opposite way round from the resource case: only the wrapped prop's own token is
+    // substituted, so the prop that still reads the enum bare has to keep RoleType importable.
+    $result = analyzeSharedDataFor(MiddlewareWithWrappedAndBareEnum::class);
+
+    expect($result)->not->toBeNull()
+        ->and($result['sharedPageProps'])->toBe('{ role: AsEnum<typeof Role>, bareRole: RoleType }')
+        ->and($result['typeImports'])->toBe(['./workbench/app/enums' => ['RoleType']])
+        ->and($result['valueImports'])->toBe(['./workbench/app/enums' => ['Role']]);
+});
+
+test('the EnumResource rewrite is inert when the tolki package is disabled', function () {
+    config()->set('ts-publish.enums.use_tolki_package', false);
+
+    $result = analyzeSharedDataFor(MiddlewareWithEnumResource::class);
+
+    expect($result)->not->toBeNull()
+        ->and($result['sharedPageProps'])->toBe(
+            '{ role: RoleType, status: StatusType, nested: { role: RoleType } }'
+        )
+        ->and($result['typeImports'])->toBe(['./workbench/app/enums' => ['RoleType', 'StatusType']])
+        ->and($result['valueImports'])->toBe([]);
+});
+
+test('a value import whose const name the props type never spells is dropped', function () {
+    // A two-enum ternary lands in multiEnumResourceFqcns, which the AsEnum rewrite does not key off, so
+    // the props type keeps both bare names. AnalysisImports still offers Role and Status as value
+    // imports; unfiltered they would be emitted unused, which a consumer's noUnusedLocals rejects.
+    $result = analyzeSharedDataFor(MiddlewareWithMultiEnumTernary::class);
+
+    expect($result)->not->toBeNull()
+        ->and($result['sharedPageProps'])->toBe('{ either: RoleType | StatusType }')
+        ->and($result['valueImports'])->toBe([]);
+});
+
+test('an EnumResource on a framework-owned key is skipped rather than fataling', function () {
+    // collectProps() drops `errors` for @inertiajs/core, but the key keeps its enumResources entry —
+    // the rewrite has to tolerate a channel with no surviving prop to index.
+    $result = analyzeSharedDataFor(MiddlewareWithEnumResourceErrors::class);
+
+    expect($result)->not->toBeNull()
+        ->and($result['sharedPageProps'])->toBe('{ ok: string }')
+        ->and($result['valueImports'])->toBe([]);
 });

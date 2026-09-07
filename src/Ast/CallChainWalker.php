@@ -15,6 +15,8 @@ use PhpParser\Node\Name;
 
 /**
  * Walks a method-call chain back to its root expression and resolves the root's class.
+ *
+ * @internal
  */
 class CallChainWalker
 {

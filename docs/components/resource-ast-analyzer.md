@@ -232,7 +232,7 @@ FQCNs (from ternary/union branches), and self-keyed FQCN entries (from embedded 
 relation filters). All three consumers live inside `ResourceTransformer::rewriteEnumResourceTypes()`:
 the `$isMixed` check is key-sensitive, testing whether a property name is a key in the map, while
 the other two — both import-garbage-collection loops — compare values only and work correctly for
-both entry kinds. `substituteEnumResourceType()` never reads this map at all.
+both entry kinds. The shared `LaravelTsPublish::substituteEnumType()` never reads this map at all.
 
 `InlineArrayHandler::analyzeInlineArray()` runs the identical `$isMixed` check for a *nested* key, against its own
 method-local `ResourceAnalysis` rather than `ResourceTransformer`'s instance maps — see
@@ -245,12 +245,13 @@ analyzer's own type string, in which the enum appears as its bare TS type name (
 `TypeScriptTypeInfo::$enumTypes[0]`, i.e. the `#[TsEnum]` name or the class basename, suffixed
 `Type`). With `enums.use_tolki_package` on, **both** rewrite paths turn that into
 `AsEnum<typeof Role>` by *substituting the bare token in place*, for the ordinary (non-mixed) case:
-`ResourceTransformer::substituteEnumResourceType()` for a top-level property, and
-`InlineArrayHandler::substituteEnumType()` for one nested inside an inline array literal.
-Both use the same word-boundary pattern — the lookbehind excludes `.` so a namespace-qualified
-`foo.RoleType` is left alone, the lookahead stops `RoleType` matching the prefix of
-`RoleTypeExtra`. A nested key whose ternary is *mixed* — wrapped in one arm, read directly in the
-other — instead goes through `InlineArrayHandler::expandMixedEnumType()`; see the next section.
+`ResourceTransformer::rewriteEnumResourceTypes()` for a top-level property, and
+`InlineArrayHandler::analyzeInlineArray()` for one nested inside an inline array literal. Both call
+the one shared `LaravelTsPublish::substituteEnumType()`, whose strict token pattern excludes `.` from
+its lookbehind so a namespace-qualified `foo.RoleType` is left alone, and whose lookahead stops
+`RoleType` matching the prefix of `RoleTypeExtra`. A nested key whose ternary is *mixed* — wrapped in
+one arm, read directly in the other — instead goes through
+`InlineArrayHandler::expandMixedEnumType()`; see the next section.
 
 Substitution matters because the analyzer's type is often richer than `X`/`X[]`, and the corpus
 pins two such shapes:
@@ -278,7 +279,7 @@ every arm that names the enum and leaving the rest of the union untouched.
 
 Both substitution paths above embed the enum's **bare** const name (`Role`, not whatever alias it
 may need) into `AsEnum<typeof {const}>`, because neither one can do otherwise:
-`InlineArrayHandler::substituteEnumType()` runs during analysis (`runAstAnalysis()`, step 6 of
+`InlineArrayHandler`'s `substituteEnumType()` call runs during analysis (`runAstAnalysis()`, step 6 of
 `ResourceTransformer::transform()`), before `resolveImportConflicts()` (step 10) has computed any
 alias at all. For a top-level property this is invisible: `rewriteEnumResourceTypes()` reads
 `$constImportAliases` itself and builds the *already-aliased* string directly
@@ -354,8 +355,9 @@ Two shapes reach this code, and the merged type string carries different informa
   what tells it the arms are already distinguishable, so it does not additionally spell out the
   wrapped arm the way the homogeneous case needs. `EnumCollectionResource::$wrapped_status_fallback`
   pins it: `{ status: AsEnum<typeof Status>[] | StatusType }`. Before this fix, the same blanket
-  `substituteEnumType()` call used for the homogeneous case matched *both* members (the word-boundary
-  regex does not stop at `[`), wrongly producing `AsEnum<typeof Status>[] | AsEnum<typeof Status>`.
+  `substituteEnumType()` call used for the homogeneous case matched *both* members (the token
+  pattern's lookahead does not stop at `[`), wrongly producing
+  `AsEnum<typeof Status>[] | AsEnum<typeof Status>`.
 
 This once deliberately did **not** mirror `rewriteEnumResourceTypes()`'s `isCollection`
 reconstruction, which wrapped the *entire* mixed union in `()[]`
@@ -381,19 +383,27 @@ scalar-wrap case: `AsEnum<typeof Status> | StatusType[]`. `$wrapped_history_or_s
 `$wrapped_history_or_array` pin the collection-wrap case the old fixed convention got backwards:
 `AsEnum<typeof Status>[] | StatusType` and `AsEnum<typeof Status>[] | StatusType[]`.
 
-**The nested path is not reconciled with this.** `expandMixedEnumType()` has the identical collapse
-problem one level down, and there it is worse: when both arms render the same array-shaped string —
+**The nested path now reads the same signal.** `expandMixedEnumType()` had the identical collapse
+problem one level down, and there it was worse: when both arms render the same array-shaped string —
 an `EnumResource::collection()` wrap and a direct read of an already-list accessor, both `X[]` — the
 merged `$members` array collapses to the single member `'X[]'` before `expandMixedEnumType()` ever
-runs, and its `$member === $collectionType` branch maps that one member to `AsEnum<typeof Const>[]`,
-dropping the direct arm entirely rather than under-suffixing it — worse than the top-level bug just
-fixed, which at least kept both arms, just with the wrong one array-suffixed.
-`MethodAnalysis::$enumResourceArmShapes` *is* populated correctly by the time `analyzeInlineArray()`
-reads `$analysis` — `TernaryHandler` does not distinguish top-level from nested — so
-`expandMixedEnumType()` could read the same per-arm signal `rewriteEnumResourceTypes()` now does
-instead of reconstructing from the collapsed member list; that fix was left undone, deliberately, as
-outside this one's scope. See
-[docs/known-gaps.md](../known-gaps.md#enumresourcecollection-inside-a-mixed-ternary-nested-one-level-down).
+ran, and its `$member === $collectionType` branch mapped that one member to `AsEnum<typeof Const>[]`,
+dropping the direct arm entirely rather than under-suffixing it. `MethodAnalysis::$enumResourceArmShapes`
+is already populated by the time `analyzeInlineArray()` reads `$analysis` — `TernaryHandler` does not
+distinguish top-level from nested — so `expandMixedEnumType()` now takes that per-arm shape and
+synthesizes `wrapped | direct` from the flags exactly as `rewriteEnumResourceTypes()` does, carrying
+over any member the two arms did not account for — a nullable direct arm's `| null` reaches the
+emitted type only that way, where the top-level twin re-appends it from its own recorded
+`nullable` instead. `TeamStatusAuditResource::$audit` pins it:
+`{ status: AsEnum<typeof Status>[] | StatusType[] }`, with the direct arm's `StatusType` type import
+back alongside the wrapped arm's `Status` value import. The member-based reconstruction described in
+the two bullets above stays as the fallback wherever no per-arm shape was recorded: a mixed pair
+`TernaryHandler` declined to attribute (either arm itself ambiguously mixed), and — the likelier one
+in real code — any mixed shape it never sees at all, such as a `??`, the same gap
+`rewriteEnumResourceTypes()` names at the top level. That fallback still substitutes the collapsed
+member outright, which is why `analyzeInlineArray()`'s occurrence filter has to drop the bare enum's
+import: the token it would name is no longer spelled in the emitted type, and this package's own
+`tsconfig.json` sets `noUnusedLocals`, so an unused import is a consumer build failure, not a wart.
 
 In the globals tree, `LaravelTsPublish::rewriteAsEnumToType()`'s pair pattern folds an *exact*
 `AsEnum<typeof Const> | EnumTypeName` adjacency — no `[]` anywhere in that span, neither between
@@ -998,8 +1008,21 @@ binding.
 properties (the `_exists` suffix → `boolean` fallback, mirroring `_count` → `number`).
 `ConditionalMethodHandler::analyzeWhenExistsLoaded()` emits that same `boolean`, deliberately: a resource and the model it wraps
 disagreeing about the type of the same underlying flag is exactly the kind of divergence this package
-exists to prevent. An explicit default still unions its own type alongside that `boolean`, since the
-runtime can return it in place of the flag.
+exists to prevent. An explicit default unions its own type alongside that `boolean` — but only when a real
+`$value` is passed too, per the next section.
+
+### A null `$value` makes the arm `null`, not the attribute or the flag
+
+`whenHas()`, `whenAppended()` and `whenExistsLoaded()` have no identity-closure swap: none of them
+substitutes the attribute for an unhelpful `$value` the way `whenLoaded()` and `whenCounted()` do. So a
+`$value` that is skipped by a later named argument, or written as a literal `null`, leaves Laravel
+evaluating `value(null, $attribute)` — or, for `whenAppended()`, `value(null)` with no extra argument, per
+[above](#whenappended-types-from-the-named-attribute-like-whenhas). Both are `null`.
+`ConditionalMethodHandler::valueSkipped()` recognises both spellings and the three handlers emit a `null`
+arm for them, leaving only the default to carry a type:
+`whenExistsLoaded('user', null, 'absent')` is `string | null`, never `boolean | string`. A genuinely
+absent `$value` is different again — Laravel's one-argument branch returns the attribute itself, so
+`whenExistsLoaded('user')` stays an optional `boolean`.
 
 ### `transform()` types from the callback's return, not `$value`'s
 
@@ -1260,55 +1283,56 @@ agree by construction:
 ## `mergeReturnBranches()` carries every `MethodAnalysis::merge()` channel, plus two flat scalars
 
 A resource with multiple direct `return [...]` branches (`if`/`elseif`/`else`, loop bodies, guard
-clauses) is analyzed per-branch, then unioned by `mergeReturnBranches()`. It carries the same ten
-channels `MethodAnalysis::merge()` does — `properties`, `enumResources`, `nestedResources`,
-`directEnumFqcns`, `modelFqcns`, `customImports`, `multiEnumResourceFqcns`, and the three inline
-maps (`inlineEnumFqcns`, `inlineModelFqcns`, `inlineEnumResourceFqcns`) — unioning each inline map
-per property key, exactly like `MethodAnalysis::merge()`. Missing this union silently drops a property's
-only enum/model reference when that reference sits inside an inline array literal in one branch,
-emitting a type token with no import.
+clauses) is analyzed per-branch, then unioned by `mergeReturnBranches()`. The method now does exactly
+one thing of its own — union each key's per-branch property rows through its `propertyMap`, which is
+the part a field-by-field merge cannot express — and accumulates all ten map channels by calling
+`MethodAnalysis::merge()` on a scratch analysis, discarding its `properties` each round. The two
+cannot drift apart any more; before, they were parallel hand-written loops, and a channel added to one
+and forgotten in the other silently dropped a property's only enum/model reference whenever that
+reference sat inside an inline array literal in one branch, emitting a type token with no import. See
+[AST engine § `addProperty()` is the only way a value becomes a property](ast-engine.md#addproperty-is-the-only-way-a-value-becomes-a-property)
+for the same argument on the collector side.
 
-**`inlineModelFqcns` unions per occurrence; the two enum inline maps still dedupe.** Both merge
-paths used to `array_unique` all three inline maps, which lost real multiplicity whenever a merged
-or branched property named the same model twice — `aliasPropertyType()`'s per-occurrence queue then
-fell back to its shorter-than-occurrence-count clamp and mistyped the missing occurrence.
-`BranchedInlineFqcnResource` pins the branch-merge case; `ChildInlineFqcnResource` pins the
-`MethodAnalysis::merge()` case.
+**All three inline maps concatenate per occurrence; neither the branch merge nor
+`MethodAnalysis::merge()` dedupes.** They used to be `array_unique`d, which lost real multiplicity
+whenever a merged or branched property named the same FQCN twice — `aliasPropertyType()`'s
+per-occurrence queue then fell back to its shorter-than-occurrence-count clamp and mistyped the
+missing occurrence. `BranchedInlineFqcnResource` pins the branch-merge case;
+`ChildInlineFqcnResource` pins the `MethodAnalysis::merge()` case.
 
-`inlineEnumFqcns` and `inlineEnumResourceFqcns` stay deduped **even though they feed the same
-per-occurrence queue**, so this is an asymmetry the code has, not a difference in what the maps are
-for. Both reach `aliasPropertyType()`: `inlineEnumResourceFqcns` becomes
+All three reach `aliasPropertyType()`, by two different routes: `inlineEnumResourceFqcns` becomes
 `ResourceTransformer::$propertyInlineEnumResourceFqcns` and is walked directly by
-`rewriteEnumResourceTypes()`, and `inlineEnumFqcns` becomes `$propertyInlineEnumFqcns`, which
-`mergePropertyFqcnMaps()` folds into the list `rewriteTypeReferences()` passes to the same helper —
-and `mergePropertyFqcnMaps()`'s own docblock ends "never dedupe it". `array_unique` was dropped
-from `inlineModelFqcns` only; the two enum maps kept theirs.
+`rewriteEnumResourceTypes()`, while `inlineEnumFqcns` and `inlineModelFqcns` become
+`$propertyInlineEnumFqcns`/`$propertyInlineModelFqcns`, which `mergePropertyFqcnMaps()` folds into
+the list `rewriteTypeReferences()` passes to the same helper — and that method's own docblock ends
+"never dedupe it".
 
-What makes the dedupe safe today is the corpus, not the design. The exact rule, established by invoking
-`aliasPropertyType()` directly rather than by reading it: **dropping duplicates is lossless if and only if
-the queue is its distinct FQCNs in first-appearance order followed only by repeats of the last one.**
-Everything else mistypes an occurrence. The trailing run is free because the
-`min($cursor + 1, count($queues[$name]) - 1)` clamp keeps re-serving the final entry. Run against the real
-function, the rule agrees with observed behavior on every shape tried: `[A, B]`, `[A, A, A]`, `[A, B, B]`
-and `[A, B, B, B]` are lossless; `[A, A, B]`, `[A, B, A]`, `[B, A, B]`, `[A, B, A, B]` and `[A, A, B, B]`
-are not.
+That instruction is not a style preference, and the rule behind it is why no dedupe may be
+reintroduced at any point on these three channels. Established by invoking `aliasPropertyType()`
+directly rather than by reading it: **dropping duplicates is lossless if and only if the queue is its
+distinct FQCNs in first-appearance order followed only by repeats of the last one.** Everything else
+mistypes an occurrence. The trailing run is free because the
+`min($cursor + 1, count($queues[$name]) - 1)` clamp keeps re-serving the final entry. Run against the
+real function, the rule agrees with observed behavior on every shape tried: `[A, B]`, `[A, A, A]`,
+`[A, B, B]` and `[A, B, B, B]` are lossless; `[A, A, B]`, `[A, B, A]`, `[B, A, B]`, `[A, B, A, B]` and
+`[A, A, B, B]` are not — and nothing constrains a resource to the lossless shapes.
 
-**Two** corpus properties meet the precondition for that to bite — one property naming two distinct
-members of a same-basename FQCN group — and both are lossless. The corpus has exactly one such group
-(`Workbench\App\Enums\Status`, `Workbench\Crm\Enums\Status`, `Workbench\Shipping\Enums\Status`).
-Enumerating every generated property line whose *type* side names two distinct members of it, and
-collapsing each enum's const and type names together, returns exactly two property names, each in all four
-example trees: `DealResource::$status_pair` and `DealEnumInlineResource::$summary`. Both are the on-point
-shape rather than a curiosity — both are inline `EnumResource::make()` wraps, so both populate
-`inlineEnumResourceFqcns`, the map this paragraph is about. Both name each FQCN exactly once, so each
-queue is `[d1, d2]` and there is no multiplicity to lose. (`EnumCollectionResource::$wrapped_status_fallback`
-is a near-miss, not a third: its `Status` and `StatusType` tokens are the const and type names of the
-*same* FQCN, both imported from `'../../enums'`.)
+**`ValueResult::mergeUnion()` is the one producer that drops a repeat, and it is not deduping the
+queue.** Folding a ternary or closure union, it feeds `embeddedModelFqcns` — which becomes
+`inlineModelFqcns` — one entry per *rendered* token. A branch resolving to a whole model carries a
+single `modelFqcn`, but `analyzeClosureUnion()` has already `array_unique`d the branch type
+*strings*, so two branches naming the same model render one token between them and a second entry
+would have nothing to bind to. `mergeUnion()` therefore queues a whole-branch `modelFqcn` only on
+first sight — and **in loop position**, interleaved with that same branch's own
+`embeddedModelFqcns`, since the queue is walked left to right against the rendered union. Hoisting
+the branch-level entries to the front of the queue instead, as it briefly did, is correct only while
+every whole-branch model arm precedes every inline-object arm; reverse one and it exchanges two
+same-basename model identities with nothing to catch it — no `unknown`, no dangling token, no
+duplicate identifier, just two swapped types. `SameBasenameModelTrioResource` pins both halves:
+`collapsed_arms`, whose two inner arms are the same class, pins the first-sight rule, and
+`reversed_arms`/`control_arms` — one expression with its arms swapped — pin the position.
 
-Treat the two `array_unique` calls as a latent bug with no current trigger rather than a decision to
-preserve — the plan's Out of Scope section records the fixture that would be needed to fix it.
-
-**A single inline array member's own multi-FQCN accessor now contributes its own arms too.** The three
+**A single inline array member's own multi-FQCN accessor now contributes its own arms too.** The
 fixes above only cover *merging* an already-populated queue across branches or inheritance. A member whose
 own value is a multi-FQCN accessor (`Attribute<CrmUser|User, never>`) never populated that queue at all:
 `resolveModelAttributeTypeInfo()` discarded `classFqcns`, so `ThisPropertyHandler::analyzeThisProperty()` had nothing to attach
@@ -1324,7 +1348,7 @@ rendering `User | User` and losing the CRM arm entirely in `laravel-ts-global.ts
 collapse to `app.models.User | app.models.User`.
 
 `analyzeReturnArray()`'s child-overrides-parent `unset()` now clears all three inline maps for the
-overridden key, not just the five non-inline maps it always cleared. Without that, a
+overridden key, not just the six non-inline maps it always cleared. Without that, a
 `...parent::toArray()` spread's stale inline-model entries for a key the child then overrides
 survive into the child's own push, so the child's occurrences consume the parent's leftover queue
 instead of their own — `ChildInlineFqcnResource`'s `regional_hub_contacts` pins this; its

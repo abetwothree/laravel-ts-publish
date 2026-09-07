@@ -22,6 +22,7 @@ use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
 use Workbench\App\Http\Controllers\InertiaPaginationsController;
 use Workbench\App\Http\Controllers\InertiaPreserveKeysController;
 use Workbench\App\Http\Controllers\InertiaResourceSharedTemplate;
+use Workbench\App\Http\Controllers\InertiaShirtSizeController;
 use Workbench\App\Http\Controllers\InertiaSingleResourceController;
 use Workbench\App\Http\Controllers\InertiaTsCastsController;
 use Workbench\App\Http\Controllers\InertiaUserShapesController;
@@ -115,6 +116,7 @@ Route::get('/inertia/about', [InertiaController::class, 'about'])->name('inertia
 Route::get('/inertia/conditional', [InertiaController::class, 'conditional'])->name('inertia.conditional');
 Route::get('/inertia/post/{post}', [InertiaController::class, 'post'])->name('inertia.post');
 Route::get('/addresses/{address}', [InertiaAddressController::class, 'show'])->name('addresses.show');
+Route::get('/shirts/{image}', [InertiaShirtSizeController::class, 'show'])->name('shirts.show');
 
 Route::resource('posts-inertia', PostInertiaController::class, ['parameters' => ['posts-inertia' => 'post']]);
 

@@ -13,6 +13,8 @@ use ReflectionClass;
  * type second — for the model-less "subject mode" the engine uses outside resources.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 final class SubjectPropertyTypeResolver
 {

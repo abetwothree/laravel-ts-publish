@@ -815,25 +815,26 @@ For the full per-feature pipeline-stage reference, every abstract base class's m
 
 ## Analyzer API
 
-The same static analysis engine that powers every feature above is also available directly, outside the `ts:publish` pipeline. `AstEngine` takes a class and a method name and returns a `MethodAnalysis` DTO of typed properties, plus the enum/model/resource references needed to build imports for them. It's the same output a resource's `toArray()` produces, but callable directly from your own code — a custom Artisan command, a package that wants this package's own typing — without running a full publish.
+The same static analysis engine that powers every feature above is also available directly, outside the `ts:publish` pipeline. `AstEngine::analyze()` takes a class and a method name and returns an `AnalysisResult` of the typed properties, the `import type` lines they need, and the value imports an `AsEnum<typeof X>` wrapper needs. It's the same output a resource's `toArray()` produces, but callable directly from your own code — a custom Artisan command, a package that wants this package's own typing — without running a full publish.
 
 ```php
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 
-$analysis = resolve(AstEngine::class)->analyzeMethod(App\Http\Resources\PostResource::class);
+$result = resolve(AstEngine::class)->analyze(App\Http\Resources\PostResource::class);
 
-// $analysis->properties is the same typed property list `ts:publish` would generate for PostResource.
+// $result->properties   — the typed property list ts:publish would generate for PostResource
+// $result->typeImports  — import path => type names the properties reference
+// $result->valueImports — import path => enum consts an AsEnum<typeof X> wrapper needs
 ```
 
 Key capabilities:
 
-- **`analyzeMethod()`** — analyzes any method's return shape, not only `toArray()`; a `JsonResource` subclass still gets full resource semantics (conditional methods, `EnumResource`, nested resources, relation filters) with no extra setup.
-- **`analyzePublicProperties()`** — reads a class's properties directly instead of a method body (promoted constructor parameters and class-body declarations), skipping anything a used trait declares. Nullability is always `| null`, never `?`.
-- **`AnalysisImports::build()`** — turns a `MethodAnalysis`'s FQCN references into resolved import paths for one generated file, merging colliding paths; resolving a name collision between two imports is left to the caller.
-- **Every feature runs on it** — broadcast events are `analyzeMethod($event, 'broadcastWith')` (or `analyzePublicProperties()` when the event has no such method) and Inertia shared data is `analyzeMethod($middleware, 'share')`, so calling either yourself returns exactly what `ts:publish` publishes.
-- **Page props take the expression path** — Inertia page props run on this same engine, but from an `Inertia::render()` call's props argument rather than a method's return shape, so `analyzeMethod()` on a controller action gives you that method's return type instead. There is no public entry point for the expression path.
+- **The three fields agree with each other** — render them and they compile. Two same-basename classes are aliased apart in the property types as well as in the imports, an `EnumResource::make()` property arrives already wrapped as `AsEnum<typeof X>` beside the value import that wrapper reads, and nothing is imported that no property type names.
+- **Any class, any method** — not only `toArray()`. A `JsonResource` subclass gets full resource semantics (conditional methods, `EnumResource`, nested resources, relation filters) with no extra setup, and `analyze($event, 'broadcastWith')` is the payload interface `ts:publish` writes for that event. A model needs its own class passed as `$modelClass`: without one there is no `toArray()` body to read and all three fields come back empty.
+- **`analyze()` and `AnalysisResult` are the whole surface** — every other class under `src/Ast`, and `AstEngine`'s remaining methods, are `@internal`: they change without notice as inference grows, so code reaching past them is on its own.
+- **Shapes it does not answer** — a form request's published interface comes from its runtime `rules()` analyzer rather than the engine, so `analyze($request, 'rules')` types that method's own return shape, not the validated payload. Inertia layers its own resolution on top of the engine — a seeded scope, dropped framework-owned keys, docblock overrides — so `analyze($middleware, 'share')` is the raw method shape rather than the published `SharedData`, and page props run from an `Inertia::render()` call's props argument, which has no public entry point at all. A `$wrap = null` collection's whole answer is a flat type alias `AnalysisResult` has nowhere to put, so all three fields come back empty. And a `morphTo` union needs the morph target map a publish run builds by scanning every model, so outside one that property is omitted.
 
-For the full walkthrough, including `MethodAnalysis`'s fields and the engine's limits, see the full [Analyzer API documentation](https://tolki.abe.dev/ts/analyzer-api.html).
+For the full walkthrough, including the analysis DTO's fields and the engine's limits, see the full [Analyzer API documentation](https://tolki.abe.dev/ts/analyzer-api.html).
 
 ## Pre-command hook
 

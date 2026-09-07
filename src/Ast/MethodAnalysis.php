@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DispatchesFqcnResults;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -11,14 +13,9 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * Holds the result of AST analysis of a class method returning an array (e.g. a resource's toArray()).
  *
  * @phpstan-import-type TypesImportMap from Datable
+ * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type ResourcePropertyInfoList from AnalysisResult
  *
- * @phpstan-type ResourcePropertyInfo = array{
- *     name: string,
- *     type: string,
- *     optional: bool,
- *     description: string,
- * }
- * @phpstan-type ResourcePropertyInfoList = list<ResourcePropertyInfo>
  * @phpstan-type ClassMapType = array<string, class-string>
  * @phpstan-type ImportMapType = TypesImportMap
  * @phpstan-type InlineEnumFqcnsMap = array<string, list<class-string>>
@@ -26,9 +23,13 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * @phpstan-type MultiEnumFqcnsMap = array<string, list<class-string>>
  * @phpstan-type EnumResourceArmShape = array{wrapIsCollection: bool, directIsArray: bool}
  * @phpstan-type EnumResourceArmShapeMap = array<string, EnumResourceArmShape>
+ *
+ * @internal
  */
 class MethodAnalysis
 {
+    use DispatchesFqcnResults;
+
     /**
      * @param  ResourcePropertyInfoList  $properties
      * @param  ClassMapType  $enumResources  property name => enum FQCN (via EnumResource::make)
@@ -60,6 +61,45 @@ class MethodAnalysis
         public ?string $flatTypeAlias = null,
         public ?string $flatTypeAliasFqcn = null,
     ) {}
+
+    /**
+     * Record one resolved value as a property and route every FQCN channel it carries.
+     *
+     * The one place a value becomes a property: a channel added here reaches every collector,
+     * where a hand-rolled collector had to be found and updated one at a time.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    public function addProperty(string $name, array $result, bool $optional = false, string $description = ''): void
+    {
+        $this->properties[] = [
+            'name' => $name,
+            'type' => $result['type'],
+            'optional' => $optional || $result['optional'],
+            'description' => $description,
+        ];
+
+        $this->dispatchFqcnResults(
+            $name, $result, $this->enumResources, $this->directEnumFqcns, $this->nestedResources,
+            $this->modelFqcns, $this->multiEnumResourceFqcns, $this->enumResourceArmShapes,
+        );
+
+        foreach ($result['embeddedEnumFqcns'] ?? [] as $fqcn) {
+            $this->inlineEnumFqcns[$name][] = $fqcn;
+        }
+
+        foreach ($result['embeddedModelFqcns'] ?? [] as $fqcn) {
+            $this->inlineModelFqcns[$name][] = $fqcn;
+        }
+
+        foreach ($result['embeddedEnumResourceFqcns'] ?? [] as $fqcn) {
+            $this->inlineEnumResourceFqcns[$name][] = $fqcn;
+        }
+
+        foreach ($result['customImports'] ?? [] as $path => $types) {
+            $this->customImports[$path] = [...($this->customImports[$path] ?? []), ...$types];
+        }
+    }
 
     /**
      * Merge another analysis's maps into this one.

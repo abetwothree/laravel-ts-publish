@@ -32,6 +32,8 @@ use ReflectionMethod;
  * `$collection->toResourceCollection()` / `->toResourceCollection(SomeResource::class)`.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 final class ToResourceHandler implements ExpressionHandler
 {

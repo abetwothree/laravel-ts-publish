@@ -376,6 +376,8 @@ declare global {
             flexible_id: string | number | null;
             optional_label: string | null;
             status_from_docblock: app.enums.StatusType | null;
+            /** Shirt size, typed by an enum whose #[TsEnum(name:)] differs from its class basename. */
+            shirt_size: app.enums.SizeType;
             uploader_from_docblock: User | null;
             config_from_docblock: MenuSettingsType;
             data_from_docblock: { recordedAt?: string; title: string; weight: number | null };
@@ -1593,6 +1595,15 @@ declare global {
         export type SeasonType = 'spring' | 'summer' | 'autumn' | 'winter';
         export type SeasonKind = 'Spring' | 'Summer' | 'Autumn' | 'Winter';
 
+        /** Fixture: a #[TsEnum(name:)] that differs from the class basename, reached from a page prop. */
+        export interface Size
+        {
+            Small: 's',
+            Large: 'l',
+        }
+        export type SizeType = 's' | 'l';
+        export type SizeKind = 'Small' | 'Large';
+
         export interface Status
         {
             Draft: 0,
@@ -2110,6 +2121,7 @@ declare global {
             when_no_default?: string;
             when_with_default: string | number;
             has_with_default: string | number;
+            has_with_null: number | null;
             loaded_with_default: app.models.User | null;
             counted_with_default: number | string;
             aggregated_no_default?: number;
@@ -2122,8 +2134,9 @@ declare global {
             unless_with_default: string | number;
             appended_no_default?: string;
             appended_with_default: string | number;
+            appended_with_null: number | null;
             exists_no_default?: boolean;
-            exists_with_default: boolean | string;
+            exists_with_default: string | null;
             transform_no_default?: boolean;
             transform_with_default: boolean | number;
             transform_with_one_param_default: boolean | number;
@@ -2468,6 +2481,7 @@ declare global {
             flexible_id: string | number | null;
             optional_label: string | null;
             status_from_docblock: app.enums.StatusType | null;
+            shirt_size: app.enums.SizeType;
             uploader_from_docblock: app.models.User | null;
             config_from_docblock: MenuSettingsType;
             data_from_docblock: { recordedAt?: string; title: string; weight: number | null };
@@ -3219,6 +3233,27 @@ declare global {
         export interface RoutableResource extends ResourceRoutes, Pick<Routable, "store" | "update"> {
         }
         /**
+         * The model-side twin of DealEnumTrioResource: two User models sharing a basename, read across a
+         * ternary so mergeUnion() builds the queue aliasPropertyType() consumes positionally. A ternary is
+         * required — an inline array alone never reaches mergeUnion().
+         *
+         * trio pins the embedded channel: three reads, three rendered tokens, so the queue must keep its
+         * repeat. collapsed_arms pins the branch-level channel against it: its two inner arms are the same
+         * class, so analyzeClosureUnion() folds them to one rendered token and the queue must drop the
+         * repeat — deduping both channels breaks trio, deduping neither breaks collapsed_arms.
+         *
+         * reversed_arms and control_arms are one expression with its arms swapped, pinning that a branch-level
+         * FQCN keeps its loop position in the queue. Prepending it queues [Crm, App] for both orientations, so
+         * reversed_arms silently exchanges the two User identities while control_arms stays right.
+         */
+        export interface SameBasenameModelTrioResource {
+            id: number;
+            trio: { a: crm.models.User | null } | { b: app.models.User | null; c: crm.models.User | null };
+            collapsed_arms: crm.models.User | { c: app.models.User | null } | null;
+            reversed_arms: { c: app.models.User | null } | crm.models.User | null;
+            control_arms: crm.models.User | { c: app.models.User | null } | null;
+        }
+        /**
          * Regression (Task 32 review, C1): a resource spreading itself must not recurse until memory is
          * exhausted. AstEngine::analyzeMethod()'s cycle guard returns an empty analysis for the re-entrant
          * call, so only 'marker' should ever appear.
@@ -3510,12 +3545,14 @@ declare global {
             settings?: Record<string, unknown> | null;
         }
         /**
-         * The direct arm's enum type is substituted away by the wrapped arm, so the bare enum type must not
-         * be imported.
+         * A mixed EnumResource/direct-access ternary nested one level down, where both arms read the same
+         * list-shaped accessor: they render the same string and the union merge collapses them, so only
+         * each arm's own recorded shape still says the [] belongs on both. The direct arm's bare enum type
+         * survives the rewrite, so its type import has to come back with it.
          */
         export interface TeamStatusAuditResource {
             id: number;
-            audit: { status: app.enums.StatusType[] };
+            audit: { status: app.enums.StatusType[] | app.enums.StatusType[] };
         }
         /**
          * Exercises: ternary operator in various return-value positions.
@@ -3677,6 +3714,14 @@ declare global {
             whileKey?: string;
             doWhileKey?: string;
             status: string;
+        }
+        /**
+         * Fixture for a resource whose model nothing can resolve — no TsResource attribute, no mixin or
+         * extends tag, no typed $resource, no naming-convention match. Constructed over an Authorizable, so
+         * `can()` forwards through JsonResource::__call and must type as boolean with the model arm gone.
+         */
+        export interface ViewerPermissionsResource {
+            can_publish: boolean;
         }
         /**
          * Resource with no @mixin or TsResource — tests convention-based model guess.
@@ -4123,7 +4168,7 @@ declare global {
             kind: string;
         }
         export interface DeclaredPropsEvent {
-            label: string;
+            label?: string;
             tags: string[];
             id: number;
             note: string | null;
@@ -4164,6 +4209,9 @@ declare global {
         export interface ReportSynced {
             salesReport: Partial<app.models.sales.report.Report>;
             marketingReport: Partial<app.models.marketing.report.Report>;
+        }
+        export interface SameBasenameModelEvent {
+            actor: app.models.User | crm.models.User;
         }
         export interface ServerCreated extends BroadcastableEvent {
             serverId: number;

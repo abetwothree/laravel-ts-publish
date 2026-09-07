@@ -16,6 +16,8 @@ use PhpParser\Node\Expr\FuncCall;
  * equivalent to. Declines when an argument hides keys that cannot be read statically.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 final class ArrayMergeHandler implements ExpressionHandler
 {

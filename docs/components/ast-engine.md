@@ -130,7 +130,7 @@ actually claim the same expression, so their relative order cannot change output
 
 | Node class | Claimants | Status |
 | --- | --- | --- |
-| `MethodCall` | `FirstClassCallableHandler`, `KnownFunctionCallHandler`, `ConditionalMethodHandler`, `ToResourceHandler`, `StaticCallHandler`, `RelationFilterHandler`, `RelationCollectionChainHandler`, `VariableHandler`, `KnownMethodRuleHandler` (9) | Seven of the 36 unordered pairs are pinned: `FirstClassCallableHandler` before `ConditionalMethodHandler` and before `ToResourceHandler` (both crash-level — the loser calls `getArgs()`, which asserts `!isFirstClassCallable()`); `FirstClassCallableHandler` before `KnownFunctionCallHandler` (a silent divergence: `auth()->user(...)` as a first-class callable resolves to the guard's model instead of `unknown`); `ConditionalMethodHandler` before `RelationCollectionChainHandler` (its generic `$this->method()` reflection fallback would otherwise answer `$this->when(...)`/`$this->whenLoaded(...)` first, flooring the value arm at `unknown, optional: false`); `ToResourceHandler` and `RelationFilterHandler` each before `RelationCollectionChainHandler` (its separate `$this->anyProp->method()` branch would otherwise answer first — e.g. flooring `$this->post->toResource()` at `unknown` instead of resolving the guessed resource); and `RelationCollectionChainHandler` before `KnownMethodRuleHandler` for `$this->can(...)`/`cannot(...)`/`canAny(...)`. That last pin's practical reach is narrow, but the divergence condition itself is not what "resolves the model" alone: the two orders diverge whenever the resource's model — resolved or not — does not declare `can()`, since `RelationCollectionChainHandler`'s generic `$this->method()` fallback gates on `method_exists($scope->modelClass, $methodName)`, which fails the same way for a `null` model as for a real, resolved one that simply lacks `can()` (this row's own `CommentResource`/`Comment` corpus case). They agree once the model resolves to something Authorizable, since that same `method_exists()` check then reaches `Authorizable::can(): bool` — see [Known gaps](../known-gaps.md#handler-ordering-is-pinned-pairwise-corpus-bounded) for the full breakdown. Every unordered pair is run in both orders by `tests/Unit/Ast/MethodCallOrderingMatrixTest.php` over a curated corpus: the pairs in its `METHOD_CALL_PINNED` map disagree and are held in the direction `handlers()` lists them; every other pair is proven inert on that corpus (a new expression shape that makes an inert pair disagree fails the matrix, which is the signal to pin it). In the controller profile `ControllerExpressionHandlers` splices `ModelFinderHandler` (`StaticCall` + `MethodCall`) ahead of `StaticCallHandler`, making ten claimants there. |
+| `MethodCall` | `FirstClassCallableHandler`, `KnownFunctionCallHandler`, `ConditionalMethodHandler`, `ToResourceHandler`, `StaticCallHandler`, `RelationFilterHandler`, `RelationCollectionChainHandler`, `VariableHandler`, `KnownMethodRuleHandler` (9) | Five of the 36 unordered pairs are pinned: `FirstClassCallableHandler` before `ConditionalMethodHandler` and before `ToResourceHandler` (both crash-level — the loser calls `getArgs()`, which asserts `!isFirstClassCallable()`); `FirstClassCallableHandler` before `KnownFunctionCallHandler` (a silent divergence: `auth()->user(...)` as a first-class callable resolves to the guard's model instead of `unknown`); `ToResourceHandler` and `RelationFilterHandler` each before `RelationCollectionChainHandler` (its separate `$this->anyProp->method()` branch would otherwise answer first — e.g. flooring `$this->post->toResource()` at `unknown` instead of resolving the guessed resource). `SubjectMethodTypeResolver::resolve()` declines when nothing in scope declares the method, so `RelationCollectionChainHandler` no longer floors every `$this->method()` at `unknown`; `ConditionalMethodHandler` and `KnownMethodRuleHandler` therefore answer `$this->when()`/`whenLoaded()` and `can()`/`cannot()`/`canAny()` in either order. The decline is not ordering alone: a model that declares `can()` with a return type `ReflectedTypeAcceptor` rejects — `can(): void` — falls through the same way, so it too lands on `KnownMethodRuleHandler`'s `boolean` where it used to floor at `unknown`. Every unordered pair is run in both orders by `tests/Unit/Ast/MethodCallOrderingMatrixTest.php` over a curated corpus: the pairs in its `METHOD_CALL_PINNED` map disagree and are held in the direction `handlers()` lists them; every other pair is proven inert on that corpus (a new expression shape that makes an inert pair disagree fails the matrix, which is the signal to pin it). In the controller profile `ControllerExpressionHandlers` splices `ModelFinderHandler` (`StaticCall` + `MethodCall`) ahead of `StaticCallHandler`, making ten claimants there. |
 | `NullsafeMethodCall` | `RelationFilterHandler`, `MethodChainHandler` (2) | Pinned — the whole candidate list, full coverage. |
 | `PropertyFetch` | `ThisPropertyHandler`, `PropertyChainHandler`, `VariableHandler` (3) | One pair pinned (`ThisPropertyHandler` before `PropertyChainHandler`). The other two pairs are **inert-proven**: `ThisPropertyHandler` vs. `VariableHandler` never both claim the same expression (`isThisPropertyFetch()` requires a `$this` receiver; `VariableHandler`'s property branch requires the receiver not be `$this`); `PropertyChainHandler` vs. `VariableHandler` likewise — `PropertyChainHandler`'s fallback declines any chain not rooted at `$this`, which is exactly `VariableHandler`'s territory. |
 | `BinaryOp\Coalesce` | `BinaryOpHandler`, `CoalesceHandler` (2) | Inert-proven — `BinaryOpHandler::resolve()` has no branch matching `BinaryOp\Coalesce`, so it always declines regardless of registration position. |
@@ -284,7 +284,7 @@ recording happens; neither method records anything itself.
 ## MethodAnalysis
 
 `MethodAnalysis` (`src/Ast/MethodAnalysis.php`) is the unified analysis DTO — the generalized
-`ResourceAnalysis`, which now `extends MethodAnalysis {}` with an empty body. Its twelve constructor
+`ResourceAnalysis`, which now `extends MethodAnalysis {}` with an empty body. Its thirteen constructor
 properties are the whole surface a `toArray()`-style method analysis carries:
 
 | Field | Shape | Carries |
@@ -299,35 +299,129 @@ properties are the whole surface a `toArray()`-style method analysis carries:
 | `inlineModelFqcns` | `array<string, list<class-string>>` | Property name => model FQCNs embedded in an inline object type string. |
 | `multiEnumResourceFqcns` | `array<string, list<class-string>>` | Property name => ordered enum FQCNs, for a multi-`EnumResource` ternary/union branch (feeds the `AsEnum` rewrite). |
 | `inlineEnumResourceFqcns` | `array<string, list<class-string>>` | Property name => enum FQCNs embedded via `EnumResource` inside an inline object type string (value-import channel). |
+| `enumResourceArmShapes` | `array<string, {wrapIsCollection, directIsArray}>` | Property name => each arm's own array shape, for a mixed `EnumResource`/direct-access ternary whose merged type string already collapsed which arm was the collection. |
 | `flatTypeAlias` | `string\|null` | When set, the collection emits `export type X = SingularResource[]` instead of an interface. |
 | `flatTypeAliasFqcn` | `class-string<JsonResource>\|null` | FQCN of the singular resource for the flat type alias. |
+
+### `addProperty()` is the only way a value becomes a property
+
+`addProperty(string $name, array $result, bool $optional = false, string $description = '')` takes a
+handler's `ValueExpressionResult` and turns it into one property row plus every FQCN channel that
+result carries — the single-value maps and `enumResourceArmShapes` through
+`DispatchesFqcnResults::dispatchFqcnResults()`, then the three inline queues and `customImports`
+directly.
+
+**Why one entry point rather than each collector doing it.** The collectors used to assemble the DTO
+by hand, at eight sites across `ResourceAstAnalyzer`, `ResolvesModelTypes`, `ThisPropertyHandler` and
+`AstEngine`. Adding a channel meant finding and updating every one, and the failure mode when one was
+missed is the expensive kind: nothing throws, the property still gets a plausible type, and only the
+generated TypeScript says the import or the alias went missing. Routing every collector through
+`addProperty()` means a channel added to `ValueExpressionResult` reaches all of them at once.
+
+Widening `analyzePublicProperties()` onto it is the one place behaviour changed. It dispatched the
+single-value channels and queued no inline FQCNs at all, so a broadcast event property whose `@var`
+unions two same-basename models rendered `User | User` against imports already aliased apart.
+`SameBasenameModelEvent::$actor` now emits `AppUser | CrmUser`.
+
+**Why the three inline queues append instead of assigning or deduping.** `inlineEnumFqcns`,
+`inlineModelFqcns` and `inlineEnumResourceFqcns` reach
+`LaravelTsPublish::aliasPropertyType()` as positional queues, walked against the type-name tokens in
+the rendered type string. A property whose inline object names the same FQCN twice needs two entries
+or the second token draws the first token's alias, so a repeat has to survive as a repeat.
+
+### Merge rules
 
 `merge(self $source)` folds another analysis into this one, field by field, and each field's merge
 rule differs on purpose:
 
 - `properties` **appends**.
-- `enumResources`, `nestedResources`, `directEnumFqcns`, `modelFqcns`, `multiEnumResourceFqcns` are
-  single-value class maps: spread-merged, source wins on a colliding key.
+- `enumResources`, `nestedResources`, `directEnumFqcns`, `modelFqcns`, `multiEnumResourceFqcns` and
+  `enumResourceArmShapes` are single-value maps: spread-merged, source wins on a colliding key.
 - `customImports` merges per import path, concatenating each path's type-name list.
-- `inlineEnumFqcns` and `inlineEnumResourceFqcns` union per property key **with `array_unique`**.
-- `inlineModelFqcns` unions per property key **without** deduping — the one field that deliberately
-  never collapses a repeat. Its own docblock states the invariant directly: `aliasPropertyType()`
-  consumes it as a positional queue against the rendered type string, so a real repeated FQCN
-  occurrence has to survive as a repeat or a later occurrence gets the wrong alias.
+- `inlineEnumFqcns`, `inlineModelFqcns` and `inlineEnumResourceFqcns` concatenate per property key
+  **without** deduping, for the positional-queue reason above. `merge()`'s own docblock states the
+  invariant directly.
 
-`mergeReturnBranches()` (still on `ResourceAstAnalyzer`, not `MethodAnalysis` itself — it needs a
-per-branch `propertyMap` for union-typing shared property names, which a plain field-by-field merge
-can't do) carries the identical ten channels `merge()` does, plus the two `flatTypeAlias*` scalars
-`merge()` never touches (first non-null branch wins there instead). See
+`mergeReturnBranches()` stays on `ResourceAstAnalyzer` rather than moving onto `MethodAnalysis`: it
+needs a per-branch `propertyMap` to union-type a property name several branches set, which a
+field-by-field merge cannot express. It now unions only that `propertyMap` itself and accumulates
+every channel by calling `merge()` on a scratch analysis, so the two can no longer drift apart. It
+still resolves the two `flatTypeAlias*` scalars `merge()` never touches (first non-null branch wins).
+See
 [ResourceAstAnalyzer § `mergeReturnBranches()` carries every `MethodAnalysis::merge()` channel](resource-ast-analyzer.md#mergereturnbranches-carries-every-methodanalysismerge-channel-plus-two-flat-scalars)
-for the corpus evidence behind the dedupe rules above.
+for the corpus evidence behind the per-occurrence rule.
 
 ## Public API
+
+```php
+AstEngine::analyze(string $class, string $method = 'toArray', ?string $modelClass = null, string $fromNamespacePath = ''): AnalysisResult
+```
+
+That signature and the `AnalysisResult` it returns are the engine's whole public surface. Everything
+else here — `analyzeMethod()`, `analyzePublicProperties()`, `bindingsFor()`, `AnalysisImports`,
+`AnalysisComposer`, every handler and DTO — is `@internal`, checked by
+`tests/Architecture/InternalBoundaryTest.php`; the three rules it enforces are in
+[known gaps](../known-gaps.md). The rest of this section documents those internals for people working
+*on* the engine, not for consumers of it.
+
+`analyze()` runs `analyzeMethod()` for the raw DTO and hands it to `AnalysisComposer`, which is what
+makes the three fields agree with each other:
+
+1. **Index the properties by name.** `MethodAnalysis::$properties` is an append-only list, so a model
+   spread that repeats a key it already carries appears twice; rendered as-is those are duplicate
+   interface members. `ApiPostResource` measures 30 raw properties against 27 composed ones.
+2. **Resolve name collisions and rewrite the types.** Two `ImportNameRegistry` instances — one for type
+   names, a sibling for enum const names — over the enum, resource and model maps, then
+   `aliasPropertyType()` per property against its positional FQCN queue. This is the half
+   `AnalysisImports` deliberately leaves out; without it `ImageDelegatedResource` returns
+   `reviewable: User | User | null` beside two `User` imports.
+3. **Rewrite the `EnumResource` wraps** to `AsEnum<typeof Const>` — the same three cases
+   `ResourceTransformer::rewriteEnumResourceTypes()` handles: the plain substitution, the mixed
+   ternary whose arms are synthesized from `enumResourceArmShapes`, and the multi-enum ternary
+   replaced branch by branch. Gated on `ts-publish.enums.use_tolki_package`; with it off the bare
+   enum type name is already the right answer and its type import survives.
+4. **Import exactly the tokens the rewritten types spell.** One rule replaces two special cases:
+   `AnalysisImports::asEnumWrappedOnlyFqcns()`'s wrapped-only GC, and
+   `ResourceTransformer::pruneOverriddenEnumImports()`'s override GC. An enum the wrap replaced and
+   an enum a `#[TsCasts]` override displaced are both simply unspelled, so neither is imported.
+
+`$fromNamespacePath` is the generated file's own namespace path, so relative import paths resolve from
+where the file will live; `''` means the output root.
+
+`tests/Feature/AnalyzeApiProbeTest.php` renders the result of eight of these analyses into real `.ts`
+modules under `workbench/resources/js/types/data/testing/analysis-probe/`, so the
+[unimportable-token gate](../testing/type-inference-gates.md) type-checks them with `tsc`. Before the
+composer those eight files produced 11 diagnostics — TS2304, TS6133/TS6192, TS2300 and TS2344.
+
+`AnalysisResult` carries only those three fields, so a `$wrap = null` collection — whose entire answer
+lives in `MethodAnalysis`'s `flatTypeAlias`/`flatTypeAliasFqcn`, a channel neither `AnalysisImports`
+nor `AnalysisComposer` reads — comes back with all three empty, losing even the singular resource's
+type import. `PostFlatCollection` measures as `properties: []`, `typeImports: []`, `valueImports: []`
+against a `flatTypeAlias` of `PostResource[]`. There is no public answer for that shape.
+
+Two more shapes `analyze()` does not answer, both recorded in the README's own capability list: a
+`morphTo` union needs the morph target map `BaseRunner::run()` builds by scanning every model class,
+so outside a publish run `resolveModelRelationTypeInfo()` types it `unknown` and the property is
+dropped altogether — `ImageDelegatedResource::imageable` is exactly that. And a form request's
+published interface comes from `FormRequestRulesAnalyzer` calling `rules()` at runtime, not from the
+engine, so `analyze($request, 'rules')` types the rules array itself: one
+`Record<string, unknown>` per rule key, dotted paths and all.
 
 ```php
 AstEngine::analyzeMethod(string $class, string $method = 'toArray', ?string $modelClass = null): MethodAnalysis
 AstEngine::analyzePublicProperties(string $class): MethodAnalysis
 ```
+
+The other boundary is deliberate: in-package consumers that rewrite a `MethodAnalysis`'s FQCN channels
+before importing must build from the mutated DTO, so they keep calling `analyzeMethod()` and
+`AnalysisImports::build()` themselves rather than `analyze()`. There are three:
+
+- `InertiaSharedDataAnalyzer::buildInferredImports()` filters against an analysis it has already run
+  `forgetOverriddenChannels()` over.
+- `ModelMetadataAnalyzer` prunes the same channels inline before building.
+- `BroadcastEventTransformer::transformProperties()` unsets eight channels for each `#[TsCasts]`
+  override, needs the `MethodAnalysis` object itself for `resolveProperties()`, and reaches
+  `analyzePublicProperties()` instead when the event has no `broadcastWith()`.
 
 `analyzeMethod()` analyzes one method body's return shape. `$method` defaults to `'toArray'`, the
 resource case, but any class/method pair works identically. When
@@ -339,9 +433,11 @@ disagree about which model a resource wraps) before constructing
 `analyzePublicProperties()` analyzes a class's public properties instead of a method body — promoted
 constructor parameters *and* class-body declarations, `@var` docblock first, native reflected type
 second. It skips any property a used trait declares (transitively), so a `#[TsExtends]` trait's own
-fields aren't emitted twice by the class that uses it. It never marks a property `optional`:
-nullability is expressed as `| null` in the type; whether the key is present at all is a `#[TsCasts]`
-concern, not something this method decides.
+fields aren't emitted twice by the class that uses it. A property that is neither promoted nor
+defaulted is marked `optional`, because `json_encode()` omits it when it was never assigned;
+nullability stays separate, expressed as `| null` in the type. Reflection cannot see a constructor
+assignment, so a property a hand-written constructor always assigns still renders `?:` —
+`DeclaredPropsEvent::$label` is exactly that case.
 
 `ReturnLiteralReader::stringLiteral(string $class, string $method): ?string` returns the one string
 literal a method returns, and `null` for anything else — several returns, no return, or an expression
@@ -369,10 +465,11 @@ What it does **not** do: alias-conflict resolution. Every name it emits is the p
 unaliased — a caller whose file can emit two same-named tokens (the same-basename-across-namespaces
 case `ImportNameRegistry` exists for) runs `Support\ImportNameRegistry` over the result itself; that
 collision handling is deliberately kept out of `AnalysisImports`, which only resolves *what* to import,
-not what to *call* it once two imports collide. See
-[ImportNameRegistry](import-name-registry.md) for that half, and the
+not what to *call* it once two imports collide. `AnalysisComposer` is the one caller that does run
+`ImportNameRegistry` over the result, which is why `analyze()` needs it and the three channel-rewriting
+consumers above do not. See [ImportNameRegistry](import-name-registry.md) for that half, and the
 [Analyzer API](https://tolki.abe.dev/ts/analyzer-api.html) page for the user-facing walkthrough of
-calling `AstEngine` directly.
+calling `AstEngine::analyze()`.
 
 ## Consumers
 

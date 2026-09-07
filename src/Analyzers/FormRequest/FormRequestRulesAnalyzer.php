@@ -88,6 +88,59 @@ class FormRequestRulesAnalyzer
     }
 
     /**
+     * Compose one rule by dotted path, so a caller typing `validated('a.b')` reads the same trie
+     * node the request's interface nests under `a` — unless a `#[TsCasts]` override replaced that
+     * whole subtree, which only the interface honours. Null for an undeclared or prohibited path.
+     *
+     * Splitting on every `.` matches `data_get()`, which cannot reach an escaped-dot key (`'v1\.0'`)
+     * either — null is that key's correct answer, not a shortfall.
+     *
+     * @param  class-string<FormRequest>  $fqcn
+     */
+    public function analyzeField(string $fqcn, string $dottedPath): ?FormRequestRuleNode
+    {
+        $this->isDynamic = false;
+
+        $rawRules = $this->resolveRules($fqcn);
+
+        if ($rawRules === null) {
+            $this->isDynamic = true;
+
+            return null;
+        }
+
+        $node = $this->buildRuleTrie($rawRules);
+
+        foreach (explode('.', $dottedPath) as $segment) {
+            // composeObjectNode() drops a prohibited child outright, so nothing beneath one reaches
+            // the composed type: a path through it names a key that can never exist.
+            if ($node->own !== null && $node->own['isProhibited']) {
+                return null;
+            }
+
+            if (! isset($node->children[$segment])) {
+                return null;
+            }
+
+            $node = $node->children[$segment];
+        }
+
+        $composed = $this->composeTrieNode($node);
+
+        return new FormRequestRuleNode(
+            fieldPath: $dottedPath,
+            tsType: $composed['tsType'],
+            isRequired: $composed['isRequired'],
+            isNullable: $composed['isNullable'],
+            isProhibited: $composed['isProhibited'],
+            jsDocMetadata: [
+                ...$composed['jsDocMetadata'],
+                ...$this->collectChildJsDoc($node->children, $dottedPath),
+            ],
+        );
+    }
+
+    /**
      * Instantiate the FormRequest and call `rules()`, or null when it needs HTTP context.
      *
      * @param  class-string<FormRequest>  $fqcn

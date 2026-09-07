@@ -174,6 +174,11 @@ a passing gate narrower than it looks. Its own header states the test. Everythin
 refactor debt, test-suite quality notes, release chores — belongs in the follow-ups ledger of the plan that
 deferred it, which is where that work is re-read from. Do not widen this file back out.
 
+That ledger is local: `docs/superpowers/` is gitignored, so a plan and its deferred work exist only on the
+machine that wrote them. Anything intended for a future plan is therefore also filed as a GitHub issue
+labelled `next-plan`, with the reasoning and a pointer to the ledger entry, and the ledger entry carries the
+issue number. The issue is the durable record; the ledger is the working copy.
+
 ### Change log
 
 Do not update the CHANGELOG.md file. That is handled by CI when a new version is released. The CHANGELOG.md file is meant to be a record of changes for users, not for developers to update manually. It is automatically updated based on the commits and PRs that are merged into the main branch and updated when a new version is released.

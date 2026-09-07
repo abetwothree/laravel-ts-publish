@@ -16,6 +16,8 @@ use PhpParser\Node\Identifier;
  *
  * The single home for this: RelationFilterHandler and VariableHandler both need it for an untyped
  * map closure. Requires the host to also use InspectsAstNodes and ResolvesModelRelationTypes.
+ *
+ * @internal
  */
 trait ResolvesMapProxyElementModels
 {

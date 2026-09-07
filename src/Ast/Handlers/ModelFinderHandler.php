@@ -21,6 +21,8 @@ use PhpParser\Node\Identifier;
  * `Team::query()->paginate(10)` — typed from the terminal call, which is what decides the payload's shape.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 final class ModelFinderHandler implements ExpressionHandler
 {

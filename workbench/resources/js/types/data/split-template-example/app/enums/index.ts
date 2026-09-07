@@ -8,6 +8,7 @@ export * from './payment-method';
 export * from './priority';
 export * from './role';
 export * from './season';
+export * from './size';
 export * from './status';
 export * from './visibility';
 export * from './week-days';

@@ -17,6 +17,8 @@ use Illuminate\Database\Eloquent\Model;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypeScriptTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
+ *
+ * @internal
  */
 final class ReflectedTypeAcceptor
 {

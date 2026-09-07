@@ -14,6 +14,8 @@ use PhpParser\Node\Expr\ConstFetch;
  * Bare `null`/`true`/`false` constant fetches.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 final class ConstFetchHandler implements ExpressionHandler
 {

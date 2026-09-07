@@ -19,6 +19,7 @@ use Workbench\App\Http\Controllers\ExcludableController;
 use Workbench\App\Http\Controllers\InertiaAddressController;
 use Workbench\App\Http\Controllers\InertiaController;
 use Workbench\App\Http\Controllers\InertiaFormRequestController;
+use Workbench\App\Http\Controllers\InertiaShirtSizeController;
 use Workbench\App\Http\Controllers\InvokableController;
 use Workbench\App\Http\Controllers\InvokableInertiaController;
 use Workbench\App\Http\Controllers\InvokableModelBoundController;
@@ -973,4 +974,13 @@ test('page-prop imports use the resource type name, not the class basename', fun
 
     expect($imports)->toContain('Address')
         ->and($imports)->not->toContain('AddressResource');
+});
+
+test('a page prop typed by an enum imports the #[TsEnum(name:)] type, not the basename', function () {
+    $transformer = new RouteTransformer(InertiaShirtSizeController::class);
+    $imported = collect($transformer->typeImports)->flatten()->all();
+
+    // Exact, not toContain(): the page imports one type, so a wrong name shows up in the failure
+    // message instead of being masked by a short-circuited ->and() chain.
+    expect($imported)->toBe(['SizeType']);
 });

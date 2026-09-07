@@ -23,6 +23,8 @@ use PhpParser\NodeFinder;
 /**
  * The single `$var = expr;` binding pass. Shared because both the resource analyzer's own
  * method walk and AstEngine::bindingsFor() must read a body's variables the same way.
+ *
+ * @internal
  */
 trait CollectsLocalVarBindings
 {

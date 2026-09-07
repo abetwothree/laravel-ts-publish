@@ -20,6 +20,8 @@ use UnitEnum;
  * Resolves `SomeClass::CONSTANT` value expressions and `SomeClass::class` arguments via reflection.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 final class ValueResolver
 {

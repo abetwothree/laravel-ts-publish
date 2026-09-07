@@ -15,6 +15,8 @@ use PhpParser\Node\Expr\Ternary;
  * Ternary and Elvis expressions — both arms resolved through the engine and unioned.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 final class TernaryHandler implements ExpressionHandler
 {

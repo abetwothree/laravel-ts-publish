@@ -31,7 +31,10 @@ class InertiaConfigWriter
      */
     public function write(array $sharedData): string
     {
-        $content = view('laravel-ts-publish::inertia-config', $sharedData)->render();
+        $content = view('laravel-ts-publish::inertia-config', [
+            ...$sharedData,
+            'usesTolkiPackage' => Config::boolean('ts-publish.enums.use_tolki_package'),
+        ])->render();
 
         if (Config::boolean('ts-publish.output_to_files')) {
             $this->writeFile($content);

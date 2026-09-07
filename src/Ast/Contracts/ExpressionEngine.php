@@ -12,6 +12,8 @@ use PhpParser\Node\Expr\Array_;
  * Full expression resolution, for handlers to call back into on sub-expressions they don't own.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 interface ExpressionEngine
 {

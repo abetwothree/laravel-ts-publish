@@ -15,6 +15,8 @@ use PhpParser\Node\Expr\MethodCall;
  * First-class callables (e.g. $this->when(...)) have no args — bail early.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 final class FirstClassCallableHandler implements ExpressionHandler
 {

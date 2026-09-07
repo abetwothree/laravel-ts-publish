@@ -18,6 +18,8 @@ use PhpParser\Node\Expr\BinaryOp;
  * (`Order | null | Order`). Only operands contributing a result member get their channels merged.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 final class CoalesceHandler implements ExpressionHandler
 {

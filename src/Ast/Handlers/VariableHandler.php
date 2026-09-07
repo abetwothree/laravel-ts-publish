@@ -32,6 +32,8 @@ use ReflectionMethod;
  * scope's model, collection, closure-parameter and local-assignment binding maps.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 final class VariableHandler implements ExpressionHandler
 {

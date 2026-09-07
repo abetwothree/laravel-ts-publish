@@ -12,6 +12,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\StaticCallHandler;
 /**
  * The controller profile: the generic resource profile plus the two handlers that only make sense
  * where a value is a whole HTTP payload rather than a member of one.
+ *
+ * @internal
  */
 final class ControllerExpressionHandlers
 {

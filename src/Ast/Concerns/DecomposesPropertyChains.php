@@ -15,6 +15,8 @@ use PhpParser\Node\Identifier;
  *
  * Shared by PropertyChainHandler and MethodChainHandler, which sit on disjoint node classes but
  * decompose the same receiver shape.
+ *
+ * @internal
  */
 trait DecomposesPropertyChains
 {

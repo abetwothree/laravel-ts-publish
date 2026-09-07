@@ -12,7 +12,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DispatchesFqcnResults;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
@@ -23,6 +22,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\ExpressionDispatcher;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ThisPropertyHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
@@ -65,21 +65,15 @@ use ReflectionNamedType;
 /**
  * Analyzes a JsonResource's toArray() body to extract property names, types, and optional markers via AST.
  *
- * @phpstan-import-type ResourcePropertyInfoList from MethodAnalysis
- * @phpstan-import-type ClassMapType from MethodAnalysis
- * @phpstan-import-type ImportMapType from MethodAnalysis
- * @phpstan-import-type InlineEnumFqcnsMap from MethodAnalysis
- * @phpstan-import-type InlineModelFqcnsMap from MethodAnalysis
- * @phpstan-import-type MultiEnumFqcnsMap from MethodAnalysis
- * @phpstan-import-type EnumResourceArmShapeMap from MethodAnalysis
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type RequestVarNamesMap from AnalysisScope
+ *
+ * @internal
  */
 class ResourceAstAnalyzer implements ExpressionEngine
 {
     use ChecksPreserveKeys;
     use CollectsLocalVarBindings;
-    use DispatchesFqcnResults;
     use FiltersModelAttributes;
     use InspectsAstNodes;
     use InspectsResourceSubject;
@@ -105,6 +99,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
      * @param  class-string<Model>|null  $modelClass
      * @param  list<ExpressionHandler>|null  $handlerProfile  overrides the resource profile
      * @param  AnalysisScope|null  $scope  a scope already seeded by AstEngine::bindingsFor(), used as-is
+     * @param  MethodContext|null  $context  a context already located for $methodName, used instead of locating one
      */
     public function __construct(
         protected ReflectionClass $resourceReflection,
@@ -112,6 +107,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         protected string $methodName = 'toArray',
         protected ?array $handlerProfile = null,
         ?AnalysisScope $scope = null,
+        protected ?MethodContext $context = null,
     ) {
         $this->scope = $scope ?? new AnalysisScope(
             self::genericReflection($this->resourceReflection->getName()),
@@ -178,7 +174,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
             DependencyRecorder::recordClass($this->scope->modelClass);
         }
 
-        $context = resolve(MethodLocator::class)->locateOwn($this->scope->subjectReflection->getName(), $this->methodName);
+        $context = $this->context
+            ?? resolve(MethodLocator::class)->locateOwn($this->scope->subjectReflection->getName(), $this->methodName);
         $toArrayMethod = $context?->method;
 
         if ($toArrayMethod === null || $toArrayMethod->stmts === null) {
@@ -437,34 +434,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 $analysis->enumResourceArmShapes[$keyName],
             );
 
-            $analysis->properties[] = [
-                'name' => $keyName,
-                'type' => $result['type'],
-                'optional' => $result['optional'],
-                'description' => '',
-            ];
-
-            $this->dispatchFqcnResults(
-                $keyName, $result, $analysis->enumResources, $analysis->directEnumFqcns,
-                $analysis->nestedResources, $analysis->modelFqcns, $analysis->multiEnumResourceFqcns,
-                $analysis->enumResourceArmShapes,
-            );
-
-            foreach ($result['embeddedEnumFqcns'] ?? [] as $fqcn) {
-                $analysis->inlineEnumFqcns[$keyName][] = $fqcn;
-            }
-
-            foreach ($result['embeddedEnumResourceFqcns'] ?? [] as $fqcn) {
-                $analysis->inlineEnumResourceFqcns[$keyName][] = $fqcn;
-            }
-
-            foreach ($result['embeddedModelFqcns'] ?? [] as $fqcn) {
-                $analysis->inlineModelFqcns[$keyName][] = $fqcn;
-            }
-
-            foreach ($result['customImports'] ?? [] as $path => $types) {
-                $analysis->customImports[$path] = [...($analysis->customImports[$path] ?? []), ...$types];
-            }
+            $analysis->addProperty($keyName, $result);
         }
 
         return $analysis;
@@ -525,9 +495,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         $resolver = resolve(ModelAttributeResolver::class);
         $tsCasts = $this->parseTsCastsFromReflection(new ReflectionClass($modelFqcn));
-        $properties = [];
-        $directEnumFqcns = [];
-        $customImports = [];
+        $analysis = new ResourceAnalysis;
 
         // toArray() is columns plus $appends (accessor attributes explicitly opted into
         // serialization) — a mutator with no $appends entry never reaches it, so stays out.
@@ -536,6 +504,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         foreach ($names as $column) {
             $override = $tsCasts['overrides'][$column] ?? null;
+            $customImports = [];
 
             if ($override !== null) {
                 $type = $override;
@@ -544,8 +513,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 $importPath = $tsCasts['importPaths'][$column] ?? null;
 
                 if ($importPath !== null) {
-                    foreach (LaravelTsPublish::extractImportableTypes($type) as $importName) {
-                        $customImports[$importPath][] = $importName;
+                    $importable = LaravelTsPublish::extractImportableTypes($type);
+
+                    // A type with no importable token (e.g. `Record<string, unknown>`) must not
+                    // materialise an empty list under its path.
+                    if ($importable !== []) {
+                        $customImports[$importPath] = $importable;
                     }
                 }
             } else {
@@ -561,19 +534,15 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
             }
 
-            $properties[] = [
-                'name' => $column,
+            $analysis->addProperty($column, [
                 'type' => $type,
                 'optional' => $tsCasts['optionalOverrides'][$column] ?? false,
-                'description' => '',
-            ];
-
-            if ($enumFqcn !== null) {
-                $directEnumFqcns[$column] = $enumFqcn;
-            }
+                ...($enumFqcn !== null ? ['directEnumFqcn' => $enumFqcn] : []),
+                ...($customImports !== [] ? ['customImports' => $customImports] : []),
+            ]);
         }
 
-        return new ResourceAnalysis(properties: $properties, directEnumFqcns: $directEnumFqcns, customImports: $customImports);
+        return $analysis;
     }
 
     /**
@@ -588,16 +557,15 @@ class ResourceAstAnalyzer implements ExpressionEngine
         DependencyRecorder::recordClass($modelFqcn);
 
         $indexKey = '[key: number]';
+        $analysis = new ResourceAnalysis;
 
-        return new ResourceAnalysis(
-            properties: [[
-                'name' => $indexKey,
-                'type' => LaravelTsPublish::resourceTypeName($modelFqcn),
-                'optional' => false,
-                'description' => '',
-            ]],
-            modelFqcns: [$indexKey => $modelFqcn],
-        );
+        $analysis->addProperty($indexKey, [
+            'type' => LaravelTsPublish::resourceTypeName($modelFqcn),
+            'optional' => false,
+            'modelFqcn' => $modelFqcn,
+        ]);
+
+        return $analysis;
     }
 
     /**
@@ -874,49 +842,11 @@ class ResourceAstAnalyzer implements ExpressionEngine
      */
     protected function resolveVariableReturnAnalysis(array $stmts, string $varName, bool $topLevel = true): ResourceAnalysis
     {
-        /** @var ResourcePropertyInfoList $properties */
-        $properties = [];
-        /** @var ClassMapType $enumResources */
-        $enumResources = [];
-        /** @var ClassMapType $nestedResources */
-        $nestedResources = [];
-        /** @var ClassMapType $directEnumFqcns */
-        $directEnumFqcns = [];
-        /** @var ClassMapType $modelFqcns */
-        $modelFqcns = [];
-        /** @var ImportMapType $customImports */
-        $customImports = [];
-        /** @var InlineEnumFqcnsMap $inlineEnumFqcns */
-        $inlineEnumFqcns = [];
-        /** @var InlineModelFqcnsMap $inlineModelFqcns */
-        $inlineModelFqcns = [];
-        /** @var MultiEnumFqcnsMap $multiEnumResourceFqcns */
-        $multiEnumResourceFqcns = [];
-        /** @var InlineEnumFqcnsMap $inlineEnumResourceFqcns */
-        $inlineEnumResourceFqcns = [];
-        /** @var EnumResourceArmShapeMap $enumResourceArmShapes */
-        $enumResourceArmShapes = [];
+        $analysis = new ResourceAnalysis;
 
-        $this->collectVariableArrayAssignments(
-            $stmts, $varName, false,
-            $properties, $enumResources, $nestedResources,
-            $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
-            $inlineEnumResourceFqcns, $enumResourceArmShapes, $topLevel,
-        );
+        $this->collectVariableArrayAssignments($stmts, $varName, false, $analysis, $topLevel);
 
-        return new ResourceAnalysis(
-            $properties,
-            $enumResources,
-            $nestedResources,
-            customImports: $customImports,
-            directEnumFqcns: $directEnumFqcns,
-            modelFqcns: $modelFqcns,
-            inlineEnumFqcns: $inlineEnumFqcns,
-            inlineModelFqcns: $inlineModelFqcns,
-            multiEnumResourceFqcns: $multiEnumResourceFqcns,
-            inlineEnumResourceFqcns: $inlineEnumResourceFqcns,
-            enumResourceArmShapes: $enumResourceArmShapes,
-        );
+        return $analysis;
     }
 
     /**
@@ -925,33 +855,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
      * Assignments inside if/elseif/else blocks are marked as optional.
      *
      * @param  array<Node\Stmt>  $stmts
-     * @param  ResourcePropertyInfoList  $properties
-     * @param  ClassMapType  $enumResources
-     * @param  ClassMapType  $nestedResources
-     * @param  ClassMapType  $directEnumFqcns
-     * @param  ClassMapType  $modelFqcns
-     * @param  ImportMapType  $customImports
-     * @param  InlineEnumFqcnsMap  $inlineEnumFqcns
-     * @param  InlineModelFqcnsMap  $inlineModelFqcns
-     * @param  MultiEnumFqcnsMap  $multiEnumResourceFqcns
-     * @param  InlineEnumFqcnsMap  $inlineEnumResourceFqcns
-     * @param  EnumResourceArmShapeMap  $enumResourceArmShapes
      */
     protected function collectVariableArrayAssignments(
         array $stmts,
         string $varName,
         bool $isConditional,
-        array &$properties,
-        array &$enumResources,
-        array &$nestedResources,
-        array &$directEnumFqcns,
-        array &$modelFqcns,
-        array &$customImports,
-        array &$inlineEnumFqcns,
-        array &$inlineModelFqcns,
-        array &$multiEnumResourceFqcns = [],
-        array &$inlineEnumResourceFqcns = [],
-        array &$enumResourceArmShapes = [],
+        ResourceAnalysis $into,
         bool $topLevel = true,
     ): void {
         foreach ($stmts as $stmt) {
@@ -977,30 +886,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                     unset($prop);
                 }
 
-                $accumulator = new ResourceAnalysis(
-                    $properties, $enumResources, $nestedResources,
-                    customImports: $customImports,
-                    directEnumFqcns: $directEnumFqcns,
-                    modelFqcns: $modelFqcns,
-                    inlineEnumFqcns: $inlineEnumFqcns,
-                    inlineModelFqcns: $inlineModelFqcns,
-                    multiEnumResourceFqcns: $multiEnumResourceFqcns,
-                    inlineEnumResourceFqcns: $inlineEnumResourceFqcns,
-                    enumResourceArmShapes: $enumResourceArmShapes,
-                );
-                $accumulator->merge($baseAnalysis);
-
-                $properties = $accumulator->properties;
-                $enumResources = $accumulator->enumResources;
-                $nestedResources = $accumulator->nestedResources;
-                $directEnumFqcns = $accumulator->directEnumFqcns;
-                $modelFqcns = $accumulator->modelFqcns;
-                $customImports = $accumulator->customImports;
-                $inlineEnumFqcns = $accumulator->inlineEnumFqcns;
-                $inlineModelFqcns = $accumulator->inlineModelFqcns;
-                $multiEnumResourceFqcns = $accumulator->multiEnumResourceFqcns;
-                $inlineEnumResourceFqcns = $accumulator->inlineEnumResourceFqcns;
-                $enumResourceArmShapes = $accumulator->enumResourceArmShapes;
+                $into->merge($baseAnalysis);
 
                 continue;
             }
@@ -1018,7 +904,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
                 $existingIndex = null;
 
-                foreach ($properties as $index => $existing) {
+                foreach ($into->properties as $index => $existing) {
                     if ($existing['name'] === $keyName) {
                         $existingIndex = $index;
 
@@ -1026,91 +912,49 @@ class ResourceAstAnalyzer implements ExpressionEngine
                     }
                 }
 
-                if ($existingIndex !== null) {
-                    $properties[$existingIndex] = [
-                        'name' => $keyName,
-                        'type' => $result['type'],
-                        'optional' => $properties[$existingIndex]['optional'] && $optional,
-                        'description' => '',
-                    ];
-                } else {
-                    $properties[] = [
-                        'name' => $keyName,
-                        'type' => $result['type'],
-                        'optional' => $optional,
-                        'description' => '',
-                    ];
-                }
-
+                // A re-assigned key is the last write winning, in the first write's position: the stale
+                // single-value channels go before addProperty() routes this result's own, and the entry
+                // it appends is folded back over the earlier one.
                 unset(
-                    $enumResources[$keyName],
-                    $nestedResources[$keyName],
-                    $directEnumFqcns[$keyName],
-                    $modelFqcns[$keyName],
-                    $multiEnumResourceFqcns[$keyName],
-                    $enumResourceArmShapes[$keyName],
+                    $into->enumResources[$keyName],
+                    $into->nestedResources[$keyName],
+                    $into->directEnumFqcns[$keyName],
+                    $into->modelFqcns[$keyName],
+                    $into->multiEnumResourceFqcns[$keyName],
+                    $into->enumResourceArmShapes[$keyName],
                 );
 
-                $this->dispatchFqcnResults(
-                    $keyName, $result, $enumResources, $directEnumFqcns, $nestedResources, $modelFqcns,
-                    $multiEnumResourceFqcns, $enumResourceArmShapes,
-                );
+                $appendedIndex = count($into->properties);
 
-                foreach ($result['embeddedEnumFqcns'] ?? [] as $fqcn) {
-                    $inlineEnumFqcns[$keyName][] = $fqcn;
-                }
+                $into->addProperty($keyName, $result, $optional);
 
-                foreach ($result['embeddedEnumResourceFqcns'] ?? [] as $fqcn) {
-                    $inlineEnumResourceFqcns[$keyName][] = $fqcn;
-                }
+                if ($existingIndex !== null && isset($into->properties[$appendedIndex])) {
+                    $appended = $into->properties[$appendedIndex];
+                    $appended['optional'] = $into->properties[$existingIndex]['optional'] && $appended['optional'];
 
-                foreach ($result['embeddedModelFqcns'] ?? [] as $fqcn) {
-                    $inlineModelFqcns[$keyName][] = $fqcn;
-                }
-
-                foreach ($result['customImports'] ?? [] as $path => $types) {
-                    $customImports[$path] = [...($customImports[$path] ?? []), ...$types];
+                    $into->properties[$existingIndex] = $appended;
+                    array_splice($into->properties, $appendedIndex, 1);
                 }
 
                 continue;
             }
 
             if ($stmt instanceof If_) {
-                $this->collectVariableArrayAssignments(
-                    $stmt->stmts, $varName, true,
-                    $properties, $enumResources, $nestedResources,
-                    $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
-                    $inlineEnumResourceFqcns, $enumResourceArmShapes, $topLevel,
-                );
+                $this->collectVariableArrayAssignments($stmt->stmts, $varName, true, $into, $topLevel);
 
                 foreach ($stmt->elseifs as $elseif) {
-                    $this->collectVariableArrayAssignments(
-                        $elseif->stmts, $varName, true,
-                        $properties, $enumResources, $nestedResources,
-                        $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
-                        $inlineEnumResourceFqcns, $enumResourceArmShapes, $topLevel,
-                    );
+                    $this->collectVariableArrayAssignments($elseif->stmts, $varName, true, $into, $topLevel);
                 }
 
                 if ($stmt->else !== null) {
-                    $this->collectVariableArrayAssignments(
-                        $stmt->else->stmts, $varName, true,
-                        $properties, $enumResources, $nestedResources,
-                        $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
-                        $inlineEnumResourceFqcns, $enumResourceArmShapes, $topLevel,
-                    );
+                    $this->collectVariableArrayAssignments($stmt->else->stmts, $varName, true, $into, $topLevel);
                 }
             }
 
             // Loop bodies are conditional: a loop may execute zero times.
             if ($stmt instanceof Foreach_ || $stmt instanceof For_
                 || $stmt instanceof While_ || $stmt instanceof Do_) {
-                $this->collectVariableArrayAssignments(
-                    $stmt->stmts, $varName, true,
-                    $properties, $enumResources, $nestedResources,
-                    $directEnumFqcns, $modelFqcns, $customImports, $inlineEnumFqcns, $inlineModelFqcns, $multiEnumResourceFqcns,
-                    $inlineEnumResourceFqcns, $enumResourceArmShapes, $topLevel,
-                );
+                $this->collectVariableArrayAssignments($stmt->stmts, $varName, true, $into, $topLevel);
             }
         }
     }
@@ -1274,21 +1118,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
         /** @var array<string, list<array{type: string, optional: bool, description: string}>> */
         $propertyMap = [];
 
-        $enumResources = [];
-        $nestedResources = [];
-        $directEnumFqcns = [];
-        $modelFqcns = [];
-        $customImports = [];
-        /** @var MultiEnumFqcnsMap $multiEnumResourceFqcns */
-        $multiEnumResourceFqcns = [];
-        /** @var InlineEnumFqcnsMap $inlineEnumFqcns */
-        $inlineEnumFqcns = [];
-        /** @var InlineModelFqcnsMap $inlineModelFqcns */
-        $inlineModelFqcns = [];
-        /** @var InlineEnumFqcnsMap $inlineEnumResourceFqcns */
-        $inlineEnumResourceFqcns = [];
-        /** @var EnumResourceArmShapeMap $enumResourceArmShapes */
-        $enumResourceArmShapes = [];
+        // Only the channels collapse onto merge(): a property name several branches set has to be
+        // union-typed from $propertyMap below, which a field-by-field merge cannot express.
+        $channels = new ResourceAnalysis;
         $flatTypeAlias = null;
         $flatTypeAliasFqcn = null;
 
@@ -1297,35 +1129,11 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 $propertyMap[$prop['name']][] = $prop;
             }
 
-            $enumResources = [...$enumResources, ...$analysis->enumResources];
-            $nestedResources = [...$nestedResources, ...$analysis->nestedResources];
-            $directEnumFqcns = [...$directEnumFqcns, ...$analysis->directEnumFqcns];
-            $modelFqcns = [...$modelFqcns, ...$analysis->modelFqcns];
-            $multiEnumResourceFqcns = [...$multiEnumResourceFqcns, ...$analysis->multiEnumResourceFqcns];
-            $enumResourceArmShapes = [...$enumResourceArmShapes, ...$analysis->enumResourceArmShapes];
+            $channels->merge($analysis);
+            $channels->properties = [];
+
             $flatTypeAlias ??= $analysis->flatTypeAlias;
             $flatTypeAliasFqcn ??= $analysis->flatTypeAliasFqcn;
-
-            foreach ($analysis->customImports as $path => $names) { // @codeCoverageIgnoreStart
-                $customImports[$path] = array_values(array_unique([
-                    ...($customImports[$path] ?? []),
-                    ...$names,
-                ]));
-            } // @codeCoverageIgnoreEnd
-
-            // inlineEnumFqcns/inlineEnumResourceFqcns append WITHOUT deduping, same as
-            // MethodAnalysis::merge() — aliasPropertyType() consumes each positionally.
-            foreach ($analysis->inlineEnumFqcns as $propName => $fqcns) {
-                $inlineEnumFqcns[$propName] = [...($inlineEnumFqcns[$propName] ?? []), ...$fqcns];
-            }
-
-            foreach ($analysis->inlineModelFqcns as $propName => $fqcns) {
-                $inlineModelFqcns[$propName] = [...($inlineModelFqcns[$propName] ?? []), ...$fqcns];
-            }
-
-            foreach ($analysis->inlineEnumResourceFqcns as $propName => $fqcns) {
-                $inlineEnumResourceFqcns[$propName] = [...($inlineEnumResourceFqcns[$propName] ?? []), ...$fqcns];
-            }
         }
 
         /** @var list<array{name: string, type: string, optional: bool, description: string}> */
@@ -1362,16 +1170,16 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         return new ResourceAnalysis(
             properties: $properties,
-            enumResources: $enumResources,
-            nestedResources: $nestedResources,
-            customImports: $customImports,
-            directEnumFqcns: $directEnumFqcns,
-            modelFqcns: $modelFqcns,
-            inlineEnumFqcns: $inlineEnumFqcns,
-            inlineModelFqcns: $inlineModelFqcns,
-            multiEnumResourceFqcns: $multiEnumResourceFqcns,
-            inlineEnumResourceFqcns: $inlineEnumResourceFqcns,
-            enumResourceArmShapes: $enumResourceArmShapes,
+            enumResources: $channels->enumResources,
+            nestedResources: $channels->nestedResources,
+            customImports: $channels->customImports,
+            directEnumFqcns: $channels->directEnumFqcns,
+            modelFqcns: $channels->modelFqcns,
+            inlineEnumFqcns: $channels->inlineEnumFqcns,
+            inlineModelFqcns: $channels->inlineModelFqcns,
+            multiEnumResourceFqcns: $channels->multiEnumResourceFqcns,
+            inlineEnumResourceFqcns: $channels->inlineEnumResourceFqcns,
+            enumResourceArmShapes: $channels->enumResourceArmShapes,
             flatTypeAlias: $flatTypeAlias,
             flatTypeAliasFqcn: $flatTypeAliasFqcn,
         );

@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\Config;
  *
  * The package runs inside the booted app, so the live guard → provider → model chain is read
  * directly instead of guessing at `App\Models\User`.
+ *
+ * @internal
  */
 final class AuthUserResolver
 {

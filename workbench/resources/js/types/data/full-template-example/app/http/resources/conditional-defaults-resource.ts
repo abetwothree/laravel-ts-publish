@@ -20,6 +20,7 @@ export interface ConditionalDefaultsResource
     when_no_default?: string;
     when_with_default: string | number;
     has_with_default: string | number;
+    has_with_null: number | null;
     loaded_with_default: User | null;
     counted_with_default: number | string;
     aggregated_no_default?: number;
@@ -32,8 +33,9 @@ export interface ConditionalDefaultsResource
     unless_with_default: string | number;
     appended_no_default?: string;
     appended_with_default: string | number;
+    appended_with_null: number | null;
     exists_no_default?: boolean;
-    exists_with_default: boolean | string;
+    exists_with_default: string | null;
     transform_no_default?: boolean;
     transform_with_default: boolean | number;
     transform_with_one_param_default: boolean | number;

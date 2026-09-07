@@ -21,6 +21,8 @@ use PhpParser\Node\Identifier;
  * Requires the host to also use InspectsAstNodes, InspectsResourceSubject and ResolvesModelRelationTypes.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 trait AppliesKnownMethodRules
 {

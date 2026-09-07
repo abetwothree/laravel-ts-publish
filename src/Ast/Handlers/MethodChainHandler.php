@@ -24,6 +24,8 @@ use PhpParser\Node\Identifier;
  * terminal relation model. The `?->` operator always makes the result nullable.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 final class MethodChainHandler implements ExpressionHandler
 {

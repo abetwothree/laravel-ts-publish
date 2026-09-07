@@ -460,6 +460,51 @@ describe('FormRequestRulesAnalyzer', function () {
         });
     });
 
+    describe('analyzeField', function () {
+        it('composes a dotted path from the rule trie', function () {
+            $node = (new FormRequestRulesAnalyzer)->analyzeField(NestedEdgeCasesRequest::class, 'options.default');
+
+            expect($node)->not->toBeNull()
+                ->and($node->fieldPath)->toBe('options.default')
+                ->and($node->tsType)->toBe('string')
+                ->and($node->isProhibited)->toBeFalse();
+        });
+
+        it('returns null for a path the rules do not declare', function () {
+            expect((new FormRequestRulesAnalyzer)->analyzeField(NestedEdgeCasesRequest::class, 'options.missing'))->toBeNull();
+        });
+
+        // ArrayRulesRequest declares `order.secret` prohibited and `order.secret.token` required:
+        // composeObjectNode() drops `secret` from `order`, so the token key can never exist.
+        it('returns null for a path running through a prohibited ancestor', function () {
+            $analyzer = new FormRequestRulesAnalyzer;
+
+            expect($analyzer->analyzeField(ArrayRulesRequest::class, 'order.secret.token'))->toBeNull();
+
+            $secret = $analyzer->analyzeField(ArrayRulesRequest::class, 'order.secret');
+            expect($secret)->not->toBeNull()
+                ->and($secret->isProhibited)->toBeTrue();
+        });
+
+        it('merges a descendant JSDoc annotation into the composed node, as normalizeRules() does', function () {
+            $node = (new FormRequestRulesAnalyzer)->analyzeField(ArrayRulesRequest::class, 'order');
+
+            expect($node)->not->toBeNull()
+                ->and($node->jsDocMetadata)->toBe(['@format uuid order.id'])
+                ->and($node->tsType)->toBe('{ id: string; items: { product_id: number; quantity: number }[] }');
+        });
+
+        it('tracks isDynamic across analyzeField() calls, like analyze() does', function () {
+            $analyzer = new FormRequestRulesAnalyzer;
+
+            expect($analyzer->analyzeField(DynamicRequest::class, 'name'))->toBeNull();
+            expect($analyzer->isDynamic)->toBeTrue();
+
+            expect($analyzer->analyzeField(NestedEdgeCasesRequest::class, 'options.default'))->not->toBeNull();
+            expect($analyzer->isDynamic)->toBeFalse();
+        });
+    });
+
     describe('nested array rule composition', function () {
         it('composes parent.*.child rules into a typed element object', function () {
             $analyzer = new FormRequestRulesAnalyzer;

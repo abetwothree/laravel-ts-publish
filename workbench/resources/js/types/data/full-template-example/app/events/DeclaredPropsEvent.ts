@@ -1,6 +1,6 @@
 /** @see Workbench\App\Events\DeclaredPropsEvent */
 export interface DeclaredPropsEvent {
-    label: string;
+    label?: string;
     tags: string[];
     id: number;
     note: string | null;

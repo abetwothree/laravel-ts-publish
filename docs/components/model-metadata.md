@@ -97,25 +97,33 @@ docblock and `#[TsCasts]` overrides onto engine output and then builds the impor
 the engine the same way: shared data calls `AstEngine::analyzeMethod()`, which seeds no bindings, while
 metadata locates and binds by hand:
 
-- **`MethodLocator::locateOwn($declaringClass, 'provide')`** — the **declaring** class from
-  `ReflectionMethod::getDeclaringClass()`, not the configured provider class. `ResourceAstAnalyzer`'s
-  parent walk rebuilds the analyzer *without* the seeded scope, so an inherited body located from the
-  subclass would lose its binding. Locating the declaring class instead keeps it
-  (`tests/Fixtures/InheritedModelMetadataProvider.php` pins an inherited `provide()` still typing
-  `$model->getTable()` as `string`).
-- **A trait-supplied `provide()` is the one shape that degrades.** `locateOwn()` searches the declaring
-  class's **own file**, and for a trait method the declaring class is the *using* class, whose file holds no
-  `provide()` node. `locateOwn()` declines, `analyzeBody()` falls back to `AstEngine::analyzeMethod()`, and
-  `analyzeMethod()` seeds no bindings — so calls on `$model` return to `unknown` and their keys need a
-  docblock or `#[TsCasts]`. `tests/Fixtures/ProvidesTraitModelMetadata.php` pins it.
+- **`MethodLocator::locate($declaringClass, 'provide')`** — the **declaring** class from
+  `ReflectionMethod::getDeclaringClass()`, not the configured provider class. This narrowing used to carry
+  the binding: a miss fell through to `ResourceAstAnalyzer`'s parent walk, which rebuilds the analyzer
+  *without* the seeded scope. Passing the located context in (below) removed that fall-through, so the
+  narrowing now decides only which class the body resolves against — `self::`, `parent::` and
+  `$this->method()` — and **no test distinguishes it any more**: locating from the configured provider class
+  instead leaves the whole suite green. It is kept because the declaring class is the one whose file the body
+  actually lives in. `tests/Fixtures/InheritedModelMetadataProvider.php` still pins that an inherited
+  `provide()` types `$model->getTable()` as `string`, but it no longer pins the narrowing.
+- **`locate()`, not `locateOwn()`, so a trait in its own file still binds.** For a trait method the
+  declaring class is the *using* class, whose own file holds no `provide()` node, and `locateOwn()` declines
+  on exactly that shape — it rejects when `ReflectionMethod::getFileName()` is not the class's own file.
+  `locate()` follows that file instead. Narrowing to the declaring class first means this is the only shape
+  the wider locator reaches: for a body declared directly, or inherited from a parent, `$declaringClass`
+  already declares `provide()` in its own file and both locators return the same node.
+  `tests/Fixtures/ProvidesTraitModelMetadata.php` pins the trait case.
 - **`AstEngine::bindingsFor($context)`** seeds `varModelBindings[$param] = Model::class` for the
   `Model $model` parameter — the **declared** type, because `is_a(Model::class, Model::class, true)` is true —
   along with `requestVarNames` and the single-write local variables. A method call on the bound variable
   resolves through `VariableHandler` → `ResolvesRelatedModelTypes::analyzeRelatedModelMethodCall()` →
   `ModelAttributeResolver::resolveMethodReturnType()`, which reflects Laravel's own `@return string`
   docblocks, so `getTable()`, `getKeyName()`, `getRouteKeyName()` and `getMorphClass()` all infer `string`.
-- **`new ResourceAstAnalyzer($context->reflection, null, 'provide', null, $scope)->analyze()`** — no model
-  class (so no `ModelInspector` load) and no handler-profile override, i.e. the **default resource profile**.
+- **`new ResourceAstAnalyzer($context->reflection, null, 'provide', null, $scope, $context)->analyze()`** —
+  the located context is handed over as the sixth argument because `analyze()` otherwise re-runs
+  `locateOwn()` on the subject for itself and would decline on the trait file a second time. `MethodContext`
+  carries the *using* class's reflection, not the trait's, so the subject stays the provider. No model class
+  (so no `ModelInspector` load) and no handler-profile override, i.e. the **default resource profile**.
   Every inference that does not involve the bound parameter is therefore identical to what
   `AstEngine::analyzeMethod()` would have produced. Multiple `return` branches merge, and any engine failure
   is caught (`safeAnalyzeBody()`) and infers nothing rather than failing the run.

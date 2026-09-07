@@ -138,12 +138,11 @@ class ModelMetadataAnalyzer
         $imports = [];
 
         foreach (new AnalysisImports()->build($analysis, $namespacePath)['typeImports'] as $path => $names) {
+            // No fixture reaches this filter with a name the inferred keys never spell, so its drop
+            // direction is unexercised — a green suite is not coverage for it.
             $used = array_values(array_filter(
                 $names,
-                static fn (string $name): bool => preg_match(
-                    '/(?<![A-Za-z0-9_$.])'.preg_quote($name, '/').'(?![A-Za-z0-9_$])/',
-                    $spelled,
-                ) === 1,
+                static fn (string $name): bool => LaravelTsPublish::typeNameOccursIn($name, $spelled),
             ));
 
             if ($used !== []) {
@@ -187,14 +186,14 @@ class ModelMetadataAnalyzer
     /**
      * Run the engine over the body that declares provide(), with its Model parameter bound to its declared type.
      *
-     * The declaring class is the subject: ResourceAstAnalyzer walks to a parent without the seeded scope, so an
-     * inherited body analyzed from the subclass would lose the binding.
+     * The declaring class is the subject so `self::` and `parent::` resolve against the file the body lives in.
+     * Passing the context below short-circuits ResourceAstAnalyzer's parent walk, so nothing pins that today.
      */
     protected function analyzeBody(ReflectionMethod $method): MethodAnalysis
     {
         /** @var class-string $declaringClass */
         $declaringClass = $method->getDeclaringClass()->getName();
-        $context = resolve(MethodLocator::class)->locateOwn($declaringClass, $method->getName());
+        $context = resolve(MethodLocator::class)->locate($declaringClass, $method->getName());
 
         if ($context === null) {
             return resolve(AstEngine::class)->analyzeMethod($declaringClass, $method->getName());
@@ -202,7 +201,7 @@ class ModelMetadataAnalyzer
 
         $scope = resolve(AstEngine::class)->bindingsFor($context);
 
-        return new ResourceAstAnalyzer($context->reflection, null, $method->getName(), null, $scope)->analyze();
+        return new ResourceAstAnalyzer($context->reflection, null, $method->getName(), null, $scope, $context)->analyze();
     }
 
     /**

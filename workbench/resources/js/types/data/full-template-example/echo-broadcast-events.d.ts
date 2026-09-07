@@ -8,6 +8,7 @@ import type { PayloadDiffersEvent } from './app/events/PayloadDiffersEvent';
 import type { PostPublishedEvent } from './app/events/PostPublishedEvent';
 import type { PureEnumEvent } from './app/events/PureEnumEvent';
 import type { ReportSynced } from './app/events/ReportSynced';
+import type { SameBasenameModelEvent } from './app/events/SameBasenameModelEvent';
 import type { ServerCreated } from './app/events/ServerCreated';
 import type { StatusSynced } from './crm/events/StatusSynced';
 import type { TeamMessageSent } from './app/events/TeamMessageSent';
@@ -28,6 +29,7 @@ declare module "@laravel/echo" {
         ".Workbench.App.Events.PostPublishedEvent": PostPublishedEvent;
         ".Workbench.App.Events.PureEnumEvent": PureEnumEvent;
         ".Workbench.App.Events.ReportSynced": ReportSynced;
+        ".Workbench.App.Events.SameBasenameModelEvent": SameBasenameModelEvent;
         "server.created": ServerCreated;
         ".Workbench.Crm.Events.StatusSynced": StatusSynced;
         ".Workbench.App.Events.TeamMessageSent": TeamMessageSent;

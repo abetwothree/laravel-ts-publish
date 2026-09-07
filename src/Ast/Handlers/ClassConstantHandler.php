@@ -19,6 +19,8 @@ use PhpParser\Node\Name;
  * (EnumResource::make(), toResource(SomeResource::class), #[Collects]).
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 final class ClassConstantHandler implements ExpressionHandler
 {

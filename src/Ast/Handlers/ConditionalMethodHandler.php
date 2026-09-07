@@ -33,6 +33,8 @@ use ReflectionMethod;
  * `whenAppended`, `whenExistsLoaded`, and `transform` — every one of them a `$this->` call.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 final class ConditionalMethodHandler implements ExpressionHandler
 {
@@ -479,15 +481,30 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
-     * Whether `value` was skipped by a later named argument: PHP then binds it to null and still counts it.
-     * Mirrors hasExplicitDefaultArg()'s spread bail-out: a spread makes passedCount() unreliable, and this
-     * reads that same count to draw a positive conclusion, so it must bail exactly as often.
+     * Whether the value argument is skipped (PHP binds it to null but still counts it) or written as a
+     * literal null. Either way whenHas()/whenExistsLoaded() evaluate value(null, $attribute) and
+     * whenAppended() evaluates value(null) with no extra argument, so the arm is null — none of the three
+     * has whenLoaded()'s identity-closure swap. A genuinely absent argument is not this: Laravel's
+     * func_num_args() === 1 branch returns the attribute itself, so this must return false for it.
+     *
+     * The hasUnpack() bail belongs only to the passedCount() branch, which a spread makes unreliable; the
+     * literal-null branch reads named('value') alone and needs no such guard.
      */
     private function valueSkipped(CallArguments $args): bool
     {
         $position = $args->positionOf('value');
 
-        return ! $args->hasUnpack() && $position !== null && $args->named('value') === null && $args->passedCount() > $position;
+        if ($position === null) {
+            return false;
+        }
+
+        $value = $args->named('value');
+
+        if ($value !== null) {
+            return $this->isNullConstFetch($value->value);
+        }
+
+        return ! $args->hasUnpack() && $args->passedCount() > $position;
     }
 
     /**

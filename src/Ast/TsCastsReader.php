@@ -14,6 +14,8 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
  *     importMap: array<string, list<string>>,
  *     optionalOverrides: array<string, bool>,
  * }
+ *
+ * @internal
  */
 class TsCastsReader
 {

@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TwoClassesSecond;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UsesClassBeforeTraitLabel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UsesInsteadofTraits;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UsesLabelledTrait;
+use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Models\User;
@@ -148,6 +149,28 @@ it('memoizes a hit so a repeated lookup never re-parses the file', function () {
         ->and($parser->calls)->toBe($callsAfterFirstHit);
 });
 
+it('memoizes a parsing miss so a repeated lookup never re-parses the file', function () {
+    // An abstract method clears the file gate, so the file is parsed and only then rejected for having no
+    // body; that null has to be cached as firmly as a hit, or every later lookup re-parses.
+    $parser = new class extends AstParser
+    {
+        public int $calls = 0;
+
+        public function parseFile(string $path): array
+        {
+            $this->calls++;
+
+            return parent::parseFile($path);
+        }
+    };
+    $locator = new MethodLocator($parser);
+
+    expect($locator->locateOwn(CoreTransformer::class, 'transform'))->toBeNull()
+        ->and($parser->calls)->toBe(1)
+        ->and($locator->locateOwn(CoreTransformer::class, 'transform'))->toBeNull()
+        ->and($parser->calls)->toBe(1);
+});
+
 it('returns each class its own body when two classes share a file and a method name', function () use ($literal) {
     require_once __DIR__.'/Fixtures/TwoClassesOneFile.php';
     $locator = new MethodLocator(new AstParser);
@@ -179,29 +202,23 @@ it('locate resolves the outer method, not a same-named one nested in an earlier 
     expect($literal($locator->locate(NestedAnonymousClassMethod::class, 'label')))->toBe('outer');
 });
 
-it('locate resolves a trait method over an unrelated class declared earlier in the same file', function () {
+it('locate resolves a trait method over an unrelated class declared earlier in the same file', function () use ($literal) {
     require_once __DIR__.'/Fixtures/ClassBeforeTraitInOneFile.php';
     $locator = new MethodLocator(new AstParser);
-
-    $literal = fn (?MethodContext $ctx): ?string => $ctx?->method->stmts[0]->expr->value ?? null;
 
     expect($literal($locator->locate(UsesClassBeforeTraitLabel::class, 'label')))->toBe('from trait');
 });
 
-it('locate resolves an insteadof-selected trait method over its sibling trait in the same file', function () {
+it('locate resolves an insteadof-selected trait method over its sibling trait in the same file', function () use ($literal) {
     require_once __DIR__.'/Fixtures/InsteadofTraitsInOneFile.php';
     $locator = new MethodLocator(new AstParser);
-
-    $literal = fn (?MethodContext $ctx): ?string => $ctx?->method->stmts[0]->expr->value ?? null;
 
     expect($literal($locator->locate(UsesInsteadofTraits::class, 'label')))->toBe('from A');
 });
 
-it('locate resolves a trait method PHP prefers over an inherited parent method in the same file', function () {
+it('locate resolves a trait method PHP prefers over an inherited parent method in the same file', function () use ($literal) {
     require_once __DIR__.'/Fixtures/ParentPlusTraitInOneFile.php';
     $locator = new MethodLocator(new AstParser);
-
-    $literal = fn (?MethodContext $ctx): ?string => $ctx?->method->stmts[0]->expr->value ?? null;
 
     expect($literal($locator->locate(ChildOverridesParentWithTrait::class, 'label')))->toBe('from trait override');
 });

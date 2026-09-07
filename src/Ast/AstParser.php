@@ -13,6 +13,8 @@ use PhpParser\ParserFactory;
 
 /**
  * Single php-parser entry point: name-resolved ASTs, cached per file, recorded as cache dependencies.
+ *
+ * @internal
  */
 class AstParser
 {

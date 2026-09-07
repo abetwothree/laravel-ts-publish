@@ -12,6 +12,8 @@ use Illuminate\Database\Eloquent\Model;
  * The `user()`/`id()` result shared by the two auth entry points, `auth()->…` and `Auth::…`.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 trait ResolvesAuthHelperCalls
 {

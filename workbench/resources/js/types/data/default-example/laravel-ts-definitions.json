@@ -20,7 +20,7 @@
                 {
                     "name": "label",
                     "type": "string",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "tags",
@@ -196,6 +196,18 @@
                 {
                     "name": "marketingReport",
                     "type": "Partial<MarketingReportReport>",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Events\\SameBasenameModelEvent": {
+            "name": "SameBasenameModelEvent",
+            "eventName": "SameBasenameModelEvent",
+            "broadcastName": ".Workbench.App.Events.SameBasenameModelEvent",
+            "properties": [
+                {
+                    "name": "actor",
+                    "type": "AppUser | CrmUser",
                     "optional": false
                 }
             ]
@@ -1197,6 +1209,31 @@
                     "return": null
                 }
             }
+        },
+        "Workbench\\App\\Enums\\ShirtSize": {
+            "name": "Size",
+            "cases": [
+                {
+                    "name": "Small",
+                    "value": "s",
+                    "description": ""
+                },
+                {
+                    "name": "Large",
+                    "value": "l",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'Small'",
+                "'Large'"
+            ],
+            "caseTypes": [
+                "'s'",
+                "'l'"
+            ],
+            "methods": [],
+            "staticMethods": []
         },
         "Workbench\\App\\Enums\\Status": {
             "name": "Status",
@@ -4822,6 +4859,10 @@
                 {
                     "name": "status_from_docblock",
                     "type": "StatusType | null"
+                },
+                {
+                    "name": "shirt_size",
+                    "type": "SizeType"
                 },
                 {
                     "name": "uploader_from_docblock",
@@ -9302,6 +9343,11 @@
                     "optional": false
                 },
                 {
+                    "name": "has_with_null",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
                     "name": "loaded_with_default",
                     "type": "User | null",
                     "optional": false
@@ -9362,13 +9408,18 @@
                     "optional": false
                 },
                 {
+                    "name": "appended_with_null",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
                     "name": "exists_no_default",
                     "type": "boolean",
                     "optional": true
                 },
                 {
                     "name": "exists_with_default",
-                    "type": "boolean | string",
+                    "type": "string | null",
                     "optional": false
                 },
                 {
@@ -10412,6 +10463,11 @@
                 {
                     "name": "status_from_docblock",
                     "type": "StatusType | null",
+                    "optional": false
+                },
+                {
+                    "name": "shirt_size",
+                    "type": "SizeType",
                     "optional": false
                 },
                 {
@@ -12611,6 +12667,36 @@
             "name": "RoutableResource",
             "properties": []
         },
+        "Workbench\\App\\Http\\Resources\\SameBasenameModelTrioResource": {
+            "name": "SameBasenameModelTrioResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "trio",
+                    "type": "{ a: CrmUser | null } | { b: ModelsUser | null; c: CrmUser | null }",
+                    "optional": false
+                },
+                {
+                    "name": "collapsed_arms",
+                    "type": "CrmUser | { c: ModelsUser | null } | null",
+                    "optional": false
+                },
+                {
+                    "name": "reversed_arms",
+                    "type": "{ c: ModelsUser | null } | CrmUser | null",
+                    "optional": false
+                },
+                {
+                    "name": "control_arms",
+                    "type": "CrmUser | { c: ModelsUser | null } | null",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\SelfSpreadResource": {
             "name": "SelfSpreadResource",
             "properties": [
@@ -13661,7 +13747,7 @@
                 },
                 {
                     "name": "audit",
-                    "type": "{ status: AsEnum<typeof Status>[] }",
+                    "type": "{ status: AsEnum<typeof Status>[] | StatusType[] }",
                     "optional": false
                 }
             ]
@@ -14202,6 +14288,16 @@
                 {
                     "name": "status",
                     "type": "string",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\ViewerPermissionsResource": {
+            "name": "ViewerPermissionsResource",
+            "properties": [
+                {
+                    "name": "can_publish",
+                    "type": "boolean",
                     "optional": false
                 }
             ]

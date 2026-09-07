@@ -20,6 +20,8 @@ use ReflectionMethod;
 
 /**
  * Locates a method's Inertia render calls and reads their component names and props arguments.
+ *
+ * @internal
  */
 class InertiaRenderLocator
 {

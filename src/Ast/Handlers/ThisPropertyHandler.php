@@ -8,14 +8,12 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ChecksPreserveKeys;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DispatchesFqcnResults;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesSingularResourceClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -31,18 +29,12 @@ use PhpParser\Node\Identifier;
  * property extractor still used by the analyzer's own merge()/mergeWhen() resolution.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
- * @phpstan-import-type ResourcePropertyInfoList from MethodAnalysis
- * @phpstan-import-type ClassMapType from MethodAnalysis
- * @phpstan-import-type ImportMapType from MethodAnalysis
- * @phpstan-import-type InlineEnumFqcnsMap from MethodAnalysis
- * @phpstan-import-type InlineModelFqcnsMap from MethodAnalysis
- * @phpstan-import-type MultiEnumFqcnsMap from MethodAnalysis
- * @phpstan-import-type EnumResourceArmShapeMap from MethodAnalysis
+ *
+ * @internal
  */
 final class ThisPropertyHandler implements ExpressionHandler
 {
     use ChecksPreserveKeys;
-    use DispatchesFqcnResults;
     use InspectsAstNodes;
     use InspectsResourceSubject;
     use ResolvesEnumPropertyArgTypes;
@@ -73,28 +65,7 @@ final class ThisPropertyHandler implements ExpressionHandler
      */
     public function extractPropertiesFromArray(Array_ $array, ExpressionEngine $engine, bool $optional = false): ResourceAnalysis
     {
-        /** @var ResourcePropertyInfoList $properties */
-        $properties = [];
-        /** @var ClassMapType $enumResources */
-        $enumResources = [];
-        /** @var ClassMapType $nestedResources */
-        $nestedResources = [];
-        /** @var ClassMapType $directEnumFqcns */
-        $directEnumFqcns = [];
-        /** @var ClassMapType $modelFqcns */
-        $modelFqcns = [];
-        /** @var ImportMapType $customImports */
-        $customImports = [];
-        /** @var InlineEnumFqcnsMap $inlineEnumFqcns */
-        $inlineEnumFqcns = [];
-        /** @var InlineModelFqcnsMap $inlineModelFqcns */
-        $inlineModelFqcns = [];
-        /** @var MultiEnumFqcnsMap $multiEnumResourceFqcns */
-        $multiEnumResourceFqcns = [];
-        /** @var InlineEnumFqcnsMap $inlineEnumResourceFqcns */
-        $inlineEnumResourceFqcns = [];
-        /** @var EnumResourceArmShapeMap $enumResourceArmShapes */
-        $enumResourceArmShapes = [];
+        $analysis = new ResourceAnalysis;
 
         foreach ($array->items as $item) {
             if ($item->key === null) {
@@ -107,50 +78,10 @@ final class ThisPropertyHandler implements ExpressionHandler
                 continue;
             }
 
-            $result = $engine->resolve($item->value);
-
-            $properties[] = [
-                'name' => $keyName,
-                'type' => $result['type'],
-                'optional' => $optional || $result['optional'],
-                'description' => '',
-            ];
-
-            $this->dispatchFqcnResults(
-                $keyName, $result, $enumResources, $directEnumFqcns, $nestedResources, $modelFqcns,
-                $multiEnumResourceFqcns, $enumResourceArmShapes,
-            );
-
-            foreach ($result['embeddedEnumFqcns'] ?? [] as $fqcn) {
-                $inlineEnumFqcns[$keyName][] = $fqcn;
-            }
-
-            foreach ($result['embeddedEnumResourceFqcns'] ?? [] as $fqcn) {
-                $inlineEnumResourceFqcns[$keyName][] = $fqcn;
-            }
-
-            foreach ($result['embeddedModelFqcns'] ?? [] as $fqcn) {
-                $inlineModelFqcns[$keyName][] = $fqcn;
-            }
-
-            foreach ($result['customImports'] ?? [] as $path => $types) {
-                $customImports[$path] = [...($customImports[$path] ?? []), ...$types];
-            }
+            $analysis->addProperty($keyName, $engine->resolve($item->value), $optional);
         }
 
-        return new ResourceAnalysis(
-            $properties,
-            $enumResources,
-            $nestedResources,
-            customImports: $customImports,
-            directEnumFqcns: $directEnumFqcns,
-            modelFqcns: $modelFqcns,
-            inlineEnumFqcns: $inlineEnumFqcns,
-            inlineModelFqcns: $inlineModelFqcns,
-            multiEnumResourceFqcns: $multiEnumResourceFqcns,
-            inlineEnumResourceFqcns: $inlineEnumResourceFqcns,
-            enumResourceArmShapes: $enumResourceArmShapes,
-        );
+        return $analysis;
     }
 
     /**
@@ -182,7 +113,11 @@ final class ThisPropertyHandler implements ExpressionHandler
                 'type' => $info['type'],
             ];
 
-            if ($info['enumFqcn'] !== null) {
+            // An accessor typed Attribute<StatusA|StatusB, never> spells both names; only the first
+            // reaches directEnumFqcn, so the rest travel per-occurrence the way classFqcns do below.
+            if (count($info['enumFqcns']) > 1) {
+                $result['embeddedEnumFqcns'] = $info['enumFqcns'];
+            } elseif ($info['enumFqcn'] !== null) {
                 $result['directEnumFqcn'] = $info['enumFqcn'];
             }
 

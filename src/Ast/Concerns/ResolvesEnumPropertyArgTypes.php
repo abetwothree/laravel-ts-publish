@@ -26,6 +26,8 @@ use PhpParser\Node\Name;
  * Requires the host to also `use InspectsAstNodes` (for `isThisPropertyFetch()`).
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 trait ResolvesEnumPropertyArgTypes
 {
@@ -152,12 +154,12 @@ trait ResolvesEnumPropertyArgTypes
      * Bypasses ResolvesModelTypes's cached-property gate, which this per-call handler never
      * populates — calls the ModelAttributeResolver singleton directly instead; it caches per FQCN.
      *
-     * @return array{type: string, enumFqcn: class-string|null, classFqcns: list<class-string>}
+     * @return array{type: string, enumFqcn: class-string|null, enumFqcns: list<class-string>, classFqcns: list<class-string>}
      */
     protected function resolveModelAttributeTypeInfo(string $attributeName, AnalysisScope $scope): array
     {
         if ($scope->modelClass === null) {
-            return ['type' => 'unknown', 'enumFqcn' => null, 'classFqcns' => []];
+            return ['type' => 'unknown', 'enumFqcn' => null, 'enumFqcns' => [], 'classFqcns' => []];
         }
 
         $tsInfo = resolve(ModelAttributeResolver::class)->resolveAttribute($scope->modelClass, $attributeName);
@@ -165,6 +167,11 @@ trait ResolvesEnumPropertyArgTypes
         /** @var class-string|null $enumFqcn */
         $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
 
-        return ['type' => $tsInfo['type'], 'enumFqcn' => $enumFqcn, 'classFqcns' => $tsInfo['classFqcns']];
+        return [
+            'type' => $tsInfo['type'],
+            'enumFqcn' => $enumFqcn,
+            'enumFqcns' => $tsInfo['enumFqcns'],
+            'classFqcns' => $tsInfo['classFqcns'],
+        ];
     }
 }

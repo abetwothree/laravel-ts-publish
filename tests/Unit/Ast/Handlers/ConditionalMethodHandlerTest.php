@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
@@ -431,6 +432,41 @@ it('types whenExistsLoaded(relationship, default: …) with the value skipped as
     expect($result)->toBe(['type' => 'string | null', 'optional' => false]);
 });
 
+// The three tests above all write `default:` by name, which skips $value and reaches valueSkipped()
+// through passedCount(). A positionally written literal null binds $value instead, so only
+// isNullConstFetch() can tell that the arm is null rather than the attribute.
+it('types whenHas(attribute, null, default) written positionally as null unioned with the default', function () {
+    $defaultExpr = new String_('none');
+    $expr = new MethodCall(new Variable('this'), 'whenHas', [
+        new Arg(new String_('name')),
+        new Arg(new ConstFetch(new Name('null'))),
+        new Arg($defaultExpr),
+    ]);
+    $scope = new AnalysisScope(new ReflectionClass(UserResource::class), User::class);
+    $engine = new ConditionalMethodHandlerArmStubEngine([
+        [$defaultExpr, ['type' => 'string', 'optional' => false]],
+    ]);
+
+    $result = (new ConditionalMethodHandler)->resolve($expr, $scope, $engine);
+
+    expect($result)->toBe(['type' => 'string | null', 'optional' => false]);
+});
+
+// The literal-null branch reads named('value') alone, so unlike the passedCount() branch it must not bail
+// on a spread: two positional arguments already make func_num_args() >= 2 whatever $rest holds.
+it('types a literal null value as null even when a spread follows it', function () {
+    $expr = new MethodCall(new Variable('this'), 'whenHas', [
+        new Arg(new String_('name')),
+        new Arg(new ConstFetch(new Name('null'))),
+        new Arg(new Variable('rest'), unpack: true),
+    ]);
+    $scope = new AnalysisScope(new ReflectionClass(UserResource::class), User::class);
+
+    $result = (new ConditionalMethodHandler)->resolve($expr, $scope, conditionalMethodHandlerThrowingEngine());
+
+    expect($result)->toBe(['type' => 'null', 'optional' => true]);
+});
+
 it('still treats a spread at the default position as no default', function () {
     $expr = new MethodCall(new Variable('this'), 'whenCounted', [
         new Arg(new String_('posts')),
@@ -455,4 +491,15 @@ it('does not report a skipped value when a spread precedes a named default', fun
     $result = (new ConditionalMethodHandler)->resolve($expr, $scope, conditionalMethodHandlerThrowingEngine());
 
     expect($result)->toBe(['type' => 'string', 'optional' => true]);
+});
+
+describe('positional null value arm', function () {
+    test('whenHas / whenAppended / whenExistsLoaded with a literal null value type the arm as null', function () {
+        $analysis = resolve(AstEngine::class)->analyzeMethod(ConditionalDefaultsResource::class);
+        $types = array_column($analysis->properties, 'type', 'name');
+
+        expect($types['has_with_null'])->toBe('number | null')
+            ->and($types['appended_with_null'])->toBe('number | null')
+            ->and($types['exists_with_default'])->toBe('string | null');
+    });
 });

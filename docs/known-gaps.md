@@ -36,52 +36,27 @@ it rejects only `null` and `undefined` — so the type reads as specific while c
 
 Laravel's own `collects()` cannot resolve the attribute on 12 either, so the package mirrors the framework
 rather than guessing. **The workaround is fully supported:** `public $collects = PostResource::class;` works
-on both versions, as does the `FooCollection` → `FooResource` naming convention. The guard is in
+on both versions. So does the `FooCollection` → `FooResource` naming convention, with one condition the
+explicit property does not carry: `resolveCollectedResourceClass()` gates the guess on
+`isPublishedResourceClass()`, so a `FooResource` the run excludes is not guessed into. The guard is in
 `src/Analyzers/Concerns/InspectsAstNodes.php`; see
 [docs/laravel-version-guards.md](./laravel-version-guards.md) for how the version floor was established and
 which tests are skipped below it.
 
-### `EnumResource::collection()` inside a mixed ternary, nested one level down
+### A non-promoted property a constructor always assigns still renders optional
 
-Task 28 fixed `ResourceTransformer::rewriteEnumResourceTypes()`'s top-level `$isMixed` branch, which
-assumed the wrapped arm of a mixed EnumResource/direct-access ternary was always scalar.
-`InlineArrayHandler::expandMixedEnumType()` (`src/Ast/Handlers/InlineArrayHandler.php`) has the same
-defect for the identical ternary shape nested inside an inline array literal, and there it is worse:
-when both arms independently render the same array-shaped type string — an
-`EnumResource::collection()` wrap and a direct read of an already-list accessor, both `X[]` — the
-merge that builds the property's type collapses them to one member before `expandMixedEnumType()`
-ever runs, so it substitutes that single member and the direct arm's own presence in the union is
-lost outright, not just under-suffixed. Verified against a throwaway fixture during Task 28's fix
-round; not reproduced as a committed test or golden-tree property, so nothing here pins it yet.
-
-### A broadcast event's own uninitialized typed property still types as required
-
-Task 29 made an uninitialized typed public property optional wherever a class's shape is inlined —
-`LaravelTsPublish::publicPropertyShapeType()` (`src/LaravelTsPublish.php`), reached from `toTsType()`'s
-step 5c and from `arrayableShapeType()`'s no-docblock fallback. A broadcast event's own top-level
-property list never reaches that method: `AstEngine::analyzePublicProperties()` reflects the event
-class directly and hardcodes `'optional' => false` for every property, regardless of whether reflection
-says the property was ever assigned. An event with `public Carbon $occurredAt;` and no default therefore
-still emits `occurredAt: string;` in its generated `.ts` file — required — even though `json_encode()`
-would omit the key exactly as Task 29's fix accounts for everywhere else. Verified against a throwaway
-event fixture during Task 29's fix round, then removed once it stopped pinning anything the golden tree
-would show; not reproduced as a committed test or golden-tree property, so nothing here pins it yet.
-Fixing it means threading the same `hasDefaultValue()`/`isPromoted()` check into
-`analyzePublicProperties()`, which is a change to every existing broadcast event's blast radius, not a
-one-fixture addition — worth doing as its own task. `analyzePublicProperties()`'s own docblock already
-states it never marks a property optional — nullability is `| null`, optionality is a `#[TsCasts]`
-concern — so a future fix has to reconcile that deliberate boundary rather than be surprised by it. A
-related case is inherent rather than fixable: a public non-promoted `readonly` property that a
+This case is inherent rather than fixable: a public non-promoted `readonly` property that a
 hand-written constructor always assigns still renders `?:`, because a `readonly` property cannot carry
 a declaration default for static reflection to read — that `readonly` form is absent from the corpus.
-The same imprecision without `readonly` is present: `DeferredAssignmentDto::$assignedLater` is assigned
-by every construction and still emits `assignedLater?`, which is what lets it nest a `?:` inside a shape
-value for `NestedOptionalKeyDto`. It is deliberate there — the fixture needs an optional key — but it is
-the same heuristic, so a future fix to optionality has to expect that fixture to move.
+The same imprecision without `readonly` is present: `DeferredAssignmentDto::$assignedLater` and
+`DeclaredPropsEvent::$label` are assigned by every construction and still emit `?:`, which is what lets
+the former nest a `?:` inside a shape value for `NestedOptionalKeyDto`. It is deliberate for the former
+— that fixture needs an optional key — but it is the same heuristic, so a future fix to optionality has
+to expect those fixtures to move.
 
 ### `#[TsCasts]` and the top-level spread flatten disagree by scope, in three separate ways
 
-Task 32 flattens a top-level `...SomeResource::make(...)->resolve()`, `...$model->toArray()`, or
+The analyzer flattens a top-level `...SomeResource::make(...)->resolve()`, `...$model->toArray()`, or
 `...$collection->toArray()` spread into the host resource's own properties
 (`ResourceAstAnalyzer::analyzeSpreadArm()` and its three arm builders, `src/Analyzers/ResourceAstAnalyzer.php`).
 Only one of the three places `#[TsCasts]` can apply is wired up for it, and a fourth interaction —
@@ -117,46 +92,79 @@ knowing which flattened properties are actually the host's own versus foreign, w
 `ResourceAnalysis::properties` list (name/type/optional/description only) does not carry. Both are scope
 changes to existing, working code paths, not one-fixture additions — worth doing as their own task.
 
-### `$request->validated('key')` only types a literal, top-level key
+### `$request->validated('key')` declines a wildcard key, and ignores a dotted `#[TsCasts]` key
 
-A literal, top-level key on a bound `FormRequest` types from `rules()` — `$request->validated('title')`
-reads `StorePostRequest::rules()` through `FormRequestRulesAnalyzer`, the same analyzer the form request's
-own generated interface uses (`requestMethodRule()` in `src/Ast/Handlers/KnownMethodRuleHandler.php`). Two
-shapes short of that decline or diverge silently rather than fixing:
+A literal key on a bound `FormRequest` types from `rules()` — `$request->validated('title')` reads
+`StorePostRequest::rules()` through `FormRequestRulesAnalyzer`, the same analyzer the form request's own
+generated interface uses (`requestMethodRule()` in `src/Ast/Handlers/KnownMethodRuleHandler.php`). A dotted
+key walks that same rule trie by path (`FormRequestRulesAnalyzer::analyzeField()`), so
+`$request->validated('options.default')` types exactly as the request's own nested interface types
+`options.default`, and the request's own `#[TsCasts]` — the type, the optionality, and the import an
+`'import' => …` override declares — now reaches the property too. Three shapes still decline or diverge:
 
-- **A dotted key declines even when the rule defines it.** `FormRequestRulesAnalyzer::analyze()` returns
-  only the top-level trie nodes: a nested rule like `'options.default' => ['string']` composes into
-  `options`'s own object type, but never surfaces as its own `fieldPath` entry in the returned list.
-  `$request->validated('options.default')` on `Workbench\App\Http\Requests\NestedEdgeCasesRequest` — whose
-  `rules()` declares exactly that key — resolves to `null` and the property types as `unknown`, though the
-  rule is both defined and resolvable. Verified directly: the handler returns `null` for that call.
-  Nested validation rules (`'address.street' => 'required|string'`) are routine Laravel, so a user is
-  likely to hit this immediately after learning `validated()` is typed at all.
-- **A `#[TsCasts]` override on the form request is not honoured.** `StorePostRequest::rating` carries a
-  `#[TsCasts]` override to `number | bigint`; `$request->validated('rating')` types as the raw-rule
-  `number | null` instead — verified directly: the handler returns `['type' => 'number | null', 'optional'
-  => true]`, not the override. The override is applied by `FormRequestTransformer::applyTsCastsOverrides()`
-  when the form request's own `.ts` interface is generated, a call site `KnownMethodRuleHandler` never
-  reaches. Same shape as the entry above: two generated descriptions of the same field, disagreeing.
+- **A key containing a `*` segment declines.** `data_get()` — which `validated()` delegates to — expands
+  `*` into a list of *every* match, so the trie node under `*` describes one element, not the value the
+  call returns. `$request->validated('options.*')` would otherwise type `string | null` where the runtime
+  value is `(string | null)[]`, so `validatedKeyRule()` declines the key outright and the property types as
+  `unknown`. Typing it means array-wrapping the composed element type once per `*` hop, plus reproducing
+  `Arr::collapse()`'s flattening for a key with more than one — its own task, not a guard.
+- **A `#[TsCasts]` key with a dot in it is ignored, on the request as well as here.**
+  `FormRequestTransformer::applyTsCastsOverrides()` matches an override against a top-level field path, and
+  `analyze()` emits only top-level paths, so `#[TsCasts(['options.default' => 'number'])]` moves nothing in
+  the request's own interface. `validatedKeyRule()` therefore ignores a dotted override key too: honouring
+  it at one of the two call sites and not the other is the disagreement this whole entry is about.
+- **A dotted key beneath an *overridden ancestor* still types from the rules, and there the two really do
+  disagree.** An override on a parent replaces that whole subtree in the request's interface:
+  `#[TsCasts(['options' => 'MyOptions'])]` renders `options?: MyOptions;` and nothing else, while
+  `$request->validated('options.default')` still composes `string` from the rules the override replaced.
+  Closing it means indexing into a hand-written TypeScript type, which the handler cannot do; declining
+  every dotted key under an overridden prefix would trade the disagreement for an `unknown`.
 
-Fixing the first means flattening `analyze()`'s trie output (or walking it by dotted path) instead of
-scanning only its top-level nodes; fixing the second means either routing through
-`FormRequestTransformer`'s override application or duplicating its `#[TsCasts]` parsing at this call site.
-Both are scope changes beyond the single literal top-level key this call site was built for.
+### A multi-enum ternary in Inertia shared data emits both enum names with no imports
 
-### Inertia shared data does not rewrite `EnumResource` types for Tolki
+`HandleInertiaRequests::share()` rewrites an `EnumResource::make(...)` prop to `AsEnum<typeof Enum>` and
+emits the enum's value import, but only for the single-enum shape. A ternary whose two arms wrap
+*different* enums — `$cond ? EnumResource::make(Role::Admin) : EnumResource::make(Status::Draft)` —
+renders `{ either: RoleType | StatusType }` with **both** import maps empty, so the augmentation file
+spells two type names it never imports (`TS2304` twice in a consumer's build).
 
-An `EnumResource::make(...)` returned from `HandleInertiaRequests::share()` is analyzed as its bare enum
-type by `InertiaSharedDataAnalyzer::buildTypeImports()`, but with Tolki enabled the shared-data analyzer
-neither rewrites it to `AsEnum<typeof Enum>` nor emits the enum's value import. This predates the
-`typeImports` consolidation: the removed `importStatements` channel was generated only from `#[TsCasts]`
-and contained only `import type` lines.
+The rewrite keys off `MethodAnalysis::$enumResources`, and a multi-enum ternary does not land there: its
+FQCNs go to `$multiEnumResourceFqcns` instead. `AnalysisImports::asEnumWrappedOnlyFqcns()` meanwhile
+treats every branch FQCN as wrapped-only and drops its type import, which is correct for the resource
+generator (whose own rewrite does replace those branch tokens) but leaves shared data holding names with
+no importable source. The value imports die on the other side: `InertiaSharedDataAnalyzer` keeps only
+import names the rendered type actually spells, and the type spells `RoleType`/`StatusType`, never
+`Role`/`Status`.
 
-Use an import-aware `#[TsCasts]` override for that shared property. Supporting the serialized enum shape
-requires the same type-rewrite and separate value-import pipeline used by resource generation; moving the
-value import into `typeImports` would be incorrect.
+No workbench fixture uses this shape, so the token gate is green over it. Use an import-aware
+`#[TsCasts]` override on that shared key, or give both arms the same enum.
 
-### Two same-named enums in one metadata companion collide instead of aliasing
+### A mixed enum ternary whose arms are both array-shaped ships a duplicated union member in the globals
+
+`laravel-ts-global.ts` carries two lines of the form `app.enums.StatusType[] | app.enums.StatusType[]`
+in every one of the four generated trees — `EnumCollectionResource::$wrapped_history_or_array` and the
+`status` key inside `TeamStatusAuditResource::$audit`, and a depth-aware scan of every generated `.ts`
+finds no third line of that form. Both are a mixed ternary whose wrap arm is
+`EnumResource::collection($this->status_history)` and whose direct arm reads the same list-shaped
+accessor, so the resource's own file renders two genuinely different tokens —
+`AsEnum<typeof Status>[] | StatusType[]` — and only the globals file, which has no `AsEnum` import,
+collapses them onto one qualified name.
+
+`LaravelTsPublish::rewriteAsEnumToType()` exists to fold that adjacency before it duplicates, and its
+pair pattern requires the wrap's `>` to be followed directly by the `|` and ends in a
+`(?![A-Za-z0-9_$\[])` lookahead. An array suffix on *either* arm defeats one half or the other, so the
+both-array case never matches; the single-arm substitution then runs anyway and qualifies both arms to
+the same name. Driving the four shapes through the real patterns: `AsEnum<typeof X> | XType` folds,
+`AsEnum<typeof X> | XType[]` and `AsEnum<typeof X>[] | XType` correctly do not (their arms differ, and
+folding would delete one), and `AsEnum<typeof X>[] | XType[]` — the only wrong answer — does not either.
+
+**This is cosmetic, and it is recorded because it is shipped output rather than despite being
+cosmetic.** `A[] | A[]` denotes exactly `A[]`, so `tsc` reports nothing, the token gate's baselines
+never move, and no consumer behaves differently. What a reader of `laravel-ts-global.ts` sees is a line
+that looks like a bug. The lookahead is not the thing to delete when fixing it: it is load-bearing for
+the two genuinely-different pairs above. The fold has to learn the both-array case as its own shape.
+
+### Two same-named enums collide instead of aliasing: a companion throws, a route file ships invalid TS
 
 Model metadata imports the enums body inference resolves, so a value the AST reads as an enum contributes
 an `import type` line of its own. Those inferred imports are pruned by property name, except when the
@@ -194,6 +202,20 @@ for the prune to match.
 Fixing it means carrying the FQCN alongside the rendered name through the prune so the filter can compare
 identities rather than basenames, and then routing inferred imports through the same alias resolver the
 cast imports use. That is a channel change, not a patch at the filter.
+
+**The companion is not the only file this shape reaches, and it is the one that fails loudest.**
+`RouteTransformer::resolvePageTypeImports()` builds a route file's page-prop imports by appending each
+FQCN's rendered name under the path its namespace resolves to, and there is no alias resolver and no
+collision guard on that path at all. Two page props typed by same-basename enums in different namespaces
+therefore emit two `import type { StatusType } from …` lines into one route file and ship it — `TS2300:
+Duplicate identifier 'StatusType'` in the consumer's build, with nothing thrown at publish time.
+Confirmed by driving the method with `Workbench\App\Enums\Status` and `Workbench\Crm\Enums\Status`:
+`['../../../crm/enums' => ['StatusType'], '../../enums' => ['StatusType']]`. `ResourceTransformer` is the
+only one of the three that aliases — `DealResource` imports `StatusType as WorkbenchStatusType` alongside
+`StatusType as CrmStatusType` — so the metadata guard's exception and the route file's silence are two
+different responses to one missing step. The gate that would catch it — `TS2300` over the compiled trees
+— has no corpus route to compile, so read it as saying nothing here. Give one of the two enums a distinct
+`#[TsEnum(name:)]`, as `Workbench\Shipping\Enums\Status` does.
 
 ### An empty `[]` under an imported type alias still ships as `[]`
 
@@ -268,42 +290,25 @@ succeed by accident.
 
 Override the pair together. `tests/Fixtures/PrefixedModelMetadataTransformer.php` is the worked example.
 
-### A trait-supplied `provide()` in its own file contributes no inferred types
-
-`MethodLocator::findIn()` declines when the method's declaring file is not the class's own file, before it
-parses anything. A trait method's declaring file is the *trait's*, so a trait living in its own file — the
-ordinary way to ship one — always declines. `ModelMetadataAnalyzer::analyzeBody()` then falls back to
-`AstEngine::analyzeMethod()`, which seeds no `$model` binding.
-
-The consequence is wider than `$model` calls: that fallback contributes **no inferred types at all**. Every
-key needs a docblock or `#[TsCasts]`, including plain literals. `TraitModelMetadataProvider` pins it — its
-analysis is `['label' => 'docblock', 'flag' => 'casts']` with `table` undeclared, and `label` is a string
-literal typed only because the docblock names it.
-
-Only a *separate-file* trait degrades. A trait declared in the same file as the class using it binds and
-infers normally, so the shape is about file layout rather than traits as such.
-
-Closing it is a two-part change this package does not have today. `analyzeBody()` locates a `MethodContext`,
-uses it only for `bindingsFor()`, then discards the node; `ResourceAstAnalyzer::analyze()` re-runs
-`locateOwn()` for itself and misses again. It would need `ResourceAstAnalyzer` to accept a pre-located
-context, and `analyzeBody()` to switch from `locateOwn()` to `locate()`.
-
-Note that `docs/components/model-metadata.md` still explains this gap by the mechanism that preceded
-`MethodLocator`'s end-line matching — it says `locateOwn()` searches the using class's own file and finds no
-`provide()` node there. The outcome it describes is right for this shape, but the reasoning is not: the
-decline now happens from reflection alone. The old wording also predicts a *bind* when the using class's file
-happens to declare an unrelated `provide()`, which is exactly the case that used to bind to the wrong body.
-
 ## Deliberate non-goals
 
 Absent on purpose. Do not "fix" these without raising it first.
 
-- **Non-Inertia and JSON responses are never typed.** Only `Inertia::render()` page props and the
+- **Non-Inertia and JSON responses are never typed.** Only render-call page props — `Inertia::render()`,
+  the `inertia()` helper and `inertia()->render()`, all three matched by `InertiaRenderLocator` — and the
   shared-data middleware are analyzed.
 - **No `ts-publish.analyzer.handlers` config key, and no supported extension of the AST engine.** The
-  only user-facing surface of the engine is `AstEngine`. Every handler, concern, resolver and value
-  object under `src/Ast/` is internal and changes without notice as inference grows; nothing there is a
-  compatibility promise, and code that extends it is on its own.
+  only user-facing surface of the engine is `AstEngine::analyze()` and the `AnalysisResult` it returns.
+  Every handler, concern, resolver and value object under `src/Ast/` is internal and changes without
+  notice as inference grows; nothing there is a compatibility promise, and code that extends it is on
+  its own. Every class under `src/Ast/` other than `AstEngine` and `AnalysisResult` is tagged
+  `@internal`, so a consumer running PHPStan with bleedingEdge (`internalTag`) — or any IDE — is warned
+  when reaching past them. `AstEngine`'s other three methods (`analyzeMethod()`,
+  `analyzePublicProperties()`, `bindingsFor()`) each carry the tag themselves, because each hands back
+  or takes one of those internal DTOs; tagging only the classes would have left the public class
+  trafficking in them. `tests/Architecture/InternalBoundaryTest.php` checks all three rules — the tag on
+  every `src/Ast` class, no untagged subclass of a tagged one, and no internal type in an untagged
+  public signature — so the boundary cannot drift back open silently.
 - **Form requests stay runtime.** They are resolved by instantiating and calling `rules()`, on purpose.
 - **Collector class maps are not invalidated mid-process.** `CoreCollector::classMap()` scans each directory
   once per process, and `Runner::run()` / `RunnerForSource::run()` clear it first, so a `ts:publish` run
@@ -315,54 +320,21 @@ Absent on purpose. Do not "fix" these without raising it first.
 
 ## Green signals that are narrower than they look
 
-### No metadata test exercises two `provide()` methods in one file
-
-`MethodLocator` itself is well covered: `MethodLocatorTest` asserts `locateOwn()` against two classes sharing
-a file, a method nested in an earlier anonymous class, and a trait method competing with an unrelated class
-declared before it.
-
-What nothing pins is the metadata phase's *dependence* on that disambiguation. No file in `src/`, `tests/` or
-`workbench/` declares two `function provide(`, so no metadata fixture reaches the path
-`ModelMetadataAnalyzer::analyzeBody()` actually relies on. That matters more than an ordinary coverage hole
-because of how this used to fail: before the end-line match, a provider sharing a file with an earlier
-same-named method had the *wrong body* analyzed, and the run published those types with `undeclaredKeys`
-empty — no exception, no gate signal, nothing to notice. A regression would be equally quiet.
-
-Closing it costs one fixture: a provider whose file declares a decoy `provide()` first, plus a case in
-`ModelMetadataAnalyzerTest` asserting the real body's types.
-
 ### Handler ordering is pinned pairwise, corpus-bounded
 
 Nine of the twenty-four handlers in the resource profile claim `MethodCall`
 (`src/Ast/ResourceExpressionHandlers.php`), so for a `$this->foo()` expression the dispatcher's registration
 order is what decides which one answers. Every one of the 36 unordered pairs among those nine is now run
-in both orders by `tests/Unit/Ast/MethodCallOrderingMatrixTest.php`: seven pairs disagree and are held in
+in both orders by `tests/Unit/Ast/MethodCallOrderingMatrixTest.php`: five pairs disagree and are held in
 the direction `handlers()` lists them (its `METHOD_CALL_PINNED` map, and the `MethodCall` row of the ordering table in
-[docs/components/ast-engine.md](./components/ast-engine.md#the-honest-ordering-inventory)); the other 29
+[docs/components/ast-engine.md](./components/ast-engine.md#the-honest-ordering-inventory)); the other 31
 are proven inert against that same corpus.
 
 The residual limit is the corpus, not the method: an expression shape the matrix never constructs cannot
 be proven to disagree there, however plausible it looks by inspection — a new shape that turns an inert
-pair into a disagreeing one fails the matrix, which is the signal to pin it. One of the seven pins has a
-narrower practical consequence than "seven pins" alone suggests: `RelationCollectionChainHandler` wins
-over `KnownMethodRuleHandler` for `$this->can(...)`/`cannot(...)`/`canAny(...)`. The two orders diverge
-whenever the resource's model — resolved or not — does not declare `can()`: `RelationCollectionChainHandler`'s
-generic `$this->method()` fallback gates its model check on `method_exists($scope->modelClass,
-$methodName)`, which fails identically whether `scope->modelClass` is `null` or a real, resolved class
-that simply has no `can()` (this matrix's own `CommentResource`/`Comment` corpus row is exactly that
-case: the model resolves fine, but `Comment` declares no `can()`, so `RelationCollectionChainHandler`
-floors at `unknown` while `KnownMethodRuleHandler`'s unconditional rule still answers `boolean`). The two
-orders already agree in the mainstream case, though: whenever the model resolves to something
-Authorizable (e.g. `UserResource`/`User`), `RelationCollectionChainHandler`'s fallback reaches
-`Authorizable::can(): bool` through that same `method_exists()` check and lands on `boolean` too. A
-resource over a model with no `can()` at all is not shipping code regardless of which order wins:
-`$this->can(...)` there would throw `BadMethodCallException` at runtime (neither `Comment` nor
-`JsonResource` declares `can()`, and `JsonResource::__call()` forwards to a receiver that doesn't have
-it either) — that's why the practical impact is small, not why the divergence condition is narrow. The
-matrix pins the order `handlers()` actually uses; it does not change it, since reordering `handlers()`
-is outside this pin's scope. Read the pin count the same way as before: "the divergences someone has
-actually gone and found", not "the only divergences that exist" — now bounded by the matrix's corpus
-rather than by nothing at all.
+pair into a disagreeing one fails the matrix, which is the signal to pin it. Read the pin count the same
+way as before: "the divergences someone has actually gone and found", not "the only divergences that
+exist" — now bounded by the matrix's corpus rather than by nothing at all.
 
 ### The publish-speed gate is one-sided
 

@@ -10,7 +10,11 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\StaticCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BrandedFormRequestRulesAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\StarterKit\StarterKitMiddleware;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TsCastsGuardRequest;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TsCastsOverrideRequest;
+use AbeTwoThree\LaravelTsPublish\Transformers\FormRequestTransformer;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -27,8 +31,11 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\VariadicPlaceholder;
+use Workbench\App\Http\Requests\ArrayRulesRequest;
 use Workbench\App\Http\Requests\DynamicRequest;
+use Workbench\App\Http\Requests\NestedEdgeCasesRequest;
 use Workbench\App\Http\Requests\StorePostRequest;
+use Workbench\App\Http\Requests\UpdatePostRequest;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\User;
@@ -230,6 +237,19 @@ it('types validated(key) from the form request rules', function () {
         ->toBe(['type' => 'string', 'optional' => false]);
 });
 
+// The request's own interface reads ts-publish.form_requests.analyzer_class; reading the default
+// class here would describe one field two ways whenever an app configures its own analyzer.
+it('types validated(key) through the configured analyzer, the one the interface uses', function () {
+    config()->set('ts-publish.form_requests.analyzer_class', BrandedFormRequestRulesAnalyzer::class);
+
+    $call = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('title'))]);
+    $fields = (new FormRequestTransformer(StorePostRequest::class))->data()->fields;
+
+    expect((new KnownMethodRuleHandler)->resolve($call, formRequestScope(), requestRuleEngine()))
+        ->toBe(['type' => 'Branded', 'optional' => false])
+        ->and(collect($fields)->firstWhere('fieldPath', 'title')['tsType'])->toBe('Branded');
+});
+
 it('types validated(key: ...) bound by name, not just by position', function () {
     $call = new MethodCall(new Variable('request'), 'validated', [
         new Arg(new String_('title'), name: new Identifier('key')),
@@ -277,6 +297,42 @@ it('declines validated() for a key the rules do not mention, and the zero-argume
 
     expect((new KnownMethodRuleHandler)->resolve($unknownKey, formRequestScope(), requestRuleEngine()))->toBeNull()
         ->and((new KnownMethodRuleHandler)->resolve($wholePayload, formRequestScope(), requestRuleEngine()))->toBeNull();
+});
+
+it('types validated() for a dotted key the rules declare', function () {
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $scope->requestVarNames = ['request' => NestedEdgeCasesRequest::class];
+    $call = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('options.default'))]);
+
+    expect((new KnownMethodRuleHandler)->resolve($call, $scope, requestRuleEngine()))
+        ->toBe(['type' => 'string', 'optional' => true]);
+});
+
+// A prohibited rule keeps the key out of the generated interface entirely, so neither it nor
+// anything nested under it can reach a payload — the whole subtree declines.
+it('declines validated() for a prohibited key and for one under a prohibited ancestor', function () {
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $scope->requestVarNames = ['request' => NestedEdgeCasesRequest::class];
+    $prohibited = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('meta.secret'))]);
+
+    $nested = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $nested->requestVarNames = ['request' => ArrayRulesRequest::class];
+    $underProhibited = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('order.secret.token'))]);
+
+    expect((new KnownMethodRuleHandler)->resolve($prohibited, $scope, requestRuleEngine()))->toBeNull()
+        ->and((new KnownMethodRuleHandler)->resolve($underProhibited, $nested, requestRuleEngine()))->toBeNull();
+});
+
+// data_get() expands `*` into a list of every match, so the `*` trie node types one element, not
+// the array validated() returns — declining beats confidently emitting the element type.
+it('declines validated() for a key with a wildcard segment', function () {
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $scope->requestVarNames = ['request' => NestedEdgeCasesRequest::class];
+    $element = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('options.*'))]);
+    $deeper = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('buckets.*.name'))]);
+
+    expect((new KnownMethodRuleHandler)->resolve($element, $scope, requestRuleEngine()))->toBeNull()
+        ->and((new KnownMethodRuleHandler)->resolve($deeper, $scope, requestRuleEngine()))->toBeNull();
 });
 
 it('declines validated() rather than letting a throwing rules() escape the analyzer', function () {
@@ -445,4 +501,85 @@ it('declines a typed accessor on a config() receiver that already took a key, an
 
     expect((new KnownFunctionCallHandler)->resolve($onValue, requestRuleScope(), requestRuleEngine()))->toBeNull()
         ->and((new KnownFunctionCallHandler)->resolve($unknown, requestRuleScope(), requestRuleEngine()))->toBeNull();
+});
+
+// The request's own interface renders `rating?: number | bigint | null`: the override replaces the
+// rule's type, the rule's own nullability is still appended. A prop off that field must agree.
+it('validated() honours the request #[TsCasts] type and optional overrides', function () {
+    $call = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('rating'))]);
+
+    expect((new KnownMethodRuleHandler)->resolve($call, formRequestScope(), requestRuleEngine()))
+        ->toBe(['type' => 'number | bigint | null', 'optional' => true]);
+});
+
+// `tags` overrides the type with no `optional` key, so optionalOverrides carries no entry for it and
+// the rules stay the source of its optionality.
+it('reads optionality from the rules for an override that declares no optional key', function () {
+    $call = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('tags'))]);
+
+    expect((new KnownMethodRuleHandler)->resolve($call, formRequestScope(), requestRuleEngine()))
+        ->toBe(['type' => 'string[]', 'optional' => true]);
+});
+
+// An override naming an imported type has to carry its import, or the prop emits a token nothing
+// imports — the TS2304 the request's own file avoids only because it writes the import itself.
+it('carries the import an override declares next to its type', function () {
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $scope->requestVarNames = ['request' => UpdatePostRequest::class];
+    $call = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('attributes'))]);
+
+    expect((new KnownMethodRuleHandler)->resolve($call, $scope, requestRuleEngine()))->toBe([
+        'type' => 'PostAttributes',
+        'optional' => true,
+        'customImports' => ['@js/types/posts' => ['PostAttributes']],
+    ]);
+});
+
+// An override states a type, not that the key exists: the prohibited and wildcard declines stand, and
+// a dotted key keeps its rule type. FormRequestTransformer honours none of those three overrides.
+it('does not let a #[TsCasts] override resurrect a key validated() declines', function () {
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $scope->requestVarNames = ['request' => TsCastsGuardRequest::class];
+    $call = fn (string $key): MethodCall => new MethodCall(new Variable('request'), 'validated', [new Arg(new String_($key))]);
+
+    expect((new KnownMethodRuleHandler)->resolve($call('secret'), $scope, requestRuleEngine()))->toBeNull()
+        ->and((new KnownMethodRuleHandler)->resolve($call('tags.*'), $scope, requestRuleEngine()))->toBeNull()
+        ->and((new KnownMethodRuleHandler)->resolve($call('options.default'), $scope, requestRuleEngine()))
+        ->toBe(['type' => 'string', 'optional' => true]);
+});
+
+// The rules alone answer both of these backwards: `title` is `required` and overridden optional, `note`
+// is neither and overridden required. The request's own interface reads `title?`/`note` from the same
+// overrides, so a rule-only answer here would contradict it in both directions.
+it('takes optionality from the override rather than the rule, both ways round', function () {
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $scope->requestVarNames = ['request' => TsCastsOverrideRequest::class];
+    $call = fn (string $key): MethodCall => new MethodCall(new Variable('request'), 'validated', [new Arg(new String_($key))]);
+
+    expect((new KnownMethodRuleHandler)->resolve($call('title'), $scope, requestRuleEngine()))
+        ->toBe(['type' => 'string', 'optional' => true])
+        ->and((new KnownMethodRuleHandler)->resolve($call('note'), $scope, requestRuleEngine()))
+        ->toBe(['type' => 'string', 'optional' => false]);
+});
+
+// `Record<string, unknown>` names nothing to import, so its override's `import` path must not reach
+// InertiaPageAnalyzer's externalImports carrying an empty list of names.
+it('emits no import for an override type with no importable token', function () {
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $scope->requestVarNames = ['request' => TsCastsOverrideRequest::class];
+    $call = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('meta'))]);
+
+    expect((new KnownMethodRuleHandler)->resolve($call, $scope, requestRuleEngine()))
+        ->toBe(['type' => 'Record<string, unknown>', 'optional' => true]);
+});
+
+// The assumption the dotted decline rests on: the transformer matches an override to a top-level
+// field path, so those same three overrides move nothing in the request's own interface.
+it('leaves the dotted override out of the request interface, exactly as the handler does', function () {
+    $transformer = new FormRequestTransformer(TsCastsGuardRequest::class);
+    $output = view('laravel-ts-publish::form-request', ['data' => $transformer->data()])->render();
+
+    expect($output)->toContain('options?: { default?: string };')
+        ->and($output)->toContain('tags?: string[];')
+        ->and($output)->not->toContain('secret');
 });

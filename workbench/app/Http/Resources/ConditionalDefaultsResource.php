@@ -49,6 +49,7 @@ class ConditionalDefaultsResource extends JsonResource
             // Every with-default case below pairs a value arm with a *differently*-typed default, so the
             // union is observable: a handler that only flipped `optional` would emit the value arm alone.
             'has_with_default' => $this->whenHas('full_address', $this->full_address, 0),
+            'has_with_null' => $this->whenHas('full_address', null, 0),
             'loaded_with_default' => $this->whenLoaded('user', fn ($user) => $user, null),
             'counted_with_default' => $this->whenCounted('user', null, 'none'),
 
@@ -73,6 +74,7 @@ class ConditionalDefaultsResource extends JsonResource
             'unless_with_default' => $this->unless($this->id > 0, $this->full_address, 0),
             'appended_no_default' => $this->whenAppended('full_address'),
             'appended_with_default' => $this->whenAppended('full_address', $this->full_address, 0),
+            'appended_with_null' => $this->whenAppended('full_address', null, 0),
             'exists_no_default' => $this->whenExistsLoaded('user'),
             'exists_with_default' => $this->whenExistsLoaded('user', null, 'absent'),
 

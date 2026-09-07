@@ -9,6 +9,8 @@ use PhpParser\Node\Expr;
 /**
  * One Inertia render call, normalized: the component-name argument and the props argument,
  * whichever of the facade, helper, or helper-chain call forms produced them.
+ *
+ * @internal
  */
 final class RenderCall
 {

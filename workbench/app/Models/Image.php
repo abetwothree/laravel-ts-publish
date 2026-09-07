@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Support\Collection;
 use Workbench\App\Casts\MenuSettings;
+use Workbench\App\Enums\ShirtSize;
 use Workbench\App\Enums\Status;
 use Workbench\App\ValueObjects\ArrayableData;
 use Workbench\App\ValueObjects\Money;
@@ -134,6 +135,16 @@ class Image extends Model
     protected function statusFromDocblock(): Attribute
     {
         return Attribute::make(get: fn () => null);
+    }
+
+    /**
+     * Shirt size, typed by an enum whose #[TsEnum(name:)] differs from its class basename.
+     *
+     * @return Attribute<ShirtSize, never>
+     */
+    protected function shirtSize(): Attribute
+    {
+        return Attribute::get(fn (): ShirtSize => ShirtSize::Large);
     }
 
     /** @return Attribute<User|null, never> */

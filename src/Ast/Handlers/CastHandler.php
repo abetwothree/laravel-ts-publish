@@ -20,6 +20,8 @@ use PhpParser\Node\Expr\Cast\String_ as CastString;
  * PHP cast operators — the cast alone determines the type, not the inner expression.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 final class CastHandler implements ExpressionHandler
 {

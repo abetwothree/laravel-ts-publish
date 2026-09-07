@@ -15,6 +15,8 @@ use PhpParser\Node\Expr;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypesImportMap from Datable
+ *
+ * @internal
  */
 final class ValueResult
 {
@@ -112,8 +114,13 @@ final class ValueResult
         // occurrences of each bare enum name in the merged union's rendered type.
         /** @var list<class-string> $embeddedEnumFqcns FQCNs embedded inside nested inline-object types */
         $embeddedEnumFqcns = [];
-        /** @var list<class-string> $embeddedModelFqcns */
+        // One queue entry per rendered token, built in branch order because aliasPropertyType() walks it
+        // against the rendered type left to right. A whole-branch model is appended in loop position, and
+        // deduped: analyzeClosureUnion() collapses branches rendering the same string, leaving no token.
+        /** @var list<class-string> $embeddedModelFqcns FQCN per model occurrence, in rendered order */
         $embeddedModelFqcns = [];
+        /** @var list<class-string> $branchModelFqcns whole-branch model FQCNs already queued */
+        $branchModelFqcns = [];
         /** @var list<class-string> $embeddedResourceFqcns */
         $embeddedResourceFqcns = [];
         /** @var TypesImportMap $customImports */
@@ -134,6 +141,11 @@ final class ValueResult
                 array_push($embeddedEnumFqcns, ...$inner['embeddedEnumFqcns']);
             }
 
+            if (isset($inner['modelFqcn']) && ! in_array($inner['modelFqcn'], $branchModelFqcns, true)) {
+                $branchModelFqcns[] = $inner['modelFqcn'];
+                $embeddedModelFqcns[] = $inner['modelFqcn'];
+            }
+
             if (isset($inner['embeddedModelFqcns'])) {
                 array_push($embeddedModelFqcns, ...$inner['embeddedModelFqcns']);
             }
@@ -146,10 +158,6 @@ final class ValueResult
                 $embeddedResourceFqcns[] = $inner['resourceFqcn'];
             }
 
-            if (isset($inner['modelFqcn'])) {
-                $embeddedModelFqcns[] = $inner['modelFqcn'];
-            }
-
             foreach ($inner['customImports'] ?? [] as $path => $importTypes) {
                 $customImports[$path] = [...($customImports[$path] ?? []), ...$importTypes];
             }
@@ -159,7 +167,6 @@ final class ValueResult
 
         $enumResourceFqcns = array_values(array_unique($enumResourceFqcns));
         $enumDirectFqcns = array_values(array_unique($enumDirectFqcns));
-        $embeddedModelFqcns = array_values(array_unique($embeddedModelFqcns));
         $embeddedResourceFqcns = array_values(array_unique($embeddedResourceFqcns));
 
         if ($enumResourceFqcns !== []) {

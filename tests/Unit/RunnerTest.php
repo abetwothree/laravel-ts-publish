@@ -700,6 +700,7 @@ test('runner generates inertiaConfigContent when inertia is enabled with mocked 
         'sharedPageProps' => '{ appName: string }',
         'withAllErrors' => true,
         'typeImports' => [],
+        'valueImports' => [],
     ]);
 
     $mockPageAnalyzer = Mockery::mock(InertiaPageAnalyzer::class);

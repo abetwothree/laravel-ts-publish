@@ -12,6 +12,8 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
  *
  * The single home for this: InlineArrayHandler and StaticCallHandler both render one, and neither
  * could reach the other's private copy before this trait.
+ *
+ * @internal
  */
 trait BuildsInlineObjectTypes
 {

@@ -1,6 +1,6 @@
 import type { MenuSettingsType } from '@js/types/settings';
 import type { User as CrmUser } from '../../../crm/models';
-import type { StatusType } from '../../enums';
+import type { SizeType, StatusType } from '../../enums';
 import type { Post, Product, User as WorkbenchUser } from '../../models';
 
 /**
@@ -33,6 +33,7 @@ export interface ImageDelegatedResource
     flexible_id: string | number | null;
     optional_label: string | null;
     status_from_docblock: StatusType | null;
+    shirt_size: SizeType;
     uploader_from_docblock: WorkbenchUser | null;
     config_from_docblock: MenuSettingsType;
     data_from_docblock: { recordedAt?: string; title: string; weight: number | null };

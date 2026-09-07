@@ -6,7 +6,6 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DispatchesFqcnResults;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -15,12 +14,14 @@ use ReflectionNamedType;
 use ReflectionProperty;
 
 /**
- * Public entry point: analyze any class method (or constructor) into a MethodAnalysis DTO.
+ * Public entry point: `analyze()` — a class and a method in, properties and imports out.
+ *
+ * It and `AnalysisResult` are the engine's whole public surface. The other three methods here are
+ * `@internal` like the rest of `src/Ast`: each traffics in a DTO whose shape tracks inference.
  */
 final class AstEngine
 {
     use CollectsLocalVarBindings;
-    use DispatchesFqcnResults;
 
     /** @var array<string, true> class@method@modelClass keys currently on the call stack — cycle guard. */
     private array $analyzing = [];
@@ -38,6 +39,8 @@ final class AstEngine
      *
      * @param  class-string  $class
      * @param  class-string<Model>|null  $modelClass  Backing model for `$this->prop` resolution; null to skip.
+     *
+     * @internal
      */
     public function analyzeMethod(string $class, string $method = 'toArray', ?string $modelClass = null): MethodAnalysis
     {
@@ -82,11 +85,43 @@ final class AstEngine
     }
 
     /**
+     * Analyze a method and resolve its imports in one call — the whole contract a consumer needs,
+     * except for a $wrap = null collection, whose whole answer is MethodAnalysis::$flatTypeAlias.
+     *
+     * The three fields agree with each other: same-basename imports are aliased apart and the
+     * property types spell the aliases, an `EnumResource::make()` property is already wrapped as
+     * `AsEnum<typeof Const>`, and nothing is imported that no property type names.
+     *
+     * `$fromNamespacePath` is the generated file's own namespace path, so relative import paths
+     * resolve from where the file will live; pass '' for a file at the output root.
+     *
+     * Consumers that rewrite channels before importing (Inertia shared data, model metadata,
+     * broadcast events) keep calling analyzeMethod() and AnalysisImports::build() themselves; this
+     * method is the answer for everyone else.
+     *
+     * @param  class-string  $class
+     * @param  class-string<Model>|null  $modelClass
+     */
+    public function analyze(
+        string $class,
+        string $method = 'toArray',
+        ?string $modelClass = null,
+        string $fromNamespacePath = '',
+    ): AnalysisResult {
+        return new AnalysisComposer()->compose(
+            $this->analyzeMethod($class, $method, $modelClass),
+            $fromNamespacePath,
+        );
+    }
+
+    /**
      * Build the starting scope for a located method: its subject, the classes its parameters bind,
      * and the single-write local variables its body assigns.
      *
      * A route-bound `Post $post` and an injected `Request $request` are both parameter facts the
      * resource path never had, which is why they are seeded here rather than inside the analyzer.
+     *
+     * @internal
      */
     public function bindingsFor(MethodContext $context): AnalysisScope
     {
@@ -121,9 +156,13 @@ final class AstEngine
     /**
      * Analyze a class's public properties — promoted constructor params AND class-body declarations,
      * `@var` docblock first, native type second — into properties + enum/model FQCN channels.
-     * Never marks a property optional: nullability is `| null`, optionality is a #[TsCasts] concern.
+     * A property that is neither promoted nor defaulted is optional: `json_encode()` omits it when it
+     * was never assigned. Reflection cannot see a constructor assignment, so a property a constructor
+     * always assigns still renders `?:` — `DeclaredPropsEvent::$label` is exactly that case.
      *
      * @param  class-string  $class
+     *
+     * @internal
      */
     public function analyzePublicProperties(string $class): MethodAnalysis
     {
@@ -141,26 +180,8 @@ final class AstEngine
 
             $result = $resolver->resolve($reflection, $name) ?? ValueResult::unknown();
 
-            $analysis->properties[] = [
-                'name' => $name,
-                'type' => $result['type'],
-                'optional' => false,
-                'description' => '',
-            ];
-
-            $this->dispatchFqcnResults(
-                $name,
-                $result,
-                $analysis->enumResources,
-                $analysis->directEnumFqcns,
-                $analysis->nestedResources,
-                $analysis->modelFqcns,
-                $analysis->multiEnumResourceFqcns,
-            );
-
-            foreach ($result['customImports'] ?? [] as $path => $types) {
-                $analysis->customImports[$path] = [...($analysis->customImports[$path] ?? []), ...$types];
-            }
+            // json_encode() omits a typed property never assigned; a promoted or defaulted one is always present.
+            $analysis->addProperty($name, $result, optional: ! $property->hasDefaultValue() && ! $property->isPromoted());
         }
 
         return $analysis;

@@ -6,7 +6,6 @@ namespace AbeTwoThree\LaravelTsPublish\Analyzers\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesFilteredRelationTypes;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\RelationNullable;
 use Illuminate\Database\Eloquent\Model;
@@ -20,13 +19,10 @@ use ReflectionClass;
  * and provides thin wrappers that preserve the return shapes expected by callers.
  * Requires the host to expose `AnalysisScope $scope`.
  *
- * @phpstan-import-type ResourcePropertyInfoList from MethodAnalysis
- * @phpstan-import-type ClassMapType from MethodAnalysis
- * @phpstan-import-type InlineModelFqcnsMap from MethodAnalysis
  * @phpstan-import-type AttributeInfo from \AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo
  * @phpstan-import-type RelationInfo from \AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo
  *
- * @phpstan-type ModelAttributeTypeResult = array{type: string, enumFqcn: class-string|null, classFqcns: list<class-string>}
+ * @phpstan-type ModelAttributeTypeResult = array{type: string, enumFqcn: class-string|null, classFqcns: list<class-string>, customImports: array<string, list<string>>}
  * @phpstan-type ModelRelationTypeResult = array{type: string, modelFqcn: class-string<\Illuminate\Database\Eloquent\Model>|null, morphFqcns: list<class-string>}
  */
 trait ResolvesModelTypes
@@ -62,14 +58,14 @@ trait ResolvesModelTypes
     }
 
     /**
-     * Resolve the TypeScript type, optional enum FQCN, and any class FQCNs for a model attribute.
+     * Resolve the TypeScript type, optional enum FQCN, class FQCNs and #[TsType] imports for a model attribute.
      *
      * @return ModelAttributeTypeResult
      */
     protected function resolveModelAttributeTypeInfo(string $attributeName): array
     {
         if ($this->scope->modelClass === null || $this->modelAttributes === null) {
-            return ['type' => 'unknown', 'enumFqcn' => null, 'classFqcns' => []];
+            return ['type' => 'unknown', 'enumFqcn' => null, 'classFqcns' => [], 'customImports' => []];
         }
 
         $tsInfo = resolve(ModelAttributeResolver::class)->resolveAttribute($this->scope->modelClass, $attributeName);
@@ -77,7 +73,12 @@ trait ResolvesModelTypes
         /** @var class-string|null $enumFqcn */
         $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
 
-        return ['type' => $tsInfo['type'], 'enumFqcn' => $enumFqcn, 'classFqcns' => $tsInfo['classFqcns']];
+        return [
+            'type' => $tsInfo['type'],
+            'enumFqcn' => $enumFqcn,
+            'classFqcns' => $tsInfo['classFqcns'],
+            'customImports' => $tsInfo['customImports'],
+        ];
     }
 
     /**
@@ -97,14 +98,7 @@ trait ResolvesModelTypes
         $dropHidden = $excludeHidden && $resolver->excludeHiddenAttributes();
         $dbColumns = $resolver->databaseColumnNames($modelClass);
 
-        /** @var ResourcePropertyInfoList $properties */
-        $properties = [];
-        /** @var ClassMapType $directEnumFqcns */
-        $directEnumFqcns = [];
-        /** @var ClassMapType $modelFqcns */
-        $modelFqcns = [];
-        /** @var InlineModelFqcnsMap $inlineModelFqcns */
-        $inlineModelFqcns = [];
+        $analysis = new ResourceAnalysis;
 
         foreach ($this->modelAttributes as $attr) {
             if ($dropHidden && $attr['hidden']) {
@@ -123,16 +117,19 @@ trait ResolvesModelTypes
 
             $info = $this->resolveModelAttributeTypeInfo($attr['name']);
 
-            $properties[] = [
-                'name' => $attr['name'],
+            // A cast class's own type name and its #[TsType(import:)] path travel with the property, the
+            // same way ThisPropertyHandler carries them — without this the delegated shape names a token
+            // no import supplies, and only ResourceTransformer's own model lookup made it resolve.
+            $classFqcns = $info['classFqcns'];
+
+            $analysis->addProperty($attr['name'], [
                 'type' => $info['type'],
                 'optional' => false,
-                'description' => '',
-            ];
-
-            if ($info['enumFqcn'] !== null) {
-                $directEnumFqcns[$attr['name']] = $info['enumFqcn'];
-            }
+                ...($info['enumFqcn'] !== null ? ['directEnumFqcn' => $info['enumFqcn']] : []),
+                ...(count($classFqcns) > 1 ? ['embeddedModelFqcns' => $classFqcns] : []),
+                ...(count($classFqcns) === 1 ? ['modelFqcn' => $classFqcns[0]] : []),
+                ...($info['customImports'] !== [] ? ['customImports' => $info['customImports']] : []),
+            ]);
         }
 
         // Also include relations so they can be referenced by only()/except() filters
@@ -141,32 +138,19 @@ trait ResolvesModelTypes
                 $info = $this->resolveModelRelationTypeInfo($relation['name'], $this->scope);
 
                 if ($info['type'] !== 'unknown') {
-                    $properties[] = [
-                        'name' => $relation['name'],
+                    // Morph arms travel as embedded FQCNs: self-keyed in modelFqcns so every arm of a
+                    // MorphTo union is imported, and queued per property so ResourceTransformer can
+                    // alias same-basename parents apart.
+                    $analysis->addProperty($relation['name'], [
                         'type' => $info['type'],
                         'optional' => false,
-                        'description' => '',
-                    ];
-
-                    if ($info['modelFqcn'] !== null) {
-                        $modelFqcns[$relation['name']] = $info['modelFqcn'];
-                    }
-
-                    // Self-keyed so every arm of a MorphTo union is imported; the per-property list
-                    // additionally lets ResourceTransformer alias same-basename parents apart.
-                    foreach ($info['morphFqcns'] as $morphFqcn) {
-                        $modelFqcns[$morphFqcn] = $morphFqcn;
-                        $inlineModelFqcns[$relation['name']][] = $morphFqcn;
-                    }
+                        ...($info['modelFqcn'] !== null ? ['modelFqcn' => $info['modelFqcn']] : []),
+                        'embeddedModelFqcns' => $info['morphFqcns'],
+                    ]);
                 }
             }
         }
 
-        return new ResourceAnalysis(
-            properties: $properties,
-            directEnumFqcns: $directEnumFqcns,
-            modelFqcns: $modelFqcns,
-            inlineModelFqcns: $inlineModelFqcns,
-        );
+        return $analysis;
     }
 }

@@ -30,6 +30,8 @@ use PhpParser\Node\Expr;
  *      wrapIsCollection?: bool,
  *      directIsArray?: bool
  * }
+ *
+ * @internal
  */
 interface ExpressionHandler
 {
