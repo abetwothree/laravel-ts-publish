@@ -23,6 +23,9 @@ class MiddlewareWithOptionalDocblockKey
      */
     public function share(Request $request): array
     {
-        return [];
+        return [
+            'appName' => 1,
+            'filters' => ['q' => 'search'],
+        ];
     }
 }

@@ -24,4 +24,5 @@ export interface NestedResourceSpreadResource
     members_colliding_spread?: (Omit<UserResource, keyof TeamMemberResource> & TeamMemberResource)[];
     members_model_then_resource_spread?: (Omit<User, 'flag' | keyof UserResource | keyof User> & Omit<UserResource, 'flag' | keyof User> & Omit<User, 'flag'> & { flag: boolean })[];
     members_resource_then_model_spread?: (Omit<UserResource, 'flag' | keyof User | keyof UserResource> & Omit<User, 'flag' | keyof UserResource> & Omit<UserResource, 'flag'> & { flag: boolean })[];
+    owner_relation_spread: Omit<User, 'flag'> & { flag: boolean };
 }

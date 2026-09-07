@@ -1,6 +1,6 @@
 import { defineRoute, annotatePageProps } from '@tolki/ts';
 
-import type { AnonymousResourceCollection, JsonResourcePaginator, ResourcePagination } from '@tolki/types';
+import type { JsonResourcePaginator, ResourcePagination } from '@tolki/types';
 import type { PreserveKeysCollection, PreserveKeysTeamResource, TeamResource } from '../resources';
 
 export type NamedPageProps = Inertia.SharedData & { teams: PreserveKeysCollection };

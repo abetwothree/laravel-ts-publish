@@ -16,8 +16,10 @@ use Workbench\App\Http\Controllers\DocBlockInvokableController;
 use Workbench\App\Http\Controllers\DomainController;
 use Workbench\App\Http\Controllers\EnumBoundController;
 use Workbench\App\Http\Controllers\ExcludableController;
+use Workbench\App\Http\Controllers\InertiaAddressController;
 use Workbench\App\Http\Controllers\InertiaController;
 use Workbench\App\Http\Controllers\InertiaFormRequestController;
+use Workbench\App\Http\Controllers\InertiaShirtSizeController;
 use Workbench\App\Http\Controllers\InvokableController;
 use Workbench\App\Http\Controllers\InvokableInertiaController;
 use Workbench\App\Http\Controllers\InvokableModelBoundController;
@@ -628,8 +630,7 @@ test('normalizeComponent falls back to keyed path when all depths produce collid
 
 test('invokable inertia controller action receives @__invoke uses string and returns component data', function () {
     // Laravel stores invokable routes with just the FQCN (no @method). RouteTransformer
-    // normalises this to Controller@__invoke before passing to InertiaPageAnalyzer, so
-    // Ranger's analyzeRoute() can correctly explode the uses string and find __invoke.
+    // normalises this to Controller@__invoke so the analyzer can split the uses string.
     config()->set('ts-publish.inertia.enabled', true);
 
     $capturedAction = null;
@@ -662,7 +663,7 @@ test('invokable inertia controller action receives @__invoke uses string and ret
         ->and($invoke['pageType'])->toContain('Inertia.SharedData');
 });
 
-test('resolvePageTypeImports maps TOLKI_TYPES_MAP FQCNs to @tolki/types import', function () {
+test('resolvePageTypeImports maps TolkiTypes::MAP FQCNs to @tolki/types import', function () {
     config()->set('ts-publish.inertia.enabled', true);
 
     $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
@@ -964,4 +965,22 @@ test('isInvokable is true for invokable controllers and false otherwise', functi
     expect((new RouteTransformer(InvokableController::class))->data()->isInvokable)->toBeTrue()
         ->and((new RouteTransformer(InvokableModelBoundPlusController::class))->data()->isInvokable)->toBeTrue()
         ->and((new RouteTransformer(PostController::class))->data()->isInvokable)->toBeFalse();
+});
+
+test('page-prop imports use the resource type name, not the class basename', function () {
+    $transformer = new RouteTransformer(InertiaAddressController::class);
+    $transformer->data();
+    $imports = implode(' ', array_merge(...array_values($transformer->typeImports)));
+
+    expect($imports)->toContain('Address')
+        ->and($imports)->not->toContain('AddressResource');
+});
+
+test('a page prop typed by an enum imports the #[TsEnum(name:)] type, not the basename', function () {
+    $transformer = new RouteTransformer(InertiaShirtSizeController::class);
+    $imported = collect($transformer->typeImports)->flatten()->all();
+
+    // Exact, not toContain(): the page imports one type, so a wrong name shows up in the failure
+    // message instead of being masked by a short-circuited ->and() chain.
+    expect($imported)->toBe(['SizeType']);
 });

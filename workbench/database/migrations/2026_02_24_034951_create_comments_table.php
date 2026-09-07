@@ -20,6 +20,7 @@ return new class extends Migration
             $table->text('content');
             $table->foreignIdFor(Post::class);
             $table->foreignIdFor(User::class);
+            $table->foreignId('parent_id')->nullable()->constrained('comments')->nullOnDelete();
             $table->boolean('is_flagged')->default(false);
             $table->dateTimeTz('flagged_at')->nullable();
             $table->jsonb('metadata')->nullable();

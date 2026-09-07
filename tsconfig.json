@@ -8,6 +8,14 @@
         "target": "esnext",
         "types": [],
 
+        // Point the app-side aliases the generated tree imports at hand-written stubs, so the token
+        // gate can demand zero unresolved modules instead of tolerating a swap inside a count.
+        "paths": {
+            "@/types/*": ["./tests/types/stubs/app/*"],
+            "@js/types/*": ["./tests/types/stubs/js/*"],
+            "@workbench/types": ["./tests/types/stubs/workbench/index.d.ts"]
+        },
+
         // Other Outputs
         "sourceMap": true,
         "declaration": true,
@@ -32,7 +40,7 @@
         "isolatedModules": true,
         "noUncheckedSideEffectImports": true,
         "moduleDetection": "force",
-        "skipLibCheck": true,
+        "skipLibCheck": false,
     },
     "include": [
         "workbench/resources/js/types/data/default-example/**/*.ts",

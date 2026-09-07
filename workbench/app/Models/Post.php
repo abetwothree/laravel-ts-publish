@@ -87,6 +87,16 @@ class Post extends Model
         );
     }
 
+    /**
+     * Newest comment, typed by a single model FQCN and deliberately not appended.
+     *
+     * @return Attribute<Comment|null, never>
+     */
+    protected function latestComment(): Attribute
+    {
+        return Attribute::get(fn (): ?Comment => $this->comments()->latest()->first());
+    }
+
     public function author(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');

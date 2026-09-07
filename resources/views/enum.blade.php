@@ -1,4 +1,4 @@
-@use('AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish')
+@use('AbeTwoThree\LaravelTsPublish\Facades\JsEmitter')
 @if($metadataEnabled && $usesTolkiPackage)
 import { defineEnum } from '@tolki/ts';
 
@@ -12,7 +12,7 @@ import { defineEnum } from '@tolki/ts';
 
     $description .= "@see {$data->fqcn}";
 @endphp
-{!! LaravelTsPublish::formatJsDoc($description) !!}
+{!! JsEmitter::formatJsDoc($description) !!}
 @if($metadataEnabled && $usesTolkiPackage)
 export const {{ $data->enumName }} = defineEnum({
 @else
@@ -20,37 +20,37 @@ export const {{ $data->enumName }} = {
 @endif
 @foreach ($data->cases as $case)
 @if($case['description'])
-{!! LaravelTsPublish::formatJsDoc($case['description'], 4) !!}
+{!! JsEmitter::formatJsDoc($case['description'], 4) !!}
 @endif
-    {!! LaravelTsPublish::validJsObjectKey($case['name']) !!}: {!! LaravelTsPublish::toJsLiteral($case['value']) !!},
+    {!! JsEmitter::validJsObjectKey($case['name']) !!}: {!! JsEmitter::toJsLiteral($case['value']) !!},
 @endforeach
 @if($metadataEnabled)
     backed: {{ $data->backed ? 'true' : 'false' }},
 @endif
 @foreach ($data->methods as $methodName => $method)
 @if($method['description'])
-{!! LaravelTsPublish::formatJsDoc($method['description'], 4) !!}
+{!! JsEmitter::formatJsDoc($method['description'], 4) !!}
 @endif
-    {!! LaravelTsPublish::validJsObjectKey($method['name']) !!}: {
+    {!! JsEmitter::validJsObjectKey($method['name']) !!}: {
 @foreach ($method['returns'] as $caseName => $returnValue)
-        {!! LaravelTsPublish::validJsObjectKey($caseName) !!}: {!! LaravelTsPublish::toJsLiteral($returnValue) !!},
+        {!! JsEmitter::validJsObjectKey($caseName) !!}: {!! JsEmitter::toJsLiteral($returnValue) !!},
 @endforeach
     },
 @endforeach
 @foreach ($data->staticMethods as $methodName => $method)
 @if($method['description'])
-{!! LaravelTsPublish::formatJsDoc($method['description'], 4) !!}
+{!! JsEmitter::formatJsDoc($method['description'], 4) !!}
 @endif
-    {!! LaravelTsPublish::validJsObjectKey($method['name']) !!}: {!! LaravelTsPublish::toJsLiteral($method['return']) !!},
+    {!! JsEmitter::validJsObjectKey($method['name']) !!}: {!! JsEmitter::toJsLiteral($method['return']) !!},
 @endforeach
 @if($metadataEnabled && count($data->cases) > 0)
     _cases: [{!! implode(', ', $data->backed ? $data->caseKinds : $data->caseTypes) !!}],
 @endif
 @if($metadataEnabled && count($data->methods) > 0)
-    _methods: [{!! implode(', ', array_map(fn($method) => LaravelTsPublish::toJsLiteral($method['name']), $data->methods)) !!}],
+    _methods: [{!! implode(', ', array_map(fn($method) => JsEmitter::toJsLiteral($method['name']), $data->methods)) !!}],
 @endif
 @if($metadataEnabled && count($data->staticMethods) > 0)
-    _static: [{!! implode(', ', array_map(fn($method) => LaravelTsPublish::toJsLiteral($method['name']), $data->staticMethods)) !!}],
+    _static: [{!! implode(', ', array_map(fn($method) => JsEmitter::toJsLiteral($method['name']), $data->staticMethods)) !!}],
 @endif
 @if($metadataEnabled && $usesTolkiPackage)
 } as const);

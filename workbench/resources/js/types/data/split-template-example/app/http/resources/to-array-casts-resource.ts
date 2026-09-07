@@ -1,5 +1,4 @@
 import type { GeoPoint } from '@/types/geo';
-import type { RoleType } from '../../enums';
 
 /**
  * Fixture resource used to test #[TsCasts] placed on the toArray() method

@@ -1,0 +1,249 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
+
+use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Analyzers\FormRequest\FormRequestRulesAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\AuthUserResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\AppliesKnownMethodRules;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
+use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Config;
+use JsonSerializable;
+use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
+use PhpParser\Node\Scalar\String_;
+use ReflectionClass;
+use ReflectionIntersectionType;
+use ReflectionMethod;
+use ReflectionNamedType;
+use ReflectionUnionType;
+
+/**
+ * The dispatch floor: Laravel-convention method-name rules for method calls no earlier handler
+ * claimed — e.g. `$request->user()->can(…)`, whose receiver is itself a MethodCall. Registered last.
+ *
+ * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
+ */
+final class KnownMethodRuleHandler implements ExpressionHandler
+{
+    use AppliesKnownMethodRules;
+    use InspectsAstNodes;
+    use InspectsResourceSubject;
+    use ParsesTsCasts;
+    use ResolvesAuthHelperCalls;
+    use ResolvesModelRelationTypes;
+
+    /**
+     * Reflections cached per bound Request subclass, so a form request's own typed helpers are
+     * read too rather than only the base `Illuminate\Http\Request` surface.
+     *
+     * @var array<class-string<Request>, ReflectionClass<Request>>
+     */
+    private static array $requestReflections = [];
+
+    /** @return list<class-string<Expr>> */
+    public function nodeClasses(): array
+    {
+        return [MethodCall::class];
+    }
+
+    /** @return ValueExpressionResult|null */
+    public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        // Only MethodCall reaches here — every NullsafeMethodCall already returned via MethodChainHandler.
+        if ($expr instanceof MethodCall) {
+            $request = $this->requestMethodRule($expr, $scope);
+
+            if ($request !== null) {
+                return $request;
+            }
+
+            $known = $this->knownMethodRule($expr, $scope);
+
+            if ($known !== null) {
+                return $known;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Type a method call on an `Illuminate\Http\Request` receiver from the method's own signature.
+     *
+     * Gated on the receiver being a variable the scope knows holds a Request: these names
+     * (`string`, `boolean`, `user`, …) are far too common to type on the name alone.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function requestMethodRule(MethodCall $expr, AnalysisScope $scope): ?array
+    {
+        if (! $expr->name instanceof Identifier
+            || ! $expr->var instanceof Variable
+            || ! is_string($expr->var->name)
+            || ! isset($scope->requestVarNames[$expr->var->name])) {
+            return null;
+        }
+
+        $method = $expr->name->toString();
+
+        // Reflection reports `@return mixed` here; the configured auth model is the useful answer.
+        if ($method === 'user') {
+            return $this->authMethodResult($method, resolve(AuthUserResolver::class)->model());
+        }
+
+        $boundClass = $scope->requestVarNames[$expr->var->name];
+
+        // validated() lives on FormRequest and is untyped; the rules are the only source of its shape.
+        // Resolving them instantiates the form request and runs rules() — the same trade-off form
+        // requests already make, at one more call site.
+        if ($method === 'validated' && is_a($boundClass, FormRequest::class, true)) {
+            return $this->validatedKeyRule($expr, $boundClass);
+        }
+
+        // Reflecting against the bound class — not just the base Request — means a FormRequest's
+        // own typed helpers are read too. Declining on an unusable type matters: knownMethodRule()
+        // runs next. A call-site default never widens a Request type; config()'s default IS the value.
+        self::$requestReflections[$boundClass] ??= new ReflectionClass($boundClass);
+        $reflection = self::$requestReflections[$boundClass];
+
+        if (! $reflection->hasMethod($method)) {
+            return null;
+        }
+
+        $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes($reflection, $method);
+
+        // A prop is JSON, and a bare `@return array` carries no key evidence: the `unknown[]` it
+        // derives claims a list for the string-keyed `all()`. Vagueness also covers a `| unknown` arm.
+        if (TsTypeString::isVagueTsType($tsInfo['type'])
+            || ! $this->serializesAsReflected($reflection->getMethod($method))) {
+            return null;
+        }
+
+        return resolve(ReflectedTypeAcceptor::class)->accept($tsInfo);
+    }
+
+    /**
+     * Type `$request->validated('key')` from the bound FormRequest's rules() and its own `#[TsCasts]`
+     * — the only source of validated()'s shape, since the method itself is untyped. Declines a
+     * non-literal key, a `*` segment, a key the rules never mention, or one rules() marks prohibited.
+     *
+     * @param  class-string<FormRequest>  $formRequestClass
+     * @return ValueExpressionResult|null
+     */
+    private function validatedKeyRule(MethodCall $expr, string $formRequestClass): ?array
+    {
+        $args = CallArguments::for($expr, new ReflectionMethod(FormRequest::class, 'validated'));
+        $keyArg = $args->named('key');
+        $defaultPosition = $args->positionOf('default');
+
+        if ($keyArg === null
+            || ! $keyArg->value instanceof String_
+            || ($defaultPosition !== null && $args->passedCount() > $defaultPosition)) {
+            return null;
+        }
+
+        $key = $keyArg->value->value;
+
+        // data_get() expands a `*` segment into a list of every match, so the trie node under `*`
+        // types one element, not the array this call returns.
+        if (in_array('*', explode('.', $key), true)) {
+            return null;
+        }
+
+        /** @var FormRequestRulesAnalyzer $analyzer */
+        $analyzer = resolve(Config::string('ts-publish.form_requests.analyzer_class', FormRequestRulesAnalyzer::class));
+
+        $field = $analyzer->analyzeField($formRequestClass, $key);
+
+        if ($field === null || $field->isProhibited) {
+            return null;
+        }
+
+        // FormRequestTransformer matches an override to a top-level field path, so a dotted key never
+        // takes one there; honouring it here would describe the same field two different ways.
+        $casts = str_contains($key, '.')
+            ? ['overrides' => [], 'importPaths' => [], 'optionalOverrides' => []]
+            : $this->parseTsCastsFromReflection(new ReflectionClass($formRequestClass));
+
+        $type = $casts['overrides'][$key] ?? $field->tsType;
+        $importPath = $casts['importPaths'][$key] ?? null;
+        $customImports = [];
+
+        if ($importPath !== null) {
+            $importable = TsTypeString::extractImportableTypes($type);
+
+            // A type with no importable token (`Record<string, unknown>`) must not materialise an
+            // empty list under its path.
+            if ($importable !== []) {
+                $customImports[$importPath] = $importable;
+            }
+        }
+
+        // The request's own interface renders the override and then appends ` | null` from the rule,
+        // so the suffix stays outside the override here too.
+        return [
+            'type' => $type.($field->isNullable ? ' | null' : ''),
+            'optional' => $casts['optionalOverrides'][$key] ?? ! $field->isRequired,
+            ...($customImports !== [] ? ['customImports' => $customImports] : []),
+        ];
+    }
+
+    /**
+     * Whether every class the declared return names reaches a page prop as the type reflection derived.
+     *
+     * `toTsType()` reads `__toString` as `string`, but `json_encode` ignores it and emits an object:
+     * `allFiles()`'s UploadedFile and `interval()`'s CarbonInterval are not the strings it promises.
+     */
+    private function serializesAsReflected(ReflectionMethod $method): bool
+    {
+        $returnType = $method->getReturnType();
+        $docComment = $method->getDocComment();
+
+        $declared = $docComment === false ? '' : (string) LaravelTsPublish::extractReturnTypeFromDocblock($docComment);
+
+        $arms = match (true) {
+            $returnType instanceof ReflectionNamedType => [$returnType],
+            $returnType instanceof ReflectionUnionType,
+            $returnType instanceof ReflectionIntersectionType => $returnType->getTypes(),
+            default => [],
+        };
+
+        foreach ($arms as $arm) {
+            // A DNF arm is an intersection nested inside a union: flatten one level to reach its names.
+            foreach ($arm instanceof ReflectionIntersectionType ? $arm->getTypes() : [$arm] as $named) {
+                if ($named instanceof ReflectionNamedType && ! $named->isBuiltin()) {
+                    $declared .= '|'.$named->getName();
+                }
+            }
+        }
+
+        // `class_exists` mirrors step 5b's own gate, so an interface — which it never launders — is skipped.
+        // Request writes every class in its declarations fully qualified, so no use map is needed here.
+        foreach (preg_split('/[^\w\\\\]+/', $declared) ?: [] as $token) {
+            if (str_contains($token, '\\') && class_exists($token) && ! is_a($token, JsonSerializable::class, true)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+}

@@ -92,6 +92,12 @@ class User extends Authenticatable
         return $this->hasMany(Address::class);
     }
 
+    /** Singular relation onto an $appends-bearing model, for the top-level spread appends regression. */
+    public function primaryAddress(): HasOne
+    {
+        return $this->hasOne(Address::class);
+    }
+
     public function teams(): BelongsToMany
     {
         return $this->belongsToMany(Team::class)

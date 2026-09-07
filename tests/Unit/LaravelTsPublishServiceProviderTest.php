@@ -13,6 +13,29 @@ test('service provider configures package correctly', function () {
         ->and(config('ts-publish.enums'))->toBeArray();
 });
 
+test('package config disables model metadata by default and shows its class overrides as comments', function () {
+    $path = __DIR__.'/../../config/ts-publish.php';
+    $source = (string) file_get_contents($path);
+
+    /** @var array{model_metadata: array<string, mixed>} $packageConfig */
+    $packageConfig = require $path;
+
+    expect($packageConfig['model_metadata']['enabled'])->toBeFalse()
+        ->and($packageConfig['model_metadata'])->not->toHaveKey('provider_class')
+        ->and(str_contains($source, "// 'provider_class' => DefaultModelMetadataProvider::class,"))->toBeTrue(
+            "config/ts-publish.php must show 'provider_class' as a commented override, not a live key (AGENTS.md).",
+        );
+});
+
+test('package config file imports nothing', function () {
+    $source = (string) file_get_contents(__DIR__.'/../../config/ts-publish.php');
+
+    expect($source)->not->toMatch(
+        '/^use /m',
+        'config/ts-publish.php must not import classes; show swappable classes as commented lines instead (AGENTS.md).',
+    );
+});
+
 test('service provider registers the ts:publish command', function () {
     $this->artisan('ts:publish', ['--preview' => 'true'])
         ->assertSuccessful();

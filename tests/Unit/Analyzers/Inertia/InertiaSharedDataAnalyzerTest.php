@@ -3,351 +3,237 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ArrayMergeShareMiddleware;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\InheritedShareMiddleware;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithAllErrors;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithClassTsCasts;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithConflictingImports;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDocblockReturn;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDuplicateImports;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithEnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithEnumResourceErrors;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithImportPaths;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithInertiaWrappers;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMethodOverridesClass;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMethodTsCasts;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMultiEnumTernary;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithOptionalDocblockKey;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithoutShareMethod;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithTsCastsAndDocblock;
-use Laravel\Ranger\Collectors\InertiaSharedData as InertiaSharedDataCollector;
-use Laravel\Ranger\Components\InertiaSharedData as SharedDataComponent;
-use Laravel\Surveyor\Types\ArrayType;
-use Laravel\Surveyor\Types\IntType;
-use Laravel\Surveyor\Types\MixedType;
-use Laravel\Surveyor\Types\StringType;
-use Mockery\MockInterface;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithUnsharedOptionalKey;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithWrappedAndBareEnum;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\SpreadShareMiddleware;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\StarterKitArrayMergeMiddleware;
 
 /**
- * Create an analyzer with a mocked collector and an optional middleware class override.
+ * Analyze one fixture middleware without touching the filesystem discovery pass.
  *
- * When $middlewareClass is provided, the discoverMiddlewareClass() method
- * is overridden to return that class without filesystem discovery.
+ * @phpstan-import-type SharedDataResult from InertiaSharedDataAnalyzer
  *
- * @param  class-string|null  $middlewareClass
- * @return array{analyzer: InertiaSharedDataAnalyzer, collector: MockInterface&InertiaSharedDataCollector}
+ * @param  class-string  $middlewareClass
+ * @return SharedDataResult|null
  */
-function createAnalyzerWithMockedCollector(?string $middlewareClass = null): array
+function analyzeSharedDataFor(string $middlewareClass): ?array
 {
-    $collector = Mockery::mock(InertiaSharedDataCollector::class);
+    $analyzer = Mockery::mock(InertiaSharedDataAnalyzer::class)
+        ->makePartial()
+        ->shouldAllowMockingProtectedMethods();
 
-    if ($middlewareClass !== null) {
-        $analyzer = Mockery::mock(InertiaSharedDataAnalyzer::class, [$collector])
-            ->makePartial()
-            ->shouldAllowMockingProtectedMethods();
+    $analyzer->shouldReceive('discoverMiddlewareClass')->andReturn($middlewareClass);
 
-        $analyzer->shouldReceive('discoverMiddlewareClass')
-            ->andReturn($middlewareClass);
-    } else {
-        $analyzer = new InertiaSharedDataAnalyzer($collector);
-    }
-
-    return ['analyzer' => $analyzer, 'collector' => $collector];
+    return $analyzer->analyze();
 }
 
-// ─── analyze() with mocked collector ─────────────────────────────
+// ─── discovery ───────────────────────────────────────────────────
 
-test('returns null when collector returns empty collection', function () {
-    $mock = Mockery::mock(InertiaSharedDataCollector::class);
-    $mock->shouldReceive('collect')->andReturn(collect());
-
-    $analyzer = new InertiaSharedDataAnalyzer($mock);
-
-    expect($analyzer->analyze())->toBeNull();
+test('returns null when no Inertia middleware is discovered', function () {
+    expect((new InertiaSharedDataAnalyzer)->analyze())->toBeNull();
 });
 
-test('returns shared data result with props type string', function () {
-    $data = new ArrayType([
-        'appName' => new StringType,
-        'userId' => new IntType,
-    ]);
+test('discovers the Inertia middleware class from app paths', function () {
+    $analyzer = new InertiaSharedDataAnalyzer;
+    $analyzer->setAppPaths(__DIR__.'/Fixtures/Discovery');
 
-    $component = new SharedDataComponent($data, false);
+    $result = $analyzer->analyze();
 
-    $mock = Mockery::mock(InertiaSharedDataCollector::class);
-    $mock->shouldReceive('collect')->andReturn(collect([$component]));
+    // Only DiscoverableMiddleware's #[TsCasts] can produce this override — proves the
+    // fixture directory's lone Inertia\Middleware subclass was the one discovered.
+    expect($result)->not->toBeNull()
+        ->and($result['sharedPageProps'])->toBe('{ appName: DiscoveredAppName }');
+});
 
-    $analyzer = new InertiaSharedDataAnalyzer($mock);
+// ─── the starter-kit shape ───────────────────────────────────────
+
+test('types the Laravel starter-kit share() shape', function () {
+    $analyzer = new InertiaSharedDataAnalyzer;
+    $analyzer->setAppPaths(__DIR__.'/Fixtures/StarterKit');
+
     $result = $analyzer->analyze();
 
     expect($result)->not->toBeNull()
-        ->and($result['sharedPageProps'])->toBe('{ appName: string, userId: number }')
-        ->and($result['withAllErrors'])->toBeFalse()
-        ->and($result['importStatements'])->toBe([]);
+        ->and($result['sharedPageProps'])->toBe(
+            '{ name: string, auth: { user: User | null }, ziggy: { location: string }, sidebarOpen: boolean }'
+        )
+        ->and($result['typeImports'])->toBe(['./workbench/app/models' => ['User']])
+        ->and($result['withAllErrors'])->toBeFalse();
 });
 
-test('returns withAllErrors true when component has it enabled', function () {
-    $data = new ArrayType([
-        'flash' => new StringType,
-    ]);
-
-    $component = new SharedDataComponent($data, true);
-
-    $mock = Mockery::mock(InertiaSharedDataCollector::class);
-    $mock->shouldReceive('collect')->andReturn(collect([$component]));
-
-    $analyzer = new InertiaSharedDataAnalyzer($mock);
-    $result = $analyzer->analyze();
+test('array_merge(parent::share(), [...]) produces the same starter-kit shape', function () {
+    $result = analyzeSharedDataFor(StarterKitArrayMergeMiddleware::class);
 
     expect($result)->not->toBeNull()
-        ->and($result['withAllErrors'])->toBeTrue();
+        ->and($result['sharedPageProps'])->toBe(
+            '{ name: string, auth: { user: User | null }, ziggy: { location: string }, sidebarOpen: boolean }'
+        )
+        ->and($result['typeImports'])->toBe(['./workbench/app/models' => ['User']]);
 });
 
-test('returns Record<string, never> for empty shared data', function () {
-    $data = new ArrayType([]);
-    $component = new SharedDataComponent($data, false);
+test('errors is left to Inertia core rather than inferred from the framework middleware', function () {
+    // Inertia\Middleware::share() really does return an `errors` key; it is dropped on purpose so
+    // the weaker inferred type cannot displace @inertiajs/core's own Errors & ErrorBag.
+    $result = analyzeSharedDataFor(StarterKitArrayMergeMiddleware::class);
 
-    $mock = Mockery::mock(InertiaSharedDataCollector::class);
-    $mock->shouldReceive('collect')->andReturn(collect([$component]));
-
-    $analyzer = new InertiaSharedDataAnalyzer($mock);
-    $result = $analyzer->analyze();
-
-    expect($result)->not->toBeNull()
-        ->and($result['sharedPageProps'])->toBe('Record<string, never>');
+    expect($result['sharedPageProps'])->not->toContain('errors');
 });
 
-test('uses first component when multiple are collected', function () {
-    $data1 = new ArrayType(['first' => new StringType]);
-    $data2 = new ArrayType(['second' => new IntType]);
+// ─── parent chains ───────────────────────────────────────────────
 
-    $component1 = new SharedDataComponent($data1, true);
-    $component2 = new SharedDataComponent($data2, false);
+test('a parent middleware share() contributes its keys, the child overriding by name', function () {
+    $result = analyzeSharedDataFor(InheritedShareMiddleware::class);
 
-    $mock = Mockery::mock(InertiaSharedDataCollector::class);
-    $mock->shouldReceive('collect')->andReturn(collect([$component1, $component2]));
-
-    $analyzer = new InertiaSharedDataAnalyzer($mock);
-    $result = $analyzer->analyze();
-
+    // `locale` can only come from the grandparent spread; `theme` proves the child wins on collision
+    // while keeping the parent's position, exactly as PHP's own spread merge does.
     expect($result)->not->toBeNull()
-        ->and($result['sharedPageProps'])->toBe('{ first: string }')
-        ->and($result['withAllErrors'])->toBeTrue();
+        ->and($result['sharedPageProps'])->toBe('{ locale: string, theme: number, sidebarOpen: boolean }');
 });
 
-test('handles nested array shapes in shared data', function () {
-    $data = new ArrayType([
-        'auth' => new ArrayType([
-            'user' => (new StringType)->nullable(),
-        ]),
-        'flash' => new ArrayType([
-            'success' => (new StringType)->nullable(),
-        ]),
-    ]);
-
-    $component = new SharedDataComponent($data, false);
-
-    $mock = Mockery::mock(InertiaSharedDataCollector::class);
-    $mock->shouldReceive('collect')->andReturn(collect([$component]));
-
-    $analyzer = new InertiaSharedDataAnalyzer($mock);
-    $result = $analyzer->analyze();
+test('each spread body derives its own Request variable names', function () {
+    // spreadUrl proves the spread method's own `Request $req` is seen; decoy proves share()'s
+    // `$request` does not leak in and type a same-named parameter that holds a string.
+    $result = analyzeSharedDataFor(SpreadShareMiddleware::class);
 
     expect($result)->not->toBeNull()
-        ->and($result['sharedPageProps'])->toContain('auth:')
-        ->and($result['sharedPageProps'])->toContain('flash:');
+        ->and($result['sharedPageProps'])->toBe('{ spreadUrl: string, decoy: unknown, top: string }');
+});
+
+test('array_merge and the spread form agree on a parent chain', function () {
+    expect(analyzeSharedDataFor(ArrayMergeShareMiddleware::class)['sharedPageProps'])
+        ->toBe(analyzeSharedDataFor(InheritedShareMiddleware::class)['sharedPageProps']);
+});
+
+// ─── Inertia prop wrappers ───────────────────────────────────────
+
+test('Inertia prop wrappers resolve to the wrapped value, the lazy ones optional', function () {
+    $result = analyzeSharedDataFor(MiddlewareWithInertiaWrappers::class);
+
+    expect($result)->not->toBeNull()
+        ->and($result['sharedPageProps'])->toBe(
+            '{ notifications?: { count: number }, permissions?: boolean, locale: string, appName: string }'
+        );
+});
+
+// ─── withAllErrors ───────────────────────────────────────────────
+
+test('returns withAllErrors true when the middleware enables it', function () {
+    expect(analyzeSharedDataFor(MiddlewareWithAllErrors::class)['withAllErrors'])->toBeTrue();
+});
+
+test('returns withAllErrors false when the middleware leaves it at the default', function () {
+    expect(analyzeSharedDataFor(MiddlewareWithDocblockReturn::class)['withAllErrors'])->toBeFalse();
+});
+
+// ─── empty shapes ────────────────────────────────────────────────
+
+test('returns Record<string, never> when nothing is shared and nothing is overridden', function () {
+    // MiddlewareWithoutShareMethod has no share() at all, covering parseDocblockFromMiddleware()'s
+    // early return as well as the empty-props branch.
+    $result = analyzeSharedDataFor(MiddlewareWithoutShareMethod::class);
+
+    expect($result)->not->toBeNull()
+        ->and($result['sharedPageProps'])->toBe('Record<string, never>')
+        ->and($result['typeImports'])->toBe([]);
 });
 
 // ─── TsCasts overrides on middleware ─────────────────────────────
 
 test('applies class-level TsCasts overrides to shared data props', function () {
-    $data = new ArrayType([
-        'appName' => new MixedType,
-        'flash' => new MixedType,
-        'userId' => new IntType,
-    ]);
+    $result = analyzeSharedDataFor(MiddlewareWithClassTsCasts::class);
 
-    $component = new SharedDataComponent($data, false);
-
-    ['analyzer' => $analyzer, 'collector' => $collector] = createAnalyzerWithMockedCollector(MiddlewareWithClassTsCasts::class);
-    $collector->shouldReceive('collect')->andReturn(collect([$component]));
-
-    $result = $analyzer->analyze();
-
+    // appName infers as number from the fixture body, so `string` proves the attribute won.
     expect($result)->not->toBeNull()
-        ->and($result['sharedPageProps'])->toBe('{ appName: string, flash: { success: string | null, error: string | null }, userId: number }')
-        ->and($result['importStatements'])->toBe([]);
+        ->and($result['sharedPageProps'])->toBe('{ appName: string, userId: number, flash: { success: string | null, error: string | null } }')
+        ->and($result['typeImports'])->toBe([]);
+});
+
+test('TsCasts adds keys not present in the inferred props', function () {
+    // 'flash' is in TsCasts but never shared — it is appended after the inferred keys.
+    expect(analyzeSharedDataFor(MiddlewareWithClassTsCasts::class)['sharedPageProps'])
+        ->toEndWith('flash: { success: string | null, error: string | null } }');
 });
 
 test('applies method-level TsCasts overrides to shared data props', function () {
-    $data = new ArrayType([
-        'appName' => new MixedType,
-        'userId' => new MixedType,
-    ]);
-
-    $component = new SharedDataComponent($data, false);
-
-    ['analyzer' => $analyzer, 'collector' => $collector] = createAnalyzerWithMockedCollector(MiddlewareWithMethodTsCasts::class);
-    $collector->shouldReceive('collect')->andReturn(collect([$component]));
-
-    $result = $analyzer->analyze();
+    $result = analyzeSharedDataFor(MiddlewareWithMethodTsCasts::class);
 
     expect($result)->not->toBeNull()
         ->and($result['sharedPageProps'])->toBe('{ appName: string, userId: number }')
-        ->and($result['importStatements'])->toBe([]);
+        ->and($result['typeImports'])->toBe([]);
 });
 
 test('method-level TsCasts overrides class-level for same key', function () {
-    $data = new ArrayType([
-        'appName' => new MixedType,
-        'flash' => new MixedType,
-    ]);
+    $result = analyzeSharedDataFor(MiddlewareWithMethodOverridesClass::class);
 
-    $component = new SharedDataComponent($data, false);
-
-    ['analyzer' => $analyzer, 'collector' => $collector] = createAnalyzerWithMockedCollector(MiddlewareWithMethodOverridesClass::class);
-    $collector->shouldReceive('collect')->andReturn(collect([$component]));
-
-    $result = $analyzer->analyze();
-
-    // Method-level #[TsCasts(['flash' => '{ success: string | null, error: string | null }'])]
-    // should override class-level #[TsCasts(['flash' => 'FlashData'])]
     expect($result)->not->toBeNull()
         ->and($result['sharedPageProps'])->toBe('{ appName: string, flash: { success: string | null, error: string | null } }')
-        ->and($result['importStatements'])->toBe([]);
+        ->and($result['typeImports'])->toBe([]);
 });
 
-test('TsCasts with import paths generates import statements', function () {
-    $data = new ArrayType([
-        'auth' => new MixedType,
-        'flash' => new MixedType,
-        'appName' => new MixedType,
-    ]);
-
-    $component = new SharedDataComponent($data, false);
-
-    ['analyzer' => $analyzer, 'collector' => $collector] = createAnalyzerWithMockedCollector(MiddlewareWithImportPaths::class);
-    $collector->shouldReceive('collect')->andReturn(collect([$component]));
-
-    $result = $analyzer->analyze();
+test('TsCasts with import paths collects type imports', function () {
+    $result = analyzeSharedDataFor(MiddlewareWithImportPaths::class);
 
     expect($result)->not->toBeNull()
         ->and($result['sharedPageProps'])->toBe('{ auth: AuthData, flash: FlashData, appName: string }')
-        ->and($result['importStatements'])->toBe([
-            "import type { AuthData } from '@js/types/auth';",
-            "import type { FlashData } from '@js/types/flash';",
+        ->and($result['typeImports'])->toBe([
+            '@js/types/auth' => ['AuthData'],
+            '@js/types/flash' => ['FlashData'],
         ]);
 });
 
-test('TsCasts with duplicate same-path imports deduplicates import statements', function () {
-    $data = new ArrayType([
-        'auth' => new MixedType,
-        'flash' => new MixedType,
-        'appName' => new MixedType,
-    ]);
-
-    $component = new SharedDataComponent($data, false);
-
-    ['analyzer' => $analyzer, 'collector' => $collector] = createAnalyzerWithMockedCollector(MiddlewareWithDuplicateImports::class);
-    $collector->shouldReceive('collect')->andReturn(collect([$component]));
-
-    $result = $analyzer->analyze();
+test('TsCasts with duplicate same-path imports deduplicates type imports', function () {
+    $result = analyzeSharedDataFor(MiddlewareWithDuplicateImports::class);
 
     expect($result)->not->toBeNull()
         ->and($result['sharedPageProps'])->toBe('{ auth: SharedData, flash: SharedData, appName: string }')
-        ->and($result['importStatements'])->toBe([
-            "import type { SharedData } from '@js/types/shared';",
+        ->and($result['typeImports'])->toBe([
+            '@js/types/shared' => ['SharedData'],
         ]);
 });
 
 test('TsCasts with conflicting type names aliases later imports', function () {
-    $data = new ArrayType([
-        'auth' => new MixedType,
-        'flash' => new MixedType,
-        'appName' => new MixedType,
-    ]);
-
-    $component = new SharedDataComponent($data, false);
-
-    ['analyzer' => $analyzer, 'collector' => $collector] = createAnalyzerWithMockedCollector(MiddlewareWithConflictingImports::class);
-    $collector->shouldReceive('collect')->andReturn(collect([$component]));
-
-    $result = $analyzer->analyze();
+    $result = analyzeSharedDataFor(MiddlewareWithConflictingImports::class);
 
     expect($result)->not->toBeNull()
         ->and($result['sharedPageProps'])->toBe('{ auth: AuthSharedData, flash: FlashSharedData, appName: string }')
-        ->and($result['importStatements'])->toBe([
-            "import type { SharedData as AuthSharedData } from '@js/types/auth';",
-            "import type { SharedData as FlashSharedData } from '@js/types/flash';",
+        ->and($result['typeImports'])->toBe([
+            '@js/types/auth' => ['SharedData as AuthSharedData'],
+            '@js/types/flash' => ['SharedData as FlashSharedData'],
         ]);
-});
-
-test('TsCasts adds keys not present in Surveyor-analyzed props', function () {
-    $data = new ArrayType([
-        'appName' => new StringType,
-    ]);
-
-    $component = new SharedDataComponent($data, false);
-
-    ['analyzer' => $analyzer, 'collector' => $collector] = createAnalyzerWithMockedCollector(MiddlewareWithClassTsCasts::class);
-    $collector->shouldReceive('collect')->andReturn(collect([$component]));
-
-    $result = $analyzer->analyze();
-
-    // 'flash' key is in TsCasts but not in Surveyor data — should be added
-    expect($result)->not->toBeNull()
-        ->and($result['sharedPageProps'])->toBe('{ appName: string, flash: { success: string | null, error: string | null } }');
-});
-
-test('no overrides applied when middleware has no TsCasts', function () {
-    $data = new ArrayType([
-        'appName' => new MixedType,
-    ]);
-
-    $component = new SharedDataComponent($data, false);
-
-    $mock = Mockery::mock(InertiaSharedDataCollector::class);
-    $mock->shouldReceive('collect')->andReturn(collect([$component]));
-
-    $analyzer = new InertiaSharedDataAnalyzer($mock);
-    $result = $analyzer->analyze();
-
-    expect($result)->not->toBeNull()
-        ->and($result['sharedPageProps'])->toBe('{ appName: unknown }')
-        ->and($result['importStatements'])->toBe([]);
 });
 
 // ─── @return docblock fallback ───────────────────────────────────
 
 test('docblock @return array shape provides type overrides when no TsCasts present', function () {
-    $data = new ArrayType([
-        'auth' => new MixedType,
-        'flash' => new MixedType,
-        'appName' => new MixedType,
-    ]);
+    $result = analyzeSharedDataFor(MiddlewareWithDocblockReturn::class);
 
-    $component = new SharedDataComponent($data, false);
-
-    ['analyzer' => $analyzer, 'collector' => $collector] = createAnalyzerWithMockedCollector(MiddlewareWithDocblockReturn::class);
-    $collector->shouldReceive('collect')->andReturn(collect([$component]));
-
-    $result = $analyzer->analyze();
-
-    // The outer object still joins with ', ' (buildTypeStringWithOverrides(), untouched by Task 6); the
-    // nested shapes now resolve through resolveArrayShapeString(), so they join with '; ' like everywhere
-    // else that helper is used.
+    // Every key infers as number from the fixture body, so each rendered type proves the docblock won.
     expect($result)->not->toBeNull()
         ->and($result['sharedPageProps'])->toBe('{ auth: { user: { id: number; name: string; email: string } | null }, flash: { success: string | null; error: string | null }, appName: string }')
-        ->and($result['importStatements'])->toBe([]);
+        ->and($result['typeImports'])->toBe([]);
 });
 
 test('docblock optional key is emitted once, with its marker', function () {
-    // Regression: the parsed key carries the '?', so matching it against Surveyor's plain 'filters'
+    // Regression: the parsed key carries the '?', so matching it against the plain inferred 'filters'
     // used to miss — the prop was emitted from both loops, which TypeScript rejects (TS2300).
-    $data = new ArrayType([
-        'appName' => new MixedType,
-        'filters' => new MixedType,
-    ]);
-
-    $component = new SharedDataComponent($data, false);
-
-    ['analyzer' => $analyzer, 'collector' => $collector] = createAnalyzerWithMockedCollector(MiddlewareWithOptionalDocblockKey::class);
-    $collector->shouldReceive('collect')->andReturn(collect([$component]));
-
-    $result = $analyzer->analyze();
+    $result = analyzeSharedDataFor(MiddlewareWithOptionalDocblockKey::class);
 
     // appName is also declared optional in the docblock, but its #[TsCasts] entry wins outright —
     // proving normalization did not let the docblock entry survive as a second key.
@@ -355,100 +241,117 @@ test('docblock optional key is emitted once, with its marker', function () {
         ->and($result['sharedPageProps'])->toBe('{ appName: AppName, filters?: Record<string, string> }');
 });
 
-test('docblock optional key absent from Surveyor props keeps its marker', function () {
-    $data = new ArrayType(['appName' => new MixedType]);
-
-    $component = new SharedDataComponent($data, false);
-
-    ['analyzer' => $analyzer, 'collector' => $collector] = createAnalyzerWithMockedCollector(MiddlewareWithOptionalDocblockKey::class);
-    $collector->shouldReceive('collect')->andReturn(collect([$component]));
-
-    $result = $analyzer->analyze();
+test('docblock optional key absent from the shared props keeps its marker', function () {
+    $result = analyzeSharedDataFor(MiddlewareWithUnsharedOptionalKey::class);
 
     expect($result)->not->toBeNull()
         ->and($result['sharedPageProps'])->toBe('{ appName: AppName, filters?: Record<string, string> }');
 });
 
 test('TsCasts overrides win over docblock for same key', function () {
-    $data = new ArrayType([
-        'auth' => new MixedType,
-        'flash' => new MixedType,
-        'appName' => new MixedType,
-    ]);
-
-    $component = new SharedDataComponent($data, false);
-
     // MiddlewareWithTsCastsAndDocblock has TsCasts(['flash' => 'FlashMessages'])
     // and @return array{..., flash: array{success: string|null, error: string|null}, ...}
-    // TsCasts should win for 'flash', docblock should fill 'auth' and 'appName'
-    ['analyzer' => $analyzer, 'collector' => $collector] = createAnalyzerWithMockedCollector(MiddlewareWithTsCastsAndDocblock::class);
-    $collector->shouldReceive('collect')->andReturn(collect([$component]));
-
-    $result = $analyzer->analyze();
+    // TsCasts should win for 'flash', docblock should fill 'auth' and 'appName'.
+    $result = analyzeSharedDataFor(MiddlewareWithTsCastsAndDocblock::class);
 
     expect($result)->not->toBeNull()
         ->and($result['sharedPageProps'])->toBe('{ auth: { user: { id: number; name: string; email: string } | null }, flash: FlashMessages, appName: string }')
-        ->and($result['importStatements'])->toBe([]);
+        ->and($result['typeImports'])->toBe([]);
 });
 
-// ─── parseDocblockFromMiddleware edge cases ───────────────────────
+// ─── import channels ─────────────────────────────────────────────
 
-test('parseDocblockFromMiddleware returns empty array when middleware has no share method', function () {
-    // MiddlewareWithoutShareMethod exists as a class but has no share() method.
-    // This covers the `if (! $reflection->hasMethod('share')) { return []; }` branch.
-    $data = new ArrayType([
-        'appName' => new StringType,
+test('combines inferred and TsCasts type imports', function () {
+    $analyzer = Mockery::mock(InertiaSharedDataAnalyzer::class)
+        ->makePartial()
+        ->shouldAllowMockingProtectedMethods();
+
+    $analyzer->shouldReceive('discoverMiddlewareClass')->andReturn(StarterKitArrayMergeMiddleware::class);
+    $analyzer->shouldReceive('parseTsCastsFromMiddleware')->andReturn([
+        'overrides' => ['flash' => 'FlashData'],
+        'importPaths' => ['flash' => '@js/types/flash'],
     ]);
-
-    $component = new SharedDataComponent($data, false);
-
-    ['analyzer' => $analyzer, 'collector' => $collector] = createAnalyzerWithMockedCollector(MiddlewareWithoutShareMethod::class);
-    $collector->shouldReceive('collect')->andReturn(collect([$component]));
 
     $result = $analyzer->analyze();
 
-    // No docblock overrides — Surveyor infers the type directly.
-    expect($result)->not->toBeNull()
-        ->and($result['sharedPageProps'])->toBe('{ appName: string }')
-        ->and($result['importStatements'])->toBe([]);
+    expect($result['typeImports'])->toBe([
+        './workbench/app/models' => ['User'],
+        '@js/types/flash' => ['FlashData'],
+    ]);
 });
 
-// ─── buildTypeStringWithOverrides raw-value branches ─────────────
+test('an override drops the type import the displaced type kept alive', function () {
+    // StarterKitArrayMergeMiddleware infers `auth: { user: User | null }`; overriding the key must
+    // take the User import with it, or the augmentation file imports a token it never spells.
+    $analyzer = Mockery::mock(InertiaSharedDataAnalyzer::class)
+        ->makePartial()
+        ->shouldAllowMockingProtectedMethods();
 
-test('buildTypeStringWithOverrides renders plain PHP array prop values as nested object type', function () {
-    // A plain PHP array (not a Type instance) as a prop value exercises the
-    // `is_array($value)` branch → SurveyorTypeMapper::objectToTypeString().
-    $data = new ArrayType([
-        'meta' => ['page' => 1, 'total' => 100],
-    ]);
+    $analyzer->shouldReceive('discoverMiddlewareClass')->andReturn(StarterKitArrayMergeMiddleware::class);
+    $analyzer->shouldReceive('parseDocblockFromMiddleware')->andReturn(['auth' => '{ user: null }']);
 
-    $component = new SharedDataComponent($data, false);
-
-    $mock = Mockery::mock(InertiaSharedDataCollector::class);
-    $mock->shouldReceive('collect')->andReturn(collect([$component]));
-
-    $analyzer = new InertiaSharedDataAnalyzer($mock);
     $result = $analyzer->analyze();
 
-    expect($result)->not->toBeNull()
-        ->and($result['sharedPageProps'])->toBe('{ meta: { page: unknown, total: unknown } }');
+    expect($result['sharedPageProps'])->toContain('auth: { user: null }')
+        ->and($result['typeImports'])->toBe([]);
 });
 
-test('buildTypeStringWithOverrides marks non-Type non-array prop values as unknown', function () {
-    // A plain scalar (not a Type or array) as a prop value exercises the
-    // `else { $tsType = \'unknown\'; }` branch.
-    $data = new ArrayType([
-        'version' => '1.0.0',
-    ]);
+// ─── EnumResource props ──────────────────────────────────────────
 
-    $component = new SharedDataComponent($data, false);
+test('an EnumResource shared prop is rewritten to AsEnum and imports the enum const', function () {
+    $result = analyzeSharedDataFor(MiddlewareWithEnumResource::class);
 
-    $mock = Mockery::mock(InertiaSharedDataCollector::class);
-    $mock->shouldReceive('collect')->andReturn(collect([$component]));
+    // The type import is gone on purpose: no prop spells the bare RoleType/StatusType any more, so
+    // keeping it would emit an import the augmentation file never uses.
+    expect($result)->not->toBeNull()
+        ->and($result['sharedPageProps'])->toBe(
+            '{ role: AsEnum<typeof Role>, status: AsEnum<typeof Status>, nested: { role: AsEnum<typeof Role> } }'
+        )
+        ->and($result['valueImports'])->toBe(['./workbench/app/enums' => ['Role', 'Status']])
+        ->and($result['typeImports'])->toBe([]);
+});
 
-    $analyzer = new InertiaSharedDataAnalyzer($mock);
-    $result = $analyzer->analyze();
+test('an enum read both wrapped and bare keeps its type import alongside the value import', function () {
+    // The GC runs the opposite way round from the resource case: only the wrapped prop's own token is
+    // substituted, so the prop that still reads the enum bare has to keep RoleType importable.
+    $result = analyzeSharedDataFor(MiddlewareWithWrappedAndBareEnum::class);
 
     expect($result)->not->toBeNull()
-        ->and($result['sharedPageProps'])->toBe('{ version: unknown }');
+        ->and($result['sharedPageProps'])->toBe('{ role: AsEnum<typeof Role>, bareRole: RoleType }')
+        ->and($result['typeImports'])->toBe(['./workbench/app/enums' => ['RoleType']])
+        ->and($result['valueImports'])->toBe(['./workbench/app/enums' => ['Role']]);
+});
+
+test('the EnumResource rewrite is inert when the tolki package is disabled', function () {
+    config()->set('ts-publish.enums.use_tolki_package', false);
+
+    $result = analyzeSharedDataFor(MiddlewareWithEnumResource::class);
+
+    expect($result)->not->toBeNull()
+        ->and($result['sharedPageProps'])->toBe(
+            '{ role: RoleType, status: StatusType, nested: { role: RoleType } }'
+        )
+        ->and($result['typeImports'])->toBe(['./workbench/app/enums' => ['RoleType', 'StatusType']])
+        ->and($result['valueImports'])->toBe([]);
+});
+
+test('a value import whose const name the props type never spells is dropped', function () {
+    // A two-enum ternary lands in multiEnumResourceFqcns, which the AsEnum rewrite does not key off, so
+    // the props type keeps both bare names. AnalysisImports still offers Role and Status as value
+    // imports; unfiltered they would be emitted unused, which a consumer's noUnusedLocals rejects.
+    $result = analyzeSharedDataFor(MiddlewareWithMultiEnumTernary::class);
+
+    expect($result)->not->toBeNull()
+        ->and($result['sharedPageProps'])->toBe('{ either: RoleType | StatusType }')
+        ->and($result['valueImports'])->toBe([]);
+});
+
+test('an EnumResource on a framework-owned key is skipped rather than fataling', function () {
+    // collectProps() drops `errors` for @inertiajs/core, but the key keeps its enumResources entry —
+    // the rewrite has to tolerate a channel with no surviving prop to index.
+    $result = analyzeSharedDataFor(MiddlewareWithEnumResourceErrors::class);
+
+    expect($result)->not->toBeNull()
+        ->and($result['sharedPageProps'])->toBe('{ ok: string }')
+        ->and($result['valueImports'])->toBe([]);
 });

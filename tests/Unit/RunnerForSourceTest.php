@@ -3,13 +3,16 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
+use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Runners\RunnerForSource;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use Illuminate\Filesystem\Filesystem;
 
 use function Orchestra\Testbench\workbench_path;
@@ -37,8 +40,62 @@ test('generates single model from FQCN', function () {
     expect($runner->modelGenerators)->toHaveCount(1)
         ->and($runner->modelGenerators->first())->toBeInstanceOf(ModelGenerator::class)
         ->and($runner->modelGenerators->first()->transformer->modelName)->toBe('User')
+        ->and($runner->modelMetadataGenerators)->toHaveCount(1)
+        ->and($runner->modelMetadataGenerators->first())->toBeInstanceOf(ModelMetadataGenerator::class)
         ->and($runner->enumGenerators)->toHaveCount(0);
 });
+
+test('does not generate model metadata from source when its phase is disabled', function () {
+    $runner = new RunnerForSource('Workbench\App\Models\User');
+    $runner->shouldPublishModelMetadata = false;
+    $runner->run();
+
+    expect($runner->modelGenerators)->toHaveCount(1)
+        ->and($runner->modelMetadataGenerators)->toBeEmpty();
+});
+
+test('does not generate source metadata excluded by its phase filters', function () {
+    config()->set('ts-publish.model_metadata.excluded', ['Workbench\App\Models\User']);
+
+    $runner = new RunnerForSource('Workbench\App\Models\User');
+    $runner->run();
+
+    expect($runner->modelGenerators)->toHaveCount(1)
+        ->and($runner->modelMetadataGenerators)->toBeEmpty();
+});
+
+test('does not generate a source model outside its included filter', function () {
+    config()->set('ts-publish.models.included', ['Workbench\App\Models\Address']);
+    config()->set('ts-publish.model_metadata.included', []);
+
+    $runner = new RunnerForSource('Workbench\App\Models\User');
+    $runner->run();
+
+    expect($runner->modelGenerators)->toBeEmpty()
+        ->and($runner->modelMetadataGenerators)->toHaveCount(1);
+});
+
+test('throws when source model and metadata filters both exclude the model', function () {
+    config()->set('ts-publish.models.excluded', ['Workbench\\App\\Models\\User']);
+    config()->set('ts-publish.model_metadata.excluded', ['Workbench\\App\\Models\\User']);
+
+    $runner = new RunnerForSource('Workbench\\App\\Models\\User');
+    $runner->run();
+})->throws(
+    InvalidArgumentException::class,
+    'Nothing to publish for Workbench\\App\\Models\\User: models are excluded by filters; model metadata is excluded by filters',
+);
+
+test('names the disabled phase when a flag skipped it and filters excluded the other', function () {
+    config()->set('ts-publish.model_metadata.excluded', ['Workbench\\App\\Models\\User']);
+
+    $runner = new RunnerForSource('Workbench\\App\\Models\\User');
+    $runner->shouldPublishModels = false;
+    $runner->run();
+})->throws(
+    InvalidArgumentException::class,
+    'Nothing to publish for Workbench\\App\\Models\\User: models are disabled; model metadata is excluded by filters',
+);
 
 test('generates single enum from file path', function () {
     $filePath = workbench_path('app/Enums/Status.php');
@@ -100,7 +157,7 @@ test('writes single enum file to disk', function () {
     (new Filesystem)->deleteDirectory($outputDir);
 });
 
-test('writes single model file to disk', function () {
+test('writes single model and metadata files to disk', function () {
     $outputDir = sys_get_temp_dir().'/laravel-ts-publish-source-test-'.uniqid();
     config()->set('ts-publish.output_directory', $outputDir);
     config()->set('ts-publish.output_to_files', true);
@@ -109,6 +166,7 @@ test('writes single model file to disk', function () {
     $runner->run();
 
     expect(file_exists("$outputDir/workbench/app/models/user.ts"))->toBeTrue();
+    expect(file_exists("$outputDir/workbench/app/models/user_meta.ts"))->toBeTrue();
 
     // Cleanup
     (new Filesystem)->deleteDirectory($outputDir);
@@ -118,13 +176,26 @@ test('throws when enum publishing is disabled', function () {
     $runner = new RunnerForSource('Workbench\App\Enums\Status');
     $runner->shouldPublishEnums = false;
     $runner->run();
-})->throws(InvalidArgumentException::class, 'Enum publishing is disabled');
+})->throws(InvalidArgumentException::class, 'Nothing to publish for Workbench\\App\\Enums\\Status: enums are disabled');
 
-test('throws when model publishing is disabled', function () {
+test('generates model metadata when model publishing is disabled', function () {
     $runner = new RunnerForSource('Workbench\App\Models\User');
     $runner->shouldPublishModels = false;
     $runner->run();
-})->throws(InvalidArgumentException::class, 'Model publishing is disabled');
+
+    expect($runner->modelGenerators)->toBeEmpty()
+        ->and($runner->modelMetadataGenerators)->toHaveCount(1);
+});
+
+test('throws when model and model metadata publishing are disabled', function () {
+    $runner = new RunnerForSource('Workbench\App\Models\User');
+    $runner->shouldPublishModels = false;
+    $runner->shouldPublishModelMetadata = false;
+    $runner->run();
+})->throws(
+    InvalidArgumentException::class,
+    'Nothing to publish for Workbench\\App\\Models\\User: models are disabled; model metadata is disabled',
+);
 
 test('generates single resource from FQCN', function () {
     $runner = new RunnerForSource('Workbench\App\Http\Resources\PostResource');
@@ -140,7 +211,7 @@ test('throws when resource publishing is disabled', function () {
     $runner = new RunnerForSource('Workbench\App\Http\Resources\PostResource');
     $runner->shouldPublishResources = false;
     $runner->run();
-})->throws(InvalidArgumentException::class, 'Resource publishing is disabled');
+})->throws(InvalidArgumentException::class, 'resources are disabled');
 
 test('generates single route from controller FQCN', function () {
     $runner = new RunnerForSource('Workbench\App\Http\Controllers\PostController');
@@ -157,7 +228,7 @@ test('throws when route publishing is disabled', function () {
     $runner = new RunnerForSource('Workbench\App\Http\Controllers\PostController');
     $runner->shouldPublishRoutes = false;
     $runner->run();
-})->throws(InvalidArgumentException::class, 'Route publishing is disabled');
+})->throws(InvalidArgumentException::class, 'routes are disabled');
 
 test('throws for controller with TsExclude attribute', function () {
     $runner = new RunnerForSource('Workbench\App\Http\Controllers\ExcludedController');
@@ -189,7 +260,7 @@ test('throws when broadcast event publishing is disabled', function () {
     $runner = new RunnerForSource('Workbench\App\Events\OrderShipped');
     $runner->shouldPublishBroadcastEvents = false;
     $runner->run();
-})->throws(InvalidArgumentException::class, 'Broadcast event publishing is disabled');
+})->throws(InvalidArgumentException::class, 'broadcast events are disabled');
 
 test('a --source run clears a full run\'s stale registry instead of narrowing against it', function () {
     config()->set('ts-publish.resources.excluded', [UserResource::class]);
@@ -207,4 +278,23 @@ test('a --source run clears a full run\'s stale registry instead of narrowing ag
     expect($sourceRunner->resourceGenerators->first()->content)
         ->toContain('owner_via_closure?: UserResource;')
         ->not->toContain('owner_via_closure?: unknown;');
+});
+
+test('a --source run clears a leftover AnalysisWarnings entry instead of leaking it', function () {
+    AnalysisWarnings::add('Some\Stale\Controller@index', 'stale warning from an earlier run');
+
+    $runner = new RunnerForSource('Workbench\App\Enums\Status');
+    $runner->run();
+
+    expect(AnalysisWarnings::all())->toBe([]);
+});
+
+test('a --source run drops a class map memoized before it so the disk is rescanned', function () {
+    $cache = new ReflectionProperty(CoreCollector::class, 'classMaps');
+    $cache->setValue(null, ['/a/directory/scanned/by/an/earlier/run' => []]);
+
+    $runner = new RunnerForSource('Workbench\\App\\Enums\\Status');
+    $runner->run();
+
+    expect($cache->getValue())->not->toHaveKey('/a/directory/scanned/by/an/earlier/run');
 });

@@ -4,17 +4,18 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests;
 
+use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\OutputRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
+use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublishServiceProvider;
 use AbeTwoThree\LaravelTsPublish\RelationMap;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\TypeScriptMap;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Notifications\DatabaseNotification;
-use Laravel\Ranger\RangerServiceProvider;
-use Laravel\Surveyor\SurveyorServiceProvider;
 use Orchestra\Testbench\Attributes\WithEnv;
 use Orchestra\Testbench\Concerns\WithWorkbench;
 use Orchestra\Testbench\TestCase as Orchestra;
@@ -27,6 +28,7 @@ use Symfony\Component\Finder\SplFileInfo;
 use Workbench\Accounting\Enums\InvoiceStatus;
 use Workbench\Accounting\Enums\PaymentStatus;
 use Workbench\Accounting\Models\Invoice;
+use Workbench\App\Models\User as WorkbenchUser;
 use Workbench\App\Providers\WorkbenchServiceProvider;
 use Workbench\Shipping\Enums\Status;
 use Workbench\Shipping\Models\Shipment;
@@ -60,6 +62,9 @@ class TestCase extends Orchestra
         DependencyRecorder::reset();
         OutputRecorder::reset();
         PublishedResourceRegistry::reset();
+        AnalysisWarnings::reset();
+        CallArguments::reset();
+        CoreCollector::flushClassMapCache();
 
         Factory::guessFactoryNamesUsing(
             fn (string $modelName) => 'AbeTwoThree\\LaravelTsPublish\\Database\\Factories\\'.class_basename($modelName).'Factory'
@@ -70,8 +75,6 @@ class TestCase extends Orchestra
     {
         return [
             LaravelTsPublishServiceProvider::class,
-            RangerServiceProvider::class,
-            SurveyorServiceProvider::class,
             WorkbenchServiceProvider::class,
         ];
     }
@@ -101,6 +104,9 @@ class TestCase extends Orchestra
 
         config()->set([
             'database.default' => 'testing',
+            // Testbench defaults the auth provider to Illuminate's own User; point it at the
+            // workbench model so AuthUserResolver sees what a real application would.
+            'auth.providers.users.model' => WorkbenchUser::class,
             // Laravel13Connection is collected on every full model pass, so this must resolve
             // globally; only its dedicated test in ModelTransformerTest.php creates a table on it.
             'database.connections.laravel13_secondary' => [
@@ -118,6 +124,7 @@ class TestCase extends Orchestra
             'ts-publish.routes.enabled' => true,
             'ts-publish.form_requests.enabled' => true,
             'ts-publish.broadcast_channels.enabled' => true,
+            'ts-publish.model_metadata.enabled' => true,
             'ts-publish.models.additional_directories' => [
                 DatabaseNotification::class,
                 Invoice::class,

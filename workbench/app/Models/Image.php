@@ -9,9 +9,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Support\Collection;
 use Workbench\App\Casts\MenuSettings;
+use Workbench\App\Enums\ShirtSize;
 use Workbench\App\Enums\Status;
 use Workbench\App\ValueObjects\ArrayableData;
 use Workbench\App\ValueObjects\Money;
+use Workbench\App\ValueObjects\NestedOptionalKeyDto;
 use Workbench\App\ValueObjects\StringableLabel;
 use Workbench\App\ValueObjects\TreeNode;
 use Workbench\Crm\Models\User as CrmUser;
@@ -135,6 +137,16 @@ class Image extends Model
         return Attribute::make(get: fn () => null);
     }
 
+    /**
+     * Shirt size, typed by an enum whose #[TsEnum(name:)] differs from its class basename.
+     *
+     * @return Attribute<ShirtSize, never>
+     */
+    protected function shirtSize(): Attribute
+    {
+        return Attribute::get(fn (): ShirtSize => ShirtSize::Large);
+    }
+
     /** @return Attribute<User|null, never> */
     protected function uploaderFromDocblock(): Attribute
     {
@@ -149,6 +161,12 @@ class Image extends Model
 
     /** @return Attribute<ArrayableData, never> */
     protected function dataFromDocblock(): Attribute
+    {
+        return Attribute::make(get: fn () => null);
+    }
+
+    /** @return Attribute<NestedOptionalKeyDto, never> */
+    protected function nestedOptionalKeyFromDocblock(): Attribute
     {
         return Attribute::make(get: fn () => null);
     }

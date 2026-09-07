@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use Illuminate\Http\Request;
 
+/** `appName` infers as number here, so the string override can only come from the attribute. */
 #[TsCasts([
     'appName' => 'string',
     'flash' => '{ success: string | null, error: string | null }',
@@ -18,6 +19,9 @@ class MiddlewareWithClassTsCasts
      */
     public function share(Request $request): array
     {
-        return [];
+        return [
+            'appName' => 1,
+            'userId' => 2,
+        ];
     }
 }

@@ -12,7 +12,7 @@ export const create = annotatePageProps<CreatePageProps>()(defineRoute({
     component: 'InertiaFormRequest/Create',
 }));
 
-export type StorePageProps = Inertia.SharedData & { title: unknown };
+export type StorePageProps = Inertia.SharedData & { title: string };
 
 /** Store a new post validated via StorePostRequest. */
 export const store = annotateRequestPayload<StorePostRequest>()(annotatePageProps<StorePageProps>()(defineRoute({

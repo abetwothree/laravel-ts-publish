@@ -19,7 +19,9 @@ class PostMigrateRunner
      */
     public function handle(CommandFinished $event): void
     {
-        if (! self::$shouldRun) {
+        // MigrationsEnded arms the flag; only the migrate command that raised it may spend it, or a
+        // later unrelated command in the same process would trigger the republish.
+        if (! self::$shouldRun || ! str_starts_with($event->command ?? '', 'migrate')) {
             return;
         }
 

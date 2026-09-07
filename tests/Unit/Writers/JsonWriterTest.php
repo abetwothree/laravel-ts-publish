@@ -206,6 +206,7 @@ test('writes json file to disk when output_to_files is enabled', function () {
     config()->set('ts-publish.output_to_files', true);
 
     $runner = resolve(Runner::class);
+    $runner->shouldPublishModelMetadata = false;
     $runner->run();
 
     $writer = new JsonWriter($filesystem);

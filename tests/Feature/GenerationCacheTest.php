@@ -2,10 +2,15 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Route;
 use Workbench\App\Http\Controllers\CacheBustController;
+use Workbench\App\Models\User;
 
 beforeEach(function () {
     $this->out = sys_get_temp_dir().'/ts-publish-out-'.uniqid();
@@ -190,4 +195,65 @@ test('a new route on an already-cached controller busts and regenerates its outp
 
     expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
         ->and($concat($this->out))->toContain('cache-bust-probe');
+});
+
+test('model and metadata generators for one model keep separate cache entries', function () {
+    // The array backend is the only one whose stored key names are readable back out.
+    Config::set('ts-publish.cache.store', 'array');
+    Config::set('ts-publish.model_metadata.enabled', true);
+    Config::set('ts-publish.models.included', [User::class]);
+    Cache::store('array')->clear();
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0);
+
+    $model = $this->out.'/workbench/app/models/user.ts';
+    $metadata = $this->out.'/workbench/app/models/user_meta.ts';
+    $barrel = $this->out.'/workbench/app/models/index.ts';
+
+    // The generator FQCN is the whole discriminator: without it both phases share one entry.
+    expect(Cache::store('array')->get('ts-publish:__index__', []))
+        ->toContain('class:'.hash('xxh128', ModelGenerator::class.'::'.User::class))
+        ->toContain('class:'.hash('xxh128', ModelMetadataGenerator::class.'::'.User::class));
+
+    // Force the model entry down the miss path while the metadata entry hits, then check neither
+    // rehydrated the other's transformer: a shared key would leave the barrel with one export.
+    @unlink($model);
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+        ->and(file_get_contents($model))->toContain('export interface User')
+        ->and(file_get_contents($metadata))->toContain('export const UserModelMetadata')
+        ->and(file_get_contents($barrel))->toBe("export * from './user';\nexport * from './user_meta';");
+});
+
+test('a morph map registered after the first run busts only the cached metadata file', function () {
+    Config::set('ts-publish.model_metadata.enabled', true);
+    Config::set('ts-publish.models.included', [User::class]);
+
+    $model = $this->out.'/workbench/app/models/user.ts';
+    $metadata = $this->out.'/workbench/app/models/user_meta.ts';
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+        ->and(file_get_contents($metadata))->toContain("morphClass: 'Workbench\\\\App\\\\Models\\\\User'");
+
+    $modelMtime = filemtime($model);
+
+    // Long enough for the filesystem to record a different mtime.
+    usleep(1_100_000);
+
+    $previousMorphMap = Relation::morphMap();
+    Relation::morphMap(['user_alias' => User::class], false);
+
+    try {
+        // Only the morph map changes; User's file — the recorded dependency — does not, so the
+        // provider payload folded into the signature is the cache's only way to notice.
+        expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+            ->and(file_get_contents($metadata))->toContain("morphClass: 'user_alias'");
+
+        clearstatcache(true, $model);
+
+        // The interface has no such off-file input, so its own entry must still hit.
+        expect(filemtime($model))->toBe($modelMtime, 'Model interface was rewritten by a metadata-only cache bust');
+    } finally {
+        Relation::morphMap($previousMorphMap, false);
+    }
 });

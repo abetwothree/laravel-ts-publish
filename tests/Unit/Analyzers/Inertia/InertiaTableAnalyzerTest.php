@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaTableAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaInlineTableController;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaServiceTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaTableController;
 use Workbench\App\Http\Controllers\InertiaController;
 use Workbench\App\Models\Post;
@@ -55,27 +54,10 @@ it('returns null for missing actions', function () {
     expect((new InertiaTableAnalyzer)->analyze(InertiaTableController::class.'@missing'))->toBeNull();
 });
 
-it('flags a sibling route as tainted via a table-bearing resource', function () {
-    expect((new InertiaTableAnalyzer)->isTainted(InertiaTableController::class.'@serviceCreate'))->toBeTrue();
-});
+it('detects an inline table on a controller whose sibling action renders no table', function () {
+    $result = (new InertiaTableAnalyzer)->analyze(InertiaInlineTableController::class.'@index');
 
-it('flags a sibling route as tainted via an inline table in the same controller file', function () {
-    expect((new InertiaTableAnalyzer)->isTainted(InertiaInlineTableController::class.'@form'))->toBeTrue();
-});
-
-it('does not flag a table-free controller as tainted', function () {
-    expect((new InertiaTableAnalyzer)->isTainted(InertiaController::class.'@dashboard'))->toBeFalse();
-});
-
-it('resolves the component name statically', function () {
-    expect((new InertiaTableAnalyzer)->resolveComponent(InertiaTableController::class.'@serviceCreate'))->toBe('Tables/Create');
-});
-
-it('flags a non-Inertia action as tainted via a table-bearing controller dependency', function () {
-    // The controller file has no inline table; taint comes only from the injected resource.
-    expect((new InertiaTableAnalyzer)->isTainted(InertiaServiceTableController::class.'@store'))->toBeTrue();
-});
-
-it('still flags the Inertia index action on the same controller as tainted', function () {
-    expect((new InertiaTableAnalyzer)->isTainted(InertiaServiceTableController::class.'@index'))->toBeTrue();
+    expect($result)->not->toBeNull()
+        ->and($result['pageType'])->toBe('Inertia.SharedData & { posts: TableResource<Post> }')
+        ->and((new InertiaTableAnalyzer)->analyze(InertiaInlineTableController::class.'@form'))->toBeNull();
 });

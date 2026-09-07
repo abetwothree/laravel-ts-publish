@@ -7,10 +7,10 @@ export type IndexPageProps = Inertia.SharedData & { count: string, meta: PageMet
 /**
  * Demonstrates TsCasts overrides on an Inertia route action.
  *
- * The `count` prop is auto-detected as `number` by Surveyor; TsCasts
- * overrides it to `string` to verify the override mechanism works.
- * The `meta` prop is not in the Surveyor data, so TsCasts adds it
- * with an import from a custom package.
+ * The `count` prop is inferred as `number`; TsCasts overrides it to
+ * `string` to verify the override mechanism works. The `meta` prop is
+ * not among the inferred props, so TsCasts adds it with an import from
+ * a custom package.
  */
 export const index = annotatePageProps<IndexPageProps>()(defineRoute({
     name: 'ts-casts.index',

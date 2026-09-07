@@ -19,6 +19,10 @@ class MiddlewareWithDuplicateImports
      */
     public function share(Request $request): array
     {
-        return [];
+        return [
+            'auth' => 1,
+            'flash' => 2,
+            'appName' => 3,
+        ];
     }
 }

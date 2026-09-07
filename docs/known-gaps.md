@@ -1,0 +1,387 @@
+# Known gaps
+
+**What this file is for.** It carries the accepted limits that someone working from a fresh clone cannot
+discover any other way — you have the code and the test suite, but not the working notes of whoever
+deferred the work. Two kinds of entry earn a place here:
+
+- **It changes what you get out of the package.** A shape the generator types as `unknown`, `null`, or an
+  empty interface, and a user would otherwise file as a bug.
+- **It means a green signal is narrower than it looks.** A gate that passes without checking what you
+  would assume it checks.
+
+Nothing here is a regression. These are limits that were understood and accepted.
+
+**What does not belong here.** Internal refactor debt, test-suite quality notes, release chores, and
+anything whose real audience is "whoever picks that work back up" — those live with the plan that deferred
+them, under its Follow-Ups Ledger, which is where that work is actually re-read from. Filing them here
+buries them. If you decline something a reviewer raised, ask which of the two bullets above it satisfies;
+if neither, it does not go in this file.
+
+## Types the generator will not give you
+
+### `config()` on an absent key with no default types as null
+
+`config('key', $default)` types from the default expression only when the key is absent; a key set to
+`null` types as `null`, and named arguments are honoured. The one residual: `config('unset.key')` with
+no default types as `null`, which is the live value on the generating machine. All reads follow that
+machine's config, so a `.env` that differs from production changes the emitted type.
+
+### On Laravel 12, `#[Collects]` cannot be resolved — use the `$collects` property
+
+`#[Collects]` is a Laravel 13 attribute. On Laravel 12 the class does not exist, so a `ResourceCollection`
+that names its collected resource *only* that way resolves to nothing, and the generated type degrades from
+`export type PostFlatCollection = PostResource[];` to an `export interface PostFlatCollection` with no
+members. That is worse than it looks: an empty interface accepts `42` and `"str"` under `tsc --strict` —
+it rejects only `null` and `undefined` — so the type reads as specific while checking almost nothing.
+
+Laravel's own `collects()` cannot resolve the attribute on 12 either, so the package mirrors the framework
+rather than guessing. **The workaround is fully supported:** `public $collects = PostResource::class;` works
+on both versions. So does the `FooCollection` → `FooResource` naming convention, with one condition the
+explicit property does not carry: `resolveCollectedResourceClass()` gates the guess on
+`isPublishedResourceClass()`, so a `FooResource` the run excludes is not guessed into. The guard is in
+`src/Analyzers/Concerns/InspectsAstNodes.php`; see
+[docs/laravel-version-guards.md](./laravel-version-guards.md) for how the version floor was established and
+which tests are skipped below it.
+
+### A non-promoted property a constructor always assigns still renders optional
+
+This case is inherent rather than fixable: a public non-promoted `readonly` property that a
+hand-written constructor always assigns still renders `?:`, because a `readonly` property cannot carry
+a declaration default for static reflection to read — that `readonly` form is absent from the corpus.
+The same imprecision without `readonly` is present: `DeferredAssignmentDto::$assignedLater` and
+`DeclaredPropsEvent::$label` are assigned by every construction and still emit `?:`, which is what lets
+the former nest a `?:` inside a shape value for `NestedOptionalKeyDto`. It is deliberate for the former
+— that fixture needs an optional key — but it is the same heuristic, so a future fix to optionality has
+to expect those fixtures to move.
+
+### `#[TsCasts]` and the top-level spread flatten disagree by scope, in three separate ways
+
+The analyzer flattens a top-level `...SomeResource::make(...)->resolve()`, `...$model->toArray()`, or
+`...$collection->toArray()` spread into the host resource's own properties
+(`ResourceAstAnalyzer::analyzeSpreadArm()` and its three arm builders, `src/Analyzers/ResourceAstAnalyzer.php`).
+Only one of the three places `#[TsCasts]` can apply is wired up for it, and a fourth interaction —
+unrelated to spreading — makes the gap sharper than "missing", not just narrower than it looks.
+
+- **A spread resource's own `#[TsCasts]` is skipped.** `analyzeResourceSpreadArm()` calls
+  `AstEngine::analyzeMethod($resourceFqcn, 'toArray')`, which runs `ResourceAstAnalyzer::analyze()`
+  directly — never `ResourceTransformer::parseResourceTsCastsOverrides()`/`applyOverrides()`, which is
+  where a resource's own `#[TsCasts]` attribute is read and applied. A `#[TsCasts]` override declared on
+  `PostResource` itself would apply when `PostResource.ts` is generated standalone, and silently not
+  apply to the identical property once `PostResource` is spread into another resource.
+- **The spread resource's own backing model's `#[TsCasts]` is skipped for the same reason** — it is
+  `ResourceTransformer::parseModelTsCastsOverrides()` that reads it, and the resource arm never reaches
+  that transformer either.
+- **The model and collection arms *do* apply the spread target's own `#[TsCasts]`** (`analyzeModelSpreadArm()`,
+  same file) — that half is fixed, and it is why `User::options`, cast to a plain array at the DB/Eloquent
+  level, still flattens as `Record<string, unknown> | null` and not `unknown[] | null`: `Address::$appends`'s
+  `full_address` gets the same treatment.
+- **The host resource's own `#[TsCasts]` is applied by property name, blind to where the property actually
+  came from.** `ResourceTransformer::applyOverrides()` walks `$this->modelTsCastsOverrides` (from the *host*
+  resource's own backing model) and rewrites `$this->properties[$property]` by name alone — it has no
+  notion that a flattened property named `created_at` or `settings` came from a *different* model than
+  the host's own. A host resource's `#[TsCasts]` entry for `created_at` — a common override, since raw
+  `datetime` casts rarely need one but developers add them anyway for consistency — silently overwrites
+  a same-named column flattened from an entirely unrelated spread arm, in whichever direction the
+  override happens to point.
+
+None of this is a regression to `unknown`: every case above still emits a real, plausible-looking type —
+just possibly the wrong one, or missing a refinement its own standalone file carries. Fixing the first two
+cleanly means giving the resource arm a path to the spread resource's and its model's own overrides without
+re-running the whole `ResourceTransformer` pipeline recursively; fixing the fourth means `applyOverrides()`
+knowing which flattened properties are actually the host's own versus foreign, which the current
+`ResourceAnalysis::properties` list (name/type/optional/description only) does not carry. Both are scope
+changes to existing, working code paths, not one-fixture additions — worth doing as their own task.
+
+### `$request->validated('key')` declines a wildcard key, and ignores a dotted `#[TsCasts]` key
+
+A literal key on a bound `FormRequest` types from `rules()` — `$request->validated('title')` reads
+`StorePostRequest::rules()` through `FormRequestRulesAnalyzer`, the same analyzer the form request's own
+generated interface uses (`requestMethodRule()` in `src/Ast/Handlers/KnownMethodRuleHandler.php`). A dotted
+key walks that same rule trie by path (`FormRequestRulesAnalyzer::analyzeField()`), so
+`$request->validated('options.default')` types exactly as the request's own nested interface types
+`options.default`, and the request's own `#[TsCasts]` — the type, the optionality, and the import an
+`'import' => …` override declares — now reaches the property too. Three shapes still decline or diverge:
+
+- **A key containing a `*` segment declines.** `data_get()` — which `validated()` delegates to — expands
+  `*` into a list of *every* match, so the trie node under `*` describes one element, not the value the
+  call returns. `$request->validated('options.*')` would otherwise type `string | null` where the runtime
+  value is `(string | null)[]`, so `validatedKeyRule()` declines the key outright and the property types as
+  `unknown`. Typing it means array-wrapping the composed element type once per `*` hop, plus reproducing
+  `Arr::collapse()`'s flattening for a key with more than one — its own task, not a guard.
+- **A `#[TsCasts]` key with a dot in it is ignored, on the request as well as here.**
+  `FormRequestTransformer::applyTsCastsOverrides()` matches an override against a top-level field path, and
+  `analyze()` emits only top-level paths, so `#[TsCasts(['options.default' => 'number'])]` moves nothing in
+  the request's own interface. `validatedKeyRule()` therefore ignores a dotted override key too: honouring
+  it at one of the two call sites and not the other is the disagreement this whole entry is about.
+- **A dotted key beneath an *overridden ancestor* still types from the rules, and there the two really do
+  disagree.** An override on a parent replaces that whole subtree in the request's interface:
+  `#[TsCasts(['options' => 'MyOptions'])]` renders `options?: MyOptions;` and nothing else, while
+  `$request->validated('options.default')` still composes `string` from the rules the override replaced.
+  Closing it means indexing into a hand-written TypeScript type, which the handler cannot do; declining
+  every dotted key under an overridden prefix would trade the disagreement for an `unknown`.
+
+### A multi-enum ternary in Inertia shared data emits both enum names with no imports
+
+`HandleInertiaRequests::share()` rewrites an `EnumResource::make(...)` prop to `AsEnum<typeof Enum>` and
+emits the enum's value import, but only for the single-enum shape. A ternary whose two arms wrap
+*different* enums — `$cond ? EnumResource::make(Role::Admin) : EnumResource::make(Status::Draft)` —
+renders `{ either: RoleType | StatusType }` with **both** import maps empty, so the augmentation file
+spells two type names it never imports (`TS2304` twice in a consumer's build).
+
+The rewrite keys off `MethodAnalysis::$enumResources`, and a multi-enum ternary does not land there: its
+FQCNs go to `$multiEnumResourceFqcns` instead. `AnalysisImports::asEnumWrappedOnlyFqcns()` meanwhile
+treats every branch FQCN as wrapped-only and drops its type import, which is correct for the resource
+generator (whose own rewrite does replace those branch tokens) but leaves shared data holding names with
+no importable source. The value imports die on the other side: `InertiaSharedDataAnalyzer` keeps only
+import names the rendered type actually spells, and the type spells `RoleType`/`StatusType`, never
+`Role`/`Status`.
+
+No workbench fixture uses this shape, so the token gate is green over it. Use an import-aware
+`#[TsCasts]` override on that shared key, or give both arms the same enum.
+
+### A mixed enum ternary whose arms are both array-shaped ships a duplicated union member in the globals
+
+`laravel-ts-global.ts` carries two lines of the form `app.enums.StatusType[] | app.enums.StatusType[]`
+in every one of the four generated trees — `EnumCollectionResource::$wrapped_history_or_array` and the
+`status` key inside `TeamStatusAuditResource::$audit`, and a depth-aware scan of every generated `.ts`
+finds no third line of that form. Both are a mixed ternary whose wrap arm is
+`EnumResource::collection($this->status_history)` and whose direct arm reads the same list-shaped
+accessor, so the resource's own file renders two genuinely different tokens —
+`AsEnum<typeof Status>[] | StatusType[]` — and only the globals file, which has no `AsEnum` import,
+collapses them onto one qualified name.
+
+`TsTypeString::rewriteAsEnumToType()` exists to fold that adjacency before it duplicates, and its
+pair pattern requires the wrap's `>` to be followed directly by the `|` and ends in a
+`(?![A-Za-z0-9_$\[])` lookahead. An array suffix on *either* arm defeats one half or the other, so the
+both-array case never matches; the single-arm substitution then runs anyway and qualifies both arms to
+the same name. Driving the four shapes through the real patterns: `AsEnum<typeof X> | XType` folds,
+`AsEnum<typeof X> | XType[]` and `AsEnum<typeof X>[] | XType` correctly do not (their arms differ, and
+folding would delete one), and `AsEnum<typeof X>[] | XType[]` — the only wrong answer — does not either.
+
+**This is cosmetic, and it is recorded because it is shipped output rather than despite being
+cosmetic.** `A[] | A[]` denotes exactly `A[]`, so `tsc` reports nothing, the token gate's baselines
+never move, and no consumer behaves differently. What a reader of `laravel-ts-global.ts` sees is a line
+that looks like a bug. The lookahead is not the thing to delete when fixing it: it is load-bearing for
+the two genuinely-different pairs above. The fold has to learn the both-array case as its own shape.
+
+### Two same-named enums collide instead of aliasing: a companion throws, a route file ships invalid TS
+
+Model metadata imports the enums body inference resolves, so a value the AST reads as an enum contributes
+an `import type` line of its own. Those inferred imports are pruned by property name, except when the
+engine has no property name to prune by: a value two direct enums can produce merges through
+`embeddedEnumFqcns`, and `DispatchesFqcnResults::dispatchFqcnResults()` keys those by FQCN.
+`ModelMetadataAnalyzer::inferredTypeImports()` spares
+FQCN-keyed entries deliberately — pruning them by key would drop the union's own imports — which leaves
+the still-spelled filter as their only owner, and that filter matches the *rendered* TypeScript name, not
+the FQCN. Two enums with the same basename in different namespaces both render `StatusType`, so it cannot
+tell a stale channel from a live one.
+
+A provider whose `@return array{...}` retypes a key holding `App\Status | Crm\Status`, alongside a live key
+typed `Crm\Status`, therefore emits `StatusType` from both paths and trips the collision guard in
+`ModelMetadataTransformer::resolveImports()`:
+
+```
+Model metadata for model [App\Models\User] imports [StatusType] from both [../../crm/enums]
+and [../enums]; declare one of them with an import-aware #[TsCasts] whose type is a distinct name
+that module exports.
+```
+
+This is a property of the inferred-import channel, not of the union case alone: two *live* keys typed
+`App\Status` and `Crm\Status` fail the same way. Re-declaring one of the two keys as
+`['type' => 'StatusType', 'import' => '../enums']` still collides, because `TsCastsImportResolver` aliases
+only when two *cast* entries share a name and cannot see the inferred import at all — which is why the
+guard asks for a *distinct* name that the module really exports:
+`['type' => 'AppStatusType', 'import' => '@/types/app-status']`, with that module re-exporting
+`export type { StatusType as AppStatusType }`. Writing the alias inline as `'Status as AppStatusType'` is
+not a substitute — it lands verbatim in the property type and emits invalid TypeScript.
+
+On the docblock-displaced union there is no handle at all: the channel is keyed by FQCN, so moving the key
+to `#[TsCasts]` does not prune it either. Drop that key to a single enum, which restores a property name
+for the prune to match.
+
+Fixing it means carrying the FQCN alongside the rendered name through the prune so the filter can compare
+identities rather than basenames, and then routing inferred imports through the same alias resolver the
+cast imports use. That is a channel change, not a patch at the filter.
+
+**The companion is not the only file this shape reaches, and it is the one that fails loudest.**
+`RouteTransformer::resolvePageTypeImports()` builds a route file's page-prop imports by appending each
+FQCN's rendered name under the path its namespace resolves to, and there is no alias resolver and no
+collision guard on that path at all. Two page props typed by same-basename enums in different namespaces
+therefore emit two `import type { StatusType } from …` lines into one route file and ship it — `TS2300:
+Duplicate identifier 'StatusType'` in the consumer's build, with nothing thrown at publish time.
+Confirmed by driving the method with `Workbench\App\Enums\Status` and `Workbench\Crm\Enums\Status`:
+`['../../../crm/enums' => ['StatusType'], '../../enums' => ['StatusType']]`. `ResourceTransformer` is the
+only one of the three that aliases — `DealResource` imports `StatusType as WorkbenchStatusType` alongside
+`StatusType as CrmStatusType` — so the metadata guard's exception and the route file's silence are two
+different responses to one missing step. The gate that would catch it — `TS2300` over the compiled trees
+— has no corpus route to compile, so read it as saying nothing here. Give one of the two enums a distinct
+`#[TsEnum(name:)]`, as `Workbench\Shipping\Enums\Status` does.
+
+### An empty `[]` under an imported type alias still ships as `[]`
+
+Model metadata coerces an empty PHP array to `{}` wherever the property's resolved TypeScript type is
+object-like, because PHP cannot tell an empty map from an empty list and `[]` does not satisfy `Record<>`
+or an object literal. The decision is made by `TsTypeShape::isObjectLike()` reading the type *string*
+(`ModelMetadataTransformer::coerceEmptyArray()`), and
+a bare imported identifier is opaque to it — `TsTypeShape::armIsObject()` recognises only `{...}` and
+`Record<`. A `#[TsCasts]` type that names an imported alias therefore keeps `[]`,
+however object-like the alias resolves to on the TypeScript side.
+
+`EmptyValuesModelMetadataProvider`'s `opaque` key pins exactly that shape — `'opaque' =>
+['type' => 'OpaqueShape', 'import' => '@/types/opaque-shape']` holding `[]`. Point the alias at the
+map it reads as (`export type OpaqueShape = Record<string, unknown>;`) and the emitted companion fails:
+
+```
+error TS2322: Type 'readonly []' is not assignable to type 'OpaqueShape'.
+  Index signature for type 'string' is missing in type 'readonly []'.
+```
+
+Every other property in that same companion type-checks clean, so this is the residue of a bug that used to
+hit every object-like property, not a new one. **The workaround is to return `(object) []`**, which the
+provider may now do explicitly and which survives coercion untouched.
+
+No gate catches it. The writer tests that render this companion all run with `ts-publish.output_to_files`
+false (`ModelMetadataWriterTest` → *renders empty containers in the spelling their types require*), so
+the file never reaches the generated tree
+the token gate compiles — read a green gate as saying nothing about this case either way.
+
+Fixing it means resolving the alias to a type the shape inspector can read, which puts a module-resolution
+step inside a transformer that today does pure string inspection. Widening `isObjectLike()` to guess that
+any unknown identifier is object-like is not the fix: it would spell `{}` for an alias of `string[]`,
+turning a narrow wrong answer into a broad one.
+
+### A body-inferred metadata enum that enum publishing excludes imports a file that is never written
+
+`ModelMetadataAnalyzer::inferredTypeImports()` in `src/Analyzers/Metadata/ModelMetadataAnalyzer.php` turns an
+enum a provider body returns into `import type { XType } from '../enums'` through `Ast\AnalysisImports`, which
+resolves the path from the enum's namespace and does not know whether `enums.excluded`, `#[TsExclude]`, or a
+directory outside `enums.additional_directories` keeps that enum out of the published tree. The companion then
+fails `tsc` — `TS2305` where the namespace published a barrel without that member, `TS2307` where it published
+nothing at all — rather than `ts:publish` failing. Include the enum, or declare the property with an
+import-aware `#[TsCasts]`. Resources have `PublishedResourceRegistry` for this gate; enums do not.
+
+### A model class name containing an underscore can collide with a metadata companion
+
+Companion files are `Str::kebab(ModelName).'_meta'`, and `Str::kebab()` never produces an underscore, so
+`UserMeta` (`user-meta.ts`) cannot collide with `User`'s `user_meta.ts`. A class literally named `User_meta`
+kebabs to `user_meta` and would share the companion's filename: the phase that writes last wins the file, the
+barrel carries one export for two things, and `ModelMetadataTransformer::isMetadataFilename()` hands that
+export to the metadata phase. PSR-1 class names do not carry underscores, so this is accepted rather than
+guarded. The rule lives at `ModelMetadataTransformer::FILENAME_SUFFIX` in
+`src/Transformers/ModelMetadataTransformer.php`.
+
+### A `transformer_class` that overrides only one of the two filename methods orphans its companions
+
+`ModelMetadataTransformer::filenameFor()` names a companion and `isMetadataFilename()` decides whether a barrel
+export is one. Barrel ownership holds only while the two agree, and nothing enforces that they do:
+`Runner::validateModelMetadataTransformer()` checks `is_a()`, which cannot see a relationship between two static
+methods.
+
+Redefining `FILENAME_SUFFIX` keeps them in step for free, because both read it through `static::`. Overriding one
+method and inheriting the other does not. A subclass overriding only `filenameFor()` writes `meta.user.ts` while
+the inherited predicate still asks `str_ends_with($filename, '_meta')`, so on a run that skips the metadata phase
+the export is pruned from the barrel and the file is left orphaned on disk. Overriding only `isMetadataFilename()`
+fails symmetrically: the phase claims exports it never wrote.
+
+This is not a consequence of dispatching `filename()` through `static::` — a half-overridden pair was already
+broken before that, in the failed-model preservation path, where `$transformerClass::filenameFor()` produced a
+name that never matched the written file. `static::` makes both paths fail consistently rather than one of them
+succeed by accident.
+
+Override the pair together. `tests/Fixtures/PrefixedModelMetadataTransformer.php` is the worked example.
+
+### Overriding a moved helper on a `LaravelTsPublish` subclass no longer changes what the package emits
+
+`LaravelTsPublish` is not `final`, and its facade resolves whatever the container holds under that class
+name, so `bind(LaravelTsPublish::class, MySubclass::class)` has always been a way to change how the package
+types things. That still works for everything the class still owns: `toTsType()` and its cast/shape/reflection
+helpers, the docblock resolvers, `typesMap()`/`relationsMap()`/`relationStrategy()`, and the merge helpers. It
+no longer works for the 25 helpers that moved out to `Support\JsEmitter`, `Support\TsTypeString` and
+`Support\TsNaming` — see [docs/components/support-helpers.md](./components/support-helpers.md).
+
+**The call surface is intact.** Every `LaravelTsPublish::` helper still resolves with an identical signature,
+which is the compatibility promise the extraction was built around, and it is pinned name by name in
+`tests/Unit/LaravelTsPublishDelegationTest.php`. A subclass that overrides one still answers its own version
+when the *consumer* calls it. What changed is that the package stopped calling it: all 327 in-package call
+sites — 220 in `src/`, 107 in `resources/views/` — now reach the helpers through their own facades and
+container keys, so a subclass override sits off the path that generates a file.
+
+The failure is silent. A consumer who overrode `keyCase()` to add a casing the package does not ship used to
+get that casing in their generated models; now they get the stock one, with no error and no warning, while
+their override still answers their own direct calls. The same holds for all 25. Nothing in the suite detects
+it, because nothing in the suite subclasses `LaravelTsPublish`.
+
+**The workaround is the same technique aimed one level lower, and it is supported.** All three helpers *are*
+container-bound — `LaravelTsPublishServiceProvider::register()` registers each as a singleton on its concrete
+class name — so replacing the one that owns the helper does change package output:
+
+```php
+// in an application service provider's register()
+$this->app->singleton(\AbeTwoThree\LaravelTsPublish\Support\TsNaming::class, MyTsNaming::class);
+```
+
+No ordering step is needed. `Application::registerConfiguredProviders()` registers discovered package
+providers ahead of the application's own, so an app provider's binding replaces this package's, and the
+facade resolves the replacement on its first call — which happens during a publish run, long after
+registration. It is also finer-grained than the old approach: a replacement `TsNaming` changes naming and
+import paths without touching type inference.
+
+Three members left the `LaravelTsPublish` subclass surface along with the helpers, and they are not equally
+lost. `importSortGroup()` and `$resourceTypeNames` were both `protected` and are now `TsNaming`'s, so a
+subclass that overrode the sort-group predicate to reorder imports, or that reached into
+`resourceTypeName()`'s cache, has to subclass and bind `TsNaming` instead. `RESERVED_JS_IDENTIFIERS` is the
+exception: it was `private` before the move and is `private` on `JsEmitter` now, so no subclass could ever
+reach it and nothing was actually taken away.
+
+## Deliberate non-goals
+
+Absent on purpose. Do not "fix" these without raising it first.
+
+- **Non-Inertia and JSON responses are never typed.** Only render-call page props — `Inertia::render()`,
+  the `inertia()` helper and `inertia()->render()`, all three matched by `InertiaRenderLocator` — and the
+  shared-data middleware are analyzed.
+- **No `ts-publish.analyzer.handlers` config key, and no supported extension of the AST engine.** The
+  only user-facing surface of the engine is `AstEngine::analyze()` and the `AnalysisResult` it returns.
+  Every handler, concern, resolver and value object under `src/Ast/` is internal and changes without
+  notice as inference grows; nothing there is a compatibility promise, and code that extends it is on
+  its own. Every class under `src/Ast/` other than `AstEngine` and `AnalysisResult` is tagged
+  `@internal`, so a consumer running PHPStan with bleedingEdge (`internalTag`) — or any IDE — is warned
+  when reaching past them. `AstEngine`'s other three methods (`analyzeMethod()`,
+  `analyzePublicProperties()`, `bindingsFor()`) each carry the tag themselves, because each hands back
+  or takes one of those internal DTOs; tagging only the classes would have left the public class
+  trafficking in them. `tests/Architecture/InternalBoundaryTest.php` checks all three rules — the tag on
+  every `src/Ast` class, no untagged subclass of a tagged one, and no internal type in an untagged
+  public signature — so the boundary cannot drift back open silently.
+- **Form requests stay runtime.** They are resolved by instantiating and calling `rules()`, on purpose.
+- **Collector class maps are not invalidated mid-process.** `CoreCollector::classMap()` scans each directory
+  once per process, and `Runner::run()` / `RunnerForSource::run()` clear it first, so a `ts:publish` run
+  always reads the disk. Host code that calls `collect()` or `allows()` directly on either side of writing a
+  `.php` file — a custom collector, a `tinker` or test-helper loop that generates a model and re-collects —
+  gets the pre-write answer from both. Call `CoreCollector::flushClassMapCache()` between the write and the
+  second call. Stat-based invalidation would charge every run for a case no package run path reaches:
+  nothing in `src/` writes a `.php` file.
+
+## Green signals that are narrower than they look
+
+### Handler ordering is pinned pairwise, corpus-bounded
+
+Nine of the twenty-four handlers in the resource profile claim `MethodCall`
+(`src/Ast/ResourceExpressionHandlers.php`), so for a `$this->foo()` expression the dispatcher's registration
+order is what decides which one answers. Every one of the 36 unordered pairs among those nine is now run
+in both orders by `tests/Unit/Ast/MethodCallOrderingMatrixTest.php`: five pairs disagree and are held in
+the direction `handlers()` lists them (its `METHOD_CALL_PINNED` map, and the `MethodCall` row of the ordering table in
+[docs/components/ast-engine.md](./components/ast-engine.md#the-honest-ordering-inventory)); the other 31
+are proven inert against that same corpus.
+
+The residual limit is the corpus, not the method: an expression shape the matrix never constructs cannot
+be proven to disagree there, however plausible it looks by inspection — a new shape that turns an inert
+pair into a disagreeing one fails the matrix, which is the signal to pin it. Read the pin count the same
+way as before: "the divergences someone has actually gone and found", not "the only divergences that
+exist" — now bounded by the matrix's corpus rather than by nothing at all.
+
+### The publish-speed gate is one-sided
+
+`.github/scripts/publish-bench.sh` fails only when head is slower than the merge-base by more than
+`MAX_RATIO=1.25`. A large speedup becomes headroom the next branch can spend, so after merging one,
+fast-forward `main` so the fast side becomes the base. Both arms install from the same `composer.lock`,
+and the run prints each arm's framework version.

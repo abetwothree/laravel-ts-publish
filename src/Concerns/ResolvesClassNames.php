@@ -4,13 +4,9 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Concerns;
 
+use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use PhpParser\Node;
-use PhpParser\Node\Stmt\Use_;
-use PhpParser\NodeFinder;
-use PhpParser\NodeTraverser;
-use PhpParser\NodeVisitor\NameResolver;
-use PhpParser\ParserFactory;
 use ReflectionClass;
 
 /**
@@ -18,9 +14,6 @@ use ReflectionClass;
  */
 trait ResolvesClassNames
 {
-    /** @var array<class-string, array<string, class-string>> */
-    protected ?array $cachedUseStatements = [];
-
     /**
      * Resolve a type name from a docblock to its FQCN by consulting the declaring class's
      * `use` imports, its own namespace, and then falling back to the original name.
@@ -103,6 +96,8 @@ trait ResolvesClassNames
     /**
      * Parse the use statements from the resource's source file.
      *
+     * Delegates to the canonical, file-path-cached implementation on LaravelTsPublish.
+     *
      * @template T of object
      *
      * @param  ReflectionClass<T>  $declaringClass
@@ -110,35 +105,7 @@ trait ResolvesClassNames
      */
     protected function resolveUseStatements(ReflectionClass $declaringClass): array
     {
-        $className = $declaringClass->getName();
-        if (isset($this->cachedUseStatements[$className])) {
-            return $this->cachedUseStatements[$className];
-        }
-
-        $filePath = (string) $declaringClass->getFileName();
-        $source = (string) file_get_contents($filePath);
-        $stmts = $this->parseAndResolveAst($source);
-
-        $finder = new NodeFinder;
-        /** @var array<string, class-string> */
-        $map = [];
-
-        foreach ($finder->find($stmts, fn (Node $n) => $n instanceof Use_) as $useNode) {
-            if (! $useNode instanceof Use_) {
-                continue; // @codeCoverageIgnore
-            }
-
-            foreach ($useNode->uses as $use) {
-                $alias = $use->alias !== null ? $use->alias->toString() : $use->name->getLast();
-                /** @var class-string $class */
-                $class = $use->name->toString();
-                $map[$alias] = $class;
-            }
-        }
-
-        $this->cachedUseStatements[$className] = $map;
-
-        return $this->cachedUseStatements[$className];
+        return LaravelTsPublish::parseFileUseStatements($declaringClass);
     }
 
     /**
@@ -148,16 +115,6 @@ trait ResolvesClassNames
      */
     protected function parseAndResolveAst(string $source): array
     {
-        $parser = (new ParserFactory)->createForNewestSupportedVersion();
-        $stmts = $parser->parse($source);
-
-        if ($stmts === null) {
-            return []; // @codeCoverageIgnore
-        }
-
-        $traverser = new NodeTraverser;
-        $traverser->addVisitor(new NameResolver);
-
-        return $traverser->traverse($stmts);
+        return resolve(AstParser::class)->parseSource($source);
     }
 }

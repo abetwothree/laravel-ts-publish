@@ -13,9 +13,9 @@ and remove the row.
 
 | Class | Min Laravel | Guarded at | Tests skipped at | Convert when floor ≥ |
 | --- | --- | --- | --- | --- |
-| `Illuminate\Database\Eloquent\Attributes\UseResource` | `12.29.0` | `src/Transformers/ResourceTransformer.php`, `src/Analyzers/ResourceAstAnalyzer.php` | `tests/Unit/Transformers/ResourceTransformerTest.php`, `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `12.29.0` |
-| `Illuminate\Database\Eloquent\Attributes\UseResourceCollection` | `12.29.0` | `src/Analyzers/ResourceAstAnalyzer.php` | none | `12.29.0` |
-| `Illuminate\Http\Resources\Attributes\Collects` | `13.0.0` | `src/Analyzers/Concerns/InspectsAstNodes.php` | none | `13.0.0` |
+| `Illuminate\Database\Eloquent\Attributes\UseResource` | `12.29.0` | `src/Ast/ModelClassResolver.php`, `src/Ast/Handlers/ToResourceHandler.php` | `tests/Unit/Transformers/ResourceTransformerTest.php`, `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `12.29.0` |
+| `Illuminate\Database\Eloquent\Attributes\UseResourceCollection` | `12.29.0` | `src/Ast/Handlers/ToResourceHandler.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `12.29.0` |
+| `Illuminate\Http\Resources\Attributes\Collects` | `13.0.0` | `src/Analyzers/Concerns/InspectsAstNodes.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php`, `tests/Unit/Ast/Handlers/InertiaResourcePropHandlerTest.php`, `tests/Unit/Transformers/ResourceTransformerTest.php`, `tests/Unit/Writers/JsonWriterTest.php`, `tests/Unit/Writers/GlobalsWriterTest.php` — see below | `13.0.0` |
 | `Illuminate\Http\Resources\Attributes\PreserveKeys` | `13.0.0` | `src/Analyzers/Concerns/ChecksPreserveKeys.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `13.0.0` |
 | `Illuminate\Database\Eloquent\Attributes\Table` | `13.0.0` | none — test-only, see below | `tests/Unit/Transformers/ModelTransformerTest.php` | `13.0.0` |
 | `Illuminate\Database\Eloquent\Attributes\Hidden` | `13.0.0` | none — test-only, see below | `tests/Unit/Transformers/ModelTransformerTest.php` | `13.0.0` |
@@ -32,6 +32,14 @@ The `PreserveKeys` row's guard covers only the `#[PreserveKeys]` *attribute* for
 that branch of `collectionPreservesKeys()` is never conditional. If the floor rises and this row is
 converted, only the attribute branch becomes a plain `use` import — the property branch is already
 unconditional and does not change.
+
+The `Collects` row is the one whose test guards are **not** written as `class_exists()`. All six spell
+the same condition as `->skip(fn () => ! version_compare(app()->version(), '13', '>='))`, because each
+covers a `PostFlatCollection` assertion — the only fixture whose collected resource is reachable *solely*
+through the attribute, so `resolveCollectedResourceClass()` returns null on Laravel 12 and the type degrades.
+Grep for the `version_compare` form, not the FQCN, when converting this row. Sibling fixtures such as
+`PreserveKeysFlatCollection` use the `$collects` property and need no guard; `PostCollection` carries the
+attribute but also satisfies the `FooCollection` → `FooResource` naming convention, so it resolves either way.
 
 The five `Attributes\{Table,Hidden,Visible,Appends,Connection}` rows have no `src/` guard because
 nothing in this package resolves them: Laravel applies them itself in `Model::__construct()`, and
@@ -62,14 +70,13 @@ in each release — more reliable than changelog prose.
 
 The same method was applied ahead of time to five attributes in `Illuminate\Database\Eloquent\Attributes`
 (`Table`, `Hidden`, `Visible`, `Appends`, `Connection`) plus `Illuminate\Http\Resources\Attributes\PreserveKeys`:
-all six are absent at `v12.66.0` and present at `v13.0.0`, the same shape as `Collects`. Task 9 used
-this finding directly — recording `Min Laravel: 13.0.0` / `Convert when floor ≥: 13.0.0` for the
-five `Attributes\{Table,Hidden,Visible,Appends,Connection}` rows above without re-deriving it.
-Task 10 used the same finding for the `PreserveKeys` row above, once its `src/` guard was added.
-Task 11 used it again for the `RouteKey` row above: `RouteKey` lives in the same
-`Illuminate\Database\Eloquent\Attributes` directory as `Table`/`Hidden`/`Visible`/`Appends`/
-`Connection`, so the directory-level absent-at-`v12.66.0`/present-at-`v13.0.0` finding covers it
-without a fresh tag search.
+all six are absent at `v12.66.0` and present at `v13.0.0`, the same shape as `Collects`. That one
+finding backs every row derived from it, with no re-derivation: `Min Laravel: 13.0.0` /
+`Convert when floor ≥: 13.0.0` on the five `Attributes\{Table,Hidden,Visible,Appends,Connection}` rows
+above, the `PreserveKeys` row once its `src/` guard was added, and the `RouteKey` row — `RouteKey` lives
+in the same `Illuminate\Database\Eloquent\Attributes` directory as
+`Table`/`Hidden`/`Visible`/`Appends`/`Connection`, so the directory-level
+absent-at-`v12.66.0`/present-at-`v13.0.0` finding covers it without a fresh tag search.
 
 - **`ArrayKeys`**: binary-searched across all 32 published `v13.*` tags for
   `src/Illuminate/Validation/Rules/ArrayKeys.php`, after first confirming it 404s at both `v12.0.0`
@@ -109,4 +116,11 @@ catch a missing row for it.
 String FQCNs that exist for reasons other than version support, and must not be converted:
 
 - `src/RelationMap.php` — builds a relation class name dynamically from a type string.
-- `src/Analyzers/SurveyorTypeMapper.php` — maps always-present framework classes by name.
+- `src/Support/TolkiTypes.php` — maps always-present framework classes by name.
+- `src/Ast/Handlers/ModelFinderHandler.php` — its `PAGINATORS` map names
+  `Illuminate\Pagination\{LengthAwarePaginator,Paginator,CursorPaginator}` by string, the same
+  always-present-class-by-name shape as `TolkiTypes.php`.
+- `src/Ast/Handlers/InertiaWrapperHandler.php` and `src/Ast/InertiaRenderLocator.php` — name the dev-only
+  `Inertia\ResponseFactory` by string behind `class_exists()`. Not a Laravel version guard, but the same
+  rule applies for the same reason: a `require-dev` package must never be imported from `src/`, or the
+  import declares a hard dependency this package does not have.

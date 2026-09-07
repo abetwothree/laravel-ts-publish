@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Workbench\App\ValueObjects;
 
+use Carbon\Carbon;
 use Illuminate\Contracts\Support\Arrayable;
 
 /**
@@ -14,6 +15,9 @@ use Illuminate\Contracts\Support\Arrayable;
  */
 final class ArrayableData implements Arrayable
 {
+    /** Typed and never assigned: json_encode() omits it, so the TypeScript key must be optional. */
+    public Carbon $recordedAt;
+
     public function __construct(
         public string $title = '',
         public ?int $weight = null,

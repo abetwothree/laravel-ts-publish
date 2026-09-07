@@ -8,14 +8,17 @@ export { default as DocBlockInvokableController } from './doc-block-invokable-co
 export { default as DomainController } from './domain-controller';
 export { default as EnumBoundController } from './enum-bound-controller';
 export { default as ExcludableController } from './excludable-controller';
+export { default as InertiaAddressController } from './inertia-address-controller';
 export { default as InertiaController } from './inertia-controller';
 export { default as InertiaFormRequestController } from './inertia-form-request-controller';
 export { default as InertiaNamedCollectionsController } from './inertia-named-collections-controller';
 export { default as InertiaPaginationsController } from './inertia-paginations-controller';
 export { default as InertiaPreserveKeysController } from './inertia-preserve-keys-controller';
 export { default as InertiaResourceSharedTemplate } from './inertia-resource-shared-template';
+export { default as InertiaShirtSizeController } from './inertia-shirt-size-controller';
 export { default as InertiaSingleResourceController } from './inertia-single-resource-controller';
 export { default as InertiaTsCastsController } from './inertia-ts-casts-controller';
+export { default as InertiaUserShapesController } from './inertia-user-shapes-controller';
 export { default as InvokableController } from './invokable-controller';
 export { default as InvokableInertiaController } from './invokable-inertia-controller';
 export { default as InvokableModelBoundController } from './invokable-model-bound-controller';

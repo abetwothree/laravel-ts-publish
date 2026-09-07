@@ -4,44 +4,66 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Inertia;
 
-use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ChecksPreserveKeys;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
-use AbeTwoThree\LaravelTsPublish\Analyzers\SurveyorTypeMapper;
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\CallMatcher;
+use AbeTwoThree\LaravelTsPublish\Ast\ControllerExpressionHandlers;
+use AbeTwoThree\LaravelTsPublish\Ast\InertiaRenderLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\MethodContext;
+use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
-use Illuminate\Http\Resources\Json\ResourceCollection as LaravelResourceCollection;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use Illuminate\Support\Str;
-use Laravel\Ranger\Collectors\InertiaComponents;
-use Laravel\Ranger\Collectors\Response as ResponseCollector;
-use Laravel\Ranger\Components\InertiaResponse;
-use Laravel\Surveyor\Types\Contracts\Type;
+use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\ArrayItem;
+use PhpParser\Node\Expr\FuncCall;
+use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\Ternary;
+use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
+use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\String_;
 use ReflectionClass;
 use Throwable;
 
 /**
- * Detects Inertia::render() calls in controller actions and extracts component names and page-prop types.
+ * Detects Inertia::render() calls in controller actions and types their page props with the AST engine.
  *
- * @phpstan-type PageTypeResult = array{type: string, fqcns: list<class-string>, externalImports: array<string, list<string>>}
+ * @phpstan-import-type TsCastsUnpacked from TsCastsReader
+ *
  * @phpstan-type InertiaPageData = array{
  *     component: string|list<string>,
  *     pageType: string|list<string>|null,
  *     classFqcns: list<class-string>,
  *     externalImports?: array<string, list<string>>,
  * }
+ * @phpstan-type PagePropEntry = array{type: string, optional: bool}
+ * @phpstan-type PagePropMap = array<string, PagePropEntry>
  */
 class InertiaPageAnalyzer
 {
-    use ChecksPreserveKeys;
     use InspectsAstNodes;
 
+    /** Depth cap for `$props = $other;` chains, which the flat bindings cannot prove acyclic. */
+    private const MAX_VARIABLE_HOPS = 8;
+
+    /** TypeScript's own generic heads, which a rendered type spells without naming any PHP class. */
+    private const UTILITY_TYPES = ['Record', 'Omit', 'Pick', 'Partial', 'Required', 'Readonly', 'Exclude', 'Extract', 'NonNullable'];
+
     /**
-     * Create the analyzer with Ranger's response collector and an optional table analyzer override.
+     * Create the analyzer with an optional table analyzer override.
      */
-    public function __construct(
-        protected ResponseCollector $responseCollector,
-        protected ?InertiaTableAnalyzer $tableAnalyzer = null,
-    ) {}
+    public function __construct(protected ?InertiaTableAnalyzer $tableAnalyzer = null) {}
 
     /**
      * Analyze a controller action and extract Inertia page data.
@@ -51,103 +73,55 @@ class InertiaPageAnalyzer
      */
     public function analyze(array $action): ?array
     {
-        $tableAnalyzer = $this->resolveTableAnalyzer();
-        $tableData = $tableAnalyzer->analyze($action['uses']);
+        $tableData = $this->resolveTableAnalyzer()->analyze($action['uses']);
 
         if ($tableData !== null) {
             return $tableData;
         }
 
-        // Autoloading an Inertia UI Table subclass through Ranger triggers a PhpSpreadsheet fatal, so any
-        // action in a file that references one must be typed statically instead of via parseResponse().
-        if (str_contains($action['uses'], '@') && $tableAnalyzer->isTainted($action['uses'])) {
-            $component = $tableAnalyzer->resolveComponent($action['uses']);
-
-            if ($component !== null) {
-                [$controllerClass, $methodName] = explode('@', $action['uses'], 2);
-                $parsed = $this->parseTsCastsFromMethod($controllerClass, $methodName);
-                $castOverrides = $parsed['overrides'];
-                $castImportMap = $parsed['importMap'];
-
-                if ($castOverrides !== []) {
-                    $typeBody = $this->buildTypeStringWithOverrides([], $castOverrides);
-
-                    return [
-                        'component' => $component,
-                        'pageType' => 'Inertia.SharedData & '.$typeBody,
-                        'classFqcns' => [],
-                        'externalImports' => $castImportMap,
-                    ];
-                }
-
-                return [
-                    'component' => $component,
-                    'pageType' => null,
-                    'classFqcns' => [],
-                    'externalImports' => [],
-                ];
-            }
-
+        if (! str_contains($action['uses'], '@')) {
             return null;
         }
 
-        // InertiaComponents keeps a static registry that accumulates props across calls rendering the
-        // same component name; reset it so this method sees only its own props.
-        $componentsProperty = (new ReflectionClass(InertiaComponents::class))->getProperty('components');
-        $componentsProperty->setValue(null, []);
+        [$controllerClass, $methodName] = explode('@', $action['uses'], 2);
 
-        // Ranger's parseResponse() returns component name strings, despite its docblock claiming InertiaResponse.
-        /** @var list<string|mixed> $responses */
-        $responses = $this->responseCollector->parseResponse($action);
-
-        /** @var list<string> $componentNames */
-        $componentNames = array_values(array_filter(
-            $responses,
-            fn (mixed $response): bool => is_string($response),
-        ));
-
-        if ($componentNames === []) {
+        if (! class_exists($controllerClass)) {
             return null;
         }
 
-        /** @var list<InertiaResponse> $inertiaResponses */
-        $inertiaResponses = array_map(
-            fn (string $name): InertiaResponse => InertiaComponents::getComponent($name),
-            $componentNames,
-        );
+        DependencyRecorder::recordClass($controllerClass);
 
-        $methodOverrides = [];
-        $methodImportMap = [];
-        $paginatorModelMap = [];
-        $paginatedResourceProps = [];
-        $paginatedStaticCollectionProps = [];
+        try {
+            return $this->analyzeAction($controllerClass, $methodName);
+        } catch (Throwable $e) {
+            // Analysis reflects application classes, so one unloadable dependency must degrade a
+            // single action to "no page type" rather than abort the whole ts:publish run.
+            AnalysisWarnings::add($action['uses'], $e::class.': '.$e->getMessage());
 
-        if (str_contains($action['uses'], '@')) {
-            [$controllerClass, $methodName] = explode('@', $action['uses'], 2);
-            $parsed = $this->parseTsCastsFromMethod($controllerClass, $methodName);
-            $methodOverrides = $parsed['overrides'];
-            $methodImportMap = $parsed['importMap'];
-
-            try {
-                /** @var class-string $typedClass */
-                $typedClass = $controllerClass;
-                $analyzer = new ControllerPaginatorAnalyzer($typedClass, $methodName);
-                $paginatorModelMap = $analyzer->analyze();
-                $paginatedResourceProps = $analyzer->analyzePaginatedResourceProps();
-                $paginatedStaticCollectionProps = $analyzer->analyzePaginatedStaticCollectionProps();
-            } catch (Throwable) {
-                // Non-fatal: fall back gracefully to <unknown>
-            }
+            return null;
         }
+    }
 
-        return $this->buildPageData(
-            $inertiaResponses,
-            $methodOverrides,
-            $methodImportMap,
-            $paginatorModelMap,
-            $paginatedResourceProps,
-            $paginatedStaticCollectionProps
-        );
+    /**
+     * Convert a component name to a fully-qualified Inertia namespace path.
+     *
+     * Inertia resolves pages through Laravel's FileViewFinder, which splits the `::` namespace hint and
+     * rewrites every `.` to `/`, so dots separate directories exactly as slashes do. Empty segments are
+     * dropped because `Settings//General` names the same page file as `Settings/General`.
+     *
+     * @example "Dashboard" → "Inertia.Pages.Dashboard"
+     * @example "Settings/General" → "Inertia.Pages.Settings.General"
+     * @example "billing.payment-methods" → "Inertia.Pages.Billing.PaymentMethods"
+     */
+    public function componentToFqn(string $component): string
+    {
+        $normalized = str_replace(['::', '.'], '/', $component);
+
+        return collect(explode('/', $normalized))
+            ->filter(fn (string $part): bool => $part !== '')
+            ->map(fn (string $part): string => Str::studly($part))
+            ->prepend('Inertia.Pages')
+            ->implode('.');
     }
 
     /**
@@ -159,55 +133,233 @@ class InertiaPageAnalyzer
     }
 
     /**
-     * Build the page data from one or more InertiaResponse instances.
+     * Type every render call in one controller action.
      *
-     * With multiple (conditional) components, `pageType` is a list parallel to `component` so the
-     * transformer can key one against the other.
+     * @param  class-string  $controllerClass
+     * @return InertiaPageData|null
+     */
+    protected function analyzeAction(string $controllerClass, string $methodName): ?array
+    {
+        $context = resolve(MethodLocator::class)->locateOwn($controllerClass, $methodName);
+
+        if ($context === null) {
+            return null;
+        }
+
+        $scope = resolve(AstEngine::class)->bindingsFor($context);
+        $analyzer = $this->analyzerFor($context, $scope);
+        $branches = $this->collectComponentBranches($context, $analyzer, $scope);
+
+        if ($branches === []) {
+            return null;
+        }
+
+        $parsed = $this->parseTsCastsFromMethod($controllerClass, $methodName);
+
+        return $this->buildPageData($branches, $analyzer, $parsed['overrides'], $parsed['importMap']);
+    }
+
+    /**
+     * Build the expression engine for one action: the controller handler profile over a scope
+     * already carrying the action's route-bound models, request parameters, and local variables.
+     */
+    protected function analyzerFor(MethodContext $context, AnalysisScope $scope): ResourceAstAnalyzer
+    {
+        return new ResourceAstAnalyzer(
+            $context->reflection,
+            null,
+            $context->method->name->toString(),
+            ControllerExpressionHandlers::make(),
+            $scope,
+        );
+    }
+
+    /**
+     * Group the action's render calls by component name, one analysis per call.
      *
-     * @param  list<InertiaResponse>  $responses
-     * @param  array<string, string>  $methodOverrides  TsCasts overrides from the controller method.
-     * @param  array<string, list<string>>  $methodImportMap  Import map from TsCasts `import` keys.
-     * @param  array<string, class-string>  $paginatorModelMap  Prop key => model FQCN from controller AST analysis.
-     * @param  array<string, class-string<object>>  $paginatedResourceProps  Prop key => resource FQCN for paginated resource constructor props.
-     * @param  array<string, class-string>  $paginatedStaticCollectionProps  Prop key => resource FQCN for paginated Resource::collection() props.
+     * @return array<string, list<ResourceAnalysis>>
+     */
+    protected function collectComponentBranches(
+        MethodContext $context,
+        ResourceAstAnalyzer $analyzer,
+        AnalysisScope $scope,
+    ): array {
+        $branches = [];
+
+        foreach (resolve(InertiaRenderLocator::class)->findRenderCalls($context->method) as $call) {
+            if (! $call->nameArg instanceof String_) {
+                continue;
+            }
+
+            $branches[$call->nameArg->value][] = $this->analyzeProps($call->propsArg, $context, $analyzer, $scope);
+        }
+
+        return $branches;
+    }
+
+    /**
+     * Analyze one render call's props argument into properties and FQCN channels.
+     */
+    protected function analyzeProps(
+        ?Expr $propsArg,
+        MethodContext $context,
+        ResourceAstAnalyzer $analyzer,
+        AnalysisScope $scope,
+    ): ResourceAnalysis {
+        if ($propsArg === null) {
+            return new ResourceAnalysis;
+        }
+
+        $literals = $this->propsArrayLiterals($propsArg, $scope);
+
+        if ($literals === []) {
+            return $this->analyzeDelegatedProps($propsArg, $context);
+        }
+
+        // This literal IS the render call's whole props shape, not an array embedded inside it —
+        // top-level, so a top-level resolve()/toArray() spread inside it flattens instead of vanishing.
+        $analyses = array_map(
+            fn (Array_ $array): ResourceAnalysis => $analyzer->returnArrayAnalysis($array, topLevel: true),
+            $literals,
+        );
+
+        return count($analyses) === 1 ? $analyses[0] : $analyzer->mergeReturnBranches($analyses);
+    }
+
+    /**
+     * Re-express a props argument as the array literal(s) it evaluates to: an inline array, a
+     * `compact()` call, an `array_merge()` of literals, a bound variable, or a ternary of those.
+     *
+     * @return list<Array_>
+     */
+    protected function propsArrayLiterals(Expr $propsArg, AnalysisScope $scope, int $hops = 0): array
+    {
+        if ($propsArg instanceof Array_) {
+            return [$propsArg];
+        }
+
+        if ($hops >= self::MAX_VARIABLE_HOPS) {
+            return []; // @codeCoverageIgnore
+        }
+
+        if ($propsArg instanceof Ternary) {
+            $arms = array_values(array_filter([$propsArg->if, $propsArg->else]));
+
+            return array_merge(...array_map(
+                fn (Expr $arm): array => $this->propsArrayLiterals($arm, $scope, $hops + 1),
+                $arms,
+            ));
+        }
+
+        if ($propsArg instanceof Variable && is_string($propsArg->name)) {
+            $bound = $scope->localVarBindings[$propsArg->name] ?? null;
+
+            return $bound === null ? [] : $this->propsArrayLiterals($bound, $scope, $hops + 1);
+        }
+
+        if ($propsArg instanceof FuncCall) {
+            $compacted = $this->compactedArrayLiteral($propsArg);
+
+            if ($compacted !== null) {
+                return [$compacted];
+            }
+
+            $merged = $this->mergedArrayLiteral($propsArg, null, $scope->localVarBindings);
+
+            if ($merged !== null) {
+                return [$merged];
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * Re-express `compact('post', 'comments')` as `['post' => $post, 'comments' => $comments]`, so the
+     * variable bindings type the props exactly as the equivalent literal would.
+     */
+    protected function compactedArrayLiteral(FuncCall $call): ?Array_
+    {
+        if (! $call->name instanceof Name || $call->name->getLast() !== 'compact' || $call->isFirstClassCallable()) {
+            return null;
+        }
+
+        $items = [];
+
+        foreach ($call->getArgs() as $arg) {
+            if (! $arg->value instanceof String_) {
+                return null;
+            }
+
+            $items[] = new ArrayItem(new Variable($arg->value->value), new String_($arg->value->value));
+        }
+
+        return $items === [] ? null : new Array_($items);
+    }
+
+    /**
+     * Type a props argument delegated to a collaborator — `Inertia::render('X', $this->props->build())` —
+     * by analyzing that method on the property's own class.
+     */
+    protected function analyzeDelegatedProps(Expr $propsArg, MethodContext $context): ResourceAnalysis
+    {
+        if (! $propsArg instanceof MethodCall || ! $propsArg->name instanceof Identifier) {
+            return new ResourceAnalysis;
+        }
+
+        $propertyClass = resolve(CallMatcher::class)->resolveThisPropertyClass($context->reflection, $propsArg->var);
+
+        if ($propertyClass === null) {
+            return new ResourceAnalysis;
+        }
+
+        $analysis = new ResourceAnalysis;
+        $analysis->merge(resolve(AstEngine::class)->analyzeMethod($propertyClass, $propsArg->name->toString()));
+
+        return $analysis;
+    }
+
+    /**
+     * Build the InertiaPageData contract from the per-component branch analyses.
+     *
+     * @param  array<string, list<ResourceAnalysis>>  $branches
+     * @param  array<string, string>  $overrides  TsCasts overrides from the controller method
+     * @param  array<string, list<string>>  $importMap  Import map from TsCasts `import` keys
      * @return InertiaPageData
      */
     protected function buildPageData(
-        array $responses,
-        array $methodOverrides = [],
-        array $methodImportMap = [],
-        array $paginatorModelMap = [],
-        array $paginatedResourceProps = [],
-        array $paginatedStaticCollectionProps = [],
+        array $branches,
+        ResourceAstAnalyzer $analyzer,
+        array $overrides,
+        array $importMap,
     ): array {
-        $components = array_map(
-            fn (InertiaResponse $r): string => $r->component,
-            $responses,
-        );
-
-        $pageTypeResults = array_map(
-            fn (InertiaResponse $response): array => $this->buildPageType(
-                $response,
-                $methodOverrides,
-                $paginatorModelMap,
-                $paginatedResourceProps,
-                $paginatedStaticCollectionProps,
-            ),
-            $responses,
-        );
-
-        $pageTypes = array_map(fn (array $r): string => $r['type'], $pageTypeResults);
-
+        $components = array_keys($branches);
+        /** @var list<string> $pageTypes */
+        $pageTypes = [];
         /** @var list<class-string> $allFqcns */
-        $allFqcns = array_values(array_unique(array_merge(
-            ...array_map(fn (array $r): array => $r['fqcns'], $pageTypeResults),
-        )));
-
+        $allFqcns = [];
         /** @var array<string, list<string>> $externalImports */
-        $externalImports = $methodImportMap;
+        $externalImports = $importMap;
 
-        foreach ($pageTypeResults as $result) {
-            foreach ($result['externalImports'] as $path => $types) {
+        foreach ($branches as $analyses) {
+            $analysis = count($analyses) === 1 ? $analyses[0] : $analyzer->mergeReturnBranches($analyses);
+
+            $this->forgetOverriddenChannels($analysis, $overrides);
+
+            $props = $this->collectProps($analysis);
+            $pageType = $props === [] && $overrides === []
+                ? 'Inertia.SharedData'
+                : 'Inertia.SharedData & '.$this->buildTypeStringWithOverrides($props, $overrides);
+
+            $pageTypes[] = $pageType;
+
+            foreach ($this->usedFqcns($analysis, $pageType) as $fqcn) {
+                if (! in_array($fqcn, $allFqcns, true)) {
+                    $allFqcns[] = $fqcn;
+                }
+            }
+
+            foreach ($analysis->customImports as $path => $types) {
                 foreach ($types as $type) {
                     if (! in_array($type, $externalImports[$path] ?? [], true)) {
                         $externalImports[$path][] = $type;
@@ -216,120 +368,48 @@ class InertiaPageAnalyzer
             }
         }
 
-        $component = count($components) === 1 ? $components[0] : $components;
-
-        $pageType = count($pageTypes) === 1 ? $pageTypes[0] : $pageTypes;
-
         return [
-            'component' => $component,
-            'pageType' => $pageType,
+            'component' => count($components) === 1 ? $components[0] : $components,
+            'pageType' => count($pageTypes) === 1 ? $pageTypes[0] : $pageTypes,
             'classFqcns' => $allFqcns,
             'externalImports' => $externalImports,
         ];
     }
 
     /**
-     * Build the TypeScript type string for a single InertiaResponse.
+     * Flatten the analysis into a prop map, later declarations of a key winning.
      *
-     * @param  array<string, string>  $methodOverrides  TsCasts overrides from the controller method.
-     * @param  array<string, class-string>  $paginatorModelMap  Prop key => model FQCN from controller AST analysis.
-     * @param  array<string, class-string<object>>  $paginatedResourceProps  Prop key => resource FQCN for paginated resource constructor props.
-     * @param  array<string, class-string>  $paginatedStaticCollectionProps  Prop key => resource FQCN for paginated Resource::collection() props.
-     * @return PageTypeResult
+     * @return PagePropMap
      */
-    protected function buildPageType(
-        InertiaResponse $response,
-        array $methodOverrides = [],
-        array $paginatorModelMap = [],
-        array $paginatedResourceProps = [],
-        array $paginatedStaticCollectionProps = [],
-    ): array {
-        $sharedData = 'Inertia.SharedData';
+    protected function collectProps(MethodAnalysis $analysis): array
+    {
+        $props = [];
 
-        if (count($response->data) === 0 && $methodOverrides === [] && $paginatorModelMap === [] && $paginatedResourceProps === [] && $paginatedStaticCollectionProps === []) {
-            return ['type' => $sharedData, 'fqcns' => [], 'externalImports' => []];
+        foreach ($analysis->properties as $property) {
+            $props[$property['name']] = ['type' => $property['type'], 'optional' => $property['optional']];
         }
 
-        $propsType = $methodOverrides !== []
-            ? $this->buildTypeStringWithOverrides($response->data, $methodOverrides)
-            : SurveyorTypeMapper::objectToTypeString($response->data);
-
-        $fqcns = SurveyorTypeMapper::extractDotNotationFqcns($propsType);
-
-        [$propsType, $fqcns, $externalImports] = $this->rewriteResourceCollections($propsType, $fqcns);
-
-        [$propsType, $fqcns] = $this->rewritePaginatorGenerics($propsType, $fqcns, $paginatorModelMap);
-
-        $propsType = SurveyorTypeMapper::rewriteDotNotationToBasenames($propsType, $fqcns);
-
-        [$propsType, $fqcns, $resourcePaginationImports] = $this->rewritePaginatedResourceProps(
-            $propsType,
-            $fqcns,
-            $paginatedResourceProps,
-        );
-
-        foreach ($resourcePaginationImports as $path => $types) {
-            foreach ($types as $type) {
-                if (! in_array($type, $externalImports[$path] ?? [], true)) {
-                    $externalImports[$path][] = $type;
-                }
-            }
-        }
-
-        [$propsType, $fqcns, $staticCollectionImports] = $this->rewritePaginatedStaticCollectionProps(
-            $propsType,
-            $fqcns,
-            $paginatedStaticCollectionProps,
-        );
-
-        foreach ($staticCollectionImports as $path => $types) {
-            foreach ($types as $type) {
-                if (! in_array($type, $externalImports[$path] ?? [], true)) {
-                    $externalImports[$path][] = $type;
-                }
-            }
-        }
-
-        return [
-            'type' => $sharedData.' & '.$propsType,
-            'fqcns' => $fqcns,
-            'externalImports' => $externalImports,
-        ];
+        return $props;
     }
 
     /**
      * Build a TypeScript object type string, applying TsCasts overrides for specific props.
      *
-     * @param  array<string|int, mixed>  $props  Surveyor-analyzed properties.
-     * @param  array<string, string>  $overrides  TsCasts type overrides keyed by property name.
+     * @param  PagePropMap  $props
+     * @param  array<string, string>  $overrides
      */
-    private function buildTypeStringWithOverrides(array $props, array $overrides): string
+    protected function buildTypeStringWithOverrides(array $props, array $overrides): string
     {
         if ($props === [] && $overrides === []) {
-            return 'Record<string, never>';
+            return 'Record<string, never>'; // @codeCoverageIgnore
         }
 
         $parts = [];
 
-        foreach ($props as $key => $value) {
-            if (isset($overrides[$key])) {
-                $parts[] = $key.': '.$overrides[$key];
-
-                continue;
-            }
-
-            $optional = $value instanceof Type && $value->isOptional();
-            $separator = $optional ? '?: ' : ': ';
-
-            if (is_array($value)) {
-                $tsType = SurveyorTypeMapper::objectToTypeString($value);
-            } elseif ($value instanceof Type) {
-                $tsType = SurveyorTypeMapper::convert($value);
-            } else {
-                $tsType = 'unknown';
-            }
-
-            $parts[] = $key.$separator.$tsType;
+        foreach ($props as $key => $prop) {
+            $parts[] = isset($overrides[$key])
+                ? $key.': '.$overrides[$key]
+                : $key.($prop['optional'] ? '?: ' : ': ').$prop['type'];
         }
 
         foreach ($overrides as $key => $type) {
@@ -342,207 +422,62 @@ class InertiaPageAnalyzer
     }
 
     /**
-     * Rewrite paginator generic types in the type string based on the paginator-model map.
+     * Drop every FQCN channel belonging to an overridden key, so its import dies with its type.
      *
-     * @param  list<class-string>  $fqcns
-     * @param  array<string, class-string>  $paginatorModelMap  prop key => model FQCN
-     * @return array{string, list<class-string>}
+     * @param  array<string, string>  $overrides
      */
-    protected function rewritePaginatorGenerics(
-        string $typeString,
-        array $fqcns,
-        array $paginatorModelMap,
-    ): array {
-        if ($paginatorModelMap === []) {
-            return [$typeString, $fqcns];
+    protected function forgetOverriddenChannels(MethodAnalysis $analysis, array $overrides): void
+    {
+        foreach (array_keys($overrides) as $name) {
+            unset(
+                $analysis->enumResources[$name], $analysis->nestedResources[$name], $analysis->directEnumFqcns[$name],
+                $analysis->modelFqcns[$name], $analysis->multiEnumResourceFqcns[$name], $analysis->inlineEnumFqcns[$name],
+                $analysis->inlineModelFqcns[$name], $analysis->inlineEnumResourceFqcns[$name],
+            );
         }
-
-        foreach ($paginatorModelMap as $propKey => $modelFqcn) {
-            $modelDotNotation = str_replace('\\', '.', $modelFqcn);
-
-            foreach (array_keys(SurveyorTypeMapper::TOLKI_TYPES_MAP) as $paginatorFqcn) {
-                $paginatorDot = str_replace('\\', '.', $paginatorFqcn);
-                $pattern = '/'.preg_quote($propKey, '/').':\s+'.preg_quote($paginatorDot, '/').'<[^>]*>/';
-                $replacement = $propKey.': '.$paginatorDot.'<'.$modelDotNotation.'>';
-
-                if (preg_match($pattern, $typeString)) {
-                    $typeString = (string) preg_replace($pattern, $replacement, $typeString);
-
-                    if (! in_array($modelFqcn, $fqcns, true)) {
-                        $fqcns[] = $modelFqcn;
-                    }
-
-                    break;
-                }
-            }
-        }
-
-        return [$typeString, $fqcns];
     }
 
     /**
-     * Rewrite prop types for resource objects constructed with a paginated variable.
+     * Every FQCN the rendered type actually spells, so no import outlives the type that needed it.
      *
-     * A collection with `$wrap === null` emits no `data` key, so it becomes `JsonResourcePaginator<Singular>`
-     * rather than the wrapped resource intersected with `ResourcePagination`.
-     *
-     * @param  list<class-string>  $fqcns
-     * @param  array<string, class-string<object>>  $paginatedResourceProps  Prop key => resource FQCN.
-     * @return array{string, list<class-string>, array<string, list<string>>}
+     * @return list<class-string>
      */
-    protected function rewritePaginatedResourceProps(string $typeString, array $fqcns, array $paginatedResourceProps): array
+    protected function usedFqcns(MethodAnalysis $analysis, string $pageType): array
     {
-        /** @var array<string, list<string>> $externalImports */
-        $externalImports = [];
+        /** @var list<class-string> $candidates */
+        $candidates = [
+            ...array_values($analysis->enumResources),
+            ...array_values($analysis->directEnumFqcns),
+            ...array_values($analysis->nestedResources),
+            ...array_values($analysis->modelFqcns),
+        ];
 
-        if ($paginatedResourceProps === []) {
-            return [$typeString, $fqcns, $externalImports];
-        }
-
-        foreach ($paginatedResourceProps as $propKey => $resourceFqcn) {
-            if (! class_exists($resourceFqcn)) {
-                continue;
-            }
-
-            DependencyRecorder::recordClass($resourceFqcn);
-
-            $reflection = new ReflectionClass($resourceFqcn);
-            $baseName = LaravelTsPublish::resourceTypeName($resourceFqcn);
-            $defaults = $reflection->getDefaultProperties();
-
-            $isFlat = is_a($resourceFqcn, LaravelResourceCollection::class, true)
-                && array_key_exists('wrap', $defaults)
-                && $defaults['wrap'] === null;
-
-            $pattern = '/\b'.preg_quote($propKey, '/').':\s+'.preg_quote($baseName, '/').'(?![A-Za-z0-9_])/';
-
-            if ($isFlat) {
-                $singularFqcn = $this->resolveSingularResourceFqcn($resourceFqcn);
-                $singularBase = $singularFqcn !== null ? LaravelTsPublish::resourceTypeName($singularFqcn) : 'unknown';
-
-                $paginator = $this->collectionPreservesKeys($reflection)
-                    ? "Omit<JsonResourcePaginator<{$singularBase}>, 'data'> & { data: Record<string, {$singularBase}> }"
-                    : 'JsonResourcePaginator<'.$singularBase.'>';
-
-                $typeString = (string) preg_replace($pattern, $propKey.': '.$paginator, $typeString);
-
-                $externalImports['@tolki/types'][] = 'JsonResourcePaginator';
-
-                /** @var list<class-string> $fqcns */
-                $fqcns = array_values(array_filter($fqcns, fn (string $f) => $f !== $resourceFqcn));
-
-                if ($singularFqcn !== null && ! in_array($singularFqcn, $fqcns, true)) {
-                    $fqcns[] = $singularFqcn;
-                }
-            } else {
-                $typeString = (string) preg_replace($pattern, $propKey.': '.$baseName.' & ResourcePagination', $typeString);
-
-                $externalImports['@tolki/types'][] = 'ResourcePagination';
+        foreach ([$analysis->multiEnumResourceFqcns, $analysis->inlineEnumFqcns, $analysis->inlineModelFqcns, $analysis->inlineEnumResourceFqcns] as $map) {
+            foreach ($map as $fqcns) {
+                $candidates = [...$candidates, ...$fqcns];
             }
         }
 
-        /** @var list<class-string> $fqcns */
-        return [$typeString, $fqcns, $externalImports];
+        return array_values(array_filter(
+            array_unique($candidates),
+            // An enum's TypeScript name follows #[TsEnum(name:)], which neither of the first two spell.
+            fn (string $fqcn): bool => $this->typeSpells($pageType, class_basename($fqcn))
+                || $this->typeSpells($pageType, TsNaming::resourceTypeName($fqcn))
+                || (enum_exists($fqcn) && $this->typeSpells($pageType, LaravelTsPublish::toTsType($fqcn)['type'])),
+        ));
     }
 
     /**
-     * Rewrite paginated `Resource::collection()` props to `JsonResourcePaginator<ResourceName>`.
+     * Whether a rendered type string names an identifier as a type of its own.
      *
-     * @param  list<class-string>  $fqcns
-     * @param  array<string, class-string>  $paginatedStaticCollectionProps  Prop key => resource FQCN.
-     * @return array{string, list<class-string>, array<string, list<string>>}
+     * The utility-type heads are erased first: a class whose basename is `Record` must not be kept
+     * alive by the `Record<string, X>` a preserve-keys collection renders, which names no class.
      */
-    protected function rewritePaginatedStaticCollectionProps(string $typeString, array $fqcns, array $paginatedStaticCollectionProps): array
+    protected function typeSpells(string $pageType, string $name): bool
     {
-        /** @var array<string, list<string>> $externalImports */
-        $externalImports = [];
+        $structural = (string) preg_replace('/\b(?:'.implode('|', self::UTILITY_TYPES).')</', '<', $pageType);
 
-        if ($paginatedStaticCollectionProps === []) {
-            return [$typeString, $fqcns, $externalImports];
-        }
-
-        foreach ($paginatedStaticCollectionProps as $propKey => $resourceFqcn) {
-            if (! class_exists($resourceFqcn)) {
-                continue;
-            }
-
-            DependencyRecorder::recordClass($resourceFqcn);
-
-            $reflection = new ReflectionClass($resourceFqcn);
-            $baseName = LaravelTsPublish::resourceTypeName($resourceFqcn);
-
-            // Resource::collection() inherits the singular resource's preserve-keys state.
-            $paginator = $this->collectionPreservesKeys($reflection)
-                ? "Omit<JsonResourcePaginator<{$baseName}>, 'data'> & { data: Record<string, {$baseName}> }"
-                : 'JsonResourcePaginator<'.$baseName.'>';
-
-            // Paginated props are absent from paginatorModelMap, so rewritePaginatorGenerics left `<unknown>`.
-            $pattern = '/\b'.preg_quote($propKey, '/').': AnonymousResourceCollection<unknown>/';
-            $typeString = (string) preg_replace($pattern, $propKey.': '.$paginator, $typeString);
-
-            $externalImports['@tolki/types'][] = 'JsonResourcePaginator';
-
-            if (! in_array($resourceFqcn, $fqcns, true)) {
-                $fqcns[] = $resourceFqcn;
-            }
-        }
-
-        /** @var list<class-string> $fqcns */
-        return [$typeString, $fqcns, $externalImports];
-    }
-
-    /**
-     * Detect ResourceCollection subclasses in the FQCNs list and rewrite them in the type string.
-     *
-     * @param  list<class-string>  $fqcns
-     * @return array{string, list<class-string>, array<string, list<string>>}
-     */
-    protected function rewriteResourceCollections(string $typeString, array $fqcns): array
-    {
-        /** @var array<string, list<string>> $externalImports */
-        $externalImports = [];
-
-        /** @var list<class-string> $rewrittenFqcns */
-        $rewrittenFqcns = [];
-
-        foreach ($fqcns as $fqcn) {
-            // FQCNs in TOLKI_TYPES_MAP are handled upstream by resolvePageTypeImports()
-            if (isset(SurveyorTypeMapper::TOLKI_TYPES_MAP[$fqcn])) {
-                $rewrittenFqcns[] = $fqcn;
-
-                continue;
-            }
-
-            if (! class_exists($fqcn) || ! is_a($fqcn, LaravelResourceCollection::class, true)) {
-                DependencyRecorder::recordClass($fqcn);
-                $rewrittenFqcns[] = $fqcn;
-
-                continue;
-            }
-
-            DependencyRecorder::recordClass($fqcn);
-
-            $dotNotation = str_replace('\\', '.', $fqcn);
-            $collectionName = LaravelTsPublish::resourceTypeName($fqcn);
-            $typeString = str_replace($dotNotation, $collectionName, $typeString);
-
-            $rewrittenFqcns[] = $fqcn;
-        }
-
-        return [$typeString, $rewrittenFqcns, $externalImports];
-    }
-
-    /**
-     * Resolve the singular resource FQCN for a ResourceCollection subclass.
-     *
-     * Mirrors Laravel's own resolution order: #[Collects], then `$collects`, then `XCollection` → `XResource`.
-     *
-     * @param  class-string  $collectionFqcn
-     * @return class-string|null
-     */
-    protected function resolveSingularResourceFqcn(string $collectionFqcn): ?string
-    {
-        return $this->resolveCollectedResourceClass($collectionFqcn);
+        return TsTypeString::typeNameOccursIn($name, $structural);
     }
 
     /**
@@ -556,12 +491,10 @@ class InertiaPageAnalyzer
             return ['overrides' => [], 'importMap' => []];
         }
 
-        DependencyRecorder::recordClass($controllerClass);
-
         $reflection = new ReflectionClass($controllerClass);
 
         if (! $reflection->hasMethod($methodName)) {
-            return ['overrides' => [], 'importMap' => []];
+            return ['overrides' => [], 'importMap' => []]; // @codeCoverageIgnore
         }
 
         $attrs = $reflection->getMethod($methodName)->getAttributes(TsCasts::class);
@@ -570,42 +503,9 @@ class InertiaPageAnalyzer
             return ['overrides' => [], 'importMap' => []];
         }
 
-        /** @var TsCasts $tsCasts */
-        $tsCasts = $attrs[0]->newInstance();
+        /** @var TsCastsUnpacked $unpacked */
+        $unpacked = resolve(TsCastsReader::class)->unpack([$attrs[0]->newInstance()]);
 
-        $overrides = [];
-        $importMap = [];
-
-        foreach ($tsCasts->types as $prop => $value) {
-            if (is_array($value)) {
-                $overrides[$prop] = $value['type'];
-
-                if (isset($value['import'])) {
-                    foreach (LaravelTsPublish::extractImportableTypes($value['type']) as $typeName) {
-                        $importMap[$value['import']][] = $typeName;
-                    }
-                }
-            } else {
-                $overrides[$prop] = $value;
-            }
-        }
-
-        return ['overrides' => $overrides, 'importMap' => $importMap];
-    }
-
-    /**
-     * Convert a component name to a fully-qualified Inertia namespace path.
-     *
-     * @example "Dashboard" → "Inertia.Pages.Dashboard"
-     * @example "Settings/General" → "Inertia.Pages.Settings.General"
-     */
-    public function componentToFqn(string $component): string
-    {
-        $normalized = str_replace('::', '/', $component);
-
-        return collect(explode('/', $normalized))
-            ->map(fn (string $part): string => Str::studly($part))
-            ->prepend('Inertia.Pages')
-            ->implode('.');
+        return ['overrides' => $unpacked['overrides'], 'importMap' => $unpacked['importMap']];
     }
 }

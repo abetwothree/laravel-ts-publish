@@ -44,6 +44,8 @@ export interface PostMutators
     excerpt: string | null;
     /** Estimated reading time formatted */
     reading_time: string;
+    /** Newest comment, typed by a single model FQCN and deliberately not appended. */
+    latest_comment: Comment | null;
 }
 
 export interface PostRelations

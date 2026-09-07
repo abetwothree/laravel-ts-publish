@@ -18,6 +18,9 @@ class MiddlewareWithMethodTsCasts
     ])]
     public function share(Request $request): array
     {
-        return [];
+        return [
+            'appName' => 1,
+            'userId' => 'two',
+        ];
     }
 }

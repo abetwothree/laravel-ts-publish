@@ -1414,7 +1414,17 @@ describe('Image model @return Attribute<> docblock accessor resolution', functio
         $data = (new ModelTransformer(Image::class))->data();
 
         expect($data->mutators)->toHaveKey('data_from_docblock')
-            ->and($data->mutators['data_from_docblock']['type'])->toBe('{ title: string; weight: number | null }');
+            ->and($data->mutators['data_from_docblock']['type'])->toBe('{ recordedAt?: string; title: string; weight: number | null }');
+    });
+
+    test('nestedOptionalKeyFromDocblock keeps an optional key that sits inside a shape value', function () {
+        $data = (new ModelTransformer(Image::class))->data();
+
+        // The sibling above puts `?:` at the top level, which never reaches
+        // shapeValueHasUnimportableToken(); only a nested one is handed to it as a value string.
+        expect($data->mutators)->toHaveKey('nested_optional_key_from_docblock')
+            ->and($data->mutators['nested_optional_key_from_docblock']['type'])
+            ->toBe('{ inner: { assignedLater?: string; promoted: string }; label: string }');
     });
 
     test('priceFromDocblock resolves Arrayable class with a shape docblock to an inline object type', function () {

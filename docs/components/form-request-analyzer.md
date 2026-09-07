@@ -113,8 +113,8 @@ negative, so malformed input fails toward a redundant-but-harmless paren rather 
 ### Object nodes (named children)
 
 One part per child, `{$key}{$optional}: {$type}`, joined `'; '` and wrapped `'{ ... }'` — the same
-`LaravelTsPublish::validJsObjectKey()` + optional-`?` convention
-`ResourceAstAnalyzer::analyzeInlineArray()` already uses for its own inline object shapes (the
+`JsEmitter::validJsObjectKey()` + optional-`?` convention
+`InlineArrayHandler::analyzeInlineArray()` already uses for its own inline object shapes (the
 `'{ '.implode('; ', $parts).' }'` wrapping itself is shared even more widely, e.g.
 `arrayableShapeType()`, though that method doesn't mark individual keys optional).
 
@@ -204,6 +204,54 @@ enters a trie branch deeper than the root, so it round-trips unchanged. A key en
 above — `roles: string[]` collapses identically to how it did before this composition existed,
 the only difference being that the flat `"roles.*"` key is no longer also emitted alongside it
 (see below).
+
+## `analyzeField()`: one rule by dotted path
+
+`analyze()` composes the whole request — every top-level trie node, each with its descendants folded
+in — and is what `FormRequestTransformer` calls to build the request's `.ts` interface. `analyzeField()`
+answers a narrower question a single call site needs: given one dotted path, what does *that* node
+compose to? It builds the same trie from the same raw rules, walks it segment by segment, and returns a
+`FormRequestRuleNode` whose `fieldPath` echoes the path back.
+
+Because it is the same trie and the same `composeTrieNode()`, the answer for `options.default` is the
+type the request's own interface nests under `options` **as the rules describe it**: a sibling `options.*`
+wildcard is never consulted, since the walk descends into `children['default']` and the wildcard is
+`default`'s sibling, not its child. The node's own descendants still compose in, so
+`analyzeField('order')` on a request declaring `order.id` returns the composed object with
+`@format uuid order.id` hoisted onto it — `collectChildJsDoc()` runs exactly as `normalizeRules()` runs
+it, so the two entry points cannot drift.
+
+The qualifier is load-bearing. Nothing above the trie is shared: a `#[TsCasts(['options' => 'MyOptions'])]`
+on the request replaces that whole subtree in the emitted interface, which `FormRequestTransformer` applies
+*after* calling `analyze()`, while `analyzeField('options.default')` still composes the rule the override
+replaced. That divergence is recorded in [known gaps](../known-gaps.md); this section describes the trie,
+not the emitted file.
+
+### When it returns `null`
+
+- **An undeclared segment.** Nothing in the rules reaches that path.
+- **A prohibited node anywhere *on* the path.** `composeObjectNode()` drops a prohibited child outright,
+  so nothing beneath one appears in the composed type either. `ArrayRulesRequest` declares `order.secret`
+  prohibited and `order.secret.token` required; `order` composes to `{ id: string; items: … }` with no
+  `secret` key, so `analyzeField('order.secret.token')` must decline rather than describe a key no payload
+  can carry. Only ancestors are filtered here — a prohibited *target* is returned with `isProhibited`
+  set, leaving the caller to decide, which is what `validatedKeyRule()` already did.
+- **An escaped-dot key.** The walk splits on every `.`, unlike `buildRuleTrie()`, which first protects
+  `\.` behind `DOT_PLACEHOLDER`, so `'v1\.0'` is unreachable by path. This is the correct answer rather
+  than a shortfall: `data_get()` splits the key the same way and cannot reach the attribute either.
+
+A `*` segment is *not* filtered here — the element node it resolves to is a truthful trie answer. It is
+the caller's expansion semantics that differ, so `KnownMethodRuleHandler` declines those keys itself (see
+[known gaps](../known-gaps.md)).
+
+### Behaviour change: `validated()` on an escaped-dot key
+
+`KnownMethodRuleHandler::validatedKeyRule()` is the only caller today. Before it looked up by path, it
+scanned `analyze()`'s top-level nodes for a matching `fieldPath` — and `'v1\.0'` *is* a top-level node,
+named `v1.0`. So `$request->validated('v1.0')` used to type as a non-optional `string` while the runtime
+call returns `null`, because `data_get('v1.0')` splits on the dot and never finds the attribute. It now
+declines and the property types as `unknown`. That is a property moving from a real type to `unknown`,
+but the real type was wrong; `unknown` is the honest answer for a call that returns `null`.
 
 ## JSDoc hoisting: a nested annotation still reaches the reader
 

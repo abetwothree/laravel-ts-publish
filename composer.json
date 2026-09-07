@@ -20,14 +20,12 @@
         "composer/class-map-generator": "^1.7.2",
         "illuminate/contracts": "^13.0||^12.0",
         "laravel/prompts": "^0.3.21",
-        "laravel/ranger": "^0.1.12",
-        "laravel/surveyor": "^0.1.9",
         "nikic/php-parser": "^5.0",
         "spatie/laravel-package-tools": "^1.16"
     },
     "require-dev": {
         "archtechx/enums": "^1.1",
-        "inertiajs/inertia-laravel": "^3",
+        "inertiajs/inertia-laravel": "^3.3",
         "awobaz/compoships": "^2.5 || ^3.0",
         "larastan/larastan": "^3.0",
         "laravel/pint": "^1.14",
@@ -66,8 +64,9 @@
             "@composer run prepare"
         ],
         "prepare": "@php vendor/bin/testbench package:discover --ansi",
-        "analyse": "vendor/bin/phpstan analyse --verbose --ansi",
+        "analyse": "vendor/bin/phpstan analyse --verbose --ansi --memory-limit=-1",
         "test": "php -d memory_limit=-1 vendor/bin/pest --parallel --tia --passthru-php=\"'-d' 'memory_limit=-1'\"",
+        "bench": "bash .github/scripts/publish-bench.sh --local",
         "test-update-shards": "php -d memory_limit=-1 vendor/bin/pest --parallel --update-shards --passthru-php=\"'-d' 'memory_limit=-1'\"",
         "test-cov": "export XDEBUG_MODE=coverage && php -d memory_limit=-1 vendor/bin/pest --parallel --tia --coverage --coverage-clover coverage.xml --passthru-php=\"'-d' 'memory_limit=-1'\"",
         "test-cov-html": "export XDEBUG_MODE=coverage && php -d memory_limit=-1 vendor/bin/pest --parallel --tia --coverage-html coverage --passthru-php=\"'-d' 'memory_limit=-1'\"",
@@ -75,7 +74,7 @@
         "format": "vendor/bin/pint",
         "lint": [
             "@php vendor/bin/pint --ansi",
-            "@php vendor/bin/phpstan analyse --verbose --ansi"
+            "@php vendor/bin/phpstan analyse --verbose --ansi --memory-limit=-1"
         ],
         "clear": "@php vendor/bin/testbench package:purge-skeleton --ansi",
         "build": "@php vendor/bin/testbench workbench:build --ansi",

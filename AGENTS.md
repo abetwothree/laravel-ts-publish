@@ -15,6 +15,8 @@ The `abetwothree/laravel-ts-publish` project is a Laravel package aiming to conv
   - Run tests without coverage: `composer test` in parallel mode to run faster.
 - Run linter: `composer lint`
 
+`composer lint` and `composer analyse` pass `--memory-limit=-1` to PHPStan, so a local `memory_limit` ini does not apply to them. If PHPStan still dies during result-cache revalidation, delete `build/phpstan` and re-run.
+
 Do not try to run the `ts:publish` command from the workbench directory because it won't have a database connection, so the output will not have DB backed values.
 
 ## Implementing Types
@@ -160,6 +162,30 @@ If the TypeScript files need to be different then they should be changed by chan
 ### README.md vs code comments
 
 Documenting features go in README.md to document features for users. The code itself should have comments on all methdos as explained above or in the code itself.
+
+### Known gaps
+
+Work you decide _not_ to do belongs in a written record, not in a commit message or a source comment. Read
+[docs/known-gaps.md](./docs/known-gaps.md) before starting anything in `src/Ast/` — several entries exist
+specifically to stop the next person "fixing" something that is deliberate.
+
+That file is deliberately narrow: it holds only what changes the package's output for a user, or what makes
+a passing gate narrower than it looks. Its own header states the test. Everything else you defer — internal
+refactor debt, test-suite quality notes, release chores — belongs in the follow-ups ledger of the plan that
+deferred it, which is where that work is re-read from. Do not widen this file back out.
+
+That ledger is local: `docs/superpowers/` is gitignored, so a plan and its deferred work exist only on the
+machine that wrote them. Anything intended for a future plan is therefore also filed as a GitHub issue
+labelled `next-plan`, with the reasoning and a pointer to the ledger entry, and the ledger entry carries the
+issue number. The issue is the durable record; the ledger is the working copy.
+
+### Component docs
+
+`docs/components/` holds one page per subsystem, written for programmers and agents rather than for users.
+Read [docs/components/support-helpers.md](./docs/components/support-helpers.md) before adding a helper to
+`LaravelTsPublish` or to `src/Support/`: it carries the rule for which of the three helper classes owns a
+new member, why the docblock sub-engine could not be extracted with them, and why the `LaravelTsPublish::`
+delegations must not be deleted for having no callers or swept onto the new facades.
 
 ### Change log
 

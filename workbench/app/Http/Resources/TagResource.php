@@ -16,6 +16,19 @@ use Workbench\App\Models\Tag;
 class TagResource extends JsonResource
 {
     /**
+     * Non-toArray array-returning method fixture for the generic-method analyzer entry.
+     *
+     * @return array<string, mixed>
+     */
+    public function summaryPayload(): array
+    {
+        return [
+            'id' => $this->id,
+            'label' => (string) $this->name,
+        ];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(Request $request): array
