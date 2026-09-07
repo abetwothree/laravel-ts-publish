@@ -704,7 +704,7 @@ class LaravelTsPublish
         $reflectionMethod = $class->getMethod($method);
         $signatureInfo = $this->resolveReflectionType($reflectionMethod->getReturnType());
 
-        if ($signatureInfo['type'] !== 'unknown' && ! $this->isVagueTsType($signatureInfo['type'])) {
+        if ($signatureInfo['type'] !== 'unknown' && ! TsTypeString::isVagueTsType($signatureInfo['type'])) {
             return $signatureInfo;
         }
 
@@ -712,7 +712,7 @@ class LaravelTsPublish
         // docblock shape like `@return array{value: int, label: string}` can usually do better.
         $docblockInfo = $this->docblockReturnTypes($reflectionMethod);
 
-        if ($docblockInfo['type'] !== 'unknown' && ! $this->isVagueTsType($docblockInfo['type'])) {
+        if ($docblockInfo['type'] !== 'unknown' && ! TsTypeString::isVagueTsType($docblockInfo['type'])) {
             return $docblockInfo;
         }
 
@@ -720,14 +720,11 @@ class LaravelTsPublish
     }
 
     /**
-     * A "vague" TS type carries no element information, so a docblock generic can usually do better.
-     *
-     * An object-literal shape is never vague even when a key resolves to 'unknown' — a bare 'unknown'
-     * substring only signals vagueness outside `{...}`, where no per-key structure exists.
+     * {@see TsTypeString::isVagueTsType()}
      */
     public function isVagueTsType(string $type): bool
     {
-        return $type === 'object' || (str_contains($type, 'unknown') && ! str_contains($type, '{'));
+        return TsTypeString::isVagueTsType($type);
     }
 
     /** @return TypeScriptTypeInfo */

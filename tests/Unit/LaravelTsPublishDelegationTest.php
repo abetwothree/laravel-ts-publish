@@ -77,7 +77,9 @@ test('LaravelTsPublish still answers every TsTypeString helper, byte-equal to Ts
         ->and(LaravelTsPublish::substituteEnumType('Role | null', 'Role', 'AsEnum<typeof RoleEnum>'))
         ->toBe(TsTypeString::substituteEnumType('Role | null', 'Role', 'AsEnum<typeof RoleEnum>'))
         ->and(LaravelTsPublish::rewriteAsEnumToType('AsEnum<typeof StatusEnum> | Status', $constToTypeMap))
-        ->toBe(TsTypeString::rewriteAsEnumToType('AsEnum<typeof StatusEnum> | Status', $constToTypeMap));
+        ->toBe(TsTypeString::rewriteAsEnumToType('AsEnum<typeof StatusEnum> | Status', $constToTypeMap))
+        ->and(LaravelTsPublish::isVagueTsType('unknown'))->toBe(TsTypeString::isVagueTsType('unknown'))
+        ->and(LaravelTsPublish::isVagueTsType('{ a: unknown }'))->toBe(TsTypeString::isVagueTsType('{ a: unknown }'));
 });
 
 // Guards the assertions above, and pins the defaulted parameters a delegation could silently drop:
@@ -109,7 +111,11 @@ test('every TsTypeString delegation input is one the helper actually transforms'
         ->and(TsTypeString::substituteEnumType('Role | null', 'Role', 'AsEnum<typeof RoleEnum>'))
         ->toBe('AsEnum<typeof RoleEnum> | null')
         ->and(TsTypeString::rewriteAsEnumToType('AsEnum<typeof StatusEnum> | Status', ['StatusEnum' => 'enums.Status']))
-        ->toBe('enums.Status');
+        ->toBe('enums.Status')
+        ->and(TsTypeString::isVagueTsType('object'))->toBeTrue()
+        ->and(TsTypeString::isVagueTsType('unknown'))->toBeTrue()
+        ->and(TsTypeString::isVagueTsType('{ a: unknown }'))->toBeFalse()
+        ->and(TsTypeString::isVagueTsType('string'))->toBeFalse();
 });
 
 test('LaravelTsPublish still answers every TsNaming helper, byte-equal to TsNaming', function () {

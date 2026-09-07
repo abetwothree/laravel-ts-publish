@@ -273,4 +273,15 @@ class TsTypeString
 
         return $typeStr;
     }
+
+    /**
+     * A "vague" TS type carries no element information, so a docblock generic can usually do better.
+     *
+     * An object-literal shape is never vague even when a key resolves to 'unknown' — a bare 'unknown'
+     * substring only signals vagueness outside `{...}`, where no per-key structure exists.
+     */
+    public function isVagueTsType(string $type): bool
+    {
+        return $type === 'object' || (str_contains($type, 'unknown') && ! str_contains($type, '{'));
+    }
 }

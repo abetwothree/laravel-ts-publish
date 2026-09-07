@@ -441,3 +441,26 @@ describe('typeNameOccursIn', function () {
             ->and($s->typeNameOccursIn('StatusType', 'StatusTypeExtra'))->toBeFalse();
     });
 });
+
+describe('isVagueTsType', function () {
+    test('a bare object is vague', function () {
+        expect($this->service->isVagueTsType('object'))->toBeTrue();
+    });
+
+    test('an unknown outside a shape is vague', function () {
+        expect($this->service->isVagueTsType('unknown'))->toBeTrue()
+            ->and($this->service->isVagueTsType('unknown[]'))->toBeTrue()
+            ->and($this->service->isVagueTsType('Record<string, unknown>'))->toBeTrue();
+    });
+
+    test('an unknown inside an object literal is not vague', function () {
+        expect($this->service->isVagueTsType('{ a: unknown }'))->toBeFalse()
+            ->and($this->service->isVagueTsType('{ a: unknown } | null'))->toBeFalse();
+    });
+
+    test('an ordinary type is not vague', function () {
+        expect($this->service->isVagueTsType('string'))->toBeFalse()
+            ->and($this->service->isVagueTsType('User[] | null'))->toBeFalse()
+            ->and($this->service->isVagueTsType('Record<string, string>'))->toBeFalse();
+    });
+});
