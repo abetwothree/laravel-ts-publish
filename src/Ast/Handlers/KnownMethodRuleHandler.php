@@ -20,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Config;
 use JsonSerializable;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\MethodCall;
@@ -167,7 +168,10 @@ final class KnownMethodRuleHandler implements ExpressionHandler
             return null;
         }
 
-        $field = resolve(FormRequestRulesAnalyzer::class)->analyzeField($formRequestClass, $key);
+        /** @var FormRequestRulesAnalyzer $analyzer */
+        $analyzer = resolve(Config::string('ts-publish.form_requests.analyzer_class', FormRequestRulesAnalyzer::class));
+
+        $field = $analyzer->analyzeField($formRequestClass, $key);
 
         if ($field === null || $field->isProhibited) {
             return null;

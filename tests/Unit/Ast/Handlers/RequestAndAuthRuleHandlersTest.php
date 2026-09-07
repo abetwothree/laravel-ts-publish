@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\StaticCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BrandedFormRequestRulesAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\StarterKit\StarterKitMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TsCastsGuardRequest;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TsCastsOverrideRequest;
@@ -234,6 +235,19 @@ it('types validated(key) from the form request rules', function () {
 
     expect((new KnownMethodRuleHandler)->resolve($call, formRequestScope(), requestRuleEngine()))
         ->toBe(['type' => 'string', 'optional' => false]);
+});
+
+// The request's own interface reads ts-publish.form_requests.analyzer_class; reading the default
+// class here would describe one field two ways whenever an app configures its own analyzer.
+it('types validated(key) through the configured analyzer, the one the interface uses', function () {
+    config()->set('ts-publish.form_requests.analyzer_class', BrandedFormRequestRulesAnalyzer::class);
+
+    $call = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('title'))]);
+    $fields = (new FormRequestTransformer(StorePostRequest::class))->data()->fields;
+
+    expect((new KnownMethodRuleHandler)->resolve($call, formRequestScope(), requestRuleEngine()))
+        ->toBe(['type' => 'Branded', 'optional' => false])
+        ->and(collect($fields)->firstWhere('fieldPath', 'title')['tsType'])->toBe('Branded');
 });
 
 it('types validated(key: ...) bound by name, not just by position', function () {
