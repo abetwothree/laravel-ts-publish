@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\Contracts\CacheRepository;
 use AbeTwoThree\LaravelTsPublish\Commands\TsPublishCommand;
 use AbeTwoThree\LaravelTsPublish\Listeners\PostMigrateRunner;
 use AbeTwoThree\LaravelTsPublish\Support\JsEmitter;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeString;
 use Illuminate\Console\Events\CommandFinished;
 use Illuminate\Database\Events\MigrationsEnded;
 use Illuminate\Events\Dispatcher;
@@ -40,6 +41,7 @@ class LaravelTsPublishServiceProvider extends PackageServiceProvider
         $this->app->singleton(TsCastsReader::class);
         $this->app->singleton(ValueResolver::class);
         $this->app->singleton(JsEmitter::class);
+        $this->app->singleton(TsTypeString::class);
 
         $this->app->bind(CacheRepository::class, fn () => CacheBootstrap::repository());
     }
