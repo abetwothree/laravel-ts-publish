@@ -21,12 +21,21 @@ what produced the delegation layer below, and it is why moving a helper here is 
 
 Ask what the helper's **input domain** is, not what happens to call it:
 
-| Input → output | Owner |
+| The question the helper answers | Owner |
 | --- | --- |
-| A PHP value, or docblock text → JavaScript/TypeScript **source text** | `JsEmitter` |
-| A TypeScript **type string** → a question about it, or a rewritten one | `TsTypeString` |
-| A PHP name — FQCN, array key, file path → a TypeScript name or an **import path** | `TsNaming` |
-| A PHP type, a `ReflectionX`, or a docblock → a `TypeScriptTypeInfo` | stays on `LaravelTsPublish` |
+| **"What does this go into a generated file as?"** — a PHP value or docblock text turned into the literal, key, identifier or comment a `.ts` file carries | `JsEmitter` |
+| **"What is true of this TypeScript type string, or what does it become?"** — type string in, answer or rewritten type string out | `TsTypeString` |
+| **"What is this called, and where does it live?"** — an FQCN, a file path or an array key resolved to a name, a directory, or another path | `TsNaming` |
+| **"What *is* this, as a type?"** — a PHP type, a `ReflectionX` or a docblock resolved to a `TypeScriptTypeInfo` | stays on `LaravelTsPublish` |
+
+Read the question, not the signature: two of the clusters have members whose return type alone would
+misfile them. `JsEmitter::enumScalar()` hands back a PHP `int|string` and `parseDocBlockDescription()`
+plain text — neither is JavaScript source, but each is the normalizing step immediately upstream of one
+(`toJsLiteral()` and `formatJsDoc()` respectively), and splitting them off would leave half of one
+emission decision in another class. `TsNaming::resolveRelativePath()` returns a PHP file path and
+`resolveClassFromFile()` a PHP FQCN — neither is a TypeScript name, but both answer "where does this
+live, what is it called" with no inference involved, which is the same question `namespaceToPath()`
+answers from the other direction.
 
 The last row is the real test. If answering the question needs reflection, the config maps, or a
 recursion back into `toTsType()`, it belongs to the engine however string-shaped its signature looks —
@@ -138,6 +147,16 @@ second tests are also where defaulted and positional parameters are pinned: `$al
 arguments still returns a plausible string, which is exactly why each one needs a case that separates
 them.
 
+**Those transform guards carry more weight than their name suggests.** Direct unit coverage in the new
+`tests/Unit/Support/*Test.php` files is not symmetric: `JsEmitter` has a `describe()` block per member,
+but `TsTypeString` has none for `shapeValueHasUnimportableToken()` or `substituteEnumType()`, and
+`TsNaming` none for `resolveRelativePath()`. All three are covered — the first by the `toTsType()` shape
+blocks that stayed in `LaravelTsPublishTest.php`, the other two by the delegation test's transform
+guards — so this is asymmetry, not a hole. But `substituteEnumType()` and `resolveRelativePath()` now
+have their only *direct* assertions inside a file whose stated job is pinning the compatibility surface,
+which means a future decision to trim that file when the delegations are finally dropped would take
+their coverage with it. Move them into the owning helper's test file before trimming, not after.
+
 ### `resolveRelativePath()` is the one `public static` delegation
 
 `TsNaming::resolveRelativePath()` is an ordinary instance method; the delegation on
@@ -185,10 +204,12 @@ nobody removes them as dead configuration.
 
 ## The arbiter is the generated tree
 
-Every one of the six commits that performed this extraction left `workbench/resources/js/types/`
-**byte-identical**. That property is what makes a refactor of this size auditable: the suite proves the
-helpers behave, and an unchanged tree proves the *package* behaves. Any change here that is supposed to
-be behaviour-preserving and moves the tree has not preserved behaviour, whatever the suite reports.
+**Every commit on the branch that performed this extraction** — the three class extractions, the follow-up
+that moved `isVagueTsType()`, the three caller sweeps, and the docs commit — left
+`workbench/resources/js/types/` **byte-identical**. Not "the tree matched at the end": it matched at every
+single step. That property is what makes a refactor of this size auditable, because the suite proves the
+helpers behave and only an unchanged tree proves the *package* behaves. Any change here that is supposed
+to be behaviour-preserving and moves the tree has not preserved behaviour, whatever the suite reports.
 
 It earned its keep. A delegation that silently dropped a defaulted argument —
 `validJsObjectKey()`'s `$allowIndexSignature` — passed the entire test suite while rewriting 12
