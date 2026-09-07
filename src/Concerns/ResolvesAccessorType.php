@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
@@ -93,11 +94,11 @@ trait ResolvesAccessorType
     /**
      * A "vague" TS type carries no element information, so a docblock generic can usually do better.
      *
-     * Delegates to LaravelTsPublish::isVagueTsType() — the single definition of "vague" shared with
+     * Delegates to TsTypeString::isVagueTsType() — the single definition of "vague" shared with
      * methodOrDocblockReturnTypes() — rather than duplicating the predicate here.
      */
     protected function isVagueTsType(string $type): bool
     {
-        return LaravelTsPublish::isVagueTsType($type);
+        return TsTypeString::isVagueTsType($type);
     }
 }

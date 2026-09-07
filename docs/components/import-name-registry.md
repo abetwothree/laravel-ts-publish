@@ -73,7 +73,7 @@ lets `ResourceTransformer::resolveImportConflicts()` stay a single call to
 
 Each transformer walks its own per-item FQCN map — `mergePropertyFqcnMaps()` in `ResourceTransformer`,
 `$columnFqcns`/`$mutatorFqcns`/`$appendsFqcns`/`$relationFqcns` in `ModelTransformer`, `$propertyFqcns`
-in `BroadcastEventTransformer` — and hands each item's list to `LaravelTsPublish::aliasPropertyType()`.
+in `BroadcastEventTransformer` — and hands each item's list to `TsTypeString::aliasPropertyType()`.
 Callers must neither sort nor dedupe that list: multiplicity and order together *are* the contract.
 `ModelTransformer` and `BroadcastEventTransformer` supply **one entry per occurrence, in registration
 order**, exactly: `ModelTransformer` by construction (`$columnFqcns[$name][] = $fqcn` and two of its

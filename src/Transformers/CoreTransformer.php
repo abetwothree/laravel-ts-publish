@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
-use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 
 /**
  * @template TTransformable
@@ -43,6 +43,6 @@ abstract class CoreTransformer
 
     protected function resolveRelativePath(string $absolutePath): string
     {
-        return LaravelTsPublish::resolveRelativePath($absolutePath);
+        return TsNaming::resolveRelativePath($absolutePath);
     }
 }

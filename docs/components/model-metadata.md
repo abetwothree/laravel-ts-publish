@@ -42,11 +42,11 @@ and the payload itself comes from a swappable `ModelMetadataProvider::provide()`
 
 | Step | What it does |
 | --- | --- |
-| `initInstance()` | Resolves the model through the container, records `modelName` (short name) and `namespacePath` (`LaravelTsPublish::namespaceToPath()`). |
+| `initInstance()` | Resolves the model through the container, records `modelName` (short name) and `namespacePath` (`TsNaming::namespaceToPath()`). |
 | `resolveProvider()` | `ModelMetadataProviderResolver` reads `model_metadata.provider_class` (default `DefaultModelMetadataProvider`), resolves it through the container, and rejects anything not implementing `ModelMetadataProvider`. `DependencyRecorder::recordClass()` then records the provider's file — plus its parents' and interfaces' — as cache dependencies. |
 | `collectMetadata()` | Calls `provide($model)` and rejects a payload with any integer key. |
 | `transformPropertyTypes()` | Delegates to `Analyzers\Metadata\ModelMetadataAnalyzer::analyze($providerClass, $payloadKeys, $namespacePath)` and stores the returned `ModelMetadataAnalysis` — see [Type precedence](#type-precedence). |
-| `validateProperties()` | `undeclaredKeys()` and `missingKeys()` on the analysis must both be empty; every key whose source is not `casts` may not spell a token no import brings in (`LaravelTsPublish::shapeValueHasUnimportableToken($type, $analysis->importedNames())`). |
+| `validateProperties()` | `undeclaredKeys()` and `missingKeys()` on the analysis must both be empty; every key whose source is not `casts` may not spell a token no import brings in (`TsTypeString::shapeValueHasUnimportableToken($type, $analysis->importedNames())`). |
 | `resolveImports()` | `TsCastsImportResolver` assigns collision-free local names to the `#[TsCasts]` imports; the analysis's inferred `typeImports` merge in on top; one local name arriving from two paths is refused. |
 | `transformProperties()` | Normalizes every value — see [Value normalization](#value-normalization). |
 | `coerceEmptyArrays()` | Spells `[]` as `{}` where the resolved type says object — see [Empty containers](#empty-containers). |
@@ -208,8 +208,8 @@ counter, and an object-identity stack for cycle detection.
 | --- | --- |
 | `null`, `bool`, `string` | Themselves. |
 | `int` | Itself, if `abs($value) <= 2^53 - 1`; otherwise rejected ("return it as a string and declare the key as string" — a string under a `number` type fails `tsc`). |
-| `float` | Itself if finite (`LaravelTsPublish::toJsLiteral()` emits `json_encode()`'s shortest round-trip form); `INF` / `NAN` rejected. |
-| `BackedEnum` / `UnitEnum` | `LaravelTsPublish::enumScalar()` — `->value` / `->name` — re-normalized, so an int-backed case is range-checked like any other integer. |
+| `float` | Itself if finite (`JsEmitter::toJsLiteral()` emits `json_encode()`'s shortest round-trip form); `INF` / `NAN` rejected. |
+| `BackedEnum` / `UnitEnum` | `JsEmitter::enumScalar()` — `->value` / `->name` — re-normalized, so an int-backed case is range-checked like any other integer. |
 | `array` | Walked; each child is one nesting level deeper. `array_is_list()` decides `[…]` vs `{…}` at emit time. |
 | `stdClass` | Empty → kept as the **empty-object marker**; otherwise walked as an associative array. |
 | `Arrayable` / `JsonSerializable` | `toArray()` / `jsonSerialize()`, then walked again. |
@@ -254,7 +254,7 @@ that, because `array{0: X, 1: Y}` renders as the object literal `{ 0: X; 1: Y }`
 `Record<K, V>`, `T[]` / `readonly T[]` / `Array<T>` / `ReadonlyArray<T>`, tuples, and top-level unions with
 `null` / `undefined`. Intersections (`A & B`) and arrow-function types are opaque, so an empty array under either
 stays `[]`. It is also the home of the one top-level splitter for *TypeScript* type strings,
-`TsTypeShape::splitTopLevel()`; `LaravelTsPublish::splitTopLevelUnion()` delegates to it. PHPDoc types are a
+`TsTypeShape::splitTopLevel()`; `TsTypeString::splitTopLevelUnion()` delegates to it. PHPDoc types are a
 separate domain with its own splitter, `LaravelTsPublish::splitPhpDocUnionType()`.
 
 Why a *string* at all: the engine's DTOs export only the type string, and the list-vs-object decision is made,

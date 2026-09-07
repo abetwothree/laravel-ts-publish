@@ -8,7 +8,9 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\FormRequest\FormRequestRuleNode;
 use AbeTwoThree\LaravelTsPublish\Analyzers\FormRequest\FormRequestRulesAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsFormRequestDto;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
 use Illuminate\Foundation\Http\FormRequest;
@@ -137,18 +139,18 @@ class FormRequestTransformer extends CoreTransformer
 
         $this->typeName = $shortName;
         $this->filename = Str::kebab($shortName);
-        $this->namespacePath = LaravelTsPublish::namespaceToPath($this->findable);
+        $this->namespacePath = TsNaming::namespaceToPath($this->findable);
 
         $description = '';
 
         if ($this->reflection->hasMethod('rules')) {
-            $description = LaravelTsPublish::parseDocBlockDescription(
+            $description = JsEmitter::parseDocBlockDescription(
                 $this->reflection->getMethod('rules')->getDocComment()
             );
         }
 
         if ($description === '') {
-            $description = LaravelTsPublish::parseDocBlockDescription($this->reflection->getDocComment());
+            $description = JsEmitter::parseDocBlockDescription($this->reflection->getDocComment());
         }
 
         $this->description = $description;
@@ -216,7 +218,7 @@ class FormRequestTransformer extends CoreTransformer
             $type = $this->tsTypeOverrides[$field] ?? null;
 
             if ($type !== null) {
-                foreach (LaravelTsPublish::extractImportableTypes($type) as $importName) {
+                foreach (TsTypeString::extractImportableTypes($type) as $importName) {
                     $imports[$importPath][] = $importName;
                 }
             }
@@ -234,7 +236,7 @@ class FormRequestTransformer extends CoreTransformer
             $imports[$path] = $unique;
         }
 
-        $this->typeImports = LaravelTsPublish::sortImportPaths($imports);
+        $this->typeImports = TsNaming::sortImportPaths($imports);
 
         return $this;
     }

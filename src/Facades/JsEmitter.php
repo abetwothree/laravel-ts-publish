@@ -4,16 +4,18 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Facades;
 
-use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
+use AbeTwoThree\LaravelTsPublish\Support\JsEmitter as JsEmitterService;
 use Illuminate\Support\Facades\Facade;
 
 /**
- * @see LaravelTsPublishService
+ * @see JsEmitterService
+ *
+ * @internal
  */
-class LaravelTsPublish extends Facade
+class JsEmitter extends Facade
 {
     protected static function getFacadeAccessor(): string
     {
-        return LaravelTsPublishService::class;
+        return JsEmitterService::class;
     }
 }

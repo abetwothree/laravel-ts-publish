@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
 use AbeTwoThree\LaravelTsPublish\Dtos\TsEnumDto;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use BackedEnum;
 use UnitEnum;
 
@@ -24,7 +24,7 @@ class EnumInstanceTransformer
         protected TsEnumDto $data,
         protected UnitEnum|BackedEnum $enum
     ) {
-        $this->value = LaravelTsPublish::enumScalar($enum);
+        $this->value = JsEmitter::enumScalar($enum);
     }
 
     /** @return EnumInstanceData */

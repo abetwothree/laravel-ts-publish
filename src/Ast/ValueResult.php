@@ -7,7 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use PhpParser\Node\Expr;
 
 /**
@@ -40,7 +40,7 @@ final class ValueResult
     public static function stripNullArm(string $type): string
     {
         $members = array_values(array_filter(
-            LaravelTsPublish::splitTopLevelUnion($type),
+            TsTypeString::splitTopLevelUnion($type),
             fn (string $member): bool => $member !== 'null',
         ));
 
@@ -163,7 +163,7 @@ final class ValueResult
             }
         }
 
-        $result = ['type' => LaravelTsPublish::hoistNull($types), 'optional' => false];
+        $result = ['type' => TsTypeString::hoistNull($types), 'optional' => false];
 
         $enumResourceFqcns = array_values(array_unique($enumResourceFqcns));
         $enumDirectFqcns = array_values(array_unique($enumDirectFqcns));

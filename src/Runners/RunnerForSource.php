@@ -9,7 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Collectors\Concerns\ValidatesCollectorFiles;
 use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelMetadataCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
@@ -148,7 +148,7 @@ class RunnerForSource extends BaseRunner
     protected function resolveSourceToFqcn(): string
     {
         if (str_ends_with($this->source, '.php')) {
-            $fqcn = LaravelTsPublish::resolveClassFromFile($this->source);
+            $fqcn = TsNaming::resolveClassFromFile($this->source);
 
             if ($fqcn === null) {
                 throw new InvalidArgumentException("Could not resolve a class from file: {$this->source}");

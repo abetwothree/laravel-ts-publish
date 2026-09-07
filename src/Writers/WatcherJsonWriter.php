@@ -11,7 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Collectors\ModelMetadataCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ResourcesCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\RoutesCollector;
-use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Metadata\DefaultModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Metadata\ModelMetadataProviderResolver;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\EnsuresDirectoryExists;
@@ -85,7 +85,7 @@ class WatcherJsonWriter
                     /** @var class-string<UnitEnum|BackedEnum> $fqcn */
                     $reflection = new ReflectionEnum($fqcn);
 
-                    return LaravelTsPublish::resolveRelativePath((string) $reflection->getFileName());
+                    return TsNaming::resolveRelativePath((string) $reflection->getFileName());
                 })
                 ->all()
         );
@@ -125,7 +125,7 @@ class WatcherJsonWriter
                     /** @var class-string<Model> $fqcn */
                     $reflection = new ReflectionClass($fqcn);
 
-                    return LaravelTsPublish::resolveRelativePath((string) $reflection->getFileName());
+                    return TsNaming::resolveRelativePath((string) $reflection->getFileName());
                 })
                 ->all()
         );
@@ -155,7 +155,7 @@ class WatcherJsonWriter
 
         $reflection = new ReflectionClass($provider);
 
-        return [LaravelTsPublish::resolveRelativePath((string) $reflection->getFileName())];
+        return [TsNaming::resolveRelativePath((string) $reflection->getFileName())];
     }
 
     /**
@@ -175,7 +175,7 @@ class WatcherJsonWriter
                 ->map(function (string $fqcn): string {
                     $reflection = new ReflectionClass($fqcn);
 
-                    return LaravelTsPublish::resolveRelativePath((string) $reflection->getFileName());
+                    return TsNaming::resolveRelativePath((string) $reflection->getFileName());
                 })
                 ->all()
         );
@@ -198,7 +198,7 @@ class WatcherJsonWriter
                 ->map(function (string $fqcn): string {
                     $reflection = new ReflectionClass($fqcn);
 
-                    return LaravelTsPublish::resolveRelativePath((string) $reflection->getFileName());
+                    return TsNaming::resolveRelativePath((string) $reflection->getFileName());
                 })
                 ->all()
         );
@@ -221,7 +221,7 @@ class WatcherJsonWriter
                 ->map(function (string $fqcn): string {
                     $reflection = new ReflectionClass($fqcn);
 
-                    return LaravelTsPublish::resolveRelativePath((string) $reflection->getFileName());
+                    return TsNaming::resolveRelativePath((string) $reflection->getFileName());
                 })
                 ->all()
         );
@@ -244,7 +244,7 @@ class WatcherJsonWriter
                 ->map(function (string $fqcn): string {
                     $reflection = new ReflectionClass($fqcn);
 
-                    return LaravelTsPublish::resolveRelativePath((string) $reflection->getFileName());
+                    return TsNaming::resolveRelativePath((string) $reflection->getFileName());
                 })
                 ->all()
         );

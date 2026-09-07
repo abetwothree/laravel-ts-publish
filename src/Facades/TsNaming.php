@@ -4,16 +4,18 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Facades;
 
-use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
+use AbeTwoThree\LaravelTsPublish\Support\TsNaming as TsNamingService;
 use Illuminate\Support\Facades\Facade;
 
 /**
- * @see LaravelTsPublishService
+ * @see TsNamingService
+ *
+ * @internal
  */
-class LaravelTsPublish extends Facade
+class TsNaming extends Facade
 {
     protected static function getFacadeAccessor(): string
     {
-        return LaravelTsPublishService::class;
+        return TsNamingService::class;
     }
 }

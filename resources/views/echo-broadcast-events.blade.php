@@ -1,4 +1,4 @@
-@use('AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish')
+@use('AbeTwoThree\LaravelTsPublish\Facades\JsEmitter')
 @foreach($imports as $import)
 {!! $import !!}
 @endforeach
@@ -6,7 +6,7 @@
 declare module "{{ $echoPackage }}" {
     interface Events {
 @foreach($events as $event)
-        {!! LaravelTsPublish::validJsObjectKey($event['broadcastName']) !!}: {{ $event['exportedName'] }};
+        {!! JsEmitter::validJsObjectKey($event['broadcastName']) !!}: {{ $event['exportedName'] }};
 @endforeach
     }
 }

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\FormRequest;
 
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use BackedEnum;
 use Illuminate\Auth\GenericUser;
 use Illuminate\Foundation\Http\FormRequest;
@@ -446,7 +446,7 @@ class FormRequestRulesAnalyzer
             $childType = $child['tsType'].($child['isNullable'] ? ' | null' : '');
             $optional = $child['isRequired'] ? '' : '?';
 
-            $parts[] = LaravelTsPublish::validJsObjectKey((string) $key).$optional.': '.$childType;
+            $parts[] = JsEmitter::validJsObjectKey((string) $key).$optional.': '.$childType;
         }
 
         return [
@@ -680,7 +680,7 @@ class FormRequestRulesAnalyzer
         }
 
         $literals = array_map(
-            fn (mixed $v): string => LaravelTsPublish::toJsLiteral($v),
+            fn (mixed $v): string => JsEmitter::toJsLiteral($v),
             array_filter($values, fn (mixed $v): bool => $v !== null && $v !== ''),
         );
 
@@ -706,7 +706,7 @@ class FormRequestRulesAnalyzer
         $numeric = $this->hasNumericTypeSibling($rules);
 
         $literals = array_map(
-            fn (mixed $v): string => LaravelTsPublish::toJsLiteral(
+            fn (mixed $v): string => JsEmitter::toJsLiteral(
                 $numeric && is_string($v) && is_numeric($v) && $v === (string) ($v + 0) ? $v + 0 : $v,
             ),
             array_filter($params, fn (mixed $v): bool => $v !== null && $v !== ''),
@@ -803,7 +803,7 @@ class FormRequestRulesAnalyzer
         }
 
         $values = array_map(
-            fn (BackedEnum $case): string => LaravelTsPublish::toJsLiteral($case),
+            fn (BackedEnum $case): string => JsEmitter::toJsLiteral($case),
             $cases,
         );
 

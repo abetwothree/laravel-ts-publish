@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Metadata\Contracts\ModelMetadataProvider;
 use ReflectionMethod;
 use Throwable;
@@ -142,7 +143,7 @@ class ModelMetadataAnalyzer
             // direction is unexercised — a green suite is not coverage for it.
             $used = array_values(array_filter(
                 $names,
-                static fn (string $name): bool => LaravelTsPublish::typeNameOccursIn($name, $spelled),
+                static fn (string $name): bool => TsTypeString::typeNameOccursIn($name, $spelled),
             ));
 
             if ($used !== []) {
@@ -170,7 +171,7 @@ class ModelMetadataAnalyzer
                     continue;
                 }
 
-                $names = LaravelTsPublish::extractImportableTypes($value['type']);
+                $names = TsTypeString::extractImportableTypes($value['type']);
                 $analysis->customImports[$value['import']] = array_values(array_diff(
                     $analysis->customImports[$value['import']] ?? [],
                     $names,

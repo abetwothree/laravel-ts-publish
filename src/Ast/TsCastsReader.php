@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 
 /**
  * @phpstan-type TsCastsUnpacked = array{
@@ -49,7 +49,7 @@ class TsCastsReader
                 if (isset($value['import'])) {
                     $importPaths[$key] = $value['import'];
 
-                    foreach (LaravelTsPublish::extractImportableTypes($value['type']) as $typeName) {
+                    foreach (TsTypeString::extractImportableTypes($value['type']) as $typeName) {
                         $importMap[$value['import']][] = $typeName;
                     }
                 }

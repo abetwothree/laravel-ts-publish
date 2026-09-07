@@ -19,6 +19,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
@@ -460,7 +462,7 @@ class InertiaPageAnalyzer
             array_unique($candidates),
             // An enum's TypeScript name follows #[TsEnum(name:)], which neither of the first two spell.
             fn (string $fqcn): bool => $this->typeSpells($pageType, class_basename($fqcn))
-                || $this->typeSpells($pageType, LaravelTsPublish::resourceTypeName($fqcn))
+                || $this->typeSpells($pageType, TsNaming::resourceTypeName($fqcn))
                 || (enum_exists($fqcn) && $this->typeSpells($pageType, LaravelTsPublish::toTsType($fqcn)['type'])),
         ));
     }
@@ -475,7 +477,7 @@ class InertiaPageAnalyzer
     {
         $structural = (string) preg_replace('/\b(?:'.implode('|', self::UTILITY_TYPES).')</', '<', $pageType);
 
-        return LaravelTsPublish::typeNameOccursIn($name, $structural);
+        return TsTypeString::typeNameOccursIn($name, $structural);
     }
 
     /**

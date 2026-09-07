@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Writers;
 
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
@@ -82,7 +82,7 @@ class RouteWriter extends CoreWriter
                 ->sortBy('filename')
                 ->map(fn (array $entry) => sprintf(
                     "export { default as %s } from './%s';",
-                    LaravelTsPublish::safeJsIdentifier($entry['controllerName'], 'Controller'),
+                    JsEmitter::safeJsIdentifier($entry['controllerName'], 'Controller'),
                     $entry['filename']
                 ))
                 ->implode("\n");

@@ -10,7 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
@@ -80,7 +80,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
         if (! $this->firstArgumentIsPaginator($this->resourcePayloadArguments($expr, $className)->at(0), $engine)) {
             return [
                 ...ValueResult::unknown(),
-                'type' => LaravelTsPublish::resourceTypeName($className),
+                'type' => TsNaming::resourceTypeName($className),
                 'optional' => $optional,
                 'resourceFqcn' => $className,
             ];
@@ -93,7 +93,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
         if (! array_key_exists('wrap', $defaults) || $defaults['wrap'] !== null) {
             return [
                 ...ValueResult::unknown(),
-                'type' => LaravelTsPublish::resourceTypeName($className).' & ResourcePagination',
+                'type' => TsNaming::resourceTypeName($className).' & ResourcePagination',
                 'optional' => $optional,
                 'resourceFqcn' => $className,
                 'customImports' => ['@tolki/types' => ['ResourcePagination']],
@@ -144,7 +144,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
 
         return [
             ...ValueResult::unknown(),
-            'type' => 'AnonymousResourceCollection<'.LaravelTsPublish::resourceTypeName($className).'>',
+            'type' => 'AnonymousResourceCollection<'.TsNaming::resourceTypeName($className).'>',
             'optional' => $optional,
             'resourceFqcn' => $className,
             'customImports' => ['@tolki/types' => ['AnonymousResourceCollection']],
@@ -160,7 +160,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
      */
     private function paginatedResourceType(string $singular, ReflectionClass $reflection): array
     {
-        $name = LaravelTsPublish::resourceTypeName($singular);
+        $name = TsNaming::resourceTypeName($singular);
 
         $type = $this->collectionPreservesKeys($reflection)
             ? "Omit<JsonResourcePaginator<{$name}>, 'data'> & { data: Record<string, {$name}> }"

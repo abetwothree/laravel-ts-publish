@@ -179,6 +179,14 @@ machine that wrote them. Anything intended for a future plan is therefore also f
 labelled `next-plan`, with the reasoning and a pointer to the ledger entry, and the ledger entry carries the
 issue number. The issue is the durable record; the ledger is the working copy.
 
+### Component docs
+
+`docs/components/` holds one page per subsystem, written for programmers and agents rather than for users.
+Read [docs/components/support-helpers.md](./docs/components/support-helpers.md) before adding a helper to
+`LaravelTsPublish` or to `src/Support/`: it carries the rule for which of the three helper classes owns a
+new member, why the docblock sub-engine could not be extracted with them, and why the `LaravelTsPublish::`
+delegations must not be deleted for having no callers or swept onto the new facades.
+
 ### Change log
 
 Do not update the CHANGELOG.md file. That is handled by CI when a new version is released. The CHANGELOG.md file is meant to be a record of changes for users, not for developers to update manually. It is automatically updated based on the commits and PRs that are merged into the main branch and updated when a new version is released.

@@ -12,6 +12,8 @@ use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
@@ -161,7 +163,7 @@ class BroadcastEventTransformer extends CoreTransformer
         $this->reflection = new ReflectionClass($this->findable);
         $this->eventName = $this->reflection->getShortName();
         $this->filePath = (string) $this->reflection->getFileName();
-        $this->namespacePath = LaravelTsPublish::namespaceToPath($this->findable);
+        $this->namespacePath = TsNaming::namespaceToPath($this->findable);
 
         return $this;
     }
@@ -407,7 +409,7 @@ class BroadcastEventTransformer extends CoreTransformer
         $nameMap = $this->enumFqcnMap + $this->modelFqcnMap;
 
         foreach ($this->properties as $key => $entry) {
-            $this->properties[$key]['type'] = LaravelTsPublish::aliasPropertyType(
+            $this->properties[$key]['type'] = TsTypeString::aliasPropertyType(
                 $entry['type'],
                 $this->propertyFqcns[$key] ?? [],
                 $nameMap,
@@ -428,9 +430,9 @@ class BroadcastEventTransformer extends CoreTransformer
         $aliasable = [];
 
         foreach ($this->modelFqcnMap + $this->enumFqcnMap as $fqcn => $typeName) {
-            $importPath = LaravelTsPublish::relativeImportPath(
+            $importPath = TsNaming::relativeImportPath(
                 $this->namespacePath,
-                LaravelTsPublish::namespaceToPath($fqcn),
+                TsNaming::namespaceToPath($fqcn),
             );
 
             $imports[$importPath][] = $this->formatImportName($fqcn, $typeName);
@@ -451,7 +453,7 @@ class BroadcastEventTransformer extends CoreTransformer
             $type = $this->tsTypeOverrides[$property] ?? null;
 
             if ($type !== null) {
-                foreach (LaravelTsPublish::extractImportableTypes($type) as $importName) {
+                foreach (TsTypeString::extractImportableTypes($type) as $importName) {
                     $imports[$importPath][] = $importName;
                 }
             }
@@ -469,7 +471,7 @@ class BroadcastEventTransformer extends CoreTransformer
             $imports[$path] = $unique;
         }
 
-        $this->typeImports = LaravelTsPublish::sortImportPaths($imports);
+        $this->typeImports = TsNaming::sortImportPaths($imports);
 
         return $this;
     }
@@ -485,10 +487,10 @@ class BroadcastEventTransformer extends CoreTransformer
 
         foreach ($this->importAliases as $fqcn => $alias) {
             if (isset($this->enumFqcnMap[$fqcn])) {
-                $ns = str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn));
+                $ns = str_replace('/', '.', TsNaming::namespaceToPath($fqcn));
                 $map[$alias] = $ns.'.'.$this->enumFqcnMap[$fqcn];
             } elseif (isset($this->modelFqcnMap[$fqcn])) {
-                $ns = str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn));
+                $ns = str_replace('/', '.', TsNaming::namespaceToPath($fqcn));
                 $map[$alias] = $ns.'.'.$this->modelFqcnMap[$fqcn];
             }
         }
@@ -510,13 +512,13 @@ class BroadcastEventTransformer extends CoreTransformer
 
         foreach ($this->enumFqcnMap as $fqcn => $typeName) {
             $key = $this->importAliases[$fqcn] ?? $typeName;
-            $ns = str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn));
+            $ns = str_replace('/', '.', TsNaming::namespaceToPath($fqcn));
             $map[$key] = $ns.'.'.$typeName;
         }
 
         foreach ($this->modelFqcnMap as $fqcn => $typeName) {
             $key = $this->importAliases[$fqcn] ?? $typeName;
-            $ns = str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn));
+            $ns = str_replace('/', '.', TsNaming::namespaceToPath($fqcn));
             $map[$key] = $ns.'.'.$typeName;
         }
 

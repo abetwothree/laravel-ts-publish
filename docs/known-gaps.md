@@ -150,7 +150,7 @@ accessor, so the resource's own file renders two genuinely different tokens —
 `AsEnum<typeof Status>[] | StatusType[]` — and only the globals file, which has no `AsEnum` import,
 collapses them onto one qualified name.
 
-`LaravelTsPublish::rewriteAsEnumToType()` exists to fold that adjacency before it duplicates, and its
+`TsTypeString::rewriteAsEnumToType()` exists to fold that adjacency before it duplicates, and its
 pair pattern requires the wrap's `>` to be followed directly by the `|` and ends in a
 `(?![A-Za-z0-9_$\[])` lookahead. An array suffix on *either* arm defeats one half or the other, so the
 both-array case never matches; the single-arm substitution then runs anyway and qualifies both arms to
@@ -289,6 +289,49 @@ name that never matched the written file. `static::` makes both paths fail consi
 succeed by accident.
 
 Override the pair together. `tests/Fixtures/PrefixedModelMetadataTransformer.php` is the worked example.
+
+### Overriding a moved helper on a `LaravelTsPublish` subclass no longer changes what the package emits
+
+`LaravelTsPublish` is not `final`, and its facade resolves whatever the container holds under that class
+name, so `bind(LaravelTsPublish::class, MySubclass::class)` has always been a way to change how the package
+types things. That still works for everything the class still owns: `toTsType()` and its cast/shape/reflection
+helpers, the docblock resolvers, `typesMap()`/`relationsMap()`/`relationStrategy()`, and the merge helpers. It
+no longer works for the 25 helpers that moved out to `Support\JsEmitter`, `Support\TsTypeString` and
+`Support\TsNaming` — see [docs/components/support-helpers.md](./components/support-helpers.md).
+
+**The call surface is intact.** Every `LaravelTsPublish::` helper still resolves with an identical signature,
+which is the compatibility promise the extraction was built around, and it is pinned name by name in
+`tests/Unit/LaravelTsPublishDelegationTest.php`. A subclass that overrides one still answers its own version
+when the *consumer* calls it. What changed is that the package stopped calling it: all 327 in-package call
+sites — 220 in `src/`, 107 in `resources/views/` — now reach the helpers through their own facades and
+container keys, so a subclass override sits off the path that generates a file.
+
+The failure is silent. A consumer who overrode `keyCase()` to add a casing the package does not ship used to
+get that casing in their generated models; now they get the stock one, with no error and no warning, while
+their override still answers their own direct calls. The same holds for all 25. Nothing in the suite detects
+it, because nothing in the suite subclasses `LaravelTsPublish`.
+
+**The workaround is the same technique aimed one level lower, and it is supported.** All three helpers *are*
+container-bound — `LaravelTsPublishServiceProvider::register()` registers each as a singleton on its concrete
+class name — so replacing the one that owns the helper does change package output:
+
+```php
+// in an application service provider's register()
+$this->app->singleton(\AbeTwoThree\LaravelTsPublish\Support\TsNaming::class, MyTsNaming::class);
+```
+
+No ordering step is needed. `Application::registerConfiguredProviders()` registers discovered package
+providers ahead of the application's own, so an app provider's binding replaces this package's, and the
+facade resolves the replacement on its first call — which happens during a publish run, long after
+registration. It is also finer-grained than the old approach: a replacement `TsNaming` changes naming and
+import paths without touching type inference.
+
+Three members left the `LaravelTsPublish` subclass surface along with the helpers, and they are not equally
+lost. `importSortGroup()` and `$resourceTypeNames` were both `protected` and are now `TsNaming`'s, so a
+subclass that overrode the sort-group predicate to reorder imports, or that reached into
+`resourceTypeName()`'s cache, has to subclass and bind `TsNaming` instead. `RESERVED_JS_IDENTIFIERS` is the
+exception: it was `private` before the move and is `private` on `JsEmitter` now, so no subclass could ever
+reach it and nothing was actually taken away.
 
 ## Deliberate non-goals
 

@@ -9,7 +9,9 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Metadata\ModelMetadataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsModelMetadataDto;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Metadata\Contracts\ModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Metadata\ModelMetadataProviderResolver;
 use AbeTwoThree\LaravelTsPublish\Support\TsCastsImportResolver;
@@ -136,7 +138,7 @@ class ModelMetadataTransformer extends CoreTransformer
         $modelInstance = resolve($this->findable);
         $this->modelInstance = $modelInstance;
         $this->modelName = $reflection->getShortName();
-        $this->namespacePath = LaravelTsPublish::namespaceToPath($this->findable);
+        $this->namespacePath = TsNaming::namespaceToPath($this->findable);
 
         return $this;
     }
@@ -199,7 +201,7 @@ class ModelMetadataTransformer extends CoreTransformer
         foreach ($this->analysis->importFreeKeys($payloadKeys) as $property) {
             $type = $this->analysis->types[$property];
 
-            if (LaravelTsPublish::shapeValueHasUnimportableToken($type, $this->analysis->importedNames())) {
+            if (TsTypeString::shapeValueHasUnimportableToken($type, $this->analysis->importedNames())) {
                 throw new InvalidArgumentException(
                     "Model metadata for model [{$this->findable}] property [{$property}] has type [{$type}] "
                     .'whose import cannot be inferred; declare it with #[TsCasts].',
@@ -395,7 +397,7 @@ class ModelMetadataTransformer extends CoreTransformer
         }
 
         if ($value instanceof UnitEnum) {
-            return $this->normalizeMetadataValue(LaravelTsPublish::enumScalar($value), $path, $depth, $objectStack);
+            return $this->normalizeMetadataValue(JsEmitter::enumScalar($value), $path, $depth, $objectStack);
         }
 
         if (is_array($value)) {

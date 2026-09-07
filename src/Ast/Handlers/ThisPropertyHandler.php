@@ -16,7 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -176,7 +176,7 @@ final class ThisPropertyHandler implements ExpressionHandler
 
         return [
             ...$result,
-            'type' => $this->wrapCollectionElementType(LaravelTsPublish::resourceTypeName($singular), $scope->subjectReflection),
+            'type' => $this->wrapCollectionElementType(TsNaming::resourceTypeName($singular), $scope->subjectReflection),
             'resourceFqcn' => $singular,
         ];
     }

@@ -10,7 +10,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\ModelClassResolver;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsResourceDto;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
@@ -191,7 +194,7 @@ class ResourceTransformer extends CoreTransformer
     {
         $this->reflectionResource = new ReflectionClass($this->findable);
         $this->filePath = $this->resolveRelativePath((string) $this->reflectionResource->getFileName());
-        $this->namespacePath = LaravelTsPublish::namespaceToPath($this->findable);
+        $this->namespacePath = TsNaming::namespaceToPath($this->findable);
 
         $tsResourceAttrs = $this->reflectionResource->getAttributes(TsResource::class);
 
@@ -200,10 +203,10 @@ class ResourceTransformer extends CoreTransformer
             $this->resourceName = $tsResourceInstance->name ?? $this->reflectionResource->getShortName();
             $this->description = $tsResourceInstance->description !== ''
                 ? $tsResourceInstance->description
-                : LaravelTsPublish::parseDocBlockDescription($this->reflectionResource->getDocComment());
+                : JsEmitter::parseDocBlockDescription($this->reflectionResource->getDocComment());
         } else {
             $this->resourceName = $this->reflectionResource->getShortName();
-            $this->description = LaravelTsPublish::parseDocBlockDescription($this->reflectionResource->getDocComment());
+            $this->description = JsEmitter::parseDocBlockDescription($this->reflectionResource->getDocComment());
         }
 
         return $this;
@@ -267,7 +270,7 @@ class ResourceTransformer extends CoreTransformer
             $type = $result['overrides'][$property] ?? null;
 
             if ($type !== null) {
-                foreach (LaravelTsPublish::extractImportableTypes($type) as $importName) {
+                foreach (TsTypeString::extractImportableTypes($type) as $importName) {
                     $this->customImports[$importPath][] = $importName;
                 }
             }
@@ -293,7 +296,7 @@ class ResourceTransformer extends CoreTransformer
             $this->typeAlias = $analysis->flatTypeAlias;
 
             if ($analysis->flatTypeAliasFqcn !== null && $analysis->flatTypeAliasFqcn !== $this->findable) {
-                $this->resourceFqcnMap[$analysis->flatTypeAliasFqcn] = LaravelTsPublish::resourceTypeName($analysis->flatTypeAliasFqcn);
+                $this->resourceFqcnMap[$analysis->flatTypeAliasFqcn] = TsNaming::resourceTypeName($analysis->flatTypeAliasFqcn);
             }
 
             return $this;
@@ -341,7 +344,7 @@ class ResourceTransformer extends CoreTransformer
 
         foreach ($analysis->nestedResources as $propName => $fqcn) {
             if ($fqcn !== $this->findable) {
-                $this->resourceFqcnMap[$fqcn] = LaravelTsPublish::resourceTypeName($fqcn);
+                $this->resourceFqcnMap[$fqcn] = TsNaming::resourceTypeName($fqcn);
                 $this->propertyResourceFqcns[$propName] = $fqcn;
             }
         }
@@ -397,7 +400,7 @@ class ResourceTransformer extends CoreTransformer
                 $this->properties[$property]['type'] = $type;
 
                 if (isset($this->modelTsCastsImportPaths[$property])) {
-                    foreach (LaravelTsPublish::extractImportableTypes($type) as $importName) {
+                    foreach (TsTypeString::extractImportableTypes($type) as $importName) {
                         $this->customImports[$this->modelTsCastsImportPaths[$property]][] = $importName;
                     }
                 }
@@ -439,7 +442,7 @@ class ResourceTransformer extends CoreTransformer
         $rendered = implode("\n", array_column($this->properties, 'type'));
 
         foreach ($this->enumFqcnMap as $fqcn => $typeName) {
-            if (! LaravelTsPublish::typeNameOccursIn($typeName, $rendered)) {
+            if (! TsTypeString::typeNameOccursIn($typeName, $rendered)) {
                 unset($this->enumFqcnMap[$fqcn]);
             }
         }
@@ -517,7 +520,7 @@ class ResourceTransformer extends CoreTransformer
                 // Substitute the bare enum type-name token inside the analyzer's own type string,
                 // so any richer shape (an extra default arm, a keyed Record arm) round-trips
                 // untouched — only the wrapped enum's own token changes.
-                $type = LaravelTsPublish::substituteEnumType(
+                $type = TsTypeString::substituteEnumType(
                     $this->properties[$propName]['type'],
                     $searchTypeName,
                     'AsEnum<typeof '.$constName.'>',
@@ -576,7 +579,7 @@ class ResourceTransformer extends CoreTransformer
                 continue; // @codeCoverageIgnore
             }
 
-            $tokens = LaravelTsPublish::splitTopLevelUnion($this->properties[$propName]['type']);
+            $tokens = TsTypeString::splitTopLevelUnion($this->properties[$propName]['type']);
             $fqcnIndex = 0;
             $rewritten = [];
 
@@ -631,7 +634,7 @@ class ResourceTransformer extends CoreTransformer
                 continue; // @codeCoverageIgnore
             }
 
-            $this->properties[$propName]['type'] = LaravelTsPublish::aliasPropertyType(
+            $this->properties[$propName]['type'] = TsTypeString::aliasPropertyType(
                 $this->properties[$propName]['type'],
                 $fqcns,
                 $this->enumConstMap,
@@ -798,7 +801,7 @@ class ResourceTransformer extends CoreTransformer
                 continue;
             }
 
-            $this->properties[$propName]['type'] = LaravelTsPublish::aliasPropertyType(
+            $this->properties[$propName]['type'] = TsTypeString::aliasPropertyType(
                 $this->properties[$propName]['type'],
                 $propFqcns,
                 $nameMap,
@@ -861,7 +864,7 @@ class ResourceTransformer extends CoreTransformer
             }
 
             $typeName = $originalConstName.'Type';
-            $ns = str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn));
+            $ns = str_replace('/', '.', TsNaming::namespaceToPath($fqcn));
 
             $map[$constAlias] = $ns.'.'.$typeName;
         }
@@ -880,13 +883,13 @@ class ResourceTransformer extends CoreTransformer
 
         foreach ($this->importAliases as $fqcn => $alias) {
             if (isset($this->enumFqcnMap[$fqcn])) {
-                $ns = str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn));
+                $ns = str_replace('/', '.', TsNaming::namespaceToPath($fqcn));
                 $map[$alias] = $ns.'.'.$this->enumFqcnMap[$fqcn];
             } elseif (isset($this->resourceFqcnMap[$fqcn])) {
-                $ns = str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn));
+                $ns = str_replace('/', '.', TsNaming::namespaceToPath($fqcn));
                 $map[$alias] = $ns.'.'.$this->resourceFqcnMap[$fqcn];
             } elseif (isset($this->modelFqcnMap[$fqcn])) {
-                $ns = str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn));
+                $ns = str_replace('/', '.', TsNaming::namespaceToPath($fqcn));
                 $map[$alias] = $ns.'.'.$this->modelFqcnMap[$fqcn];
             }
         }

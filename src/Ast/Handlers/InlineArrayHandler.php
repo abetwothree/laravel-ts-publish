@@ -11,6 +11,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Config;
@@ -70,7 +72,7 @@ final class InlineArrayHandler implements ExpressionHandler
         $spreadResult = $engine->resolve($expr);
 
         if (isset($spreadResult['resourceFqcn'])
-            && $spreadResult['type'] === LaravelTsPublish::resourceTypeName($spreadResult['resourceFqcn'])) {
+            && $spreadResult['type'] === TsNaming::resourceTypeName($spreadResult['resourceFqcn'])) {
             return ['fqcn' => $spreadResult['resourceFqcn'], 'isModel' => false, 'isCollection' => false];
         }
 
@@ -268,7 +270,7 @@ final class InlineArrayHandler implements ExpressionHandler
                 // A mixed wrap/direct ternary needs both arms named, whether or not the merged union
                 // still shows them apart; blanket substitution would rewrite the direct arm too.
                 $isMixed = ($analysis->directEnumFqcns[$prop['name']] ?? null) === $fqcn;
-                $members = LaravelTsPublish::splitTopLevelUnion($prop['type']);
+                $members = TsTypeString::splitTopLevelUnion($prop['type']);
 
                 $prop['type'] = $isMixed
                     ? $this->expandMixedEnumType(
@@ -277,7 +279,7 @@ final class InlineArrayHandler implements ExpressionHandler
                         $asEnumType,
                         $analysis->enumResourceArmShapes[$prop['name']] ?? null,
                     )
-                    : LaravelTsPublish::substituteEnumType($prop['type'], $bareTypeName, $asEnumType);
+                    : TsTypeString::substituteEnumType($prop['type'], $bareTypeName, $asEnumType);
             }
 
             unset($prop);
@@ -361,7 +363,7 @@ final class InlineArrayHandler implements ExpressionHandler
         // wrapped one) must not claim an import the transformer would then emit unused.
         $embeddedEnumFqcns = array_values(array_filter(
             $embeddedEnumFqcns,
-            fn (string $fqcn): bool => LaravelTsPublish::typeNameOccursIn(
+            fn (string $fqcn): bool => TsTypeString::typeNameOccursIn(
                 LaravelTsPublish::toTsType($fqcn)['type'],
                 $result['type'],
             ),
@@ -438,7 +440,7 @@ final class InlineArrayHandler implements ExpressionHandler
         $explicitKeyLiterals = array_map(fn (string $key): string => "'{$key}'", $explicitKeyNames);
 
         return array_map(function (int $index) use ($spreadArms, $explicitKeyLiterals): string {
-            $armName = LaravelTsPublish::resourceTypeName($spreadArms[$index]['fqcn']);
+            $armName = TsNaming::resourceTypeName($spreadArms[$index]['fqcn']);
 
             // Spreading a collection renumbers its elements 0..n, so a collection arm holds only
             // numeric keys: nothing string-keyed can overwrite it, and it overwrites nothing.
@@ -447,7 +449,7 @@ final class InlineArrayHandler implements ExpressionHandler
             }
 
             $laterArmNames = array_values(array_unique(array_map(
-                fn (array $arm): string => LaravelTsPublish::resourceTypeName($arm['fqcn']),
+                fn (array $arm): string => TsNaming::resourceTypeName($arm['fqcn']),
                 array_filter(array_slice($spreadArms, $index + 1), fn (array $arm): bool => ! $arm['isCollection']),
             )));
 

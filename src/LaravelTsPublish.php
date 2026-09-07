@@ -6,13 +6,13 @@ namespace AbeTwoThree\LaravelTsPublish;
 
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnum;
-use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
-use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
-use BackedEnum;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use Closure;
-use Composer\ClassMapGenerator\PhpFileParser;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Casts\AsCollection;
@@ -20,9 +20,7 @@ use Illuminate\Database\Eloquent\Casts\AsEnumCollection;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
-use InvalidArgumentException;
 use JsonSerializable;
 use PhpParser\Node;
 use PhpParser\Node\Stmt\GroupUse;
@@ -37,7 +35,6 @@ use ReflectionNamedType;
 use ReflectionProperty;
 use ReflectionType;
 use ReflectionUnionType;
-use stdClass;
 use UnitEnum;
 
 /**
@@ -55,9 +52,19 @@ use UnitEnum;
  * `enums` holds PHP enum const names (display only); `enumTypes` holds the TS alias names emitted in imports.
  * `omit`, when true, signals a property that resolved to nothing useful and should be dropped from
  * generated output entirely rather than emitted as `unknown` (see omittedTypeScriptInfo()).
+ *
+ * The delegations below keep every `LaravelTsPublish::` helper answering for callers outside this
+ * package; inside it, call the helper's own facade.
  */
 class LaravelTsPublish
 {
+    /**
+     * {@see TsTypeStringService::TS_PRIMITIVES}
+     *
+     * @var list<string>
+     */
+    public const array TS_PRIMITIVES = TsTypeStringService::TS_PRIMITIVES;
+
     protected static ?Closure $callCommandWith = null;
 
     /**
@@ -76,34 +83,11 @@ class LaravelTsPublish
     protected array $phpstanTypeAliasCache = [];
 
     /**
-     * Per-class cache of published resource interface names: FQCN => #[TsResource(name:)] or basename.
-     *
-     * @var array<string, string>
-     */
-    protected array $resourceTypeNames = [];
-
-    /**
      * Per-file cache of resolved `use`-statement short-name → FQCN maps, keyed by file path.
      *
      * @var array<string, array<string, class-string>>
      */
     protected array $useStatementsCache = [];
-
-    /** @var list<string> */
-    private const array RESERVED_JS_IDENTIFIERS = [
-        'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
-        'default', 'delete', 'do', 'else', 'export', 'extends', 'false',
-        'finally', 'for', 'function', 'if', 'import', 'in', 'instanceof',
-        'let', 'new', 'null', 'return', 'static', 'super', 'switch', 'this',
-        'throw', 'true', 'try', 'typeof', 'var', 'void', 'while', 'with',
-        'yield',
-    ];
-
-    /** @var list<string> */
-    public const array TS_PRIMITIVES = [
-        'string', 'number', 'boolean', 'bigint', 'symbol',
-        'null', 'undefined', 'object', 'unknown', 'any', 'never', 'void',
-    ];
 
     /**
      * Set something to do when the publish command runs, using a callback Closure
@@ -124,22 +108,11 @@ class LaravelTsPublish
     }
 
     /**
-     * Resolve an absolute file path to a project-root-relative path, or a vendor-relative one.
+     * {@see TsNaming::resolveRelativePath()}
      */
     public static function resolveRelativePath(string $absolutePath): string
     {
-        $basePath = base_path().DIRECTORY_SEPARATOR;
-
-        if (str_starts_with($absolutePath, $basePath)) {
-            return Str::after($absolutePath, $basePath);
-        }
-
-        // Outside base_path(), e.g. vendor in a package development context
-        if (str_contains($absolutePath, DIRECTORY_SEPARATOR.'vendor'.DIRECTORY_SEPARATOR)) {
-            return 'vendor'.DIRECTORY_SEPARATOR.Str::after($absolutePath, DIRECTORY_SEPARATOR.'vendor'.DIRECTORY_SEPARATOR);
-        }
-
-        return $absolutePath;
+        return TsNaming::resolveRelativePath($absolutePath);
     }
 
     /**
@@ -166,14 +139,12 @@ class LaravelTsPublish
         return (new RelationMap)->strategyFor($type);
     }
 
+    /**
+     * {@see TsNaming::keyCase()}
+     */
     public function keyCase(string $key, string $case): string
     {
-        return match ($case) {
-            'camel' => Str::camel($key),
-            'snake' => Str::snake($key),
-            'pascal' => Str::studly($key),
-            default => $key,
-        };
+        return TsNaming::keyCase($key, $case);
     }
 
     /**
@@ -248,7 +219,7 @@ class LaravelTsPublish
                     $result['type'] = $tsType['type'];
 
                     if (isset($tsType['import'])) {
-                        foreach ($this->extractImportableTypes($tsType['type']) as $importName) {
+                        foreach (TsTypeString::extractImportableTypes($tsType['type']) as $importName) {
                             $result['customImports'][$tsType['import']][] = $importName;
                         }
                     }
@@ -483,7 +454,7 @@ class LaravelTsPublish
         foreach ($shape as $key => $type) {
             // The shape map is string-only, so a class- or enum-backed value carries no FQCN and could
             // never emit an import — degrade that property rather than emit a token nothing imports.
-            if ($this->shapeValueHasUnimportableToken($type)) {
+            if (TsTypeString::shapeValueHasUnimportableToken($type)) {
                 $type = 'unknown';
             }
 
@@ -522,7 +493,7 @@ class LaravelTsPublish
 
                 $type = $this->propertyTypes($reflection, $property->getName())['type'];
 
-                if ($this->shapeValueHasUnimportableToken($type)) {
+                if (TsTypeString::shapeValueHasUnimportableToken($type)) {
                     $type = 'unknown';
                 }
 
@@ -566,34 +537,13 @@ class LaravelTsPublish
     }
 
     /**
-     * Whether a resolved shape value contains an identifier that would need an import to be valid.
-     *
-     * extractImportableTypes() can't be reused: it skips '<'/'{' content, which docblock shapes routinely have.
-     * Object-literal keys are stripped first so 'owner' in '{ owner: User }' isn't read as a value token.
+     * {@see TsTypeString::shapeValueHasUnimportableToken()}
      *
      * @param  list<string>  $importableNames  Local names an import already brings into the file.
      */
     public function shapeValueHasUnimportableToken(string $type, array $importableNames = []): bool
     {
-        // The `?` of an optional key is not a token separator, so a key stripped without it survives as
-        // `name?` and reads as an unimportable value.
-        $withoutKeys = (string) preg_replace('/\b\w+\s*\??\s*:/', '', $type);
-
-        $tokens = preg_split('/[<>{}()|,;\[\]\s]+/', $withoutKeys, -1, PREG_SPLIT_NO_EMPTY) ?: [];
-
-        foreach ($tokens as $token) {
-            if (in_array($token, self::TS_PRIMITIVES, true) || in_array($token, $importableNames, true)) {
-                continue;
-            }
-
-            if (in_array($token, ['Record', 'Date', 'true', 'false'], true)) {
-                continue;
-            }
-
-            return true;
-        }
-
-        return false;
+        return TsTypeString::shapeValueHasUnimportableToken($type, $importableNames);
     }
 
     /**
@@ -754,7 +704,7 @@ class LaravelTsPublish
         $reflectionMethod = $class->getMethod($method);
         $signatureInfo = $this->resolveReflectionType($reflectionMethod->getReturnType());
 
-        if ($signatureInfo['type'] !== 'unknown' && ! $this->isVagueTsType($signatureInfo['type'])) {
+        if ($signatureInfo['type'] !== 'unknown' && ! TsTypeString::isVagueTsType($signatureInfo['type'])) {
             return $signatureInfo;
         }
 
@@ -762,7 +712,7 @@ class LaravelTsPublish
         // docblock shape like `@return array{value: int, label: string}` can usually do better.
         $docblockInfo = $this->docblockReturnTypes($reflectionMethod);
 
-        if ($docblockInfo['type'] !== 'unknown' && ! $this->isVagueTsType($docblockInfo['type'])) {
+        if ($docblockInfo['type'] !== 'unknown' && ! TsTypeString::isVagueTsType($docblockInfo['type'])) {
             return $docblockInfo;
         }
 
@@ -770,14 +720,11 @@ class LaravelTsPublish
     }
 
     /**
-     * A "vague" TS type carries no element information, so a docblock generic can usually do better.
-     *
-     * An object-literal shape is never vague even when a key resolves to 'unknown' — a bare 'unknown'
-     * substring only signals vagueness outside `{...}`, where no per-key structure exists.
+     * {@see TsTypeString::isVagueTsType()}
      */
     public function isVagueTsType(string $type): bool
     {
-        return $type === 'object' || (str_contains($type, 'unknown') && ! str_contains($type, '{'));
+        return TsTypeString::isVagueTsType($type);
     }
 
     /** @return TypeScriptTypeInfo */
@@ -1501,7 +1448,7 @@ class LaravelTsPublish
         $parts = [];
 
         foreach ($innerTypes as $key => $type) {
-            if ($this->shapeValueHasUnimportableToken($type)) {
+            if (TsTypeString::shapeValueHasUnimportableToken($type)) {
                 $type = 'unknown';
             }
 
@@ -1675,133 +1622,45 @@ class LaravelTsPublish
     }
 
     /**
-     * $allowIndexSignature: a generated `[key: number]`/`[key: string]` is valid TS only in a type
-     * position — pass true only there. In a value position (an object literal) it's a syntax error,
-     * so every other caller must keep the default and never risk emitting it unquoted.
+     * {@see JsEmitter::validJsObjectKey()}
      */
     public function validJsObjectKey(string $key, bool $allowIndexSignature = false): string
     {
-        if (preg_match('/^[a-zA-Z_$][a-zA-Z0-9_$]*$/', $key)
-            || ($allowIndexSignature && preg_match('/^\[[a-zA-Z_$][a-zA-Z0-9_$]*: (?:string|number)\]$/', $key))) {
-            return $key;
-        }
-
-        // json_encode produces a properly escaped double-quoted string valid in JS/TS
-        return (string) json_encode($key);
+        return JsEmitter::validJsObjectKey($key, $allowIndexSignature);
     }
 
     /**
-     * Ensure a string is safe as a bare JS/TS identifier ('delete' → 'deleteMethod').
-     *
-     * Not for object property keys — reserved words are legal there in TS interfaces and literals.
-     *
-     * @param  string  $name  The proposed identifier
-     * @param  string  $suffix  Required suffix appended when $name is reserved (e.g., 'Method', 'Controller')
+     * {@see JsEmitter::safeJsIdentifier()}
      */
     public function safeJsIdentifier(string $name, string $suffix): string
     {
-        if (in_array($name, self::RESERVED_JS_IDENTIFIERS, true)) {
-            return $name.$suffix;
-        }
-
-        return $name;
+        return JsEmitter::safeJsIdentifier($name, $suffix);
     }
 
     /**
-     * Convert a PHP value to a raw JavaScript/TypeScript literal.
-     *
-     * Unlike Js::from(), this emits readable object/array literals instead of JSON.parse(...) — the
-     * output lands in generated .ts files, where XSS-safe encoding is not needed.
+     * {@see JsEmitter::toJsLiteral()}
      */
     public function toJsLiteral(mixed $value): string
     {
-        if ($value === null) {
-            return 'null';
-        }
-
-        if (is_bool($value)) {
-            return $value ? 'true' : 'false';
-        }
-
-        if (is_int($value)) {
-            return (string) $value;
-        }
-
-        if (is_float($value)) {
-            if (! is_finite($value)) {
-                throw new InvalidArgumentException('A non-finite float has no TypeScript literal.');
-            }
-
-            // (string) rounds to the `precision` ini value; json_encode() emits the shortest round-trip form.
-            return (string) json_encode($value);
-        }
-
-        if (is_string($value)) {
-            return "'".str_replace(['\\', "'", "\n", "\r", "\t"], ['\\\\', "\\'", '\\n', '\\r', '\\t'], $value)."'";
-        }
-
-        if ($value instanceof UnitEnum) {
-            return $this->toJsLiteral($this->enumScalar($value));
-        }
-
-        if ($value instanceof stdClass && get_object_vars($value) === []) {
-            return '{}';
-        }
-
-        if (is_object($value)) {
-            $value = (array) $value;
-        }
-
-        if (is_array($value)) {
-            if (array_is_list($value)) {
-                return '['.implode(', ', array_map(fn ($v) => $this->toJsLiteral($v), $value)).']';
-            }
-
-            $pairs = [];
-            foreach ($value as $key => $val) {
-                $pairs[] = $this->validJsObjectKey((string) $key).': '.$this->toJsLiteral($val);
-            }
-
-            return '{'.implode(', ', $pairs).'}';
-        }
-
-        return 'null';
+        return JsEmitter::toJsLiteral($value);
     }
 
     /**
-     * The scalar an enum case serializes to: a backed case's value, a pure case's name.
+     * {@see JsEmitter::enumScalar()}
      */
     public function enumScalar(UnitEnum $enum): int|string
     {
-        return $enum instanceof BackedEnum ? $enum->value : $enum->name;
+        return JsEmitter::enumScalar($enum);
     }
 
     /**
-     * Extract importable type identifiers from a TypeScript type string,
-     * filtering out primitives, inline types, and union syntax.
+     * {@see TsTypeString::extractImportableTypes()}
      *
      * @return list<string>
      */
     public function extractImportableTypes(string $typeString): array
     {
-        $parts = explode('|', $typeString);
-        $importable = [];
-
-        foreach ($parts as $part) {
-            $part = trim($part);
-
-            if ($part === '' || in_array($part, self::TS_PRIMITIVES, true)) {
-                continue;
-            }
-
-            if (str_starts_with($part, '{') || str_starts_with($part, '[') || str_contains($part, '<')) {
-                continue;
-            }
-
-            $importable[] = str_ends_with($part, '[]') ? substr($part, 0, -2) : $part;
-        }
-
-        return array_values(array_unique($importable));
+        return TsTypeString::extractImportableTypes($typeString);
     }
 
     /** @return TypeScriptTypeInfo */
@@ -1903,10 +1762,7 @@ class LaravelTsPublish
     }
 
     /**
-     * Alias every bare type-name occurrence in one item's type string, walking occurrences left to right.
-     *
-     * A morph union's occurrence order is the order its FQCN list was built in, so same-basename FQCNs are
-     * consumed in source order and the last one covers any further occurrence. No bare token survives.
+     * {@see TsTypeString::aliasPropertyType()}
      *
      * @param  list<string>  $itemFqcns  FQCN per occurrence, in source order, never deduped — a caller may
      *                                   supply more entries than real occurrences (e.g. a merged superset);
@@ -1916,473 +1772,140 @@ class LaravelTsPublish
      */
     public function aliasPropertyType(string $type, array $itemFqcns, array $nameMap, array $aliases): string
     {
-        /** @var array<string, non-empty-list<string>> $queues */
-        $queues = [];
-
-        foreach ($itemFqcns as $fqcn) {
-            $name = $nameMap[$fqcn] ?? null;
-
-            if ($name !== null) {
-                $queues[$name][] = $aliases[$fqcn] ?? $name;
-            }
-        }
-
-        if ($queues === []) {
-            return $type;
-        }
-
-        $names = array_keys($queues);
-        usort($names, static fn (string $a, string $b): int => strlen($b) <=> strlen($a));
-        $names = array_map(static fn (string $name): string => preg_quote($name, '/'), $names);
-
-        $pattern = '/(?<![A-Za-z0-9_$.])(?:'.implode('|', $names).')(?![A-Za-z0-9_$])/';
-        $cursors = [];
-
-        return preg_replace_callback($pattern, static function (array $match) use ($queues, &$cursors): string {
-            $name = $match[0];
-            $cursor = $cursors[$name] ?? 0;
-            $cursors[$name] = min($cursor + 1, count($queues[$name]) - 1);
-
-            return $queues[$name][$cursor];
-        }, $type) ?? $type;
+        return TsTypeString::aliasPropertyType($type, $itemFqcns, $nameMap, $aliases);
     }
 
     /**
-     * Resolve the TypeScript interface name a resource class is published under.
-     *
-     * #[TsResource(name:)] renames the emitted interface, so a reference that used class_basename()
-     * instead named a type nothing declares. ResourceTransformer::initReflection() is the same rule.
+     * {@see TsNaming::resourceTypeName()}
      */
     public function resourceTypeName(string $fqcn): string
     {
-        if (isset($this->resourceTypeNames[$fqcn])) {
-            return $this->resourceTypeNames[$fqcn];
-        }
-
-        $name = class_basename($fqcn);
-
-        if (class_exists($fqcn)) {
-            $attributes = (new ReflectionClass($fqcn))->getAttributes(TsResource::class);
-
-            if ($attributes !== []) {
-                $name = $attributes[0]->newInstance()->name ?? $name;
-            }
-        }
-
-        return $this->resourceTypeNames[$fqcn] = $name;
+        return TsNaming::resourceTypeName($fqcn);
     }
 
     /**
-     * Convert a FQCN to a modular output directory path.
-     *
-     * Example: 'Blog\Enums\ArticleStatus' → 'blog/enums'
+     * {@see TsNaming::namespaceToPath()}
      */
     public function namespaceToPath(string $fqcn): string
     {
-        $namespace = Str::beforeLast($fqcn, '\\');
-
-        $prefix = Config::string('ts-publish.namespace_strip_prefix', '');
-
-        if ($prefix !== '' && str_starts_with($namespace, $prefix)) {
-            $namespace = substr($namespace, strlen($prefix));
-        }
-
-        return collect(explode('\\', $namespace))
-            ->filter()
-            ->map(fn (string $segment) => Str::kebab($segment))
-            ->implode('/');
+        return TsNaming::namespaceToPath($fqcn);
     }
 
     /**
-     * Compute the TypeScript relative import path from one namespace path to another.
-     *
-     * Example: 'blog/models' → 'blog/enums' = '../enums'; 'models' → 'models/videos' = './videos'
-     *
-     * An empty from-path is the output root, not a directory named '' — one segment deep would climb out.
+     * {@see TsNaming::relativeImportPath()}
      */
     public function relativeImportPath(string $fromNamespacePath, string $toNamespacePath): string
     {
-        if ($fromNamespacePath === $toNamespacePath) {
-            return '.';
-        }
-
-        $fromParts = $fromNamespacePath === '' ? [] : explode('/', $fromNamespacePath);
-        $toParts = explode('/', $toNamespacePath);
-
-        $commonLength = 0;
-        $maxCommon = min(count($fromParts), count($toParts));
-
-        while ($commonLength < $maxCommon && $fromParts[$commonLength] === $toParts[$commonLength]) {
-            $commonLength++;
-        }
-
-        $upCount = count($fromParts) - $commonLength;
-        $downSegments = array_slice($toParts, $commonLength);
-
-        // TypeScript reads a bare specifier like 'videos' as a module lookup, not a relative
-        // path, so a descendant target must be prefixed with './'.
-        if ($upCount === 0) {
-            return './'.implode('/', $downSegments);
-        }
-
-        $relative = str_repeat('../', $upCount).implode('/', $downSegments);
-
-        return rtrim($relative, '/');
+        return TsNaming::relativeImportPath($fromNamespacePath, $toNamespacePath);
     }
 
     /**
-     * Sort import paths following eslint-plugin-simple-import-sort conventions: packages, then
-     * absolute/other, then relative (deeper first), alphabetical (case-insensitive) within a group.
+     * {@see TsNaming::sortImportPaths()}
      *
      * @param  array<string, list<string>>  $imports
      * @return array<string, list<string>>
      */
     public function sortImportPaths(array $imports): array
     {
-        uksort($imports, function (string $a, string $b): int {
-            $groupA = $this->importSortGroup($a);
-            $groupB = $this->importSortGroup($b);
-
-            if ($groupA !== $groupB) {
-                return $groupA <=> $groupB;
-            }
-
-            // Within relative imports, deeper paths come first
-            if ($groupA === 2) {
-                $depthA = count(array_filter(explode('/', $a), fn (string $s): bool => $s === '..'));
-                $depthB = count(array_filter(explode('/', $b), fn (string $s): bool => $s === '..'));
-
-                if ($depthA !== $depthB) {
-                    return $depthB <=> $depthA;
-                }
-            }
-
-            return strnatcasecmp($a, $b);
-        });
-
-        return $imports;
+        return TsNaming::sortImportPaths($imports);
     }
 
     /**
-     * Determine the sort group for an import path: 0 = package, 1 = absolute/other, 2 = relative.
-     */
-    protected function importSortGroup(string $path): int
-    {
-        if (str_starts_with($path, '.')) {
-            return 2;
-        }
-
-        if (preg_match('/^@?\w/', $path)) {
-            return 0;
-        }
-
-        return 1;
-    }
-
-    /**
-     * Prefix unqualified type names in a TypeScript type string with their global namespace.
+     * {@see TsTypeString::qualifyGlobalType()}
      *
-     * Pass 1 resolves per-file import aliases (`CrmUser` → `models.User`) first, so aliased names
-     * reach the namespace-qualification pass already resolved.
-     *
-     * @param  string  $typeStr  The TypeScript type string to rewrite.
      * @param  array<string, list<string>>  $namespacedTypes  Map of namespace prefix → type names it owns.
-     * @param  string  $skipNamespace  Skip types that already belong to this namespace (current context).
      * @param  array<string, string>  $aliasResolution  Per-file alias → 'namespace.OriginalName' map.
      */
     public function qualifyGlobalType(string $typeStr, array $namespacedTypes, string $skipNamespace = '', array $aliasResolution = []): string
     {
-        // Pass 1: resolve per-file import aliases to their namespace-qualified equivalents
-        foreach ($aliasResolution as $alias => $qualified) {
-            $lastDot = strrpos($qualified, '.');
-            $targetNs = $lastDot !== false ? substr($qualified, 0, $lastDot) : '';
-            $replacement = ($targetNs === $skipNamespace)
-                ? substr($qualified, $lastDot + 1)
-                : $qualified;
-            $pattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($alias, '/').'(?![A-Za-z0-9_$])/';
-            $typeStr = preg_replace($pattern, $replacement, $typeStr) ?? $typeStr;
-        }
-
-        // Pass 2: names that also exist in the skip namespace belong to the current context,
-        // so they must not be re-qualified with another namespace.
-        /** @var list<string> $skipTypeNames */
-        $skipTypeNames = $namespacedTypes[$skipNamespace] ?? [];
-
-        foreach ($namespacedTypes as $namespace => $typeNames) {
-            if ($namespace === $skipNamespace) {
-                continue;
-            }
-
-            // Match longer names first to avoid partial replacements (e.g. 'StatusType' before 'Status')
-            usort($typeNames, fn (string $a, string $b): int => strlen($b) - strlen($a));
-
-            foreach ($typeNames as $typeName) {
-                if (in_array($typeName, $skipTypeNames, true)) {
-                    continue;
-                }
-
-                $pattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($typeName, '/').'(?![A-Za-z0-9_$])/';
-                $typeStr = preg_replace($pattern, $namespace.'.'.$typeName, $typeStr) ?? $typeStr;
-            }
-        }
-
-        return $typeStr;
+        return TsTypeString::qualifyGlobalType($typeStr, $namespacedTypes, $skipNamespace, $aliasResolution);
     }
 
     /**
-     * Split a type string into its top-level union members.
-     *
-     * Depth-aware over braces, parens, angle brackets, and square brackets, and skips
-     * quoted literals whole, so a nested `|` never splits.
+     * {@see TsTypeString::splitTopLevelUnion()}
      *
      * @return list<string>
      */
     public function splitTopLevelUnion(string $typeStr): array
     {
-        return TsTypeShape::splitTopLevel($typeStr, ['|']);
+        return TsTypeString::splitTopLevelUnion($typeStr);
     }
 
     /**
-     * Joins union members with a single trailing `null`, whichever arms the nulls came from.
+     * {@see TsTypeString::hoistNull()}
      *
      * @param  list<string>  $types
      */
     public function hoistNull(array $types): string
     {
-        $members = [];
-        $nullable = false;
-
-        foreach ($types as $type) {
-            foreach ($this->splitTopLevelUnion($type) as $member) {
-                if ($member === 'null') {
-                    $nullable = true;
-
-                    continue;
-                }
-
-                $members[] = $member;
-            }
-        }
-
-        $members = array_unique($members);
-
-        if ($nullable) {
-            $members[] = 'null';
-        }
-
-        return implode(' | ', $members);
+        return TsTypeString::hoistNull($types);
     }
 
     /**
-     * Whether a TypeScript type name occurs as its own token, not inside a longer identifier.
-     *
-     * Only a leading `.` disqualifies: `foo.StatusType` is a property read, while `StatusType.foo`
-     * reads a member of the type and so still names it.
+     * {@see TsTypeString::typeNameOccursIn()}
      */
     public function typeNameOccursIn(string $typeName, string $haystack): bool
     {
-        return preg_match('/(?<![A-Za-z0-9_$.])'.preg_quote($typeName, '/').'(?![A-Za-z0-9_$])/', $haystack) === 1;
+        return TsTypeString::typeNameOccursIn($typeName, $haystack);
     }
 
     /**
-     * Replace a bare enum type-name token with its AsEnum wrap, preserving every other union arm.
-     *
-     * The lookbehind's `.` keeps a namespace-qualified `foo.RoleType` unmatched; the lookahead keeps
-     * `RoleTypeExtra` unmatched.
+     * {@see TsTypeString::substituteEnumType()}
      */
     public function substituteEnumType(string $typeStr, string $bareTypeName, string $asEnumType): string
     {
-        $pattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($bareTypeName, '/').'(?![A-Za-z0-9_$])/';
-
-        return preg_replace($pattern, $asEnumType, $typeStr) ?? $typeStr;
+        return TsTypeString::substituteEnumType($typeStr, $bareTypeName, $asEnumType);
     }
 
     /**
-     * Replace `AsEnum<typeof ConstAlias>` patterns with the pre-computed type alias.
+     * {@see TsTypeString::rewriteAsEnumToType()}
      *
-     * In the globals file there is no `AsEnum` import, so `AsEnum<typeof X>` and `XType` collapse to
-     * the same qualified name — the pair must be folded first to avoid emitting a literal duplicate.
-     *
-     * @param  string  $typeStr  The TypeScript type string to rewrite.
      * @param  array<string, string>  $constToTypeMap  constAlias => 'namespace.TypeName'
      */
     public function rewriteAsEnumToType(string $typeStr, array $constToTypeMap): string
     {
-        foreach ($constToTypeMap as $constAlias => $qualifiedTypeName) {
-            $lastDot = strrpos($qualifiedTypeName, '.');
-            $bareTypeName = $lastDot === false ? $qualifiedTypeName : substr($qualifiedTypeName, $lastDot + 1);
-
-            // A trailing `[` means the bare arm is array-shaped and the AsEnum arm is not (or vice
-            // versa) — a genuinely different pair, not the redundant same-shaped one this folds.
-            $pairPattern = '/AsEnum<typeof\s+'.preg_quote($constAlias, '/').'\s*>\s*\|\s*'
-                .preg_quote($bareTypeName, '/').'(?![A-Za-z0-9_$\[])/';
-            $typeStr = preg_replace($pairPattern, $qualifiedTypeName, $typeStr) ?? $typeStr;
-
-            // Same pair reversed: the bare alias would be re-qualified afterwards, recreating the duplicate.
-            // Only ResourceTransformer::rewriteEnumResourceTypes() emits this pair shape, always forward-ordered.
-            $reversedPattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($bareTypeName, '/').'\s*\|\s*AsEnum<typeof\s+'
-                .preg_quote($constAlias, '/').'\s*>/';
-            $typeStr = preg_replace($reversedPattern, $qualifiedTypeName, $typeStr) ?? $typeStr;
-
-            $singlePattern = '/AsEnum<typeof\s+'.preg_quote($constAlias, '/').'\s*>/';
-            $typeStr = preg_replace($singlePattern, $qualifiedTypeName, $typeStr) ?? $typeStr;
-        }
-
-        return $typeStr;
+        return TsTypeString::rewriteAsEnumToType($typeStr, $constToTypeMap);
     }
 
     /**
-     * Sanitize a string for safe inclusion in a JSDoc comment.
-     *
-     * Prevents premature comment termination by escaping the closing sequence.
+     * {@see JsEmitter::sanitizeJsDoc()}
      */
     public function sanitizeJsDoc(string $text): string
     {
-        return str_replace('*/', '*\/', $text);
+        return JsEmitter::sanitizeJsDoc($text);
     }
 
     /**
-     * Format a description string into a JSDoc comment block.
-     *
-     * Single-line descriptions render inline; multi-line ones become a ` * `-prefixed block.
-     *
-     * @param  int  $indent  Number of leading spaces to prefix every line of the output.
+     * {@see JsEmitter::formatJsDoc()}
      */
     public function formatJsDoc(string $description, int $indent = 0): string
     {
-        $sanitized = $this->sanitizeJsDoc($description);
-        $prefix = str_repeat(' ', $indent);
-
-        if (! str_contains($sanitized, "\n")) {
-            return "{$prefix}/** {$sanitized} */";
-        }
-
-        $lines = explode("\n", $sanitized);
-        $result = "{$prefix}/**\n";
-
-        foreach ($lines as $line) {
-            if ($line === '') {
-                $result .= "{$prefix} *\n";
-            } else {
-                $result .= "{$prefix} * {$line}\n";
-            }
-        }
-
-        $result .= "{$prefix} */";
-
-        return $result;
+        return JsEmitter::formatJsDoc($description, $indent);
     }
 
     /**
-     * Extract the human-readable description from a PHPDoc block,
-     * ignoring all @-prefixed tags (@param, @return, @phpstan-*, etc.).
+     * {@see JsEmitter::parseDocBlockDescription()}
      */
     public function parseDocBlockDescription(string|false $docComment): string
     {
-        if ($docComment === false || $docComment === '') {
-            return '';
-        }
-
-        $lines = explode("\n", $docComment);
-        $description = [];
-        $inTag = false;
-
-        foreach ($lines as $line) {
-            $cleaned = preg_replace('#^\s*/?\*+/?\s?#', '', $line) ?? '';
-            $cleaned = preg_replace('#\s*\*+/\s*$#', '', $cleaned) ?? '';
-            $trimmed = trim($cleaned);
-
-            // Empty remnants of /** and */
-            if ($trimmed === '' || $trimmed === '/') {
-                // Preserve interior blank lines only — not inside a tag block, not before any text
-                if (! $inTag && $description !== []) {
-                    $description[] = '';
-                }
-                $inTag = false;
-
-                continue;
-            }
-
-            // An @-tag line opens a (possibly multi-line) tag block
-            if (str_starts_with($trimmed, '@')) {
-                $inTag = true;
-
-                continue;
-            }
-
-            if ($inTag) {
-                continue;
-            }
-
-            // Strip inline tags like {@inheritdoc}, {@see ...}, {@link ...}
-            $trimmed = trim((string) preg_replace('/\s*\{@[^}]+\}\s*/', ' ', $trimmed));
-
-            if ($trimmed === '') {
-                continue;
-            }
-
-            $description[] = $trimmed;
-        }
-
-        // Trailing blank lines produced by the closing */ line
-        while ($description !== [] && end($description) === '') {
-            array_pop($description);
-        }
-
-        return implode("\n", $description);
+        return JsEmitter::parseDocBlockDescription($docComment);
     }
 
     /**
-     * Serialize a list of route arg metadata objects to a JavaScript array literal.
-     *
-     * Only fields that are present are emitted, so the generated TypeScript carries no `undefined` noise.
+     * {@see JsEmitter::routeArgsToJs()}
      *
      * @param  list<array{name: string, required: bool, _routeKey?: string, _enumValues?: list<string|int>, where?: string}>  $args
      */
     public function routeArgsToJs(array $args): string
     {
-        $entries = [];
-
-        foreach ($args as $arg) {
-            $parts = [];
-            $parts[] = 'name: '.$this->toJsLiteral($arg['name']);
-            $parts[] = 'required: '.$this->toJsLiteral($arg['required']);
-
-            if (isset($arg['_routeKey'])) {
-                $parts[] = '_routeKey: '.$this->toJsLiteral($arg['_routeKey']);
-            }
-
-            if (isset($arg['_enumValues'])) {
-                $parts[] = '_enumValues: '.$this->toJsLiteral($arg['_enumValues']);
-            }
-
-            if (isset($arg['where'])) {
-                $parts[] = 'where: '.$this->toJsLiteral($arg['where']);
-            }
-
-            $entries[] = '{'.implode(', ', $parts).'}';
-        }
-
-        return '['.implode(', ', $entries).']';
+        return JsEmitter::routeArgsToJs($args);
     }
 
     /**
-     * Resolve the fully-qualified class name from a PHP file path.
-     *
-     * Returns null if the file does not exist or does not contain a class/enum declaration.
+     * {@see TsNaming::resolveClassFromFile()}
      */
     public function resolveClassFromFile(string $filePath): ?string
     {
-        $absolutePath = str_starts_with($filePath, DIRECTORY_SEPARATOR)
-            ? $filePath
-            : base_path($filePath);
-
-        if (! is_file($absolutePath)) {
-            return null;
-        }
-
-        $classes = PhpFileParser::findClasses($absolutePath);
-
-        return $classes[0] ?? null;
+        return TsNaming::resolveClassFromFile($filePath);
     }
 }

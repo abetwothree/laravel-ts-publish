@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use PhpParser\BuilderFactory;
 use PhpParser\Node\Expr;
@@ -236,7 +237,7 @@ final class ValueResolver
             }
 
             $itemResult = $this->analyzeConstantValue($item, $engine) ?? ValueResult::unknown();
-            $formattedKey = LaravelTsPublish::validJsObjectKey($key);
+            $formattedKey = JsEmitter::validJsObjectKey($key);
             $parts[] = "{$formattedKey}: {$itemResult['type']}";
             $embeddedEnumFqcns = [...$embeddedEnumFqcns, ...$this->collectConstantEnumFqcns($itemResult)];
         }

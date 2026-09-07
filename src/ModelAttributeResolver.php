@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesAccessorType;
 use AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
@@ -176,7 +177,7 @@ class ModelAttributeResolver
      */
     public function refineWithPropertyDocblock(ReflectionClass $reflection, string $attributeName, array $tsInfo): array
     {
-        if (! LaravelTsPublish::isVagueTsType($tsInfo['type'])) {
+        if (! TsTypeString::isVagueTsType($tsInfo['type'])) {
             return $tsInfo;
         }
 
@@ -283,7 +284,7 @@ class ModelAttributeResolver
      */
     protected function isStrictlyMoreStructured(string $candidate, string $current): bool
     {
-        if (! LaravelTsPublish::isVagueTsType($candidate)) {
+        if (! TsTypeString::isVagueTsType($candidate)) {
             return true;
         }
 

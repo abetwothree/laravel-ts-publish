@@ -113,7 +113,7 @@ negative, so malformed input fails toward a redundant-but-harmless paren rather 
 ### Object nodes (named children)
 
 One part per child, `{$key}{$optional}: {$type}`, joined `'; '` and wrapped `'{ ... }'` — the same
-`LaravelTsPublish::validJsObjectKey()` + optional-`?` convention
+`JsEmitter::validJsObjectKey()` + optional-`?` convention
 `InlineArrayHandler::analyzeInlineArray()` already uses for its own inline object shapes (the
 `'{ '.implode('; ', $parts).' }'` wrapping itself is shared even more widely, e.g.
 `arrayableShapeType()`, though that method doesn't mark individual keys optional).

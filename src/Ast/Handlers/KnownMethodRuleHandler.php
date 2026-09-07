@@ -18,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Config;
@@ -132,7 +133,7 @@ final class KnownMethodRuleHandler implements ExpressionHandler
 
         // A prop is JSON, and a bare `@return array` carries no key evidence: the `unknown[]` it
         // derives claims a list for the string-keyed `all()`. Vagueness also covers a `| unknown` arm.
-        if (LaravelTsPublish::isVagueTsType($tsInfo['type'])
+        if (TsTypeString::isVagueTsType($tsInfo['type'])
             || ! $this->serializesAsReflected($reflection->getMethod($method))) {
             return null;
         }
@@ -188,7 +189,7 @@ final class KnownMethodRuleHandler implements ExpressionHandler
         $customImports = [];
 
         if ($importPath !== null) {
-            $importable = LaravelTsPublish::extractImportableTypes($type);
+            $importable = TsTypeString::extractImportableTypes($type);
 
             // A type with no importable token (`Record<string, unknown>`) must not materialise an
             // empty list under its path.
