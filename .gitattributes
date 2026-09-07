@@ -8,6 +8,7 @@
 /phpunit.xml.dist   export-ignore
 /art                export-ignore
 /docs               export-ignore
+/patches            export-ignore
 /tests              export-ignore
 /workbench          export-ignore
 /.editorconfig      export-ignore
@@ -21,6 +22,8 @@
 /assets             export-ignore
 /.claude            export-ignore
 /.vscode            export-ignore
+AGENTS.md           export-ignore
+CLAUDE.md           export-ignore
 rector.php          export-ignore
 package.json        export-ignore
 package-lock.json   export-ignore
@@ -29,3 +32,6 @@ CHANGELOG.md        export-ignore
 CONTRIBUTING.md     export-ignore
 README.md           export-ignore
 tsconfig.json       export-ignore
+tsconfig.full-template-example.json    export-ignore
+tsconfig.split-template-example.json   export-ignore
+tsconfig.testing.json                  export-ignore
