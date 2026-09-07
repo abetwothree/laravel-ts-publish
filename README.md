@@ -1,8 +1,8 @@
 # Generate TypeScript types from your Laravel models, enums, resources, routes & events
 
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/abetwothree/laravel-ts-publish.svg?style=flat-square)](https://packagist.org/packages/abetwothree/laravel-ts-publish)
-[![PHP Compatibility](https://badge.laravel.cloud/php-badge/abetwothree/laravel-ts-publish)](https://packagist.org/packages/abetwothree/laravel-ts-publish)
 [![Laravel Compatibility](https://badge.laravel.cloud/badge/abetwothree/laravel-ts-publish)](https://packagist.org/packages/abetwothree/laravel-ts-publish)
+[![PHP Compatibility](https://badge.laravel.cloud/php-badge/abetwothree/laravel-ts-publish)](https://packagist.org/packages/abetwothree/laravel-ts-publish)
 [![Laravel Boost](https://badge.laravel.cloud/boost-badge.svg)](https://github.com/laravel/boost)
 [![GitHub Tests Action Status](https://img.shields.io/github/actions/workflow/status/abetwothree/laravel-ts-publish/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/abetwothree/laravel-ts-publish/actions?query=workflow%3Arun-tests+branch%3Amain)
 [![Coverage](assets/coverage.svg)](https://github.com/abetwothree/laravel-ts-publish/actions?query=workflow%3Arun-tests+branch%3Amain)
