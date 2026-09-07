@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectMethodTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node\Expr;
@@ -200,7 +201,7 @@ final class StaticCallHandler implements ExpressionHandler
             if ($collected !== null) {
                 return [
                     ...$result,
-                    'type' => $this->wrapCollectionElementType(LaravelTsPublish::resourceTypeName($collected), new ReflectionClass($className)),
+                    'type' => $this->wrapCollectionElementType(TsNaming::resourceTypeName($collected), new ReflectionClass($className)),
                     'optional' => $this->hasConditionalArgument($call, $className),
                     'resourceFqcn' => $collected,
                 ];
@@ -209,7 +210,7 @@ final class StaticCallHandler implements ExpressionHandler
 
         // SomeResource::make($this->prop) — nested resource
         if ($this->isResourceClass($className) && $methodName === 'make') {
-            $resourceName = LaravelTsPublish::resourceTypeName($className);
+            $resourceName = TsNaming::resourceTypeName($className);
             $optional = $this->hasConditionalArgument($call, $className);
 
             /** @var class-string $className */
@@ -223,7 +224,7 @@ final class StaticCallHandler implements ExpressionHandler
 
         // SomeResource::collection(...) — array or keyed record of nested resource
         if ($this->isResourceClass($className) && $methodName === 'collection') {
-            $resourceName = LaravelTsPublish::resourceTypeName($className);
+            $resourceName = TsNaming::resourceTypeName($className);
             $optional = $this->hasConditionalArgument($call, $className);
 
             /** @var class-string $className */
@@ -266,7 +267,7 @@ final class StaticCallHandler implements ExpressionHandler
         // A collection receiver (e.g. ::collection()) resolves to an AnonymousResourceCollection
         // instance, not a $resourceFqcn instance — reflecting the method below would validate
         // against the wrong receiver, so exclude it rather than misfire on e.g. ->additional().
-        if ($resourceFqcn === null || $receiverResult['type'] !== LaravelTsPublish::resourceTypeName($resourceFqcn)) {
+        if ($resourceFqcn === null || $receiverResult['type'] !== TsNaming::resourceTypeName($resourceFqcn)) {
             return null;
         }
 

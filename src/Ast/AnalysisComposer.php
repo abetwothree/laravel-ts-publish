@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
@@ -139,7 +140,7 @@ final class AnalysisComposer
         }
 
         foreach ($analysis->nestedResources as $fqcn) {
-            $this->resourceFqcnMap[$fqcn] = LaravelTsPublish::resourceTypeName($fqcn);
+            $this->resourceFqcnMap[$fqcn] = TsNaming::resourceTypeName($fqcn);
         }
 
         foreach ($analysis->modelFqcns as $fqcn) {

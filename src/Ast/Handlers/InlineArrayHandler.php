@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
@@ -71,7 +72,7 @@ final class InlineArrayHandler implements ExpressionHandler
         $spreadResult = $engine->resolve($expr);
 
         if (isset($spreadResult['resourceFqcn'])
-            && $spreadResult['type'] === LaravelTsPublish::resourceTypeName($spreadResult['resourceFqcn'])) {
+            && $spreadResult['type'] === TsNaming::resourceTypeName($spreadResult['resourceFqcn'])) {
             return ['fqcn' => $spreadResult['resourceFqcn'], 'isModel' => false, 'isCollection' => false];
         }
 
@@ -439,7 +440,7 @@ final class InlineArrayHandler implements ExpressionHandler
         $explicitKeyLiterals = array_map(fn (string $key): string => "'{$key}'", $explicitKeyNames);
 
         return array_map(function (int $index) use ($spreadArms, $explicitKeyLiterals): string {
-            $armName = LaravelTsPublish::resourceTypeName($spreadArms[$index]['fqcn']);
+            $armName = TsNaming::resourceTypeName($spreadArms[$index]['fqcn']);
 
             // Spreading a collection renumbers its elements 0..n, so a collection arm holds only
             // numeric keys: nothing string-keyed can overwrite it, and it overwrites nothing.
@@ -448,7 +449,7 @@ final class InlineArrayHandler implements ExpressionHandler
             }
 
             $laterArmNames = array_values(array_unique(array_map(
-                fn (array $arm): string => LaravelTsPublish::resourceTypeName($arm['fqcn']),
+                fn (array $arm): string => TsNaming::resourceTypeName($arm['fqcn']),
                 array_filter(array_slice($spreadArms, $index + 1), fn (array $arm): bool => ! $arm['isCollection']),
             )));
 

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Transformers\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 
 /**
  * Shared helpers for building TypeScript import maps in both transformers.
@@ -25,8 +25,8 @@ trait BuildsImportMaps
         $imports = [];
 
         foreach ($fqcnMap as $fqcn => $typeName) {
-            $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
-            $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
+            $targetPath = TsNaming::namespaceToPath($fqcn);
+            $importPath = TsNaming::relativeImportPath($this->namespacePath, $targetPath);
             $imports[$importPath][] = $this->formatImportName($fqcn, $typeName);
         }
 
@@ -44,8 +44,8 @@ trait BuildsImportMaps
         $imports = [];
 
         foreach ($fqcns as $fqcn) {
-            $targetPath = LaravelTsPublish::namespaceToPath($fqcn);
-            $importPath = LaravelTsPublish::relativeImportPath($this->namespacePath, $targetPath);
+            $targetPath = TsNaming::namespaceToPath($fqcn);
+            $importPath = TsNaming::relativeImportPath($this->namespacePath, $targetPath);
             $imports[$importPath][] = $this->formatConstImportName($fqcn);
         }
 
@@ -85,6 +85,6 @@ trait BuildsImportMaps
             $imports[$path] = $unique;
         }
 
-        return LaravelTsPublish::sortImportPaths($imports);
+        return TsNaming::sortImportPaths($imports);
     }
 }

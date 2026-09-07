@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsModelDto;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\ModelInspector;
@@ -191,7 +192,7 @@ class ModelTransformer extends CoreTransformer
         $this->reflectionModel = new ReflectionClass($this->findable);
         $this->modelName = $this->reflectionModel->getShortName();
         $this->filePath = $this->resolveRelativePath((string) $this->reflectionModel->getFileName());
-        $this->namespacePath = LaravelTsPublish::namespaceToPath($this->findable);
+        $this->namespacePath = TsNaming::namespaceToPath($this->findable);
         $this->description = JsEmitter::parseDocBlockDescription($this->reflectionModel->getDocComment());
 
         return $this;
@@ -476,7 +477,7 @@ class ModelTransformer extends CoreTransformer
                 $relationType .= ' | null';
             }
 
-            $relationName = LaravelTsPublish::keyCase($relation['name'], $case);
+            $relationName = TsNaming::keyCase($relation['name'], $case);
 
             $description = '';
             if ($this->reflectionModel->hasMethod($relation['name'])) {
@@ -674,10 +675,10 @@ class ModelTransformer extends CoreTransformer
 
         foreach ($this->importAliases as $fqcn => $alias) {
             if (isset($this->enumFqcnMap[$fqcn])) {
-                $ns = str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn));
+                $ns = str_replace('/', '.', TsNaming::namespaceToPath($fqcn));
                 $map[$alias] = $ns.'.'.$this->enumFqcnMap[$fqcn];
             } elseif (isset($this->modelFqcnMap[$fqcn])) {
-                $ns = str_replace('/', '.', LaravelTsPublish::namespaceToPath($fqcn));
+                $ns = str_replace('/', '.', TsNaming::namespaceToPath($fqcn));
                 $map[$alias] = $ns.'.'.$this->modelFqcnMap[$fqcn];
             }
         }

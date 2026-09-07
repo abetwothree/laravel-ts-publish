@@ -9,7 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\FormRequest\FormRequestRulesAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsFormRequestDto;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
@@ -139,7 +139,7 @@ class FormRequestTransformer extends CoreTransformer
 
         $this->typeName = $shortName;
         $this->filename = Str::kebab($shortName);
-        $this->namespacePath = LaravelTsPublish::namespaceToPath($this->findable);
+        $this->namespacePath = TsNaming::namespaceToPath($this->findable);
 
         $description = '';
 
@@ -236,7 +236,7 @@ class FormRequestTransformer extends CoreTransformer
             $imports[$path] = $unique;
         }
 
-        $this->typeImports = LaravelTsPublish::sortImportPaths($imports);
+        $this->typeImports = TsNaming::sortImportPaths($imports);
 
         return $this;
     }

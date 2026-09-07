@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Writers;
 
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
@@ -128,7 +128,7 @@ class GlobalsWriter
             }
         }
 
-        $externalTypeImports = LaravelTsPublish::sortImportPaths($externalTypeImports);
+        $externalTypeImports = TsNaming::sortImportPaths($externalTypeImports);
 
         // Build a merged alias map from all transformers so the globals template can resolve
         // per-file import aliases (e.g. CrmUser, WorkbenchStatusType) to namespace-qualified names.

@@ -11,7 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\New_;
@@ -82,7 +82,7 @@ final class NewResourceHandler implements ExpressionHandler
             if ($collected !== null) {
                 return [
                     ...$result,
-                    'type' => $this->wrapCollectionElementType(LaravelTsPublish::resourceTypeName($collected), new ReflectionClass($className)),
+                    'type' => $this->wrapCollectionElementType(TsNaming::resourceTypeName($collected), new ReflectionClass($className)),
                     'optional' => $this->hasConditionalNewArgument($expr, $className),
                     'resourceFqcn' => $collected,
                 ];
@@ -93,7 +93,7 @@ final class NewResourceHandler implements ExpressionHandler
             return $result; // @codeCoverageIgnore
         }
 
-        $resourceName = LaravelTsPublish::resourceTypeName($className);
+        $resourceName = TsNaming::resourceTypeName($className);
         $optional = $this->hasConditionalNewArgument($expr, $className);
 
         /** @var class-string $className */

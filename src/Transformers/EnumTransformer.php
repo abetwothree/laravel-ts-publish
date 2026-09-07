@@ -11,7 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsEnumStaticMethod;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsEnumDto;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
 use BackedEnum;
 use Illuminate\Support\Facades\Config;
@@ -133,7 +133,7 @@ class EnumTransformer extends CoreTransformer
         }
 
         $this->filePath = $this->resolveRelativePath((string) $this->reflectionEnum->getFileName());
-        $this->namespacePath = LaravelTsPublish::namespaceToPath($this->findable);
+        $this->namespacePath = TsNaming::namespaceToPath($this->findable);
 
         return $this;
     }
@@ -259,7 +259,7 @@ class EnumTransformer extends CoreTransformer
             }
 
             $this->methods[$methodName] = [
-                'name' => LaravelTsPublish::keyCase($tsEnumMethodInstance?->name ?: $methodName, $caseFormatting),
+                'name' => TsNaming::keyCase($tsEnumMethodInstance?->name ?: $methodName, $caseFormatting),
                 'description' => $description,
                 'returns' => $returns,
             ];
@@ -322,7 +322,7 @@ class EnumTransformer extends CoreTransformer
             }
 
             $this->staticMethods[$methodName] = [
-                'name' => LaravelTsPublish::keyCase($tsEnumMethodInstance?->name ?: $methodName, $caseFormatting),
+                'name' => TsNaming::keyCase($tsEnumMethodInstance?->name ?: $methodName, $caseFormatting),
                 'description' => $description,
                 'return' => $return,
             ];

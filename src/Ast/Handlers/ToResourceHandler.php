@@ -14,7 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use Illuminate\Support\Collection;
@@ -87,7 +87,7 @@ final class ToResourceHandler implements ExpressionHandler
             }
 
             /** @var class-string $explicit */
-            return [...$result, 'type' => LaravelTsPublish::resourceTypeName($explicit), 'optional' => false, 'resourceFqcn' => $explicit];
+            return [...$result, 'type' => TsNaming::resourceTypeName($explicit), 'optional' => false, 'resourceFqcn' => $explicit];
         }
 
         $modelFqcn = $this->resolveToResourceReceiverModel($call->var, $scope);
@@ -97,7 +97,7 @@ final class ToResourceHandler implements ExpressionHandler
             return $result;
         }
 
-        return [...$result, 'type' => LaravelTsPublish::resourceTypeName($resourceFqcn), 'optional' => false, 'resourceFqcn' => $resourceFqcn];
+        return [...$result, 'type' => TsNaming::resourceTypeName($resourceFqcn), 'optional' => false, 'resourceFqcn' => $resourceFqcn];
     }
 
     /**
@@ -123,7 +123,7 @@ final class ToResourceHandler implements ExpressionHandler
             /** @var class-string $explicit */
             return [
                 ...$result,
-                'type' => $this->wrapCollectionElementType(LaravelTsPublish::resourceTypeName($explicit), new ReflectionClass($explicit)),
+                'type' => $this->wrapCollectionElementType(TsNaming::resourceTypeName($explicit), new ReflectionClass($explicit)),
                 'optional' => false,
                 'resourceFqcn' => $explicit,
             ];
@@ -139,7 +139,7 @@ final class ToResourceHandler implements ExpressionHandler
         return [
             ...$result,
             'type' => $this->wrapCollectionElementType(
-                LaravelTsPublish::resourceTypeName($resolved['resourceFqcn']),
+                TsNaming::resourceTypeName($resolved['resourceFqcn']),
                 new ReflectionClass($resolved['collectionFqcn']),
             ),
             'optional' => false,
