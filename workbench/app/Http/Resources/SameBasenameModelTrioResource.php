@@ -18,6 +18,10 @@ use Workbench\App\Models\Warehouse;
  * class, so analyzeClosureUnion() folds them to one rendered token and the queue must drop the
  * repeat — deduping both channels breaks trio, deduping neither breaks collapsed_arms.
  *
+ * reversed_arms and control_arms are one expression with its arms swapped, pinning that a branch-level
+ * FQCN keeps its loop position in the queue. Prepending it queues [Crm, App] for both orientations, so
+ * reversed_arms silently exchanges the two User identities while control_arms stays right.
+ *
  * @mixin Warehouse
  */
 class SameBasenameModelTrioResource extends JsonResource
@@ -35,6 +39,8 @@ class SameBasenameModelTrioResource extends JsonResource
             'collapsed_arms' => $this->id > 0
                 ? ($this->id > 1 ? $this->primaryContact : $this->secondaryContact)
                 : ['c' => $this->manager],
+            'reversed_arms' => $this->id > 0 ? ['c' => $this->manager] : $this->primaryContact,
+            'control_arms' => $this->id > 0 ? $this->primaryContact : ['c' => $this->manager],
         ];
     }
 }

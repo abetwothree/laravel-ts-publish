@@ -2677,4 +2677,16 @@ describe('ResourceTransformer with SameBasenameModelTrioResource', function () {
         expect($data->properties['collapsed_arms']['type'])
             ->toBe('CrmUser | { c: WorkbenchUser | null } | null');
     });
+
+    // reversed_arms and control_arms are one expression with its arms swapped, so both hold the same two
+    // FQCNs. Prepending the branch-level entry queues [Crm, App] for both, which silently exchanges the
+    // two User identities in the reversed orientation while leaving the control one right.
+    test('a whole-branch model arm keeps its position against an inline-object arm', function () {
+        $data = (new ResourceTransformer(SameBasenameModelTrioResource::class))->data();
+
+        expect($data->properties['reversed_arms']['type'])
+            ->toBe('{ c: WorkbenchUser | null } | CrmUser | null')
+            ->and($data->properties['control_arms']['type'])
+            ->toBe('CrmUser | { c: WorkbenchUser | null } | null');
+    });
 });

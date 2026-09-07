@@ -1293,12 +1293,12 @@ reference sat inside an inline array literal in one branch, emitting a type toke
 [AST engine § `addProperty()` is the only way a value becomes a property](ast-engine.md#addproperty-is-the-only-way-a-value-becomes-a-property)
 for the same argument on the collector side.
 
-**All three inline maps concatenate per occurrence; none of them dedupe.** They used to be
-`array_unique`d, which lost real multiplicity whenever a merged or branched property named the same
-FQCN twice — `aliasPropertyType()`'s per-occurrence queue then fell back to its
-shorter-than-occurrence-count clamp and mistyped the missing occurrence.
-`BranchedInlineFqcnResource` pins the branch-merge case; `ChildInlineFqcnResource` pins the
-`MethodAnalysis::merge()` case.
+**All three inline maps concatenate per occurrence; neither the branch merge nor
+`MethodAnalysis::merge()` dedupes.** They used to be `array_unique`d, which lost real multiplicity
+whenever a merged or branched property named the same FQCN twice — `aliasPropertyType()`'s
+per-occurrence queue then fell back to its shorter-than-occurrence-count clamp and mistyped the
+missing occurrence. `BranchedInlineFqcnResource` pins the branch-merge case;
+`ChildInlineFqcnResource` pins the `MethodAnalysis::merge()` case.
 
 All three reach `aliasPropertyType()`, by two different routes: `inlineEnumResourceFqcns` becomes
 `ResourceTransformer::$propertyInlineEnumResourceFqcns` and is walked directly by
@@ -1316,6 +1316,21 @@ mistypes an occurrence. The trailing run is free because the
 real function, the rule agrees with observed behavior on every shape tried: `[A, B]`, `[A, A, A]`,
 `[A, B, B]` and `[A, B, B, B]` are lossless; `[A, A, B]`, `[A, B, A]`, `[B, A, B]`, `[A, B, A, B]` and
 `[A, A, B, B]` are not — and nothing constrains a resource to the lossless shapes.
+
+**`ValueResult::mergeUnion()` is the one producer that drops a repeat, and it is not deduping the
+queue.** Folding a ternary or closure union, it feeds `embeddedModelFqcns` — which becomes
+`inlineModelFqcns` — one entry per *rendered* token. A branch resolving to a whole model carries a
+single `modelFqcn`, but `analyzeClosureUnion()` has already `array_unique`d the branch type
+*strings*, so two branches naming the same model render one token between them and a second entry
+would have nothing to bind to. `mergeUnion()` therefore queues a whole-branch `modelFqcn` only on
+first sight — and **in loop position**, interleaved with that same branch's own
+`embeddedModelFqcns`, since the queue is walked left to right against the rendered union. Hoisting
+the branch-level entries to the front of the queue instead, as it briefly did, is correct only while
+every whole-branch model arm precedes every inline-object arm; reverse one and it exchanges two
+same-basename model identities with nothing to catch it — no `unknown`, no dangling token, no
+duplicate identifier, just two swapped types. `SameBasenameModelTrioResource` pins both halves:
+`collapsed_arms`, whose two inner arms are the same class, pins the first-sight rule, and
+`reversed_arms`/`control_arms` — one expression with its arms swapped — pin the position.
 
 **A single inline array member's own multi-FQCN accessor now contributes its own arms too.** The
 fixes above only cover *merging* an already-populated queue across branches or inheritance. A member whose

@@ -3241,11 +3241,17 @@ declare global {
          * repeat. collapsed_arms pins the branch-level channel against it: its two inner arms are the same
          * class, so analyzeClosureUnion() folds them to one rendered token and the queue must drop the
          * repeat — deduping both channels breaks trio, deduping neither breaks collapsed_arms.
+         *
+         * reversed_arms and control_arms are one expression with its arms swapped, pinning that a branch-level
+         * FQCN keeps its loop position in the queue. Prepending it queues [Crm, App] for both orientations, so
+         * reversed_arms silently exchanges the two User identities while control_arms stays right.
          */
         export interface SameBasenameModelTrioResource {
             id: number;
             trio: { a: crm.models.User | null } | { b: app.models.User | null; c: crm.models.User | null };
             collapsed_arms: crm.models.User | { c: app.models.User | null } | null;
+            reversed_arms: { c: app.models.User | null } | crm.models.User | null;
+            control_arms: crm.models.User | { c: app.models.User | null } | null;
         }
         /**
          * Regression (Task 32 review, C1): a resource spreading itself must not recurse until memory is

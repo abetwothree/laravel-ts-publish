@@ -12684,6 +12684,16 @@
                     "name": "collapsed_arms",
                     "type": "CrmUser | { c: WorkbenchUser | null } | null",
                     "optional": false
+                },
+                {
+                    "name": "reversed_arms",
+                    "type": "{ c: WorkbenchUser | null } | CrmUser | null",
+                    "optional": false
+                },
+                {
+                    "name": "control_arms",
+                    "type": "CrmUser | { c: WorkbenchUser | null } | null",
+                    "optional": false
                 }
             ]
         },

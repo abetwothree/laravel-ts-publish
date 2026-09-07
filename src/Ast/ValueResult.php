@@ -114,12 +114,12 @@ final class ValueResult
         // occurrences of each bare enum name in the merged union's rendered type.
         /** @var list<class-string> $embeddedEnumFqcns FQCNs embedded inside nested inline-object types */
         $embeddedEnumFqcns = [];
-        // The embedded list is per-occurrence and never deduped: aliasPropertyType() walks it positionally
-        // against the rendered type. The branch-level list is one FQCN per branch, so it must be deduped --
-        // analyzeClosureUnion() collapses branches that render the same string, leaving no token to bind.
-        /** @var list<class-string> $embeddedModelFqcns FQCNs embedded inside nested inline-object types */
+        // One queue entry per rendered token, built in branch order because aliasPropertyType() walks it
+        // against the rendered type left to right. A whole-branch model is appended in loop position, and
+        // deduped: analyzeClosureUnion() collapses branches rendering the same string, leaving no token.
+        /** @var list<class-string> $embeddedModelFqcns FQCN per model occurrence, in rendered order */
         $embeddedModelFqcns = [];
-        /** @var list<class-string> $branchModelFqcns one FQCN per whole-branch model */
+        /** @var list<class-string> $branchModelFqcns whole-branch model FQCNs already queued */
         $branchModelFqcns = [];
         /** @var list<class-string> $embeddedResourceFqcns */
         $embeddedResourceFqcns = [];
@@ -141,6 +141,11 @@ final class ValueResult
                 array_push($embeddedEnumFqcns, ...$inner['embeddedEnumFqcns']);
             }
 
+            if (isset($inner['modelFqcn']) && ! in_array($inner['modelFqcn'], $branchModelFqcns, true)) {
+                $branchModelFqcns[] = $inner['modelFqcn'];
+                $embeddedModelFqcns[] = $inner['modelFqcn'];
+            }
+
             if (isset($inner['embeddedModelFqcns'])) {
                 array_push($embeddedModelFqcns, ...$inner['embeddedModelFqcns']);
             }
@@ -151,10 +156,6 @@ final class ValueResult
 
             if (isset($inner['resourceFqcn'])) {
                 $embeddedResourceFqcns[] = $inner['resourceFqcn'];
-            }
-
-            if (isset($inner['modelFqcn'])) {
-                $branchModelFqcns[] = $inner['modelFqcn'];
             }
 
             foreach ($inner['customImports'] ?? [] as $path => $importTypes) {
@@ -199,8 +200,6 @@ final class ValueResult
         if ($embeddedEnumFqcns !== []) {
             $result['embeddedEnumFqcns'] = $embeddedEnumFqcns;
         }
-
-        $embeddedModelFqcns = [...array_values(array_unique($branchModelFqcns)), ...$embeddedModelFqcns];
 
         if ($embeddedModelFqcns !== []) {
             $result['embeddedModelFqcns'] = $embeddedModelFqcns;
