@@ -22,7 +22,7 @@ use ReflectionClass;
  * @phpstan-import-type AttributeInfo from \AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo
  * @phpstan-import-type RelationInfo from \AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo
  *
- * @phpstan-type ModelAttributeTypeResult = array{type: string, enumFqcn: class-string|null, classFqcns: list<class-string>}
+ * @phpstan-type ModelAttributeTypeResult = array{type: string, enumFqcn: class-string|null, classFqcns: list<class-string>, customImports: array<string, list<string>>}
  * @phpstan-type ModelRelationTypeResult = array{type: string, modelFqcn: class-string<\Illuminate\Database\Eloquent\Model>|null, morphFqcns: list<class-string>}
  */
 trait ResolvesModelTypes
@@ -58,14 +58,14 @@ trait ResolvesModelTypes
     }
 
     /**
-     * Resolve the TypeScript type, optional enum FQCN, and any class FQCNs for a model attribute.
+     * Resolve the TypeScript type, optional enum FQCN, class FQCNs and #[TsType] imports for a model attribute.
      *
      * @return ModelAttributeTypeResult
      */
     protected function resolveModelAttributeTypeInfo(string $attributeName): array
     {
         if ($this->scope->modelClass === null || $this->modelAttributes === null) {
-            return ['type' => 'unknown', 'enumFqcn' => null, 'classFqcns' => []];
+            return ['type' => 'unknown', 'enumFqcn' => null, 'classFqcns' => [], 'customImports' => []];
         }
 
         $tsInfo = resolve(ModelAttributeResolver::class)->resolveAttribute($this->scope->modelClass, $attributeName);
@@ -73,7 +73,12 @@ trait ResolvesModelTypes
         /** @var class-string|null $enumFqcn */
         $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
 
-        return ['type' => $tsInfo['type'], 'enumFqcn' => $enumFqcn, 'classFqcns' => $tsInfo['classFqcns']];
+        return [
+            'type' => $tsInfo['type'],
+            'enumFqcn' => $enumFqcn,
+            'classFqcns' => $tsInfo['classFqcns'],
+            'customImports' => $tsInfo['customImports'],
+        ];
     }
 
     /**
@@ -112,10 +117,18 @@ trait ResolvesModelTypes
 
             $info = $this->resolveModelAttributeTypeInfo($attr['name']);
 
+            // A cast class's own type name and its #[TsType(import:)] path travel with the property, the
+            // same way ThisPropertyHandler carries them — without this the delegated shape names a token
+            // no import supplies, and only ResourceTransformer's own model lookup made it resolve.
+            $classFqcns = $info['classFqcns'];
+
             $analysis->addProperty($attr['name'], [
                 'type' => $info['type'],
                 'optional' => false,
                 ...($info['enumFqcn'] !== null ? ['directEnumFqcn' => $info['enumFqcn']] : []),
+                ...(count($classFqcns) > 1 ? ['embeddedModelFqcns' => $classFqcns] : []),
+                ...(count($classFqcns) === 1 ? ['modelFqcn' => $classFqcns[0]] : []),
+                ...($info['customImports'] !== [] ? ['customImports' => $info['customImports']] : []),
             ]);
         }
 

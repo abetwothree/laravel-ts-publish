@@ -67,6 +67,7 @@ use Workbench\App\Http\Resources\FluentSelfResource;
 use Workbench\App\Http\Resources\GuardClauseClosureResource;
 use Workbench\App\Http\Resources\GuardedCollectionSpreadResource;
 use Workbench\App\Http\Resources\HelperCallResource;
+use Workbench\App\Http\Resources\ImageDelegatedResource;
 use Workbench\App\Http\Resources\InlineArrayFqcnResource;
 use Workbench\App\Http\Resources\Ledger;
 use Workbench\App\Http\Resources\LedgerCollection;
@@ -140,6 +141,7 @@ use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Http\Resources\VarReturnSpreadResource;
 use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Address;
+use Workbench\App\Models\Admin\Store as AdminStoreModel;
 use Workbench\App\Models\Category;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Image;
@@ -2312,6 +2314,13 @@ describe('ResourceAstAnalyzer with OrderExceptResource (direct return)', functio
 
     test('except preserves enum FQCNs for non-excluded columns', function () {
         expect($this->analysis->directEnumFqcns)->toHaveKey('status');
+    });
+
+    test('except preserves the model FQCN of a class-typed accessor', function () {
+        // summary_items types as Store[] off the model's own accessor docblock; without the FQCN on
+        // the analysis nothing but ResourceTransformer's own model lookup could import that token.
+        expect($this->analysis->modelFqcns)->toHaveKey('summary_items')
+            ->and($this->analysis->modelFqcns['summary_items'])->toBe(AdminStoreModel::class);
     });
 
     test('nullable non-enum cast column includes null in type', function () {
@@ -5966,5 +5975,20 @@ describe('ResourceAstAnalyzer with NestedMethodModelSpreadResource — $topLevel
         expect($props->has('meta'))->toBeTrue()
             ->and($props['meta']['type'])->toBe('{ z: number; y: number }')
             ->and($props['meta']['type'])->not->toContain('email');
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A model-delegated resource carries its cast classes' own #[TsType(import:)] paths —
+// ImageDelegatedResource
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ResourceAstAnalyzer with ImageDelegatedResource — the model-delegated custom-import channel', function () {
+    it("carries a cast class's #[TsType(import:)] path out on the analysis", function () {
+        $analysis = resolve(AstEngine::class)->analyzeMethod(ImageDelegatedResource::class);
+        $config = collect($analysis->properties)->firstWhere('name', 'config_from_docblock');
+
+        expect($config['type'])->toBe('MenuSettingsType')
+            ->and($analysis->customImports)->toBe(['@js/types/settings' => ['MenuSettingsType']]);
     });
 });
