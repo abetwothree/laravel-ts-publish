@@ -298,11 +298,17 @@ Absent on purpose. Do not "fix" these without raising it first.
   the `inertia()` helper and `inertia()->render()`, all three matched by `InertiaRenderLocator` — and the
   shared-data middleware are analyzed.
 - **No `ts-publish.analyzer.handlers` config key, and no supported extension of the AST engine.** The
-  only user-facing surface of the engine is `AstEngine`, plus the `AnalysisResult` its `analyze()` returns. Every handler, concern, resolver and value
-  object under `src/Ast/` is internal and changes without notice as inference grows; nothing there is a
-  compatibility promise, and code that extends it is on its own. Every class under `src/Ast/` other than
-  `AstEngine` and `AnalysisResult` is tagged `@internal`, so a consumer running PHPStan with bleedingEdge
-  (`internalTag`) — or any IDE — is warned when reaching past them.
+  only user-facing surface of the engine is `AstEngine::analyze()` and the `AnalysisResult` it returns.
+  Every handler, concern, resolver and value object under `src/Ast/` is internal and changes without
+  notice as inference grows; nothing there is a compatibility promise, and code that extends it is on
+  its own. Every class under `src/Ast/` other than `AstEngine` and `AnalysisResult` is tagged
+  `@internal`, so a consumer running PHPStan with bleedingEdge (`internalTag`) — or any IDE — is warned
+  when reaching past them. `AstEngine`'s other three methods (`analyzeMethod()`,
+  `analyzePublicProperties()`, `bindingsFor()`) each carry the tag themselves, because each hands back
+  or takes one of those internal DTOs; tagging only the classes would have left the public class
+  trafficking in them. `tests/Architecture/InternalBoundaryTest.php` checks all three rules — the tag on
+  every `src/Ast` class, no untagged subclass of a tagged one, and no internal type in an untagged
+  public signature — so the boundary cannot drift back open silently.
 - **Form requests stay runtime.** They are resolved by instantiating and calling `rules()`, on purpose.
 - **Collector class maps are not invalidated mid-process.** `CoreCollector::classMap()` scans each directory
   once per process, and `Runner::run()` / `RunnerForSource::run()` clear it first, so a `ts:publish` run

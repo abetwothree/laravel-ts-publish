@@ -14,7 +14,10 @@ use ReflectionNamedType;
 use ReflectionProperty;
 
 /**
- * Public entry point: analyze any class method (or constructor) into a MethodAnalysis DTO.
+ * Public entry point: `analyze()` — a class and a method in, properties and imports out.
+ *
+ * It and `AnalysisResult` are the engine's whole public surface. The other three methods here are
+ * `@internal` like the rest of `src/Ast`: each traffics in a DTO whose shape tracks inference.
  */
 final class AstEngine
 {
@@ -36,6 +39,8 @@ final class AstEngine
      *
      * @param  class-string  $class
      * @param  class-string<Model>|null  $modelClass  Backing model for `$this->prop` resolution; null to skip.
+     *
+     * @internal
      */
     public function analyzeMethod(string $class, string $method = 'toArray', ?string $modelClass = null): MethodAnalysis
     {
@@ -115,6 +120,8 @@ final class AstEngine
      *
      * A route-bound `Post $post` and an injected `Request $request` are both parameter facts the
      * resource path never had, which is why they are seeded here rather than inside the analyzer.
+     *
+     * @internal
      */
     public function bindingsFor(MethodContext $context): AnalysisScope
     {
@@ -154,6 +161,8 @@ final class AstEngine
      * always assigns still renders `?:` — `DeclaredPropsEvent::$label` is exactly that case.
      *
      * @param  class-string  $class
+     *
+     * @internal
      */
     public function analyzePublicProperties(string $class): MethodAnalysis
     {

@@ -139,6 +139,13 @@ checking four trees together, not a defect in any one of them. The env var `TSCO
 default all four) selects which configs a run checks; both fail-open guards below run per config, and the
 script fails if any config fails, not only the last.
 
+**It also covers the analyzer API.** `tests/Feature/AnalyzeApiProbeTest.php` renders
+`AstEngine::analyze()`'s three fields into `.ts` modules under
+`workbench/resources/js/types/data/testing/analysis-probe/` — mechanically, with no transformer or
+template in the way — so this gate is what proves that what `analyze()` hands a consumer actually
+compiles. The rendering is deliberately dumb: an import line per path, a member per property, nothing
+that could repair a token whose import is missing or two imports colliding on one name.
+
 **`skipLibCheck` is off.** `tsconfig.json` sets `"skipLibCheck": false`, so `tsc` checks the *body* of
 every `.d.ts` it includes, not just its shape — the generated tree ships `.d.ts` files on purpose (e.g.
 `echo-broadcast-events.d.ts`), and a broken import inside one used to produce no diagnostic at all.

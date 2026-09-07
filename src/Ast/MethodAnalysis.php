@@ -14,14 +14,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
  *
  * @phpstan-import-type TypesImportMap from Datable
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type ResourcePropertyInfoList from AnalysisResult
  *
- * @phpstan-type ResourcePropertyInfo = array{
- *     name: string,
- *     type: string,
- *     optional: bool,
- *     description: string,
- * }
- * @phpstan-type ResourcePropertyInfoList = list<ResourcePropertyInfo>
  * @phpstan-type ClassMapType = array<string, class-string>
  * @phpstan-type ImportMapType = TypesImportMap
  * @phpstan-type InlineEnumFqcnsMap = array<string, list<class-string>>

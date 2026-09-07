@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\Config;
  * then imports exactly the tokens the rewritten types spell.
  *
  * @phpstan-import-type TypesImportMap from Datable
- * @phpstan-import-type ResourcePropertyInfoList from MethodAnalysis
+ * @phpstan-import-type ResourcePropertyInfoList from AnalysisResult
  *
  * @phpstan-type ComposedProperty = array{type: string, optional: bool, description: string}
  * @phpstan-type EnumResourceArm = array{fqcn: class-string, nullable: bool, wrapIsCollection: bool, directIsArray: bool}

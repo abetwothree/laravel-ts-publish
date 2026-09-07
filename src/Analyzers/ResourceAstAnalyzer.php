@@ -67,6 +67,8 @@ use ReflectionNamedType;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type RequestVarNamesMap from AnalysisScope
+ *
+ * @internal
  */
 class ResourceAstAnalyzer implements ExpressionEngine
 {

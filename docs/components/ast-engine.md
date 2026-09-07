@@ -355,25 +355,66 @@ for the corpus evidence behind the per-occurrence rule.
 
 ```php
 AstEngine::analyze(string $class, string $method = 'toArray', ?string $modelClass = null, string $fromNamespacePath = ''): AnalysisResult
+```
+
+That signature and the `AnalysisResult` it returns are the engine's whole public surface. Everything
+else here — `analyzeMethod()`, `analyzePublicProperties()`, `bindingsFor()`, `AnalysisImports`,
+`AnalysisComposer`, every handler and DTO — is `@internal`, checked by
+`tests/Architecture/InternalBoundaryTest.php`; the three rules it enforces are in
+[known gaps](../known-gaps.md). The rest of this section documents those internals for people working
+*on* the engine, not for consumers of it.
+
+`analyze()` runs `analyzeMethod()` for the raw DTO and hands it to `AnalysisComposer`, which is what
+makes the three fields agree with each other:
+
+1. **Index the properties by name.** `MethodAnalysis::$properties` is an append-only list, so a model
+   spread that repeats a key it already carries appears twice; rendered as-is those are duplicate
+   interface members. `ApiPostResource` measures 30 raw properties against 27 composed ones.
+2. **Resolve name collisions and rewrite the types.** Two `ImportNameRegistry` instances — one for type
+   names, a sibling for enum const names — over the enum, resource and model maps, then
+   `aliasPropertyType()` per property against its positional FQCN queue. This is the half
+   `AnalysisImports` deliberately leaves out; without it `ImageDelegatedResource` returns
+   `reviewable: User | User | null` beside two `User` imports.
+3. **Rewrite the `EnumResource` wraps** to `AsEnum<typeof Const>` — the same three cases
+   `ResourceTransformer::rewriteEnumResourceTypes()` handles: the plain substitution, the mixed
+   ternary whose arms are synthesized from `enumResourceArmShapes`, and the multi-enum ternary
+   replaced branch by branch. Gated on `ts-publish.enums.use_tolki_package`; with it off the bare
+   enum type name is already the right answer and its type import survives.
+4. **Import exactly the tokens the rewritten types spell.** One rule replaces two special cases:
+   `AnalysisImports::asEnumWrappedOnlyFqcns()`'s wrapped-only GC, and
+   `ResourceTransformer::pruneOverriddenEnumImports()`'s override GC. An enum the wrap replaced and
+   an enum a `#[TsCasts]` override displaced are both simply unspelled, so neither is imported.
+
+`$fromNamespacePath` is the generated file's own namespace path, so relative import paths resolve from
+where the file will live; `''` means the output root.
+
+`tests/Feature/AnalyzeApiProbeTest.php` renders the result of eight of these analyses into real `.ts`
+modules under `workbench/resources/js/types/data/testing/analysis-probe/`, so the
+[unimportable-token gate](../testing/type-inference-gates.md) type-checks them with `tsc`. Before the
+composer those eight files produced 11 diagnostics — TS2304, TS6133/TS6192, TS2300 and TS2344.
+
+`AnalysisResult` carries only those three fields, so a `$wrap = null` collection — whose entire answer
+lives in `MethodAnalysis`'s `flatTypeAlias`/`flatTypeAliasFqcn`, a channel neither `AnalysisImports`
+nor `AnalysisComposer` reads — comes back with all three empty, losing even the singular resource's
+type import. `PostFlatCollection` measures as `properties: []`, `typeImports: []`, `valueImports: []`
+against a `flatTypeAlias` of `PostResource[]`. There is no public answer for that shape.
+
+Two more shapes `analyze()` does not answer, both recorded in the README's own capability list: a
+`morphTo` union needs the morph target map `BaseRunner::run()` builds by scanning every model class,
+so outside a publish run `resolveModelRelationTypeInfo()` types it `unknown` and the property is
+dropped altogether — `ImageDelegatedResource::imageable` is exactly that. And a form request's
+published interface comes from `FormRequestRulesAnalyzer` calling `rules()` at runtime, not from the
+engine, so `analyze($request, 'rules')` types the rules array itself: one
+`Record<string, unknown>` per rule key, dotted paths and all.
+
+```php
 AstEngine::analyzeMethod(string $class, string $method = 'toArray', ?string $modelClass = null): MethodAnalysis
 AstEngine::analyzePublicProperties(string $class): MethodAnalysis
 ```
 
-`analyze()` composes the two calls every consumer already made in sequence: `analyzeMethod()` for the
-raw DTO, then `AnalysisImports::build()` for that DTO's import maps, returning both as a readonly
-`AnalysisResult{properties, typeImports, valueImports}`. `$fromNamespacePath` is the generated file's
-own namespace path, so relative import paths resolve from where the file will live; `''` means the
-output root.
-
-`AnalysisResult` carries only those three fields, so a `$wrap = null` collection — whose entire answer
-lives in `MethodAnalysis`'s `flatTypeAlias`/`flatTypeAliasFqcn`, a channel `AnalysisImports::build()`
-never reads — comes back with all three empty, losing even the singular resource's type import.
-`PostFlatCollection` measures as `properties: []`, `typeImports: []`, `valueImports: []` against a
-`flatTypeAlias` of `PostResource[]`. Flat collections stay on `analyzeMethod()`.
-
-The other boundary is deliberate: consumers that rewrite a `MethodAnalysis`'s FQCN channels before
-importing must build from the mutated DTO, so they keep calling `analyzeMethod()` and
-`AnalysisImports::build()` themselves. There are three:
+The other boundary is deliberate: in-package consumers that rewrite a `MethodAnalysis`'s FQCN channels
+before importing must build from the mutated DTO, so they keep calling `analyzeMethod()` and
+`AnalysisImports::build()` themselves rather than `analyze()`. There are three:
 
 - `InertiaSharedDataAnalyzer::buildInferredImports()` filters against an analysis it has already run
   `forgetOverriddenChannels()` over.
@@ -424,10 +465,11 @@ What it does **not** do: alias-conflict resolution. Every name it emits is the p
 unaliased — a caller whose file can emit two same-named tokens (the same-basename-across-namespaces
 case `ImportNameRegistry` exists for) runs `Support\ImportNameRegistry` over the result itself; that
 collision handling is deliberately kept out of `AnalysisImports`, which only resolves *what* to import,
-not what to *call* it once two imports collide. See
-[ImportNameRegistry](import-name-registry.md) for that half, and the
+not what to *call* it once two imports collide. `AnalysisComposer` is the one caller that does run
+`ImportNameRegistry` over the result, which is why `analyze()` needs it and the three channel-rewriting
+consumers above do not. See [ImportNameRegistry](import-name-registry.md) for that half, and the
 [Analyzer API](https://tolki.abe.dev/ts/analyzer-api.html) page for the user-facing walkthrough of
-calling `AstEngine` directly.
+calling `AstEngine::analyze()`.
 
 ## Consumers
 
