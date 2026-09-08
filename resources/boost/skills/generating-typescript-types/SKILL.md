@@ -1,133 +1,159 @@
 ---
 name: generating-typescript-types
 description: >
-    Use when working in a Laravel app that has abetwothree/laravel-ts-publish installed and
-    frontend TypeScript types under resources/js/types are missing, stale, or need regenerating —
-    after adding or editing a PHP enum, Eloquent model, API resource, form request, route,
-    broadcast channel, or broadcast event; when a property or method must be hidden from the
-    generated output; when a generated type is wrong or missing a new column/relation; or when
-    `php artisan ts:publish` or its Vite plugin doesn't behave as expected.
-compatibility: Requires abetwothree/laravel-ts-publish (PHP 8.4+, Laravel 12/13) installed via Composer.
+    Use in any Laravel app with abetwothree/laravel-ts-publish installed whenever work crosses the PHP/TypeScript
+    boundary: adding or changing a model, column, JSON cast, enum or status/kind/priority value set, form request,
+    controller action, route, Inertia page/props, API resource, or broadcast channel/event; writing frontend code
+    that needs a backend type, enum value or label, URL, form payload type, or channel name; when files under
+    resources/js/types/data look wrong, stale, or contain unknown; or when ts:publish / the @tolki/ts Vite plugin
+    misbehaves. Read it before hand-writing any interface, string-literal union, label/color map, or "/path/${id}"
+    string for backend data.
+compatibility: abetwothree/laravel-ts-publish (PHP 8.4+, Laravel 12/13); @tolki/ts for enums and routes.
 ---
 
-## Workflow
+# Laravel TypeScript Publish
 
-1. After adding/editing one PHP enum, model, resource, form request, route, or broadcast
-   class, regenerate just that class — much faster than a full rebuild:
-    ```bash
-    php artisan ts:publish --source="Fully\Qualified\ClassName"
-    # or a file path:
-    php artisan ts:publish --source="app/Models/Post.php"
-    ```
-2. To check output before writing files, add `--preview=true` (see gotcha below — bare `--preview` does nothing).
-3. If types look wrong/stale across the whole app (config change, first run, suspected stale cache), do a full rebuild: `php artisan ts:publish --fresh`.
-4. To hide a specific accessor/relation/method/property — or an entire class — from the output, add `#[TsExclude]` to it. It always wins over every other attribute or config.
-5. To shape what a member generates as, use the attributes in the table below.
-6. If a `--source` run doesn't seem to "take," run a full `php artisan ts:publish` — a `--source` run never rewrites barrel `index.ts` files (see gotcha below).
+`php artisan ts:publish` turns the PHP side of the app into TypeScript: enums become functional objects,
+controller actions become route helpers, and models, API resources, form requests, Inertia props and
+broadcast payloads become interfaces. Everything lands under `output_directory` (default
+`resources/js/types/data/`, usually aliased `@data/*`), mirroring PHP namespaces in kebab-case (broadcast
+event files are the one exception: their directory is kebab-cased but the file keeps the PHP class name,
+`app/events/TaskCompleted.ts`). The
+package's whole purpose is that **a fact about the data lives once, in PHP**, and the frontend reads it
+from the generated files. Any hand-written duplicate of that fact on the frontend is the bug this skill
+exists to prevent.
 
-## Command flags
+| PHP source                                         | Generated                                                                                                                                                      | Frontend uses                                                                                |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `App\Enums\TaskPriority` (+ `#[TsEnumMethod]`)     | `app/enums/task-priority.ts`: `TaskPriority` object, `TaskPriorityType`, `TaskPriorityKind`                                                                    | `TaskPriority.High`, `.from(v).label`, `.cases()`, `TaskPriorityType`                        |
+| `App\Models\Task` (schema, casts, `@property`)     | `app/models/task.ts`: `Task`, `TaskMutators`, `TaskRelations`, `TaskAll` (+ `TaskResource`, the enum-resolved companion, only when the model has enum columns) | `Task`, `Task & Pick<TaskRelations, 'assignee'>`, `Task['settings']`                         |
+| `App\Http\Controllers\TaskController`              | `app/http/controllers/task-controller.ts`: one `defineRoute()` per action, `TaskController` default export, `{Action}PageProps`                                | `TaskController.edit(task.id)`, `.url()`, `.form()`, `InferPageProps`, `InferRequestPayload` |
+| `App\Http\Requests\UpdateTaskRequest` (`rules()`)  | `app/http/requests/update-task-request.ts` interface                                                                                                           | `useForm<UpdateTaskRequest>`, attached to the route automatically                            |
+| `App\Http\Resources\TaskApiResource` (`toArray()`) | `app/http/resources/task-api-resource.ts` interface                                                                                                            | typing API responses                                                                         |
+| `HandleInertiaRequests::share()`                   | `inertia-config.d.ts`: global `Inertia.SharedData` + `@inertiajs/core` augmentation                                                                            | `usePage().props` typed                                                                      |
+| `routes/channels.php`, `ShouldBroadcast` events    | `broadcast-channels.ts`, `app/events/*.ts`, `broadcast-events.ts`, `echo-broadcast-events.d.ts`                                                                | `BroadcastChannels.teams(id)`, `BroadcastEvents.X`, typed Echo                               |
 
-| Flag                                                                                                                                                                                 | Effect                                                                                                                                                                                 |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--source="FQCN\|path"`                                                                                                                                                              | Republish one class only. A path is resolved relative to `base_path()`, e.g. `app/Models/Post.php`. Bypasses the cache. Does **not** rewrite barrel `index.ts` files.                  |
-| `--preview=true`                                                                                                                                                                     | Print generated TypeScript to the console; writes no files. **Must include `=true`** — bare `--preview` is silently ignored.                                                           |
-| `--fresh`                                                                                                                                                                            | Ignore and rebuild the generation cache. No-op with `--source` or `--preview`.                                                                                                         |
-| `--only-enums` / `--only-models` / `--only-model-metadata` / `--only-resources` / `--only-routes` / `--only-form-requests` / `--only-broadcast-channels` / `--only-broadcast-events` | Restrict to one type. Mutually exclusive — passing two of these errors out.                                                                                                            |
-| `--only-functional`                                                                                                                                                                  | Skips model & resource interfaces and publishes every other enabled phase. Overrides the other `--only-*` flags if combined. |
-| `--quiet` / `-q`                                                                                                                                                                     | No console output at all (files still write); used by the Vite plugin.                                                                                                                 |
-| `-v` / `--verbose`                                                                                                                                                                   | Detailed per-file tables (cases, methods, columns, relations).                                                                                                                         |
+## Before touching a feature: confirm its phase is enabled
 
-If a `--only-*` flag requests a type disabled in `config/ts-publish.php`, an interactive run
-prompts to override; a non-interactive run (CI, queued job, the post-migration hook) silently
-respects the config and skips it.
+Each feature is a phase with an `enabled` key in `config/ts-publish.php` (published copy in the app, else
+the package default: everything on except `model_metadata`, `globals`, `json`). Read the file, or run:
 
-## Key attributes
-
-| Attribute                                   | Use on                                         | Effect                                                                                                                                                                                                 |
-| ------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `#[TsExclude]`                              | class or member                                | Drop it from output entirely. Always wins.                                                                                                                                                             |
-| `#[TsEnumMethod]` / `#[TsEnumStaticMethod]` | enum method                                    | Expose that method to TS. **Required** unless `enums.auto_include_methods` / `auto_include_static_methods` is `true` (both default `false`) — a plain public enum method is otherwise invisible to TS. |
-| `#[TsEnum]` / `#[TsCase]`                   | enum / case                                    | Rename it or add a JSDoc description.                                                                                                                                                                  |
-| `#[TsCasts]` / `#[TsType]`                  | generated property or cast class               | Override or add a TypeScript type, including a custom import.                                                                                                                                         |
-| `#[TsExtends]`                              | model, resource, form request, broadcast event | Add an `extends` clause to the generated interface (repeatable, inherited from parents/traits).                                                                                                        |
-| `#[TsResource(model:)]` / `#[UseResource]`  | `JsonResource`                                 | Point at the backing model when `@mixin` or naming convention doesn't already resolve it.                                                                                                              |
-
-## Model metadata
-
-When enabled, model metadata writes a runtime `{model}_meta.ts` companion. Prefer a precise `@return array{...}` on the provider's `provide()` method so static analysis can validate its contract. For generic `array<string, mixed>` declarations, types fall back to body inference, which resolves calls on the `$model` parameter and imports the enums it names. PHPDoc then refines those types and declares optional or dynamic keys; `#[TsCasts]` has final precedence and owns explicit overrides and imports. Metadata finder settings inherit the model finder settings when omitted.
-
-Optional shape keys may be absent. Undeclared keys, missing required keys, unsupported values, and types named only in the docblock — or a model-typed value — without an import-aware `#[TsCasts]` override fail generation, and the command exits non-zero.
-
-## Output layout & imports
-
-Generated files live below `output_directory` (default `resources/js/types/data/`) in their configured namespace, mirroring PHP namespaces with kebab-cased segments: `App\Models\User` becomes `app/models/user.ts`. Every run rebuilds the barrel of each namespace it publishes into, and `--source` runs never touch barrels. Model interfaces and their `_meta` companions share one barrel: whichever of those two phases the run publishes owns its exports outright, a phase enabled in config but skipped by an `--only-*` flag keeps its existing exports, and a phase disabled in config keeps none.
-
-### Importing types, enum objects, & routes
-
-#### TypeScript imports
-
-When importing types created by this tool, unless configured differently, you should import from the configured `@data` alias (or whatever you have set in your `ts:publish` config) rather than relative paths. It should almost match the PHP file namespace in kebab-case, segment by segment.
-
-e.g.:
-
-```ts
-import type { User } from "@data/app/models/user";
-import type { StatusType } from "@data/app/enums/status";
-import type { UserResource } from "@data/app/http/resources/user-resource";
-
-defineProps<{
-    user: User;
-    status: StatusType;
-    userResource: UserResource;
-}>();
+```bash
+php artisan tinker --execute="dump(collect(['enums','models','model_metadata','resources','routes','form_requests','broadcast_channels','broadcast_events','inertia','vite_env'])->mapWithKeys(fn (\$k) => [\$k => config(\"ts-publish.\$k.enabled\")])->all())"
 ```
 
-#### Enum object imports
+Also note `enums.use_tolki_package` (gates every `AsEnum<>`), `enums.auto_include_methods`, and the
+`routes.only/except/exclude_middleware` filters. If a phase is **off**: do not import from its directory,
+do not annotate PHP for it, and do not flip it on inside a feature task; hand-type the small thing you
+need locally and say that enabling the phase would generate it. If it is **on**: the generated
+object/type is the only acceptable source for that data.
 
-When importing enum objects created by this tool, you should also import from the configured `@data` alias, e.g.:
+## The loop
 
-```ts
-import { UserRole } from "@data/app/enums/user-role";
+1. Make the change in PHP so the generator can read it (the per-feature reference says exactly how).
+2. Republish: `php artisan ts:publish --source="App\Models\Task"` for one class (FQCN or path);
+   plain `php artisan ts:publish` after adding a **new** class (a `--source` run never rewrites the barrel
+   `index.ts`) or after a migration (which also auto-publishes unless `run_after_migrate` is off).
+   `--preview=true` prints instead of writing; a bare `--preview` writes.
+3. Open the regenerated `.ts` and read the members you changed. A property that came out `unknown`,
+   `unknown[]`, `object`, or `Record<string, unknown>` is a PHP-side gap; fix the PHP and republish
+   (checklist in [references/models.md](references/models.md)). Never edit generated files.
+4. Consume it on the frontend through the alias (`@data/app/enums`, `@data/app/models`,
+   `@data/app/http/controllers`, `@data/app/http/requests`, ...), then type-check (`vue-tsc --noEmit`,
+   `tsc --noEmit`, or the project's script).
 
-UserRole.Admin; // Accessing the enum case value
+## Rules
+
+**1. A closed set of values is a PHP backed enum, and its per-case presentation lives on the enum.**
+Statuses, kinds, priorities, roles, tiers: create `App\Enums\X` even for two cases, cast the column to it,
+validate with `Rule::enum()`, and put `label()`, `color()` / `badgeClass()`, `icon()`, `description()`
+on the enum with `#[TsEnumMethod]`. A Tailwind class string keyed by case is enum data, exactly like a
+label: it is used in Blade, mail, exports and tests as well as in one component, and putting it on the
+enum means a new case cannot be added without its color. A `Record<XType, string>` map or a
+`type X = 'a' | 'b'` in a `.ts`/`.vue` file is the duplication to remove, not "presentation staying near
+the markup". On the frontend compare with `X.Case`, resolve with `X.from(value)` / `X.tryFrom(value)`,
+build selects from `X.cases()`, type with `XType`. Details: [references/enums.md](references/enums.md).
+
+**2. Shapes come from PHP; the frontend derives, never redeclares.** A JSON/array column gets a
+class-level `@property array{...} $settings` (or `@phpstan-type` + `@phpstan-import-type`) on the model,
+which PHPStan reads too, and the frontend uses `Task['settings']`. A payload is `UpdateTaskRequest` /
+`InferRequestPayload<typeof update>`. A page's props are `InferPageProps<typeof edit>` or
+`{Action}PageProps` (inside a Vue `defineProps<...>()` use a literal of `EditPageProps['key']` members, since
+the SFC compiler cannot expand the helper type). An API response is `TaskResource`. Compose with `Pick`, `NonNullable`, `&`; do
+not write `interface TaskSettings`, `interface Props`, `interface TaskForm`, or `as any`.
+Details: [references/models.md](references/models.md), [references/form-requests.md](references/form-requests.md),
+[references/inertia.md](references/inertia.md), [references/api-resources.md](references/api-resources.md).
+
+**3. If enabled, URLs come from route helpers; payload types come from the request.**
+
+If URL routes are not enabled, follow the convention of the application for URLs by scanning existing frontend code and see how URLs are constructed and used throughout the project.
+
+If enabled, never write `'/tasks'` or `` `/tasks/${id}` ``, `route('tasks.update')` (Ziggy), or `@/actions` (Wayfinder). Use `TaskController.update(task.id)` (`{ url, method }`, accepted as-is by Inertia's `router.*`, `<Link href>`, `<Form action>`, `useForm().submit()`), `.url(task.id)` for a string, `.form(task.id)` for a plain `<form>`, and extra keys for query strings (`index({ completed: true })`). Pass the key, not the model interface. Type the form from the generated request; when a model column and the request field disagree because the column is not an enum yet (`status: string` vs `'todo' | 'done'`), make the enum if the task allows, otherwise narrow at the boundary (`props.task.status as UpdateTaskRequest['status']`) rather than dropping the type. Replace hardcoded URLs in any file you are already editing.
+Details: [references/routes.md](references/routes.md).
+
+**4. Regenerate, read, type-check.** Green `ts:publish` output is not proof: read the `.ts`. A gap is fixed in
+PHP (docblock, cast, rule, `#[TsCasts]` as last resort), not with a TS cast or `// @ts-expect-error`.
+Details: [references/publishing.md](references/publishing.md).
+
+## Where to look
+
+| Working on                                                                            | Read                                                       |
+| ------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| An enum, a status/kind/priority, labels, badges, selects, `EnumResource`              | [references/enums.md](references/enums.md)                 |
+| A model, column, JSON/array cast, accessor, relation, `unknown` in a model            | [references/models.md](references/models.md)               |
+| A controller, link, form submit, query string, `InferPageProps`/`InferRequestPayload` | [references/routes.md](references/routes.md)               |
+| A `FormRequest`, `rules()`, `useForm` typing                                          | [references/form-requests.md](references/form-requests.md) |
+| `HandleInertiaRequests::share()`, `Inertia::render()` props, `usePage()`              | [references/inertia.md](references/inertia.md)             |
+| A `JsonResource` / `toArray()`, API response typing                                   | [references/api-resources.md](references/api-resources.md) |
+| `routes/channels.php`, a `ShouldBroadcast` event, Echo listeners                      | [references/broadcasting.md](references/broadcasting.md)   |
+| Commands, flags, config keys, output layout, attributes, troubleshooting              | [references/publishing.md](references/publishing.md)       |
+
+## Quick reference
+
+```bash
+php artisan ts:publish                                   # everything enabled (cached; only changed classes regenerate)
+php artisan ts:publish --source="App\Enums\TaskPriority" # one class, bypasses cache, no barrel rewrite
+php artisan ts:publish --fresh                           # rebuild the cache
+php artisan ts:publish --preview=true                    # console only (the =true is required)
+php artisan ts:publish --only-enums | --only-routes | --only-form-requests | --only-functional | ...
 ```
 
-#### Routes functions imports
-
-When importing route functions created by this tool, you should also import from the configured `@data` alias, e.g.:
-
 ```ts
-import { router } from "@inertiajs/react";
-
-// Imports the entire UserController object with all its route functions
-import UserController from "@data/app/http/controllers/user-controller";
-
-UserController.index(); // Accessing a route function from the controller
-UserController.show(1); // Accessing another route function from the controller
-
-router.post(UserController.update(3, updateData));
+import { TaskPriority } from '@data/app/enums';
+import type { TaskPriorityType } from '@data/app/enums';
+import type { Task, TaskRelations } from '@data/app/models';
+import { TaskController } from '@data/app/http/controllers';
+import { update } from '@data/app/http/controllers/task-controller';
+import type { UpdateTaskRequest } from '@data/app/http/requests';
+import type { InferPageProps, InferRequestPayload, AsEnum } from '@tolki/ts';
+import { BroadcastChannels } from '@data/broadcast-channels';
 ```
 
-```ts
-import { router } from "@inertiajs/vue";
+Key attributes (`AbeTwoThree\LaravelTsPublish\Attributes`): `#[TsEnumMethod]` / `#[TsEnumStaticMethod]`
+(publish an enum method; required unless auto-include is on), `#[TsEnum]` / `#[TsCase]` (rename,
+describe), `#[TsExclude]` (drop a class or member; always wins), `#[TsCasts]` (override a type; last
+resort), `#[TsType]` (type for a custom cast class), `#[TsExtends]` (extend a hand-written interface),
+`#[TsResource]` (resource name/model).
 
-// Import a specific route function from the controller
-import {
-    index,
-    show,
-    update,
-} from "@data/app/http/controllers/user-controller";
+## Rationalizations to refuse
 
-index(); // Accessing the imported route function
-show(1); // Accessing another imported route function
-update(3, updateData); // Accessing the imported update route function
-```
+| Excuse                                                                                | Reality                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| "CSS classes / icons are presentation, they belong next to the markup"                | They are per-case data. On the enum they reach Blade, mail, tests and every component; a case cannot ship without them.                                                                                      |
+| "A `Record<XType, string>` map is type-safe; adding a case fails vue-tsc"             | The generated object is equally type-safe with no second copy, and the missing arm is caught in PHP instead: a non-exhaustive `match` is a PHPStan error, and at publish time that case publishes as `null`. |
+| "It's only two values / only used here, a string column is simpler"                   | Two values with a label is already a duplicated set. The enum is one file and the generator does the rest.                                                                                                   |
+| "The request type won't accept the model's `string`, so I'll leave `useForm` untyped" | Make the column an enum, or narrow at the boundary. Untyped forms are what the package removes.                                                                                                              |
+| "I'll add `#[TsCasts]` / a `.ts` interface for the JSON shape"                        | `@property array{...}` on the model types PHP and TS from one line and PHPStan checks it. `#[TsCasts]` is the last resort.                                                                                   |
+| "I'll just use `'/tasks/' + id` here, it's one link"                                  | The helper already exists and carries verbs, bindings and query encoding. One hardcoded link becomes ten.                                                                                                    |
+| "The generated prop is `unknown`, I'll cast it in the component"                      | `unknown` means the PHP expression was not readable; move `load()` to its own line, add a docblock, republish.                                                                                               |
+| "I'll toggle the phase on in config to see what it generates"                         | Config changes are a project decision. The reference for that feature shows the output; ask before enabling.                                                                                                 |
+| "I'll read the package source to see what it infers"                                  | The references already say what is read and what degrades to `unknown`; check them first, source second.                                                                                                     |
 
-## Gotchas
+## Red flags
 
-- **`--preview` needs `=true`.** It's declared as `{--preview=false}`, so a bare `--preview` flag (no `=value`) resolves to `null`, and `filter_var(null, FILTER_VALIDATE_BOOLEAN)` is `false` — the run silently writes real files instead of previewing.
-- **`--source` skips barrel files and always bypasses the cache.** Expect only the target file to change; the aggregated `index.ts` files, and anything cache-related, need a full run.
-- **Auto-include is off by default.** `enums.auto_include_methods` / `auto_include_static_methods` both default to `false`; tag methods with `#[TsEnumMethod]` / `#[TsEnumStaticMethod]` or they won't appear in the generated enum object.
-- **Runs automatically after migrations** unless disabled (`run_after_migrate` config or `TS_PUBLISH_RUN_AFTER_MIGRATE=false`).
-- **Vite plugin runs via Node's `child_process.exec()`** — shell aliases like a bare `sail` don't resolve. If Vite runs on the host with Sail, point the plugin's `command` at `./vendor/bin/sail artisan ts:publish` instead of `sail artisan ts:publish`.
-- **`EnumResource`** (`AbeTwoThree\LaravelTsPublish\EnumResource`) returns a flattened JSON representation of a single enum case for API responses, running through the same `#[TsEnumMethod]`/`#[TsEnumStaticMethod]` pipeline — pair it with the `AsEnum<T>` type from `@tolki/ts` on the frontend instead of hand-writing the shape.
+`type Status = 'a' | 'b'` in a `.ts` file; `const LABELS = {...}` or `Record<...Type, string>` keyed by
+case values; `interface Task`, `interface Props`, `interface TaskForm`, `interface Settings` for backend
+data; `'/resource/' + id` or a template-literal path; `route(` (Ziggy); `as any`, `as unknown as`,
+`@ts-expect-error` around generated types; `.form.post('/x')` / `axios.post('/x')` with a literal path;
+editing anything under `resources/js/types/data/`; `enum X {}` in TypeScript mirroring a PHP enum.
+Each of these means: stop, find the generated source of that fact, and use it.
