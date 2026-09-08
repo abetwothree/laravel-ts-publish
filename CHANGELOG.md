@@ -2,6 +2,12 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v2.5.1 - 2026-09-08
+
+Improvements to Boost skills to make sure agents understand how to write PHP code that can be inferred into TypeScript and how to use those types.
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v2.5.0...v2.5.1
+
 ## v2.5.0 - 2026-09-07
 
 ### What's Changed
@@ -22,6 +28,7 @@ Turn it on:
 // config/ts-publish.php
 'model_metadata' => ['enabled' => true],
 
+
 ```
 Every published model gains a companion beside its interface. `user.ts` gets `user_meta.ts`:
 
@@ -32,6 +39,7 @@ export const UserModelMetadata = {
     morphClass: string;
 };
 
+
 ```
 `as const` keeps every value a literal type. `satisfies` checks it against the declared shape without widening it. The companion joins the existing barrel, so one import path serves both:
 
@@ -39,6 +47,7 @@ export const UserModelMetadata = {
 import { User, UserModelMetadata } from '@js/types/data/app/models';
 
 form.commentable_type = UserModelMetadata.morphClass;
+
 
 ```
 That last line is the point. Polymorphic payloads previously meant hardcoding `'App\\Models\\User'` in the frontend and keeping it in step with PHP by hand. The default provider publishes the model's morph class and honours your morph map, so a mapped model emits `'user'` and an unmapped one emits the fully-qualified class name.
@@ -64,6 +73,7 @@ final class AppModelMetadataProvider implements ModelMetadataProvider
     'provider_class' => AppModelMetadataProvider::class,
 ],
 
+
 ```
 Providers resolve through the container, so constructor injection works. Values may be scalars, arrays, enums, or objects implementing `Arrayable` or `JsonSerializable`, nested and normalized recursively.
 
@@ -72,6 +82,7 @@ Providers resolve through the container, so constructor injection works. Values 
 ```php
 #[TsCasts(['role' => ['type' => 'RoleType', 'import' => '../enums']])]
 public function provide(Model $model): array
+
 
 ```
 ```typescript
@@ -84,6 +95,7 @@ export const UserModelMetadata = {
     morphClass: string;
     role: RoleType;
 };
+
 
 ```
 **It is its own phase.** `--only-model-metadata` publishes it alone. `models.enabled` and `--only-models` control interfaces only, and neither generates nor suppresses companions. Its `included`, `excluded` and `additional_directories` fall back to the `models` values unless you set them. Companions are runtime output rather than erased types, so `--only-functional` includes them and the Vite plugin writes them on `vite build`.
@@ -107,6 +119,7 @@ Page props type from the expression you wrote:
 ```diff
 - export type StorePageProps = Inertia.SharedData & { post: string };
 + export type StorePageProps = Inertia.SharedData & { post: Post };
+
 
 ```
 Eloquent finders resolve to their model. `$request->user()` resolves through your auth config, guard to provider to model, and writes the import for you. The Inertia v2 wrappers (`defer()`, `optional()`, `lazy()`, `always()`, `merge()`, `deepMerge()`, `scroll()` and `once()`) type as the value they wrap. Shared data reads the whole middleware inheritance chain. `config('some.key')` types from the live value.
@@ -147,6 +160,7 @@ $result = resolve(AstEngine::class)->analyze(App\Http\Resources\PostResource::cl
 $result->properties;   // the typed property list ts:publish would generate
 $result->typeImports;  // the `import type` lines those types need
 $result->valueImports; // the value imports an AsEnum<typeof X> wrapper reads
+
 
 ```
 The three fields agree with each other, so rendering all three gives you a module that compiles. `analyze()` and `AnalysisResult` are the whole supported API.
