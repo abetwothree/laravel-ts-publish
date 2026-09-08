@@ -4,14 +4,29 @@ Two independent phases. **Channels** compile every name registered in `routes/ch
 `broadcast-channels.ts`: a `BroadcastChannel` union and a `BroadcastChannels` accessor tree, so the
 frontend never spells `teams.${id}` by hand. **Events** turn every `ShouldBroadcast` /
 `ShouldBroadcastNow` class into an interface, an index of event names, and (optionally) a Laravel Echo
-module augmentation so `.listen()` / `useEcho()` payloads are typed.
+module augmentation. That augmentation is read by `@laravel/echo-vue`/`-react`/`-svelte`'s `useEcho()`
+overloads; plain `laravel-echo`'s `Channel.listen(event: string, callback: CallableFunction)` is untyped, so
+annotate its callback yourself.
 
 **Gates (check both):** `config('ts-publish.broadcast_channels.enabled')` and
 `config('ts-publish.broadcast_events.enabled')`, plus `broadcast_events.echo_augmentation.enabled` for
-the `.d.ts`. Apps often enable one and not the other. If events are off, there is no `TaskCompleted`
-interface and no augmentation: type the payload by hand at the listener (a small local interface is
-correct here) and say that enabling the phase would generate it. Channels need `routes/channels.php` to be
+the `.d.ts`. Apps often enable one and not the other. If events are off there is no `TaskCompleted` interface and no augmentation. **Derive** the payload rather
+than hand-writing one — a `broadcastWith()` that passes model attributes through is exactly
+`Pick<Task, 'id' | 'title' | 'completed_at'>`, which cannot drift from the column types — and say that
+enabling the phase would generate the interface, the `BroadcastEvents` key and the Echo augmentation. Channels need `routes/channels.php` to be
 registered (`withBroadcasting()` in `bootstrap/app.php` or `install:broadcasting`).
+
+Echo itself must be configured before any of this: `configureEcho({ broadcaster: 'reverb' })` in the app
+entrypoint, or `useEcho()`/`echo()` throw "Echo has not been configured". If `withBroadcasting()` registers the
+auth routes behind a prefix or custom middleware (`['prefix' => 'api']` is common), pass a matching
+`authEndpoint: '/api/broadcasting/auth'` — Echo's default is `/broadcasting/auth`, and the mismatch is a silent
+404 with no type error.
+
+Events are discovered **only under `app/Events`**. A class in a module or domain directory
+(`app/Domain/Billing/Events/InvoicePaid.php`) is skipped with no interface, no `BroadcastEvents` key and no
+augmentation entry, while `ts:publish` still reports success. Its directory has to be listed in
+`broadcast_events.additional_directories` — a config decision to raise with the user, not to make inside a
+feature task.
 
 ## Channels
 
@@ -41,16 +56,23 @@ export const BroadcastChannels = {
 import { BroadcastChannels } from '@data/broadcast-channels';
 import type { BroadcastChannel } from '@data/broadcast-channels';
 
-Echo.private(BroadcastChannels.teams(team.id).$channel);   // 'teams.42'
+// With children registered (as above), the accessor returns an object:
+Echo.private(BroadcastChannels.teams(team.id).$channel);   // 'teams.42'   — the parent channel itself
 Echo.private(BroadcastChannels.teams(team.id).tasks);      // 'teams.42.tasks'
+// With ONLY `teams.{teamId}` registered there are no children, so it is a plain function and there is no
+// `$channel` member at all — reaching for one is a type error:
+Echo.private(BroadcastChannels.teams(team.id));            // 'teams.42'
 Echo.channel(BroadcastChannels['public-announcements']);
 
-function subscribe(channel: BroadcastChannel) { ... }       // accepts only registered names
+function subscribe(channel: BroadcastChannel) { ... }       // a shape bound, not proof the name is registered
 ```
 
 - A name with no `{param}` is a string constant; a trailing `{param}` makes a function; a `{param}` with
   children makes a function returning an object, with `$channel` for the parent when it is also a channel.
-- Every `{param}` is `string | number`; the model/enum bound on the PHP side does not change that.
+- Every `{param}` is `string | number`; the model/enum bound on the PHP side does not change that. That makes
+  `BroadcastChannel` a bound on _shape_, not on membership: `${string}` swallows dots, so `'teams.42.comments'`
+  type-checks against `` `teams.${string | number}` `` even though Laravel's matcher rejects it. It still catches a
+  wrong prefix or a mistyped static name — build names with `BroadcastChannels` rather than leaning on the union.
 - Hyphenated segments are quoted keys. There are no attributes, no filtering and no barrel: the whole
   file is regenerated from the registered names. Laravel's `private-`/`presence-` prefixes are added by
   Echo, not by these names.
@@ -94,21 +116,24 @@ export const BroadcastEvents = Object.freeze({ TaskCompleted: 'task.completed', 
 export type { TaskCompleted, OrderShipped };
 
 // echo-broadcast-events.d.ts
-declare module '@laravel/echo-vue' {            // or -react / -svelte / @laravel/echo, auto-detected from package.json
+declare module '@laravel/echo-vue' {            // -vue / -react / -svelte detected from package.json; else the @laravel/echo fallback
     interface Events { 'task.completed': TaskCompleted; 'order.shipped': OrderShipped; }
 }
 ```
 
-- With `broadcastWith()` present it is the only payload source; otherwise every public property is used
-  (promoted or class-body, `@var` docblock preferred). A model-typed property is `Partial<Model>`, an
+- With `broadcastWith()` present it is the only payload source; otherwise every public property **the class itself
+  declares** is used (promoted or class-body, `@var` docblock preferred). **Trait-declared properties are skipped**,
+  so `InteractsWithSockets`' `$socket` — present in every `make:event` class — is broadcast but never typed. A
+  payload field living on a plain trait needs to move into the class, gain `#[TsExtends]`, or go through
+  `broadcastWith()`. A model-typed property is `Partial<Model>`, an
   enum-typed one is `{Enum}Type`, both imported.
 - Inside `broadcastWith()`, hand the model attribute through (`'completed_at' => $this->task->completed_at`)
   and it types from the cast (`string | null`; Carbon serializes to ISO-8601 in the JSON payload anyway).
   A call on the value (`?->toJSON()`, `->format(...)`, `->toISOString()`) types as `unknown`, and a
   `@return array{...}` docblock on `broadcastWith()` is **not** consulted as an override; fix it with
   `#[TsCasts(['completed_at' => 'string | null'])]` on the event class or by passing the attribute through.
-- A class-body property with no default renders optional (`label?: string`); promote it or give it a
-  default to make it required.
+- A **typed** class-body property with no default renders optional (`label?: string`) — reflection cannot see
+  a constructor assignment — so promote it or give it a declaration default to make it required.
 - **Give every broadcast event a `broadcastAs()` that returns one string literal** (`'task.completed'`),
   and **listen with a leading dot**. Laravel Echo's `EventFormatter` treats a name without a leading dot as
   relative: it prepends its `namespace` (`App.Events` by default) and turns every dot into a backslash, so
@@ -137,13 +162,25 @@ useEcho<TaskCompleted>(BroadcastChannels.teams(props.team.id).$channel, `.${Broa
     if (row) row.completed_at = event.completed_at;
 });
 
-// Plain Echo
-window.Echo.private(BroadcastChannels.teams(team.id).$channel)
+// Plain Echo — `echo()` is the instance configureEcho() created; import it alongside useEcho.
+echo().private(BroadcastChannels.teams(team.id).$channel)
     .listen(`.${BroadcastEvents.TaskCompleted}`, (event: TaskCompleted) => { /* ... */ });
 ```
 
 Use `BroadcastEvents.X` (dot-prefixed) for the name, `BroadcastChannels` for the channel, and the generated
 interface for the payload; never a hand-typed `'task.completed'` or `` `teams.${id}` `` literal.
+
+`useEcho()` subscribes as **private** (it builds `private-<name>`). An event on a plain `Channel` needs
+`useEchoPublic(...)`, one on a `PresenceChannel` needs `useEchoPresence(...)`, or pass the visibility as
+`useEcho`'s **fifth** argument, after the dependencies array: `useEcho(name, ev, cb, [], 'public')`. Match
+`broadcastOn()`'s channel class — getting it wrong produces no type error, just a failed `/broadcasting/auth`
+and a listener that never fires. `useEchoPublic`/`useEchoPresence` never infer the payload from the augmentation,
+so always pass it as their first type argument.
+
+`useEcho()` is a composable, so it cannot be called in a loop. A page listening on **several** channels — a list
+spanning teams, say — needs either one renderless child component per channel, or the `echo()` instance with your
+own lifecycle: compute the distinct ids, `echo().private(name).listen(...)` in a `watch`, and `echo().leave(name)`
+on teardown.
 Presence channels (`Echo.join()`) use the same channel names.
 
 ## Republishing

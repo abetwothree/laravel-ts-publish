@@ -17,6 +17,11 @@ Defaults: everything `true` except `model_metadata`, `globals`, `json` (`false`)
 A disabled phase has no output. Do not import from its directory, do not annotate PHP for it, and do not
 flip the config on without asking; mention that enabling it would generate the thing you needed.
 
+Config merging is **one level deep**, so the app's published `config/ts-publish.php` replaces the packaged block
+for a phase outright: a key the app's copy predates is absent rather than defaulted, and a phase block missing
+from the published file reads as disabled. Never infer a value from the package's own config file once the app
+has published one — ask the booted app with the snippet above.
+
 ## Commands
 
 ```bash
@@ -38,6 +43,10 @@ php artisan ts:publish -v                                # per-file tables; -q f
   `command: './vendor/bin/sail artisan ts:publish'`.
 - An `--only-*` flag for a phase disabled in config prompts interactively and is skipped silently in CI.
 - A model-metadata provider that throws keeps that model's last companion and exits non-zero.
+- Generated files import **across** phases (a route file imports its form request; a model imports `../enums`), so
+  an `--only-*` run only holds together on a tree the other phases already populated. `--only-routes` on a clean
+  checkout writes route files pointing at request files nothing wrote. Run a full `ts:publish` first in CI, or any
+  time the output directory was deleted.
 
 ## Output layout
 
@@ -94,22 +103,22 @@ per-feature references), not a `// @ts-expect-error`.
 
 ## Troubleshooting
 
-| Symptom                                               | Cause / fix                                                                                                  |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `--preview` wrote files                               | Needs `--preview=true`                                                                                       |
-| New class missing from `index.ts`                     | `--source` never rewrites barrels; run a full `ts:publish`                                                   |
-| A new column is missing                               | Columns come from the DB: run the migration, then republish                                                  |
-| Stale output after a config change                    | `ts:publish --fresh`                                                                                         |
-| `Cannot find module '../../illuminate/notifications'` | Add `\Illuminate\Notifications\DatabaseNotification::class` to `models.additional_directories`               |
-| Vite plugin says `sail: command not found`            | `laravelTsPublish({ command: './vendor/bin/sail artisan ts:publish' })`                                      |
-| `Inertia.SharedData` unknown to TypeScript            | `inertia-config.d.ts` (or the output dir) is outside `tsconfig` `include`                                    |
-| Echo callback payload is `any`                        | `echo_augmentation.enabled`, and the `.d.ts` must be in `include`; package auto-detected from `package.json` |
-| Route helper for a vendor controller shows up         | Expected; filter with `routes.only/except/exclude_middleware`                                                |
-| Duplicate identifier for two enums with one basename  | Rename one with `#[TsEnum(name:)]`                                                                           |
-| Request published as `Record<string, unknown>`        | `rules()` needed real request state; make it static                                                          |
-| Form request type on a route is `never`               | The action does not type-hint the `FormRequest`, or `form_requests.enabled` is off                           |
-| Companion `_meta.ts` missing                          | `model_metadata.enabled` is `false` by default                                                               |
-| Running `ts:publish` in a package's `workbench/`      | No DB there; run the package tests instead                                                                   |
+| Symptom                                               | Cause / fix                                                                                                                                                                                                                                                                                                       |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--preview` wrote files                               | Needs `--preview=true`                                                                                                                                                                                                                                                                                            |
+| New class missing from `index.ts`                     | `--source` never rewrites barrels; run a full `ts:publish`                                                                                                                                                                                                                                                        |
+| A new column is missing                               | Columns are read from the live DB, and the schema is **not** part of the cache fingerprint. `php artisan migrate` republishes with `--fresh` for you; if the migration already ran, or the schema changed out of band, run `ts:publish --fresh` yourself — a plain republish is a cache hit that rewrites nothing |
+| Stale output after a config change                    | Not a `--fresh` case: a `ts-publish` config change busts the cache on its own. `--fresh` is for a hand-edited generated file or an out-of-band schema change. Note that no run **deletes** files, so a rename or a new exclusion leaves orphans to remove by hand                                                 |
+| `Cannot find module '../../illuminate/notifications'` | Add `\Illuminate\Notifications\DatabaseNotification::class` to `models.additional_directories`                                                                                                                                                                                                                    |
+| Vite plugin says `sail: command not found`            | `laravelTsPublish({ command: './vendor/bin/sail artisan ts:publish' })`                                                                                                                                                                                                                                           |
+| `Inertia.SharedData` unknown to TypeScript            | `inertia-config.d.ts` (or the output dir) is outside `tsconfig` `include`                                                                                                                                                                                                                                         |
+| Echo callback payload is `any`                        | `echo_augmentation.enabled`, and the `.d.ts` must be in `include`. Only `@laravel/echo-vue`/`-react`/`-svelte` are detected; plain `@laravel/echo` is the fallback and its `.listen()` is not typed by the augmentation                                                                                           |
+| Route helper for a vendor controller shows up         | Expected. Those routes are usually unnamed, so `routes.except` will not match them: use `routes.exclude_middleware`, `routes.only_named`, or an allowlist in `routes.only` (which itself drops every unnamed route)                                                                                               |
+| Duplicate identifier for two enums with one basename  | Rename one with `#[TsEnum(name:)]`                                                                                                                                                                                                                                                                                |
+| Request published as `Record<string, unknown>`        | `rules()` threw during analysis (the analyzer calls it against a fake request with only the Auth facade stubbed). `$this->user()` is `null` there; move state-dependent logic into `withValidator()`/`after()`                                                                                                    |
+| Form request type on a route is `never`               | The action does not type-hint the `FormRequest`, or `form_requests.enabled` is off                                                                                                                                                                                                                                |
+| Companion `_meta.ts` missing                          | `model_metadata.enabled` is `false` by default                                                                                                                                                                                                                                                                    |
+| Running `ts:publish` in a package's `workbench/`      | No DB there; run the package tests instead                                                                                                                                                                                                                                                                        |
 
 For pipeline customization (`*_class` keys, templates via `vendor:publish --tag=laravel-ts-publish-views`),
 the pre-command hook (`LaravelTsPublish::callCommandUsing()`), cache internals, and the `AstEngine::analyze()`

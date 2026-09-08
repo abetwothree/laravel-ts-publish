@@ -9,6 +9,12 @@ this package; there is no `route()` helper, no Ziggy, and no reason to hand-writ
 `routes.exclude_middleware` and `routes.only_named` too: a route filtered out by those has no helper. The
 `@tolki/ts` npm package must be installed; route files import `defineRoute` from it at runtime.
 
+Three kinds of route are dropped before any filter is consulted, so a missing helper is not always config: a
+**closure** route (no controller class to name a file after), `Route::fallback()`, and any route named
+`generated::*` (a route-cache artifact — publish against an uncached route table). If the filters are empty and
+a helper is missing, it is almost certainly a closure route: move the body into a controller and republish
+rather than hardcoding the URL.
+
 ## What gets generated
 
 One file per controller at the namespace-derived path: `App\Http\Controllers\TaskController` ->
@@ -59,8 +65,10 @@ export default TaskController;
   Named actions collide (`index`, `show`) so they are not re-exported from the barrel.
 - Framework and vendor controllers that have routes (`Illuminate\Routing\RedirectController` for
   `Route::redirect()`, Inertia's dev tools, Passport, Fortify) are published too, under `illuminate/...`,
-  `inertia/...`, etc. Filter them with `routes.only` / `routes.except` / `routes.exclude_middleware` when
-  they are noise.
+  `inertia/...`, etc. The **unnamed** ones (`Route::redirect()`, Inertia's dev tools, `/broadcasting/auth`) cannot
+  be dropped by `routes.except`, since both name filters only ever match a name; use `routes.exclude_middleware`,
+  `routes.only_named`, or an explicit `routes.only` allowlist (see the caveat below). Passport and Fortify do name
+  their routes (`passport.*`, `login`, `register`, `password.*`, `two-factor.*`), so `routes.except` drops those.
 - Inertia page props (`annotatePageProps`) and form-request payloads (`annotateRequestPayload`) are attached
   automatically when those phases are enabled; you never call those helpers yourself.
 
@@ -117,6 +125,10 @@ A model-typed parameter gets `_routeKey` (from `getRouteKeyName()`, `$primaryKey
 `value[_routeKey]` then `value.id`, with a clear error when neither exists. No model type is imported for
 a binding.
 
+An explicit binding in the URI (`Route::get('/articles/{article:slug}', ...)`) sets `_routeKey` too, and it wins
+over the model's own `getRouteKeyName()`. **Read `_routeKey` in the generated `args` before writing the call**:
+passing `article.id` to a `_routeKey: 'slug'` route type-checks, builds `/articles/42`, and 404s.
+
 ### Enum binding
 
 A backed-enum parameter gets `_enumValues: ['low', 'medium', 'high']`. Pass the raw value, the case
@@ -132,20 +144,27 @@ constant (`TaskPriority.High`), or a resolved instance (`TaskPriority.from('high
 
 ### Query strings
 
-Keys that are not route parameters become query parameters. Booleans encode as `0`/`1`; arrays as
-`tags[0]=a&tags[1]=b`; nested objects as `filter[status]=done`; `null`/`undefined` are skipped.
+Keys that are not route parameters become query parameters. Booleans encode as `0`/`1`; arrays and nested
+objects use Laravel's bracket notation with the brackets **percent-encoded**, so `{ tags: ['a','b'] }` emits
+`tags%5B0%5D=a&tags%5B1%5D=b` and `{ filter: { status: 'done' } }` emits `filter%5Bstatus%5D=done`;
+`null`/`undefined` are skipped. Assert against the encoded form — that is the literal `.url` string.
 
 ```ts
 TaskController.index({ completed: true, page: 2 });         // '/tasks?completed=1&page=2'
-TaskController.edit(task.id, { tab: 'history' });           // trailing options object on any calling form
+TaskController.edit(task.id, { tab: 'history' });           // trailing options: positional form (see below)
 TaskController.edit({ task: task.id, tab: 'history' });     // extra keys in the named object
 TaskController.index({ _query: { task: 'x' } });            // _query: escape hatch when a key collides with a param name
 TaskController.index({ mergeQuery: { page: 1 } });          // start from window.location.search, set/replace page; null removes a key
 ```
 
-The trailing object holds the query keys directly; there is no `query:` wrapper. A trailing argument is
-treated as options only when you pass more arguments than the route declares and it contains none of the
-parameter names.
+The trailing object holds the query keys directly; there is no `query:` wrapper. An object is read as options
+when it contains none of the parameter names — either as the lone argument, or as a trailing argument when you
+pass **more** arguments than the route declares. That last condition bites on multi-parameter routes:
+`show(user.id, post.id, { page: 1 })` works, but `show({ user: user.id, post: post.id }, { page: 1 })` and
+`show([user.id, post.id], { page: 1 })` type-check and then break at runtime, because the argument count already
+matches and the trailing object is read as the next parameter. Put the extra keys inside the named object
+instead. On a **single**-parameter route a lone object carrying the route key, `id`, or `_routeKey` is read as
+that parameter rather than as options.
 
 ### Route defaults
 
@@ -170,6 +189,10 @@ TaskController.destroy.form(task.id);            // { action: '/tasks/42?_method
 <form v-bind="TaskController.update.form(task.id)">   <!-- Vue: spreads action + method -->
 <Form {...TaskController.update.form(task.id)}>       <!-- React / Inertia <Form> -->
 ```
+
+`.form()` supplies `action`, `method` and `_method` spoofing and nothing else. A **native** browser form still
+needs Laravel's CSRF token (`@csrf` in Blade, or a hidden `_token` input), or the POST returns 419. Inertia
+submissions send it from the `XSRF-TOKEN` cookie already, so `.form()` is for real, non-intercepted forms.
 
 ## With Inertia (`router`, `useForm`, `<Link>`)
 
@@ -212,13 +235,16 @@ result if you want to pass both (`const { url, method } = TaskController.update(
 
 - Type-hint models and backed enums in the action signature so bindings get `_routeKey` / `_enumValues`.
 - Type-hint a `FormRequest` in `store`/`update` so the helper carries the payload type.
-- Name routes (`->name('tasks.update')`); unnamed routes still publish unless `routes.only_named` is on,
-  but the name is what `routes.only`/`except` patterns match (`'tasks.*'`, `'!tasks.destroy'`).
+- Name routes (`->name('tasks.update')`). Unnamed routes publish by default, but every name filter needs a
+  name to work with: `routes.only_named` drops them, a **non-empty** `routes.only` drops them too (even a
+  negation-only list like `['!tasks.destroy']`, since `only` requires a name to match), and `routes.except`
+  ignores them entirely. Patterns support wildcards and negation (`'tasks.*'`, `'!tasks.destroy'`).
 - One public method per action; a method you do not want published gets `#[TsExclude]`; a whole controller
   gets it on the class.
 - After editing a controller, its form requests, or `routes/*.php`, republish: `php artisan ts:publish --source="App\Http\Controllers\TaskController"`
-  refreshes that file; a route added to a **new** controller needs a full `php artisan ts:publish` so the
-  barrel picks it up. Route definitions are part of the cache fingerprint, so a URI/verb/name change
+  refreshes that route file only — not the form-request file its payload type points at, which needs its own
+  `--source` run or a full publish. A route added to a **new** controller needs a full `php artisan ts:publish`
+  so the barrel picks it up. Route definitions are part of the cache fingerprint, so a URI/verb/name change
   republishes on the next full run without `--fresh`.
 
 ## Common mistakes

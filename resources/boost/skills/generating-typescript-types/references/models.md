@@ -55,13 +55,18 @@ export interface TaskAll extends Task, TaskMutators, TaskRelations {}
 export interface TaskAllResource extends TaskResource, TaskMutators, TaskRelations {}
 ```
 
-- `{Model}` is what `$model->toArray()` / an Inertia prop / a JSON response of the bare model carries.
+- `{Model}` is the bare-model payload — columns plus `$appends` accessors — that `$model->toArray()`, an Inertia
+  prop or a JSON response carries, with one exception: `$hidden` columns are published unless
+  `models.exclude_hidden` is `true`, so the interface can claim a `password` the wire never sends.
 - `{Model}Mutators` holds non-appended accessors; an accessor listed in `$appends` / `#[Appends]` moves
   into `{Model}`.
 - `{Model}Relations` has one entry per relation method plus `_count` and `_exists` (from `withCount` /
   `withExists`); names follow `models.relationship_case` (`snake` by default).
-- `{Model}Resource` variants exist only when the model has enum-typed members and
-  `enums.use_tolki_package` is on; use them for a payload the backend already serialized through
+- The `Resource` variants exist only when `enums.use_tolki_package` is on and the model has enum-typed members,
+  and which one you get depends on where the enum sits: an enum-typed **column or `$appends` entry** gives
+  `{Model}Resource`, an enum-typed **non-appended accessor** gives `{Model}MutatorsResource` instead (so a model
+  whose only enum member is a plain accessor has no `{Model}Resource` at all), and `{Model}AllResource` appears
+  whenever either does; use them for a payload the backend already serialized through
   `EnumResource` (each enum member arrives as `{ name, value, backed, ...methods }`). For a plain model
   payload keep `{Model}` and resolve on the client with `Status.from(model.status)` where you need a
   label; the result of `from()` on a union-typed value is one object with union-typed members, not an
@@ -80,7 +85,7 @@ import type { Task, TaskRelations, TaskAll, TaskResource } from '@data/app/model
 defineProps<{ task: Task & Pick<TaskRelations, 'assignee'> }>();
 
 // A list with counts
-type Row = Task & Pick<TaskRelations, 'assignee' | 'comments_count'>;
+type Row = Task & Pick<TaskRelations, 'assignee' | 'assignee_count'>;   // only keys TaskRelations declares
 
 // Everything, when you really load everything
 defineProps<{ task: TaskAll }>();
@@ -98,19 +103,27 @@ For each column: `#[TsCasts]` override -> the cast (`casts()` / `$casts`, includ
 cast class) -> the raw DB column type. Then a class-level `@property` docblock refines any result that is
 still vague.
 
-| PHP                                                      | TypeScript                                        |
-| -------------------------------------------------------- | ------------------------------------------------- |
-| int/bigint/decimal/float/double/numeric column or cast   | `number`                                          |
-| `boolean` cast, `tinyint(1)`                             | `boolean` (bare `tinyint` is `number`)            |
-| string/text/char/uuid/enum column, `hashed`, `encrypted` | `string`                                          |
-| date/datetime/timestamp/`Carbon` cast                    | `string` (or `Date` with `timestamps_as_date`)    |
-| `array`, `collection`, `json` column with no docblock    | `unknown[]` / `object` -> add a `@property` shape |
-| Enum class cast                                          | `{Enum}Type` (+ `AsEnum` on `{Model}Resource`)    |
-| `AsEnumCollection::of(Status::class)`                    | `StatusType[]`                                    |
-| `AsCollection::of(LineItemDto::class)`                   | `{ ...dto shape }[]`                              |
-| `AsArrayObject` family                                   | `unknown[] \| Record<string, unknown>`            |
-| Custom `CastsAttributes` with `#[TsType('X')]`           | `X` (with import when given)                      |
-| Nullable column                                          | `\| null` appended                                |
+| PHP                                                      | TypeScript                                     |
+| -------------------------------------------------------- | ---------------------------------------------- |
+| int/bigint/decimal/float/double/numeric column or cast   | `number`                                       |
+| `boolean` cast, `tinyint(1)`                             | `boolean` (bare `tinyint` is `number`)         |
+| string/text/char/uuid/enum column, `hashed`, `encrypted` | `string`                                       |
+| date/datetime/timestamp/`Carbon` cast                    | `string` (or `Date` with `timestamps_as_date`) |
+
+**A `datetime` column and an `<input type="date">` agree on the type and disagree at runtime.** The column
+publishes as `string` and the request field as `string`, so `vue-tsc` is green, but the value is a full
+ISO-8601 timestamp (`2026-09-10T00:00:00.000000Z`) and a date input silently renders nothing for it — then
+submits an empty string, which `ConvertEmptyStringsToNull` turns into `null` and a `nullable|date` rule
+happily accepts. **Every save wipes the column.** Slice when seeding the form
+(`props.task.due_at?.slice(0, 10)`) or bind an `<input type="datetime-local">`; `timestamps_as_date` does not
+help, it only swaps the TypeScript type for `Date`.
+| `array`, `collection`, `json` column with no docblock | `unknown[]` / `object` -> add a `@property` shape |
+| Enum class cast | `{Enum}Type` (+ `AsEnum` on `{Model}Resource`) |
+| `AsEnumCollection::of(Status::class)` | `StatusType[]` |
+| `AsCollection::of(LineItemDto::class)` | `{ ...dto shape }[]` |
+| `AsArrayObject` family | `unknown[] \| Record<string, unknown>` |
+| Custom `CastsAttributes` with `#[TsType('X')]` | `X` (with import when given) |
+| Nullable column | `\| null` appended |
 
 `custom_ts_mappings` in config overrides a DB/cast type globally (`'binary' => 'Blob'`).
 
@@ -143,7 +156,9 @@ tags: string[] | null;
 Rules that matter:
 
 - The tag only applies when the waterfall result is vague (`unknown`, `unknown[]`, `object`,
-  `Record<string, unknown>`); it never overrides an enum cast, an accessor return type, or a custom cast.
+  `Record<string, unknown>`). It never overrides a type already resolved specifically — an enum cast, a custom
+  cast class, a typed accessor return — but it does refine a _vague_ one, including an accessor declared
+  `fn (): array`.
 - `array{...}` -> object literal with optional keys kept (`key?:`); `list<T>` / `array<int, T>` -> `T[]`;
   `array<string, T>` -> `Record<string, T>`; `array<array-key, T>` / `array<mixed, T>` -> `T[] | Record<string, T>`.
 - A shape worth naming: declare `@phpstan-type PresetConfig array{...}` on the DTO/class that owns it, then
@@ -193,26 +208,33 @@ strategy (`HasOne`/`MorphOne`/`HasOneThrough`: always; `BelongsTo`: when the FK 
   `\Illuminate\Notifications\DatabaseNotification::class` to it, or `#[TsExclude]` the relation, or the
   import will not resolve.
 - Two models with the same basename in different namespaces are imported under aliases automatically.
+- **`withPivot()` columns are never published.** A `BelongsToMany` generates as `Related[]` with no `pivot`
+  member, and `#[TsCasts]` cannot retype a relation, so there is no PHP-side fix: intersect at the use site
+  (`type Member = User & { pivot: Pick<TeamUser, 'role'> }`) and keep the column list in PHP.
+- **`models.included` / `models.excluded` silently drop relations.** A relation whose related model is filtered
+  out disappears from `{Model}Relations` along with its `_count`/`_exists`, with no import and no warning. A
+  relation missing from a model you did not touch means the _related_ model is not published.
 
 ## Attributes
 
-| Attribute                             | On                                   | Effect                                                                           |
-| ------------------------------------- | ------------------------------------ | -------------------------------------------------------------------------------- |
-| `#[TsCasts([...])]`                   | `casts()`, `$casts`, or the class    | Override/add column, accessor, or relation types; `['type','import','optional']` |
-| `#[TsType('X')]` / `#[TsType([...])]` | a custom `CastsAttributes` class     | Type used wherever that cast is applied                                          |
-| `#[TsExtends('Iface', import: ...)]`  | class, parent, or trait (repeatable) | Adds `extends` to the interface; also `ts_extends.models` in config              |
-| `#[TsExclude]`                        | class, accessor, or relation method  | Drop it (class-level also drops its metadata companion)                          |
+| Attribute                             | On                                   | Effect                                                                                                                                                                                                                                                     |
+| ------------------------------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `#[TsCasts([...])]`                   | `casts()`, `$casts`, or the class    | Override the type of a **column or accessor that is already published** (`['type','import','optional']`). It cannot retype a relation, and it cannot add a key the schema/accessors do not already produce — an entry matching neither is silently ignored |
+| `#[TsType('X')]` / `#[TsType([...])]` | a custom `CastsAttributes` class     | Type used wherever that cast is applied                                                                                                                                                                                                                    |
+| `#[TsExtends('Iface', import: ...)]`  | class, parent, or trait (repeatable) | Adds `extends` to the interface; also `ts_extends.models` in config                                                                                                                                                                                        |
+| `#[TsExclude]`                        | class, accessor, or relation method  | Drop it (class-level also drops its metadata companion)                                                                                                                                                                                                    |
 
 ## Model metadata (`{model}_meta.ts`)
 
 Off by default. When `model_metadata.enabled` is `true` each model also gets a runtime companion:
 
 ```ts
-export const TaskModelMetadata = { morphClass: 'task' } as const satisfies { morphClass: string };
+export const TaskModelMetadata = { morphClass: 'App\\Models\\Task' } as const satisfies { morphClass: string };
 ```
 
-Use it for polymorphic payloads (`form.commentable_type = TaskModelMetadata.morphClass`) instead of
-copying PHP class names into the frontend. A custom `model_metadata.provider_class` can add keys; type them
+The value is whatever `getMorphClass()` returns: the FQCN by default, the alias (`'task'`) once the app
+registers a morph map. Use it for polymorphic payloads (`form.commentable_type = TaskModelMetadata.morphClass`)
+instead of copying PHP class names into the frontend. A custom `model_metadata.provider_class` can add keys; type them
 with `@return array{...}` on `provide()` or `#[TsCasts]`. Do not import `_meta` files when the phase is
 disabled; they will not exist.
 
@@ -224,16 +246,17 @@ database, so run the migration first (the package republishes after `migrate` au
 
 ## Still seeing `unknown`?
 
-| Symptom                                                | Fix                                                                                         |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
-| `settings: unknown[]` on an `array` cast               | class-level `@property array{...} $settings`                                                |
-| `items: unknown[]` from `Attribute<Collection, never>` | `Attribute<Collection<int, Item>, never>`                                                   |
-| `AsCollection` / `AsEnumCollection` gives `unknown[]`  | `AsCollection::of(Dto::class)` / `AsEnumCollection::of(Enum::class)`                        |
-| `morphTo` is `unknown \| null`                         | `@return MorphTo<A\|B, $this>`                                                              |
-| accessor is `unknown`                                  | type the closure return or add `@return Attribute<T, never>`                                |
-| a column is missing entirely                           | it is not in the DB schema yet: migrate, then republish                                     |
-| a relation type import does not resolve                | the related model is not published: check `models.included/excluded/additional_directories` |
-| type is right in PHPStan but TS still vague            | the waterfall resolved something non-vague already; use `#[TsCasts]`                        |
+| Symptom                                                                                                                                          | Fix                                                                                                     |
+| ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `settings: unknown[]` on an `array` cast                                                                                                         | class-level `@property array{...} $settings`                                                            |
+| `items: unknown[] \| Record<string, unknown>` from `Attribute<Collection, never>` (a bare Eloquent `Collection` gives `Record<string, unknown>`) | `Attribute<Collection<int, Item>, never>`                                                               |
+| `AsCollection` / `AsEnumCollection` gives `unknown[]`                                                                                            | `AsCollection::of(Dto::class)` / `AsEnumCollection::of(Enum::class)`                                    |
+| `morphTo` is bare `unknown` (no `\| null`)                                                                                                       | `@return MorphTo<A\|B, $this>`                                                                          |
+| accessor is `unknown`                                                                                                                            | type the closure return or add `@return Attribute<T, never>`                                            |
+| a column is missing entirely                                                                                                                     | it is not in the DB schema yet: migrate, then republish                                                 |
+| a relation type import does not resolve                                                                                                          | the related model is not published: check `models.included/excluded/additional_directories`             |
+| PHPStan is right but TS shows a different **specific** type                                                                                      | the waterfall already resolved something non-vague, so the `@property` tag is ignored; use `#[TsCasts]` |
+| PHPStan is right but TS is still **vague**                                                                                                       | the tag's own type is vague too (`array<string, mixed>`); spell a concrete `array{...}` shape           |
 
 ## Common mistakes
 

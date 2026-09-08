@@ -63,20 +63,39 @@ enum TaskPriority: string
 }
 ```
 
+When `enums.auto_include_methods` is enabled, the `#[TsEnumMethod]` attribute is not needed on enum methods.
+
+When `enums.auto_include_static_methods` is enabled, the `#[TsEnumStaticMethod]` attribute is not needed on enum methods.
+
+When both of those config settings are true, you're more like to use the `#[TsExclude]` attribute to exclude methods rather include one enum method at a time.
+
 Wire it into the rest of the backend the normal Laravel way. Every one of these is read by the generator:
 
-| Where                  | Write                                                         | Generated effect                                                         |
-| ---------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Model cast             | `'priority' => TaskPriority::class` in `casts()`              | `priority: TaskPriorityType` on `Task`, `AsEnum<...>` on `TaskResource`  |
-| Form request rule      | `'priority' => ['required', Rule::enum(TaskPriority::class)]` | `priority: 'low' \| 'medium' \| 'high'` on the request interface         |
-| Migration              | `$table->string('priority')->default('medium')`               | column exists so the model interface includes it                         |
-| Route parameter        | `public function byPriority(TaskPriority $priority)`          | `_enumValues: ['low', 'medium', 'high']` on the route arg                |
-| API resource / Inertia | `'priority' => EnumResource::make($this->priority)`           | `AsEnum<typeof TaskPriority>` (see [api-resources.md](api-resources.md)) |
-| Broadcast event prop   | `public TaskPriority $priority`                               | `priority: TaskPriorityType`                                             |
+| Where                           | Write                                                         | Generated effect                                                                                       |
+| ------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Model cast                      | `'priority' => TaskPriority::class` in `casts()`              | `priority: TaskPriorityType` on `Task`, `AsEnum<...>` on `TaskResource`                                |
+| Form request rule               | `'priority' => ['required', Rule::enum(TaskPriority::class)]` | `priority: 'low' \| 'medium' \| 'high'` on the request interface                                       |
+| Migration                       | `$table->string('priority')->default('medium')`               | column exists so the model interface includes it                                                       |
+| Route parameter                 | `public function byPriority(TaskPriority $priority)`          | `_enumValues: ['low', 'medium', 'high']` on the route arg                                              |
+| API resource, Inertia `share()` | `'priority' => EnumResource::make($this->priority)`           | `AsEnum<typeof TaskPriority>` (see [api-resources.md](api-resources.md))                               |
+| Inertia `render()` page prop    | `'priority' => $task->priority`                               | `priority: TaskPriorityType` — page props get **no** `AsEnum` rewrite, even for `EnumResource::make()` |
+| Broadcast event prop            | `public TaskPriority $priority`                               | `priority: TaskPriorityType`                                                                           |
 
 Then republish: `php artisan ts:publish --source="App\Enums\TaskPriority"` for the enum file, and a plain
 `php artisan ts:publish` once the model/request/controller edits are in (a `--source` run never rewrites
 barrels, so the first new enum in a namespace needs the full run to get `app/enums/index.ts`).
+
+**Published methods are executed, not read.** `ts:publish` invokes each `#[TsEnumMethod]` once per case (and
+each `#[TsEnumStaticMethod]` once) inside the CLI process and bakes the return value into the `.ts` as a
+literal. A body touching `__()`/`trans()`, `config()`, `now()` or the database therefore freezes the publish
+run's locale, environment and clock into the file, while `EnumResource` re-runs the same method per request and
+answers in the request's locale — the two drift apart. Keep published methods to pure `match ($this)` over
+constants; translate on the frontend and let the method return a stable key.
+
+**What a method may return.** Scalars, or arrays of scalars. Only a PHP _list_ becomes a TS array, so a
+key-preserving `array_filter(self::cases(), ...)` publishes as an object — wrap it in `array_values()`. An enum
+instance collapses to its backing value (`self::cases()` gives `['low','high']`, not objects), and anything else
+is `(array)`-cast, so call `->toArray()` on a Collection and never return a Carbon, a model or a DTO.
 
 ## What gets generated
 
@@ -141,8 +160,13 @@ priority.label;                                      // 'High'   (instance metho
 priority.color;                                      // 'bg-red-100 text-red-800'
 priority.options;                                    // static methods come through unchanged
 
-// tryFrom() returns null instead of throwing; pair it with ?? for user-controlled input.
-TaskPriority.tryFrom(query.priority)?.label ?? 'Any';
+// tryFrom() returns null instead of throwing. Its parameter is the case-value union, not `string`, so a
+// value TypeScript only knows as `string` (a query param, a fetch response) needs a cast at that boundary:
+TaskPriority.tryFrom(query.priority as TaskPriorityType)?.label ?? 'Any';
+
+// An int-backed enum generates a numeric union and from()/tryFrom() compare with ===, so a value that has been
+// through the DOM, a query string or FormData is a string and never matches. Coerce before resolving:
+// Status.tryFrom(Number(raw) as StatusType)
 
 // cases() is the idiomatic way to build a <select>, a filter list, or a legend.
 TaskPriority.cases().map((c) => ({ value: c.value, label: c.label }));
@@ -150,6 +174,10 @@ TaskPriority.cases().map((c) => ({ value: c.value, label: c.label }));
 // Type props, refs, form fields and function parameters with the alias, not a hand-written union.
 defineProps<{ priority: TaskPriorityType }>();
 function setPriority(next: TaskPriorityType) {}
+
+// Initialising an Inertia useForm field with a case constant narrows it to that one literal, so every other
+// case then fails to assign. Widen to the generated alias — an annotation, not an escape hatch:
+//   const form = useForm({ priority: TaskPriority.Medium as TaskPriorityType });
 ```
 
 The method maps are keyed by case **name** (`Low`), while columns and payloads carry the case **value**
@@ -166,10 +194,11 @@ A template badge looks like this in any framework:
 
 For a `<select>` bound to a form, iterate `TaskPriority.cases()` and bind each option's `value`.
 
-Tailwind v4 detects class names by scanning source files and skips anything gitignored. The generated
-directory usually is gitignored, so classes that only appear in an enum method's return value
-(`bg-red-100 text-red-800`) need an explicit `@source "../js/types/data";` line in `app.css` (path
-relative to the CSS file), or they will be missing from the built CSS while looking fine in the editor.
+Tailwind v4 finds class names by scanning source files and skips anything gitignored. If the generated
+directory is gitignored — the common setup, but check — classes that only appear in an enum method's return
+value (`bg-red-100 text-red-800`) need an explicit `@source "../js/types/data";` in `app.css`, relative to that
+file. Either way, verify: build once and grep the built stylesheet for one of the classes. A badge that looks
+right in the editor and unstyled in production is this and nothing else.
 
 ### Type companions
 
@@ -200,17 +229,21 @@ bound helpers). With the default config prefer the bound `TaskPriority.from()` f
 
 All under `AbeTwoThree\LaravelTsPublish\Attributes`.
 
-| Attribute                                       | Target        | Effect                                                                                             |
-| ----------------------------------------------- | ------------- | -------------------------------------------------------------------------------------------------- |
-| `#[TsEnumMethod(name:, description:, params:)]` | public method | Publish the method, invoked once per case. Required unless `enums.auto_include_methods` is `true`. |
-| `#[TsEnumStaticMethod(...)]`                    | public static | Publish the static result once as a top-level key. Required unless `auto_include_static_methods`.  |
-| `#[TsEnum(name:, description:)]`                | enum          | Rename the const/type/file (`UserStatus` -> `user-status.ts`, `UserStatusType`) or set the JSDoc.  |
-| `#[TsCase(name:, value:, description:)]`        | case          | Rename the key, change the frontend value, or set the JSDoc.                                       |
-| `#[TsExclude]`                                  | enum, method  | Drop it. Wins over `#[TsEnumMethod]` and over auto-include.                                        |
+| Attribute                                       | Target        | Effect                                                                                                                                                                                                                                                  |
+| ----------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `#[TsEnumMethod(name:, description:, params:)]` | public method | Publish the method, invoked once per case. Required unless `enums.auto_include_methods` is `true`.                                                                                                                                                      |
+| `#[TsEnumStaticMethod(...)]`                    | public static | Publish the static result once as a top-level key. Required unless `auto_include_static_methods`.                                                                                                                                                       |
+| `#[TsEnum(name:, description:)]`                | enum          | Rename the const/type/file (`UserStatus` -> `user-status.ts`, `UserStatusType`) and/or set the JSDoc. `name` is a **required** constructor argument, so a description-only use still repeats the name: `#[TsEnum('TaskPriority', description: '...')]`. |
+| `#[TsCase(name:, value:, description:)]`        | case          | Rename the key, change the frontend value, or set the JSDoc.                                                                                                                                                                                            |
+| `#[TsExclude]`                                  | enum, method  | Drop it. Wins over `#[TsEnumMethod]` and over auto-include.                                                                                                                                                                                             |
 
 - Methods with **required parameters are skipped** unless you pass `params: ['threshold' => 1]`; the
   values must be constant expressions. Optional-parameter methods are included as-is.
-- Only public methods are ever published. `cases()`, `from()`, `tryFrom()` are always skipped.
+- Auto-include only reaches **public**, non-`__`-prefixed methods, and always skips `cases()`/`from()`/`tryFrom()`.
+  An explicit `#[TsEnumMethod]` / `#[TsEnumStaticMethod]` bypasses that guard, so a `private` or `protected`
+  method carrying the attribute **is** published; only `#[TsExclude]` overrides it.
+- A method that throws for one case (a non-exhaustive `match`) does not fail the run: that case publishes as
+  `null`, with no warning and a zero exit. Keep the `match` exhaustive and let PHPStan check it.
 - Attribute `description` beats PHPDoc. A `name:` on a method still goes through `enums.method_case`.
 - With `auto_include_methods` on, **every** public method's return value is published; check the config
   before adding a method that returns something private, and `#[TsExclude]` it if so.
@@ -224,9 +257,14 @@ return new EnumResource(TaskPriority::High);
 // { "name": "High", "value": "high", "backed": true, "label": "High", "color": "bg-red-100 text-red-800", "options": [...] }
 ```
 
-Inside a `JsonResource::toArray()` or an Inertia `share()`/`render()` array use `EnumResource::make($this->priority)`;
-the generated property becomes `AsEnum<typeof TaskPriority>` with the enum imported. Type the consuming
-side with `AsEnum<typeof TaskPriority>` or the model's `{Model}Resource` interface, never by hand.
+Inside a `JsonResource::toArray()`, or in `HandleInertiaRequests::share()`, use
+`EnumResource::make($this->priority)`; the generated property becomes `AsEnum<typeof TaskPriority>` with the
+enum imported, and you type the consuming side with `AsEnum<typeof TaskPriority>` or the model's
+`{Model}Resource` interface, never by hand.
+
+The rewrite does **not** reach an `Inertia::render()` props array: there, `EnumResource::make(TaskPriority::High)`
+publishes the bare `TaskPriorityType`. Send the case through a resource when the page needs the resolved
+object, or keep the prop as `{Enum}Type` and call `TaskPriority.from(...)` on the client.
 
 ## Tests
 
@@ -244,15 +282,15 @@ expect(TaskPriority.cases()).toHaveLength(3);
 
 ## Config that changes the output
 
-| Key                                                      | Default | Effect                                                                |
-| -------------------------------------------------------- | ------- | --------------------------------------------------------------------- |
-| `enums.enabled`                                          | `true`  | Phase on/off                                                          |
-| `enums.metadata_enabled`                                 | `true`  | Emit `_cases` / `_methods` / `_static` (needed by `from()` etc.)      |
-| `enums.use_tolki_package`                                | `true`  | Wrap in `defineEnum()`; also gates every `AsEnum<>` the package emits |
-| `enums.auto_include_methods`                             | `false` | Publish all public instance methods without attributes                |
-| `enums.auto_include_static_methods`                      | `false` | Publish all public static methods without attributes                  |
-| `enums.method_case`                                      | `camel` | `snake` / `camel` / `pascal` for method keys                          |
-| `enums.included` / `excluded` / `additional_directories` | `[]`    | Discovery filters (FQCNs or directories); default dir is `app/Enums`  |
+| Key                                                      | Default | Effect                                                                                                                                                                                       |
+| -------------------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enums.enabled`                                          | `true`  | Phase on/off                                                                                                                                                                                 |
+| `enums.metadata_enabled`                                 | `true`  | Emit `backed` and `_cases` / `_methods` / `_static`. The `defineEnum()` wrapper needs **both** this and `use_tolki_package`, so turning this off also removes `from()`/`tryFrom()`/`cases()` |
+| `enums.use_tolki_package`                                | `true`  | Wrap in `defineEnum()`; also gates every `AsEnum<>` the package emits                                                                                                                        |
+| `enums.auto_include_methods`                             | `false` | Publish all public instance methods without attributes                                                                                                                                       |
+| `enums.auto_include_static_methods`                      | `false` | Publish all public static methods without attributes                                                                                                                                         |
+| `enums.method_case`                                      | `camel` | `snake` / `camel` / `pascal` for method keys                                                                                                                                                 |
+| `enums.included` / `excluded` / `additional_directories` | `[]`    | Discovery filters (FQCNs or directories); default dir is `app/Enums`                                                                                                                         |
 
 ## Common mistakes
 

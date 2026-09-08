@@ -23,15 +23,15 @@ package's whole purpose is that **a fact about the data lives once, in PHP**, an
 from the generated files. Any hand-written duplicate of that fact on the frontend is the bug this skill
 exists to prevent.
 
-| PHP source                                         | Generated                                                                                                                                                      | Frontend uses                                                                                |
-| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `App\Enums\TaskPriority` (+ `#[TsEnumMethod]`)     | `app/enums/task-priority.ts`: `TaskPriority` object, `TaskPriorityType`, `TaskPriorityKind`                                                                    | `TaskPriority.High`, `.from(v).label`, `.cases()`, `TaskPriorityType`                        |
-| `App\Models\Task` (schema, casts, `@property`)     | `app/models/task.ts`: `Task`, `TaskMutators`, `TaskRelations`, `TaskAll` (+ `TaskResource`, the enum-resolved companion, only when the model has enum columns) | `Task`, `Task & Pick<TaskRelations, 'assignee'>`, `Task['settings']`                         |
-| `App\Http\Controllers\TaskController`              | `app/http/controllers/task-controller.ts`: one `defineRoute()` per action, `TaskController` default export, `{Action}PageProps`                                | `TaskController.edit(task.id)`, `.url()`, `.form()`, `InferPageProps`, `InferRequestPayload` |
-| `App\Http\Requests\UpdateTaskRequest` (`rules()`)  | `app/http/requests/update-task-request.ts` interface                                                                                                           | `useForm<UpdateTaskRequest>`, attached to the route automatically                            |
-| `App\Http\Resources\TaskApiResource` (`toArray()`) | `app/http/resources/task-api-resource.ts` interface                                                                                                            | typing API responses                                                                         |
-| `HandleInertiaRequests::share()`                   | `inertia-config.d.ts`: global `Inertia.SharedData` + `@inertiajs/core` augmentation                                                                            | `usePage().props` typed                                                                      |
-| `routes/channels.php`, `ShouldBroadcast` events    | `broadcast-channels.ts`, `app/events/*.ts`, `broadcast-events.ts`, `echo-broadcast-events.d.ts`                                                                | `BroadcastChannels.teams(id)`, `BroadcastEvents.X`, typed Echo                               |
+| PHP source                                         | Generated                                                                                                                                                                                                                                                                                                            | Frontend uses                                                                                |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `App\Enums\TaskPriority` (+ `#[TsEnumMethod]`)     | `app/enums/task-priority.ts`: `TaskPriority` object, `TaskPriorityType`, `TaskPriorityKind`                                                                                                                                                                                                                          | `TaskPriority.High`, `.from(v).label`, `.cases()`, `TaskPriorityType`                        |
+| `App\Models\Task` (schema, casts, `@property`)     | `app/models/task.ts`: `Task`, `TaskMutators`, `TaskRelations`, `TaskAll` (+ the enum-resolved companions, only when `enums.use_tolki_package` is on and the model has enum-typed members: an enum column or `$appends` entry gives `TaskResource`, an enum-typed non-appended accessor gives `TaskMutatorsResource`) | `Task`, `Task & Pick<TaskRelations, 'assignee'>`, `Task['settings']`                         |
+| `App\Http\Controllers\TaskController`              | `app/http/controllers/task-controller.ts`: one `defineRoute()` per action, `TaskController` default export, `{Action}PageProps`                                                                                                                                                                                      | `TaskController.edit(task.id)`, `.url()`, `.form()`, `InferPageProps`, `InferRequestPayload` |
+| `App\Http\Requests\UpdateTaskRequest` (`rules()`)  | `app/http/requests/update-task-request.ts` interface                                                                                                                                                                                                                                                                 | `useForm<UpdateTaskRequest>`, attached to the route automatically                            |
+| `App\Http\Resources\TaskApiResource` (`toArray()`) | `app/http/resources/task-api-resource.ts` interface                                                                                                                                                                                                                                                                  | typing API responses                                                                         |
+| `HandleInertiaRequests::share()`                   | `inertia-config.d.ts`: global `Inertia.SharedData` + `@inertiajs/core` augmentation                                                                                                                                                                                                                                  | `usePage().props` typed                                                                      |
+| `routes/channels.php`, `ShouldBroadcast` events    | `broadcast-channels.ts`, `app/events/*.ts`, `broadcast-events.ts`, `echo-broadcast-events.d.ts`                                                                                                                                                                                                                      | `BroadcastChannels.teams(id)`, `BroadcastEvents.X`, typed Echo                               |
 
 ## Before touching a feature: confirm its phase is enabled
 
@@ -44,9 +44,10 @@ php artisan tinker --execute="dump(collect(['enums','models','model_metadata','r
 
 Also note `enums.use_tolki_package` (gates every `AsEnum<>`), `enums.auto_include_methods`, and the
 `routes.only/except/exclude_middleware` filters. If a phase is **off**: do not import from its directory,
-do not annotate PHP for it, and do not flip it on inside a feature task; hand-type the small thing you
-need locally and say that enabling the phase would generate it. If it is **on**: the generated
-object/type is the only acceptable source for that data.
+do not annotate PHP for it, and do not flip it on inside a feature task. Derive what you need from the types
+that _are_ generated (`Pick<Task, 'id' | 'title'>` beats a hand-written interface), and say that enabling the
+phase would generate the real thing. If it is **on**: the generated object/type is the only acceptable source
+for that data.
 
 ## The loop
 
@@ -73,13 +74,19 @@ enum means a new case cannot be added without its color. A `Record<XType, string
 `type X = 'a' | 'b'` in a `.ts`/`.vue` file is the duplication to remove, not "presentation staying near
 the markup". On the frontend compare with `X.Case`, resolve with `X.from(value)` / `X.tryFrom(value)`,
 build selects from `X.cases()`, type with `XType`. Details: [references/enums.md](references/enums.md).
+Casting a column to an enum also grows the model file by the `{Model}Resource` companions, so expect new
+interfaces in the diff.
 
 **2. Shapes come from PHP; the frontend derives, never redeclares.** A JSON/array column gets a
 class-level `@property array{...} $settings` (or `@phpstan-type` + `@phpstan-import-type`) on the model,
 which PHPStan reads too, and the frontend uses `Task['settings']`. A payload is `UpdateTaskRequest` /
 `InferRequestPayload<typeof update>`. A page's props are `InferPageProps<typeof edit>` or
-`{Action}PageProps` (inside a Vue `defineProps<...>()` use a literal of `EditPageProps['key']` members, since
-the SFC compiler cannot expand the helper type). An API response is `TaskResource`. Compose with `Pick`, `NonNullable`, `&`; do
+`{Action}PageProps` — but **neither** can go inside a Vue `defineProps<...>()`, which `@vue/compiler-sfc`
+expands statically and which resolves neither a conditional type (`InferPageProps`) nor the ambient global
+`Inertia.SharedData` that every `{Action}PageProps` intersects; there, spell the props as a literal of
+`EditPageProps['key']` members (`vue-tsc` passes on the other forms and then `vite build` fails).
+An API response is the generated resource interface (`TaskApiResource` from `@data/app/http/resources`), not
+the model's `{Model}Resource` companion. Compose with `Pick`, `NonNullable`, `&`; do
 not write `interface TaskSettings`, `interface Props`, `interface TaskForm`, or `as any`.
 Details: [references/models.md](references/models.md), [references/form-requests.md](references/form-requests.md),
 [references/inertia.md](references/inertia.md), [references/api-resources.md](references/api-resources.md).
