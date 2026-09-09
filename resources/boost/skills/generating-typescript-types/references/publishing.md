@@ -42,7 +42,8 @@ php artisan ts:publish -v                                # per-file tables; -q f
   `--only-functional` run before `vite build`. It uses `child_process.exec`, so with Sail on the host set
   `command: './vendor/bin/sail artisan ts:publish'`.
 - An `--only-*` flag for a phase disabled in config prompts interactively and is skipped silently in CI.
-- A model-metadata provider that throws keeps that model's last companion and exits non-zero.
+- A model-metadata provider that throws keeps that model's last companion and exits non-zero. See
+  [model-metadata.md](model-metadata.md).
 - Generated files import **across** phases (a route file imports its form request; a model imports `../enums`), so
   an `--only-*` run only holds together on a tree the other phases already populated. `--only-routes` on a clean
   checkout writes route files pointing at request files nothing wrote. Run a full `ts:publish` first in CI, or any
@@ -117,7 +118,7 @@ per-feature references), not a `// @ts-expect-error`.
 | Duplicate identifier for two enums with one basename  | Rename one with `#[TsEnum(name:)]`                                                                                                                                                                                                                                                                                |
 | Request published as `Record<string, unknown>`        | `rules()` threw during analysis (the analyzer calls it against a fake request with only the Auth facade stubbed). `$this->user()` is `null` there; move state-dependent logic into `withValidator()`/`after()`                                                                                                    |
 | Form request type on a route is `never`               | The action does not type-hint the `FormRequest`, or `form_requests.enabled` is off                                                                                                                                                                                                                                |
-| Companion `_meta.ts` missing                          | `model_metadata.enabled` is `false` by default                                                                                                                                                                                                                                                                    |
+| Companion `_meta.ts` missing                          | `model_metadata.enabled` is `false` by default; see [model-metadata.md](model-metadata.md)                                                                                                                                                                                                                     |
 | Running `ts:publish` in a package's `workbench/`      | No DB there; run the package tests instead                                                                                                                                                                                                                                                                        |
 
 For pipeline customization (`*_class` keys, templates via `vendor:publish --tag=laravel-ts-publish-views`),

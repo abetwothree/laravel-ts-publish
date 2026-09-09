@@ -4,8 +4,9 @@ Each Eloquent model becomes a set of TypeScript interfaces built from the databa
 accessors and the relations. The generator reads the same PHPDoc PHPStan/Larastan reads, so the way to
 sharpen a type is almost always a docblock on the PHP side, not a TypeScript override.
 
-**Gate:** `config('ts-publish.models.enabled')` (default `true`). `model_metadata.enabled` (default
-`false`) is a separate phase for the runtime `{model}_meta.ts` companions.
+**Gate:** `config('ts-publish.models.enabled')` (default `true`). The runtime `{model}_meta.ts`
+companions are a separate phase with its own gate and its own rules:
+[model-metadata.md](model-metadata.md).
 
 ## What gets generated
 
@@ -223,20 +224,6 @@ strategy (`HasOne`/`MorphOne`/`HasOneThrough`: always; `BelongsTo`: when the FK 
 | `#[TsType('X')]` / `#[TsType([...])]` | a custom `CastsAttributes` class     | Type used wherever that cast is applied                                                                                                                                                                                                                    |
 | `#[TsExtends('Iface', import: ...)]`  | class, parent, or trait (repeatable) | Adds `extends` to the interface; also `ts_extends.models` in config                                                                                                                                                                                        |
 | `#[TsExclude]`                        | class, accessor, or relation method  | Drop it (class-level also drops its metadata companion)                                                                                                                                                                                                    |
-
-## Model metadata (`{model}_meta.ts`)
-
-Off by default. When `model_metadata.enabled` is `true` each model also gets a runtime companion:
-
-```ts
-export const TaskModelMetadata = { morphClass: 'App\\Models\\Task' } as const satisfies { morphClass: string };
-```
-
-The value is whatever `getMorphClass()` returns: the FQCN by default, the alias (`'task'`) once the app
-registers a morph map. Use it for polymorphic payloads (`form.commentable_type = TaskModelMetadata.morphClass`)
-instead of copying PHP class names into the frontend. A custom `model_metadata.provider_class` can add keys; type them
-with `@return array{...}` on `provide()` or `#[TsCasts]`. Do not import `_meta` files when the phase is
-disabled; they will not exist.
 
 ## Republishing
 

@@ -4,10 +4,10 @@ description: >
     Use in any Laravel app with abetwothree/laravel-ts-publish installed whenever work crosses the PHP/TypeScript
     boundary: adding or changing a model, column, JSON cast, enum or status/kind/priority value set, form request,
     controller action, route, Inertia page/props, API resource, or broadcast channel/event; writing frontend code
-    that needs a backend type, enum value or label, URL, form payload type, or channel name; when files under
+    that needs a backend type, enum value or label, URL, form payload type, channel name, or morph class; when files under
     resources/js/types/data look wrong, stale, or contain unknown; or when ts:publish / the @tolki/ts Vite plugin
-    misbehaves. Read it before hand-writing any interface, string-literal union, label/color map, or "/path/${id}"
-    string for backend data.
+    misbehaves. Read it before hand-writing any interface, string-literal union, label/color map, PHP class name,
+    or "/path/${id}" string for backend data.
 compatibility: abetwothree/laravel-ts-publish (PHP 8.4+, Laravel 12/13); @tolki/ts for enums and routes.
 ---
 
@@ -27,6 +27,7 @@ exists to prevent.
 | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | `App\Enums\TaskPriority` (+ `#[TsEnumMethod]`)     | `app/enums/task-priority.ts`: `TaskPriority` object, `TaskPriorityType`, `TaskPriorityKind`                                                                                                                                                                                                                          | `TaskPriority.High`, `.from(v).label`, `.cases()`, `TaskPriorityType`                        |
 | `App\Models\Task` (schema, casts, `@property`)     | `app/models/task.ts`: `Task`, `TaskMutators`, `TaskRelations`, `TaskAll` (+ the enum-resolved companions, only when `enums.use_tolki_package` is on and the model has enum-typed members: an enum column or `$appends` entry gives `TaskResource`, an enum-typed non-appended accessor gives `TaskMutatorsResource`) | `Task`, `Task & Pick<TaskRelations, 'assignee'>`, `Task['settings']`                         |
+| `App\Models\Task` + a `ModelMetadataProvider` (opt-in)  | `app/models/task_meta.ts`: `TaskModelMetadata`, a runtime const of backend-owned values (the morph class by default)                                                                                                                                                                                          | `TaskModelMetadata.morphClass` for a polymorphic field                                       |
 | `App\Http\Controllers\TaskController`              | `app/http/controllers/task-controller.ts`: one `defineRoute()` per action, `TaskController` default export, `{Action}PageProps`                                                                                                                                                                                      | `TaskController.edit(task.id)`, `.url()`, `.form()`, `InferPageProps`, `InferRequestPayload` |
 | `App\Http\Requests\UpdateTaskRequest` (`rules()`)  | `app/http/requests/update-task-request.ts` interface                                                                                                                                                                                                                                                                 | `useForm<UpdateTaskRequest>`, attached to the route automatically                            |
 | `App\Http\Resources\TaskApiResource` (`toArray()`) | `app/http/resources/task-api-resource.ts` interface                                                                                                                                                                                                                                                                  | typing API responses                                                                         |
@@ -44,10 +45,16 @@ php artisan tinker --execute="dump(collect(['enums','models','model_metadata','r
 
 Also note `enums.use_tolki_package` (gates every `AsEnum<>`), `enums.auto_include_methods`, and the
 `routes.only/except/exclude_middleware` filters. If a phase is **off**: do not import from its directory,
-do not annotate PHP for it, and do not flip it on inside a feature task. Derive what you need from the types
-that _are_ generated (`Pick<Task, 'id' | 'title'>` beats a hand-written interface), and say that enabling the
-phase would generate the real thing. If it is **on**: the generated object/type is the only acceptable source
-for that data.
+do not annotate PHP for it, and do not flip it on as a side effect of an unrelated task. Derive what you need
+from the types that _are_ generated (`Pick<Task, 'id' | 'title'>` beats a hand-written interface), and say that
+enabling the phase would generate the real thing. If it is **on**: the generated object/type is the only
+acceptable source for that data.
+
+One exception, and it is not a loophole: when the thing you were asked to build **is** that phase's output,
+enabling the phase is the task rather than a side effect of it. `model_metadata` is off by default and a
+provider cannot be set up without it, so a request to publish a backend value to the frontend at runtime means
+turn it on and name the config change in your summary. Refusing there produces the hand-written TypeScript
+table this skill exists to delete.
 
 ## The loop
 
@@ -111,6 +118,7 @@ Details: [references/publishing.md](references/publishing.md).
 | A controller, link, form submit, query string, `InferPageProps`/`InferRequestPayload` | [references/routes.md](references/routes.md)               |
 | A `FormRequest`, `rules()`, `useForm` typing                                          | [references/form-requests.md](references/form-requests.md) |
 | `HandleInertiaRequests::share()`, `Inertia::render()` props, `usePage()`              | [references/inertia.md](references/inertia.md)             |
+| A morph class, a backend value needed at runtime, `{model}_meta.ts`, a metadata provider | [references/model-metadata.md](references/model-metadata.md) |
 | A `JsonResource` / `toArray()`, API response typing                                   | [references/api-resources.md](references/api-resources.md) |
 | `routes/channels.php`, a `ShouldBroadcast` event, Echo listeners                      | [references/broadcasting.md](references/broadcasting.md)   |
 | Commands, flags, config keys, output layout, attributes, troubleshooting              | [references/publishing.md](references/publishing.md)       |
@@ -122,7 +130,7 @@ php artisan ts:publish                                   # everything enabled (c
 php artisan ts:publish --source="App\Enums\TaskPriority" # one class, bypasses cache, no barrel rewrite
 php artisan ts:publish --fresh                           # rebuild the cache
 php artisan ts:publish --preview=true                    # console only (the =true is required)
-php artisan ts:publish --only-enums | --only-routes | --only-form-requests | --only-functional | ...
+php artisan ts:publish --only-enums | --only-routes | --only-model-metadata | --only-functional | ...
 ```
 
 ```ts
@@ -153,7 +161,7 @@ resort), `#[TsType]` (type for a custom cast class), `#[TsExtends]` (extend a ha
 | "I'll add `#[TsCasts]` / a `.ts` interface for the JSON shape"                        | `@property array{...}` on the model types PHP and TS from one line and PHPStan checks it. `#[TsCasts]` is the last resort.                                                                                   |
 | "I'll just use `'/tasks/' + id` here, it's one link"                                  | The helper already exists and carries verbs, bindings and query encoding. One hardcoded link becomes ten.                                                                                                    |
 | "The generated prop is `unknown`, I'll cast it in the component"                      | `unknown` means the PHP expression was not readable; move `load()` to its own line, add a docblock, republish.                                                                                               |
-| "I'll toggle the phase on in config to see what it generates"                         | Config changes are a project decision. The reference for that feature shows the output; ask before enabling.                                                                                                 |
+| "I'll toggle the phase on in config to see what it generates"                         | Toggling a phase to explore is a project decision; that feature's reference already shows the output. Enabling it *is* the task only when the task is that phase's output (model metadata, say); then enable it and say so. |
 | "I'll read the package source to see what it infers"                                  | The references already say what is read and what degrades to `unknown`; check them first, source second.                                                                                                     |
 
 ## Red flags
@@ -162,5 +170,6 @@ resort), `#[TsType]` (type for a custom cast class), `#[TsExtends]` (extend a ha
 case values; `interface Task`, `interface Props`, `interface TaskForm`, `interface Settings` for backend
 data; `'/resource/' + id` or a template-literal path; `route(` (Ziggy); `as any`, `as unknown as`,
 `@ts-expect-error` around generated types; `.form.post('/x')` / `axios.post('/x')` with a literal path;
-editing anything under `resources/js/types/data/`; `enum X {}` in TypeScript mirroring a PHP enum.
+editing anything under `resources/js/types/data/`; `enum X {}` in TypeScript mirroring a PHP enum; a PHP class
+name (`'App\\Models\\Task'`) written into a `.ts` file.
 Each of these means: stop, find the generated source of that fact, and use it.
