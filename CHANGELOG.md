@@ -2,6 +2,12 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v2.5.2 - 2026-09-09
+
+Add more granular docs for models metadata in the main README.md and the individual metadata skill resource file
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v2.5.1...v2.5.2
+
 ## v2.5.1 - 2026-09-08
 
 Improvements to Boost skills to make sure agents understand how to write PHP code that can be inferred into TypeScript and how to use those types.
@@ -29,6 +35,7 @@ Turn it on:
 'model_metadata' => ['enabled' => true],
 
 
+
 ```
 Every published model gains a companion beside its interface. `user.ts` gets `user_meta.ts`:
 
@@ -40,6 +47,7 @@ export const UserModelMetadata = {
 };
 
 
+
 ```
 `as const` keeps every value a literal type. `satisfies` checks it against the declared shape without widening it. The companion joins the existing barrel, so one import path serves both:
 
@@ -47,6 +55,7 @@ export const UserModelMetadata = {
 import { User, UserModelMetadata } from '@js/types/data/app/models';
 
 form.commentable_type = UserModelMetadata.morphClass;
+
 
 
 ```
@@ -74,6 +83,7 @@ final class AppModelMetadataProvider implements ModelMetadataProvider
 ],
 
 
+
 ```
 Providers resolve through the container, so constructor injection works. Values may be scalars, arrays, enums, or objects implementing `Arrayable` or `JsonSerializable`, nested and normalized recursively.
 
@@ -82,6 +92,7 @@ Providers resolve through the container, so constructor injection works. Values 
 ```php
 #[TsCasts(['role' => ['type' => 'RoleType', 'import' => '../enums']])]
 public function provide(Model $model): array
+
 
 
 ```
@@ -95,6 +106,7 @@ export const UserModelMetadata = {
     morphClass: string;
     role: RoleType;
 };
+
 
 
 ```
@@ -119,6 +131,7 @@ Page props type from the expression you wrote:
 ```diff
 - export type StorePageProps = Inertia.SharedData & { post: string };
 + export type StorePageProps = Inertia.SharedData & { post: Post };
+
 
 
 ```
@@ -160,6 +173,7 @@ $result = resolve(AstEngine::class)->analyze(App\Http\Resources\PostResource::cl
 $result->properties;   // the typed property list ts:publish would generate
 $result->typeImports;  // the `import type` lines those types need
 $result->valueImports; // the value imports an AsEnum<typeof X> wrapper reads
+
 
 
 ```
