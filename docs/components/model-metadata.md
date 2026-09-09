@@ -1,6 +1,6 @@
 # Model metadata
 
-> User-facing docs: [README § Models](../../README.md#models) and the
+> User-facing docs: [README § Model metadata](../../README.md#model-metadata) and the
 > [Model Metadata page](https://tolki.abe.dev/ts/model-metadata.html). Verified by
 > [the type-inference gates](../testing/type-inference-gates.md) — `default-example/app/models/user_meta.ts`
 > is inside `tsconfig.json`'s `include`, so the token gate compiles the committed companion.
