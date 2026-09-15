@@ -40,6 +40,10 @@ final class ReceiverMethodResource extends JsonResource
             'comment_ids' => $this->comments->modelKeys(),
             'resource_comment_ids' => $this->resource->comments->modelKeys(),
             'resource_author_key' => $this->resource->author?->getKey(),
+            'bare_key' => $this->getKey(),
+            'resource_key' => $this->resource->getKey(),
+            'bare_comments_count' => $this->commentsCount(),
+            'resource_comments_count' => $this->resource->commentsCount(),
         ];
     }
 }

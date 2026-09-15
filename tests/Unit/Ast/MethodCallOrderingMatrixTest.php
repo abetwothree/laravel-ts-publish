@@ -93,6 +93,8 @@ function methodCallCorpus(): array
         new MethodCall(new PropertyFetch($this_, 'flagged_at'), 'toDateString'),
         new MethodCall(new PropertyFetch(new PropertyFetch($this_, 'resource'), 'post'), 'getMorphClass'),
         new MethodCall(new PropertyFetch($this_, 'post'), 'fresh'),
+        // A bare call the resource forwards to its model, which only ReceiverMethodCallHandler answers.
+        new MethodCall($this_, 'getKey'),
     ];
 }
 

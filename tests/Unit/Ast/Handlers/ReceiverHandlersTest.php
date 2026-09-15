@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverMethodProbe;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverProbeEnum;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverProbeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverShapedToArrayModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverVarProbe;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -84,6 +85,29 @@ describe('ReceiverMethodCallHandler through the resource analyzer', function () 
         ['$this->resource?->getKey()', 'number | null'],
         ['$this->comments?->modelKeys()', 'number[] | null'],
         ['$this->resource?->comments?->modelKeys()', 'number[] | null'],
+    ]);
+
+    test('a bare $this->method() on a resource publishes the type of its $this->resource twin', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(ReceiverMethodResource::class), Post::class)->analyze()->properties)
+            ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+
+        expect($props['bare_key'])->toBe('number')
+            ->and($props['resource_key'])->toBe($props['bare_key'])
+            ->and($props['bare_comments_count'])->toBe('number')
+            ->and($props['resource_comments_count'])->toBe($props['bare_comments_count']);
+    });
+
+    test('a method only the model declares types the same bare, nullsafe on $this, and through $this->resource', function (string $call, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverMethodResource::class), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr('$this->'.$call))['type'])->toBe($type)
+            ->and($analyzer->resolve(receiverHandlerExpr('$this?->'.$call))['type'])->toBe($type)
+            ->and($analyzer->resolve(receiverHandlerExpr('$this->resource->'.$call))['type'])->toBe($type);
+    })->with([
+        ['getKey()', 'number'],
+        ['commentsCount()', 'number'],
+        ['fresh()', 'Post | null'],
+        ['replicate()', 'Post'],
     ]);
 
     test('an integer key type publishes number in both $this->resource getKey() spellings', function () {
@@ -181,6 +205,17 @@ describe('ReceiverMethodCallHandler', function () {
 
         expect(new ReceiverMethodCallHandler()->resolve(receiverHandlerExpr('$request->ip()'), $scope, chainHandlersThrowingEngine()))
             ->toBeNull();
+    });
+
+    test('forwards a bare $this->method() only on a resource, and only for a method the resource does not declare', function () {
+        $resource = new AnalysisScope(new ReflectionClass(ReceiverProbeResource::class), Post::class);
+        $plain = new AnalysisScope(new ReflectionClass(ReceiverVarProbe::class), Post::class);
+        $handler = new ReceiverMethodCallHandler;
+
+        expect($handler->resolve(receiverHandlerExpr('$this->getKey()'), $resource, chainHandlersThrowingEngine())['type'] ?? null)
+            ->toBe('number')
+            ->and($handler->resolve(receiverHandlerExpr('$this->urls()'), $resource, chainHandlersThrowingEngine()))->toBeNull()
+            ->and($handler->resolve(receiverHandlerExpr('$this->getKey()'), $plain, chainHandlersThrowingEngine()))->toBeNull();
     });
 
     test('reaches a protected static method only through static::', function () {

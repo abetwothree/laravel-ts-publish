@@ -128,6 +128,21 @@ final class ReceiverClassResolver
     }
 
     /**
+     * The class a bare `$this->m()` runs on when a resource does not declare `m`: its backing class.
+     *
+     * JsonResource::__call() forwards an undeclared method to `$this->resource`, so the call is `$this->resource->m()`.
+     */
+    public function forwardedThisReceiver(string $method, AnalysisScope $scope): ?ReceiverType
+    {
+        $subject = $scope->subjectReflection;
+        $backing = $scope->modelClass ?? $scope->instanceOfWrappedClass;
+
+        return $backing !== null && ! $subject->hasMethod($method) && $subject->isSubclassOf(JsonResource::class)
+            ? ReceiverType::of($backing)
+            : null;
+    }
+
+    /**
      * Resolve a variable through the scope's bindings; an unbound variable declines.
      */
     private function fromVariable(Variable $variable, AnalysisScope $scope): ?ReceiverType
@@ -263,11 +278,9 @@ final class ReceiverClassResolver
             return $this->memberMethod($subject->getName(), $method, true);
         }
 
-        $backing = $scope->modelClass ?? $scope->instanceOfWrappedClass;
+        $forwarded = $this->forwardedThisReceiver($method, $scope);
 
-        return $backing !== null && $subject->isSubclassOf(JsonResource::class)
-            ? $this->memberMethod($backing, $method, false)
-            : null;
+        return $forwarded === null ? null : $this->memberMethod($forwarded->classes[0], $method, false);
     }
 
     /**

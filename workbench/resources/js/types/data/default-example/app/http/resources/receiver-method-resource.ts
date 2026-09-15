@@ -25,4 +25,8 @@ export interface ReceiverMethodResource
     comment_ids: number[];
     resource_comment_ids: number[];
     resource_author_key: number | null;
+    bare_key: number;
+    resource_key: number;
+    bare_comments_count: number;
+    resource_comments_count: number;
 }

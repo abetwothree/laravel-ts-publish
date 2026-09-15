@@ -12777,6 +12777,26 @@
                     "name": "resource_author_key",
                     "type": "number | null",
                     "optional": false
+                },
+                {
+                    "name": "bare_key",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "resource_key",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "bare_comments_count",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "resource_comments_count",
+                    "type": "number",
+                    "optional": false
                 }
             ]
         },

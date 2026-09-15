@@ -15,11 +15,13 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 
 /**
- * `<receiver>->m()`, `<receiver>?->m()` and `$expr::m()` typed from the method's return on the receiver's PHP class.
+ * `<receiver>->m()`, `<receiver>?->m()` and `$expr::m()` typed from the method's return on the receiver's PHP class,
+ * including a bare `$this->m()` a resource forwards to its model.
  *
  * Registered last before the convention rules, so every specific handler keeps priority.
  *
@@ -46,9 +48,12 @@ final class ReceiverMethodCallHandler implements ExpressionHandler
         }
 
         $receivers = resolve(ReceiverClassResolver::class);
-        $receiver = $expr instanceof StaticCall
-            ? $receivers->resolveStaticReceiver($expr, $scope)
-            : $receivers->resolve($expr->var, $scope);
+        $onThis = ! $expr instanceof StaticCall && $expr->var instanceof Variable && $expr->var->name === 'this';
+        $receiver = match (true) {
+            $expr instanceof StaticCall => $receivers->resolveStaticReceiver($expr, $scope),
+            $onThis => $receivers->forwardedThisReceiver($expr->name->toString(), $scope),
+            default => $receivers->resolve($expr->var, $scope),
+        };
 
         // A request's methods belong to KnownMethodRuleHandler, which reads form-request rules and the auth guard.
         if ($receiver === null || array_any($receiver->classes, fn (string $class): bool => is_a($class, Request::class, true))) {
@@ -62,7 +67,8 @@ final class ReceiverMethodCallHandler implements ExpressionHandler
             return null;
         }
 
-        $nullable = $expr instanceof NullsafeMethodCall || $receiver->shortCircuits;
+        // `$this` is never null, so `$this?->m()` short-circuits nothing.
+        $nullable = ($expr instanceof NullsafeMethodCall && ! $onThis) || $receiver->shortCircuits;
 
         if ($nullable && ! in_array('null', TsTypeString::splitTopLevelUnion($result['type']), true)) {
             $result['type'] .= ' | null';

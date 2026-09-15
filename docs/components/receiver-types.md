@@ -40,7 +40,7 @@ rules. The class docblock points here.
 | `$this->prop` on a model-backed subject | `ModelAttributeResolver::resolveAttributeClass()`, else the relation: its morph targets or `resolveMorphToBound()`, `[EloquentCollection]` with `elementModel` for to-many, or the related model |
 | `$var` | `varModelBindings`, then `varCollectionBindings` (a collection with `elementModel`), then `requestVarNames`, then `closureParamExprBindings` and `localVarBindings` resolved recursively under `resolvingLocalVars`. An unbound variable is `null`. |
 | `<receiver>->prop`, `<receiver>?->prop` | For a model class, the attribute and relation rules above. For any other class, its declared **public** property's class. |
-| `$this->method()` | The subject's own method, at any visibility. When the subject is a `JsonResource` that does not declare it, the backing class's **public** method. |
+| `$this->method()` | The subject's own method, at any visibility. When the subject is a `JsonResource` that does not declare it, the backing class's **public** method, on the class `forwardedThisReceiver()` names. |
 | `<receiver>->relationMethod()` on a model where `resolveRelation()` knows the name | `ReceiverType([<return class>], relatedModel: <related model>)`. A relation method with no declared return names `Relation`. |
 | `<relation receiver>->getRelated()` | `ReceiverType::of($receiver->relatedModel)` |
 | `$request->user()`, where the receiver class is a `Request` | `AuthUserResolver::model()`, when that model is not `null` |
@@ -148,7 +148,8 @@ accepts the classes `morphToDocblockTargets()` rejects.
 The resolver returns `null` rather than a partial answer in these cases:
 
 - An unbound variable. The ambient `closureRelationModelClass` is never used as a guess.
-- A bare `$this`, which no rule above names.
+- A bare `$this`, which no rule above names. `ReceiverMethodCallHandler` handles a bare `$this->m()` on a resource
+  through `forwardedThisReceiver()`, not through `resolve()`.
 - A method or property whose type has a builtin arm, such as `: string`, `: array`, or `UrlService|string`.
 - A protected or private member read on a receiver other than `$this`.
 - `new self`, `new parent`, `self::m()`, or `parent::m()` when the subject has a user-land ancestor.
@@ -167,6 +168,14 @@ then claims more than the code guarantees, and nothing downstream can tell the m
 `<receiver>->m()` and `<receiver>?->m()`, and `ReceiverClassResolver::resolveStaticReceiver()` for the class a
 static call is made on. `resolveStaticClass()` answers a different question: the classes that call returns.
 `ReceiverMethodReturnResolver::resolve()` then types the method on every class the receiver holds.
+
+A bare `$this->m()` or `$this?->m()` has no receiver under `resolve()`, which names nothing for `$this`. On a
+`JsonResource` subject that does not declare `m`, the handler asks `ReceiverClassResolver::forwardedThisReceiver()`
+instead. That names the backing class, the same decision `$this->m()->next()` receiver resolution makes, because
+`JsonResource::__call()` forwards the call to `$this->resource`. The call then types exactly as
+`$this->resource->m()`: on a `Post` resource, `$this->getKey()` is `number` and `$this->fresh()` is `Post | null`.
+A method the resource declares, including every `JsonResource` helper such as `whenLoaded()`, gets no forwarded
+receiver and keeps `SubjectMethodTypeResolver`'s answer.
 
 `ReceiverMethodResource` in the workbench shows the owner's example, `$this->source->label()`, on each
 receiver kind:
@@ -259,7 +268,7 @@ A receiver holding several classes types the method on each one and merges the a
 [What stays unresolved](#what-stays-unresolved).
 
 The call gains `| null` when it is itself `?->`, or when the receiver's `shortCircuits` flag records an
-earlier `?->` in the chain. So `$this->resource?->author->getMorphClass()` is `string | null`. `null` is
+earlier `?->` in the chain. `$this?->m()` is the exception: `$this` is never null, so it adds nothing. So `$this->resource?->author->getMorphClass()` is `string | null`. `null` is
 never added twice.
 
 A receiver that holds an `Illuminate\Http\Request` declines. `KnownMethodRuleHandler` owns request calls:
