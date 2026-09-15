@@ -4694,6 +4694,10 @@
                 {
                     "name": "flag_default",
                     "type": "boolean | number | string | null"
+                },
+                {
+                    "name": "assigned_users",
+                    "type": "(User & { pivot: unknown })[]"
                 }
             ]
         },

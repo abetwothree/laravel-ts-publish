@@ -256,6 +256,24 @@ for a string-only shape map) still degrades that one key to `unknown` — `resol
 applies the same `shapeValueHasUnimportableToken()` check `arrayableShapeType()` uses — so only
 the unresolvable leaf is lost, not the whole shape.
 
+### Intersection values (`X&Y`, `X&object{...}`)
+
+A container's value slot may also be a PHPDoc intersection (`Collection<int, User&object{pivot:
+TaskAssignment}>`). `resolveDocblockContainerValue()` splits it at the top level with
+`splitPhpDocIntersectionType()` — mirroring `splitPhpDocUnionType()`'s brace/angle/paren-aware
+scan — before falling through to the union split, resolves each member (an `object{...}` member
+through `resolveArrayShapeString()`, same as any other shape; anything else recursively through
+`resolveDocblockContainerValue()` itself), and joins the results with
+`intersectTypeScriptInfos()`, which keeps every member's import channels via
+`mergeTypeScriptInfos()` but joins the type strings with `' & '` instead of `' | '`. A member that
+resolves to `unknown` is dropped rather than propagated — `A & B` is assignable to `A`, so losing
+an untypable member only widens the result instead of collapsing the whole intersection to
+`unknown`. Because an `object{...}` shape value is resolved through the same string-only shape
+channel described above, a class-valued key inside it (`pivot: TaskAssignment`) still degrades to
+`unknown`, even though the intersection's own member (`User`) carries a real import.
+`wrapAsArray()` parenthesizes an intersection the same way it already parenthesizes a union, so
+`Collection<int, User&object{pivot: TaskAssignment}>` resolves to `(User & { pivot: unknown })[]`.
+
 ## Nullable-prefixed generics
 
 `resolveGenericContainerType()` strips a leading `?` before attempting to match a container

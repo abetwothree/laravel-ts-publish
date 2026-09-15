@@ -30,6 +30,7 @@ use Workbench\App\Enums\Status;
 use Workbench\App\Models\DocblockGenericsFixture;
 use Workbench\App\Models\Order;
 use Workbench\App\Models\OrderItem;
+use Workbench\App\Models\TaskAssignment;
 use Workbench\App\Models\User;
 use Workbench\App\ValueObjects\ArrayableData;
 use Workbench\App\ValueObjects\CapabilitiesDto;
@@ -1237,6 +1238,25 @@ describe('resolveDocblockTypePartOrAlias() with a nullable alias', function () {
         $context = new ReflectionClass(DocblockGenericsFixture::class);
 
         expect($this->service->resolveDocblockTypePartOrAlias('?int', [], '', $context)['type'])->toBe('number | null');
+    });
+});
+
+describe('resolveGenericContainerType() with an intersection value', function () {
+    test('resolves Collection<int, X&object{...}> to a parenthesized intersection array', function () {
+        $info = $this->service->resolveGenericContainerType(
+            'Collection<int, User&object{pivot: TaskAssignment}>',
+            ['Collection' => Collection::class, 'User' => User::class, 'TaskAssignment' => TaskAssignment::class],
+            'Workbench\\App\\Models',
+        );
+
+        expect($info['type'])->toBe('(User & { pivot: unknown })[]')
+            ->and($info['classFqcns'])->toBe([User::class]);
+    });
+
+    test('drops an unresolvable intersection member rather than the whole value', function () {
+        $info = $this->service->resolveGenericContainerType('list<User&NoSuchThing>', ['User' => User::class], '');
+
+        expect($info['type'])->toBe('User[]');
     });
 });
 

@@ -1143,6 +1143,28 @@ class LaravelTsPublish
             return $nested;
         }
 
+        $intersectionParts = $this->splitPhpDocIntersectionType($valueType);
+
+        if (count($intersectionParts) > 1) {
+            $infos = [];
+
+            foreach ($intersectionParts as $member) {
+                $member = trim($member);
+                $info = str_starts_with($member, 'object{')
+                    ? [...$this->emptyTypeScriptInfo(), 'type' => $this->resolveArrayShapeString('array{'.substr($member, 7), $useMap, $namespace) ?? 'unknown']
+                    : $this->resolveDocblockContainerValue($member, $useMap, $namespace);
+
+                // A & B is assignable to A, so dropping a member we cannot type only widens the result.
+                if ($info['type'] !== 'unknown') {
+                    $infos[] = $info;
+                }
+            }
+
+            if ($infos !== []) {
+                return count($infos) === 1 ? $infos[0] : $this->intersectTypeScriptInfos($infos);
+            }
+        }
+
         if (str_starts_with(trim($valueType), 'array{')) {
             $shapeType = $this->resolveArrayShapeString(trim($valueType), $useMap, $namespace);
 
@@ -1182,11 +1204,58 @@ class LaravelTsPublish
      * @return TypeScriptTypeInfo */
     protected function wrapAsArray(array $info): array
     {
-        $info['type'] = str_contains($info['type'], '|')
+        $info['type'] = str_contains($info['type'], '|') || str_contains($info['type'], '&')
             ? '('.$info['type'].')[]'
             : $info['type'].'[]';
 
         return $info;
+    }
+
+    /**
+     * Split a PHPDoc type at top-level `&`, ignoring any inside `<>`, `{}` or `()`.
+     *
+     * @return list<string>
+     */
+    protected function splitPhpDocIntersectionType(string $type): array
+    {
+        $parts = [];
+        $depth = 0;
+        $current = '';
+
+        foreach (str_split($type) as $char) {
+            $depth += match ($char) {
+                '<', '{', '(' => 1,
+                '>', '}', ')' => -1,
+                default => 0,
+            };
+
+            if ($char === '&' && $depth === 0) {
+                $parts[] = $current;
+                $current = '';
+
+                continue;
+            }
+
+            $current .= $char;
+        }
+
+        $parts[] = $current;
+
+        return array_values(array_filter(array_map(trim(...), $parts), fn (string $p): bool => $p !== ''));
+    }
+
+    /**
+     * Join resolved members as a TypeScript intersection, keeping every member's import channels.
+     *
+     * @param  list<TypeScriptTypeInfo>  $infos
+     * @return TypeScriptTypeInfo
+     */
+    protected function intersectTypeScriptInfos(array $infos): array
+    {
+        $merged = $this->mergeTypeScriptInfos($infos);
+        $merged['type'] = implode(' & ', array_map(fn (array $info): string => $info['type'], $infos));
+
+        return $merged;
     }
 
     /**

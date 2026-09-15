@@ -1,3 +1,5 @@
+import type { User } from '.';
+
 /**
  * Docblock-engine fixtures: every accessor's type lives only in its docblock.
  *
@@ -11,4 +13,5 @@ export interface DocblockGenericsFixture
     updated_at: string | null;
     // Mutators
     flag_default: boolean | number | string | null;
+    assigned_users: (User & { pivot: unknown })[];
 }
