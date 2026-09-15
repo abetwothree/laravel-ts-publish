@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 
+use Illuminate\Support\Collection;
 use Workbench\App\Models\Post;
 use Workbench\App\Services\UrlService;
 
@@ -46,6 +47,36 @@ final class ReceiverReturnsProbe
     public function docblockThis()
     {
         return $this;
+    }
+
+    /**
+     * A docblock generic, which is still an instance of its base class.
+     *
+     * @return Collection<int, Post>
+     */
+    public function docblockGeneric()
+    {
+        return null;
+    }
+
+    /**
+     * A docblock array of a generic class, which is an array rather than the class.
+     *
+     * @return Collection<int, Post>[]
+     */
+    public function docblockGenericArray()
+    {
+        return null;
+    }
+
+    /**
+     * The @return Post named in this sentence is prose, not the tag.
+     *
+     * @return UrlService
+     */
+    public function docblockProseMention()
+    {
+        return null;
     }
 
     /**

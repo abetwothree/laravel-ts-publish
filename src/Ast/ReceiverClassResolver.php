@@ -13,7 +13,6 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\BinaryOp\Coalesce;
 use PhpParser\Node\Expr\ClassConstFetch;
@@ -113,7 +112,7 @@ final class ReceiverClassResolver
             return $this->nativeClasses($reflection->getReturnType(), $class, $declaring);
         }
 
-        $docblock = LaravelTsPublish::extractReturnTypeFromDocblock((string) $reflection->getDocComment());
+        $docblock = resolve(PropertyDocblockTypeReader::class)->extractReturnType((string) $reflection->getDocComment());
 
         return $docblock === null
             ? null
@@ -390,10 +389,16 @@ final class ReceiverClassResolver
     private function namedClass(Name $name, AnalysisScope $scope): ?ReceiverType
     {
         $subject = $scope->subjectReflection;
+        $parent = $subject->getParentClass();
+
+        // self/parent bind to the class declaring the body, and an inherited body is analyzed under the child;
+        // only with no user-land ancestor is that class always the subject.
+        $bodyIsSubjects = $parent === false || str_starts_with($parent->getName(), 'Illuminate\\');
 
         $class = match ($name->toLowerString()) {
-            'self', 'static' => $subject->getName(),
-            'parent' => $subject->getParentClass() === false ? null : $subject->getParentClass()->getName(),
+            'static' => $subject->getName(),
+            'self' => $bodyIsSubjects ? $subject->getName() : null,
+            'parent' => $bodyIsSubjects && $parent !== false ? $parent->getName() : null,
             default => $name->toString(),
         };
 
@@ -491,8 +496,12 @@ final class ReceiverClassResolver
         $classes = [];
 
         foreach (LaravelTsPublish::splitPhpDocUnionType($type) as $part) {
-            // A generic's arguments never change which class the value is an instance of.
-            $name = Str::before(ltrim($part, '?'), '<');
+            // Generic arguments never change the class, but text after the closing `>`, such as `[]`, does.
+            if (! preg_match('/^\??([\\\\\w$]+)(?:<.*>)?$/s', $part, $match)) {
+                return null;
+            }
+
+            $name = $match[1];
 
             if (strtolower($name) === 'null') {
                 continue;

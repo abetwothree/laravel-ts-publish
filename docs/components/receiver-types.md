@@ -44,10 +44,12 @@ rules. The class docblock points here.
 | `<relation receiver>->getRelated()` | `ReceiverType::of($receiver->relatedModel)` |
 | `$request->user()`, where the receiver class is a `Request` | `AuthUserResolver::model()`, when that model is not `null` |
 | `<receiver>->method()`, `<receiver>?->method()` otherwise | `returnClasses()` for every receiver class, for a **public** method. Any `null` makes the whole answer `null`. |
-| `self::m()`, `static::m()`, `parent::m()` | The subject or its parent, then `returnClasses()`, at any visibility |
+| `static::m()` | The subject, then `returnClasses()`, at any visibility |
+| `self::m()`, `parent::m()` | The subject, or its framework parent, then `returnClasses()`, at any visibility. Only when the subject has no user-land ancestor; see [`self` and `parent`](#self-and-parent). |
 | `X::m()`, `$var::m()`, `$this->resource::m()` | The class, then `returnClasses()`, for a **public** method |
 | `new X(...)` | `X` |
-| `new self`, `new static`, `new parent` | The subject, or its parent |
+| `new static` | The subject |
+| `new self`, `new parent` | The subject, or its framework parent. Only when the subject has no user-land ancestor; see [`self` and `parent`](#self-and-parent). |
 | `resolve(X::class)`, `app(X::class)` | `X` |
 | `now()`, `today()` | `Illuminate\Support\Carbon` |
 | `collect(...)` | `Illuminate\Support\Collection` |
@@ -58,6 +60,25 @@ declare to its model through `__get()` and `__call()`, so the two spellings are 
 The one asymmetry is deliberate: a property the resource declares itself answers only the `$this->prop`
 spelling, because PHP reads a declared property before `__get()` runs, and `$this->resource->prop` always
 reads the model.
+
+### `self` and `parent`
+
+PHP resolves `self` and `parent` against the class that declares the method body, not the class the method
+runs on. The engine can analyze an inherited body under a child subject: `MethodLocator::locateOwn()`
+returns an ancestor's body when that ancestor is declared in the same file, and
+`ResourceAstAnalyzer::analyzeThisMethodSpread()` uses `MethodLocator::locate()`, which returns bodies from
+any parent or trait. `AnalysisScope` does not record which class declared the body.
+
+Take `class P extends G`, `class C extends P`, and `P::build()` called on a `C`. There `new self` builds a
+`P`, `new static` builds a `C`, `self::m()` runs `P::m()`, and `parent::m()` runs `G::m()`. Naming the
+subject `C` for `new self` would claim a `P` is a `C`.
+
+So `self` and `parent` resolve only when the subject has no user-land ancestor, meaning its parent class is
+absent or lives under `Illuminate\`. Then every body the engine can analyze under the subject was written
+in the subject itself, or in a trait it uses, where `self` is also the subject. `new self(...)` in a
+resource that extends `JsonResource` directly, such as `FluentSelfResource`, still names the resource. Any
+other subject declines. `static` always names the subject, because late static binding follows the object
+the method runs on.
 
 ### Visibility
 
@@ -76,12 +97,17 @@ class using the trait. A union of classes and `null` names those classes. Any bu
 `null`.
 
 A method with no native type falls back to its `@return` docblock, and a property with no native class type
-falls back to its `@var` docblock. `PropertyDocblockTypeReader::extractVarType()` reads the whole `@var`
-type, including spaces inside generics and around `|`. The resolver then splits the union and drops `null`.
-It maps `$this` and `static` to the receiver class and `self` to the declaring class. It strips generic
-arguments and resolves each name against `LaravelTsPublish::methodDeclaringFileClass()`'s imports. Every
-name must be a loadable class, interface, or enum. `@var Collection<int, User>|string` and
-`@var UrlService | string` both decline, because `string` is not a class.
+falls back to its `@var` docblock. `PropertyDocblockTypeReader::extractReturnType()` and `extractVarType()`
+read the whole type, including spaces inside generics and around `|`, and any `[]` after a generic's closing
+`>`. `extractReturnType()` requires the tag at the start of a line and tries `@return`, `@phpstan-return`,
+then `@psalm-return`, as `LaravelTsPublish::extractReturnTypeFromDocblock()` does. That shared extractor is
+not used here because it stops at the first closing `>`. The resolver then splits the union and drops `null`.
+It maps `$this` and `static` to the receiver class and `self` to the declaring class. A part must be exactly
+a name or a name with generic arguments: `Collection<int, User>` resolves to `Collection`, while
+`Collection<int, User>[]` is an array and declines. Each name resolves against
+`LaravelTsPublish::methodDeclaringFileClass()`'s imports. Every name must be a loadable class, interface, or
+enum. `@var Collection<int, User>|string` and `@var UrlService | string` both decline, because `string` is
+not a class.
 
 `returnClasses()` itself ignores visibility. Its callers apply the visibility rule above.
 
@@ -106,7 +132,10 @@ and attribute, including a `null` answer.
 | An enum | The enum |
 
 In every row, a native `static` names the class the value is read through and `self` names the class that
-declared the type. For a getter closure, the declaring class is `ReflectionFunction::getClosureScopeClass()`.
+declared the type. For a getter closure, `static` is `ReflectionFunction::getClosureCalledClass()`, falling
+back to the model, and `self` is `ReflectionFunction::getClosureScopeClass()`. The docblock `Get` class
+follows the same generic rule as `returnClasses()`: `Attribute<Collection<int, User>[], never>` gives no
+class.
 
 `resolveMorphToBound()` reads the first argument of a `MorphTo<X, $this>` generic and returns `X` when it
 is a single model class, abstract or `Model` included. Every other shape returns `Model::class`. The bound
@@ -121,6 +150,8 @@ The resolver returns `null` rather than a partial answer in these cases:
 - A bare `$this`, which no rule above names.
 - A method or property whose type has a builtin arm, such as `: string`, `: array`, or `UrlService|string`.
 - A protected or private member read on a receiver other than `$this`.
+- `new self`, `new parent`, `self::m()`, or `parent::m()` when the subject has a user-land ancestor.
+- A docblock part with text after its generic arguments, such as `Collection<int, User>[]`.
 - A union where any arm cannot be resolved, such as `$this->author ?? $nobody`.
 - A first-class callable such as `now(...)`, which holds a `Closure`.
 

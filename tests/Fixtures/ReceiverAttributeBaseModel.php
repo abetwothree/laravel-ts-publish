@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures;
 
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverChildDto;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
 use Workbench\App\Models\Comment;
 
 /** A test-only model on the `posts` table whose casts and accessors pin resolveAttributeClass() edge cases. */
@@ -45,5 +47,21 @@ class ReceiverAttributeBaseModel extends Model
     protected function staticCopy(): Attribute
     {
         return Attribute::get(fn (): static => $this);
+    }
+
+    /**
+     * An untyped getter whose docblock Get is an array of collections, not a collection.
+     *
+     * @return Attribute<Collection<int, Comment>[], never>
+     */
+    protected function collectionList(): Attribute
+    {
+        return Attribute::get(fn () => []);
+    }
+
+    /** A getter built by another class, so its `static` is that class rather than this model. */
+    protected function borrowedStatic(): Attribute
+    {
+        return Attribute::get(ReceiverChildDto::freshGetter());
     }
 }

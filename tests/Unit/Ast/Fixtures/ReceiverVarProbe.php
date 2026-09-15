@@ -17,6 +17,9 @@ final class ReceiverVarProbe
     /** @var UrlService | string */
     public $spacedUnion;
 
+    /** @var Collection<int, User>[] */
+    public $collectionArray;
+
     /** @var UrlService */
     public $service;
 

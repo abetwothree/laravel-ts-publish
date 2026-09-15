@@ -51,9 +51,36 @@ final class PropertyDocblockTypeReader
      */
     public function extractVarType(string $docComment): ?string
     {
+        return $this->captureTagType($docComment, '/(?<![\w-])@var\s+/');
+    }
+
+    /**
+     * Capture the full type after a line-leading `@return`, `@phpstan-return` or `@psalm-return`, tried in that order.
+     *
+     * Unlike LaravelTsPublish::extractReturnTypeFromDocblock(), text after a generic's closing `>`, such as `[]`, stays
+     * part of the type, so ReceiverClassResolver refuses an array of a class instead of naming the class.
+     */
+    public function extractReturnType(string $docComment): ?string
+    {
+        foreach (['@return', '@phpstan-return', '@psalm-return'] as $tag) {
+            $type = $this->captureTagType($docComment, '/^\s*(?<![\w-])'.preg_quote($tag, '/').'\s+/m');
+
+            if ($type !== null && $type !== '') {
+                return $type;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Capture the type expression after the first match of a tag pattern, stopping at the separator that ends it.
+     */
+    private function captureTagType(string $docComment, string $tagPattern): ?string
+    {
         $content = trim((string) preg_replace(['#^[ \t]*/?\*+/?#m', '#\*+/\s*$#'], '', $docComment));
 
-        if (! preg_match('/(?<![\w-])@var\s+/', $content, $match, PREG_OFFSET_CAPTURE)) {
+        if (! preg_match($tagPattern, $content, $match, PREG_OFFSET_CAPTURE)) {
             return null;
         }
 

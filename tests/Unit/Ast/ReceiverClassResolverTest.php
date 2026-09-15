@@ -23,6 +23,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use PhpParser\Node\Expr;
 use Workbench\App\Enums\Priority;
+use Workbench\App\Http\Resources\FluentSelfResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Post;
@@ -231,7 +232,8 @@ describe('ReceiverClassResolver visibility, @var types and class names', functio
         expect($resolver->resolve(receiverExpr('$this->collectionOrString'), $scope))->toBeNull()
             ->and($resolver->resolve(receiverExpr('$this->spacedUnion'), $scope))->toBeNull()
             ->and($resolver->resolve(receiverExpr('$this->service'), $scope)?->classes)->toBe([UrlService::class])
-            ->and($resolver->resolve(receiverExpr('$this->maybeService'), $scope)?->classes)->toBe([UrlService::class]);
+            ->and($resolver->resolve(receiverExpr('$this->maybeService'), $scope)?->classes)->toBe([UrlService::class])
+            ->and($resolver->resolve(receiverExpr('$this->collectionArray'), $scope))->toBeNull();
     });
 
     test('a protected model method counts on $this, and declines through a local-variable receiver or the resource proxy', function () {
@@ -257,12 +259,27 @@ describe('ReceiverClassResolver visibility, @var types and class names', functio
             ->and($resolver->resolve(receiverExpr('$probe->service'), $scope)?->classes)->toBe([UrlService::class]);
     });
 
-    test('new static, new self and new parent name the subject and its parent', function () {
+    test('with only a framework parent, new self, new static, new parent and self:: name the subject or that parent', function () {
         $resolver = resolve(ReceiverClassResolver::class);
+        $fluent = new AnalysisScope(new ReflectionClass(FluentSelfResource::class));
 
         expect($resolver->resolve(receiverExpr('new static(1)'), postScope())?->classes)->toBe([ReceiverProbeResource::class])
             ->and($resolver->resolve(receiverExpr('new self(1)'), postScope())?->classes)->toBe([ReceiverProbeResource::class])
-            ->and($resolver->resolve(receiverExpr('new parent(1)'), postScope())?->classes)->toBe([JsonResource::class]);
+            ->and($resolver->resolve(receiverExpr('new parent(1)'), postScope())?->classes)->toBe([JsonResource::class])
+            ->and($resolver->resolve(receiverExpr('self::make(1)'), postScope())?->classes)->toBe([ReceiverProbeResource::class])
+            ->and($resolver->resolve(receiverExpr('new self($this->resource)'), $fluent)?->classes)->toBe([FluentSelfResource::class]);
+    });
+
+    test('with a user-land parent, self and parent decline because an inherited body is analyzed under the child', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $scope = new AnalysisScope(new ReflectionClass(ReceiverChildDto::class));
+
+        expect($resolver->resolve(receiverExpr('new self'), $scope))->toBeNull()
+            ->and($resolver->resolve(receiverExpr('new parent'), $scope))->toBeNull()
+            ->and($resolver->resolve(receiverExpr('self::copy()'), $scope))->toBeNull()
+            ->and($resolver->resolve(receiverExpr('parent::copy()'), $scope))->toBeNull()
+            ->and($resolver->resolve(receiverExpr('new static'), $scope)?->classes)->toBe([ReceiverChildDto::class])
+            ->and($resolver->resolve(receiverExpr('static::fresh()'), $scope)?->classes)->toBe([ReceiverChildDto::class]);
     });
 });
 
@@ -300,7 +317,10 @@ describe('ReceiverClassResolver::returnClasses()', function () {
         expect($resolver->returnClasses(ReceiverReturnsProbe::class, 'docblockUnion'))->toBe([UrlService::class, Post::class])
             ->and($resolver->returnClasses(ReceiverReturnsProbe::class, 'docblockThis'))->toBe([ReceiverReturnsProbe::class])
             ->and($resolver->returnClasses(ReceiverReturnsProbe::class, 'docblockUnresolvable'))->toBeNull()
-            ->and($resolver->returnClasses(Post::class, 'isFeatured'))->toBeNull();
+            ->and($resolver->returnClasses(Post::class, 'isFeatured'))->toBeNull()
+            ->and($resolver->returnClasses(ReceiverReturnsProbe::class, 'docblockGeneric'))->toBe([Collection::class])
+            ->and($resolver->returnClasses(ReceiverReturnsProbe::class, 'docblockGenericArray'))->toBeNull()
+            ->and($resolver->returnClasses(ReceiverReturnsProbe::class, 'docblockProseMention'))->toBe([UrlService::class]);
     });
 });
 

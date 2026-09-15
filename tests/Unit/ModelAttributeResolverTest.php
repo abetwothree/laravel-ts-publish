@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\InverseMorphToManyPar
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\NotAModelPivot;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverAttributeBaseModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverAttributeChildModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverChildDto;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
@@ -115,6 +116,18 @@ describe('resolveAttributeClass() edge cases', function () {
 
         expect($resolver->resolveAttributeClass(ReceiverAttributeChildModel::class, 'self_copy'))->toBe(ReceiverAttributeBaseModel::class)
             ->and($resolver->resolveAttributeClass(ReceiverAttributeChildModel::class, 'static_copy'))->toBe(ReceiverAttributeChildModel::class);
+    });
+
+    test('a docblock Get naming an array of a generic class holds no class, while the bare generic holds its base', function () {
+        $resolver = resolve(ModelAttributeResolver::class);
+
+        expect($resolver->resolveAttributeClass(ReceiverAttributeBaseModel::class, 'collection_list'))->toBeNull()
+            ->and($resolver->resolveAttributeClass(Image::class, 'uploaders_from_docblock'))->toBe(Collection::class);
+    });
+
+    test('a typed getter closure returning static names the class it was called on', function () {
+        expect(resolve(ModelAttributeResolver::class)->resolveAttributeClass(ReceiverAttributeBaseModel::class, 'borrowed_static'))
+            ->toBe(ReceiverChildDto::class);
     });
 
     test('the answer is memoized per model and attribute, including a null answer', function () {

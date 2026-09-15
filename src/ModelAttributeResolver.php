@@ -456,7 +456,7 @@ class ModelAttributeResolver
             if ($getter !== null && $getter->hasReturnType()) {
                 return $this->singleClass(
                     $getter->getReturnType(),
-                    $reflection->getName(),
+                    $getter->getClosureCalledClass()?->getName() ?? $reflection->getName(),
                     $getter->getClosureScopeClass()?->getName() ?? $reflection->getName(),
                 );
             }
@@ -490,13 +490,14 @@ class ModelAttributeResolver
             fn (string $part): bool => strtolower($part) !== 'null',
         ));
 
-        if (count($names) !== 1) {
+        // Generic arguments never change the class, but text after the closing `>`, such as `[]`, does.
+        if (count($names) !== 1 || ! preg_match('/^([\\\\\w]+)(?:<.*>)?$/s', $names[0], $match)) {
             return null;
         }
 
         $declaringClass = LaravelTsPublish::methodDeclaringFileClass($method);
         $class = LaravelTsPublish::resolveDocblockTypeName(
-            Str::before($names[0], '<'),
+            $match[1],
             LaravelTsPublish::parseFileUseStatements($declaringClass),
             $declaringClass->getNamespaceName(),
         );
