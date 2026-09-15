@@ -175,8 +175,9 @@ it('prefers the subject own property over a same-named model attribute', functio
     expect($result)->toBe(['type' => 'number', 'optional' => false]);
 });
 
-// A framework-declared name stays on the model, so `$this->resource` keeps meaning the model.
-it('leaves a framework-declared property name on the model', function () {
+// The D3 branch only fires for a real declaration: a name the subject does not declare at all is
+// rejected at the hasProperty() guard and still resolves from the model.
+it('a name the subject does not declare still resolves from the model', function () {
     $expr = new PropertyFetch(new Variable('this'), 'title');
     $scope = new AnalysisScope(new ReflectionClass(UserResource::class), Post::class);
 

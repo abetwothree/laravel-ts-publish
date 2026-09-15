@@ -6,6 +6,7 @@
 export interface PostStatsResource
 {
     id: number;
+    title: number;
     stats: { views: number; shares: number } | null;
     views: number | null;
     share_count: number | null;

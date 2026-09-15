@@ -348,6 +348,8 @@ describe('a property the subject declares wins over the model', function () {
             ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
 
         expect($props->all())->toMatchArray([
+            // Post::$title is a string column; the subject's own int declaration wins.
+            'title' => 'number',
             'stats' => '{ views: number; shares: number } | null',
             'views' => 'number | null',
             'share_count' => 'number | null',

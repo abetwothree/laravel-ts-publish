@@ -3144,6 +3144,7 @@ declare global {
         /** A resource that carries a value next to its model through a promoted constructor property. */
         export interface PostStatsResource {
             id: number;
+            title: number;
             stats: { views: number; shares: number } | null;
             views: number | null;
             share_count: number | null;

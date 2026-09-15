@@ -38,9 +38,11 @@ final class SubjectPropertyTypeResolver
             return null;
         }
 
-        return resolve(PropertyDocblockTypeReader::class)->read($subject->getProperty($name))
+        $property = $subject->getProperty($name);
+
+        return resolve(PropertyDocblockTypeReader::class)->read($property)
             ?? resolve(ReflectedTypeAcceptor::class)->accept(LaravelTsPublish::propertyTypes($subject, $name))
-            ?? $this->defaultValueType($subject->getProperty($name));
+            ?? $this->defaultValueType($property);
     }
 
     /**

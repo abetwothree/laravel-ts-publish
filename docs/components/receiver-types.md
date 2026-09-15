@@ -306,7 +306,7 @@ How one class types the property:
 | Receiver class | Rule |
 | --- | --- |
 | A `Model` | `ModelAttributeResolver::resolveAttribute()` first, then `resolveRelation()` — attributes before relations, the order `Model::__get()` itself uses. A relation carries its `modelFqcn`, and a morph union its `morphFqcns`, so the emitted token keeps its import. |
-| Anything else | `SubjectPropertyTypeResolver::resolve()` — the `@var` docblock first, the native declared type second, accepted through `ReflectedTypeAcceptor`. |
+| Anything else | `SubjectPropertyTypeResolver::resolve()` — the `@var` docblock first, the native declared type second (accepted through `ReflectedTypeAcceptor`), an untyped property's literal default third. The same three steps, in the same order, as [AST engine § Subject mode](ast-engine.md#subject-mode). |
 
 A reflected property then faces the same two declines a method return does, for the same reasons given under
 [the order for one class](#the-order-for-one-class): the property must not hold a class

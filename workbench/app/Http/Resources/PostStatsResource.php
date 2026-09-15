@@ -19,6 +19,9 @@ final class PostStatsResource extends JsonResource
     /** @var list<string> */
     protected array $untypedChannels = ['email', 'sms'];
 
+    /** Collides with Post::$title, a string column, so a published `number` proves D3 end to end. */
+    protected int $title = 0;
+
     public function __construct(Post $resource, private readonly ?PostStats $stats = null)
     {
         parent::__construct($resource);
@@ -31,6 +34,7 @@ final class PostStatsResource extends JsonResource
     {
         return [
             'id' => $this->id,
+            'title' => $this->title,
             'stats' => $this->stats,
             'views' => $this->stats?->views,
             'share_count' => $this->stats?->shares,

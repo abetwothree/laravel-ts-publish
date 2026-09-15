@@ -12346,6 +12346,11 @@
                     "optional": false
                 },
                 {
+                    "name": "title",
+                    "type": "number",
+                    "optional": false
+                },
+                {
                     "name": "stats",
                     "type": "{ views: number; shares: number } | null",
                     "optional": false
