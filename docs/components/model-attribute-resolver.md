@@ -457,6 +457,32 @@ degrades to the old, model-wide behavior instead of losing the union to `unknown
 exactly one `morphTo` relation is unaffected either way, since its keyed and legacy buckets always
 hold the same parents.
 
+### A parent targeting a subclass of the child still types the base child's `morphTo`
+
+A parent's `MorphOne`/`MorphMany` may declare its related model as a **subclass** of the model
+that actually owns the `morphTo()` — e.g. `Venue::reviews()` returns
+`$this->morphMany(VenueReview::class, 'reviewable')`, where `VenueReview extends Review` and only
+`Review` declares `reviewable(): MorphTo`. `buildMorphTargetMap()` keys that relation under
+`VenueReview::class.'|reviewable'`, not under `Review::class`, so a plain lookup of
+`getMorphToTargets(Review::class, 'reviewable')` would miss it entirely — `Review` never appears
+as a key on its own account. `getMorphToTargets()` closes that gap with a second pass: for every
+`|`-keyed bucket in `$morphTargetMap`, if the bucket's morph name matches and its child
+(`VenueReview`) is a real `is_subclass_of()` descendant of the model being queried (`Review`), its
+parents (`Venue`) are unioned in. A query against the subclass itself
+(`getMorphToTargets(VenueReview::class, 'reviewable')`) does not re-trigger this pass — the loop's
+own `$mappedChild !== $childModelFqcn` guard skips a bucket matching the queried class exactly, and
+no other `|`-keyed bucket is `VenueReview`'s subclass — so `VenueReview::reviewable` stays scoped
+to `Venue`; a subclass never inherits its siblings' parents (`ArtistReview`'s `Artist` parent stays
+absent from `VenueReview`'s union, and vice versa).
+
+The union only runs in this one direction. A parent declared against the *base* child
+(`SomeModel::morphMany(Review::class, 'reviewable')`) is never folded into a subclass's targets,
+because at runtime that relation always returns plain `Review` instances — Eloquent's morph map
+resolves each row to the class named in its `reviewable_type` column, and a row written through
+that parent's relation carries `Review::class` (or whatever `Review`'s morph alias is) there, never
+`VenueReview::class` — so unioning it into `VenueReview::reviewable` would claim a target that row
+can never actually be.
+
 ## An unresolved MorphTo stays bare `unknown`, never `unknown | null`
 
 When a `MorphTo` has no targets — the docblock generic is absent/non-narrowing and the reverse map

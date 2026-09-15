@@ -646,16 +646,35 @@ class ModelAttributeResolver
     /**
      * Return the list of parent model FQCNs that morphTo the given child model under the given
      * morph (relation) name — falling back to the legacy childFqcn-only bucket (every parent
-     * regardless of name) when no parent declared a relation under that specific name.
+     * regardless of name) when no parent declared a relation under that specific name, then
+     * unioning in any parent that instead targets a *subclass* of the given child under the
+     * same morph name, since those rows still satisfy the base child's morphTo.
      *
      * @param  class-string  $childModelFqcn
      * @return list<class-string>
      */
     public function getMorphToTargets(string $childModelFqcn, string $morphName): array
     {
-        return $this->morphTargetMap[$childModelFqcn.'|'.$morphName]
+        $targets = $this->morphTargetMap[$childModelFqcn.'|'.$morphName]
             ?? $this->morphTargetMap[$childModelFqcn]
             ?? [];
+
+        foreach ($this->morphTargetMap as $key => $parents) {
+            if (! str_contains($key, '|')) {
+                continue;
+            }
+
+            [$mappedChild, $mappedName] = explode('|', $key, 2);
+
+            if ($mappedName === $morphName && $mappedChild !== $childModelFqcn && is_subclass_of($mappedChild, $childModelFqcn)) {
+                $targets = [...$targets, ...$parents];
+            }
+        }
+
+        $targets = array_values(array_unique($targets));
+        sort($targets);
+
+        return $targets;
     }
 
     /**

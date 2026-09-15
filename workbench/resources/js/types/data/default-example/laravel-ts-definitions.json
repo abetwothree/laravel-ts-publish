@@ -4088,6 +4088,80 @@
                 }
             ]
         },
+        "Workbench\\App\\Models\\Artist": {
+            "name": "Artist",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "name",
+                    "type": "string"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "reviews",
+                    "type": "ArtistReview[]"
+                },
+                {
+                    "name": "reviews_count",
+                    "type": "number"
+                },
+                {
+                    "name": "reviews_exists",
+                    "type": "boolean"
+                }
+            ]
+        },
+        "Workbench\\App\\Models\\ArtistReview": {
+            "name": "ArtistReview",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "reviewable_type",
+                    "type": "string"
+                },
+                {
+                    "name": "reviewable_id",
+                    "type": "number"
+                },
+                {
+                    "name": "body",
+                    "type": "string"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "reviewable",
+                    "type": "Artist"
+                },
+                {
+                    "name": "reviewable_count",
+                    "type": "number"
+                },
+                {
+                    "name": "reviewable_exists",
+                    "type": "boolean"
+                }
+            ]
+        },
         "Workbench\\App\\Models\\Attachment": {
             "name": "Attachment",
             "properties": [
@@ -6392,6 +6466,47 @@
                 }
             ]
         },
+        "Workbench\\App\\Models\\Review": {
+            "name": "Review",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "reviewable_type",
+                    "type": "string"
+                },
+                {
+                    "name": "reviewable_id",
+                    "type": "number"
+                },
+                {
+                    "name": "body",
+                    "type": "string"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "reviewable",
+                    "type": "Artist | Venue"
+                },
+                {
+                    "name": "reviewable_count",
+                    "type": "number"
+                },
+                {
+                    "name": "reviewable_exists",
+                    "type": "boolean"
+                }
+            ]
+        },
         "Workbench\\App\\Models\\Sales\\Report\\Report": {
             "name": "Report",
             "properties": [
@@ -7302,6 +7417,80 @@
                 },
                 {
                     "name": "is_pinned",
+                    "type": "boolean"
+                }
+            ]
+        },
+        "Workbench\\App\\Models\\Venue": {
+            "name": "Venue",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "name",
+                    "type": "string"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "reviews",
+                    "type": "VenueReview[]"
+                },
+                {
+                    "name": "reviews_count",
+                    "type": "number"
+                },
+                {
+                    "name": "reviews_exists",
+                    "type": "boolean"
+                }
+            ]
+        },
+        "Workbench\\App\\Models\\VenueReview": {
+            "name": "VenueReview",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "reviewable_type",
+                    "type": "string"
+                },
+                {
+                    "name": "reviewable_id",
+                    "type": "number"
+                },
+                {
+                    "name": "body",
+                    "type": "string"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "reviewable",
+                    "type": "Venue"
+                },
+                {
+                    "name": "reviewable_count",
+                    "type": "number"
+                },
+                {
+                    "name": "reviewable_exists",
                     "type": "boolean"
                 }
             ]

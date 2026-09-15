@@ -8,6 +8,8 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Workbench\App\Models\Activity;
 use Workbench\App\Models\Admin\Store;
 use Workbench\App\Models\ArrayObjectCastFixture;
+use Workbench\App\Models\Artist;
+use Workbench\App\Models\ArtistReview;
 use Workbench\App\Models\Attachment;
 use Workbench\App\Models\CompositeComment;
 use Workbench\App\Models\Image;
@@ -24,9 +26,12 @@ use Workbench\App\Models\PropertyDocblockDescribedTagFixture;
 use Workbench\App\Models\PropertyDocblockEdge;
 use Workbench\App\Models\PropertyDocblockRejectFixture;
 use Workbench\App\Models\PropertyDocblockTraitFixture;
+use Workbench\App\Models\Review;
 use Workbench\App\Models\Sales\Report\Report as SalesReport;
 use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
+use Workbench\App\Models\Venue;
+use Workbench\App\Models\VenueReview;
 
 test('resolveAttribute returns empty info for non-existent model class', function () {
     $resolver = resolve(ModelAttributeResolver::class);
@@ -287,6 +292,15 @@ describe('morphTo docblock generics', function () {
 
         expect($causer['type'])->not->toBe($subject['type']);
     });
+});
+
+test('getMorphToTargets unions parents that target subclasses of the child', function () {
+    $resolver = resolve(ModelAttributeResolver::class);
+    $resolver->buildMorphTargetMap([Venue::class, Artist::class, Review::class, VenueReview::class, ArtistReview::class]);
+
+    expect($resolver->getMorphToTargets(Review::class, 'reviewable'))->toBe([Artist::class, Venue::class])
+        ->and($resolver->getMorphToTargets(VenueReview::class, 'reviewable'))->toBe([Venue::class])
+        ->and($resolver->resolveRelation(Review::class, 'reviewable')['type'])->toBe('Artist | Venue');
 });
 
 test('attributeDocblockReturnTypes captures nested generic getter type', function () {

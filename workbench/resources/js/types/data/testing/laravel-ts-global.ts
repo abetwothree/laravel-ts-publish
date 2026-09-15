@@ -155,6 +155,33 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
         }
+        export interface Artist {
+            // Columns
+            id: number;
+            name: string;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            /** Reviews scoped to artists, via the subclass-only reviewable morph target */
+            reviews: ArtistReview[];
+            reviews_count: number;
+            reviews_exists: boolean;
+        }
+        /** Subclass of Review scoped to artist reviews — shares the reviews table via the inherited $table. */
+        export interface ArtistReview {
+            // Columns
+            id: number;
+            reviewable_type: string;
+            reviewable_id: number;
+            body: string;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            /** Polymorphic parent (Venue or Artist, including their subclass-scoped review children) */
+            reviewable: Artist;
+            reviewable_count: number;
+            reviewable_exists: boolean;
+        }
         export interface Attachment {
             // Columns
             id: number;
@@ -930,6 +957,20 @@ declare global {
             id: number;
             name: string;
         }
+        export interface Review {
+            // Columns
+            id: number;
+            reviewable_type: string;
+            reviewable_id: number;
+            body: string;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            /** Polymorphic parent (Venue or Artist, including their subclass-scoped review children) */
+            reviewable: Artist | Venue;
+            reviewable_count: number;
+            reviewable_exists: boolean;
+        }
         /**
          * A help-desk ticket linked to a customer Order and optionally assigned to a CRM agent.
          *
@@ -1226,6 +1267,33 @@ declare global {
             reading_time_minutes: number | null;
             featured_image_url: string | null;
             is_pinned: boolean;
+        }
+        export interface Venue {
+            // Columns
+            id: number;
+            name: string;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            /** Reviews scoped to venues, via the subclass-only reviewable morph target */
+            reviews: VenueReview[];
+            reviews_count: number;
+            reviews_exists: boolean;
+        }
+        /** Subclass of Review scoped to venue reviews — shares the reviews table via the inherited $table. */
+        export interface VenueReview {
+            // Columns
+            id: number;
+            reviewable_type: string;
+            reviewable_id: number;
+            body: string;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            /** Polymorphic parent (Venue or Artist, including their subclass-scoped review children) */
+            reviewable: Venue;
+            reviewable_count: number;
+            reviewable_exists: boolean;
         }
         export interface Warehouse extends HasTimestamps, Pick<Auditable, "created_by" | "updated_by"> {
             // Columns
