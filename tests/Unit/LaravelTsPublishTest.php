@@ -6,6 +6,8 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\GenericChildrenDecoyConsumer;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TraitTemplateDecoyConsumer;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Casts\AsCollection;
@@ -1278,6 +1280,24 @@ describe('trait @template binding', function () {
 
         expect($this->service->attributeDocblockReturnTypes($method)['type'])->toBe('Comment[]')
             ->and($this->service->attributeDocblockReturnTypes($method)['classFqcns'])->toBe([Comment::class]);
+    });
+
+    test('a prose @use mention elsewhere in the file does not bind the trait template', function () {
+        // The class docblock above the `use` statement mentions `@use AggregatesChildren<SomeOtherModel>`
+        // in prose; only the real tag on the `use AggregatesChildren;` statement itself may bind.
+        $method = new ReflectionMethod(TraitTemplateDecoyConsumer::class, 'childItems');
+
+        expect($this->service->attributeDocblockReturnTypes($method)['type'])->toBe('Comment[]')
+            ->and($this->service->attributeDocblockReturnTypes($method)['classFqcns'])->toBe([Comment::class]);
+    });
+
+    test('binds a trait template reached through docblockReturnTypes() via methodOrDocblockReturnTypes()', function () {
+        $result = $this->service->methodOrDocblockReturnTypes(
+            new ReflectionClass(GenericChildrenDecoyConsumer::class), 'children',
+        );
+
+        expect($result['type'])->toBe('Comment[]')
+            ->and($result['classFqcns'])->toBe([Comment::class]);
     });
 });
 

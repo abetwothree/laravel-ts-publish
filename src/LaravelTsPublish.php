@@ -23,7 +23,10 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use JsonSerializable;
 use PhpParser\Node;
+use PhpParser\Node\Name;
+use PhpParser\Node\Stmt\Class_;
 use PhpParser\Node\Stmt\GroupUse;
+use PhpParser\Node\Stmt\TraitUse;
 use PhpParser\Node\Stmt\Use_;
 use PhpParser\NodeFinder;
 use ReflectionClass;
@@ -1009,31 +1012,61 @@ class LaravelTsPublish
     /**
      * FQCNs a consumer (or an ancestor) binds to a trait's templates via `@use Trait<A, B>`.
      *
+     * Scoped to the matching `TraitUse` statement's own doc comment — a prose mention of `@use Trait<X>`
+     * anywhere else in the file (e.g. a class docblock) must never be mistaken for the real binding.
+     *
      * @param  ReflectionClass<object>  $consumer
      * @param  ReflectionClass<object>  $trait
      * @return list<string>
      */
     protected function traitUseArguments(ReflectionClass $consumer, ReflectionClass $trait): array
     {
-        for ($class = $consumer; $class !== false; $class = $class->getParentClass()) {
-            DependencyRecorder::record((string) $class->getFileName());
-            $source = (string) file_get_contents((string) $class->getFileName());
+        $finder = new NodeFinder;
 
-            if (! preg_match_all('/@(?:phpstan-|psalm-)?use\s+([\w\\\\]+)\s*<(.+?)>\s*(?:\*\/|\n)/', $source, $matches, PREG_SET_ORDER)) {
+        for ($class = $consumer; $class !== false; $class = $class->getParentClass()) {
+            $fileName = $class->getFileName();
+
+            if ($fileName === false) {
+                continue;
+            }
+
+            $stmts = resolve(AstParser::class)->parseFile($fileName);
+
+            $classNode = $finder->findFirst($stmts, fn (Node $node): bool => $node instanceof Class_
+                && $node->namespacedName?->toString() === $class->getName());
+
+            if (! $classNode instanceof Class_) {
                 continue;
             }
 
             $useMap = $this->parseFileUseStatements($class);
+            $namespace = $class->getNamespaceName();
 
-            foreach ($matches as [, $name, $args]) {
-                if (ltrim($this->resolveDocblockTypeName($name, $useMap, $class->getNamespaceName()), '\\') !== $trait->getName()) {
+            foreach ($finder->findInstanceOf($classNode->stmts, TraitUse::class) as $traitUse) {
+                $traitNames = array_map(fn (Name $name): string => ltrim($name->toString(), '\\'), $traitUse->traits);
+
+                if (! in_array($trait->getName(), $traitNames, true)) {
                     continue;
                 }
 
-                return array_map(
-                    fn (string $arg): string => ltrim($this->resolveDocblockTypeName(trim($arg), $useMap, $class->getNamespaceName()), '\\'),
-                    $this->splitAtTopLevelCommas($args),
-                );
+                $doc = $traitUse->getDocComment();
+
+                if ($doc === null
+                    || ! preg_match_all('/@(?:phpstan-|psalm-)?use\s+([\w\\\\]+)\s*<(.+?)>\s*(?:\*\/|\n)/', $doc->getText(), $matches, PREG_SET_ORDER)
+                ) {
+                    continue;
+                }
+
+                foreach ($matches as [, $name, $args]) {
+                    if (ltrim($this->resolveDocblockTypeName($name, $useMap, $namespace), '\\') !== $trait->getName()) {
+                        continue;
+                    }
+
+                    return array_map(
+                        fn (string $arg): string => ltrim($this->resolveDocblockTypeName(trim($arg), $useMap, $namespace), '\\'),
+                        $this->splitAtTopLevelCommas($args),
+                    );
+                }
             }
         }
 
