@@ -910,7 +910,10 @@ class LaravelTsPublish
             return $this->emptyTypeScriptInfo();
         }
 
-        return $this->resolveDocblockTypeStringAgainst($returnTypeString, $this->methodDeclaringFileClass($method));
+        return $this->resolveDocblockTypeStringAgainst(
+            $this->bindTraitTemplates($returnTypeString, $method),
+            $this->methodDeclaringFileClass($method),
+        );
     }
 
     /**
@@ -959,7 +962,82 @@ class LaravelTsPublish
      */
     protected function resolveDocblockTypeString(ReflectionMethod $method, string $typeString): array
     {
-        return $this->resolveDocblockTypeStringAgainst($typeString, $this->methodDeclaringFileClass($method));
+        return $this->resolveDocblockTypeStringAgainst(
+            $this->bindTraitTemplates($typeString, $method),
+            $this->methodDeclaringFileClass($method),
+        );
+    }
+
+    /**
+     * Replace a trait's @template names with the classes its consumer binds through `@use Trait<X>`.
+     */
+    protected function bindTraitTemplates(string $typeString, ReflectionMethod $method): string
+    {
+        $trait = $this->methodDeclaringFileClass($method);
+
+        if (! $trait->isTrait()) {
+            return $typeString;
+        }
+
+        $templates = $this->traitTemplateNames($trait);
+        $arguments = $templates === [] ? [] : $this->traitUseArguments($method->getDeclaringClass(), $trait);
+
+        foreach ($templates as $index => $name) {
+            if (! isset($arguments[$index])) {
+                continue;
+            }
+
+            $typeString = (string) preg_replace('/(?<![\w\\\\$])'.preg_quote($name, '/').'(?![\w\\\\])/', '\\'.$arguments[$index], $typeString);
+        }
+
+        return $typeString;
+    }
+
+    /**
+     * The trait's @template names, in declaration order.
+     *
+     * @param  ReflectionClass<object>  $trait
+     * @return list<string>
+     */
+    protected function traitTemplateNames(ReflectionClass $trait): array
+    {
+        preg_match_all('/@(?:phpstan-|psalm-)?template(?:-covariant|-contravariant)?\s+(\w+)/', (string) $trait->getDocComment(), $m);
+
+        return $m[1];
+    }
+
+    /**
+     * FQCNs a consumer (or an ancestor) binds to a trait's templates via `@use Trait<A, B>`.
+     *
+     * @param  ReflectionClass<object>  $consumer
+     * @param  ReflectionClass<object>  $trait
+     * @return list<string>
+     */
+    protected function traitUseArguments(ReflectionClass $consumer, ReflectionClass $trait): array
+    {
+        for ($class = $consumer; $class !== false; $class = $class->getParentClass()) {
+            DependencyRecorder::record((string) $class->getFileName());
+            $source = (string) file_get_contents((string) $class->getFileName());
+
+            if (! preg_match_all('/@(?:phpstan-|psalm-)?use\s+([\w\\\\]+)\s*<(.+?)>\s*(?:\*\/|\n)/', $source, $matches, PREG_SET_ORDER)) {
+                continue;
+            }
+
+            $useMap = $this->parseFileUseStatements($class);
+
+            foreach ($matches as [, $name, $args]) {
+                if (ltrim($this->resolveDocblockTypeName($name, $useMap, $class->getNamespaceName()), '\\') !== $trait->getName()) {
+                    continue;
+                }
+
+                return array_map(
+                    fn (string $arg): string => ltrim($this->resolveDocblockTypeName(trim($arg), $useMap, $class->getNamespaceName()), '\\'),
+                    $this->splitAtTopLevelCommas($args),
+                );
+            }
+        }
+
+        return [];
     }
 
     /**

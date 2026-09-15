@@ -27,6 +27,7 @@ use Illuminate\Support\Collection;
 use Workbench\App\Casts\MenuSettings;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
+use Workbench\App\Models\Comment;
 use Workbench\App\Models\DocblockGenericsFixture;
 use Workbench\App\Models\Order;
 use Workbench\App\Models\OrderItem;
@@ -1268,6 +1269,15 @@ describe('resolveGenericContainerType() key refinements', function () {
 
     test('keeps int refinements as a list', function () {
         expect($this->service->resolveGenericContainerType('array<positive-int, string>', [], '')['type'])->toBe('string[]');
+    });
+});
+
+describe('trait @template binding', function () {
+    test('binds a trait template from the consumer @use tag', function () {
+        $method = new ReflectionMethod(DocblockGenericsFixture::class, 'childItems');
+
+        expect($this->service->attributeDocblockReturnTypes($method)['type'])->toBe('Comment[]')
+            ->and($this->service->attributeDocblockReturnTypes($method)['classFqcns'])->toBe([Comment::class]);
     });
 });
 

@@ -487,6 +487,24 @@ name in a trait-declared accessor's docblock — `@return Attribute<Collection<i
 never>` — would resolve against the *consuming* model's imports instead of the trait's, silently
 degrading to `unknown` whenever the model doesn't happen to import the same class.
 
+A trait's own `@template` names are a second case the file swap alone doesn't fix: a generic trait
+docblock — `@return Attribute<EloquentCollection<int, TChild>, never>` under a trait-level
+`@template TChild of Model` — resolves `TChild` against nothing, because a template name is never a
+real class the trait's own use-map could ever hold. `bindTraitTemplates()` runs before
+`resolveDocblockTypeStringAgainst()` in both `docblockReturnTypes()` and
+`resolveDocblockTypeString()`, substituting each of `traitTemplateNames()`'s ordered `@template`
+names with the matching argument from `traitUseArguments()` — the consumer's (or an ancestor's)
+`@use Trait<X>` tag, `@phpstan-use`/`@psalm-use` spelled the same way — before the type string ever
+reaches resolution. A method that isn't trait-declared, or a trait with no matching `@use` binding
+in the class hierarchy, passes the type string through unchanged.
+
+`@use Trait<X>` sits on the `use` statement inside the class body, not on the class docblock, so
+`traitUseArguments()` cannot reuse `ReflectionClass::getDocComment()` and instead scans the
+consumer's raw file source for the tag. That read bypasses `AstParser`'s cache entirely, so it calls
+`DependencyRecorder::record()` on the file itself before `file_get_contents()`, matching the
+[dependency recording policy](ast-engine.md#dependency-recording-policy) every other file-read in
+the package follows.
+
 ## `publishedColumnNames()` and the `exclude_hidden` coupling
 
 `databaseColumnNames()` is the raw schema listing (every real column, `$hidden` included).

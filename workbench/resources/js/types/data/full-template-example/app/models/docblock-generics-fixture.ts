@@ -1,4 +1,4 @@
-import type { User } from '.';
+import type { Comment, User } from '.';
 
 /**
  * Docblock-engine fixtures: every accessor's type lives only in its docblock.
@@ -15,4 +15,5 @@ export interface DocblockGenericsFixture
     flag_default: boolean | number | string | null;
     assigned_users: (User & { pivot: unknown })[];
     ability_map: Record<string, boolean>;
+    child_items: Comment[];
 }

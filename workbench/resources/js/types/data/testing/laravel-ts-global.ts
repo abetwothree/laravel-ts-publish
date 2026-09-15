@@ -345,6 +345,7 @@ declare global {
             flag_default: boolean | number | string | null;
             assigned_users: (User & { pivot: unknown })[];
             ability_map: Record<string, boolean>;
+            child_items: Comment[];
         }
         /** Model with excluded mutator and relation via #[TsExclude]. */
         export interface ExcludableModel {

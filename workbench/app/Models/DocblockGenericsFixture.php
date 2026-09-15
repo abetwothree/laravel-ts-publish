@@ -7,6 +7,7 @@ namespace Workbench\App\Models;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
+use Workbench\App\Models\Concerns\AggregatesChildren;
 
 /**
  * Docblock-engine fixtures: every accessor's type lives only in its docblock.
@@ -15,6 +16,9 @@ use Illuminate\Support\Collection;
  */
 class DocblockGenericsFixture extends Model
 {
+    /** @use AggregatesChildren<Comment> */
+    use AggregatesChildren;
+
     protected $table = 'docblock_generics_fixtures';
 
     /** @return Attribute<?FlagValue, never> */

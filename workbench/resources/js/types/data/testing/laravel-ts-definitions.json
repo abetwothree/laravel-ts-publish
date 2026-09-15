@@ -4702,6 +4702,10 @@
                 {
                     "name": "ability_map",
                     "type": "Record<string, boolean>"
+                },
+                {
+                    "name": "child_items",
+                    "type": "Comment[]"
                 }
             ]
         },
