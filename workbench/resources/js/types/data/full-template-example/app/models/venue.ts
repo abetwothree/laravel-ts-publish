@@ -1,4 +1,4 @@
-import type { VenueReview } from '.';
+import type { Label, VenueReview } from '.';
 
 /** @see Workbench\App\Models\Venue */
 export interface Venue
@@ -11,8 +11,12 @@ export interface Venue
     // Relations
     /** Reviews scoped to venues, via the subclass-only reviewable morph target */
     reviews: VenueReview[];
+    /** Labels attached via the custom Labelable pivot, which itself carries the morphTo back */
+    labels: Label[];
     // Counts
     reviews_count: number;
+    labels_count: number;
     // Exists
     reviews_exists: boolean;
+    labels_exists: boolean;
 }

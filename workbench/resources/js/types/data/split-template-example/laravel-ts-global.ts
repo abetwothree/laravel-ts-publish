@@ -148,6 +148,10 @@ declare global {
             reviews: ArtistReview[];
             reviews_count: number;
             reviews_exists: boolean;
+            /** Labels attached via the custom Labelable pivot, which itself carries the morphTo back */
+            labels: Label[];
+            labels_count: number;
+            labels_exists: boolean;
         }
         /** Subclass of Review scoped to artist reviews — shares the reviews table via the inherited $table. */
         export interface ArtistReview {
@@ -452,6 +456,25 @@ declare global {
             reportable: app.models.marketing.report.Report | app.models.sales.report.Report;
             reportable_count: number;
             reportable_exists: boolean;
+        }
+        export interface Label {
+            // Columns
+            id: number;
+            name: string;
+            created_at: string | null;
+            updated_at: string | null;
+        }
+        export interface Labelable {
+            // Columns
+            id: number;
+            label_id: number;
+            labelable_type: string;
+            labelable_id: number;
+            // Relations
+            /** Polymorphic parent (Venue or Artist) the pivot row labels */
+            labelable: Artist | Venue;
+            labelable_count: number;
+            labelable_exists: boolean;
         }
         /** Exercises Laravel 13's #[Table], #[Hidden] and #[Appends] class attributes. */
         export interface Laravel13Attributes {
@@ -1261,6 +1284,10 @@ declare global {
             reviews: VenueReview[];
             reviews_count: number;
             reviews_exists: boolean;
+            /** Labels attached via the custom Labelable pivot, which itself carries the morphTo back */
+            labels: Label[];
+            labels_count: number;
+            labels_exists: boolean;
         }
         /** Subclass of Review scoped to venue reviews — shares the reviews table via the inherited $table. */
         export interface VenueReview {

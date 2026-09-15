@@ -13,7 +13,10 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Database\Eloquent\Relations\MorphOneOrMany;
+use Illuminate\Database\Eloquent\Relations\MorphPivot;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Database\Eloquent\Relations\MorphToMany;
+use Illuminate\Database\Eloquent\Relations\Pivot;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
@@ -574,6 +577,16 @@ class ModelAttributeResolver
             }
 
             foreach ($ctx['relations'] as $relation) {
+                if (str_contains($relation['type'], 'MorphToMany')) {
+                    $pivotKey = $this->morphPivotKey($ctx['instance'], $relation['name']);
+
+                    if ($pivotKey !== null && ! in_array($parentFqcn, $map[$pivotKey] ?? [], true)) {
+                        $map[$pivotKey][] = $parentFqcn;
+                    }
+
+                    continue;
+                }
+
                 if (! $this->isMorphParentRelation($parentFqcn, $relation)) {
                     continue;
                 }
@@ -641,6 +654,34 @@ class ModelAttributeResolver
 
         return is_a($fqcn, MorphOne::class, true)
             || is_a($fqcn, MorphMany::class, true);
+    }
+
+    /**
+     * The `Pivot|morphName` map key for a morphToMany whose custom pivot model carries the morphTo back.
+     */
+    protected function morphPivotKey(Model $instance, string $relationName): ?string
+    {
+        try {
+            $relation = $instance->{$relationName}();
+        } catch (Throwable) {
+            return null;
+        }
+
+        if (! $relation instanceof MorphToMany || $relation->getInverse()) {
+            return null;
+        }
+
+        $pivot = $relation->getPivotClass();
+
+        if (in_array($pivot, [Pivot::class, MorphPivot::class], true)) {
+            return null;
+        }
+
+        DependencyRecorder::recordClass($pivot);
+
+        $morphType = $relation->getMorphType();
+
+        return $pivot.'|'.(str_ends_with($morphType, '_type') ? substr($morphType, 0, -5) : $morphType);
     }
 
     /**

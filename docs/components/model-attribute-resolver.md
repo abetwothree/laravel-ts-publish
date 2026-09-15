@@ -483,6 +483,36 @@ that parent's relation carries `Review::class` (or whatever `Review`'s morph ali
 `VenueReview::class` — so unioning it into `VenueReview::reviewable` would claim a target that row
 can never actually be.
 
+### A `morphToMany(...)->using(Pivot::class)` makes its pivot's own `morphTo` resolvable
+
+A `MorphToMany` relation is a different shape entirely — its `related` FQCN is the many-to-many
+target (`Label`), not a `morphTo`'s child — so `buildMorphTargetMap()`'s relation loop diverts it
+into its own branch before `isMorphParentRelation()` ever sees it: `str_contains($relation['type'],
+'MorphToMany')` (confirmed against `Illuminate\Database\Eloquent\ModelInspector::getRelations()`,
+which sets `'type'` to `Str::afterLast(get_class($relation), '\\')` — always the bare class name
+`'MorphToMany'`, never the FQCN) routes to `morphPivotKey()` instead.
+
+When a custom pivot model is wired in with `->using(Labelable::class)` and that pivot itself
+declares a `morphTo()` (`Labelable::labelable()`), the pivot row's own `labelable_type` column
+names the *declaring* parent (`Venue`, `Artist`) directly — the same shape as any other `morphTo`,
+just reached through a pivot model instead of a plain child model. `morphPivotKey()` reads the
+relation's `getPivotClass()` and, when it's neither the base `Pivot` nor `MorphPivot` (i.e. a real
+`->using()` was supplied), keys the same way as a `MorphOne`/`MorphMany`: `PivotFqcn.'|'.morphName`,
+using `MorphToMany::getMorphType()` (`'labelable_type'` minus the suffix) so the key lines up
+exactly with the morph name `Labelable::labelable()` itself resolves through `relationMorphName()`.
+Because it's the same `Fqcn|morphName` shape `buildMorphTargetMap()` already writes for `morphMany`
+relations, `getMorphToTargets(Labelable::class, 'labelable')` needs no separate code path — it hits
+the primary keyed lookup directly, not the subclass-union second pass.
+
+Two relation shapes add nothing to the map, both handled by returning `null` from
+`morphPivotKey()`: a `morphToMany()` call with no `->using()` (`getPivotClass()` falls back to the
+base `Pivot`, or `MorphPivot` for a morph relation — no custom model exists to carry a `morphTo`
+back), and `morphedByMany()` (`MorphToMany::getInverse() === true`) — the *inverse* declaration,
+found on the many-to-many target (e.g. `Tag::posts()`), not the polymorphic owner. Keying that
+side would record the wrong parent: the pivot's morph column stores the *forward* declarer's own
+class (`Post`, via `Post::tags()`'s `morphToMany()`), never the inverse side's, so an inverse
+relation's declaring model is never a real `morphTo` target.
+
 ## An unresolved MorphTo stays bare `unknown`, never `unknown | null`
 
 When a `MorphTo` has no targets — the docblock generic is absent/non-narrowing and the reverse map

@@ -4112,11 +4112,23 @@
                     "type": "ArtistReview[]"
                 },
                 {
+                    "name": "labels",
+                    "type": "Label[]"
+                },
+                {
                     "name": "reviews_count",
                     "type": "number"
                 },
                 {
+                    "name": "labels_count",
+                    "type": "number"
+                },
+                {
                     "name": "reviews_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "labels_exists",
                     "type": "boolean"
                 }
             ]
@@ -5090,6 +5102,60 @@
                 },
                 {
                     "name": "reportable_exists",
+                    "type": "boolean"
+                }
+            ]
+        },
+        "Workbench\\App\\Models\\Label": {
+            "name": "Label",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "name",
+                    "type": "string"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                }
+            ]
+        },
+        "Workbench\\App\\Models\\Labelable": {
+            "name": "Labelable",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "label_id",
+                    "type": "number"
+                },
+                {
+                    "name": "labelable_type",
+                    "type": "string"
+                },
+                {
+                    "name": "labelable_id",
+                    "type": "number"
+                },
+                {
+                    "name": "labelable",
+                    "type": "Artist | Venue"
+                },
+                {
+                    "name": "labelable_count",
+                    "type": "number"
+                },
+                {
+                    "name": "labelable_exists",
                     "type": "boolean"
                 }
             ]
@@ -7445,11 +7511,23 @@
                     "type": "VenueReview[]"
                 },
                 {
+                    "name": "labels",
+                    "type": "Label[]"
+                },
+                {
                     "name": "reviews_count",
                     "type": "number"
                 },
                 {
+                    "name": "labels_count",
+                    "type": "number"
+                },
+                {
                     "name": "reviews_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "labels_exists",
                     "type": "boolean"
                 }
             ]

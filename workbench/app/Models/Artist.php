@@ -6,6 +6,7 @@ namespace Workbench\App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Database\Eloquent\Relations\MorphToMany;
 
 class Artist extends Model
 {
@@ -17,5 +18,11 @@ class Artist extends Model
     public function reviews(): MorphMany
     {
         return $this->morphMany(ArtistReview::class, 'reviewable');
+    }
+
+    /** Labels attached via the custom Labelable pivot, which itself carries the morphTo back */
+    public function labels(): MorphToMany
+    {
+        return $this->morphToMany(Label::class, 'labelable')->using(Labelable::class);
     }
 }

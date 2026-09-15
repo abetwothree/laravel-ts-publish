@@ -16,6 +16,8 @@ export * from './docblock-generics-fixture';
 export * from './excludable-model';
 export * from './image';
 export * from './kpi';
+export * from './label';
+export * from './labelable';
 export * from './laravel13-attributes';
 export * from './laravel13-connection';
 export * from './laravel13-visible';

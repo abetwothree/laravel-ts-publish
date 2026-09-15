@@ -241,6 +241,8 @@
     "app\/Models\/ExcludableModel.php",
     "app\/Models\/Image.php",
     "app\/Models\/Kpi.php",
+    "app\/Models\/Label.php",
+    "app\/Models\/Labelable.php",
     "app\/Models\/Laravel13Attributes.php",
     "app\/Models\/Laravel13Connection.php",
     "app\/Models\/Laravel13Visible.php",

@@ -14,6 +14,8 @@ use Workbench\App\Models\Attachment;
 use Workbench\App\Models\CompositeComment;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Kpi;
+use Workbench\App\Models\Label;
+use Workbench\App\Models\Labelable;
 use Workbench\App\Models\Marketing\Report\Report as MarketingReport;
 use Workbench\App\Models\Order;
 use Workbench\App\Models\OrderItem;
@@ -301,6 +303,13 @@ test('getMorphToTargets unions parents that target subclasses of the child', fun
     expect($resolver->getMorphToTargets(Review::class, 'reviewable'))->toBe([Artist::class, Venue::class])
         ->and($resolver->getMorphToTargets(VenueReview::class, 'reviewable'))->toBe([Venue::class])
         ->and($resolver->resolveRelation(Review::class, 'reviewable')['type'])->toBe('Artist | Venue');
+});
+
+test('buildMorphTargetMap maps a morphToMany pivot model back to its declaring parents', function () {
+    $resolver = resolve(ModelAttributeResolver::class);
+    $resolver->buildMorphTargetMap([Venue::class, Artist::class, Label::class, Labelable::class]);
+
+    expect($resolver->getMorphToTargets(Labelable::class, 'labelable'))->toBe([Artist::class, Venue::class]);
 });
 
 test('attributeDocblockReturnTypes captures nested generic getter type', function () {
