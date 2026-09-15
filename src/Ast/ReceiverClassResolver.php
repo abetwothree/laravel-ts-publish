@@ -143,6 +143,30 @@ final class ReceiverClassResolver
     }
 
     /**
+     * What a property holds on a receiver other than `$this`: a model's attribute or relation, or a public property.
+     *
+     * Public so ReceiverPropertyFetchHandler can decide its false-string rule one receiver class at a time. Asking
+     * `resolve()` about the whole expression instead answers `null` for a union as soon as one arm holds a builtin.
+     */
+    public function memberProperty(string $class, string $name): ?ReceiverType
+    {
+        if (is_a($class, Model::class, true)) {
+            return $this->modelMember($class, $name);
+        }
+
+        if (! class_exists($class) || ! property_exists($class, $name)) {
+            return null;
+        }
+
+        $property = new ReflectionProperty($class, $name);
+
+        // A non-public property read from outside goes to __get(), not to the declaration.
+        return $property->isPublic() && ! $property->isStatic()
+            ? $this->typeOf($this->propertyClasses($property, $class))
+            : null;
+    }
+
+    /**
      * Resolve a variable through the scope's bindings; an unbound variable declines.
      */
     private function fromVariable(Variable $variable, AnalysisScope $scope): ?ReceiverType
@@ -327,27 +351,6 @@ final class ReceiverClassResolver
         }
 
         return $this->merge($types, $shortCircuits);
-    }
-
-    /**
-     * What a property holds on a receiver other than `$this`: a model's attribute or relation, or a public property.
-     */
-    private function memberProperty(string $class, string $name): ?ReceiverType
-    {
-        if (is_a($class, Model::class, true)) {
-            return $this->modelMember($class, $name);
-        }
-
-        if (! class_exists($class) || ! property_exists($class, $name)) {
-            return null;
-        }
-
-        $property = new ReflectionProperty($class, $name);
-
-        // A non-public property read from outside goes to __get(), not to the declaration.
-        return $property->isPublic() && ! $property->isStatic()
-            ? $this->typeOf($this->propertyClasses($property, $class))
-            : null;
     }
 
     /**

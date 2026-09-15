@@ -312,6 +312,12 @@ A reflected property then faces the same two declines a method return does, for 
 `toTsType()` maps it to, and it must name only models the package publishes a file for, so a property typed
 `Model` declines rather than emitting a token nothing imports.
 
+Both declines are decided **per receiver class**, on the classes `ReceiverClassResolver::memberProperty()`
+reports for that one class's property — which is why that method is public. Asking `resolve()` about the whole
+expression would answer `null` for a union as soon as one arm's property holds a builtin, and `null` reads as
+"no false string here", so an `A|B` receiver whose `A::$p` is a raw `DateTime` and whose `B::$p` is a `string`
+would publish `A`'s arm as `string`.
+
 A receiver holding several classes types the property on each and merges the answers with
 `ValueResult::mergeUnion()`; one declining arm declines the whole read, for the reason under
 [What stays unresolved](#what-stays-unresolved). The read gains `| null` when it is itself `?->` or when the

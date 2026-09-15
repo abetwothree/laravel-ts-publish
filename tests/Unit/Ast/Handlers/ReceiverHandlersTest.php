@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverMethodProbe;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverProbeEnum;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverProbeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverShapedToArrayModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverStringDateProbe;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverVarProbe;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
@@ -316,6 +317,17 @@ describe('ReceiverPropertyFetchHandler', function () {
         expect(LaravelTsPublish::propertyTypes(new ReflectionClass(ReceiverVarProbe::class), 'plainDate')['type'])->toBe('string')
             ->and($handler->resolve(receiverHandlerExpr('$probe->plainDate'), $scope, chainHandlersThrowingEngine()))->toBeNull()
             ->and($handler->resolve(receiverHandlerExpr('$probe->text'), $scope, chainHandlersThrowingEngine())['type'] ?? null)->toBe('string');
+    });
+
+    test('a union receiver declines when only one arm holds a class json_encode() writes as an object', function () {
+        $handler = new ReceiverPropertyFetchHandler;
+        $scope = receiverProbeScope();
+        $union = '($flag ? new '.ReceiverVarProbe::class.' : new '.ReceiverStringDateProbe::class.')->plainDate';
+
+        expect(LaravelTsPublish::propertyTypes(new ReflectionClass(ReceiverStringDateProbe::class), 'plainDate')['type'])->toBe('string')
+            ->and($handler->resolve(receiverHandlerExpr('(new '.ReceiverStringDateProbe::class.')->plainDate'), $scope, chainHandlersThrowingEngine())['type'] ?? null)
+            ->toBe('string')
+            ->and($handler->resolve(receiverHandlerExpr($union), $scope, chainHandlersThrowingEngine()))->toBeNull();
     });
 
     test('a reflected property naming a model no file is published for declines', function () {

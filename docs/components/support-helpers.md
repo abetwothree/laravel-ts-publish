@@ -60,10 +60,13 @@ Structural questions about a TypeScript type string, and rewrites of one: `extra
 `shapeValueHasUnimportableToken()`, `aliasPropertyType()`, `qualifyGlobalType()`,
 `splitTopLevelUnion()`, `hoistNull()`, `typeNameOccursIn()`, `substituteEnumType()`,
 `rewriteAsEnumToType()`, `isUnknownOnly()`, `isVagueTsType()`, plus the public `TS_PRIMITIVES` list
-several of them filter against. `isUnknownOnly()` is the one home for "this answer is `unknown` once
-its `null` arms are removed", the test `MethodChainHandler` and `PropertyChainHandler` both decline on;
-it has no delegation on `LaravelTsPublish`, because only the pre-extraction surface carries those. No state. Its only outward dependency is `TsTypeShape::splitTopLevel()`, which
-`splitTopLevelUnion()` wraps.
+several of them filter against. No state. Its only outward dependency is
+`TsTypeShape::splitTopLevel()`, which `splitTopLevelUnion()` wraps.
+
+`isUnknownOnly()` is the one home for "this answer is `unknown` once its `null` arms are removed" —
+the test `MethodChainHandler` and `PropertyChainHandler` both decline on. It has no delegation on
+`LaravelTsPublish`, because that surface is the frozen pre-extraction one, not a place new helpers
+join.
 
 **The retained type engine calls into it, and that direction is one-way.** Six sites across five engine
 methods — `toTsType()`, `arrayableShapeType()`, `publicPropertyShapeType()`,

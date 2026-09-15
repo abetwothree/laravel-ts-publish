@@ -64,7 +64,7 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
         foreach ($receiver->classes as $class) {
             $result = is_a($class, Model::class, true)
                 ? $this->modelMember($class, $name)
-                : $this->reflectedProperty($class, $name, $expr, $scope);
+                : $this->reflectedProperty($class, $name);
 
             // One untypable arm would make the union a lie; decline so dispatch reaches the floor.
             if ($result === null) {
@@ -128,7 +128,7 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
      * @param  class-string  $class
      * @return ValueExpressionResult|null
      */
-    private function reflectedProperty(string $class, string $name, Expr $expr, AnalysisScope $scope): ?array
+    private function reflectedProperty(string $class, string $name): ?array
     {
         $result = resolve(SubjectPropertyTypeResolver::class)->resolve(new ReflectionClass($class), $name);
 
@@ -136,18 +136,10 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
             return null;
         }
 
-        return $this->holdsFalseString($expr, $scope) ? null : $result;
-    }
+        // This class's own property, never the whole expression: one arm of a union holding a plain string
+        // names no class, which would otherwise read as "nothing here is a false string" for every arm.
+        $held = resolve(ReceiverClassResolver::class)->memberProperty($class, $name);
 
-    /**
-     * Whether the property itself holds a class `toTsType()` publishes as `string` that json_encode() does not.
-     *
-     * The resolver answers with the property's own classes, so a `@var` union it cannot name declines there first.
-     */
-    private function holdsFalseString(Expr $expr, AnalysisScope $scope): bool
-    {
-        $held = resolve(ReceiverClassResolver::class)->resolve($expr, $scope);
-
-        return $held !== null && array_any($held->classes, StringSerialization::isFalseString(...));
+        return $held !== null && array_any($held->classes, StringSerialization::isFalseString(...)) ? null : $result;
     }
 }
