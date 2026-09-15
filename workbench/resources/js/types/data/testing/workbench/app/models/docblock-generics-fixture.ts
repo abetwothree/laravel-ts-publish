@@ -20,4 +20,14 @@ export interface DocblockGenericsFixtureMutators
     child_items: Comment[];
 }
 
-export interface DocblockGenericsFixtureAll extends DocblockGenericsFixture, DocblockGenericsFixtureMutators {}
+export interface DocblockGenericsFixtureRelations
+{
+    // Relations
+    child_rows: Comment[];
+    // Counts
+    child_rows_count: number;
+    // Exists
+    child_rows_exists: boolean;
+}
+
+export interface DocblockGenericsFixtureAll extends DocblockGenericsFixture, DocblockGenericsFixtureMutators, DocblockGenericsFixtureRelations {}

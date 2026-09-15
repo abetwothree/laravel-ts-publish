@@ -16,4 +16,10 @@ export interface DocblockGenericsFixture
     assigned_users: (User & { pivot: unknown })[];
     ability_map: Record<string, boolean>;
     child_items: Comment[];
+    // Relations
+    child_rows: Comment[];
+    // Counts
+    child_rows_count: number;
+    // Exists
+    child_rows_exists: boolean;
 }

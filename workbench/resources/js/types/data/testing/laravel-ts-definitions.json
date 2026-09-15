@@ -4792,6 +4792,18 @@
                 {
                     "name": "child_items",
                     "type": "Comment[]"
+                },
+                {
+                    "name": "child_rows",
+                    "type": "Comment[]"
+                },
+                {
+                    "name": "child_rows_count",
+                    "type": "number"
+                },
+                {
+                    "name": "child_rows_exists",
+                    "type": "boolean"
                 }
             ]
         },

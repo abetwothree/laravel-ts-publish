@@ -15,6 +15,7 @@ use Workbench\App\Models\Artist;
 use Workbench\App\Models\ArtistReview;
 use Workbench\App\Models\Attachment;
 use Workbench\App\Models\CompositeComment;
+use Workbench\App\Models\DocblockGenericsFixture;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Kpi;
 use Workbench\App\Models\Label;
@@ -626,5 +627,17 @@ describe('attribute-lookup fallbacks', function () {
             ->resolveAttribute(Order::class, 'totallyMadeUpAttribute');
 
         expect($info['type'])->toBe('unknown');
+    });
+});
+
+describe('resolveAttribute() @property fallback for virtual attributes', function () {
+    test('types a query-selected attribute from its @property tag', function () {
+        expect(resolve(ModelAttributeResolver::class)->resolveAttribute(DocblockGenericsFixture::class, 'children_total')['type'])
+            ->toBe('number | null');
+    });
+
+    test('never answers a relation name from an ide-helper @property-read tag', function () {
+        expect(resolve(ModelAttributeResolver::class)->resolveAttribute(DocblockGenericsFixture::class, 'child_rows')['type'])
+            ->toBe('unknown');
     });
 });

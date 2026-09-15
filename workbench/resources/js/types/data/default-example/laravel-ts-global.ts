@@ -359,6 +359,10 @@ declare global {
             assigned_users: (User & { pivot: unknown })[];
             ability_map: Record<string, boolean>;
             child_items: Comment[];
+            // Relations
+            child_rows: Comment[];
+            child_rows_count: number;
+            child_rows_exists: boolean;
         }
         /** Model with excluded mutator and relation via #[TsExclude]. */
         export interface ExcludableModel {

@@ -134,7 +134,7 @@ class ModelAttributeResolver
      * suffix fallbacks are a fixed number/boolean guess.
      *
      * @param  class-string  $modelFqcn
-     * @param  array{attributes: Collection<int, AttributeInfo>, relations: Collection<int, RelationInfo>, ...}  $ctx
+     * @param  array{attributes: Collection<int, AttributeInfo>, relations: Collection<int, RelationInfo>, reflection: ReflectionClass<Model>, ...}  $ctx
      * @return TypeScriptTypeInfo
      */
     protected function resolveAttributeFallbacks(string $modelFqcn, array $ctx, string $attributeName): array
@@ -162,6 +162,22 @@ class ModelAttributeResolver
 
             if ($ctx['relations']->firstWhere('name', $base) !== null) {
                 return [...$empty, 'type' => $tsType];
+            }
+        }
+
+        // A relation name (or its camel alias) is excluded so an ide-helper @property-read tag that
+        // merely documents a relation is never mistaken for a query-selected virtual attribute.
+        $isRelation = $ctx['relations']->contains(
+            fn (array $relation): bool => $relation['name'] === $attributeName || $relation['name'] === Str::camel($attributeName),
+        );
+
+        if (! $isRelation) {
+            foreach ($this->propertyDocblockClasses($ctx['reflection']) as $class) {
+                $refined = $this->refineFromClassDocblock($class, $attributeName, $empty);
+
+                if ($refined !== null) {
+                    return $refined;
+                }
             }
         }
 

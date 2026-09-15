@@ -425,6 +425,23 @@ class Team extends Model
 `Record<string, unknown> | null` is accepted even though it still names `unknown`, and `settings`
 generates as `Record<string, unknown> | null` rather than `unknown[] | null`.
 
+### `@property` as the last fallback for a name that is neither a column nor a relation
+
+`resolveAttributeFallbacks()` tries, in order: the snake_case-accessor alias, then the
+`_count`/`_exists` relation-suffix guesses, and only once both have declined does it consult
+`propertyDocblockClasses()` for an `@property`/`@property-read` tag naming the attribute outright.
+This last step exists for a query-selected virtual attribute — a `select`/`selectRaw` column with
+no backing DB column, cast, or accessor, typed only by an ide-helper-style class docblock tag —
+which reaches `ModelAttributeResolver` when a resource or handler references it, but is never
+itself part of `ModelTransformer`'s own generated interface, since that transformer iterates
+`ModelInspector`'s attributes, not this resolver's fallback chain.
+
+The lookup is guarded on the name (and its camel alias) not already being a relation: an
+ide-helper `@property-read Collection<int, Child> $childRows` tag commonly documents a relation
+for IDE purposes only, and `resolveRelation()` — not this fallback — is the correct authority for
+a relation name's type. Without the guard, a relation's own tag would satisfy `resolveAttribute()`
+with a plausible-looking type that ignores relation nullability and `morphFqcns`.
+
 ## MorphTo target resolution: docblock generic → reverse map keyed by morph name
 
 `resolveMorphToTargets(string $modelFqcn, string $relationName): list<class-string>` is the
