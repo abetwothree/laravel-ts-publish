@@ -504,14 +504,21 @@ Because it's the same `Fqcn|morphName` shape `buildMorphTargetMap()` already wri
 relations, `getMorphToTargets(Labelable::class, 'labelable')` needs no separate code path — it hits
 the primary keyed lookup directly, not the subclass-union second pass.
 
-Two relation shapes add nothing to the map, both handled by returning `null` from
-`morphPivotKey()`: a `morphToMany()` call with no `->using()` (`getPivotClass()` falls back to the
-base `Pivot`, or `MorphPivot` for a morph relation — no custom model exists to carry a `morphTo`
-back), and `morphedByMany()` (`MorphToMany::getInverse() === true`) — the *inverse* declaration,
-found on the many-to-many target (e.g. `Tag::posts()`), not the polymorphic owner. Keying that
-side would record the wrong parent: the pivot's morph column stores the *forward* declarer's own
-class (`Post`, via `Post::tags()`'s `morphToMany()`), never the inverse side's, so an inverse
-relation's declaring model is never a real `morphTo` target.
+Three relation shapes add nothing to the map, all handled by returning `null` from
+`morphPivotKey()`: a `morphToMany()` call with no `->using()` at all (`getPivotClass()`'s only
+fallback is the base `Pivot::class` — `$this->using ?? Pivot::class` — never `MorphPivot`, which is
+excluded from the same check purely in case a caller passes `->using(MorphPivot::class)` explicitly
+without narrowing it further), a `morphedByMany()` (`MorphToMany::getInverse() === true`) — the
+*inverse* declaration, found on the many-to-many target (e.g. `Tag::posts()`), not the polymorphic
+owner: keying that side would record the wrong parent, since the pivot's morph column stores the
+*forward* declarer's own class (`Post`, via `Post::tags()`'s `morphToMany()`), never the inverse
+side's — and a `->using()` argument that isn't actually a `Model` at all. `getPivotClass()`'s
+`class-string<Pivot>` bound is docblock-only (`using()` itself takes no native parameter type), so
+Laravel accepts any class there at runtime; `morphPivotKey()` keeps its own `is_a($pivot,
+Model::class, true)` runtime check rather than trusting the docblock bound, even though PHPStan
+would otherwise report it as an already-narrowed, always-true condition (silenced with `@phpstan-
+ignore function.alreadyNarrowedType`, matching the inline-ignore convention already used elsewhere
+in this codebase, e.g. `CoreCollector::collect()`).
 
 ## An unresolved MorphTo stays bare `unknown`, never `unknown | null`
 

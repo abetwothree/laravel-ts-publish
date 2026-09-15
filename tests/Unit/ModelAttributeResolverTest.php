@@ -5,6 +5,9 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\InvalidPivotClassParent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\InverseMorphToManyParent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\NotAModelPivot;
 use Workbench\App\Models\Activity;
 use Workbench\App\Models\Admin\Store;
 use Workbench\App\Models\ArrayObjectCastFixture;
@@ -310,6 +313,20 @@ test('buildMorphTargetMap maps a morphToMany pivot model back to its declaring p
     $resolver->buildMorphTargetMap([Venue::class, Artist::class, Label::class, Labelable::class]);
 
     expect($resolver->getMorphToTargets(Labelable::class, 'labelable'))->toBe([Artist::class, Venue::class]);
+});
+
+test('a using() pointing at a non-Model class adds no pivot map entry', function () {
+    $resolver = resolve(ModelAttributeResolver::class);
+    $resolver->buildMorphTargetMap([InvalidPivotClassParent::class]);
+
+    expect($resolver->getMorphToTargets(NotAModelPivot::class, 'labelable'))->toBe([]);
+});
+
+test('the morphedByMany inverse side of a custom pivot adds no pivot map entry', function () {
+    $resolver = resolve(ModelAttributeResolver::class);
+    $resolver->buildMorphTargetMap([InverseMorphToManyParent::class]);
+
+    expect($resolver->getMorphToTargets(Labelable::class, 'labelable'))->toBe([]);
 });
 
 test('attributeDocblockReturnTypes captures nested generic getter type', function () {

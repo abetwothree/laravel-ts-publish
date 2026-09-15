@@ -673,7 +673,10 @@ class ModelAttributeResolver
 
         $pivot = $relation->getPivotClass();
 
-        if (in_array($pivot, [Pivot::class, MorphPivot::class], true)) {
+        // getPivotClass()'s class-string<Pivot> bound is docblock-only — using() takes no native
+        // parameter type — so a caller can still hand it an unrelated class at runtime.
+        /** @phpstan-ignore function.alreadyNarrowedType */
+        if (in_array($pivot, [Pivot::class, MorphPivot::class], true) || ! is_a($pivot, Model::class, true)) {
             return null;
         }
 
