@@ -9,8 +9,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MethodChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverIntegerKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverMethodProbe;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverProbeEnum;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverProbeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverShapedToArrayModel;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
@@ -83,6 +85,13 @@ describe('ReceiverMethodCallHandler through the resource analyzer', function () 
         ['$this->comments?->modelKeys()', 'number[] | null'],
         ['$this->resource?->comments?->modelKeys()', 'number[] | null'],
     ]);
+
+    test('an integer key type publishes number in both $this->resource getKey() spellings', function () {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), ReceiverIntegerKeyModel::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr('$this->resource->getKey()'))['type'])->toBe('number')
+            ->and($analyzer->resolve(receiverHandlerExpr('$this->resource?->getKey()'))['type'])->toBe('number | null');
+    });
 
     test('a DateTime return stays unknown in every spelling, since json_encode() writes it as an object', function (string $php) {
         $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverMethodResource::class), Post::class);

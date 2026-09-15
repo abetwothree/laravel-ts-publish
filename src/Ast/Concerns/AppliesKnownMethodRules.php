@@ -58,7 +58,7 @@ trait AppliesKnownMethodRules
 
             $instance = resolve(ModelAttributeResolver::class)->getInstance($scope->modelClass);
 
-            $type = $instance?->getKeyType() === 'int' ? 'number' : 'string';
+            $type = in_array($instance?->getKeyType(), ['int', 'integer'], true) ? 'number' : 'string';
 
             return [...ValueResult::unknown(), 'type' => $type, 'optional' => false];
         }

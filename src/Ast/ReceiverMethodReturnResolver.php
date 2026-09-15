@@ -35,11 +35,6 @@ final class ReceiverMethodReturnResolver
         $results = [];
 
         foreach ($receiver->classes as $class) {
-            // Model::getKey() is `mixed`, so only a concrete model's key type can answer it.
-            if ($methodName === 'getKey' && is_a($class, Model::class, true) && ! $this->isConcreteModel($class)) {
-                return null;
-            }
-
             $result = $this->ruleFor($receiver, $class, $methodName) ?? $this->resolveOn($class, $methodName, $fromInside);
 
             // One untypable arm would make the union a lie; decline so dispatch reaches the floor.
@@ -65,7 +60,7 @@ final class ReceiverMethodReturnResolver
      */
     private function ruleFor(ReceiverType $receiver, string $class, string $methodName): ?array
     {
-        if ($methodName === 'getKey' && $this->isConcreteModel($class)) {
+        if ($methodName === 'getKey' && $this->runsModelGetKey($class)) {
             $keyType = $this->keyType($class);
 
             return $keyType === null ? null : [...ValueResult::unknown(), 'type' => $keyType];
@@ -81,13 +76,17 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
-     * Whether a class is a model the resolver can instantiate for its key type.
+     * Whether a concrete model runs Model::getKey() itself, whose `mixed` only the key type narrows.
+     *
+     * An override declares its own return, which PHP's covariance holds every subclass to, so reflection answers it.
      *
      * @param  class-string  $class
      */
-    private function isConcreteModel(string $class): bool
+    private function runsModelGetKey(string $class): bool
     {
-        return is_a($class, Model::class, true) && ! new ReflectionClass($class)->isAbstract();
+        return is_a($class, Model::class, true)
+            && ! new ReflectionClass($class)->isAbstract()
+            && new ReflectionMethod($class, 'getKey')->getDeclaringClass()->getName() === Model::class;
     }
 
     /**
@@ -103,7 +102,7 @@ final class ReceiverMethodReturnResolver
             return null;
         }
 
-        // castAttribute() casts an incrementing key through getKeyType(), and treats `int` and `integer` alike.
+        // getCasts() casts an incrementing key as getKeyType(), and castAttribute() treats `int` and `integer` alike.
         return in_array($instance->getKeyType(), ['int', 'integer'], true) ? 'number' : 'string';
     }
 

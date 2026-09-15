@@ -189,13 +189,20 @@ returns `mixed`, and `Collection::modelKeys()` returns `array<int, array-key>`, 
 
 | Call | Receiver | Published type |
 | --- | --- | --- |
-| `getKey()` | A concrete model | `number` when `getKeyType()` is `int` or `integer`, else `string` |
-| `getKey()` | `Model` itself, or any abstract model | Declines without reflecting, since `Model::getKey()` is `mixed` |
+| `getKey()` | A concrete model that inherits `Model::getKey()` | `number` when `getKeyType()` is `int` or `integer`, else `string` |
+| `getKey()` | `Model` itself, or an abstract model that inherits `Model::getKey()` | No rule. Reflection declines the inherited `mixed`. |
+| `getKey()` | Any model that declares `getKey()` itself | No rule. Reflection publishes the override's own return, such as `getKey(): string`. |
 | `modelKeys()` | An Eloquent collection with `elementModel` set | The element model's key type as a list, `number[]` or `string[]` |
 
 The key type comes from `ModelAttributeResolver::getInstance()`, so `HasUuids`, `HasUlids`, and a
 `#[Table(keyType: ...)]` attribute all count. Both `int` and `integer` map to `number`, because
-`HasAttributes::castAttribute()` casts an incrementing key through `getKeyType()` and treats the two alike.
+`HasAttributes::getCasts()` casts an incrementing key as `getKeyType()`, and `castAttribute()` treats `int` and
+`integer` alike. `AppliesKnownMethodRules::knownMethodRule()` and `ResolvesAuthHelperCalls::authMethodResult()` map
+the key type the same way.
+
+The `getKey()` rule applies only while `Model::getKey()` is the declaration that runs. A model that overrides it
+declares its own return, and PHP holds every subclass to that return, so reflection types it soundly even on an
+abstract model.
 When no instance can be built, no rule answers and the order below runs: `getKey()` then declines on `mixed`,
 and `modelKeys()` keeps its reflected `(string | number)[]`.
 

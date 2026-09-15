@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BrandedFormRequestRulesAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\StarterKit\StarterKitMiddleware;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverIntegerKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TsCastsGuardRequest;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TsCastsOverrideRequest;
 use AbeTwoThree\LaravelTsPublish\Transformers\FormRequestTransformer;
@@ -350,6 +351,15 @@ it('types auth()->user() and auth()->id()', function () {
     expect((new KnownFunctionCallHandler)->resolve($call('user'), requestRuleScope(), requestRuleEngine()))
         ->toBe(['type' => 'User | null', 'optional' => false, 'modelFqcn' => User::class])
         ->and((new KnownFunctionCallHandler)->resolve($call('id'), requestRuleScope(), requestRuleEngine()))
+        ->toBe(['type' => 'number | null', 'optional' => false]);
+});
+
+it('types auth()->id() and Auth::id() as number for an `integer` key type', function () {
+    config()->set('auth.providers.users.model', ReceiverIntegerKeyModel::class);
+
+    expect((new KnownFunctionCallHandler)->resolve(new MethodCall(new FuncCall(new Name('auth')), 'id'), requestRuleScope(), requestRuleEngine()))
+        ->toBe(['type' => 'number | null', 'optional' => false])
+        ->and((new StaticCallHandler)->resolve(new StaticCall(new Name('Auth'), 'id'), requestRuleScope(), requestRuleEngine()))
         ->toBe(['type' => 'number | null', 'optional' => false]);
 });
 

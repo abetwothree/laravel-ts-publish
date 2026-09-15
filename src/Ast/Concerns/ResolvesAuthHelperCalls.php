@@ -39,6 +39,8 @@ trait ResolvesAuthHelperCalls
 
         $instance = resolve(ModelAttributeResolver::class)->getInstance($model);
 
-        return ['type' => ($instance?->getKeyType() === 'int' ? 'number' : 'string').' | null', 'optional' => false];
+        $keyType = in_array($instance?->getKeyType(), ['int', 'integer'], true) ? 'number' : 'string';
+
+        return ['type' => $keyType.' | null', 'optional' => false];
     }
 }
