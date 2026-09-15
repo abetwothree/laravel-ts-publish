@@ -78,6 +78,13 @@ class ModelAttributeResolver
     protected array $dbColumnNamesCache = [];
 
     /**
+     * Per model-and-attribute cache of resolveAttributeClass(), since receiver resolution asks once per expression.
+     *
+     * @var array<string, class-string|null>
+     */
+    protected array $attributeClassCache = [];
+
+    /**
      * Resolve a model attribute's TypeScript type through the accessor → cast → DB type waterfall.
      *
      * @param  class-string  $modelFqcn
@@ -361,6 +368,35 @@ class ModelAttributeResolver
      */
     public function resolveAttributeClass(string $modelFqcn, string $attributeName): ?string
     {
+        $key = $modelFqcn.'::'.$attributeName;
+
+        if (! array_key_exists($key, $this->attributeClassCache)) {
+            $this->attributeClassCache[$key] = $this->findAttributeClass($modelFqcn, $attributeName);
+        }
+
+        return $this->attributeClassCache[$key];
+    }
+
+    /**
+     * Determine whether a resolved model cast belongs to the date/datetime family, including
+     * immutable_* variants and the `:format` suffix on custom_datetime casts.
+     */
+    public function isDateFamilyCast(string $cast): bool
+    {
+        return in_array(explode(':', $cast)[0], [
+            'date', 'datetime', 'custom_datetime', 'timestamp',
+            'immutable_date', 'immutable_datetime', 'immutable_custom_datetime',
+        ], true);
+    }
+
+    /**
+     * Resolve an attribute's value class uncached, asking Castable before CastsAttributes as resolveCasterClass() does.
+     *
+     * @param  class-string  $modelFqcn
+     * @return class-string|null
+     */
+    protected function findAttributeClass(string $modelFqcn, string $attributeName): ?string
+    {
         $ctx = $this->resolveContext($modelFqcn);
         $attr = $ctx === null ? null : $ctx['attributes']->firstWhere('name', $attributeName);
 
@@ -385,27 +421,15 @@ class ModelAttributeResolver
             };
         }
 
-        if (is_a($head, CastsAttributes::class, true)) {
-            return $this->singleClass(new ReflectionMethod($head, 'get')->getReturnType(), $head);
-        }
-
         if (is_a($head, Castable::class, true)) {
             return $this->castableValueClass($head, $cast);
         }
 
-        return enum_exists($head) ? $head : null;
-    }
+        if (is_a($head, CastsAttributes::class, true)) {
+            return $this->methodReturnClass($head, 'get');
+        }
 
-    /**
-     * Determine whether a resolved model cast belongs to the date/datetime family, including
-     * immutable_* variants and the `:format` suffix on custom_datetime casts.
-     */
-    public function isDateFamilyCast(string $cast): bool
-    {
-        return in_array(explode(':', $cast)[0], [
-            'date', 'datetime', 'custom_datetime', 'timestamp',
-            'immutable_date', 'immutable_datetime', 'immutable_custom_datetime',
-        ], true);
+        return enum_exists($head) ? $head : null;
     }
 
     /**
@@ -426,18 +450,23 @@ class ModelAttributeResolver
         }
 
         if ($attribute instanceof Attribute) {
-            $getter = $attribute->get instanceof Closure
-                ? $this->singleClass(new ReflectionFunction($attribute->get)->getReturnType(), $reflection->getName())
-                : null;
+            $getter = $attribute->get instanceof Closure ? new ReflectionFunction($attribute->get) : null;
 
-            return $getter ?? $this->attributeDocblockGetClass($reflection->getMethod($newStyle));
+            // A native getter type is authoritative even when builtin; only an untyped getter defers to the docblock.
+            if ($getter !== null && $getter->hasReturnType()) {
+                return $this->singleClass(
+                    $getter->getReturnType(),
+                    $reflection->getName(),
+                    $getter->getClosureScopeClass()?->getName() ?? $reflection->getName(),
+                );
+            }
+
+            return $this->attributeDocblockGetClass($reflection->getMethod($newStyle));
         }
 
         $oldStyle = 'get'.Str::studly($attributeName).'Attribute';
 
-        return $reflection->hasMethod($oldStyle)
-            ? $this->singleClass($reflection->getMethod($oldStyle)->getReturnType(), $reflection->getName())
-            : null;
+        return $reflection->hasMethod($oldStyle) ? $this->methodReturnClass($reflection->getName(), $oldStyle) : null;
     }
 
     /**
@@ -494,23 +523,39 @@ class ModelAttributeResolver
 
         $casterClass = is_object($caster) ? $caster::class : $caster;
 
-        return is_a($casterClass, CastsAttributes::class, true)
-            ? $this->singleClass(new ReflectionMethod($casterClass, 'get')->getReturnType(), $casterClass)
-            : null;
+        return is_a($casterClass, CastsAttributes::class, true) ? $this->methodReturnClass($casterClass, 'get') : null;
+    }
+
+    /**
+     * The one class a method's native return type names, with `static` as the class and `self` as its declarer.
+     *
+     * @return class-string|null
+     */
+    protected function methodReturnClass(string $class, string $method): ?string
+    {
+        $reflection = new ReflectionMethod($class, $method);
+
+        return $this->singleClass($reflection->getReturnType(), $class, $reflection->getDeclaringClass()->getName());
     }
 
     /**
      * The class a reflected type names, or null for a builtin, union, or intersection type.
      *
+     * `static` names the class the value was read through; `self` names the class that declared the type.
+     *
      * @return class-string|null
      */
-    protected function singleClass(?ReflectionType $type, string $selfClass): ?string
+    protected function singleClass(?ReflectionType $type, string $staticClass, string $selfClass): ?string
     {
         if (! $type instanceof ReflectionNamedType || ($type->isBuiltin() && $type->getName() !== 'static')) {
             return null;
         }
 
-        $class = in_array($type->getName(), ['static', 'self'], true) ? $selfClass : $type->getName();
+        $class = match ($type->getName()) {
+            'static' => $staticClass,
+            'self' => $selfClass,
+            default => $type->getName(),
+        };
 
         return class_exists($class) || interface_exists($class) || enum_exists($class) ? $class : null;
     }

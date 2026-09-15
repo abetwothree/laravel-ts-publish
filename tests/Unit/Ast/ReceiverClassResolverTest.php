@@ -6,14 +6,19 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverBaseDto;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverChildDto;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverProbeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverReturnsProbe;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverVarProbe;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use PhpParser\Node\Expr;
@@ -91,7 +96,7 @@ describe('ReceiverClassResolver::resolve()', function () {
         $expected = $resolver->resolve(receiverExpr($viaThis), postScope());
 
         expect($expected)->not->toBeNull()
-            ->and($resolver->resolve(receiverExpr($viaResource), postScope())?->classes)->toBe($expected?->classes);
+            ->and($resolver->resolve(receiverExpr($viaResource), postScope()))->toEqual($expected);
     })->with([
         'enum cast' => ['$this->priority', '$this->resource->priority'],
         'carbon chain' => ['$this->published_at->setTimezone("UTC")', '$this->resource->published_at->setTimezone("UTC")'],
@@ -218,7 +223,61 @@ describe('ReceiverClassResolver::resolve()', function () {
     });
 });
 
+describe('ReceiverClassResolver visibility, @var types and class names', function () {
+    test('a @var type is read in full: a union with a builtin arm declines, a class or a class-or-null holds the class', function () {
+        $scope = new AnalysisScope(new ReflectionClass(ReceiverVarProbe::class));
+        $resolver = resolve(ReceiverClassResolver::class);
+
+        expect($resolver->resolve(receiverExpr('$this->collectionOrString'), $scope))->toBeNull()
+            ->and($resolver->resolve(receiverExpr('$this->spacedUnion'), $scope))->toBeNull()
+            ->and($resolver->resolve(receiverExpr('$this->service'), $scope)?->classes)->toBe([UrlService::class])
+            ->and($resolver->resolve(receiverExpr('$this->maybeService'), $scope)?->classes)->toBe([UrlService::class]);
+    });
+
+    test('a protected model method counts on $this, and declines through a local-variable receiver or the resource proxy', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $modelSubject = new AnalysisScope(new ReflectionClass(Post::class), Post::class);
+        $scope = postScope();
+        $scope->localVarBindings['post'] = receiverExpr('$this->resource');
+
+        expect($resolver->resolve(receiverExpr('$this->titleDisplay()'), $modelSubject)?->classes)->toBe([Attribute::class])
+            ->and($resolver->resolve(receiverExpr('$post->titleDisplay()'), $scope))->toBeNull()
+            ->and($resolver->resolve(receiverExpr('$this->titleDisplay()'), $scope))->toBeNull()
+            ->and($resolver->resolve(receiverExpr('$this->resource->titleDisplay()'), $scope))->toBeNull();
+    });
+
+    test('a protected property counts on $this but not on another receiver', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $scope = postScope();
+        $scope->localVarBindings['probe'] = receiverExpr('new \\AbeTwoThree\\LaravelTsPublish\\Tests\\Unit\\Ast\\Fixtures\\ReceiverVarProbe');
+
+        expect($resolver->resolve(receiverExpr('$this->hiddenService'), new AnalysisScope(new ReflectionClass(ReceiverVarProbe::class)))?->classes)
+            ->toBe([UrlService::class])
+            ->and($resolver->resolve(receiverExpr('$probe->hiddenService'), $scope))->toBeNull()
+            ->and($resolver->resolve(receiverExpr('$probe->service'), $scope)?->classes)->toBe([UrlService::class]);
+    });
+
+    test('new static, new self and new parent name the subject and its parent', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+
+        expect($resolver->resolve(receiverExpr('new static(1)'), postScope())?->classes)->toBe([ReceiverProbeResource::class])
+            ->and($resolver->resolve(receiverExpr('new self(1)'), postScope())?->classes)->toBe([ReceiverProbeResource::class])
+            ->and($resolver->resolve(receiverExpr('new parent(1)'), postScope())?->classes)->toBe([JsonResource::class]);
+    });
+});
+
 describe('ReceiverClassResolver::returnClasses()', function () {
+    test('self names the declaring class, while static and $this name the class read through', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $viaChild = receiverExpr('(new \\AbeTwoThree\\LaravelTsPublish\\Tests\\Unit\\Ast\\Fixtures\\ReceiverChildDto)->copy()');
+
+        expect($resolver->returnClasses(ReceiverChildDto::class, 'copy'))->toBe([ReceiverBaseDto::class])
+            ->and($resolver->returnClasses(ReceiverChildDto::class, 'fresh'))->toBe([ReceiverChildDto::class])
+            ->and($resolver->returnClasses(ReceiverChildDto::class, 'docCopy'))->toBe([ReceiverBaseDto::class])
+            ->and($resolver->returnClasses(ReceiverChildDto::class, 'docFresh'))->toBe([ReceiverChildDto::class])
+            ->and($resolver->resolve($viaChild, postScope())?->classes)->toBe([ReceiverBaseDto::class]);
+    });
+
     test('a native class, static, or class-and-null union return names its classes', function () {
         $resolver = resolve(ReceiverClassResolver::class);
 

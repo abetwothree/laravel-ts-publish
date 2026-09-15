@@ -47,9 +47,9 @@ final class PropertyDocblockTypeReader
      * Capture the type expression following `@var`, stopping at the first separator that ends it.
      *
      * Whitespace inside `{}`/`<>`/`()` or around a union operator belongs to the type; any other
-     * whitespace starts the `$name` or the prose description.
+     * whitespace starts the `$name` or the prose description. Public so ReceiverClassResolver reads the same full type.
      */
-    private function extractVarType(string $docComment): ?string
+    public function extractVarType(string $docComment): ?string
     {
         $content = trim((string) preg_replace(['#^[ \t]*/?\*+/?#m', '#\*+/\s*$#'], '', $docComment));
 

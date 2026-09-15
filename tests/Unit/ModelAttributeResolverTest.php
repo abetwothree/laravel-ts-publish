@@ -10,6 +10,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MissingTableModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\InvalidPivotClassParent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\InverseMorphToManyParent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\NotAModelPivot;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverAttributeBaseModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverAttributeChildModel;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -86,6 +89,41 @@ describe('resolveAttributeClass()', function () {
             ->and($resolver->resolveAttributeClass(ArrayObjectCastFixture::class, 'owner_snapshot'))->toBeNull()
             ->and($resolver->resolveAttributeClass(Post::class, 'no_such_attribute'))->toBeNull()
             ->and($resolver->resolveAttributeClass('Workbench\\App\\Models\\NoSuchModel', 'title'))->toBeNull();
+    });
+});
+
+describe('resolveAttributeClass() edge cases', function () {
+    test('an immutable date cast holds CarbonImmutable; a timestamp cast holds no class', function () {
+        $resolver = resolve(ModelAttributeResolver::class);
+
+        expect($resolver->resolveAttributeClass(ReceiverAttributeBaseModel::class, 'published_at'))->toBe(CarbonImmutable::class)
+            ->and($resolver->resolveAttributeClass(ReceiverAttributeBaseModel::class, 'deleted_at'))->toBeNull();
+    });
+
+    test('a Castable cast is asked for its caster before its own CastsAttributes get()', function () {
+        expect(resolve(ModelAttributeResolver::class)->resolveAttributeClass(ReceiverAttributeBaseModel::class, 'content'))
+            ->toBe(Coordinate::class);
+    });
+
+    test('a native getter type is authoritative even when the Attribute docblock names a class', function () {
+        expect(resolve(ModelAttributeResolver::class)->resolveAttributeClass(ReceiverAttributeBaseModel::class, 'typed_label'))
+            ->toBeNull();
+    });
+
+    test('a getter returning self names its declaring model; one returning static names the model read through', function () {
+        $resolver = resolve(ModelAttributeResolver::class);
+
+        expect($resolver->resolveAttributeClass(ReceiverAttributeChildModel::class, 'self_copy'))->toBe(ReceiverAttributeBaseModel::class)
+            ->and($resolver->resolveAttributeClass(ReceiverAttributeChildModel::class, 'static_copy'))->toBe(ReceiverAttributeChildModel::class);
+    });
+
+    test('the answer is memoized per model and attribute, including a null answer', function () {
+        $resolver = resolve(ModelAttributeResolver::class);
+        $resolver->resolveAttributeClass(Post::class, 'priority');
+        $resolver->resolveAttributeClass(Post::class, 'title');
+
+        expect(new ReflectionProperty($resolver, 'attributeClassCache')->getValue($resolver))
+            ->toBe([Post::class.'::priority' => Priority::class, Post::class.'::title' => null]);
     });
 });
 
