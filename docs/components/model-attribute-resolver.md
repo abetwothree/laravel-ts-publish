@@ -499,11 +499,20 @@ reaches resolution. A method that isn't trait-declared, or a trait with no match
 in the class hierarchy, passes the type string through unchanged.
 
 `@use Trait<X>` sits on the `use` statement inside the class body, not on the class docblock, so
-`traitUseArguments()` cannot reuse `ReflectionClass::getDocComment()` and instead scans the
-consumer's raw file source for the tag. That read bypasses `AstParser`'s cache entirely, so it calls
-`DependencyRecorder::record()` on the file itself before `file_get_contents()`, matching the
-[dependency recording policy](ast-engine.md#dependency-recording-policy) every other file-read in
-the package follows.
+`traitUseArguments()` cannot reuse `ReflectionClass::getDocComment()`. It parses the consumer's file
+through `AstParser::parseFile()`, which caches the AST per path and records the cache dependency
+itself, matching the [dependency recording policy](ast-engine.md#dependency-recording-policy) every
+other file-read in the package follows. It finds the consumer's `Class_` node by its resolved name,
+then reads the tag from the doc comment of the one `TraitUse` statement inside that class naming the
+target trait, in the `@use`, `@phpstan-use`, or `@psalm-use` spelling. A prose mention elsewhere in
+the file, for example inside the class docblock, is never a candidate. Only that statement's own doc
+comment is read. `traitUseArguments()` checks the consumer before its parents, and skips a class
+with no file rather than reading it.
+
+The trait name in the tag must resolve through the file's own `use` imports or its namespace.
+`resolveDocblockTypeName()`'s namespace fallback checks `class_exists()` and `enum_exists()`, not
+`trait_exists()`, so a trait referenced by its bare name from the same namespace, with no `use`
+import, does not resolve, and the binding silently fails.
 
 ## `publishedColumnNames()` and the `exclude_hidden` coupling
 
