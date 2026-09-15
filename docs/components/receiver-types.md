@@ -34,9 +34,9 @@ rules. The class docblock points here.
 
 | Expression | Receiver |
 | --- | --- |
-| `$this->resource` | `$scope->modelClass ?? $scope->instanceOfWrappedClass` |
+| `$this->resource` | The subject's own redeclaration when it names a class (`/** @var MediaType\|null */ public $resource`), else `$scope->modelClass ?? $scope->instanceOfWrappedClass`. `JsonResource::$resource` is `@var mixed`, which names nothing, so an ordinary resource takes the backing class. |
 | `$this->resource->prop`, `$this->resource?->prop` | The model-member rules `$this->prop` uses on a model-backed subject. The subject-declared property rule never applies. |
-| `$this->prop`, with `prop` declared on the subject below any `Illuminate\` ancestor, at any visibility | Its native class type, else its full `@var` type |
+| `$this->prop`, where `SubjectPropertyTypeResolver::declaresOwnProperty()` holds — declared on the subject below any `Illuminate\` ancestor, non-static, and not a framework name it inherits — at any visibility | Its native class type, else its full `@var` type |
 | `$this->prop` on a model-backed subject | `ModelAttributeResolver::resolveAttributeClass()`, else the relation: its morph targets or `resolveMorphToBound()`, `[EloquentCollection]` with `elementModel` for to-many, or the related model |
 | `$var` | `varModelBindings`, then `varCollectionBindings` (a collection with `elementModel`), then `requestVarNames`, then `closureParamExprBindings` and `localVarBindings` resolved recursively under `resolvingLocalVars`. An unbound variable is `null`. |
 | `<receiver>->prop`, `<receiver>?->prop` | For a model class, the attribute and relation rules above. For any other class, its declared **public** property's class. |
@@ -298,6 +298,8 @@ be `unknown`.
 
 A `$this->prop` leaf declines outright. That read is `ThisPropertyHandler`'s, which consults the subject's own
 declaration before the model; `$this->resource->prop` is a receiver read like any other, and reaches here.
+Which properties count as the subject's own, why a framework name such as `resource` never does, and the
+resolution order behind them are in [AST engine § Subject mode](ast-engine.md#subject-mode).
 
 How one class types the property:
 

@@ -28,6 +28,8 @@ use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Http\Resources\ImageResource;
+use Workbench\App\Http\Resources\ModelWrappedPropResource;
+use Workbench\App\Http\Resources\PostStatsResource;
 use Workbench\App\Http\Resources\ReceiverMethodResource;
 use Workbench\App\Http\Resources\ReceiverPropertyResource;
 use Workbench\App\Models\Comment;
@@ -337,6 +339,29 @@ describe('ReceiverPropertyFetchHandler', function () {
 
         expect(LaravelTsPublish::propertyTypes(new ReflectionClass(ReceiverVarProbe::class), 'anyModel')['classFqcns'])->toBe([Model::class])
             ->and($handler->resolve(receiverHandlerExpr('$probe->anyModel'), $scope, chainHandlersThrowingEngine()))->toBeNull();
+    });
+});
+
+describe('a property the subject declares wins over the model', function () {
+    test('a promoted resource property wins over the model and chains through its own class', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(PostStatsResource::class), Post::class)->analyze()->properties)
+            ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+
+        expect($props->all())->toMatchArray([
+            'stats' => '{ views: number; shares: number } | null',
+            'views' => 'number | null',
+            'share_count' => 'number | null',
+        ]);
+    });
+
+    // `resource` is declared by JsonResource, so it is never the subject's own; if that exclusion were
+    // dropped, every `$this->resource->…` receiver in the package would stop resolving.
+    test('$this->resource->prop still types, whether or not the subject redeclares $resource', function () {
+        $inherited = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class);
+        $redeclared = new ResourceAstAnalyzer(new ReflectionClass(ModelWrappedPropResource::class), Post::class);
+
+        expect($inherited->resolve(receiverHandlerExpr('$this->resource->title'))['type'])->toBe('string')
+            ->and($redeclared->resolve(receiverHandlerExpr('$this->resource->title'))['type'])->toBe('string');
     });
 });
 

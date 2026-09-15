@@ -102,6 +102,14 @@ final class PropertyChainHandler implements ExpressionHandler
             return ValueResult::unknown();
         }
 
+        // A chain rooted at a property the subject declares is not a model walk. Declining hands it to
+        // ReceiverPropertyFetchHandler, which resolves it from that property's own class.
+        if ($scope->modelClass !== null
+            && resolve(SubjectPropertyTypeResolver::class)->declaresOwnProperty($scope->subjectReflection, $chain[0]['name'])
+        ) {
+            return ValueResult::unknown();
+        }
+
         /** @var class-string<Model>|null $currentModel */
         $currentModel = $scope->closureRelationModelClass ?? $scope->modelClass;
 

@@ -238,15 +238,33 @@ and the fixtures named above for how these bindings surface in emitted output.
 
 Subject mode is how `$this->prop` resolves when `AnalysisScope::$modelClass` is `null` — a class the
 engine is pointed at that has no backing Eloquent model, which is every non-resource subject
-`AstEngine::analyzeMethod()` accepts (a broadcast event, a DTO, a plain class). A resource always has
-a model or the pipeline could not type it at all, so nothing on the resource path enters this mode;
-both arms below live strictly inside the `null` branch that previously returned `unknown`.
+`AstEngine::analyzeMethod()` accepts (a broadcast event, a DTO, a plain class). Both arms below live
+strictly inside that `null` branch.
 
-Resolution order for the property itself is **`@var` docblock first, native declared type second** —
-`PropertyDocblockTypeReader::read()`, then `LaravelTsPublish::propertyTypes()` — with the result
-accepted through `ReflectedTypeAcceptor`, so a token that has no importable published file rejects
-the whole result rather than shipping a name nothing imports. `SubjectPropertyTypeResolver` is the one
-home for that pair; `AstEngine::analyzePublicProperties()` and both handler arms call it.
+A model-backed subject now reaches the same resolver through a different door.
+`SubjectPropertyTypeResolver::declaresOwnProperty()` asks whether the subject declares the property
+itself, and when it does, that declaration answers `$this->prop` **before** the model's attributes and
+relations are consulted. This matches what runs: PHP reads a declared property before
+`JsonResource::__get()` ever forwards to the model, so a resource carrying its own `$stats` publishes
+that value object, not a same-named model attribute. A result naming an abstract or `Illuminate\`
+model still declines, through `ValueResult::namesOnlyPublishedModels()`, rather than emitting a token
+nothing imports.
+
+A name the framework declares is never the subject's own, however the subject redeclares it:
+`resource`, `with` and `additional` on `JsonResource`, `collects` and `collection` on
+`ResourceCollection`, every `Model` property, and any static property. Excluding them is what keeps
+`$this->resource` meaning the backing model. `preserveKeys` is deliberately *not* in that set —
+Laravel reads it with `property_exists()` rather than declaring it, so it belongs to the subject.
+
+Resolution order for the property itself is **`@var` docblock first, native declared type second,
+untyped default literal third** — `PropertyDocblockTypeReader::read()`, then
+`LaravelTsPublish::propertyTypes()` accepted through `ReflectedTypeAcceptor`, so a token that has no
+importable published file rejects the whole result rather than shipping a name nothing imports, and
+last the literal an untyped property defaults to. That final rule types `protected $extensions =
+['png', 'jpg']` as `string[]` and `protected $limit = 10` as `number`, while a mixed list, a non-list
+array, or a `null` default yields nothing — which is why an untyped property with no explicit default
+still resolves to nothing at all. `SubjectPropertyTypeResolver` is the one home for all three;
+`AstEngine::analyzePublicProperties()` and both handler arms call it.
 
 There are two arms because the dispatcher never hands the inner node of a chain to a handler:
 
@@ -258,7 +276,10 @@ There are two arms because the dispatcher never hands the inner node of a chain 
   `$this->post` is never consulted. The chain handler resolves its own first segment the same way, and
   **only a `Model` subclass hands off**: that model becomes the walk's starting point and the existing
   relation/attribute traversal runs unchanged over the remaining steps. Any other type declines, and
-  the expression degrades to `unknown` exactly as before.
+  the expression degrades to `unknown` exactly as before. On a *model-backed* subject the same arm
+  declines outright when `declaresOwnProperty()` claims the chain's root, because the walk would
+  otherwise read the model: declining hands the chain to `ReceiverPropertyFetchHandler`, which types it
+  from that property's own class, so `$this->stats?->views` follows `PostStats`, not the model.
 
 [Receiver types](receiver-types.md) documents `ReceiverClassResolver`, which names the PHP class an expression holds.
 

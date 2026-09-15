@@ -105,6 +105,14 @@ final class ThisPropertyHandler implements ExpressionHandler
             return $this->analyzeCollectionProperty($scope);
         }
 
+        // PHP reads a declared property before JsonResource::__get() ever forwards to the model.
+        if ($scope->modelClass !== null && resolve(SubjectPropertyTypeResolver::class)->declaresOwnProperty($scope->subjectReflection, $propName)) {
+            $own = resolve(SubjectPropertyTypeResolver::class)->resolve($scope->subjectReflection, $propName);
+
+            // An abstract or framework model would be emitted as a token nothing imports.
+            return $own !== null && ValueResult::namesOnlyPublishedModels($own) ? $own : $result;
+        }
+
         $info = $this->resolveModelAttributeTypeInfo($propName, $scope);
 
         if ($info['type'] !== 'unknown') {

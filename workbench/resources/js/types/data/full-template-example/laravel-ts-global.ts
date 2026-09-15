@@ -3141,6 +3141,13 @@ declare global {
             headline: app.models.Comment | null;
             spotlight: { comment: app.models.Comment | null };
         }
+        /** A resource that carries a value next to its model through a promoted constructor property. */
+        export interface PostStatsResource {
+            id: number;
+            stats: { views: number; shares: number } | null;
+            views: number | null;
+            share_count: number | null;
+        }
         /** Inherits `$wrap = null` and declares nothing else — the delegated analysis must still see it. */
         export type PostUnwrappedCollection = PostResource[];
         /**

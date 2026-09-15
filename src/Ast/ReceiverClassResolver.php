@@ -245,11 +245,22 @@ final class ReceiverClassResolver
 
         $property = $subject->getProperty($name);
 
-        if (str_starts_with($property->getDeclaringClass()->getName(), 'Illuminate\\')) {
-            return $name === 'resource' && $backing !== null ? ReceiverType::of($backing) : null;
+        if ($property->isStatic()) {
+            return null;
         }
 
-        return $property->isStatic() ? null : $this->typeOf($this->propertyClasses($property, $subject->getName()));
+        // A subject that redeclares a framework name still names its own class (`/** @var MediaType|null */
+        // public $resource`); `@var mixed` on JsonResource::$resource names nothing, so a plain
+        // `$this->resource` falls through to the backing model below.
+        $declared = str_starts_with($property->getDeclaringClass()->getName(), 'Illuminate\\')
+            ? null
+            : $this->typeOf($this->propertyClasses($property, $subject->getName()));
+
+        if ($declared !== null || resolve(SubjectPropertyTypeResolver::class)->declaresOwnProperty($subject, $name)) {
+            return $declared;
+        }
+
+        return $name === 'resource' && $backing !== null ? ReceiverType::of($backing) : null;
     }
 
     /**

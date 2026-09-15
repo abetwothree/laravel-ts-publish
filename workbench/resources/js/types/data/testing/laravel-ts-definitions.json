@@ -12337,6 +12337,31 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\PostStatsResource": {
+            "name": "PostStatsResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "stats",
+                    "type": "{ views: number; shares: number } | null",
+                    "optional": false
+                },
+                {
+                    "name": "views",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "share_count",
+                    "type": "number | null",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\PostUnwrappedCollection": {
             "name": "PostUnwrappedCollection",
             "typeAlias": "PostResource[]"

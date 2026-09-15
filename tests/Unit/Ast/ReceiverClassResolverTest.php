@@ -29,6 +29,7 @@ use Workbench\App\Models\Image;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 use Workbench\App\Services\UrlService;
+use Workbench\App\ValueObjects\PostStats;
 use Workbench\Crm\Models\User as CrmUser;
 
 /** Parse one expression statement written with fully-qualified names. */
@@ -118,7 +119,7 @@ describe('ReceiverClassResolver::resolve()', function () {
 
     test('a subject-declared promoted property holds its declared class', function () {
         expect(resolve(ReceiverClassResolver::class)->resolve(receiverExpr('$this->stats'), postScope())?->classes)
-            ->toBe([UrlService::class]);
+            ->toBe([PostStats::class]);
     });
 
     test('a subject-declared property answers only the $this spelling', function () {

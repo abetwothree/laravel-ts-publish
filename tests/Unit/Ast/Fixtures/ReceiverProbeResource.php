@@ -7,11 +7,12 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Models\Post;
 use Workbench\App\Services\UrlService;
+use Workbench\App\ValueObjects\PostStats;
 
 /** @mixin Post */
 final class ReceiverProbeResource extends JsonResource
 {
-    public function __construct(Post $resource, private readonly ?UrlService $stats = null)
+    public function __construct(Post $resource, private readonly ?PostStats $stats = null)
     {
         parent::__construct($resource);
     }
