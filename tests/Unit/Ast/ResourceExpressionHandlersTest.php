@@ -46,6 +46,7 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\VariadicPlaceholder;
 use Workbench\App\Http\Resources\CommentResource;
+use Workbench\App\Http\Resources\ReceiverMethodResource;
 use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
@@ -169,6 +170,15 @@ it('tries RelationFilterHandler before MethodChainHandler for $this->relation?->
         'optional' => false,
         'modelFqcn' => Post::class,
     ]);
+});
+
+// MethodChainHandler claims NullsafeMethodCall ahead of ReceiverMethodCallHandler. A `static|null` return reflects
+// to `unknown | null` on the related model; flooring there would split this from `$this->author->fresh()`'s type.
+it('lets MethodChainHandler decline an unknown-only $this->relation?->fresh() for ReceiverMethodCallHandler', function () {
+    $expr = new NullsafeMethodCall(new PropertyFetch(new Variable('this'), 'author'), 'fresh');
+    $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverMethodResource::class), Post::class);
+
+    expect($analyzer->resolve($expr))->toBe(['type' => 'User | null', 'optional' => false, 'modelFqcn' => User::class]);
 });
 
 // Ordering pin #3: both handlers claim $this->{multi-FQCN accessor}, but PropertyChainHandler's

@@ -16,23 +16,20 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
+use AbeTwoThree\LaravelTsPublish\Ast\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Config;
-use JsonSerializable;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Scalar\String_;
 use ReflectionClass;
-use ReflectionIntersectionType;
 use ReflectionMethod;
-use ReflectionNamedType;
-use ReflectionUnionType;
 
 /**
  * The dispatch floor: Laravel-convention method-name rules for method calls no earlier handler
@@ -210,40 +207,11 @@ final class KnownMethodRuleHandler implements ExpressionHandler
     /**
      * Whether every class the declared return names reaches a page prop as the type reflection derived.
      *
-     * `toTsType()` reads `__toString` as `string`, but `json_encode` ignores it and emits an object:
-     * `allFiles()`'s UploadedFile and `interval()`'s CarbonInterval are not the strings it promises.
+     * `allFiles()`'s UploadedFile and `interval()`'s CarbonInterval are not the strings `toTsType()` promises;
+     * see StringSerialization.
      */
     private function serializesAsReflected(ReflectionMethod $method): bool
     {
-        $returnType = $method->getReturnType();
-        $docComment = $method->getDocComment();
-
-        $declared = $docComment === false ? '' : (string) LaravelTsPublish::extractReturnTypeFromDocblock($docComment);
-
-        $arms = match (true) {
-            $returnType instanceof ReflectionNamedType => [$returnType],
-            $returnType instanceof ReflectionUnionType,
-            $returnType instanceof ReflectionIntersectionType => $returnType->getTypes(),
-            default => [],
-        };
-
-        foreach ($arms as $arm) {
-            // A DNF arm is an intersection nested inside a union: flatten one level to reach its names.
-            foreach ($arm instanceof ReflectionIntersectionType ? $arm->getTypes() : [$arm] as $named) {
-                if ($named instanceof ReflectionNamedType && ! $named->isBuiltin()) {
-                    $declared .= '|'.$named->getName();
-                }
-            }
-        }
-
-        // `class_exists` mirrors step 5b's own gate, so an interface — which it never launders — is skipped.
-        // Request writes every class in its declarations fully qualified, so no use map is needed here.
-        foreach (preg_split('/[^\w\\\\]+/', $declared) ?: [] as $token) {
-            if (str_contains($token, '\\') && class_exists($token) && ! is_a($token, JsonSerializable::class, true)) {
-                return false;
-            }
-        }
-
-        return true;
+        return ! StringSerialization::methodReturnsFalseString($method->class, $method->getName());
     }
 }

@@ -3258,6 +3258,10 @@ declare global {
             author_morph: string | null;
             record_class: string;
             from_label: string;
+            author_fresh: app.models.User | null;
+            author_fresh_nullsafe: app.models.User | null;
+            resource_author_fresh: app.models.User | null;
+            resource_author_fresh_nullsafe: app.models.User | null;
         }
         /**
          * Regression fixture: analyzeThisMethodCall() spread a reflected TypeScriptTypeInfo straight into its

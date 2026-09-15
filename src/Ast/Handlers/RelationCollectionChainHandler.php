@@ -16,11 +16,11 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
+use AbeTwoThree\LaravelTsPublish\Ast\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectMethodTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
-use Carbon\Carbon as BaseCarbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
@@ -35,7 +35,6 @@ use PhpParser\Node\Identifier;
 use PhpParser\Node\Scalar\Int_;
 use ReflectionClass;
 use ReflectionMethod;
-use ReflectionNamedType;
 
 /**
  * Non-nullsafe method calls on `$this`: collection chains rooted at a many-relation, calls on a
@@ -337,7 +336,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
                     ? CarbonImmutable::class
                     : Carbon::class;
 
-                if (! $this->carbonMethodReturnsUnimportableStringable($carbonClass, $methodName)) {
+                if (! StringSerialization::methodReturnsFalseString($carbonClass, $methodName)) {
                     $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes(
                         new ReflectionClass($carbonClass),
                         $methodName,
@@ -375,35 +374,6 @@ final class RelationCollectionChainHandler implements ExpressionHandler
         }
 
         return $result;
-    }
-
-    /**
-     * Determine whether a Carbon(Immutable) method returns a __toString()-only class, not a genuine string.
-     *
-     * Needed since toTsType() erases Stringable classes to a bare `string` — mirrors step 5b's own condition.
-     * Carbon/CarbonImmutable are excluded — their `__toString()` IS the canonical value, unlike CarbonInterval's.
-     */
-    private function carbonMethodReturnsUnimportableStringable(string $carbonClass, string $methodName): bool
-    {
-        if (! method_exists($carbonClass, $methodName)) {
-            return false;
-        }
-
-        $returnType = new ReflectionMethod($carbonClass, $methodName)->getReturnType();
-
-        if (! $returnType instanceof ReflectionNamedType) {
-            return false;
-        }
-
-        $name = $returnType->getName();
-
-        if (in_array($name, [BaseCarbon::class, CarbonImmutable::class], true)) {
-            return false;
-        }
-
-        return class_exists($name)
-            && ! is_a($name, Model::class, true)
-            && method_exists($name, '__toString');
     }
 
     /**

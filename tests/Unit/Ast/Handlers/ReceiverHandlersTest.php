@@ -11,6 +11,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverMethodProbe;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverProbeEnum;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverShapedToArrayModel;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use PhpParser\Node\Expr;
@@ -51,8 +53,22 @@ describe('ReceiverMethodCallHandler through the resource analyzer', function () 
             'author_morph' => 'string | null',
             'record_class' => 'string',
             'from_label' => 'string',
+            'author_fresh' => 'User | null',
+            'author_fresh_nullsafe' => 'User | null',
+            'resource_author_fresh' => 'User | null',
+            'resource_author_fresh_nullsafe' => 'User | null',
         ]);
     });
+
+    test('a DateTime return stays unknown in every spelling, since json_encode() writes it as an object', function (string $php) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverMethodResource::class), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe('unknown');
+    })->with([
+        '$this->resource->published_at->toDateTime()',
+        '$this->published_at?->toDateTime()',
+        '$this->resource?->published_at?->toDateTime()',
+    ]);
 });
 
 describe('ReceiverMethodReturnResolver', function () {
@@ -83,7 +99,24 @@ describe('ReceiverMethodReturnResolver', function () {
         expect($resolver->resolve($probe, 'interval', receiverProbeScope()))->toBeNull()
             ->and($resolver->resolve($probe, 'docblockInterval', receiverProbeScope()))->toBeNull()
             ->and($resolver->resolve(ReceiverType::of(Carbon::class), 'diff', receiverProbeScope()))->toBeNull()
+            ->and($resolver->resolve($probe, 'docblockIntervals', receiverProbeScope()))->toBeNull()
             ->and($resolver->resolve($probe, 'text', receiverProbeScope())['type'] ?? null)->toBe('string');
+    });
+
+    test('a DateTime that is not JsonSerializable declines, while Carbon keeps its string', function () {
+        $resolver = resolve(ReceiverMethodReturnResolver::class);
+
+        expect($resolver->resolve(ReceiverType::of(Carbon::class), 'toDateTime', receiverProbeScope()))->toBeNull()
+            ->and($resolver->resolve(ReceiverType::of(ReceiverMethodProbe::class), 'plainDate', receiverProbeScope()))->toBeNull()
+            ->and($resolver->resolve(ReceiverType::of(Carbon::class), 'toMutable', receiverProbeScope())['type'] ?? null)->toBe('string');
+    });
+
+    test('a framework or abstract model token declines, because no file is published for it', function () {
+        $resolver = resolve(ReceiverMethodReturnResolver::class);
+
+        expect($resolver->resolve(ReceiverType::of(User::class), 'resolveRouteBinding', receiverProbeScope()))->toBeNull()
+            ->and($resolver->resolve(ReceiverType::of(User::class), 'newPivot', receiverProbeScope()))->toBeNull()
+            ->and($resolver->resolve(ReceiverType::of(Model::class), 'fresh', receiverProbeScope()))->toBeNull();
     });
 
     test('a union types only when every class types the method', function () {
@@ -94,11 +127,17 @@ describe('ReceiverMethodReturnResolver', function () {
             ->toBe(['type' => 'string', 'optional' => false]);
     });
 
-    test('a model toArray() and a vague array return decline', function () {
+    test('a model toArray() declines even when it declares a precise shape', function () {
         $resolver = resolve(ReceiverMethodReturnResolver::class);
+        $model = ReceiverType::of(ReceiverShapedToArrayModel::class);
 
-        expect($resolver->resolve(ReceiverType::of(Post::class), 'toArray', receiverProbeScope()))->toBeNull()
-            ->and($resolver->resolve(ReceiverType::of(Post::class), 'attributesToArray', receiverProbeScope()))->toBeNull();
+        expect($resolver->resolve($model, 'toArray', receiverProbeScope()))->toBeNull()
+            ->and($resolver->resolve($model, 'shape', receiverProbeScope())['type'] ?? null)->toBe('{ id: number }');
+    });
+
+    test('a vague array return declines', function () {
+        expect(resolve(ReceiverMethodReturnResolver::class)->resolve(ReceiverType::of(Post::class), 'attributesToArray', receiverProbeScope()))
+            ->toBeNull();
     });
 });
 

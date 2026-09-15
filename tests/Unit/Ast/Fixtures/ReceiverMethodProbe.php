@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 
 use Carbon\CarbonInterval;
+use DateTime;
+use DateTimeInterface;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Stringable;
@@ -32,6 +34,22 @@ final class ReceiverMethodProbe extends JsonResource
     public function docblockInterval()
     {
         return CarbonInterval::day();
+    }
+
+    /**
+     * A list of a class whose `__toString()` json_encode() ignores.
+     *
+     * @return list<CarbonInterval>
+     */
+    public function docblockIntervals()
+    {
+        return [CarbonInterval::day()];
+    }
+
+    /** A date union toTsType() publishes as `string`, which json_encode() writes as a date object. */
+    public function plainDate(): DateTimeInterface|DateTime
+    {
+        return new DateTime;
     }
 
     /** A class whose jsonSerialize() is declared as the string it stringifies to. */

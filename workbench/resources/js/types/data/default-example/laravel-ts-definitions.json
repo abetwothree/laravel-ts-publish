@@ -12737,6 +12737,26 @@
                     "name": "from_label",
                     "type": "string",
                     "optional": false
+                },
+                {
+                    "name": "author_fresh",
+                    "type": "User | null",
+                    "optional": false
+                },
+                {
+                    "name": "author_fresh_nullsafe",
+                    "type": "User | null",
+                    "optional": false
+                },
+                {
+                    "name": "resource_author_fresh",
+                    "type": "User | null",
+                    "optional": false
+                },
+                {
+                    "name": "resource_author_fresh_nullsafe",
+                    "type": "User | null",
+                    "optional": false
                 }
             ]
         },

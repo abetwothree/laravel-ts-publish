@@ -32,6 +32,10 @@ final class ReceiverMethodResource extends JsonResource
             'author_morph' => $author?->getMorphClass(),
             'record_class' => $record::className(),
             'from_label' => Priority::from(1)->label(),
+            'author_fresh' => $this->author->fresh(),
+            'author_fresh_nullsafe' => $this->author?->fresh(),
+            'resource_author_fresh' => $this->resource->author->fresh(),
+            'resource_author_fresh_nullsafe' => $this->resource?->author?->fresh(),
         ];
     }
 }

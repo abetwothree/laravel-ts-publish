@@ -1,3 +1,5 @@
+import type { User } from '../../models';
+
 /**
  * Method return types followed through every receiver kind: an enum cast, a Carbon cast, a local model,
  * a variable class for a static call, and an enum static constructor.
@@ -15,4 +17,8 @@ export interface ReceiverMethodResource
     author_morph: string | null;
     record_class: string;
     from_label: string;
+    author_fresh: User | null;
+    author_fresh_nullsafe: User | null;
+    resource_author_fresh: User | null;
+    resource_author_fresh_nullsafe: User | null;
 }

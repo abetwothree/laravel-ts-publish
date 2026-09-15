@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
@@ -51,7 +52,7 @@ final class MethodChainHandler implements ExpressionHandler
 
         $result = $this->analyzeMethodChain($expr, $scope);
 
-        return $result['type'] === 'unknown' ? null : $result;
+        return $this->isUnknownOnly($result['type']) ? null : $result;
     }
 
     /**
@@ -136,12 +137,12 @@ final class MethodChainHandler implements ExpressionHandler
 
         $tsInfo = $resolver->resolveMethodReturnType($currentModel, $methodName);
 
-        if ($tsInfo['type'] === '' || $tsInfo['type'] === 'unknown') {
+        if ($tsInfo['type'] === '' || $this->isUnknownOnly($tsInfo['type'])) {
             // Same convention rules RelationCollectionChainHandler uses for the non-nullsafe chain.
             $tsInfo = $this->knownMethodRule($call, $scope) ?? ValueResult::unknown();
         }
 
-        if ($tsInfo['type'] === 'unknown') {
+        if ($this->isUnknownOnly($tsInfo['type'])) {
             return ValueResult::unknown();
         }
 
@@ -150,5 +151,15 @@ final class MethodChainHandler implements ExpressionHandler
             : $tsInfo['type'].' | null';
 
         return ['type' => $type, 'optional' => false];
+    }
+
+    /**
+     * Whether a type is `unknown` once its `null` arms are removed, as a `static|null` docblock reflects.
+     *
+     * TypeScript already reads `unknown | null` as `unknown`, so declining it loses nothing.
+     */
+    private function isUnknownOnly(string $type): bool
+    {
+        return array_values(array_diff(TsTypeString::splitTopLevelUnion($type), ['null'])) === ['unknown'];
     }
 }

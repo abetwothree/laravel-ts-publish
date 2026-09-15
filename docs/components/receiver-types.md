@@ -187,12 +187,19 @@ receiver kind:
 2. `Model::toArray()` declines. It serializes whichever relations happen to be loaded, which is runtime state
    that no declaration describes. Its `array<string, mixed>` docblock is also vague, so step 6 would decline it
    too; the explicit check keeps that true for any fallback that accepts a vague type.
-3. When the declared return names a class that `toTsType()` would publish as `string` only because it has
-   `__toString()`, the call declines. `json_encode()` ignores `__toString()`: a `CarbonInterval` serializes
-   as an object. Two kinds of class are exempt, because `json_encode()` does produce a string for them:
-   `DateTimeInterface` classes that implement `JsonSerializable` (Carbon), and classes whose `jsonSerialize()`
-   is declared `: string` (`Illuminate\Support\Stringable`). Both the native type and the `@return` docblock
-   are checked, with `self`, `static`, and `$this` resolved.
+3. When the declared return names a class that `toTsType()` publishes as `string` but `json_encode()` does not
+   emit as a string, the call declines. `StringSerialization::isFalseString()` answers that for two kinds of class:
+   - A `DateTimeInterface` implementation that is not `JsonSerializable`. `toTsType()` maps `DateTime` to
+     `string`, but `json_encode()` writes it as a `{date, timezone_type, timezone}` object, so
+     `$this->published_at->toDateTime()` stays `unknown`. Carbon implements `JsonSerializable` and serializes
+     as its ISO string, so it keeps `string`.
+   - A class `toTsType()` reads as `string` through `__toString()`. `json_encode()` ignores `__toString()`: a
+     `CarbonInterval` serializes as an object. A class whose `jsonSerialize()` is declared `: string`, such as
+     `Illuminate\Support\Stringable`, is exempt. A model or an `Arrayable` is never read through `__toString()`.
+
+   `StringSerialization::methodReturnsFalseString()` checks every class the native type and the `@return` docblock
+   spell, a list element such as `list<CarbonInterval>` included, with `self`, `static`, and `$this` resolved.
+   `KnownMethodRuleHandler`'s request rule and `RelationCollectionChainHandler`'s date-cast arm use the same check.
 4. When `returnClasses()` is exactly `[$class]`, from `static`, `$this`, or a `self` the class itself
    declares, the call keeps the receiver's own type: `toTsType($class)`, plus `| null` when the native return
    or the `@return` docblock admits `null`. `Model::fresh()` on a `User` is `User | null`. A `self` return
@@ -201,6 +208,9 @@ receiver kind:
    `@return` docblock when the signature is vague.
 6. `ReflectedTypeAcceptor::accept()` must accept the type, and it must not be vague. A vague type such as
    `unknown[]` would claim a list where an associative array, or a `keyBy()` collection, is a JSON object.
+7. Every model the result names must be one the package publishes a file for. `ReflectedTypeAcceptor` accepts
+   any `Model` subclass, so a model under the `Illuminate\` namespace or an abstract model declines:
+   `User::resolveRouteBinding()` reflects to `Model | null` and `newPivot()` to `Pivot`.
 
 ### Unions, `?->`, and requests
 
@@ -222,7 +232,9 @@ The handler sits last before `KnownMethodRuleHandler`, so every more specific ha
 earlier claimants used to floor these calls at `unknown`, and now decline instead:
 
 - `RelationCollectionChainHandler`'s `$this->anyProp->method()` branch declines when it would answer `unknown`.
-- `MethodChainHandler` declines when it would answer `unknown`. It also declines when the last step of the
-  chain is not a relation. It used to reflect the method on the model that declares the step, which is the
-  wrong receiver: `$this->imageable?->getTable()` read `Image::getTable()`.
+- `MethodChainHandler` declines when its answer is only `unknown` once `null` arms are removed. A `static|null`
+  docblock such as `Model::fresh()`'s reflects to `unknown | null`, and flooring there made
+  `$this->author?->fresh()` disagree with `$this->author->fresh()`; both are now `User | null`. It also declines
+  when the last step of the chain is not a relation. It used to reflect the method on the model that declares
+  the step, which is the wrong receiver: `$this->imageable?->getTable()` read `Image::getTable()`.
 - `StaticCallHandler` declines a static call whose class is an expression, such as `$record::className()`.
