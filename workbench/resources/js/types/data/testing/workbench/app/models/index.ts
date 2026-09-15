@@ -22,6 +22,8 @@ export * from './composite-comment';
 export * from './composite-comment_meta';
 export * from './custom-key-post';
 export * from './custom-key-post_meta';
+export * from './docblock-generics-fixture';
+export * from './docblock-generics-fixture_meta';
 export * from './excludable-model';
 export * from './excludable-model_meta';
 export * from './image';

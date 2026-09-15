@@ -235,6 +235,7 @@
     "app\/Models\/Comment.php",
     "app\/Models\/CompositeComment.php",
     "app\/Models\/CustomKeyPost.php",
+    "app\/Models\/DocblockGenericsFixture.php",
     "app\/Models\/ExcludableModel.php",
     "app\/Models\/Image.php",
     "app\/Models\/Kpi.php",

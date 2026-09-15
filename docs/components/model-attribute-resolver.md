@@ -310,6 +310,12 @@ its returned map key (`'filters?'` rather than `'filters'`), so an alias expandi
 `array{filters?: ...}` emits `filters?: ...` in the generated interface instead of silently
 dropping optionality.
 
+A nullable member (`?Alias`) strips the leading `?` and recurses into
+`resolveDocblockTypePartOrAlias()` with the bare name. A resolved alias returns its expanded type
+from that recursive call; an unresolved name falls through to the ordinary pipeline and returns
+`unknown`. Either way the outer call appends `| null`, unless the type already contains `null`,
+mirroring the `?T` handling `toTsType()` does for a plain (non-alias) type.
+
 ## Castable-with-arguments cast strings
 
 `resolveAttribute()` passes a model's raw cast value straight to `LaravelTsPublish::toTsType()`, including

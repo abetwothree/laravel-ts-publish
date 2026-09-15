@@ -974,10 +974,23 @@ class LaravelTsPublish
      */
     public function resolveDocblockTypePartOrAlias(string $part, array $useMap, string $namespace, ReflectionClass $contextClass): array
     {
-        $alias = $this->resolvePhpstanTypeAlias($part, $contextClass);
+        $trimmed = trim($part);
+
+        // A nullable alias (`?FeatureValue`) would otherwise be looked up verbatim and miss.
+        if (str_starts_with($trimmed, '?')) {
+            $inner = $this->resolveDocblockTypePartOrAlias(substr($trimmed, 1), $useMap, $namespace, $contextClass);
+
+            if (! str_contains($inner['type'], 'null')) {
+                $inner['type'] .= ' | null';
+            }
+
+            return $inner;
+        }
+
+        $alias = $this->resolvePhpstanTypeAlias($trimmed, $contextClass);
 
         if ($alias === null) {
-            return $this->resolveDocblockTypePart($part, $useMap, $namespace);
+            return $this->resolveDocblockTypePart($trimmed, $useMap, $namespace);
         }
 
         return $this->resolveDocblockPartToInfo(

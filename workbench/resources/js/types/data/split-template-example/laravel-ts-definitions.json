@@ -4676,6 +4676,27 @@
                 }
             ]
         },
+        "Workbench\\App\\Models\\DocblockGenericsFixture": {
+            "name": "DocblockGenericsFixture",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "flag_default",
+                    "type": "boolean | number | string | null"
+                }
+            ]
+        },
         "Workbench\\App\\Models\\ExcludableModel": {
             "name": "ExcludableModel",
             "properties": [

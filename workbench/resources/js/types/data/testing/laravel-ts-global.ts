@@ -335,6 +335,15 @@ declare global {
             featured_image_url: string | null;
             is_pinned: boolean;
         }
+        /** Docblock-engine fixtures: every accessor's type lives only in its docblock. */
+        export interface DocblockGenericsFixture {
+            // Columns
+            id: number;
+            created_at: string | null;
+            updated_at: string | null;
+            // Mutators
+            flag_default: boolean | number | string | null;
+        }
         /** Model with excluded mutator and relation via #[TsExclude]. */
         export interface ExcludableModel {
             // Columns

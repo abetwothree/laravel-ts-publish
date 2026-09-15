@@ -10,6 +10,7 @@ export * from './child-shared-extendable-model';
 export * from './comment';
 export * from './composite-comment';
 export * from './custom-key-post';
+export * from './docblock-generics-fixture';
 export * from './excludable-model';
 export * from './image';
 export * from './kpi';

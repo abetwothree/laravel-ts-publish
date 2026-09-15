@@ -27,6 +27,7 @@ use Illuminate\Support\Collection;
 use Workbench\App\Casts\MenuSettings;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
+use Workbench\App\Models\DocblockGenericsFixture;
 use Workbench\App\Models\Order;
 use Workbench\App\Models\OrderItem;
 use Workbench\App\Models\User;
@@ -1220,6 +1221,22 @@ describe('phpstan type aliases', function () {
         );
 
         expect($alias)->toBeNull();
+    });
+});
+
+describe('resolveDocblockTypePartOrAlias() with a nullable alias', function () {
+    test('resolves ?Alias to the alias type plus null', function () {
+        $context = new ReflectionClass(DocblockGenericsFixture::class);
+
+        $info = $this->service->resolveDocblockTypePartOrAlias('?FlagValue', [], $context->getNamespaceName(), $context);
+
+        expect($info['type'])->toBe('boolean | number | string | null');
+    });
+
+    test('leaves a non-alias nullable name unchanged', function () {
+        $context = new ReflectionClass(DocblockGenericsFixture::class);
+
+        expect($this->service->resolveDocblockTypePartOrAlias('?int', [], '', $context)['type'])->toBe('number | null');
     });
 });
 
