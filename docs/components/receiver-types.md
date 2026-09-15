@@ -4,8 +4,9 @@
 > [the type-inference gates](../testing/type-inference-gates.md).
 
 `AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver` answers one question for the AST engine: which
-PHP class, or classes, does this expression hold? `ReceiverType` carries the answer. Nothing in dispatch
-calls the resolver yet. The handlers that follow a method's return through any receiver build on it.
+PHP class, or classes, does this expression hold? `ReceiverType` carries the answer.
+`ReceiverMethodCallHandler` asks it for a method call's receiver, then `ReceiverMethodReturnResolver` types the
+method on each class it names; see [Following a method's return type](#following-a-methods-return-type).
 
 ## What a receiver type is
 
@@ -158,3 +159,70 @@ The resolver returns `null` rather than a partial answer in these cases:
 A partial answer is refused because a handler reflects the next call on every class the receiver names.
 If one arm of `User|<unknown>` is dropped, `->label()` is reflected on `User` alone. The published type
 then claims more than the code guarantees, and nothing downstream can tell the missing arm existed.
+
+## Following a method's return type
+
+`AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler` claims `MethodCall`,
+`NullsafeMethodCall`, and `StaticCall`. It asks `ReceiverClassResolver::resolve()` for the receiver of
+`<receiver>->m()` and `<receiver>?->m()`, and `ReceiverClassResolver::resolveStaticReceiver()` for the class a
+static call is made on. `resolveStaticClass()` answers a different question: the classes that call returns.
+`ReceiverMethodReturnResolver::resolve()` then types the method on every class the receiver holds.
+
+`ReceiverMethodResource` in the workbench shows the owner's example, `$this->source->label()`, on each
+receiver kind:
+
+| Expression | Receiver | Published type |
+| --- | --- | --- |
+| `$this->priority->label()` | The `Priority` enum cast | `string` |
+| `$this->resource?->priority?->label()` | The same, through two `?->` steps | `string \| null` |
+| `$this->published_at->setTimezone('UTC')->toDateString()` | `Illuminate\Support\Carbon`, kept by `setTimezone(): static` | `string` |
+| `$author?->getMorphClass()`, where `$author = $this->author` | `User`, through a local variable | `string \| null` |
+| `$record::className()`, where `$record = $this->resource` | `Post`, as a static call's class | `string` |
+| `Priority::from(1)->label()` | `Priority`, returned by `from(): static` | `string` |
+
+### The order for one class
+
+1. The method must exist. On a receiver other than `self::`, `static::`, or `parent::`, it must be public,
+   by the same [visibility](#visibility) rule the resolver applies.
+2. `Model::toArray()` declines. It serializes whichever relations happen to be loaded, which is runtime state
+   that no declaration describes. Its `array<string, mixed>` docblock is also vague, so step 6 would decline it
+   too; the explicit check keeps that true for any fallback that accepts a vague type.
+3. When the declared return names a class that `toTsType()` would publish as `string` only because it has
+   `__toString()`, the call declines. `json_encode()` ignores `__toString()`: a `CarbonInterval` serializes
+   as an object. Two kinds of class are exempt, because `json_encode()` does produce a string for them:
+   `DateTimeInterface` classes that implement `JsonSerializable` (Carbon), and classes whose `jsonSerialize()`
+   is declared `: string` (`Illuminate\Support\Stringable`). Both the native type and the `@return` docblock
+   are checked, with `self`, `static`, and `$this` resolved.
+4. When `returnClasses()` is exactly `[$class]`, from `static`, `$this`, or a `self` the class itself
+   declares, the call keeps the receiver's own type: `toTsType($class)`, plus `| null` when the native return
+   or the `@return` docblock admits `null`. `Model::fresh()` on a `User` is `User | null`. A `self` return
+   inherited from a parent names the parent, so it is not treated as the receiver's type.
+5. Otherwise `LaravelTsPublish::methodOrDocblockReturnTypes()` reads the native signature, then the
+   `@return` docblock when the signature is vague.
+6. `ReflectedTypeAcceptor::accept()` must accept the type, and it must not be vague. A vague type such as
+   `unknown[]` would claim a list where an associative array, or a `keyBy()` collection, is a JSON object.
+
+### Unions, `?->`, and requests
+
+A receiver holding several classes types the method on each one and merges the answers with
+`ValueResult::mergeUnion()`. When any class declines, the whole call declines, for the reason given under
+[What stays unresolved](#what-stays-unresolved).
+
+The call gains `| null` when it is itself `?->`, or when the receiver's `shortCircuits` flag records an
+earlier `?->` in the chain. So `$this->resource?->author->getMorphClass()` is `string | null`. `null` is
+never added twice.
+
+A receiver that holds an `Illuminate\Http\Request` declines. `KnownMethodRuleHandler` owns request calls:
+it reads a form request's rules for `validated()`, the auth guard's model for `user()`, and refuses returns
+that do not serialize as reflected.
+
+### Which handlers step aside
+
+The handler sits last before `KnownMethodRuleHandler`, so every more specific handler answers first. Three
+earlier claimants used to floor these calls at `unknown`, and now decline instead:
+
+- `RelationCollectionChainHandler`'s `$this->anyProp->method()` branch declines when it would answer `unknown`.
+- `MethodChainHandler` declines when it would answer `unknown`. It also declines when the last step of the
+  chain is not a relation. It used to reflect the method on the model that declares the step, which is the
+  wrong receiver: `$this->imageable?->getTable()` read `Image::getTable()`.
+- `StaticCallHandler` declines a static call whose class is an expression, such as `$record::className()`.

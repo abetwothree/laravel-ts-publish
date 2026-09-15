@@ -25,5 +25,5 @@ export interface ShipmentResource
     tracking_events?: TrackingEventResource[];
     tracking_events_count?: number;
     events_total?: number;
-    transit_time?: unknown;
+    transit_time?: number | null;
 }

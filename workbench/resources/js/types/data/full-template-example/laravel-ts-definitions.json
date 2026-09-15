@@ -12690,6 +12690,56 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\ReceiverMethodResource": {
+            "name": "ReceiverMethodResource",
+            "properties": [
+                {
+                    "name": "priority_label",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "priority_label_nullsafe",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "resource_priority_label",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "resource_priority_label_nullsafe",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "resource_published_date",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "published_date",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "author_morph",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "record_class",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "from_label",
+                    "type": "string",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\ReflectedMethodChannelResource": {
             "name": "ReflectedMethodChannelResource",
             "properties": [
@@ -15129,7 +15179,7 @@
                 },
                 {
                     "name": "transit_time",
-                    "type": "unknown",
+                    "type": "number | null",
                     "optional": true
                 }
             ]

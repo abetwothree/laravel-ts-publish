@@ -38,31 +38,6 @@ use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
 
 /**
- * An engine that fails the test if a handler calls back into it, proving the handler resolved or
- * declined without recursing into a sub-expression.
- */
-function chainHandlersThrowingEngine(): ExpressionEngine
-{
-    return new class implements ExpressionEngine
-    {
-        public function resolve(Expr $expr): array
-        {
-            throw new RuntimeException('resolve() must not be called in this case');
-        }
-
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
-        {
-            throw new RuntimeException('spreadAnalysis() must not be called in this case');
-        }
-
-        public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
-        {
-            throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
-        }
-    };
-}
-
-/**
  * Resolves exactly the map closure to a canned body result, recording the scope bindings the chain
  * handler had installed at the moment it recursed — the only way to see them before the restore.
  */
@@ -185,13 +160,13 @@ it('declines a plain method call it does not claim', function () {
     expect($result)->toBeNull();
 });
 
-it('degrades a nullsafe method chain with no resolvable return type to unknown', function () {
+it('declines a nullsafe method chain with no resolvable return type', function () {
     $expr = new NullsafeMethodCall(chainThisProp('user'), 'notAMethodAnywhere');
     $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
 
     $result = (new MethodChainHandler)->resolve($expr, $scope, chainHandlersThrowingEngine());
 
-    expect($result)->toBe(['type' => 'unknown', 'optional' => false]);
+    expect($result)->toBeNull();
 });
 
 it('resolves a relation collection chain to the element-typed array', function () {

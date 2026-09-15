@@ -68,7 +68,7 @@ final class KnownMethodRuleHandler implements ExpressionHandler
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        // Only MethodCall reaches here — every NullsafeMethodCall already returned via MethodChainHandler.
+        // Claims MethodCall only: a NullsafeMethodCall every earlier claimant declines floors at unknown.
         if ($expr instanceof MethodCall) {
             $request = $this->requestMethodRule($expr, $scope);
 

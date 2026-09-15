@@ -21,7 +21,7 @@ records the staged exit and what each stage had to show before it landed.
 `ExpressionHandler::resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array`
 returning `null` means **decline**: the dispatcher tries the next candidate handler, and if none
 resolve it, the caller degrades to `ValueResult::unknown()`. This is the decline-and-fall-through
-contract every handler implements — it is what lets 24 independently-written handlers reproduce one
+contract every handler implements — it is what lets 25 independently-written handlers reproduce one
 ordered guard chain's behavior without any handler knowing about the others.
 
 `ExpressionDispatcher::dispatch()` does the trying. For an expression's *concrete* node class, it
@@ -32,7 +32,7 @@ list, so a repeated dispatch of an unclaimed node class never re-scans every han
 again. Handlers run in registration order within that candidate list; the first non-null `resolve()`
 wins. This is PHPStan's `ExprHandlerRegistry` and Rector's `NodeNameResolver` memoization pattern,
 scaled down: no DI container, no attribute-driven autodiscovery, just a plain constructor array — at
-24 handlers that is enough.
+25 handlers that is enough.
 
 `ExpressionEngine` has exactly three methods, all implemented today by `ResourceAstAnalyzer`:
 
@@ -55,7 +55,10 @@ changes which handler wins for a shared class is a silent behavior regression, n
 
 `ResourceExpressionHandlers::make()` builds the resource profile — the 22 handlers extracted from
 the legacy `analyzeValueExpression()` guard chain, in the exact order the chain checked them, plus
-`ArrayMergeHandler` and `InertiaWrapperHandler`.
+`ArrayMergeHandler`, `InertiaWrapperHandler`, and `ReceiverMethodCallHandler`. `ReceiverMethodCallHandler`
+sits last before the convention rules in `KnownMethodRuleHandler`, so every specific handler keeps priority;
+it follows a method's return type through any receiver class, see
+[Receiver types](./receiver-types.md#following-a-methods-return-type).
 `ResourceExpressionHandlers::generic()` is that same list minus the three
 resource-only handlers (`ConditionalMethodHandler`, `ToResourceHandler`, `RelationFilterHandler`)
 — every other handler is class-agnostic and safe to reuse outside a resource's `toArray()`.
@@ -72,16 +75,16 @@ The executable ordering contract lives in `tests/Unit/Ast/ResourceExpressionHand
     alone, ignoring arguments, so it also claims this shape; if it ran first it would call
     `MethodCall::getArgs()`, which asserts `!isFirstClassCallable()` and fatals.
   - `RelationFilterHandler` before `MethodChainHandler` for `$this->relation?->only([...])`.
-    `MethodChainHandler`'s floor is `ValueResult::unknown()`, never `null`, so it always claims
-    every `NullsafeMethodCall` — if it ran first it would win this one too, degrading a `Pick<>`
-    reference to a plain reflected type.
+    `MethodChainHandler` now declines what it cannot type, but it does type this call: the chain ends on
+    a relation, so it reflects `only()` on the related model. If it ran first it would degrade the
+    `Pick<>` reference to that reflected type.
   - `ThisPropertyHandler` before `PropertyChainHandler` for `$this->{multi-FQCN accessor}`.
     `ThisPropertyHandler` threads a multi-model accessor's FQCNs out as `embeddedModelFqcns`, used
     downstream to alias same-basename union arms apart; `PropertyChainHandler`'s last-step branch has
     no equivalent, so swapping the two loses one arm's FQCN entirely rather than merely reordering.
   - `InertiaWrapperHandler` before `StaticCallHandler` for `Inertia::always(...)`. `StaticCallHandler`'s
-    last arm claims every `StaticCall` and never declines, so if it ran first it would reflect the
-    wrapper as an ordinary static method and floor the prop at `unknown` instead of the wrapped value.
+    last arm claims every `StaticCall` on a named class and never declines one, so if it ran first it would
+    reflect the wrapper as an ordinary static method and floor the prop at `unknown` instead of the wrapped value.
   - `FirstClassCallableHandler` before `KnownFunctionCallHandler` for a first-class-callable
     `auth()->user(...)`. `KnownFunctionCallHandler` gates only the inner `auth()` call on
     `isFirstClassCallable()`, never the outer `MethodCall`, so if it ran first it would answer with
@@ -91,7 +94,7 @@ The executable ordering contract lives in `tests/Unit/Ast/ResourceExpressionHand
     calls `getArgs()`, which asserts `!isFirstClassCallable()` and fatals without the guard ahead of it.
 
 `MethodCall` gets a further, exhaustive layer on top of the six pins above:
-`tests/Unit/Ast/MethodCallOrderingMatrixTest.php` runs every one of its nine claimants' 36 unordered
+`tests/Unit/Ast/MethodCallOrderingMatrixTest.php` runs every one of its ten claimants' 45 unordered
 pairs in both orders over a curated corpus, the same mutate/watch-fail/revert method proves each pin
 with, rather than trusting a hand-picked example per pair — see that node class's inventory row below.
 
@@ -110,7 +113,7 @@ handlers inserted **immediately before `StaticCallHandler`**:
   it wraps, including the preserve-keys `Omit<…, 'data'> & { data: Record<string, R> }` shape.
 
 That position is load-bearing in both directions. `StaticCallHandler`'s final arm claims every
-`StaticCall` and never declines, so anything registered after it never sees one; and `NewResourceHandler`
+`StaticCall` on a named class and never declines one, so anything registered after it never sees one; and `NewResourceHandler`
 sits directly after `StaticCallHandler` and resolves a `ResourceCollection` to its collected element
 array, so a `New_` handler has to precede that too. `tests/Unit/Ast/ControllerExpressionHandlersTest.php`
 pins the structure (the profile equals `generic()` with exactly those two inserted at that point) plus
@@ -130,14 +133,14 @@ actually claim the same expression, so their relative order cannot change output
 
 | Node class | Claimants | Status |
 | --- | --- | --- |
-| `MethodCall` | `FirstClassCallableHandler`, `KnownFunctionCallHandler`, `ConditionalMethodHandler`, `ToResourceHandler`, `StaticCallHandler`, `RelationFilterHandler`, `RelationCollectionChainHandler`, `VariableHandler`, `KnownMethodRuleHandler` (9) | Five of the 36 unordered pairs are pinned: `FirstClassCallableHandler` before `ConditionalMethodHandler` and before `ToResourceHandler` (both crash-level — the loser calls `getArgs()`, which asserts `!isFirstClassCallable()`); `FirstClassCallableHandler` before `KnownFunctionCallHandler` (a silent divergence: `auth()->user(...)` as a first-class callable resolves to the guard's model instead of `unknown`); `ToResourceHandler` and `RelationFilterHandler` each before `RelationCollectionChainHandler` (its separate `$this->anyProp->method()` branch would otherwise answer first — e.g. flooring `$this->post->toResource()` at `unknown` instead of resolving the guessed resource). `SubjectMethodTypeResolver::resolve()` declines when nothing in scope declares the method, so `RelationCollectionChainHandler` no longer floors every `$this->method()` at `unknown`; `ConditionalMethodHandler` and `KnownMethodRuleHandler` therefore answer `$this->when()`/`whenLoaded()` and `can()`/`cannot()`/`canAny()` in either order. The decline is not ordering alone: a model that declares `can()` with a return type `ReflectedTypeAcceptor` rejects — `can(): void` — falls through the same way, so it too lands on `KnownMethodRuleHandler`'s `boolean` where it used to floor at `unknown`. Every unordered pair is run in both orders by `tests/Unit/Ast/MethodCallOrderingMatrixTest.php` over a curated corpus: the pairs in its `METHOD_CALL_PINNED` map disagree and are held in the direction `handlers()` lists them; every other pair is proven inert on that corpus (a new expression shape that makes an inert pair disagree fails the matrix, which is the signal to pin it). In the controller profile `ControllerExpressionHandlers` splices `ModelFinderHandler` (`StaticCall` + `MethodCall`) ahead of `StaticCallHandler`, making ten claimants there. |
-| `NullsafeMethodCall` | `RelationFilterHandler`, `MethodChainHandler` (2) | Pinned — the whole candidate list, full coverage. |
+| `MethodCall` | `FirstClassCallableHandler`, `KnownFunctionCallHandler`, `ConditionalMethodHandler`, `ToResourceHandler`, `StaticCallHandler`, `RelationFilterHandler`, `RelationCollectionChainHandler`, `VariableHandler`, `ReceiverMethodCallHandler`, `KnownMethodRuleHandler` (10) | Four of the 45 unordered pairs are pinned: `FirstClassCallableHandler` before `ConditionalMethodHandler` and before `ToResourceHandler` (both crash-level — the loser calls `getArgs()`, which asserts `!isFirstClassCallable()`); `FirstClassCallableHandler` before `KnownFunctionCallHandler` (a silent divergence: `auth()->user(...)` as a first-class callable resolves to the guard's model instead of `unknown`); `RelationFilterHandler` before `RelationCollectionChainHandler` (its separate `$this->anyProp->method()` branch would otherwise answer `$this->post->only([...])` first with the reflected `only()` return instead of the `Pick<>`). The former `ToResourceHandler`-before-`RelationCollectionChainHandler` pin is gone: that branch now declines where it used to floor at `unknown`, so `$this->post->toResource()` reaches `ToResourceHandler` in either order. `ReceiverMethodCallHandler` is inert against every other claimant on the corpus: it declines a vague return such as `only()`'s `Record<string, unknown>`, a receiver holding a `Request`, and a bare `$this->method()`, for which `ReceiverClassResolver` names no class. `SubjectMethodTypeResolver::resolve()` declines when nothing in scope declares the method, so `RelationCollectionChainHandler` no longer floors every `$this->method()` at `unknown`; `ConditionalMethodHandler` and `KnownMethodRuleHandler` therefore answer `$this->when()`/`whenLoaded()` and `can()`/`cannot()`/`canAny()` in either order. The decline is not ordering alone: a model that declares `can()` with a return type `ReflectedTypeAcceptor` rejects — `can(): void` — falls through the same way, so it too lands on `KnownMethodRuleHandler`'s `boolean` where it used to floor at `unknown`. Every unordered pair is run in both orders by `tests/Unit/Ast/MethodCallOrderingMatrixTest.php` over a curated corpus: the pairs in its `METHOD_CALL_PINNED` map disagree and are held in the direction `handlers()` lists them; every other pair is proven inert on that corpus (a new expression shape that makes an inert pair disagree fails the matrix, which is the signal to pin it). In the controller profile, `generic()` drops `ConditionalMethodHandler`, `ToResourceHandler`, and `RelationFilterHandler`, and `ControllerExpressionHandlers` splices `ModelFinderHandler` (`StaticCall` + `MethodCall`) ahead of `StaticCallHandler`, making eight claimants there. |
+| `NullsafeMethodCall` | `RelationFilterHandler`, `MethodChainHandler`, `ReceiverMethodCallHandler` (3) | `RelationFilterHandler` is pinned before both by the `$this->relation?->only([...])` test: `MethodChainHandler` types that call on the related model, and moving `ReceiverMethodCallHandler` ahead of `RelationFilterHandler` also fails it. `MethodChainHandler` before `ReceiverMethodCallHandler` is **neither pinned nor proven inert**. `MethodChainHandler` now declines a chain whose last step is not a relation and any call it would floor at `unknown`, but where both type `$this->relation?->m()` they reflect through different paths (`ModelAttributeResolver::resolveMethodReturnType()` plus the known-method rules, against `ReceiverMethodReturnResolver`), and `MethodChainHandler`'s answer is the one published. No matrix runs this node class. |
 | `PropertyFetch` | `ThisPropertyHandler`, `PropertyChainHandler`, `VariableHandler` (3) | One pair pinned (`ThisPropertyHandler` before `PropertyChainHandler`). The other two pairs are **inert-proven**: `ThisPropertyHandler` vs. `VariableHandler` never both claim the same expression (`isThisPropertyFetch()` requires a `$this` receiver; `VariableHandler`'s property branch requires the receiver not be `$this`); `PropertyChainHandler` vs. `VariableHandler` likewise — `PropertyChainHandler`'s fallback declines any chain not rooted at `$this`, which is exactly `VariableHandler`'s territory. |
 | `BinaryOp\Coalesce` | `BinaryOpHandler`, `CoalesceHandler` (2) | Inert-proven — `BinaryOpHandler::resolve()` has no branch matching `BinaryOp\Coalesce`, so it always declines regardless of registration position. |
-| `StaticCall` | `InertiaWrapperHandler`, `StaticCallHandler` (2) | Pinned — the whole candidate list, full coverage. |
+| `StaticCall` | `InertiaWrapperHandler`, `StaticCallHandler`, `ReceiverMethodCallHandler` (3) | `InertiaWrapperHandler` before `StaticCallHandler` is pinned. `StaticCallHandler` now declines a static call whose class is an expression it cannot name, such as `$record::className()`, and that is the only static-call shape `ReceiverMethodCallHandler` reaches: every call on a named class (`X::m()`, `self::m()`, `static::m()`) is still answered by `StaticCallHandler`, which never declines one. `InertiaWrapperHandler` vs. `ReceiverMethodCallHandler` is **inert by construction**: `Inertia\Inertia` is a facade that declares none of the wrapper methods, so `ReceiverMethodCallHandler` declines every `Inertia::always(...)`-style call in either order. |
 | `FuncCall` | `ArrayMergeHandler`, `KnownFunctionCallHandler` (2) | Inert-proven — `KnownFunctionCallHandler` declines `array_merge`: its reflected return type is `unknown[]`, and `resolveKnownFunctionCallType()` rejects any type containing `unknown`. `ArrayMergeHandler` is still registered first, so the specific handler keeps winning if that ever changes. |
 
-`MethodCall` is now the most thoroughly verified row in this table: every one of its 36 unordered
+`MethodCall` is now the most thoroughly verified row in this table: every one of its 45 unordered
 pairs is run in both orders, not merely enumerated by inspection. Its residual limit is the matrix's
 own corpus — an expression shape the corpus never constructs cannot disagree there, however plausible
 it looks by inspection. Read the pin counts elsewhere in this table the way this file always has: as

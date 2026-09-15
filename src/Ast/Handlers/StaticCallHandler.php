@@ -42,8 +42,8 @@ use ReflectionNamedType;
  * The internal guard order below reproduces the pre-extraction chain exactly and is load-bearing —
  * several guards must precede others, as each inline comment explains.
  *
- * Not quite the unconditional `StaticCall` floor the ordering notes call it: the `$this::` arm declines
- * when nothing in scope declares the method, so anything appended behind it would see those.
+ * Not an unconditional `StaticCall` floor: the `$this::` arm declines when nothing in scope declares the
+ * method, and the last arm declines a class expression it cannot name, so a later claimant sees both.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -152,9 +152,9 @@ final class StaticCallHandler implements ExpressionHandler
             }
         }
 
-        // EnumResource::make($this->prop) or SomeResource::make/collection()
+        // EnumResource::make($this->prop) or SomeResource::make/collection(); a `$expr::m()` it cannot name declines.
         if ($expr instanceof StaticCall) {
-            return $this->analyzeStaticCall($expr, $scope, $engine);
+            return $this->resolveStaticCallClassName($expr) === null ? null : $this->analyzeStaticCall($expr, $scope, $engine);
         }
 
         return null;

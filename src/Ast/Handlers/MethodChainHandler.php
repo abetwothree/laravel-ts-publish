@@ -21,7 +21,8 @@ use PhpParser\Node\Identifier;
 
 /**
  * Nullsafe method-call chains rooted at `$this` — `$this->user?->fullName()` — resolved on the
- * terminal relation model. The `?->` operator always makes the result nullable.
+ * terminal relation model. The `?->` operator always makes the result nullable. A chain that does not
+ * end on a relation, or a method it cannot type, declines to ReceiverMethodCallHandler.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -44,11 +45,13 @@ final class MethodChainHandler implements ExpressionHandler
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        if ($expr instanceof NullsafeMethodCall) {
-            return $this->analyzeMethodChain($expr, $scope);
+        if (! $expr instanceof NullsafeMethodCall) {
+            return null;
         }
 
-        return null;
+        $result = $this->analyzeMethodChain($expr, $scope);
+
+        return $result['type'] === 'unknown' ? null : $result;
     }
 
     /**
@@ -123,11 +126,12 @@ final class MethodChainHandler implements ExpressionHandler
             $lastStep = $chain[$count - 1];
             $relationInfo = $resolver->resolveRelation($currentModel, $lastStep['name']);
 
-            if ($relationInfo['type'] !== 'unknown' && $relationInfo['modelFqcn'] !== null) {
-                /** @var class-string<Model> $relatedModel */
-                $relatedModel = $relationInfo['modelFqcn'];
-                $currentModel = $relatedModel;
+            // Only a resolved relation moves the receiver; anything else belongs to the receiver-type handler.
+            if ($relationInfo['modelFqcn'] === null) {
+                return ValueResult::unknown();
             }
+
+            $currentModel = $relationInfo['modelFqcn'];
         }
 
         $tsInfo = $resolver->resolveMethodReturnType($currentModel, $methodName);

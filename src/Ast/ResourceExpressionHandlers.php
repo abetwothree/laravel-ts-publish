@@ -22,6 +22,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MethodChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\NewResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationCollectionChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationFilterHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ScalarHandler;
@@ -69,7 +70,7 @@ final class ResourceExpressionHandlers
     }
 
     /**
-     * Construct all 24 handlers in registration order — the single source both profiles above filter.
+     * Construct all 25 handlers in registration order — the single source both profiles above filter.
      *
      * @return list<ExpressionHandler>
      */
@@ -99,6 +100,7 @@ final class ResourceExpressionHandlers
             new RelationCollectionChainHandler,
             new VariableHandler,
             new TernaryHandler,
+            new ReceiverMethodCallHandler,
             new KnownMethodRuleHandler,
         ];
     }

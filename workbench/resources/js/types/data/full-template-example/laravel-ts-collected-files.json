@@ -186,6 +186,7 @@
     "app\/Http\/Resources\/ProfileResource.php",
     "app\/Http\/Resources\/PropertyDocblockEdgeResource.php",
     "app\/Http\/Resources\/QuirkyResource.php",
+    "app\/Http\/Resources\/ReceiverMethodResource.php",
     "app\/Http\/Resources\/ReflectedMethodChannelResource.php",
     "app\/Http\/Resources\/Registrar.php",
     "app\/Http\/Resources\/RegistrarGroupCollection.php",

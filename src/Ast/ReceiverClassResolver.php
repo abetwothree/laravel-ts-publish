@@ -69,9 +69,7 @@ final class ReceiverClassResolver
             return null;
         }
 
-        $receiver = $call->class instanceof Name
-            ? $this->namedClass($call->class, $scope)
-            : $this->resolve($call->class, $scope);
+        $receiver = $this->resolveStaticReceiver($call, $scope);
 
         if ($receiver === null) {
             return null;
@@ -89,6 +87,16 @@ final class ReceiverClassResolver
             ),
             $receiver->shortCircuits,
         );
+    }
+
+    /**
+     * Resolve the class a static call is made on, not what it returns: `X::`, `self::`/`static::`/`parent::`, or `$expr::`.
+     */
+    public function resolveStaticReceiver(StaticCall $call, AnalysisScope $scope): ?ReceiverType
+    {
+        return $call->class instanceof Name
+            ? $this->namedClass($call->class, $scope)
+            : $this->resolve($call->class, $scope);
     }
 
     /**

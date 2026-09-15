@@ -8,7 +8,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationFilterHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ToResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
 use PhpParser\Node\Arg;
@@ -27,6 +26,7 @@ use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\VariadicPlaceholder;
+use Workbench\App\Enums\Priority;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\User;
@@ -39,7 +39,6 @@ const METHOD_CALL_PINNED = [
     'ConditionalMethodHandler|FirstClassCallableHandler' => FirstClassCallableHandler::class,
     'FirstClassCallableHandler|ToResourceHandler' => FirstClassCallableHandler::class,
     'FirstClassCallableHandler|KnownFunctionCallHandler' => FirstClassCallableHandler::class,
-    'RelationCollectionChainHandler|ToResourceHandler' => ToResourceHandler::class,
     'RelationCollectionChainHandler|RelationFilterHandler' => RelationFilterHandler::class,
 ];
 
@@ -84,6 +83,16 @@ function methodCallCorpus(): array
             'params' => [new Param(new Variable('user'), type: new Name(User::class))],
             'expr' => new PropertyFetch(new Variable('user'), 'name'),
         ]))]),
+        // ReceiverMethodResource's method calls, then the same receiver kinds on the corpus's Comment scope.
+        new MethodCall(new PropertyFetch($this_, 'priority'), 'label'),
+        new MethodCall(new PropertyFetch(new PropertyFetch($this_, 'resource'), 'priority'), 'label'),
+        new MethodCall(new MethodCall(new PropertyFetch(new PropertyFetch($this_, 'resource'), 'published_at'), 'setTimezone', [new Arg(new String_('UTC'))]), 'toDateString'),
+        new MethodCall(new MethodCall(new PropertyFetch($this_, 'published_at'), 'setTimezone', [new Arg(new String_('UTC'))]), 'toDateString'),
+        new MethodCall(new StaticCall(new Name(Priority::class), 'from', [new Arg(new Int_(1))]), 'label'),
+        new MethodCall(new MethodCall(new PropertyFetch($this_, 'flagged_at'), 'setTimezone', [new Arg(new String_('UTC'))]), 'toDateString'),
+        new MethodCall(new PropertyFetch($this_, 'flagged_at'), 'toDateString'),
+        new MethodCall(new PropertyFetch(new PropertyFetch($this_, 'resource'), 'post'), 'getMorphClass'),
+        new MethodCall(new PropertyFetch($this_, 'post'), 'fresh'),
     ];
 }
 

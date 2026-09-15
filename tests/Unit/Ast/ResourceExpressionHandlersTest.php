@@ -21,6 +21,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MethodChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\NewResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationCollectionChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationFilterHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ScalarHandler;
@@ -84,6 +85,7 @@ function resourceExpressionHandlerOrder(): array
         RelationCollectionChainHandler::class,
         VariableHandler::class,
         TernaryHandler::class,
+        ReceiverMethodCallHandler::class,
         KnownMethodRuleHandler::class,
     ];
 }
@@ -110,7 +112,7 @@ function resourceExpressionHandlersTestEngine(): ExpressionEngine
     };
 }
 
-it('returns all 24 handlers in the documented dispatch order', function () {
+it('returns all 25 handlers in the documented dispatch order', function () {
     $classes = array_map(
         fn (ExpressionHandler $handler): string => $handler::class,
         ResourceExpressionHandlers::make(resourceExpressionHandlersTestEngine()),
@@ -134,7 +136,7 @@ it('excludes exactly the three resource-only handlers from generic(), same relat
         ], true),
     ));
 
-    expect($classes)->toHaveCount(21)
+    expect($classes)->toHaveCount(22)
         ->and($classes)->toBe($expected);
 });
 
@@ -148,9 +150,9 @@ it('tries FirstClassCallableHandler before ConditionalMethodHandler for a first-
     expect($analyzer->resolve($expr))->toBe(['type' => 'unknown', 'optional' => false]);
 });
 
-// Ordering pin #2: both handlers claim NullsafeMethodCall, but MethodChainHandler's floor is
-// ValueResult::unknown(), never null, so it would win every NullsafeMethodCall if it ran first —
-// degrading this Pick<> reference to a plain reflected type.
+// Ordering pin #2: both handlers claim NullsafeMethodCall. MethodChainHandler declines what it cannot
+// type, but this chain ends on a relation, so it reflects only() on Post and would degrade this Pick<>
+// reference to that reflected type if it ran first.
 it('tries RelationFilterHandler before MethodChainHandler for $this->relation?->only([...])', function () {
     $expr = new NullsafeMethodCall(
         new PropertyFetch(new Variable('this'), 'post'),
@@ -183,7 +185,7 @@ it('tries ThisPropertyHandler before PropertyChainHandler for a multi-FQCN acces
     ]);
 });
 
-// Ordering pin #4: StaticCallHandler's last arm claims every StaticCall and never declines, so if it
+// Ordering pin #4: StaticCallHandler's last arm claims every StaticCall on a named class, so if it
 // ran first it would reflect `Inertia::always` as an ordinary static method and floor this at
 // unknown instead of resolving the wrapped value.
 it('tries InertiaWrapperHandler before StaticCallHandler for Inertia::always(...)', function () {

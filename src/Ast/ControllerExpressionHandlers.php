@@ -21,7 +21,7 @@ final class ControllerExpressionHandlers
      * Build the ordered controller handler chain.
      *
      * Both additions sit immediately before StaticCallHandler, whose final arm claims every
-     * StaticCall and never declines — after it they would be unreachable.
+     * StaticCall on a named class and never declines one — after it they would be unreachable.
      *
      * @return list<ExpressionHandler>
      */

@@ -58,7 +58,7 @@ it('inserts both controller handlers immediately before StaticCallHandler and ch
         ->and($controller)->toHaveCount(count($generic) + 2);
 });
 
-// Ordering pin: StaticCallHandler's last arm claims every StaticCall and never declines, so after it
+// Ordering pin: StaticCallHandler's last arm claims every StaticCall on a named class, so after it
 // ModelFinderHandler is unreachable and `Post::find(1)` reflects as an ordinary static method.
 it('tries ModelFinderHandler before StaticCallHandler for Post::find(1)', function () {
     $expr = new StaticCall(new Name(Post::class), 'find', [new Arg(new Int_(1))]);

@@ -365,12 +365,12 @@ Absent on purpose. Do not "fix" these without raising it first.
 
 ### Handler ordering is pinned pairwise, corpus-bounded
 
-Nine of the twenty-four handlers in the resource profile claim `MethodCall`
+Ten of the twenty-five handlers in the resource profile claim `MethodCall`
 (`src/Ast/ResourceExpressionHandlers.php`), so for a `$this->foo()` expression the dispatcher's registration
-order is what decides which one answers. Every one of the 36 unordered pairs among those nine is now run
-in both orders by `tests/Unit/Ast/MethodCallOrderingMatrixTest.php`: five pairs disagree and are held in
+order is what decides which one answers. Every one of the 45 unordered pairs among those ten is now run
+in both orders by `tests/Unit/Ast/MethodCallOrderingMatrixTest.php`: four pairs disagree and are held in
 the direction `handlers()` lists them (its `METHOD_CALL_PINNED` map, and the `MethodCall` row of the ordering table in
-[docs/components/ast-engine.md](./components/ast-engine.md#the-honest-ordering-inventory)); the other 31
+[docs/components/ast-engine.md](./components/ast-engine.md#the-honest-ordering-inventory)); the other 41
 are proven inert against that same corpus.
 
 The residual limit is the corpus, not the method: an expression shape the matrix never constructs cannot

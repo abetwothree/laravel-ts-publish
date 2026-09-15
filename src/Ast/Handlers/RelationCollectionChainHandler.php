@@ -88,7 +88,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
                 $info = $this->analyzeRelatedModelMethodCall($expr->name->toString(), $scope);
             }
 
-            return $info;
+            return $info['type'] === 'unknown' ? null : $info;
         }
 
         // Generic `$this->method()` — reflect the declared return type; the helper guards above ran first.
