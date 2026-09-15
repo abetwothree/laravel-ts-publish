@@ -1115,7 +1115,7 @@ class LaravelTsPublish
 
         $inner = $this->resolveDocblockContainerValue($valueTypeString, $useMap, $namespace);
 
-        if ($keyType === 'string') {
+        if ($keyType === 'string' || preg_match('/^[a-z-]+-string(?:<.+>)?$/', $keyType) === 1) {
             $inner['type'] = 'Record<string, '.$inner['type'].'>';
 
             return $inner;

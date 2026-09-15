@@ -4698,6 +4698,10 @@
                 {
                     "name": "assigned_users",
                     "type": "(User & { pivot: unknown })[]"
+                },
+                {
+                    "name": "ability_map",
+                    "type": "Record<string, boolean>"
                 }
             ]
         },

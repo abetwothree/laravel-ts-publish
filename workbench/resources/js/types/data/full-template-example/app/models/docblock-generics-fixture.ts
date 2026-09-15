@@ -14,4 +14,5 @@ export interface DocblockGenericsFixture
     // Mutators
     flag_default: boolean | number | string | null;
     assigned_users: (User & { pivot: unknown })[];
+    ability_map: Record<string, boolean>;
 }

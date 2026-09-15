@@ -274,6 +274,13 @@ channel described above, a class-valued key inside it (`pivot: TaskAssignment`) 
 `wrapAsArray()` parenthesizes an intersection the same way it already parenthesizes a union, so
 `Collection<int, User&object{pivot: TaskAssignment}>` resolves to `(User & { pivot: unknown })[]`.
 
+### String-refinement key types
+
+`resolveGenericContainerType()` treats a PHPStan string-refinement key (`non-empty-string`,
+`class-string`, `class-string<Model>`, `literal-string`, `lowercase-string`, `numeric-string`, …)
+the same as a plain `string` key, producing `Record<string, X>` instead of falling through to the
+default int-keyed `X[]`; an actual int refinement (`positive-int`, `array-key`, …) is unaffected.
+
 ## Nullable-prefixed generics
 
 `resolveGenericContainerType()` strips a leading `?` before attempting to match a container

@@ -28,4 +28,10 @@ class DocblockGenericsFixture extends Model
     {
         return Attribute::get(fn (): Collection => new Collection);
     }
+
+    /** @return Attribute<array<non-empty-string, bool>, never> */
+    protected function abilityMap(): Attribute
+    {
+        return Attribute::get(fn (): array => []);
+    }
 }

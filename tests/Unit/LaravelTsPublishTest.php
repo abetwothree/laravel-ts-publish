@@ -1260,6 +1260,17 @@ describe('resolveGenericContainerType() with an intersection value', function ()
     });
 });
 
+describe('resolveGenericContainerType() key refinements', function () {
+    test('treats every string refinement as a string key', function (string $key) {
+        expect($this->service->resolveGenericContainerType("array<{$key}, bool>", [], '')['type'])
+            ->toBe('Record<string, boolean>');
+    })->with(['non-empty-string', 'class-string', 'class-string<Model>', 'literal-string', 'lowercase-string', 'numeric-string']);
+
+    test('keeps int refinements as a list', function () {
+        expect($this->service->resolveGenericContainerType('array<positive-int, string>', [], '')['type'])->toBe('string[]');
+    });
+});
+
 describe('attributeDocblockReturnTypes', function () {
     test('attributeDocblockReturnTypes resolves Attribute<string, never>', function () {
         $method = new ReflectionMethod(AttributeDocblockClass::class, 'withAttributeGeneric');
