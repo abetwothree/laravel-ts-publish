@@ -442,6 +442,21 @@ describe('typeNameOccursIn', function () {
     });
 });
 
+describe('isUnknownOnly', function () {
+    test('only a type whose non-null arms are all unknown is unknown-only', function (string $type, bool $expected) {
+        expect($this->service->isUnknownOnly($type))->toBe($expected);
+    })->with([
+        'bare unknown' => ['unknown', true],
+        'unknown with a null arm' => ['unknown | null', true],
+        'null before unknown' => ['null | unknown', true],
+        'a real type' => ['string', false],
+        'a real type with a null arm' => ['User | null', false],
+        'unknown beside a real arm' => ['unknown | string', false],
+        'an unknown inside a shape' => ['{ a: unknown }', false],
+        'an unknown element type' => ['unknown[]', false],
+    ]);
+});
+
 describe('isVagueTsType', function () {
     test('a bare object is vague', function () {
         expect($this->service->isVagueTsType('object'))->toBeTrue();

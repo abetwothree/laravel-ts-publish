@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
@@ -48,7 +49,9 @@ final class PropertyChainHandler implements ExpressionHandler
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         if ($expr instanceof NullsafePropertyFetch) {
-            return $this->analyzePropertyChain($expr, $scope);
+            $info = $this->analyzePropertyChain($expr, $scope);
+
+            return TsTypeString::isUnknownOnly($info['type']) ? null : $info;
         }
 
         // $this->anyProp->subProp — e.g. $this->resource->name / ->value on a backed enum
@@ -67,7 +70,7 @@ final class PropertyChainHandler implements ExpressionHandler
                 $info = $this->analyzePropertyChain($expr, $scope);
             }
 
-            return $info;
+            return TsTypeString::isUnknownOnly($info['type']) ? null : $info;
         }
 
         // Plain 3+-deep chains rooted at `$this` (e.g. `$this->resource->user->role`): the 2-deep handler

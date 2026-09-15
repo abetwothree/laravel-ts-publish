@@ -22,6 +22,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MethodChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\NewResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverPropertyFetchHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationCollectionChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationFilterHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ScalarHandler;
@@ -86,6 +87,7 @@ function resourceExpressionHandlerOrder(): array
         RelationCollectionChainHandler::class,
         VariableHandler::class,
         TernaryHandler::class,
+        ReceiverPropertyFetchHandler::class,
         ReceiverMethodCallHandler::class,
         KnownMethodRuleHandler::class,
     ];
@@ -113,7 +115,7 @@ function resourceExpressionHandlersTestEngine(): ExpressionEngine
     };
 }
 
-it('returns all 25 handlers in the documented dispatch order', function () {
+it('returns all 26 handlers in the documented dispatch order', function () {
     $classes = array_map(
         fn (ExpressionHandler $handler): string => $handler::class,
         ResourceExpressionHandlers::make(resourceExpressionHandlersTestEngine()),
@@ -137,7 +139,7 @@ it('excludes exactly the three resource-only handlers from generic(), same relat
         ], true),
     ));
 
-    expect($classes)->toHaveCount(22)
+    expect($classes)->toHaveCount(23)
         ->and($classes)->toBe($expected);
 });
 

@@ -287,3 +287,58 @@ earlier claimants used to floor these calls at `unknown`, and now decline instea
   when the last step of the chain is not a relation. It used to reflect the method on the model that declares
   the step, which is the wrong receiver: `$this->imageable?->getTable()` read `Image::getTable()`.
 - `StaticCallHandler` declines a static call whose class is an expression, such as `$record::className()`.
+
+## Property access on a receiver
+
+`AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverPropertyFetchHandler` claims `PropertyFetch` and
+`NullsafePropertyFetch`, and does for a property read what `ReceiverMethodCallHandler` does for a call: it
+asks `ReceiverClassResolver::resolve()` what the receiver holds, then types the property on every class that
+answer names. So `$post?->title` is `string | null` once `$post` is known to hold a `Post`, where it used to
+be `unknown`.
+
+A `$this->prop` leaf declines outright. That read is `ThisPropertyHandler`'s, which consults the subject's own
+declaration before the model; `$this->resource->prop` is a receiver read like any other, and reaches here.
+
+How one class types the property:
+
+| Receiver class | Rule |
+| --- | --- |
+| A `Model` | `ModelAttributeResolver::resolveAttribute()` first, then `resolveRelation()` — attributes before relations, the order `Model::__get()` itself uses. A relation carries its `modelFqcn`, and a morph union its `morphFqcns`, so the emitted token keeps its import. |
+| Anything else | `SubjectPropertyTypeResolver::resolve()` — the `@var` docblock first, the native declared type second, accepted through `ReflectedTypeAcceptor`. |
+
+A reflected property then faces the same two declines a method return does, for the same reasons given under
+[the order for one class](#the-order-for-one-class): the property must not hold a class
+`StringSerialization::isFalseString()` rejects, so a plain `DateTime` property is not published as the `string`
+`toTsType()` maps it to, and it must name only models the package publishes a file for, so a property typed
+`Model` declines rather than emitting a token nothing imports.
+
+A receiver holding several classes types the property on each and merges the answers with
+`ValueResult::mergeUnion()`; one declining arm declines the whole read, for the reason under
+[What stays unresolved](#what-stays-unresolved). The read gains `| null` when it is itself `?->` or when the
+receiver's `shortCircuits` flag records an earlier `?->`, and never twice.
+
+`ReceiverPropertyResource` in the workbench writes each expression through a local variable bound to
+`$this->post` and again through one bound to `$this->resource->post`, and the two spellings publish the same
+type:
+
+| Expression, where `$post = $this->post` | Twin, where `$resourcePost = $this->resource->post` | Published type |
+| --- | --- | --- |
+| `$post?->title` | `$resourcePost?->title` | `string \| null` |
+| `$post?->published_at` | `$resourcePost?->published_at` | `string \| null` |
+| `$post?->author?->name` | `$resourcePost?->author?->name` | `string \| null` |
+| `$post->title` | `$resourcePost->title` | `string` |
+| `$this->post?->title` | `$this->resource->post?->title` | `string \| null` |
+
+### Which handlers step aside for it
+
+`PropertyChainHandler` claims both node classes ahead of it and used to floor what it could not type at
+`unknown`: its `NullsafePropertyFetch` arm returned that answer unconditionally, and its
+`$this->anyProp->subProp` arm ended in an unguarded return. Both now decline when the answer is only `unknown`
+once its `null` arms are removed — `TsTypeString::isUnknownOnly()`, the same test `MethodChainHandler` applies
+to a nullsafe call chain. A chain the handler really types, including every enum `->name`/`->value` read on a
+wrapped resource, still answers first and is unaffected.
+
+`VariableHandler` claims `PropertyFetch` earlier still, but only for a variable bound to a model in
+`varModelBindings` — a `whenLoaded` closure parameter, a `map()` parameter, a `foreach` value. A variable bound
+by a plain `$post = $this->post;` assignment lives in `localVarBindings`, which that branch does not read, so it
+declines and the receiver rules above answer.

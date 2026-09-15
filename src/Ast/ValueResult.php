@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use PhpParser\Node\Expr;
+use ReflectionClass;
 
 /**
  * Shared building blocks for ExpressionHandler results.
@@ -56,6 +57,26 @@ final class ValueResult
     public static function arrayWrapType(string $type): string
     {
         return str_contains($type, '|') || str_contains($type, '&') ? '('.$type.')[]' : $type.'[]';
+    }
+
+    /**
+     * Whether every model a result names gets a published file; a framework or abstract model such as `Model` does not.
+     *
+     * A token with no file behind it would be emitted without an import, so the result declines instead.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    public static function namesOnlyPublishedModels(array $result): bool
+    {
+        $models = [...(isset($result['modelFqcn']) ? [$result['modelFqcn']] : []), ...($result['embeddedModelFqcns'] ?? [])];
+
+        foreach ($models as $model) {
+            if (str_starts_with($model, 'Illuminate\\') || new ReflectionClass($model)->isAbstract()) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

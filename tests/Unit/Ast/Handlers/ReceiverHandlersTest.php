@@ -6,9 +6,12 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MethodChainHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverPropertyFetchHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverIntegerKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverMethodProbe;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverProbeEnum;
@@ -25,6 +28,8 @@ use PhpParser\Node\Expr\Variable;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Http\Resources\ImageResource;
 use Workbench\App\Http\Resources\ReceiverMethodResource;
+use Workbench\App\Http\Resources\ReceiverPropertyResource;
+use Workbench\App\Models\Comment;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
@@ -39,6 +44,27 @@ function receiverHandlerExpr(string $php): Expr
 function receiverProbeScope(): AnalysisScope
 {
     return new AnalysisScope(new ReflectionClass(ReceiverMethodProbe::class), Post::class);
+}
+
+/**
+ * ReceiverPropertyResource's published property types, keyed by property name.
+ *
+ * @return array<string, string>
+ */
+function receiverPropertyTypes(): array
+{
+    return collect(new ResourceAstAnalyzer(new ReflectionClass(ReceiverPropertyResource::class), Comment::class)->analyze()->properties)
+        ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']])
+        ->all();
+}
+
+/** A scope whose subject is the property resource, with `$post` bound the way its body binds it. */
+function receiverPropertyScope(): AnalysisScope
+{
+    $scope = new AnalysisScope(new ReflectionClass(ReceiverPropertyResource::class), Comment::class);
+    $scope->localVarBindings['post'] = receiverHandlerExpr('$this->post');
+
+    return $scope;
 }
 
 describe('ReceiverMethodCallHandler through the resource analyzer', function () {
@@ -252,5 +278,79 @@ describe('MethodChainHandler no longer reflects on the wrong receiver', function
         $expr = new NullsafeMethodCall(new PropertyFetch(new Variable('this'), 'priority'), 'label');
 
         expect(new MethodChainHandler()->resolve($expr, $scope, chainHandlersThrowingEngine()))->toBeNull();
+    });
+});
+
+describe('ReceiverPropertyFetchHandler', function () {
+    test('types property chains from a local variable holding a model', function () {
+        expect(receiverPropertyTypes())->toMatchArray([
+            'post_title' => 'string | null',
+            'post_published_at' => 'string | null',
+            'post_author_name' => 'string | null',
+            'post_title_direct' => 'string',
+            'post_title_via_this' => 'string | null',
+            'post_title_via_resource' => 'string | null',
+        ]);
+    });
+
+    test('a chain read through $this->resource publishes the type of its $this twin', function () {
+        $props = receiverPropertyTypes();
+
+        expect($props['resource_post_title'])->toBe($props['post_title'])
+            ->and($props['resource_post_published_at'])->toBe($props['post_published_at'])
+            ->and($props['resource_post_author_name'])->toBe($props['post_author_name'])
+            ->and($props['resource_post_title_direct'])->toBe($props['post_title_direct'])
+            ->and($props['post_title_via_resource'])->toBe($props['post_title_via_this']);
+    });
+
+    test('declines a $this->prop leaf, which belongs to ThisPropertyHandler', function () {
+        expect(new ReceiverPropertyFetchHandler()->resolve(receiverHandlerExpr('$this->title'), receiverProbeScope(), chainHandlersThrowingEngine()))
+            ->toBeNull();
+    });
+
+    test('a reflected property json_encode() writes as an object declines, while one it writes as a string types', function () {
+        $handler = new ReceiverPropertyFetchHandler;
+        $scope = receiverProbeScope();
+        $scope->localVarBindings['probe'] = receiverHandlerExpr('new '.ReceiverVarProbe::class);
+
+        expect(LaravelTsPublish::propertyTypes(new ReflectionClass(ReceiverVarProbe::class), 'plainDate')['type'])->toBe('string')
+            ->and($handler->resolve(receiverHandlerExpr('$probe->plainDate'), $scope, chainHandlersThrowingEngine()))->toBeNull()
+            ->and($handler->resolve(receiverHandlerExpr('$probe->text'), $scope, chainHandlersThrowingEngine())['type'] ?? null)->toBe('string');
+    });
+
+    test('a reflected property naming a model no file is published for declines', function () {
+        $handler = new ReceiverPropertyFetchHandler;
+        $scope = receiverProbeScope();
+        $scope->localVarBindings['probe'] = receiverHandlerExpr('new '.ReceiverVarProbe::class);
+
+        expect(LaravelTsPublish::propertyTypes(new ReflectionClass(ReceiverVarProbe::class), 'anyModel')['classFqcns'])->toBe([Model::class])
+            ->and($handler->resolve(receiverHandlerExpr('$probe->anyModel'), $scope, chainHandlersThrowingEngine()))->toBeNull();
+    });
+});
+
+// The inert half of the ordering inventory's PropertyFetch row: both handlers really claim
+// `$this->relation?->attr`, and they answer it identically, which is why their order is free.
+// Swapping the two registrations changed no golden line; see docs/components/ast-engine.md.
+describe('PropertyChainHandler and ReceiverPropertyFetchHandler are inert against each other', function () {
+    test('both claim $this->relation?->attr and answer it the same', function () {
+        $expr = receiverHandlerExpr('$this->post?->title');
+
+        $chain = new PropertyChainHandler()->resolve($expr, receiverPropertyScope(), chainHandlersThrowingEngine());
+        $receiver = new ReceiverPropertyFetchHandler()->resolve($expr, receiverPropertyScope(), chainHandlersThrowingEngine());
+
+        expect($chain)->toBe(['type' => 'string | null', 'optional' => false])
+            ->and($receiver)->toBe($chain);
+    });
+});
+
+describe('PropertyChainHandler declines an unknown-only chain', function () {
+    test('a nullsafe chain rooted at a variable declines for the receiver handler', function () {
+        expect(new PropertyChainHandler()->resolve(receiverHandlerExpr('$post?->title'), receiverPropertyScope(), chainHandlersThrowingEngine()))
+            ->toBeNull();
+    });
+
+    test('a $this->prop->subProp chain it cannot type declines for the receiver handler', function () {
+        expect(new PropertyChainHandler()->resolve(receiverHandlerExpr('$this->post->nonexistent_column'), receiverPropertyScope(), chainHandlersThrowingEngine()))
+            ->toBeNull();
     });
 });

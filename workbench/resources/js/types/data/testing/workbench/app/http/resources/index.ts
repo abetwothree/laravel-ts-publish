@@ -103,6 +103,7 @@ export * from './profile-resource';
 export * from './property-docblock-edge-resource';
 export * from './quirky-resource';
 export * from './receiver-method-resource';
+export * from './receiver-property-resource';
 export * from './reflected-method-channel-resource';
 export * from './registrar';
 export * from './registrar-group-collection';

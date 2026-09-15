@@ -143,7 +143,7 @@ final class ReceiverMethodReturnResolver
             return null;
         }
 
-        return $this->namesOnlyPublishedModels($result) ? $result : null;
+        return ValueResult::namesOnlyPublishedModels($result) ? $result : null;
     }
 
     /**
@@ -189,23 +189,5 @@ final class ReceiverMethodReturnResolver
         }
 
         return false;
-    }
-
-    /**
-     * Whether every model a result names gets a published file; a framework or abstract model such as `Model` does not.
-     *
-     * @param  ValueExpressionResult  $result
-     */
-    private function namesOnlyPublishedModels(array $result): bool
-    {
-        $models = [...(isset($result['modelFqcn']) ? [$result['modelFqcn']] : []), ...($result['embeddedModelFqcns'] ?? [])];
-
-        foreach ($models as $model) {
-            if (str_starts_with($model, 'Illuminate\\') || new ReflectionClass($model)->isAbstract()) {
-                return false;
-            }
-        }
-
-        return true;
     }
 }

@@ -275,6 +275,16 @@ class TsTypeString
     }
 
     /**
+     * Whether a type is `unknown` once its `null` arms are removed, as a `static|null` docblock reflects.
+     *
+     * TypeScript already reads `unknown | null` as `unknown`, so a handler declining one loses nothing.
+     */
+    public function isUnknownOnly(string $type): bool
+    {
+        return array_values(array_diff($this->splitTopLevelUnion($type), ['null'])) === ['unknown'];
+    }
+
+    /**
      * A "vague" TS type carries no element information, so a docblock generic can usually do better.
      *
      * An object-literal shape is never vague even when a key resolves to 'unknown' — a bare 'unknown'
