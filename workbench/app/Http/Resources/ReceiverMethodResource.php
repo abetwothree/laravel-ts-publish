@@ -36,6 +36,10 @@ final class ReceiverMethodResource extends JsonResource
             'author_fresh_nullsafe' => $this->author?->fresh(),
             'resource_author_fresh' => $this->resource->author->fresh(),
             'resource_author_fresh_nullsafe' => $this->resource?->author?->fresh(),
+            'author_key' => $author?->getKey(),
+            'comment_ids' => $this->comments->modelKeys(),
+            'resource_comment_ids' => $this->resource->comments->modelKeys(),
+            'resource_author_key' => $this->resource->author?->getKey(),
         ];
     }
 }

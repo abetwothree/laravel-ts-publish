@@ -60,6 +60,30 @@ describe('ReceiverMethodCallHandler through the resource analyzer', function () 
         ]);
     });
 
+    test('getKey and modelKeys type from the receiver model key type', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(ReceiverMethodResource::class), Post::class)->analyze()->properties)
+            ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+
+        expect($props['author_key'])->toBe('number | null')
+            ->and($props['comment_ids'])->toBe('number[]')
+            ->and($props['resource_comment_ids'])->toBe('number[]')
+            ->and($props['resource_author_key'])->toBe('number | null');
+    });
+
+    test('getKey and modelKeys type the same through the resource proxy and the model', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverMethodResource::class), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->author->getKey()', 'number'],
+        ['$this->resource->author->getKey()', 'number'],
+        ['$this->author?->getKey()', 'number | null'],
+        ['$this->resource?->author?->getKey()', 'number | null'],
+        ['$this->resource?->getKey()', 'number | null'],
+        ['$this->comments?->modelKeys()', 'number[] | null'],
+        ['$this->resource?->comments?->modelKeys()', 'number[] | null'],
+    ]);
+
     test('a DateTime return stays unknown in every spelling, since json_encode() writes it as an object', function (string $php) {
         $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverMethodResource::class), Post::class);
 

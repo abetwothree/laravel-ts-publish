@@ -5111,8 +5111,8 @@ describe('helper and receiver method inference', function () {
         expect($this->props['to_immutable']['type'])->toBe('string');
     });
 
-    // getKey()'s type is receiver-dependent, unlike can()/cannot(), so it may fire only on $this->resource.
-    test('getKey() on a non-$this->resource receiver stays unknown', function () {
+    // Resources leave `$request` unbound (resolveRequestVarNames()), so `$request->user()` names no receiver model.
+    test('getKey() on an unbound request user stays unknown', function () {
         expect($this->props['user_key']['type'])->toBe('unknown');
     });
 });

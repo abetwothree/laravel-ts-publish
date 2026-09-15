@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 use ReflectionClass;
 use ReflectionMethod;
@@ -34,7 +35,12 @@ final class ReceiverMethodReturnResolver
         $results = [];
 
         foreach ($receiver->classes as $class) {
-            $result = $this->resolveOn($class, $methodName, $fromInside);
+            // Model::getKey() is `mixed`, so only a concrete model's key type can answer it.
+            if ($methodName === 'getKey' && is_a($class, Model::class, true) && ! $this->isConcreteModel($class)) {
+                return null;
+            }
+
+            $result = $this->ruleFor($receiver, $class, $methodName) ?? $this->resolveOn($class, $methodName, $fromInside);
 
             // One untypable arm would make the union a lie; decline so dispatch reaches the floor.
             if ($result === null) {
@@ -49,6 +55,56 @@ final class ReceiverMethodReturnResolver
         }
 
         return ValueResult::mergeUnion(array_values(array_unique(array_column($results, 'type'))), $results);
+    }
+
+    /**
+     * Convention rules that need the receiver's model rather than a reflected signature.
+     *
+     * @param  class-string  $class
+     * @return ValueExpressionResult|null
+     */
+    private function ruleFor(ReceiverType $receiver, string $class, string $methodName): ?array
+    {
+        if ($methodName === 'getKey' && $this->isConcreteModel($class)) {
+            $keyType = $this->keyType($class);
+
+            return $keyType === null ? null : [...ValueResult::unknown(), 'type' => $keyType];
+        }
+
+        if ($methodName === 'modelKeys' && $receiver->elementModel !== null) {
+            $keyType = $this->keyType($receiver->elementModel);
+
+            return $keyType === null ? null : [...ValueResult::unknown(), 'type' => $keyType.'[]'];
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether a class is a model the resolver can instantiate for its key type.
+     *
+     * @param  class-string  $class
+     */
+    private function isConcreteModel(string $class): bool
+    {
+        return is_a($class, Model::class, true) && ! new ReflectionClass($class)->isAbstract();
+    }
+
+    /**
+     * The TypeScript spelling of a model's primary key type, or null when the model cannot be instantiated.
+     *
+     * @param  class-string  $modelFqcn
+     */
+    private function keyType(string $modelFqcn): ?string
+    {
+        $instance = resolve(ModelAttributeResolver::class)->getInstance($modelFqcn);
+
+        if ($instance === null) {
+            return null;
+        }
+
+        // castAttribute() casts an incrementing key through getKeyType(), and treats `int` and `integer` alike.
+        return in_array($instance->getKeyType(), ['int', 'integer'], true) ? 'number' : 'string';
     }
 
     /**

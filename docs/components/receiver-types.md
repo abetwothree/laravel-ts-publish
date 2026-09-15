@@ -180,6 +180,39 @@ receiver kind:
 | `$record::className()`, where `$record = $this->resource` | `Post`, as a static call's class | `string` |
 | `Priority::from(1)->label()` | `Priority`, returned by `from(): static` | `string` |
 
+### Receiver rules
+
+`ReceiverMethodReturnResolver` checks two convention rules for each class before the order below. They read
+the receiver's model rather than a signature, because Laravel declares both methods loosely: `Model::getKey()`
+returns `mixed`, and `Collection::modelKeys()` returns `array<int, array-key>`, which reflects to
+`(string | number)[]`.
+
+| Call | Receiver | Published type |
+| --- | --- | --- |
+| `getKey()` | A concrete model | `number` when `getKeyType()` is `int` or `integer`, else `string` |
+| `getKey()` | `Model` itself, or any abstract model | Declines without reflecting, since `Model::getKey()` is `mixed` |
+| `modelKeys()` | An Eloquent collection with `elementModel` set | The element model's key type as a list, `number[]` or `string[]` |
+
+The key type comes from `ModelAttributeResolver::getInstance()`, so `HasUuids`, `HasUlids`, and a
+`#[Table(keyType: ...)]` attribute all count. Both `int` and `integer` map to `number`, because
+`HasAttributes::castAttribute()` casts an incrementing key through `getKeyType()` and treats the two alike.
+When no instance can be built, no rule answers and the order below runs: `getKey()` then declines on `mixed`,
+and `modelKeys()` keeps its reflected `(string | number)[]`.
+
+A rule answers for the receiver's own model, never the subject's: `getKey()` on a `UuidPost` receiver is
+`string` even when the subject is backed by the integer-keyed `Post`. The rules name no model token, so steps 3
+and 7 have nothing to check.
+
+| Expression in `ReceiverMethodResource` | Published type |
+| --- | --- |
+| `$author?->getKey()`, where `$author = $this->author` | `number \| null` |
+| `$this->resource->author?->getKey()` | `number \| null` |
+| `$this->comments->modelKeys()`, `$this->resource->comments->modelKeys()` | `number[]` |
+
+`$this->resource->getKey()` still reaches `RelationCollectionChainHandler` first, whose
+`AppliesKnownMethodRules::knownMethodRule()` reads the subject model's key type. For that receiver the subject
+model and the receiver model are the same class, so the two answers agree.
+
 ### The order for one class
 
 1. The method must exist. On a receiver other than `self::`, `static::`, or `parent::`, it must be public,

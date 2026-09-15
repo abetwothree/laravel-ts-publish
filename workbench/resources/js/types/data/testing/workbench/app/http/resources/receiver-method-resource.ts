@@ -21,4 +21,8 @@ export interface ReceiverMethodResource
     author_fresh_nullsafe: User | null;
     resource_author_fresh: User | null;
     resource_author_fresh_nullsafe: User | null;
+    author_key: number | null;
+    comment_ids: number[];
+    resource_comment_ids: number[];
+    resource_author_key: number | null;
 }
