@@ -10,6 +10,11 @@ use AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use Carbon\CarbonImmutable;
+use Closure;
+use Illuminate\Contracts\Database\Eloquent\Castable;
+use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
@@ -18,11 +23,15 @@ use Illuminate\Database\Eloquent\Relations\MorphPivot;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Database\Eloquent\Relations\Pivot;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 use ReflectionClass;
+use ReflectionFunction;
+use ReflectionMethod;
 use ReflectionNamedType;
+use ReflectionType;
 use Throwable;
 
 /**
@@ -340,6 +349,170 @@ class ModelAttributeResolver
         $resolved = $this->refineWithPropertyDocblock($ctx['reflection'], $attributeName, $accessorInfo);
 
         return $resolved['omit'] ?? false;
+    }
+
+    /**
+     * The PHP class an attribute's value is an instance of: its enum, date, or class cast, or its accessor's return class.
+     *
+     * Only an attribute the model inspector lists answers; a name typed by an `@property` tag alone has no class.
+     *
+     * @param  class-string  $modelFqcn
+     * @return class-string|null
+     */
+    public function resolveAttributeClass(string $modelFqcn, string $attributeName): ?string
+    {
+        $ctx = $this->resolveContext($modelFqcn);
+        $attr = $ctx === null ? null : $ctx['attributes']->firstWhere('name', $attributeName);
+
+        if ($ctx === null || $attr === null) {
+            return null;
+        }
+
+        $cast = (string) $attr['cast'];
+
+        if ($cast === 'attribute' || $cast === 'accessor') {
+            return $this->accessorReturnClass($ctx['reflection'], $ctx['instance'], $attributeName);
+        }
+
+        $head = Str::before($cast, ':');
+
+        // Laravel's timestamp cast returns the Unix integer, not a date object.
+        if ($this->isDateFamilyCast($cast)) {
+            return match (true) {
+                $head === 'timestamp' => null,
+                str_starts_with($cast, 'immutable_') => CarbonImmutable::class,
+                default => Carbon::class,
+            };
+        }
+
+        if (is_a($head, CastsAttributes::class, true)) {
+            return $this->singleClass(new ReflectionMethod($head, 'get')->getReturnType(), $head);
+        }
+
+        if (is_a($head, Castable::class, true)) {
+            return $this->castableValueClass($head, $cast);
+        }
+
+        return enum_exists($head) ? $head : null;
+    }
+
+    /**
+     * Determine whether a resolved model cast belongs to the date/datetime family, including
+     * immutable_* variants and the `:format` suffix on custom_datetime casts.
+     */
+    public function isDateFamilyCast(string $cast): bool
+    {
+        return in_array(explode(':', $cast)[0], [
+            'date', 'datetime', 'custom_datetime', 'timestamp',
+            'immutable_date', 'immutable_datetime', 'immutable_custom_datetime',
+        ], true);
+    }
+
+    /**
+     * The class an accessor's getter returns: its closure's native type, its `Attribute<Get, Set>` docblock's Get,
+     * or an old-style `getXAttribute()`'s native type.
+     *
+     * @param  ReflectionClass<Model>  $reflection
+     * @return class-string|null
+     */
+    protected function accessorReturnClass(ReflectionClass $reflection, Model $instance, string $attributeName): ?string
+    {
+        $newStyle = Str::camel($attributeName);
+
+        try {
+            $attribute = $reflection->hasMethod($newStyle) ? $reflection->getMethod($newStyle)->invoke($instance) : null;
+        } catch (Throwable) {
+            $attribute = null;
+        }
+
+        if ($attribute instanceof Attribute) {
+            $getter = $attribute->get instanceof Closure
+                ? $this->singleClass(new ReflectionFunction($attribute->get)->getReturnType(), $reflection->getName())
+                : null;
+
+            return $getter ?? $this->attributeDocblockGetClass($reflection->getMethod($newStyle));
+        }
+
+        $oldStyle = 'get'.Str::studly($attributeName).'Attribute';
+
+        return $reflection->hasMethod($oldStyle)
+            ? $this->singleClass($reflection->getMethod($oldStyle)->getReturnType(), $reflection->getName())
+            : null;
+    }
+
+    /**
+     * The one class an `Attribute<Get, Set>` docblock's Get argument names, ignoring a `null` arm and generic arguments.
+     *
+     * @return class-string|null
+     */
+    protected function attributeDocblockGetClass(ReflectionMethod $method): ?string
+    {
+        $returnType = LaravelTsPublish::extractReturnTypeFromDocblock((string) $method->getDocComment());
+
+        if ($returnType === null
+            || ! preg_match('/^\\\\?(?:Illuminate\\\\Database\\\\Eloquent\\\\Casts\\\\)?Attribute\s*<(.+)>$/s', trim($returnType), $m)
+        ) {
+            return null;
+        }
+
+        $get = LaravelTsPublish::splitAtTopLevelCommas($m[1])[0] ?? '';
+        $names = array_values(array_filter(
+            LaravelTsPublish::splitPhpDocUnionType(ltrim($get, '?')),
+            fn (string $part): bool => strtolower($part) !== 'null',
+        ));
+
+        if (count($names) !== 1) {
+            return null;
+        }
+
+        $declaringClass = LaravelTsPublish::methodDeclaringFileClass($method);
+        $class = LaravelTsPublish::resolveDocblockTypeName(
+            Str::before($names[0], '<'),
+            LaravelTsPublish::parseFileUseStatements($declaringClass),
+            $declaringClass->getNamespaceName(),
+        );
+
+        return class_exists($class) || interface_exists($class) || enum_exists($class) ? $class : null;
+    }
+
+    /**
+     * The class a `Castable` cast's value is: the native `get()` return of the caster `castUsing()` builds.
+     *
+     * Laravel's own `AsCollection`/`AsStringable` casters are anonymous classes with no `get()` return type, so they
+     * answer null rather than naming the Castable itself, which the value never is.
+     *
+     * @param  class-string<Castable>  $castable
+     * @return class-string|null
+     */
+    protected function castableValueClass(string $castable, string $cast): ?string
+    {
+        try {
+            $caster = $castable::castUsing(str_contains($cast, ':') ? explode(',', Str::after($cast, ':')) : []);
+        } catch (Throwable) {
+            return null;
+        }
+
+        $casterClass = is_object($caster) ? $caster::class : $caster;
+
+        return is_a($casterClass, CastsAttributes::class, true)
+            ? $this->singleClass(new ReflectionMethod($casterClass, 'get')->getReturnType(), $casterClass)
+            : null;
+    }
+
+    /**
+     * The class a reflected type names, or null for a builtin, union, or intersection type.
+     *
+     * @return class-string|null
+     */
+    protected function singleClass(?ReflectionType $type, string $selfClass): ?string
+    {
+        if (! $type instanceof ReflectionNamedType || ($type->isBuiltin() && $type->getName() !== 'static')) {
+            return null;
+        }
+
+        $class = in_array($type->getName(), ['static', 'self'], true) ? $selfClass : $type->getName();
+
+        return class_exists($class) || interface_exists($class) || enum_exists($class) ? $class : null;
     }
 
     /**
@@ -766,6 +939,26 @@ class ModelAttributeResolver
     }
 
     /**
+     * The class a MorphTo generic is bounded by, for member reflection only — never emitted or imported.
+     *
+     * Unlike morphToDocblockTargets(), a bare `Model` or an abstract class still answers, because reflecting
+     * a member on the bound is sound even when no concrete target is known.
+     *
+     * @param  class-string  $modelFqcn
+     * @return class-string<Model>
+     */
+    public function resolveMorphToBound(string $modelFqcn, string $relationName): string
+    {
+        $members = $this->morphToGenericMembers($modelFqcn, $relationName) ?? [];
+
+        if (count($members) === 1 && class_exists($members[0]) && is_a($members[0], Model::class, true)) {
+            return $members[0];
+        }
+
+        return Model::class;
+    }
+
+    /**
      * Concrete Model subclasses named by a morphTo method's `@return MorphTo<X|Y, ...>` docblock generic.
      *
      * Bare `Model` and abstract targets yield `[]`, so the caller falls through to the
@@ -776,33 +969,9 @@ class ModelAttributeResolver
      */
     protected function morphToDocblockTargets(string $modelFqcn, string $relationName): array
     {
-        $reflection = $this->getReflection($modelFqcn);
-
-        if ($reflection === null || ! $reflection->hasMethod($relationName)) {
-            return [];
-        }
-
-        $method = $reflection->getMethod($relationName);
-        $returnType = LaravelTsPublish::extractReturnTypeFromDocblock((string) $method->getDocComment());
-
-        if ($returnType === null
-            || ! preg_match('/^\\\\?(?:Illuminate\\\\Database\\\\Eloquent\\\\Relations\\\\)?MorphTo\s*<(.+)>$/s', trim($returnType), $m)
-        ) {
-            return [];
-        }
-
-        $declaringClass = LaravelTsPublish::methodDeclaringFileClass($method);
-        $useMap = LaravelTsPublish::parseFileUseStatements($declaringClass);
-        $namespace = $declaringClass->getNamespaceName();
-
-        // Only the first generic argument names the target(s) — the second ($this, by Laravel's
-        // own convention) carries no target information and is discarded here.
-        $firstArg = trim(Str::before($m[1], ','));
         $targets = [];
 
-        foreach (LaravelTsPublish::splitPhpDocUnionType($firstArg) as $part) {
-            $fqcn = LaravelTsPublish::resolveDocblockTypeName(trim($part), $useMap, $namespace);
-
+        foreach ($this->morphToGenericMembers($modelFqcn, $relationName) ?? [] as $fqcn) {
             if (! class_exists($fqcn) || ! is_a($fqcn, Model::class, true) || $fqcn === Model::class) {
                 return [];
             }
@@ -816,6 +985,42 @@ class ModelAttributeResolver
         }
 
         return $targets;
+    }
+
+    /**
+     * The names in a morphTo method's `@return MorphTo<X|Y, ...>` first generic argument, resolved against the
+     * declaring file's imports; null when the method or the generic is absent.
+     *
+     * @param  class-string  $modelFqcn
+     * @return list<string>|null
+     */
+    protected function morphToGenericMembers(string $modelFqcn, string $relationName): ?array
+    {
+        $reflection = $this->getReflection($modelFqcn);
+
+        if ($reflection === null || ! $reflection->hasMethod($relationName)) {
+            return null;
+        }
+
+        $method = $reflection->getMethod($relationName);
+        $returnType = LaravelTsPublish::extractReturnTypeFromDocblock((string) $method->getDocComment());
+
+        if ($returnType === null
+            || ! preg_match('/^\\\\?(?:Illuminate\\\\Database\\\\Eloquent\\\\Relations\\\\)?MorphTo\s*<(.+)>$/s', trim($returnType), $m)
+        ) {
+            return null;
+        }
+
+        $declaringClass = LaravelTsPublish::methodDeclaringFileClass($method);
+        $useMap = LaravelTsPublish::parseFileUseStatements($declaringClass);
+        $namespace = $declaringClass->getNamespaceName();
+
+        // Only the first generic argument names the target(s) — the second ($this, by Laravel's
+        // own convention) carries no target information and is discarded here.
+        return array_map(
+            fn (string $part): string => LaravelTsPublish::resolveDocblockTypeName(trim($part), $useMap, $namespace),
+            LaravelTsPublish::splitPhpDocUnionType(trim(Str::before($m[1], ','))),
+        );
     }
 
     /**

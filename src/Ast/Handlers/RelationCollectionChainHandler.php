@@ -407,15 +407,11 @@ final class RelationCollectionChainHandler implements ExpressionHandler
     }
 
     /**
-     * Determine whether a resolved model cast belongs to the date/datetime family, including
-     * immutable_* variants and the `:format` suffix on custom_datetime casts.
+     * Determine whether a resolved model cast belongs to the date/datetime family; see ModelAttributeResolver.
      */
     private function isDateFamilyCast(string $cast): bool
     {
-        return in_array(explode(':', $cast)[0], [
-            'date', 'datetime', 'custom_datetime', 'timestamp',
-            'immutable_date', 'immutable_datetime', 'immutable_custom_datetime',
-        ], true);
+        return resolve(ModelAttributeResolver::class)->isDateFamilyCast($cast);
     }
 
     /**

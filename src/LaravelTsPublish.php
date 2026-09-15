@@ -1702,7 +1702,7 @@ class LaravelTsPublish
      *
      * @return list<string>
      */
-    protected function splitAtTopLevelCommas(string $input): array
+    public function splitAtTopLevelCommas(string $input): array
     {
         $parts = [];
         $depth = 0;

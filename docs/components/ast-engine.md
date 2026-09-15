@@ -253,6 +253,8 @@ There are two arms because the dispatcher never hands the inner node of a chain 
   relation/attribute traversal runs unchanged over the remaining steps. Any other type declines, and
   the expression degrades to `unknown` exactly as before.
 
+[Receiver types](receiver-types.md) documents `ReceiverClassResolver`, which names the PHP class an expression holds.
+
 ## Dependency recording policy
 
 Every analyzer file-read flows through `AstParser`, directly or via `MethodLocator`. Skipping it means

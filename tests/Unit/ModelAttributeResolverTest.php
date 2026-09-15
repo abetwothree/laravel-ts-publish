@@ -10,12 +10,18 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MissingTableModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\InvalidPivotClassParent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\InverseMorphToManyParent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\NotAModelPivot;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
+use Workbench\App\Enums\Priority;
+use Workbench\App\Enums\ShirtSize;
 use Workbench\App\Models\Activity;
 use Workbench\App\Models\Admin\Store;
 use Workbench\App\Models\ArrayObjectCastFixture;
 use Workbench\App\Models\Artist;
 use Workbench\App\Models\ArtistReview;
 use Workbench\App\Models\Attachment;
+use Workbench\App\Models\Comment;
 use Workbench\App\Models\CompositeComment;
 use Workbench\App\Models\DocblockGenericsFixture;
 use Workbench\App\Models\Image;
@@ -37,9 +43,66 @@ use Workbench\App\Models\PropertyDocblockTraitFixture;
 use Workbench\App\Models\Review;
 use Workbench\App\Models\Sales\Report\Report as SalesReport;
 use Workbench\App\Models\Team;
+use Workbench\App\Models\TrackingEvent;
 use Workbench\App\Models\User;
 use Workbench\App\Models\Venue;
 use Workbench\App\Models\VenueReview;
+use Workbench\App\Models\Warehouse;
+use Workbench\App\ValueObjects\Coordinate;
+
+describe('resolveAttributeClass()', function () {
+    test('an enum cast holds its enum and a date cast holds Carbon', function () {
+        $resolver = resolve(ModelAttributeResolver::class);
+
+        expect($resolver->resolveAttributeClass(Post::class, 'priority'))->toBe(Priority::class)
+            ->and($resolver->resolveAttributeClass(Post::class, 'published_at'))->toBe(Carbon::class);
+    });
+
+    test('a CastsAttributes cast holds its get() return class', function () {
+        expect(resolve(ModelAttributeResolver::class)->resolveAttributeClass(Warehouse::class, 'coordinate_data'))
+            ->toBe(Coordinate::class);
+    });
+
+    test('an accessor holds its getter closure class, else its Attribute docblock Get class', function () {
+        $resolver = resolve(ModelAttributeResolver::class);
+
+        expect($resolver->resolveAttributeClass(Image::class, 'shirt_size'))->toBe(ShirtSize::class)
+            ->and($resolver->resolveAttributeClass(Post::class, 'latest_comment'))->toBe(Comment::class)
+            ->and($resolver->resolveAttributeClass(Image::class, 'uploader_from_docblock'))->toBe(User::class)
+            ->and($resolver->resolveAttributeClass(Image::class, 'uploaders_from_docblock'))->toBe(Collection::class);
+    });
+
+    test('an old-style accessor holds its native return class', function () {
+        expect(resolve(ModelAttributeResolver::class)->resolveAttributeClass(TrackingEvent::class, 'changes'))
+            ->toBe(Collection::class);
+    });
+
+    test('a scalar column, a scalar accessor, and an unknown name hold no class', function () {
+        $resolver = resolve(ModelAttributeResolver::class);
+
+        expect($resolver->resolveAttributeClass(Post::class, 'title'))->toBeNull()
+            ->and($resolver->resolveAttributeClass(Image::class, 'is_landscape'))->toBeNull()
+            ->and($resolver->resolveAttributeClass(Post::class, 'options'))->toBeNull()
+            ->and($resolver->resolveAttributeClass(ArrayObjectCastFixture::class, 'owner_snapshot'))->toBeNull()
+            ->and($resolver->resolveAttributeClass(Post::class, 'no_such_attribute'))->toBeNull()
+            ->and($resolver->resolveAttributeClass('Workbench\\App\\Models\\NoSuchModel', 'title'))->toBeNull();
+    });
+});
+
+describe('resolveMorphToBound()', function () {
+    test('a single-model generic is its own bound', function () {
+        expect(resolve(ModelAttributeResolver::class)->resolveMorphToBound(Activity::class, 'causer'))->toBe(User::class);
+    });
+
+    test('a Model generic, a union generic, and no generic are all bounded by Model', function () {
+        $resolver = resolve(ModelAttributeResolver::class);
+
+        expect($resolver->resolveMorphToBound(Kpi::class, 'reportable'))->toBe(Model::class)
+            ->and($resolver->resolveMorphToBound(Image::class, 'reviewable'))->toBe(Model::class)
+            ->and($resolver->resolveMorphToBound(Image::class, 'imageable'))->toBe(Model::class)
+            ->and($resolver->resolveMorphToBound(Image::class, 'noSuchRelation'))->toBe(Model::class);
+    });
+});
 
 test('resolveAttribute returns empty info for non-existent model class', function () {
     $resolver = resolve(ModelAttributeResolver::class);
