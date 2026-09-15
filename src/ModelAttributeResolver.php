@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesAccessorType;
 use AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
@@ -890,6 +891,14 @@ class ModelAttributeResolver
 
             /** @var Collection<int, AttributeInfo> $attributes */
             $attributes = $data->attributes;
+
+            if ($attributes->isEmpty() && ! $instance->getConnection()->getSchemaBuilder()->hasTable($instance->getTable())) {
+                AnalysisWarnings::add($modelFqcn, sprintf(
+                    'Table [%s] does not exist on connection [%s], so its columns are not published. Run the migrations, then publish again.',
+                    $instance->getTable(),
+                    $instance->getConnection()->getName(),
+                ));
+            }
 
             /** @var ReflectionClass<Model> $reflection */
             $reflection = new ReflectionClass($modelFqcn);

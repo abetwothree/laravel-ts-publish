@@ -684,3 +684,28 @@ same reason `getAttributes()` metadata is inert there: nothing calls `newInstanc
 `class_exists()` reference lives only in each attribute's `->skip()` test guard in
 `ModelTransformerTest.php`. See [Version-guarded Laravel
 classes](../laravel-version-guards.md) for the test-only guard rows this implies.
+
+## A missing table is reported, not guessed
+
+`resolveContext()` inspects a model through `ModelInspector::inspect()`, whose `attributes`
+collection comes straight from the schema (`getColumns($table)`). When the model's own table was
+never migrated, that call finds no columns at all, and every attribute lookup on the model
+silently resolves to `unknown` or the empty `TypeScriptTypeInfo` — indistinguishable, from the
+published output alone, from a model that genuinely has no typed columns. A cast-based guess at
+that point (say, treating every unresolved attribute as `unknown[] | Record<string, unknown>`
+because the shape "looks like a row") would only paper over the real problem: the migration is
+missing, not the type.
+
+So `resolveContext()` reports it instead. Once `$attributes` comes back empty, it asks the schema
+builder directly — `getConnection()->getSchemaBuilder()->hasTable($instance->getTable())` — and if
+the table genuinely does not exist, records one `AnalysisWarnings::add()` entry naming the model
+FQCN and the missing table/connection. `hasTable()` only runs on that already-empty path, so a
+healthy model with real columns never pays for the extra schema round trip. Because
+`resolveContext()` memoizes its result per model FQCN for the life of the resolver, the warning is
+recorded at most once per model per `ts:publish` run, no matter how many attributes are looked up
+against it.
+
+`TsPublishCommand::renderAnalysisWarnings()` prints every recorded entry after the summary output
+(the same mechanism `InertiaPageAnalyzer` uses for a degraded route action), so a missing migration
+surfaces as a warning line telling the developer to run their migrations and publish again — not as
+a silently empty model interface.

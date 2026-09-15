@@ -5,6 +5,8 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MissingTableModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\InvalidPivotClassParent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\InverseMorphToManyParent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\NotAModelPivot;
@@ -628,6 +630,26 @@ describe('attribute-lookup fallbacks', function () {
 
         expect($info['type'])->toBe('unknown');
     });
+});
+
+test('resolveContext warns when a model table does not exist', function () {
+    AnalysisWarnings::reset();
+
+    resolve(ModelAttributeResolver::class)->resolveAttribute(MissingTableModel::class, 'anything');
+
+    expect(AnalysisWarnings::all())->toHaveCount(1)
+        ->and(AnalysisWarnings::all()[0]['subject'])->toBe(MissingTableModel::class)
+        ->and(AnalysisWarnings::all()[0]['message'])->toContain('table_that_was_never_migrated');
+});
+
+test('resolveContext warns only once per model per run, because the context is cached', function () {
+    AnalysisWarnings::reset();
+
+    $resolver = resolve(ModelAttributeResolver::class);
+    $resolver->resolveAttribute(MissingTableModel::class, 'anything');
+    $resolver->resolveAttribute(MissingTableModel::class, 'something_else');
+
+    expect(AnalysisWarnings::all())->toHaveCount(1);
 });
 
 describe('resolveAttribute() @property fallback for virtual attributes', function () {

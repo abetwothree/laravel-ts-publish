@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomBarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FailingModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InvalidModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MissingTableModel;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Broadcast;
 
@@ -78,6 +79,16 @@ test('ts:publish source keeps model metadata provider failures strict', function
         '--source' => User::class,
         '--only-model-metadata' => true,
     ])->assertFailed();
+});
+
+test('ts:publish warns after the summary when a model\'s table does not exist', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.models.additional_directories', [MissingTableModel::class]);
+    config()->set('ts-publish.models.included', [MissingTableModel::class]);
+
+    $this->artisan('ts:publish', ['--preview' => 'true'])
+        ->assertSuccessful()
+        ->expectsOutputToContain('table_that_was_never_migrated');
 });
 
 test('ts:publish preserves last-known-good metadata output after a provider failure', function () {
