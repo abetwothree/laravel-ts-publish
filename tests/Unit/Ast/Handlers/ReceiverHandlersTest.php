@@ -382,18 +382,28 @@ describe('a property the subject declares wins over the model', function () {
 // handler used to DECLINE only()'s vague reflected return, and now answers it with the same Pick<>
 // RelationFilterHandler builds, so the pair still cannot change an answer by being reordered.
 describe('RelationFilterHandler and ReceiverMethodCallHandler are inert against each other', function () {
-    test('both claim $this->relation->only([...]) and answer it the same', function (string $php, string $type) {
+    test('both claim $this->relation->only([...]) and answer it the same', function (string $php, array $expected) {
         $expr = receiverHandlerExpr($php);
         $scope = fn (): AnalysisScope => new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
 
         $filter = new RelationFilterHandler()->resolve($expr, $scope(), chainHandlersThrowingEngine());
         $receiver = new ReceiverMethodCallHandler()->resolve($expr, $scope(), chainHandlersThrowingEngine());
 
-        expect($filter)->toBe(['type' => $type, 'optional' => false, 'modelFqcn' => Post::class])
+        expect($filter)->toBe($expected)
             ->and($receiver)->toBe($filter);
     })->with([
-        ['$this->post->only([\'id\', \'title\'])', "Pick<Post, 'id' | 'title'>"],
-        ['$this->post?->only([\'id\', \'title\'])', "Pick<Post, 'id' | 'title'> | null"],
+        // The Pick<> branch, both spellings, carrying the modelFqcn channel.
+        ['$this->post->only([\'id\', \'title\'])', ['type' => "Pick<Post, 'id' | 'title'>", 'optional' => false, 'modelFqcn' => Post::class]],
+        ['$this->post?->only([\'id\', \'title\'])', ['type' => "Pick<Post, 'id' | 'title'> | null", 'optional' => false, 'modelFqcn' => Post::class]],
+        // The inline branch: 'excerpt' is an accessor rather than a column, so relationFilterModelReference()
+        // declines on both sides and each falls to resolveFilteredRelationType() — a different channel set.
+        ['$this->post->only([\'id\', \'excerpt\'])', [
+            'type' => '{ id: number; excerpt: string | null }',
+            'optional' => false,
+            'embeddedEnumFqcns' => [],
+            'embeddedModelFqcns' => [],
+            'customImports' => [],
+        ]],
     ]);
 });
 

@@ -23,7 +23,10 @@ docblock refinements that a from-scratch recompute loses.
 
 The two paths agree by construction rather than by coincidence: the `Pick<>` builder and the inline-shape
 builder both live on `ResolvesFilteredRelationTypes`, and both callers invoke them in the same order with the
-same arguments. That is what keeps `RelationFilterHandler` and `ReceiverMethodCallHandler` inert against each
+same arguments — with one exception, which production ordering hides: `attributeFilterRule()` additionally
+runs its result through `ValueResult::namesOnlyPublishedModels()`, so for an abstract or `Illuminate\`-namespaced
+model the relation path still emits a `Pick<>` where the receiver rule declines. That is what keeps
+`RelationFilterHandler` and `ReceiverMethodCallHandler` inert against each
 other even though both claim `$this->relation->only([...])` — see the ordering inventory in
 [AST engine](ast-engine.md#the-honest-ordering-inventory), whose rows used to record the opposite reason (the
 receiver handler *declining* `only()`'s vague return). `OnlyValueResource` in the workbench pins the receiver
@@ -461,7 +464,7 @@ alone, silently dropping the scalar arm.
 `RelationFilterHandler::analyzeRelationFilter()`'s other branch handles an accessor typed as a union of two or more
 Eloquent models, e.g. `Attribute<CrmUser|User, never>`. The `$modelFqcn === null` guard diverts
 this receiver into a loop over `resolveAccessorModelFqcns()`'s FQCN list — one arm per model — and,
-like the single-model path just above, that loop now tries `RelationFilterHandler::relationFilterModelReference()` for
+like the single-model path just above, that loop now tries `ResolvesFilteredRelationTypes::relationFilterModelReference()` for
 each arm *first*, falling back to `ResolvesFilteredRelationTypes::resolveFilteredRelationType()`'s inline expansion only when a
 filter key is not one of that arm's own published columns (an accessor, mutator, or relation name).
 Every filter key on `WarehouseResource::$last_user_activity_by_mostly` (`except(['id', 'name'])`)

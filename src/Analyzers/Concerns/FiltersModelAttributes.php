@@ -69,11 +69,12 @@ trait FiltersModelAttributes
 
         $filtered = $this->filterAnalysisByKeys($fullAnalysis, $keys, include: true);
         $present = array_column($filtered->properties, 'name');
+        $acceptor = resolve(ReflectedTypeAcceptor::class);
+        $resolver = resolve(ModelAttributeResolver::class);
 
         // Model::only() returns every requested key, including withCount()/selectRaw() virtuals the schema lacks.
-        foreach (array_diff($keys, $present) as $key) {
-            $accepted = resolve(ReflectedTypeAcceptor::class)
-                ->accept(resolve(ModelAttributeResolver::class)->resolveAttribute($modelClass, $key));
+        foreach (array_unique(array_diff($keys, $present)) as $key) {
+            $accepted = $acceptor->accept($resolver->resolveAttribute($modelClass, $key));
 
             if ($accepted !== null) {
                 $filtered->addProperty($key, $accepted);

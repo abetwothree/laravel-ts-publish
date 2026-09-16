@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\CallMatcher;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\AnalyzesPluckCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\AppliesKnownMethodRules;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
@@ -49,6 +50,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
 {
     use AnalyzesPluckCalls;
     use AppliesKnownMethodRules;
+    use FiltersAttributeKeys;
     use InspectsAstNodes;
     use InspectsResourceSubject;
     use ResolvesModelRelationTypes;
@@ -98,9 +100,10 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             && $expr->var->name === 'this'
             && $expr->name instanceof Identifier
         ) {
-            // A model-backed `$this->only([...])` is the receiver rules' attribute filter, which types the
-            // named keys; reflecting Model::only() here would floor it at that vague `array` return instead.
-            if ($scope->modelClass !== null && in_array($expr->name->toString(), ['only', 'except'], true)) {
+            // A model-backed `$this->only(['a', 'b'])` is the receiver rules' attribute filter, which types the
+            // named keys. Gated on a literal list: without one that rule declines too, and stepping aside
+            // anyway would strand the call at `unknown` instead of the vague shape reflection still gives.
+            if ($scope->modelClass !== null && $this->filtersLiteralAttributeKeys($expr)) {
                 return null;
             }
 

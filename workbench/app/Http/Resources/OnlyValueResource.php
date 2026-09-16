@@ -13,6 +13,9 @@ use Workbench\App\Models\Post;
  * lacks, and two value-position calls — on $this (forwarded to the model) and on a whenLoaded closure
  * parameter — which must reference the model the receiver holds rather than only()'s vague array return.
  *
+ * The last two keys are the counter-case: with no literal key list there is nothing for the receiver rule
+ * to Pick<>, so they must keep the vague shape their old claimant reflects instead of degrading to unknown.
+ *
  * @mixin Post
  */
 final class OnlyValueResource extends JsonResource
@@ -26,6 +29,8 @@ final class OnlyValueResource extends JsonResource
             ...$this->only(['id', 'comments_count']),
             'summary' => $this->when(true, fn () => $this->only(['id', 'title'])),
             'category' => $this->whenLoaded('categoryRel', fn ($category) => $category->only(['id', 'name'])),
+            'dynamic' => $this->only($request->input('fields')),
+            'dynamic_category' => $this->whenLoaded('categoryRel', fn ($category) => $category->only($request->input('fields'))),
         ];
     }
 }

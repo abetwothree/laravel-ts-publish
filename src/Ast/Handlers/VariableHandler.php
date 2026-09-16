@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\AnalyzesPluckCalls;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesMapProxyElementModels;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
@@ -39,6 +40,7 @@ use ReflectionMethod;
 final class VariableHandler implements ExpressionHandler
 {
     use AnalyzesPluckCalls;
+    use FiltersAttributeKeys;
     use InspectsAstNodes;
     use ResolvesMapProxyElementModels;
     use ResolvesModelRelationTypes;
@@ -121,14 +123,14 @@ final class VariableHandler implements ExpressionHandler
         }
 
         // $variable->method() — resolve against the variable's own bound model, falling back to the
-        // ambient whenLoaded closure model. only()/except() are skipped: they belong to the receiver
-        // rules' attribute filter, which types the named keys rather than only()'s vague `array` return.
+        // ambient whenLoaded closure model. A literal-keyed only()/except() is skipped: it belongs to the
+        // receiver rules' attribute filter. Without literal keys that rule declines, so this must still answer.
         if ($expr instanceof MethodCall
             && $expr->var instanceof Variable
             && is_string($expr->var->name)
             && $expr->var->name !== 'this'
             && $expr->name instanceof Identifier
-            && ! in_array($expr->name->toString(), ['only', 'except'], true)
+            && ! $this->filtersLiteralAttributeKeys($expr)
         ) {
             /** @var class-string<Model>|null $boundModel */
             $boundModel = $scope->varModelBindings[$expr->var->name] ?? $scope->closureRelationModelClass;

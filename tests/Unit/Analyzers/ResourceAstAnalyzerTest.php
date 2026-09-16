@@ -2297,6 +2297,16 @@ describe('ResourceAstAnalyzer with OnlyValueResource (only() off a relation rece
             ->and($props['summary']['type'])->toBe("Pick<Post, 'id' | 'title'>")
             ->and($props['category']['type'])->toBe("Pick<Category, 'id' | 'name'>");
     });
+
+    test('a filter call with no literal key list keeps its vague reflected shape instead of falling to unknown', function () {
+        // $this->only($request->input('fields')) names no keys the receiver rule could Pick<>, so the two
+        // skip guards must stand aside only for a literal list — otherwise nothing answers and this is unknown,
+        // which is strictly less specific than the Record<string, unknown> the old claimant published.
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(OnlyValueResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+        expect($props['dynamic']['type'])->toBe('Record<string, unknown>')
+            ->and($props['dynamic_category']['type'])->toBe('Record<string, unknown>');
+    });
 });
 
 describe('ResourceAstAnalyzer with OrderExceptResource (direct return)', function () {

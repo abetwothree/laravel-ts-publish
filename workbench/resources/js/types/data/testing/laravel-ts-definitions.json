@@ -11861,6 +11861,16 @@
                     "name": "category",
                     "type": "Pick<Category, 'id' | 'name'>",
                     "optional": true
+                },
+                {
+                    "name": "dynamic",
+                    "type": "Record<string, unknown>",
+                    "optional": false
+                },
+                {
+                    "name": "dynamic_category",
+                    "type": "Record<string, unknown>",
+                    "optional": true
                 }
             ]
         },

@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
+use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafeMethodCall;
+use PhpParser\Node\Identifier;
 use PhpParser\Node\Scalar\String_;
 use ReflectionMethod;
 
@@ -75,5 +77,27 @@ trait FiltersAttributeKeys
         }
 
         return $keys !== [] ? $keys : null;
+    }
+
+    /**
+     * Whether a call is an `only()`/`except()` whose key list is literal enough for the receiver rules to read.
+     *
+     * The handler arms that step aside for ReceiverMethodReturnResolver::attributeFilterRule() ask this first:
+     * a filter call carrying a runtime value (`only($request->input('fields'))`) names no keys, so that rule
+     * declines too, and an unconditional skip would strand the call at `unknown`.
+     */
+    protected function filtersLiteralAttributeKeys(MethodCall|NullsafeMethodCall $call): bool
+    {
+        if ($call->isFirstClassCallable() || ! $call->name instanceof Identifier) {
+            return false;
+        }
+
+        $methodName = $call->name->toString();
+
+        if (! in_array($methodName, $this->supportedAttributeFilters(), true)) {
+            return false;
+        }
+
+        return $this->extractFilterKeys($call, new ReflectionMethod(Model::class, $methodName)) !== null;
     }
 }
