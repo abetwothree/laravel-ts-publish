@@ -438,9 +438,10 @@ that limit differently, and the difference decides where you go looking for the 
   a token is `unknown`, `Record<string, unknown>` for a runtime key list, or `unknown[]` for a to-many relation), so
   a filter written in the method body itself no longer costs the shape. That holds for an override declaring a
   class-typed return too, such as `only($attributes): static`. A top-level union arm that is a model, or a list of
-  one, publishes the columns that model serializes, narrowed to the call's literal keys, with a column naming a
-  token spelled `unknown`. Any other arm naming a token, such as an enum, makes the value `unknown`, and a model
-  nested deeper, as in `array{owner: User}`, is already `unknown` in its reflected docblock shape. A method body
+  one, publishes the columns and appended accessors that model serializes, narrowed to the call's literal keys, with
+  a member naming a token spelled `unknown`. Any other arm naming a token, such as an enum, makes the value
+  `unknown`, and a model nested deeper, as in `array{owner: User}`, is already `unknown` in its reflected docblock
+  shape. A method body
   that reads an accessor whose getter filters still does: the getter keeps its imports and publishes
   `Pick<User, …>` or `Comment[]`, and that token drops the method body's whole shape. That is a current limit. See
   [receiver-types § The body fallback carries no FQCN channel](./components/receiver-types.md#the-body-fallback-carries-no-fqcn-channel).

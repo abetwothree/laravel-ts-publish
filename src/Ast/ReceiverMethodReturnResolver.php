@@ -211,12 +211,12 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
-     * The object a model an override returns serializes to, as the call's literal keys select it from the columns
-     * that model writes: those `only()` names, or all but those `except()` names.
+     * The object a model an override returns serializes to, as the call's literal keys select it from the attributes
+     * that model writes, its columns and appended accessors: those `only()` names, or all but those `except()` names.
      *
-     * The value is the whole model, so any subset of what it writes is true of it; `$hidden` and columns `$visible`
-     * leaves out never reach JSON, so they are never named. A member whose type names a token is `unknown`. A runtime
-     * key list, or keys selecting nothing, leaves `Record<string, unknown>`.
+     * The value is the whole model, so any subset of what it writes is true of it. A `$hidden` attribute, one
+     * `$visible` leaves out, and an accessor not appended never reach JSON, so they are never named. A member whose
+     * type names a token is `unknown`. A runtime key list, or keys selecting nothing, leaves `Record<string, unknown>`.
      *
      * @param  class-string<Model>  $model
      * @param  list<string>|null  $keys
@@ -227,8 +227,8 @@ final class ReceiverMethodReturnResolver
             return 'Record<string, unknown>';
         }
 
-        $columns = resolve(ModelAttributeResolver::class)->serializedColumnNames($model);
-        $picked = $include ? array_values(array_intersect(array_unique($keys), $columns)) : array_values(array_diff($columns, $keys));
+        $names = resolve(ModelAttributeResolver::class)->serializedAttributeNames($model);
+        $picked = $include ? array_values(array_intersect(array_unique($keys), $names)) : array_values(array_diff($names, $keys));
         $shape = $picked === [] ? null : $this->literalKeyFilterResult($model, $picked, true, carriesImports: false);
 
         return $shape['type'] ?? 'Record<string, unknown>';

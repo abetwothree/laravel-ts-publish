@@ -759,13 +759,14 @@ class ModelAttributeResolver
     }
 
     /**
-     * Names of the published columns a model instance writes when it serializes: toArray() keeps only the attributes
-     * `$visible` lists, when it lists any, and drops those `$hidden` lists, whatever `exclude_hidden` says.
+     * Names of the attributes a model instance writes when it serializes: its published columns, then its appended
+     * attributes (`$appends` or `#[Appends]`). toArray() keeps only the names `$visible` lists, when it lists any, and
+     * drops those `$hidden` lists, for columns and appends alike, whatever `exclude_hidden` says.
      *
      * @param  class-string  $modelFqcn
      * @return list<string>
      */
-    public function serializedColumnNames(string $modelFqcn): array
+    public function serializedAttributeNames(string $modelFqcn): array
     {
         $instance = $this->getInstance($modelFqcn);
 
@@ -776,10 +777,13 @@ class ModelAttributeResolver
         $visible = $instance->getVisible();
         $hidden = $instance->getHidden();
 
-        return array_values(array_filter(
-            $this->publishedColumnNames($modelFqcn),
-            fn (string $column): bool => ($visible === [] || in_array($column, $visible, true)) && ! in_array($column, $hidden, true),
-        ));
+        /** @var list<string> $appends */
+        $appends = $instance->getAppends();
+
+        return array_values(array_unique(array_filter(
+            [...$this->publishedColumnNames($modelFqcn), ...$appends],
+            fn (string $name): bool => ($visible === [] || in_array($name, $visible, true)) && ! in_array($name, $hidden, true),
+        )));
     }
 
     /**

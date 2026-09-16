@@ -73,10 +73,12 @@ Two limits follow from where those declines stop:
     `Record<string, unknown>` or a `Pick<>`, in a resource and a getter body: `string` for `: string`, the model for
     `: static`. A method body carries no import, so there `ReceiverMethodReturnResolver` spells that return without a
     token, one top-level union arm at a time. An arm that is a model, or a list of one, becomes the object that model
-    serializes to, narrowed to the call's literal keys: the inline shape of the columns `only()` names, or of every
-    column but those `except()` names. The columns are those the model's `toArray()` writes, so a `$hidden` column,
-    or one its `$visible` list leaves out, is never named, and a column whose type names a token is `unknown`. A
-    runtime key list, or keys that select no such column, give `Record<string, unknown>`. A `null` arm stays. Any
+    serializes to, narrowed to the call's literal keys: the inline shape of the attributes `only()` names, or of every
+    attribute but those `except()` names. The attributes are those the model's `toArray()` writes, its columns and its
+    appended accessors (`$appends` or `#[Appends]`), so a `$hidden` column or append, one its `$visible` list leaves
+    out, and an accessor it does not append are never named, and a member whose type names a token is `unknown`:
+    `{ id: number; badge: string }[]` for `map->only(['id', 'badge'])` with `badge` appended. A runtime key list, or
+    keys that select no such attribute, give `Record<string, unknown>`. A `null` arm stays. Any
     other arm naming a token, such as an enum, leaves the whole answer `unknown`. A model nested deeper is not
     mapped: a docblock `array{owner: User}` already reflects to `{ owner: unknown }`. The enclosing shape survives
     either way. An override with no return reflection can read

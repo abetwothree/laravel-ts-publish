@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendingModelFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassTypedFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CollectionMemberModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DocblockFilterOverrideModel;
@@ -407,10 +408,11 @@ describe('ReceiverMethodCallHandler', function () {
         ]);
     });
 
-    // A returned model reaches JSON through toArray(), which writes only the columns `$visible` lists, when it lists any,
-    // less those `$hidden` lists. So the literal keys select from those columns, whatever `exclude_hidden` says, and a
-    // column whose type names a token is `unknown` there. A runtime key list, or keys selecting nothing, leave a record.
-    test('spells a model an override returns as the columns it serializes, narrowed to the literal keys, where the scope carries no import', function (string $model, string $php, string $type) {
+    // A returned model reaches JSON through toArray(), which writes its columns and its appended accessors, keeping
+    // only the names `$visible` lists, when it lists any, less those `$hidden` lists. So the literal keys select from
+    // those names, whatever `exclude_hidden` says, an accessor it does not append is never named, and a member whose
+    // type names a token is `unknown` there. A runtime key list, or keys selecting nothing, leave a record.
+    test('spells a model an override returns as the attributes it serializes, narrowed to the literal keys, where the scope carries no import', function (string $model, string $php, string $type) {
         $engine = new ResourceAstAnalyzer(new ReflectionClass($model), $model, 'toArray', carriesImports: false);
 
         expect($engine->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
@@ -420,9 +422,17 @@ describe('ReceiverMethodCallHandler', function () {
         'a runtime key list' => [HiddenFilterOverrideModel::class, '$this->twins->map->except($keys)', 'Record<string, unknown>[]'],
         'keys selecting only hidden columns' => [HiddenFilterOverrideModel::class, "\$this->only(['password'])", 'Record<string, unknown>'],
         'visible columns less a hidden one' => [VisibleFilterOverrideModel::class, "\$this->only(['id', 'slug', 'color'])", '{ id: number } | null'],
-        'the complement of the visible columns' => [VisibleFilterOverrideModel::class, "\$this->twin?->except(['id'])", '{ name: string } | null'],
-        'a complement selecting nothing' => [VisibleFilterOverrideModel::class, "\$this->except(['id', 'name'])", 'Record<string, unknown> | null'],
         'another model, its own columns' => [UserFilterOverrideModel::class, "\$this->twins->map->only(['id', 'title', 'password', 'role'])", '{ id: number; role: unknown }[]'],
+        'appended accessors, one of them an enum' => [HiddenFilterOverrideModel::class, "\$this->only(['id', 'badge', 'rank'])", '{ id: number; badge: string; rank: unknown }'],
+        'an appended accessor alone, through a map proxy' => [HiddenFilterOverrideModel::class, "\$this->twins->map->only(['badge'])", '{ badge: string }[]'],
+        'an appended accessor through ?->' => [HiddenFilterOverrideModel::class, "\$this->twin?->only(['id', 'badge'])", '{ id: number; badge: string } | null'],
+        'an appended accessor on a multi-model accessor arm' => [HiddenFilterOverrideModel::class, "\$this->counterpart->only(['id', 'badge'])", '{ id: number; badge: string } | { id: number }'],
+        'another model, its own appended accessor' => [AppendingModelFilterOverrideModel::class, "\$this->twins->map->only(['id', 'title', 'badge'])", '{ id: number; badge: string }[]'],
+        'a hidden appended accessor, and one not appended' => [HiddenFilterOverrideModel::class, "\$this->only(['id', 'secret', 'nick'])", '{ id: number }'],
+        'a hidden appended accessor alone' => [HiddenFilterOverrideModel::class, "\$this->twin?->only(['secret'])", 'Record<string, unknown> | null'],
+        'a visible appended accessor, and one outside $visible' => [VisibleFilterOverrideModel::class, "\$this->only(['id', 'label', 'shade'])", '{ id: number; label: string } | null'],
+        'the complement of the visible names, an append named like a column once' => [VisibleFilterOverrideModel::class, "\$this->twin?->except(['id'])", '{ name: string; label: string } | null'],
+        'a complement selecting nothing' => [VisibleFilterOverrideModel::class, "\$this->except(['id', 'name', 'label'])", 'Record<string, unknown> | null'],
     ]);
 
     // Only a top-level arm that is a model, or a list of one, is spelled from its columns: a model nested in a shape key
