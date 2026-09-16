@@ -26,6 +26,7 @@ use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\Visibility;
 use Workbench\App\Enums\WeekDays;
+use Workbench\App\Events\DocblockShapedEvent;
 use Workbench\App\Http\Resources\AddressResource;
 use Workbench\App\Http\Resources\Admin\Store as AdminStore;
 use Workbench\App\Http\Resources\Admin\StoreCollection as AdminStoreCollection;
@@ -103,6 +104,7 @@ use Workbench\App\Http\Resources\OrderItemResource;
 use Workbench\App\Http\Resources\OrderOnlyResource;
 use Workbench\App\Http\Resources\OrderResource;
 use Workbench\App\Http\Resources\OrderSummaryResource;
+use Workbench\App\Http\Resources\PermissionsSpreadResource;
 use Workbench\App\Http\Resources\PostAttachmentFilterResource;
 use Workbench\App\Http\Resources\PostCollection;
 use Workbench\App\Http\Resources\PostFlatCollection;
@@ -6030,4 +6032,24 @@ describe('ResourceAstAnalyzer with ImageDelegatedResource — the model-delegate
         expect($config['type'])->toBe('MenuSettingsType')
             ->and($analysis->customImports)->toBe(['@js/types/settings' => ['MenuSettingsType']]);
     });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Every return branch of a spread method counts, and the method's own @return shape
+// types what its body could not — PermissionsSpreadResource / DocblockShapedEvent
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('spread methods merge every return branch and take unknown types from their own @return', function () {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(PermissionsSpreadResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+    expect($props['permissions'])->toMatchArray(['type' => 'Record<string, boolean>', 'optional' => true])
+        ->and($props['links'])->toMatchArray(['type' => '{ self: string; related: Record<string, { name: string }> }', 'optional' => true])
+        ->and($props['main_label'])->toMatchArray(['type' => 'string', 'optional' => false])
+        ->and($props['extra_label'])->toMatchArray(['type' => 'string', 'optional' => true]);
+});
+
+test('broadcastWith honours its own @return shape', function () {
+    $props = collect(resolve(AstEngine::class)->analyzeMethod(DocblockShapedEvent::class, 'broadcastWith')->properties)->keyBy('name');
+
+    expect($props['published_at']['type'])->toBe('string | null');
 });

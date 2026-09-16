@@ -650,6 +650,15 @@ presentation and the `ImportNameRegistry` aliases a same-basename collision forc
 skips any `AnalysisImports` name they already emitted, so an alias is never shadowed by a bare
 duplicate.
 
+**Broadcast events now honour `@return array{…}`.** Events reach `ReturnShapeRefiner` through
+`analyzeMethod()` exactly as resources do, so a `broadcastWith()` whose body types nothing still
+publishes whatever its own return shape declares, and a key the shape writes `key?:` publishes
+optional. `DocblockShapedEvent` pins it: `broadcastWith()` returns one value from an untyped private
+helper, and `published_at` publishes `string | null` from the docblock rather than `unknown`. An
+event whose `broadcastWith()` carries no shape is unaffected — the refiner only ever fills a property
+the body left `unknown`, so `TeamMessageSent`'s reflected `teamId`/`content` keep the types their
+bodies already resolved.
+
 `InertiaPageAnalyzer` is the other shape a consumer can take: instead of one method's return shape it
 resolves *expressions* — every `Inertia::render()` props argument in a controller action — through the
 [controller profile](#controller-profile) over a scope built by `AstEngine::bindingsFor()`, merging

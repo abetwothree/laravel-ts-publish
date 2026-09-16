@@ -27,12 +27,12 @@ use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
+use AbeTwoThree\LaravelTsPublish\Ast\ReturnShapeRefiner;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesClassNames;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
@@ -232,7 +232,10 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         if ($branchAnalysis !== null) {
             if ($this->scope->subjectReflection->hasMethod($this->methodName)) {
-                $this->applyTsCastsFromMethod($this->scope->subjectReflection->getMethod($this->methodName), $branchAnalysis);
+                $ownMethod = $this->scope->subjectReflection->getMethod($this->methodName);
+
+                resolve(ReturnShapeRefiner::class)->refine($branchAnalysis, $ownMethod);
+                $this->applyTsCastsFromMethod($ownMethod, $branchAnalysis);
             }
 
             return $branchAnalysis;
@@ -744,8 +747,6 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         $this->scope->visitedSpreadMethods[$methodName] = true;
 
-        $finder = new NodeFinder;
-
         $previousLocalVarBindings = $this->scope->localVarBindings;
         $previousResolvingLocalVars = $this->scope->resolvingLocalVars;
         $previousVarModelBindings = $this->scope->varModelBindings;
@@ -761,28 +762,22 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $this->scope->requestVarNames = $this->resolveRequestVarNames($methodName);
             $this->seedVarBindings($targetMethod->stmts);
 
-            $returnStmt = $finder->findFirst($targetMethod->stmts, function (Node $node): bool {
-                return $node instanceof Return_;
-            });
+            $branches = [];
 
-            if ($returnStmt instanceof Return_ && $returnStmt->expr instanceof Array_) {
-                $analysis = $this->analyzeReturnArray($returnStmt->expr, $topLevel);
-            } elseif ($returnStmt instanceof Return_ && $returnStmt->expr instanceof Variable
-                && is_string($returnStmt->expr->name)) {
-                $analysis = $this->resolveVariableReturnAnalysis($targetMethod->stmts, $returnStmt->expr->name, $topLevel);
-            } elseif ($returnStmt instanceof Return_ && $returnStmt->expr instanceof MethodCall) {
-                $filtered = $this->analyzeThisAttributeFilter($returnStmt->expr);
-
-                if ($filtered !== null) {
-                    $analysis = $filtered;
-                } elseif ($this->hasThisReceiver($returnStmt->expr) && $returnStmt->expr->name instanceof Identifier) {
-                    $analysis = $this->analyzeThisMethodSpread($returnStmt->expr->name->toString(), $topLevel) ?? new ResourceAnalysis;
-                } else {
-                    $analysis = new ResourceAnalysis;
-                }
-            } else {
-                $analysis = new ResourceAnalysis;
+            foreach ($this->collectReturnExpressions($targetMethod->stmts) as $returned) {
+                $branches[] = match (true) {
+                    $returned instanceof Array_ && $returned->items === [] => new ResourceAnalysis,
+                    $returned instanceof Array_ => $this->analyzeReturnArray($returned, $topLevel),
+                    $returned instanceof Variable && is_string($returned->name) => $this->resolveVariableReturnAnalysis($targetMethod->stmts, $returned->name, $topLevel),
+                    default => null,
+                };
             }
+
+            // Every branch classified: each is a shape the method can return, so a key missing from
+            // one publishes optional. Anything unclassifiable falls back to the first-return path.
+            $analysis = $branches !== [] && ! in_array(null, $branches, true)
+                ? (count($branches) === 1 ? $branches[0] : $this->mergeReturnBranches($branches))
+                : $this->analyzeFirstReturn($targetMethod->stmts, $topLevel);
         } finally {
             $this->scope->localVarBindings = $previousLocalVarBindings;
             $this->scope->resolvingLocalVars = $previousResolvingLocalVars;
@@ -792,23 +787,43 @@ class ResourceAstAnalyzer implements ExpressionEngine
             unset($this->scope->visitedSpreadMethods[$methodName]);
         }
 
-        $docTypes = $this->parseReturnArrayShape($method);
-
-        if ($docTypes !== []) {
-            $tsMap = LaravelTsPublish::typesMap();
-
-            foreach ($analysis->properties as &$prop) {
-                if ($prop['type'] !== 'unknown' || ! isset($docTypes[$prop['name']])) {
-                    continue;
-                }
-
-                $prop['type'] = $this->resolvePhpDocType($docTypes[$prop['name']], $tsMap);
-            }
-
-            unset($prop);
-        }
+        resolve(ReturnShapeRefiner::class)->refine($analysis, $method);
 
         $this->applyTsCastsFromMethod($method, $analysis);
+
+        return $analysis;
+    }
+
+    /**
+     * The first-Return_ selection: the fallback whenever the branch sweep above cannot classify
+     * every return a method makes.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     */
+    protected function analyzeFirstReturn(array $stmts, bool $topLevel = true): ResourceAnalysis
+    {
+        $returnStmt = new NodeFinder()->findFirst($stmts, function (Node $node): bool {
+            return $node instanceof Return_;
+        });
+
+        if ($returnStmt instanceof Return_ && $returnStmt->expr instanceof Array_) {
+            $analysis = $this->analyzeReturnArray($returnStmt->expr, $topLevel);
+        } elseif ($returnStmt instanceof Return_ && $returnStmt->expr instanceof Variable
+            && is_string($returnStmt->expr->name)) {
+            $analysis = $this->resolveVariableReturnAnalysis($stmts, $returnStmt->expr->name, $topLevel);
+        } elseif ($returnStmt instanceof Return_ && $returnStmt->expr instanceof MethodCall) {
+            $filtered = $this->analyzeThisAttributeFilter($returnStmt->expr);
+
+            if ($filtered !== null) {
+                $analysis = $filtered;
+            } elseif ($this->hasThisReceiver($returnStmt->expr) && $returnStmt->expr->name instanceof Identifier) {
+                $analysis = $this->analyzeThisMethodSpread($returnStmt->expr->name->toString(), $topLevel) ?? new ResourceAnalysis;
+            } else {
+                $analysis = new ResourceAnalysis;
+            }
+        } else {
+            $analysis = new ResourceAnalysis;
+        }
 
         return $analysis;
     }
@@ -990,69 +1005,6 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Parse a @return array shape PHPDoc annotation into a property-name → PHP-type map.
-     *
-     * Supports: @return array{key: type, key2: type2, ...}
-     *
-     * @return array<string, string>
-     */
-    protected function parseReturnArrayShape(ReflectionMethod $method): array
-    {
-        $docComment = $method->getDocComment();
-
-        if ($docComment === false) {
-            return [];
-        }
-
-        if (! preg_match('/@return\s+array\{([^}]+)\}/', $docComment, $matches)) {
-            return [];
-        }
-
-        $result = [];
-        $entries = explode(',', $matches[1]);
-
-        foreach ($entries as $entry) {
-            $entry = trim($entry);
-            $entry = (string) preg_replace('/^\*\s*/', '', $entry);
-
-            if (! str_contains($entry, ':')) {
-                continue;
-            }
-
-            [$key, $type] = explode(':', $entry, 2);
-            $result[trim($key)] = trim($type);
-        }
-
-        return $result;
-    }
-
-    /**
-     * Convert a PHPDoc type string (e.g. "string|null") to its TypeScript equivalent.
-     *
-     * @param  array<string, string|(callable(): string)>  $tsMap
-     */
-    protected function resolvePhpDocType(string $phpType, array $tsMap): string
-    {
-        $parts = array_map('trim', explode('|', $phpType));
-        $resolved = [];
-
-        foreach ($parts as $part) {
-            $lower = strtolower($part);
-            $mapped = $tsMap[$lower] ?? null;
-
-            if (is_string($mapped)) {
-                $resolved[] = $mapped;
-            } elseif (is_callable($mapped)) {
-                $resolved[] = (string) $mapped();
-            } else {
-                $resolved[] = $part;
-            }
-        }
-
-        return implode(' | ', array_unique($resolved));
-    }
-
-    /**
      * Build a ResourceAnalysis for a ResourceCollection subclass that has no toArray() method.
      *
      * A non-empty $wrap key produces `{ data: R[] }`, keyed as `Record<string, R>` when the collection
@@ -1105,30 +1057,24 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         $this->collectDirectReturns($stmts, $candidates);
 
-        // Filter out empty array returns (guard clauses like `return []`)
-        $candidates = array_values(array_filter($candidates, function (Return_ $r): bool {
+        // A `return []` guard is a branch like any other: the keys its siblings set are absent on
+        // that path, so they publish optional. Only a body with no non-empty return declines here.
+        $hasItems = array_filter($candidates, function (Return_ $r): bool {
             return $r->expr instanceof Array_ && count($r->expr->items) > 0;
-        }));
+        }) !== [];
 
-        if ($candidates === []) {
+        if (! $hasItems) {
             return null;
         }
 
-        if (count($candidates) === 1) {
-            /** @var Array_ $expr */
-            $expr = $candidates[0]->expr;
-
-            return $this->analyzeReturnArray($expr);
-        }
-
-        $analyses = array_map(function (Return_ $r) {
+        $analyses = array_map(function (Return_ $r): ResourceAnalysis {
             /** @var Array_ $expr */
             $expr = $r->expr;
 
-            return $this->analyzeReturnArray($expr);
+            return $expr->items === [] ? new ResourceAnalysis : $this->analyzeReturnArray($expr);
         }, $candidates);
 
-        return $this->mergeReturnBranches($analyses);
+        return count($analyses) === 1 ? $analyses[0] : $this->mergeReturnBranches($analyses);
     }
 
     /**
@@ -1232,6 +1178,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
      */
     private function unionBranchTypes(array $types): string
     {
+        // `unknown` absorbs whatever it is unioned with, so one untypable branch makes the whole
+        // union `unknown` — never a `string` that the untypable branch does not actually promise.
+        if (in_array('unknown', $types, true)) {
+            return 'unknown';
+        }
+
         return TsTypeString::hoistNull($types);
     }
 

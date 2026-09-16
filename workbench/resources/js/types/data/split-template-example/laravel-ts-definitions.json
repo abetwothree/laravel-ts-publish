@@ -39,6 +39,18 @@
                 }
             ]
         },
+        "Workbench\\App\\Events\\DocblockShapedEvent": {
+            "name": "DocblockShapedEvent",
+            "eventName": "DocblockShapedEvent",
+            "broadcastName": ".Workbench.App.Events.DocblockShapedEvent",
+            "properties": [
+                {
+                    "name": "published_at",
+                    "type": "string | null",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Events\\EnumBroadcastEvent": {
             "name": "EnumBroadcastEvent",
             "eventName": "EnumBroadcastEvent",
@@ -11385,17 +11397,17 @@
                 {
                     "name": "name",
                     "type": "string",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "value",
                     "type": "string",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "meta",
                     "type": "{ extensions: unknown[]; maxSizeMb: number; sizeUnit: string; icon: string }",
-                    "optional": false
+                    "optional": true
                 }
             ]
         },
@@ -11405,22 +11417,22 @@
                 {
                     "name": "name",
                     "type": "string",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "value",
                     "type": "string",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "meta",
                     "type": "{ label?: string }",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "empty",
                     "type": "never[]",
-                    "optional": false
+                    "optional": true
                 }
             ]
         },
@@ -12404,6 +12416,36 @@
                 {
                     "name": "search_index",
                     "type": "unknown",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\PermissionsSpreadResource": {
+            "name": "PermissionsSpreadResource",
+            "properties": [
+                {
+                    "name": "permissions",
+                    "type": "Record<string, boolean>",
+                    "optional": true
+                },
+                {
+                    "name": "links",
+                    "type": "{ self: string; related: Record<string, { name: string }> }",
+                    "optional": true
+                },
+                {
+                    "name": "main_label",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "extra_label",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "id",
+                    "type": "number",
                     "optional": false
                 }
             ]

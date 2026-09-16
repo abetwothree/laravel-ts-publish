@@ -2840,9 +2840,9 @@ declare global {
             map: Pick<app.models.User, 'id' | 'name'>;
         }
         export interface MediaTypeInstanceOfResource {
-            name: string;
-            value: string;
-            meta: { extensions: unknown[]; maxSizeMb: number; sizeUnit: string; icon: string };
+            name?: string;
+            value?: string;
+            meta?: { extensions: unknown[]; maxSizeMb: number; sizeUnit: string; icon: string };
         }
         /**
          * Resource using a positive instanceof guard (not negated).
@@ -2850,10 +2850,10 @@ declare global {
          * to exercise additional coverage paths.
          */
         export interface MediaTypePositiveInstanceOfResource {
-            name: string;
-            value: string;
-            meta: { label?: string };
-            empty: never[];
+            name?: string;
+            value?: string;
+            meta?: { label?: string };
+            empty?: never[];
         }
         export interface MediaTypeResource {
             name: string;
@@ -3180,6 +3180,17 @@ declare global {
             total: number;
             notes: string | null;
             search_index: unknown;
+        }
+        /**
+         * Every return branch of a spread method counts, and the method's own @return shape types
+         * what its body cannot.
+         */
+        export interface PermissionsSpreadResource {
+            permissions?: Record<string, boolean>;
+            links?: { self: string; related: Record<string, { name: string }> };
+            main_label: string;
+            extra_label?: string;
+            id: number;
         }
         /**
          * Exercises a morphTo reached through a relation filter, where the union lands inside an inline shape.
@@ -4501,6 +4512,9 @@ declare global {
             tags: string[];
             id: number;
             note: string | null;
+        }
+        export interface DocblockShapedEvent {
+            published_at: string | null;
         }
         export interface EnumBroadcastEvent {
             status: app.enums.StatusType;

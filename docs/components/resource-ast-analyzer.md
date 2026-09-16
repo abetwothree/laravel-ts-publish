@@ -761,6 +761,52 @@ already does for a `StaticCall` receiver, and only when the resolved receiver ca
 otherwise it declines rather than guessing. `ReceiverMethodResource::author_resource` in the workbench
 pins this: `new UserResource($this->author)->resolve($request)` publishes `UserResource`, not `unknown`.
 
+## Return branches and the method's own `@return`
+
+A spread method is no longer read through its *first* `return`. `analyzeThisMethodSpread()` sweeps
+every direct return with `InspectsAstNodes::collectReturnExpressions()` and classifies each one: an
+array literal becomes a branch via `analyzeReturnArray()`, a variable the method builds becomes one
+via `resolveVariableReturnAnalysis()`, and an empty `[]` becomes an empty branch. When every return
+classifies, the branches merge through `mergeReturnBranches()`, so **a key missing from any branch
+publishes optional**. When any return is something else — a `MethodCall`, a ternary, a non-array
+expression — the whole sweep is abandoned for `analyzeFirstReturn()`, which is the original
+first-`Return_` chain moved verbatim, so every shape that path already resolved still resolves
+identically.
+
+`analyzeAllReturnBranches()` treats a guard's `return []` the same way, which is the rule for
+`toArray()` bodies: it declines only when *no* candidate has items, and otherwise contributes each
+empty return as an empty branch. `MediaTypeInstanceOfResource` is the shape this changes —
+`if (! $this->resource instanceof MediaType) { return []; }` means `name`, `value` and `meta` really
+are absent from one path, so they publish `name?`/`value?`/`meta?` rather than claiming to be
+required. Nothing loses a type; a key only gains `?`.
+
+### The method's own `@return` fills what the body could not
+
+`ReturnShapeRefiner::refine()` runs for a spread method and for the analyzed method itself, in both
+cases before `applyTsCastsFromMethod()`, so the precedence is body → docblock → `#[TsCasts]`. **The
+body always wins:** the refiner only ever writes a property the AST left `unknown`, so a stale
+docblock can never overwrite a resolved type — `TraitSpreadCoverageResource::id` stays the model's
+`number` even though its trait's shape says `string`. It reads two sources: a `@return array{…}`
+shape per key, and a `@return array<string, V>` value type applied to every unknown key. A key the
+shape writes `key?:` also marks the property optional.
+
+Two values are declined rather than published. A shape value that resolves to a token needing an
+import the shape cannot carry (`TsTypeString::shapeValueHasUnimportableToken()`) is skipped, because
+the map is string-only and could never supply the FQCN. A value naming no PHP type at all is the
+opposite case: it resolves to `unknown`, but the consuming app declares it as a global, so the raw
+name is kept — `IncludesExtras`'s `custom_val: CustomObject` publishes `CustomObject`, matching the
+`CustomObject` stub under `tests/types/stubs`. Dropping it there would have replaced a real published
+type with `unknown`.
+
+### An untypable branch makes the union `unknown`, not the typed arm
+
+`unionBranchTypes()` returns `unknown` as soon as one branch resolved to `unknown`, because `unknown`
+absorbs every arm it is unioned with — `unknown | string` *is* `unknown`, spelled longer. The
+alternative, dropping the untypable arm the way `ValueResult::analyzeClosureUnion()` does for ternary
+unions, would promise the typed arm's `string` for a branch that guarantees no such thing.
+`NarrowingGuardBodyResource::dirty_label` pins it: one branch reads a member off an un-narrowed
+variable and the other returns a literal, and the honest answer is `unknown`.
+
 ## Inline-array spreads become intersection arms
 
 An inline array literal that spreads a named type alongside its own keys —
