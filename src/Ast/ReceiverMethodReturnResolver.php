@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\StaticCall;
@@ -166,8 +167,8 @@ final class ReceiverMethodReturnResolver
     /**
      * An `only()`/`except()` answer where the scope imports nothing, such as an override declaring `: static`.
      *
-     * The body fallback drops a whole shape naming a token, so a model arm becomes the object the model serializes to.
-     * Any other token, such as an enum, leaves `unknown`, which still keeps the enclosing shape.
+     * The body fallback drops a whole shape naming a token. So a top-level arm that is a model, or a list of one, is
+     * spelled as that model's columns; any other token, such as an enum or a nested model, leaves `unknown`.
      *
      * @param  ValueExpressionResult  $result
      * @return ValueExpressionResult
@@ -178,12 +179,20 @@ final class ReceiverMethodReturnResolver
             return $result;
         }
 
-        $models = array_map(class_basename(...), [...(isset($result['modelFqcn']) ? [$result['modelFqcn']] : []), ...($result['embeddedModelFqcns'] ?? [])]);
+        $models = [];
+
+        foreach ([...(isset($result['modelFqcn']) ? [$result['modelFqcn']] : []), ...($result['embeddedModelFqcns'] ?? [])] as $model) {
+            $models[class_basename($model)] = $model;
+        }
+
         $arms = [];
 
         foreach (TsTypeString::splitTopLevelUnion($result['type']) as $arm) {
-            if (in_array($arm, $models, true)) {
-                $arm = 'Record<string, unknown>';
+            $element = Str::chopEnd($arm, '[]');
+
+            if (isset($models[$element])) {
+                $shape = $this->modelShapeWithoutImports($models[$element]);
+                $arm = $element === $arm ? $shape : ValueResult::arrayWrapType($shape);
             } elseif (TsTypeString::shapeValueHasUnimportableToken($arm)) {
                 return ValueResult::unknown();
             }
@@ -192,6 +201,19 @@ final class ReceiverMethodReturnResolver
         }
 
         return [...ValueResult::unknown(), 'type' => TsTypeString::hoistNull($arms)];
+    }
+
+    /**
+     * A model's published columns as an inline shape, or `Record<string, unknown>` when a column's type names a token.
+     *
+     * @param  class-string  $model
+     */
+    private function modelShapeWithoutImports(string $model): string
+    {
+        $columns = resolve(ModelAttributeResolver::class)->publishedColumnNames($model);
+        $shape = $columns === [] || ! is_a($model, Model::class, true) ? null : $this->literalKeyFilterResult($model, $columns, true, false);
+
+        return $shape === null || TsTypeString::shapeValueHasUnimportableToken($shape['type']) ? 'Record<string, unknown>' : $shape['type'];
     }
 
     /**

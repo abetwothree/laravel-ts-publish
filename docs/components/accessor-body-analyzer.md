@@ -65,9 +65,11 @@ class instead. `Release` uses `DerivesReleaseVersion` to pin the trait-declared 
 analyzer runs on `ResourceExpressionHandlers::forModelClosures()` — an accessor body is not a resource
 `toArray()`, so `ConditionalMethodHandler` and `ToResourceHandler` have no business claiming its expressions.
 `RelationFilterHandler` stays: the body reads the model's own relations and columns, and only that handler types a
-to-many relation's filter, a map proxy, a multi-model accessor's filter, or a filter on a column cast with
-`AsCollection`, which publishes `Record<string, unknown>`. A single relation's filter, and one on an accessor
-returning a `Support\Collection`, also reach `ReceiverMethodCallHandler`, which gives the same answer. `Comment::relationPicks()` pins the handler through its
+to-many relation's filter, a map proxy, a multi-model accessor's filter, a filter on a column cast to a
+`Support\Collection` (`'collection'`, `AsCollection` and their encrypted forms), which publishes
+`Record<string, unknown>`, or one on an accessor holding an `Eloquent\Collection`, which publishes its own list. A
+single relation's filter, and one on an accessor returning a `Support\Collection`, also reach
+`ReceiverMethodCallHandler`, which gives the same answer. `Comment::relationPicks()` pins the handler through its
 to-many members: `replies` publishes `Comment[]`, `kept_replies` `Comment[] | null` and `reply_previews`
 `{ id: number; content: string }[]`. Its `Pick<User, 'id' | 'name'>` would survive without the handler.
 

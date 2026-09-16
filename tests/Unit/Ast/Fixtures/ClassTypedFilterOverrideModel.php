@@ -17,7 +17,7 @@ use Workbench\App\Models\User;
  */
 final class ClassTypedFilterOverrideModel extends Model
 {
-    protected $table = 'posts';
+    protected $table = 'tags';
 
     /** @param  array<int, string>|string  $attributes */
     public function only($attributes): ?static
@@ -34,13 +34,13 @@ final class ClassTypedFilterOverrideModel extends Model
     /** @return BelongsTo<ClassTypedFilterOverrideModel, $this> */
     public function twin(): BelongsTo
     {
-        return $this->belongsTo(self::class, 'user_id');
+        return $this->belongsTo(self::class, 'id');
     }
 
     /** @return HasMany<ClassTypedFilterOverrideModel, $this> */
     public function twins(): HasMany
     {
-        return $this->hasMany(self::class, 'user_id');
+        return $this->hasMany(self::class, 'id');
     }
 
     /**
@@ -51,7 +51,7 @@ final class ClassTypedFilterOverrideModel extends Model
     public function filterFields(): array
     {
         return [
-            'own' => $this->only(['id', 'title']),
+            'own' => $this->only(['id', 'name']),
             'twin' => $this->twin?->only(['id']),
             'rest' => $this->except(['id']),
             'id' => $this->id,

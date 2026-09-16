@@ -503,7 +503,12 @@ it('publishes a filter on a member holding a Support\Collection as Record<string
 })->with([
     'collection-cast column' => ['$this->options->only([\'a\'])', ['type' => 'Record<string, unknown>', 'optional' => false]],
     'collection-cast column ?->, through $this->resource' => ['$this->resource->options?->except($keys)', ['type' => 'Record<string, unknown> | null', 'optional' => false]],
+    'AsEncryptedCollection column' => ['$this->visibility->except([\'a\'])', ['type' => 'Record<string, unknown>', 'optional' => false]],
+    'collection column' => ['$this->content->only($keys)', ['type' => 'Record<string, unknown>', 'optional' => false]],
+    'encrypted:collection column ?->' => ['$this->featured_image_url?->only([\'a\'])', ['type' => 'Record<string, unknown> | null', 'optional' => false]],
     'accessor' => ['$this->stats->except([\'a\'])', ['type' => 'Record<string, unknown>', 'optional' => false]],
+    'accessor of models, read before its element model' => ['$this->people->only([\'id\'])', ['type' => 'Record<string, unknown>', 'optional' => false]],
+    'accessor holding a model, not a collection' => ['$this->lead->only([\'id\'])', ['type' => "Pick<Comment, 'id'>", 'optional' => false, 'modelFqcn' => Comment::class]],
     'a cast building an Eloquent collection' => ['$this->metadata->only([\'a\'])', null],
 ]);
 

@@ -5,16 +5,19 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 
 use Illuminate\Database\Eloquent\Casts\AsCollection;
+use Illuminate\Database\Eloquent\Casts\AsEncryptedCollection;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
 use Workbench\App\Models\Comment;
+use Workbench\App\Models\User;
 
 /**
- * A model whose members hold a Support\Collection: a collection-cast column, an accessor and a method, beside a
- * column cast to an Eloquent collection and a to-many relation, whose filters keep models by primary key.
+ * A model whose members hold a collection: Support\Collection columns cast by `AsCollection`, `AsEncryptedCollection`,
+ * `'collection'` and `'encrypted:collection'`, accessors and a method, beside Eloquent\Collection members and a
+ * to-many relation, whose filters keep models by primary key.
  */
 final class CollectionMemberModel extends Model
 {
@@ -48,6 +51,9 @@ final class CollectionMemberModel extends Model
         return [
             'options' => AsCollection::class,
             'metadata' => AsCollection::using(EloquentCollection::class),
+            'visibility' => AsEncryptedCollection::class,
+            'content' => 'collection',
+            'featured_image_url' => 'encrypted:collection',
         ];
     }
 
@@ -55,6 +61,29 @@ final class CollectionMemberModel extends Model
     protected function stats(): Attribute
     {
         return Attribute::get(fn () => collect(['a' => 1]));
+    }
+
+    /** @return Attribute<Collection<int, User>, never> */
+    protected function people(): Attribute
+    {
+        return Attribute::get(fn () => collect());
+    }
+
+    /** @return Attribute<EloquentCollection<int, Comment>, never> */
+    protected function kids(): Attribute
+    {
+        return Attribute::get(fn () => new EloquentCollection);
+    }
+
+    protected function strays(): Attribute
+    {
+        return Attribute::get(fn (): EloquentCollection => new EloquentCollection);
+    }
+
+    /** @return Attribute<Comment, never> */
+    protected function lead(): Attribute
+    {
+        return Attribute::get(fn () => new Comment);
     }
 
     /** The column's filtered entries beside the key, read as a getter body. */

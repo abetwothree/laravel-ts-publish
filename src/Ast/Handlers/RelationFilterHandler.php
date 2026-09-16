@@ -37,7 +37,8 @@ use ReflectionMethod;
  * The relation arm declines what it cannot type, such as a single model whose filter override reflection types; a map
  * proxy's elements and a multi-model accessor's arm publish that override's return instead. Once the map-proxy arm
  * matches, it claims `unknown` for no element model, no literal keys, or keys naming nothing. A member holding a
- * Support\Collection publishes `Record<string, unknown>`. A scope that carries no import gets answers naming no token.
+ * Support\Collection publishes `Record<string, unknown>`, and an accessor holding an Eloquent\Collection its own list.
+ * A scope that carries no import gets answers naming no token.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypesImportMap from Datable
@@ -128,15 +129,16 @@ final class RelationFilterHandler implements ExpressionHandler
             return $this->manyRelationRead($call, $scope, $engine);
         }
 
+        // A collection's filter never runs on its elements, so its class decides before any element model it names.
+        $collectionClass = $relationInfo['modelFqcn'] === null ? $this->memberCollectionClass($propName, $scope) : null;
+
+        if ($collectionClass !== null) {
+            return $this->analyzeCollectionMemberFilter($call, $methodName, $propName, $collectionClass, $scope, $engine);
+        }
+
         $modelFqcn = $relationInfo['modelFqcn'] ?? $this->resolveAccessorModelFqcn($propName, $scope);
 
         if ($modelFqcn === null) {
-            $collectionClass = $this->memberCollectionClass($propName, $scope);
-
-            if ($collectionClass !== null && $this->runsCollectionFilter($collectionClass, $methodName)) {
-                return $this->attributeRecordResult($nullable);
-            }
-
             // Try the multi-model accessor path (e.g. Attribute<ModelA|ModelB, never>).
             return $this->analyzeMultiModelFilter($call, $methodName, $this->resolveAccessorModelFqcns($propName, $scope), $scope);
         }
@@ -166,6 +168,39 @@ final class RelationFilterHandler implements ExpressionHandler
         }
 
         return $filtered;
+    }
+
+    /**
+     * Analyze a filter on a member holding a collection, declining for a class whose filter is its own.
+     *
+     * Support\Collection's filter keeps the entries whose keys are listed. Eloquent\Collection's keeps whole models by
+     * primary key, so an accessor holding one publishes the models it names as a many-relation does, else `unknown[]`.
+     * A cast building an Eloquent\Collection holds decoded JSON, whose elements have no key to filter by.
+     *
+     * @param  class-string  $collectionClass
+     * @return ValueExpressionResult|null
+     */
+    private function analyzeCollectionMemberFilter(
+        MethodCall|NullsafeMethodCall $call,
+        string $methodName,
+        string $propName,
+        string $collectionClass,
+        AnalysisScope $scope,
+        ExpressionEngine $engine,
+    ): ?array {
+        $nullable = $call instanceof NullsafeMethodCall;
+
+        if ($this->runsCollectionFilter($collectionClass, $methodName)) {
+            return $this->attributeRecordResult($nullable);
+        }
+
+        if (! $this->runsEloquentCollectionFilter($collectionClass, $methodName) || ! $this->isAccessorMember($propName, $scope)) {
+            return null;
+        }
+
+        return $this->resolveAccessorModelFqcns($propName, $scope) === []
+            ? [...ValueResult::unknown(), 'type' => $nullable ? 'unknown[] | null' : 'unknown[]']
+            : $this->manyRelationRead($call, $scope, $engine);
     }
 
     /**
@@ -387,9 +422,9 @@ final class RelationFilterHandler implements ExpressionHandler
 
     /**
      * The collection class a model member holds: what its accessor or cast reflects, else what a Laravel collection
-     * cast builds, which is `using()`'s class or Support\Collection. Those casters declare no return type to reflect.
+     * cast builds, which is Support\Collection or `using()`'s class. Those casts declare no return type to reflect.
      *
-     * @return class-string|null
+     * @return class-string|null null when the member holds no collection
      */
     private function memberCollectionClass(string $propName, AnalysisScope $scope): ?string
     {
@@ -401,10 +436,15 @@ final class RelationFilterHandler implements ExpressionHandler
         $class = $resolver->resolveAttributeClass($scope->modelClass, $propName);
 
         if ($class !== null) {
-            return $class;
+            return is_a($class, Collection::class, true) ? $class : null;
         }
 
         $cast = (string) ($resolver->getAttributes($scope->modelClass)?->firstWhere('name', $propName)['cast'] ?? '');
+
+        if ($cast === 'collection' || $cast === 'encrypted:collection') {
+            return Collection::class;
+        }
+
         $head = Str::before($cast, ':');
 
         if (! is_a($head, AsCollection::class, true) && ! is_a($head, AsEncryptedCollection::class, true)) {
@@ -413,7 +453,21 @@ final class RelationFilterHandler implements ExpressionHandler
 
         $collection = str_contains($cast, ':') ? Str::before(Str::after($cast, ':'), ',') : '';
 
-        return $collection !== '' && class_exists($collection) ? $collection : Collection::class;
+        return is_a($collection, Collection::class, true) ? $collection : Collection::class;
+    }
+
+    /**
+     * Whether a model member is an accessor, new-style or old-style, rather than a column or a cast.
+     */
+    private function isAccessorMember(string $propName, AnalysisScope $scope): bool
+    {
+        if ($scope->modelClass === null) {
+            return false; // @codeCoverageIgnore
+        }
+
+        $cast = resolve(ModelAttributeResolver::class)->getAttributes($scope->modelClass)?->firstWhere('name', $propName)['cast'] ?? null;
+
+        return $cast === 'attribute' || $cast === 'accessor';
     }
 
     /**
