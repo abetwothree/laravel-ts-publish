@@ -62,7 +62,12 @@ final class PropertyChainHandler implements ExpressionHandler
                 $info = $this->analyzeWrappedModelResourceProperty($expr, $scope);
             }
 
-            if ($info['type'] === 'unknown' && $scope->closureRelationModelClass !== null && $expr->name instanceof Identifier) {
+            // `$this->resource->prop` reads the resource's own model, never the closure's relation model.
+            if ($info['type'] === 'unknown'
+                && $scope->closureRelationModelClass !== null
+                && $expr->name instanceof Identifier
+                && ! ($expr->var instanceof PropertyFetch && $expr->var->name instanceof Identifier && $expr->var->name->toString() === 'resource')
+            ) {
                 $info = $this->analyzeRelatedModelProperty($expr->name->toString(), $scope);
             }
 
@@ -131,13 +136,16 @@ final class PropertyChainHandler implements ExpressionHandler
 
         $resolver = resolve(ModelAttributeResolver::class);
 
-        // Skip the `$this->resource` wrapper property when it is not a real model relation
-        if ($chain[0]['name'] === 'resource') {
-            $check = $resolver->resolveRelation($currentModel, 'resource');
+        $rootedAtResource = false;
 
-            if ($check['type'] === 'unknown') {
-                array_shift($chain);
-            }
+        // `$this->resource` is the resource's own model even inside a closure bound to a relation's model.
+        if ($chain[0]['name'] === 'resource'
+            && $scope->modelClass !== null
+            && $resolver->resolveRelation($scope->modelClass, 'resource')['type'] === 'unknown'
+        ) {
+            $currentModel = $scope->modelClass;
+            array_shift($chain);
+            $rootedAtResource = true;
         }
 
         if ($chain === []) {
@@ -152,7 +160,7 @@ final class PropertyChainHandler implements ExpressionHandler
         // relation model (`$this->user` in `whenLoaded('user', fn() => $this->user?->name)`) — skip it.
         $startIndex = 0;
 
-        if ($scope->closureRelationModelClass !== null && $count >= 2) {
+        if (! $rootedAtResource && $scope->closureRelationModelClass !== null && $count >= 2) {
             $firstRelation = $resolver->resolveRelation($currentModel, $chain[0]['name']);
 
             if ($firstRelation['type'] === 'unknown') {

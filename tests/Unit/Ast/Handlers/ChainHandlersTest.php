@@ -26,6 +26,7 @@ use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use Workbench\App\Enums\Role;
+use Workbench\App\Http\Resources\ClosureResourceRootResource;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\HelperCallResource;
 use Workbench\App\Http\Resources\MediaTypeResource;
@@ -34,6 +35,7 @@ use Workbench\App\Http\Resources\UnitEnumResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Kpi;
 use Workbench\App\Models\Order;
+use Workbench\App\Models\Post;
 use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
 
@@ -275,6 +277,47 @@ it('reads take(limit: …) and map(callback: …) by name', function () {
     $result = (new RelationCollectionChainHandler)->resolve($chain, $scope, $engine);
 
     expect($result)->toBe(['type' => '{ id: number }[]', 'optional' => false]);
+});
+
+// Inside a whenLoaded closure the scope carries the relation's model, but `$this->resource` is always
+// the resource's own model — so these chains must walk Post, never the closure's Comment.
+test('$this->resource inside a whenLoaded closure roots at the resource model', function () {
+    $scope = new AnalysisScope(new ReflectionClass(ClosureResourceRootResource::class), Post::class);
+    $scope->closureRelationModelClass = Comment::class;
+    $resource = chainThisProp('resource');
+    $handler = new PropertyChainHandler;
+
+    $published = $handler->resolve(new PropertyFetch($resource, 'published_at'), $scope, chainHandlersThrowingEngine());
+    $authorName = $handler->resolve(new PropertyFetch(new PropertyFetch($resource, 'author'), 'name'), $scope, chainHandlersThrowingEngine());
+    $nullsafe = $handler->resolve(new NullsafePropertyFetch(new PropertyFetch($resource, 'author'), 'name'), $scope, chainHandlersThrowingEngine());
+
+    expect($published)->toBe(['type' => 'string | null', 'optional' => false])
+        ->and($authorName)->toBe(['type' => 'string', 'optional' => false])
+        ->and($nullsafe)->toBe(['type' => 'string | null', 'optional' => false]);
+});
+
+// Pins both `startIndex` uses in MethodChainHandler: the walk loop and the last-step relation branch.
+test('a nullsafe method chain on $this->resource roots at the resource model inside a closure', function () {
+    $scope = new AnalysisScope(new ReflectionClass(ClosureResourceRootResource::class), Post::class);
+    $scope->closureRelationModelClass = Comment::class;
+
+    $expr = new NullsafeMethodCall(new PropertyFetch(chainThisProp('resource'), 'author'), 'nameTitled');
+
+    $result = (new MethodChainHandler)->resolve($expr, $scope, chainHandlersThrowingEngine());
+
+    expect($result)->toBe(['type' => 'string | null', 'optional' => false]);
+});
+
+// The published output must stay correct end to end, whichever handler ends up answering.
+test('the whenLoaded closure fixture publishes the resource model types', function () {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(ClosureResourceRootResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+    expect($props['published_inside']['type'])->toBe($props['published_outside']['type'])
+        ->and($props['published_inside']['type'])->not->toContain('unknown')
+        ->and($props['title_inside']['type'])->toBe('string')
+        ->and($props['class_inside']['type'])->toBe('string | null')
+        ->and($props['author_name_inside']['type'])->toBe($props['author_name_outside']['type'])
+        ->and($props['author_titled_inside']['type'])->toBe($props['author_titled_outside']['type']);
 });
 
 it('treats first(default: …) as non-terminal, the same as a positional default', function () {

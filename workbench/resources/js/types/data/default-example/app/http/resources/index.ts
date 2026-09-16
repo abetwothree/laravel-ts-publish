@@ -16,6 +16,7 @@ export * from './child-shared-resource';
 export * from './class-constant-resource';
 export * from './closure-control-flow-resource';
 export * from './closure-param-shadow-resource';
+export * from './closure-resource-root-resource';
 export * from './closure-union-metadata-resource';
 export * from './coalesce-channel-resource';
 export * from './comment-composed-resource';

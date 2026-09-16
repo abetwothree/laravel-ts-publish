@@ -84,13 +84,16 @@ final class MethodChainHandler implements ExpressionHandler
 
         $resolver = resolve(ModelAttributeResolver::class);
 
-        // Skip the `$this->resource` wrapper property when it is not a real model relation
-        if ($chain[0]['name'] === 'resource') {
-            $check = $resolver->resolveRelation($currentModel, 'resource');
+        $rootedAtResource = false;
 
-            if ($check['type'] === 'unknown') {
-                array_shift($chain);
-            }
+        // `$this->resource` is the resource's own model even inside a closure bound to a relation's model.
+        if ($chain[0]['name'] === 'resource'
+            && $scope->modelClass !== null
+            && $resolver->resolveRelation($scope->modelClass, 'resource')['type'] === 'unknown'
+        ) {
+            $currentModel = $scope->modelClass;
+            array_shift($chain);
+            $rootedAtResource = true;
         }
 
         if ($chain === []) {
@@ -103,7 +106,7 @@ final class MethodChainHandler implements ExpressionHandler
         // relation model (`$this->categoryRel` in `whenLoaded('categoryRel', ...)`) — skip it.
         $startIndex = 0;
 
-        if ($scope->closureRelationModelClass !== null) {
+        if (! $rootedAtResource && $scope->closureRelationModelClass !== null) {
             $firstRelation = $resolver->resolveRelation($currentModel, $chain[0]['name']);
 
             if ($firstRelation['type'] === 'unknown') {

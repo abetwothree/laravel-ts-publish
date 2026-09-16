@@ -9281,6 +9281,56 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\ClosureResourceRootResource": {
+            "name": "ClosureResourceRootResource",
+            "properties": [
+                {
+                    "name": "published_outside",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "published_inside",
+                    "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "title_inside",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "class_inside",
+                    "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "author_name_outside",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "author_name_inside",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "author_name_nullsafe_inside",
+                    "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "author_titled_outside",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "author_titled_inside",
+                    "type": "string | null",
+                    "optional": true
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\ClosureUnionMetadataResource": {
             "name": "ClosureUnionMetadataResource",
             "properties": [

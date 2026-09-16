@@ -530,6 +530,31 @@ bound `$member` — even at the top-level site the closure never touches. `outer
 `ClosureParamShadowResource` demonstrated the gap; fixed by narrowing `collectWrittenVariableNames()`
 to count only assignments, mutations, `foreach` targets, and a `Closure`'s by-ref `use (&$x)` clause.
 
+## `$this->resource` inside a relation closure is the resource's own model
+
+Inside a `whenLoaded('rel', fn () => …)` closure, `AnalysisScope::$closureRelationModelClass` holds the
+*relation's* model, and both chain handlers root their walk at `$closureRelationModelClass ?? $modelClass`.
+That is right for a bare `$this->prop` — the resource's proxy to the loaded relation — and wrong for
+`$this->resource->…`: `JsonResource::$resource` is always the resource's *own* model, whichever closure
+it is read inside. So `whenLoaded('comments', fn () => $this->resource->author->name)` must walk
+`Post → author → User::name`, never `Comment`.
+
+`PropertyChainHandler::analyzePropertyChain()` and `MethodChainHandler::analyzeMethodChain()` therefore
+root a chain whose first step is `resource` at `AnalysisScope::$modelClass` and record `$rootedAtResource`,
+which also suppresses the closure-proxy `startIndex` heuristic. That heuristic skips the chain's first
+step as a relation proxy, which on a `$this->resource` chain would drop a real relation step — it is the
+reason the walk above would otherwise resolve `name` straight off `Comment`. In `MethodChainHandler` the
+flag governs the last-step relation branch as well as the walk loop, because both read `startIndex`.
+`PropertyChainHandler::resolve()` likewise excludes a `$this->resource->prop` receiver from the
+`closureRelationModelClass` arm that resolves a bare property name against the relation model.
+
+**The one exception:** a model that really declares a `resource` relation keeps the old walk. The rule is
+guarded on `ModelAttributeResolver::resolveRelation()` returning `unknown` for `resource` on the resource's
+own model, so `resource` is treated as the wrapper property only when it is not a real relation.
+
+`ClosureResourceRootResource` pins both spellings: `published_outside`/`published_inside` and
+`author_titled_outside`/`author_titled_inside` agree, inside the closure and out.
+
 ## Method-spread recursion guard
 
 `analyzeThisMethodSpread()` resolves a `...$this->method()` spread by re-entering the analyzer on

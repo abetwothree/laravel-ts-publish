@@ -2159,6 +2159,21 @@ declare global {
             loaded_members_bare?: workbench.app.models.User[];
         }
         /**
+         * Reads `$this->resource` inside whenLoaded closures bound to a different relation's model, so each
+         * chain must root at the resource's own model rather than at the closure's relation model.
+         */
+        export interface ClosureResourceRootResource {
+            published_outside: string | null;
+            published_inside?: string | null;
+            title_inside?: string;
+            class_inside?: string | null;
+            author_name_outside: string;
+            author_name_inside?: string;
+            author_name_nullsafe_inside?: string | null;
+            author_titled_outside: string | null;
+            author_titled_inside?: string | null;
+        }
+        /**
          * Exercises analyzeClosureUnion metadata propagation (enum, model, resource FQCNs)
          * and analyzeRelatedModelMethodCall fallback (line 451).
          */
