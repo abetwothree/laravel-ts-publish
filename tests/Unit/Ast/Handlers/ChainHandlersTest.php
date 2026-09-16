@@ -236,8 +236,8 @@ it('treats concat() as identity for the same collection type and declines a diff
         ->and($analyzer->resolve($different)['type'])->toBe('unknown');
 });
 
-// Model::only()/except() are declared `@return array`, which reflects to a list or a vague object, and a many-relation
-// filters models by primary key: filter-aware code owns every spelling, so both reflectors decline all of them.
+// Model::only() is declared `@return array<string, mixed>`, a vague object, and except() `@return array`, a list; a
+// many-relation filters models by primary key. Filter-aware code owns every spelling, so both reflectors decline them.
 it('declines only() and except() in both reflecting branches, whatever the receiver and key list', function (Expr $expr) {
     $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
 

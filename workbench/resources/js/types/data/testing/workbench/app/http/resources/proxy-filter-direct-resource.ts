@@ -26,4 +26,5 @@ export interface ProxyFilterDirectResource
     comments_listed: Comment[];
     comments_by_ids: Comment[];
     comments_maybe: Comment[] | null;
+    comments_mapped: { id: number; content: string }[];
 }

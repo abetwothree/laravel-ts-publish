@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclinedTopLevelSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeArrayMergeChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeSpreadChildResource;
@@ -121,6 +122,7 @@ use Workbench\App\Http\Resources\ReflectedMethodChannelResource;
 use Workbench\App\Http\Resources\Registrar as BareRegistrarResource;
 use Workbench\App\Http\Resources\RegistrarResource;
 use Workbench\App\Http\Resources\RelationChainResource;
+use Workbench\App\Http\Resources\ReleaseColumnsResource;
 use Workbench\App\Http\Resources\ResourceWrappedEnumResource;
 use Workbench\App\Http\Resources\ShadowedClosureParamResource;
 use Workbench\App\Http\Resources\SpreadJsonBaseResource;
@@ -156,6 +158,7 @@ use Workbench\App\Models\OrderItem;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Product;
 use Workbench\App\Models\Profile;
+use Workbench\App\Models\Release;
 use Workbench\App\Models\Tag;
 use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
@@ -2349,6 +2352,7 @@ describe('ResourceAstAnalyzer with ProxyFilterDirectResource and ProxyFilterWrap
             'comments_listed' => 'Comment[]',
             'comments_by_ids' => 'Comment[]',
             'comments_maybe' => 'Comment[] | null',
+            'comments_mapped' => '{ id: number; content: string }[]',
         ]);
     });
 
@@ -2359,6 +2363,19 @@ describe('ResourceAstAnalyzer with ProxyFilterDirectResource and ProxyFilterWrap
         expect($wrapped->properties)->toBe($direct->properties)
             ->and($wrapped->typeImports)->toBe($direct->typeImports)
             ->and($wrapped->valueImports)->toBe($direct->valueImports);
+    });
+});
+
+describe('ResourceAstAnalyzer with ReleaseColumnsResource (filters inside the model itself)', function () {
+    test('a runtime key list types as Record<string, unknown> in a model method body and in an accessor getter', function () {
+        // `$this` is the model in both bodies. A literal list stays unknown there: its Pick<Release, …> would name a
+        // token the method-body shape cannot import, and MethodReturnTypeResolver would then drop the whole shape.
+        $expected = '{ named: unknown; rest: unknown; picked: Record<string, unknown>; left: Record<string, unknown> }';
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(ReleaseColumnsResource::class), Release::class)->analyze()->properties)->keyBy('name');
+
+        expect($props['columns']['type'])->toBe($expected)
+            ->and($props['picks']['type'])->toBe($expected)
+            ->and(resolve(ModelAttributeResolver::class)->resolveAttribute(Release::class, 'column_picks')['type'])->toBe($expected);
     });
 });
 

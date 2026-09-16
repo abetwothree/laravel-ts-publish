@@ -118,6 +118,7 @@ export * from './registrar';
 export * from './registrar-group-collection';
 export * from './registrar-resource';
 export * from './relation-chain-resource';
+export * from './release-columns-resource';
 export * from './resource-wrapped-enum-resource';
 export * from './review-resource';
 export * from './routable-resource';

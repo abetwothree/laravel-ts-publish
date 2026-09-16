@@ -45,6 +45,7 @@ use Workbench\App\Models\Attachment;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\Release;
 use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
 
@@ -281,6 +282,21 @@ describe('ReceiverMethodCallHandler', function () {
         ['$this->author->except($fields)', 'Record<string, unknown>'],
         ['$this->resource->author?->only($fields)', 'Record<string, unknown> | null'],
     ]);
+
+    // In a model's own method or accessor body `$this` is the model, and the chain handler declines its filters.
+    test('types a runtime-key filter on a model subject\'s own $this, and leaves a literal list and other subjects alone', function () {
+        $model = new AnalysisScope(new ReflectionClass(Release::class), Release::class);
+        $plain = new AnalysisScope(new ReflectionClass(ReceiverVarProbe::class), Post::class);
+        $handler = new ReceiverMethodCallHandler;
+        $resolve = fn (string $php, AnalysisScope $scope): ?array => $handler->resolve(receiverHandlerExpr($php), $scope, chainHandlersThrowingEngine());
+
+        expect($resolve('$this->only($keys)', $model))->toBe(['type' => 'Record<string, unknown>', 'optional' => false])
+            ->and($resolve('$this->except($this->keys)', $model))->toBe(['type' => 'Record<string, unknown>', 'optional' => false])
+            ->and($resolve('$this?->except($keys)', $model))->toBe(['type' => 'Record<string, unknown>', 'optional' => false])
+            ->and($resolve("\$this->only(['major'])", $model))->toBeNull()
+            ->and($resolve('$this->getKey()', $model))->toBeNull()
+            ->and($resolve('$this->only($keys)', $plain))->toBeNull();
+    });
 
     test('an earlier ?-> in the chain makes the call nullable once', function () {
         $scope = new AnalysisScope(new ReflectionClass(ReceiverMethodResource::class), Post::class);

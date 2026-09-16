@@ -21,10 +21,24 @@ class Release extends Model
 
     protected $allowedChannels = ['stable', 'beta'];
 
+    /** Read at runtime, so a filter given this list names no key it could pick. */
+    protected $pickableColumns = ['major', 'minor'];
+
     /** The labels keyed by channel constant, as a select would want them. */
     public static function channelLabels(): array
     {
         return [self::CHANNEL_STABLE => 'Stable', self::CHANNEL_BETA => 'Beta'];
+    }
+
+    /** only() and except() on the model itself, with literal and runtime key lists, read as a method body. */
+    public function columnSummary(): array
+    {
+        return [
+            'named' => $this->only(['major', 'minor']),
+            'rest' => $this->except(['notes', 'tags_csv']),
+            'picked' => $this->only($this->pickableColumns),
+            'left' => $this->except($this->pickableColumns),
+        ];
     }
 
     /** Old-style accessor with a vague signature and a literal body. */
@@ -87,6 +101,17 @@ class Release extends Model
     protected function loopB(): Attribute
     {
         return Attribute::get(fn () => $this->loop_a);
+    }
+
+    /** The same four filters on the model itself, read as a getter body. */
+    protected function columnPicks(): Attribute
+    {
+        return Attribute::get(fn () => [
+            'named' => $this->only(['major', 'minor']),
+            'rest' => $this->except(['notes', 'tags_csv']),
+            'picked' => $this->only($this->pickableColumns),
+            'left' => $this->except($this->pickableColumns),
+        ]);
     }
 
     /** Loop-built dynamic keys: must stay unknown[], nothing here is statically knowable. */

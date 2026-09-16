@@ -66,8 +66,8 @@ final class RelationCollectionChainHandler implements ExpressionHandler
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        // On a model-backed scope a filter belongs to RelationFilterHandler or the receiver rules. Reflection reads
-        // Model::except()'s `@return array` as a list, and a many-relation's filter keeps whole models by primary key.
+        // On a model-backed scope a filter is left to RelationFilterHandler or the receiver rules, even where neither
+        // answers: reflection reads except()'s `@return array` as a list, and a many-relation keeps whole models.
         if ($expr instanceof MethodCall && $scope->modelClass !== null && $this->callsAttributeFilter($expr)) {
             return null;
         }

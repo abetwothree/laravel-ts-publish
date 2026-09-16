@@ -203,6 +203,7 @@
     "app\/Http\/Resources\/RegistrarGroupCollection.php",
     "app\/Http\/Resources\/RegistrarResource.php",
     "app\/Http\/Resources\/RelationChainResource.php",
+    "app\/Http\/Resources\/ReleaseColumnsResource.php",
     "app\/Http\/Resources\/ResourceWrappedEnumResource.php",
     "app\/Http\/Resources\/ReviewResource.php",
     "app\/Http\/Resources\/RoutableResource.php",

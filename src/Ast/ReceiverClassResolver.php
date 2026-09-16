@@ -143,6 +143,16 @@ final class ReceiverClassResolver
     }
 
     /**
+     * The model a bare `$this` is when the subject under analysis is itself a model, as in its own method or accessor.
+     */
+    public function modelSubject(AnalysisScope $scope): ?ReceiverType
+    {
+        $subject = $scope->subjectReflection;
+
+        return $subject->isSubclassOf(Model::class) ? ReceiverType::of($subject->getName()) : null;
+    }
+
+    /**
      * What a property holds on a receiver other than `$this`: a model's attribute or relation, or a public property.
      *
      * Public so ReceiverPropertyFetchHandler can decide its false-string rule one receiver class at a time. Asking

@@ -24,8 +24,8 @@ trait ResolvesMapProxyElementModels
 {
     /**
      * Resolve the element model behind a `->map` proxy receiver: a whenLoaded to-many closure
-     * parameter, or `$this->relation` itself. A singular relation's bound variable is not a
-     * collection and must not match, so it returns null rather than guessing a shape.
+     * parameter, or `$this->relation` itself, also read as `$this->resource->relation`. A singular relation's
+     * bound variable is not a collection and must not match, so it returns null rather than guessing a shape.
      *
      * The binding is never invalidated by a reassignment inside the closure (e.g.
      * `$members = $members->flatMap(...)` before `$members->map(...)`), so a reassigned receiver
@@ -43,7 +43,7 @@ trait ResolvesMapProxyElementModels
         }
 
         if ($receiver instanceof PropertyFetch
-            && $this->isThisPropertyFetch($receiver)
+            && ($this->isThisPropertyFetch($receiver) || $this->isResourceFetch($receiver->var))
             && $receiver->name instanceof Identifier
         ) {
             $relationInfo = $this->resolveModelRelationTypeInfo($receiver->name->toString(), $scope);

@@ -6657,6 +6657,10 @@
                     "type": "unknown"
                 },
                 {
+                    "name": "column_picks",
+                    "type": "{ named: unknown; rest: unknown; picked: Record<string, unknown>; left: Record<string, unknown> }"
+                },
+                {
                     "name": "dynamic_totals",
                     "type": "unknown[]"
                 },
@@ -13159,6 +13163,11 @@
                     "name": "comments_maybe",
                     "type": "Comment[] | null",
                     "optional": false
+                },
+                {
+                    "name": "comments_mapped",
+                    "type": "{ id: number; content: string }[]",
+                    "optional": false
                 }
             ]
         },
@@ -13238,6 +13247,11 @@
                 {
                     "name": "comments_maybe",
                     "type": "Comment[] | null",
+                    "optional": false
+                },
+                {
+                    "name": "comments_mapped",
+                    "type": "{ id: number; content: string }[]",
                     "optional": false
                 }
             ]
@@ -13663,6 +13677,26 @@
                 {
                     "name": "members_skipped",
                     "type": "User[]",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\ReleaseColumnsResource": {
+            "name": "ReleaseColumnsResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "columns",
+                    "type": "{ named: unknown; rest: unknown; picked: Record<string, unknown>; left: Record<string, unknown> }",
+                    "optional": false
+                },
+                {
+                    "name": "picks",
+                    "type": "{ named: unknown; rest: unknown; picked: Record<string, unknown>; left: Record<string, unknown> }",
                     "optional": false
                 }
             ]

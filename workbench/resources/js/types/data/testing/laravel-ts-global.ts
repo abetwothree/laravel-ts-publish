@@ -1016,6 +1016,8 @@ declare global {
             constructed_version: { major: number };
             loop_a: unknown;
             loop_b: unknown;
+            /** The same four filters on the model itself, read as a getter body. */
+            column_picks: { named: unknown; rest: unknown; picked: Record<string, unknown>; left: Record<string, unknown> };
             /** Loop-built dynamic keys: must stay unknown[], nothing here is statically knowable. */
             dynamic_totals: unknown[];
             trait_version: { major: number; label: string };
@@ -3066,8 +3068,8 @@ declare global {
          * lacks, and two value-position calls — on $this (forwarded to the model) and on a whenLoaded closure
          * parameter — which must reference the model the receiver holds rather than only()'s vague array return.
          *
-         * The last two keys are the counter-case: with no literal key list there is nothing for the receiver rule
-         * to Pick<>, so they must keep the vague shape their old claimant reflects instead of degrading to unknown.
+         * The last two keys are the counter-case: with no literal key list there is nothing to Pick<>, so the receiver rule
+         * answers both with Record<string, unknown>, the attribute-keyed array only() returns, instead of unknown.
          */
         export interface OnlyValueResource {
             id: number;
@@ -3414,6 +3416,7 @@ declare global {
             comments_listed: workbench.app.models.Comment[];
             comments_by_ids: workbench.app.models.Comment[];
             comments_maybe: workbench.app.models.Comment[] | null;
+            comments_mapped: { id: number; content: string }[];
         }
         /**
          * ProxyFilterDirectResource with every only() and except() spelled through $this->resource. The resource
@@ -3435,6 +3438,7 @@ declare global {
             comments_listed: workbench.app.models.Comment[];
             comments_by_ids: workbench.app.models.Comment[];
             comments_maybe: workbench.app.models.Comment[] | null;
+            comments_mapped: { id: number; content: string }[];
         }
         /** Edge-case resource exercising unusual but valid patterns for AST analyzer guard clauses. */
         export interface QuirkyResource {
@@ -3562,6 +3566,12 @@ declare global {
             members_sliced_emails: string[] | Record<string, string>;
             members_keyed_by_id: string[] | Record<string, string>;
             members_skipped: workbench.app.models.User[];
+        }
+        /** Filters written inside the model itself: a method body the resource forwards to, and an accessor it reads. */
+        export interface ReleaseColumnsResource {
+            id: number;
+            columns: { named: unknown; rest: unknown; picked: Record<string, unknown>; left: Record<string, unknown> };
+            picks: { named: unknown; rest: unknown; picked: Record<string, unknown>; left: Record<string, unknown> };
         }
         /**
          * Exercises issue #43: EnumResource wrapping an enum accessed via `$this->resource->property`

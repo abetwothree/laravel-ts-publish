@@ -182,6 +182,15 @@ instead. That names the backing class, the same decision `$this->m()->next()` re
 A method the resource declares, including every `JsonResource` helper such as `whenLoaded()`, gets no forwarded
 receiver and keeps `SubjectMethodTypeResolver`'s answer.
 
+A model's own method or accessor body is analyzed with the model as its subject, so `$this` is the model and
+nothing forwards. There the handler asks `ReceiverClassResolver::modelSubject()` for one kind of call only: an
+`only()`/`except()` whose key list is not literal, which `RelationCollectionChainHandler` declines on a model-backed
+scope. It names the model itself, so `$this->only($keys)` and `$this->except($keys)` publish
+`Record<string, unknown>`. A literal key list stays unanswered and publishes `unknown`: its `Pick<Model, …>` names a
+token, and a method-body shape carries no FQCN channel, so `MethodReturnTypeResolver` would drop the whole shape the
+call sits in (see [The body fallback carries no FQCN channel](#the-body-fallback-carries-no-fqcn-channel)).
+`Release::columnSummary()` and its `column_picks` accessor pin both halves, read through `ReleaseColumnsResource`.
+
 `ReceiverMethodResource` in the workbench shows the owner's example, `$this->source->label()`, on each
 receiver kind:
 
@@ -209,8 +218,8 @@ returns `mixed`, `Collection::modelKeys()` returns `array<int, array-key>`, whic
 | `getKey()` | Any model that declares `getKey()` itself | No rule. Reflection publishes the override's own return, such as `getKey(): string`. |
 | `modelKeys()` | An Eloquent collection with `elementModel` set | The element model's key type as a list, `number[]` or `string[]` |
 | `only([...])`, `except([...])` | A receiver holding exactly one model class, where the call carries a literal key list | Exactly what `RelationFilterHandler` builds for a relation to that model: `Pick<Model, …>` when every key is a published column, else the inline shape |
-| `only($keys)`, `except($keys)` with no literal key list, such as `only($request->input('fields'))` | A receiver holding exactly one model class | `Record<string, unknown>` from `ResolvesFilteredRelationTypes::runtimeKeyFilterResult()`: whatever keys arrive at runtime, either filter returns an array keyed by attribute name. In `ProxyFilterDirectResource` and `ProxyFilterWrappedResource` this rule answers the own-model cells `fields_own` and `except_own` in both spellings; the relation cells `fields_author` and `except_author` get the same answer from `RelationFilterHandler`, which runs first and calls the same helper. |
-| `only()`, `except()` | Any other receiver — a union, an Eloquent collection, or a `StaticCall`, which carries no key list this can read | No rule. Reflection then declines the vague `array`. A many-relation read off `$this` or `$this->resource` never reaches this row: `RelationFilterHandler` publishes the relation read first. |
+| `only($keys)`, `except($keys)` with no literal key list, such as `only($request->input('fields'))` | A receiver holding exactly one model class, including a model subject's bare `$this` | `Record<string, unknown>` from `ResolvesFilteredRelationTypes::runtimeKeyFilterResult()`: whatever keys arrive at runtime, either filter returns an array keyed by attribute name. In `ProxyFilterDirectResource` and `ProxyFilterWrappedResource` this rule answers the own-model cells `fields_own` and `except_own` in both spellings; the relation cells `fields_author` and `except_author` get the same answer from `RelationFilterHandler`, which runs first and calls the same helper. |
+| `only()`, `except()` | Any other receiver — a union, an Eloquent collection, or a `StaticCall`, which carries no key list this can read | No rule. Reflection then declines the vague `array`. `RelationFilterHandler` answers a many-relation filter spelled `$this->comments->only(...)` or `$this->resource->comments->only(...)` before this rule runs, but it matches only a plain property fetch: `$this->resource?->comments->only([1])` reaches this row and publishes `unknown`, and so does a many-relation filter in an accessor body, where `RelationFilterHandler` is not registered. |
 
 The key type comes from `ModelAttributeResolver::getInstance()`, so `HasUuids`, `HasUlids`, and a
 `#[Table(keyType: ...)]` attribute all count. Both `int` and `integer` map to `number`, because

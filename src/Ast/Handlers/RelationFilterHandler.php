@@ -28,7 +28,8 @@ use ReflectionMethod;
  * `$this->relation->only([...])`/`->except([...])`, also read through `$this->resource`, and Laravel's `map`
  * HigherOrderCollectionProxy filter (`$var->map->only([...])`/`->except([...])`) — relation/collection filters.
  *
- * The relation arm declines what it cannot type; the map-proxy arm, once it matches, still claims `unknown`.
+ * The relation arm declines what it cannot type. Once the map-proxy arm matches, it claims `unknown` when it binds no
+ * element model, reads no literal keys, or the keys name nothing.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypesImportMap from Datable
