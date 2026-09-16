@@ -29,6 +29,10 @@ describe('validJsObjectKey', function () {
             ->and($this->service->validJsObjectKey('[key: number]', allowIndexSignature: true))->toBe('[key: number]')
             ->and($this->service->validJsObjectKey('[key: string]', allowIndexSignature: true))->toBe('[key: string]');
     });
+
+    test('validJsObjectKey keeps a template-literal index signature verbatim', function () {
+        expect($this->service->validJsObjectKey('[key: `${string}_label`]', allowIndexSignature: true))->toBe('[key: `${string}_label`]');
+    });
 });
 
 describe('safeJsIdentifier', function () {

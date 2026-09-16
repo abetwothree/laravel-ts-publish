@@ -44,6 +44,7 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\Assign;
+use PhpParser\Node\Expr\BinaryOp\Concat;
 use PhpParser\Node\Expr\BooleanNot;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\Instanceof_;
@@ -51,7 +52,9 @@ use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
+use PhpParser\Node\InterpolatedStringPart;
 use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\InterpolatedString;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Do_;
@@ -936,16 +939,29 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 continue;
             }
 
-            // $var['key'] = expr — individual key assignment
+            // $var['key'] = expr — individual key assignment; the key may be a literal string or,
+            // for a name built from literal text around a variable, an interpolated index signature.
             if ($stmt instanceof ExpressionStmt
                 && $stmt->expr instanceof Assign
                 && $stmt->expr->var instanceof ArrayDimFetch
                 && $stmt->expr->var->var instanceof Variable
                 && $stmt->expr->var->var->name === $varName
-                && $stmt->expr->var->dim instanceof String_) {
-                $keyName = $stmt->expr->var->dim->value;
+                && $stmt->expr->var->dim !== null
+                && ($keyName = $stmt->expr->var->dim instanceof String_
+                    ? $stmt->expr->var->dim->value
+                    : $this->interpolatedKeyName($stmt->expr->var->dim)) !== null) {
                 $result = $this->analyzeValueExpression($stmt->expr->expr);
+                $isIndexSignature = self::isIndexSignatureKey($keyName);
                 $optional = $isConditional || $result['optional'];
+
+                if ($isIndexSignature) {
+                    if (! str_contains($result['type'], 'undefined')) {
+                        $result['type'] .= ' | undefined';
+                    }
+
+                    $result['optional'] = false;
+                    $optional = false;
+                }
 
                 $existingIndex = null;
 
@@ -1002,6 +1018,38 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 $this->collectVariableArrayAssignments($stmt->stmts, $varName, true, $into, $topLevel);
             }
         }
+    }
+
+    /**
+     * An index-signature name for a key built from literal text around a variable, or null for any other key.
+     */
+    private function interpolatedKeyName(Expr $dim): ?string
+    {
+        $parts = match (true) {
+            $dim instanceof InterpolatedString => $dim->parts,
+            $dim instanceof Concat => [$dim->left, $dim->right],
+            default => null,
+        };
+
+        if ($parts === null) {
+            return null;
+        }
+
+        $pattern = '';
+        $hasLiteral = false;
+        $hasDynamic = false;
+
+        foreach ($parts as $part) {
+            if ($part instanceof InterpolatedStringPart || $part instanceof String_) {
+                $pattern .= str_replace(['`', '${'], ['\\`', '\\${'], $part->value);
+                $hasLiteral = true;
+            } else {
+                $pattern .= '${string}';
+                $hasDynamic = true;
+            }
+        }
+
+        return $hasLiteral && $hasDynamic ? '[key: `'.$pattern.'`]' : null;
     }
 
     /**
@@ -1167,7 +1215,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
      */
     private static function isIndexSignatureKey(string $name): bool
     {
-        return (bool) preg_match('/^\[[a-zA-Z_$][a-zA-Z0-9_$]*: (?:string|number)\]$/', $name);
+        return (bool) preg_match('/^\[[a-zA-Z_$][a-zA-Z0-9_$]*: (?:string|number|`[^`]*`)\]$/', $name);
     }
 
     /**

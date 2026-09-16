@@ -807,6 +807,32 @@ unions, would promise the typed arm's `string` for a branch that guarantees no s
 `NarrowingGuardBodyResource::dirty_label` pins it: one branch reads a member off an un-narrowed
 variable and the other returns a literal, and the honest answer is `unknown`.
 
+## Interpolated keys
+
+A key built from literal text around a variable — `$data["{$name}_label"] = 'Channel'` inside a
+`foreach`, or the equivalent `$data[$name.'_label'] = …` — cannot be a fixed property name, because
+the runtime key varies per iteration. `collectVariableArrayAssignments()` recognizes this shape
+through `interpolatedKeyName()`, which reads an `InterpolatedString`'s parts (v5's node, aliasing
+v4's `Encapsed`) or a `Concat`'s two operands, and requires **both** a literal segment and a dynamic
+one — a purely dynamic dim (`$data[$name]`) or a purely literal one is left to the existing handling.
+It publishes a template-literal index signature, e.g. ``[key: `${string}_label`]``, with the
+backtick and `${` in any literal segment escaped so the pattern stays valid TypeScript syntax.
+
+Such a key always publishes `optional = false` with its value type widened to include `| undefined`,
+never `key?:` on the signature itself. Two reasons converge: `[key: T]?:` is a TypeScript syntax
+error regardless of how the analyzer produced the name (`isIndexSignatureKey()`'s existing
+`mergeReturnBranches()` guard already establishes this), and TS2411 rejects an optional *named*
+property whose type is not assignable to a sibling index signature's type — `string` alone is not
+assignable from `string | undefined`. `GathersPermissions::gatherChannelLabels()` and
+`gatherLabels()` publish into the same `PermissionsSpreadResource` interface: `extra_label?: string`
+sits beside `` [key: `${string}_label`]: string | undefined; ``, and only the `| undefined` keeps
+that combination type-checking.
+
+`validJsObjectKey()` and `isIndexSignatureKey()` both widen their index-signature regex with a
+`` `[^`]*` `` alternative alongside `string`/`number`, so the new key shape prints unquoted in a type
+position exactly like the existing `[key: number]`/`[key: string]` signatures, and still merges
+correctly across spread branches.
+
 ## Inline-array spreads become intersection arms
 
 An inline array literal that spreads a named type alongside its own keys —

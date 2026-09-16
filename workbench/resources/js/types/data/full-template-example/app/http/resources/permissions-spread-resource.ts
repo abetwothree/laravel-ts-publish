@@ -10,5 +10,7 @@ export interface PermissionsSpreadResource
     links?: { self: string; related: Record<string, { name: string }> };
     main_label: string;
     extra_label?: string;
+    primary_label: string;
+    [key: `${string}_label`]: string | undefined;
     id: number;
 }

@@ -39,6 +39,22 @@ trait GathersPermissions
         return $data;
     }
 
+    /**
+     * A key built from literal text around a loop variable, not a fixed set of names.
+     *
+     * @return array<string, string>
+     */
+    public function gatherChannelLabels(): array
+    {
+        $data = ['primary_label' => 'Primary'];
+
+        foreach (['email', 'sms'] as $name) {
+            $data["{$name}_label"] = 'Channel';
+        }
+
+        return $data;
+    }
+
     /** Deliberately untyped so only the docblocks above can type what it returns. */
     protected function opaque()
     {

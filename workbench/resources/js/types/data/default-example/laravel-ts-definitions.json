@@ -12444,6 +12444,16 @@
                     "optional": true
                 },
                 {
+                    "name": "primary_label",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "[key: `${string}_label`]",
+                    "type": "string | undefined",
+                    "optional": false
+                },
+                {
                     "name": "id",
                     "type": "number",
                     "optional": false
