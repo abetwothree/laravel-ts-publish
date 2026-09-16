@@ -2172,6 +2172,8 @@ declare global {
             author_name_nullsafe_inside?: string | null;
             author_titled_outside: string | null;
             author_titled_inside?: string | null;
+            options_inside?: Record<string, string> | null;
+            profile_bio_inside?: string | null;
         }
         /**
          * Exercises analyzeClosureUnion metadata propagation (enum, model, resource FQCNs)

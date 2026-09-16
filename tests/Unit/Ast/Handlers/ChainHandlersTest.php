@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationCollectionChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ResourceRelationModel;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -308,6 +309,51 @@ test('a nullsafe method chain on $this->resource roots at the resource model ins
     expect($result)->toBe(['type' => 'string | null', 'optional' => false]);
 });
 
+// The discriminating pin for the `resolve()` exclusion: both models declare `options`, and they resolve
+// differently — Post's docblock gives Record<string, string> | null, User's cast gives unknown[] | null.
+// Dropping the exclusion lets the closure arm answer with User's, which is wrong and less specific.
+test('$this->resource->options reads the resource model type, not the closure model type', function () {
+    $scope = new AnalysisScope(new ReflectionClass(ClosureResourceRootResource::class), Post::class);
+    $scope->closureRelationModelClass = User::class;
+
+    $result = (new PropertyChainHandler)->resolve(
+        new PropertyFetch(chainThisProp('resource'), 'options'),
+        $scope,
+        chainHandlersThrowingEngine(),
+    );
+
+    expect($result)->toBe(['type' => 'Record<string, string> | null', 'optional' => false]);
+});
+
+// Pins the walk loop under $rootedAtResource: after the shift a relation step still has to be walked.
+test('a 3-deep nullsafe method chain on $this->resource walks the resource model', function () {
+    $scope = new AnalysisScope(new ReflectionClass(ClosureResourceRootResource::class), Post::class);
+    $scope->closureRelationModelClass = Comment::class;
+
+    $expr = new NullsafeMethodCall(
+        new PropertyFetch(new PropertyFetch(chainThisProp('resource'), 'author'), 'profile'),
+        'getFormattedBioAttribute',
+    );
+
+    $result = (new MethodChainHandler)->resolve($expr, $scope, chainHandlersThrowingEngine());
+
+    expect($result)->toBe(['type' => 'string | null', 'optional' => false]);
+});
+
+// The documented exception: a model that really declares a `resource` relation keeps the old walk, so
+// `resource` is a relation step to traverse rather than the wrapper property to skip.
+test('a model with a real resource relation keeps the old relation walk', function () {
+    $scope = new AnalysisScope(new ReflectionClass(ClosureResourceRootResource::class), ResourceRelationModel::class);
+
+    $result = (new PropertyChainHandler)->resolve(
+        new PropertyFetch(chainThisProp('resource'), 'name'),
+        $scope,
+        chainHandlersThrowingEngine(),
+    );
+
+    expect($result)->toBe(['type' => 'string', 'optional' => false]);
+});
+
 // The published output must stay correct end to end, whichever handler ends up answering.
 test('the whenLoaded closure fixture publishes the resource model types', function () {
     $props = collect(new ResourceAstAnalyzer(new ReflectionClass(ClosureResourceRootResource::class), Post::class)->analyze()->properties)->keyBy('name');
@@ -317,7 +363,9 @@ test('the whenLoaded closure fixture publishes the resource model types', functi
         ->and($props['title_inside']['type'])->toBe('string')
         ->and($props['class_inside']['type'])->toBe('string | null')
         ->and($props['author_name_inside']['type'])->toBe($props['author_name_outside']['type'])
-        ->and($props['author_titled_inside']['type'])->toBe($props['author_titled_outside']['type']);
+        ->and($props['author_titled_inside']['type'])->toBe($props['author_titled_outside']['type'])
+        ->and($props['options_inside']['type'])->toBe('Record<string, string> | null')
+        ->and($props['profile_bio_inside']['type'])->toBe('string | null');
 });
 
 it('treats first(default: …) as non-terminal, the same as a positional default', function () {

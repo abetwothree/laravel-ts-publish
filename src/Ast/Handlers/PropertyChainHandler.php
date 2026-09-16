@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
+use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use ReflectionEnum;
 
@@ -66,7 +67,7 @@ final class PropertyChainHandler implements ExpressionHandler
             if ($info['type'] === 'unknown'
                 && $scope->closureRelationModelClass !== null
                 && $expr->name instanceof Identifier
-                && ! ($expr->var instanceof PropertyFetch && $expr->var->name instanceof Identifier && $expr->var->name->toString() === 'resource')
+                && ! $this->isResourceFetch($expr->var)
             ) {
                 $info = $this->analyzeRelatedModelProperty($expr->name->toString(), $scope);
             }
@@ -332,5 +333,17 @@ final class PropertyChainHandler implements ExpressionHandler
         }
 
         return 'string | number';
+    }
+
+    /**
+     * Whether an expression is the `$this->resource` a JsonResource wraps its model in.
+     */
+    private function isResourceFetch(Expr $expr): bool
+    {
+        return $expr instanceof PropertyFetch
+            && $expr->var instanceof Variable
+            && $expr->var->name === 'this'
+            && $expr->name instanceof Identifier
+            && $expr->name->toString() === 'resource';
     }
 }

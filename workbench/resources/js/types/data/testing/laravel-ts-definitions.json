@@ -9328,6 +9328,16 @@
                     "name": "author_titled_inside",
                     "type": "string | null",
                     "optional": true
+                },
+                {
+                    "name": "options_inside",
+                    "type": "Record<string, string> | null",
+                    "optional": true
+                },
+                {
+                    "name": "profile_bio_inside",
+                    "type": "string | null",
+                    "optional": true
                 }
             ]
         },
