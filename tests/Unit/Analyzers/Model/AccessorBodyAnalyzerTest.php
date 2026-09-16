@@ -22,6 +22,25 @@ describe('AccessorBodyAnalyzer through ModelAttributeResolver', function () {
             ->toBe('{ "1": string; "2": string }');
     });
 
+    test('an empty literal body is declined, so the getter signature still answers', function () {
+        // `[]` resolves to never[] — non-vague, but holding nothing. Publishing it would override a
+        // better annotation, so the body step declines and the vague `: array` answers as before.
+        expect(resolve(ModelAttributeResolver::class)->resolveAttribute(Release::class, 'empty_list')['type'])
+            ->toBe('unknown[]');
+    });
+
+    test('reads the getter off the new Attribute(get: ...) constructor form', function () {
+        expect(resolve(ModelAttributeResolver::class)->resolveAttribute(Release::class, 'constructed_version')['type'])
+            ->toBe('{ major: number }');
+    });
+
+    test('a trait-declared accessor resolves $this against the model that uses the trait', function () {
+        // The body lives in DerivesReleaseVersion's own file; `major` is a column on releases, so it
+        // only resolves because analyzeClosure() puts the model class on the scope.
+        expect(resolve(ModelAttributeResolver::class)->resolveAttribute(Release::class, 'trait_version')['type'])
+            ->toBe('{ major: number; label: string }');
+    });
+
     test('a cycle between two accessors terminates as unknown', function () {
         expect(resolve(ModelAttributeResolver::class)->resolveAttribute(Release::class, 'loop_a')['type'])->toBe('unknown');
     });

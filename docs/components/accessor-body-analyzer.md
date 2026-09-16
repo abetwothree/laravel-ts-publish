@@ -36,10 +36,16 @@ nothing. `HasLabels::getLabelsAttribute()` is exactly that case and still publis
 
 ## Which getters are found
 
-`getterClosure()` walks every return expression of the accessor method and reads the `get` argument —
+`getterClosure()` walks the accessor method's return expressions and reads the `get` argument —
 positionally or by name — off whichever form the method used: `Attribute::make()`, `Attribute::get()`,
 or `new Attribute()`. Only a closure or arrow function is accepted; a callable string or a first-class
 callable yields nothing and the analyzer declines.
+
+**The first getter found wins.** An accessor that returns a different `Attribute::get()` from each
+branch of an `if` is typed from whichever branch comes first, not from a merge of the two. That is
+deliberately unlike a method body's `return` branches, which Task 23 taught to merge: merging here is a
+behaviour change that needs its own diff audit, so it is a follow-up rather than a silent extension. No
+workbench fixture writes that shape today.
 
 When no new-style getter is found, the old-style `get{Name}Attribute()` body is wrapped as a closure
 and analyzed the same way, so `Release::getSummaryAttribute()` publishes `{ major: number }` from its
@@ -47,10 +53,14 @@ literal.
 
 ## Scope: the model is the subject
 
-`AstEngine::analyzeClosure()` seeds the scope with `bindingsFor()` and then overwrites the subject with
-the model class. That matters for a **trait-declared** accessor: `MethodLocator::locate()` finds the
-body in the trait's own file, but `$this` inside it is the model that uses the trait, so resolving
-`$this->column` against the trait would find nothing. The analyzer runs on the
+`AstEngine::analyzeClosure()` seeds the scope with `bindingsFor()`, which binds parameters and local
+variables but leaves `modelClass` **null** — so the load-bearing line is `$scope->modelClass =
+$modelClass`. Without it nothing in the body resolves against the model and `$this->major` is
+`unknown`. The subject is re-asserted as the model alongside it: `resolveBody()` locates on the model
+FQCN, so `MethodContext::$reflection` already *is* the model even when the body it found lives in a
+trait's file, and re-asserting keeps that true for any future caller that locates on the declaring
+class instead. `Release` uses `DerivesReleaseVersion` to pin the trait-declared case end to end. The
+analyzer runs on the
 [generic profile](ast-engine.md#controller-profile) (`ResourceExpressionHandlers::withoutResourceHandlers()`)
 — an accessor body is not a resource `toArray()`, so `ConditionalMethodHandler`, `ToResourceHandler`
 and `RelationFilterHandler` have no business claiming its expressions.

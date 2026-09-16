@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
+use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\New_;
@@ -87,6 +88,9 @@ final class AccessorBodyAnalyzer
             return $engine->analyzeClosure($modelFqcn, $getter, $newStyle);
         }
 
+        // A new-style method whose getter is not a closure — or a same-named non-accessor, e.g. a relation —
+        // falls through. Eloquent would prefer the new-style getter, but an unreadable one types nothing, and
+        // the fallthrough is what lets `get{Name}Attribute()` still answer for a camel-named collision.
         $oldStyle = $locator->locate($modelFqcn, 'get'.Str::studly($attributeName).'Attribute');
 
         if ($oldStyle === null || $oldStyle->method->stmts === null) {
@@ -96,22 +100,39 @@ final class AccessorBodyAnalyzer
         return $engine->analyzeClosure($modelFqcn, new ClosureExpr(['stmts' => $oldStyle->method->stmts]), $oldStyle);
     }
 
-    /** The `get` closure an accessor method returns through Attribute::make(), Attribute::get(), or new Attribute(). */
+    /**
+     * The `get` closure an accessor returns through Attribute::make(), Attribute::get(), or new Attribute().
+     *
+     * The first getter found wins; branches are not merged, and no fixture returns a different one per branch.
+     */
     private function getterClosure(ClassMethod $method): ClosureExpr|ArrowFunction|null
     {
         foreach ($this->collectReturnExpressions($method->stmts ?? []) as $returned) {
-            $arguments = match (true) {
-                $returned instanceof StaticCall && $returned->class instanceof Name && is_a($returned->class->toString(), Attribute::class, true)
-                    && $returned->name instanceof Identifier && in_array($returned->name->toString(), ['make', 'get'], true) => CallArguments::for($returned, new ReflectionMethod(Attribute::class, $returned->name->toString())),
-                $returned instanceof New_ && $returned->class instanceof Name && is_a($returned->class->toString(), Attribute::class, true) => CallArguments::for($returned, new ReflectionMethod(Attribute::class, '__construct')),
-                default => null,
-            };
-
-            $getter = $arguments?->named('get')?->value;
+            $getter = $this->attributeCallArguments($returned)?->named('get')?->value;
 
             if ($getter instanceof ClosureExpr || $getter instanceof ArrowFunction) {
                 return $getter;
             }
+        }
+
+        return null;
+    }
+
+    /** An `Attribute::make()`/`Attribute::get()` call or a `new Attribute()`, read against its own signature. */
+    private function attributeCallArguments(Expr $returned): ?CallArguments
+    {
+        if ($returned instanceof StaticCall
+            && $returned->class instanceof Name
+            && is_a($returned->class->toString(), Attribute::class, true)
+            && $returned->name instanceof Identifier
+            && in_array($returned->name->toString(), ['make', 'get'], true)) {
+            return CallArguments::for($returned, new ReflectionMethod(Attribute::class, $returned->name->toString()));
+        }
+
+        if ($returned instanceof New_
+            && $returned->class instanceof Name
+            && is_a($returned->class->toString(), Attribute::class, true)) {
+            return CallArguments::for($returned, new ReflectionMethod(Attribute::class, '__construct'));
         }
 
         return null;
@@ -140,7 +161,12 @@ final class AccessorBodyAnalyzer
             ));
 
         $info['type'] = $result['type'];
-        $info['customImports'] = $result['customImports'] ?? [];
+
+        // Union, not replace: the merged copy carries a #[TsType] channel's own import, the engine result
+        // carries the ones its expression named, and dropping either emits a token with no import.
+        foreach ($result['customImports'] ?? [] as $path => $names) {
+            $info['customImports'][$path] = array_values(array_unique([...$info['customImports'][$path] ?? [], ...$names]));
+        }
 
         return $info;
     }

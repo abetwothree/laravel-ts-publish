@@ -6612,6 +6612,14 @@
                     "type": "string[]"
                 },
                 {
+                    "name": "empty_list",
+                    "type": "unknown[]"
+                },
+                {
+                    "name": "constructed_version",
+                    "type": "{ major: number }"
+                },
+                {
                     "name": "loop_a",
                     "type": "unknown"
                 },
@@ -6622,6 +6630,10 @@
                 {
                     "name": "dynamic_totals",
                     "type": "unknown[]"
+                },
+                {
+                    "name": "trait_version",
+                    "type": "{ major: number; label: string }"
                 }
             ]
         },

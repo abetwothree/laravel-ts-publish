@@ -1000,10 +1000,15 @@ declare global {
             tag_list: { name: string }[];
             channel_options: { "1": string; "2": string };
             channels: string[];
+            /** An empty literal carries no element information, so the `: array` signature answers instead. */
+            empty_list: unknown[];
+            /** The `new Attribute(get: ...)` form, which getterClosure() reads like make()/get(). */
+            constructed_version: { major: number };
             loop_a: unknown;
             loop_b: unknown;
             /** Loop-built dynamic keys: must stay unknown[], nothing here is statically knowable. */
             dynamic_totals: unknown[];
+            trait_version: { major: number; label: string };
             /** Old-style accessor with a vague signature and a literal body. */
             summary: { major: number };
         }

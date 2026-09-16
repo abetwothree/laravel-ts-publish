@@ -6,10 +6,13 @@ namespace Workbench\App\Models;
 
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
+use Workbench\App\Models\Concerns\DerivesReleaseVersion;
 
 /** Accessors typed only by their getter bodies: literal shapes, helpers, collection pipelines, cycles. */
 class Release extends Model
 {
+    use DerivesReleaseVersion;
+
     public const int CHANNEL_STABLE = 1;
 
     public const int CHANNEL_BETA = 2;
@@ -62,6 +65,18 @@ class Release extends Model
     protected function channels(): Attribute
     {
         return Attribute::get(fn (): array => $this->allowedChannels);
+    }
+
+    /** An empty literal carries no element information, so the `: array` signature answers instead. */
+    protected function emptyList(): Attribute
+    {
+        return Attribute::get(fn (): array => []);
+    }
+
+    /** The `new Attribute(get: ...)` form, which getterClosure() reads like make()/get(). */
+    protected function constructedVersion(): Attribute
+    {
+        return new Attribute(get: fn (): array => ['major' => $this->major]);
     }
 
     protected function loopA(): Attribute
