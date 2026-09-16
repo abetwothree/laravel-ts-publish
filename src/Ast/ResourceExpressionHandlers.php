@@ -80,7 +80,8 @@ final class ResourceExpressionHandlers
      * make() minus ConditionalMethodHandler and ToResourceHandler, same relative order: a model getter body's profile.
      *
      * AstEngine::analyzeModelClosure() is its one caller. A getter body reads the model's own relations, and only
-     * RelationFilterHandler types their only()/except().
+     * RelationFilterHandler types a to-many, map-proxy or multi-model accessor filter; ReceiverMethodCallHandler also
+     * types a single relation's.
      *
      * @return list<ExpressionHandler>
      */

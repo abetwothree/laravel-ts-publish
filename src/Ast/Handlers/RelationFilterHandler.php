@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesMapProxyElementModels;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -28,9 +29,9 @@ use ReflectionMethod;
  * `$this->relation->only([...])`/`->except([...])`, also read through `$this->resource`, and Laravel's `map`
  * HigherOrderCollectionProxy filter (`$var->map->only([...])`/`->except([...])`) — relation/collection filters.
  *
- * The relation arm declines what it cannot type, including a model that overrides the filter. Once the map-proxy arm
- * matches, it claims `unknown` when it binds no element model, that model overrides the filter, it reads no literal
- * keys, or the keys name nothing. A scope that carries no import gets answers naming no model or enum.
+ * The relation arm declines what it cannot type, such as a model whose filter override reflection types. Once the
+ * map-proxy arm matches, it claims `unknown` for no element model, such an override, no literal keys, or keys naming
+ * nothing. A scope that carries no import gets answers naming no model or enum.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypesImportMap from Datable
@@ -62,7 +63,7 @@ final class RelationFilterHandler implements ExpressionHandler
         }
 
         // $this->relation->only([...]), $this->relation?->only([...]), or either through $this->resource
-        if ($this->isModelMemberFetch($expr->var)) {
+        if ($this->isModelMemberFetch($expr->var, $scope)) {
             $result = $this->analyzeRelationFilter($expr, $scope, $engine);
 
             if ($result !== null) {
@@ -80,13 +81,15 @@ final class RelationFilterHandler implements ExpressionHandler
     }
 
     /**
-     * Whether a fetch reads a member of the resource's model: `$this->prop` or `$this->resource->prop`.
+     * Whether a fetch reads a member of the scope's model: `$this->prop`, or `$this->resource->prop` in a resource.
      *
      * `$this->resource` itself is the model, not a member named `resource`; its filters belong to the receiver rules.
+     * Only a subject that forwards to its model has that proxy: in a model's own body it is the model's own member.
      */
-    private function isModelMemberFetch(PropertyFetch $fetch): bool
+    private function isModelMemberFetch(PropertyFetch $fetch, AnalysisScope $scope): bool
     {
-        return ($this->isThisPropertyFetch($fetch) && ! $this->isResourceFetch($fetch)) || $this->isResourceFetch($fetch->var);
+        return ($this->isThisPropertyFetch($fetch) && ! $this->isResourceFetch($fetch))
+            || ($this->isResourceFetch($fetch->var) && $scope->forwardsUndeclaredMembersTo !== null);
     }
 
     /**
@@ -127,7 +130,7 @@ final class RelationFilterHandler implements ExpressionHandler
             // Try the multi-model accessor path (e.g. Attribute<ModelA|ModelB, never>).
             $modelFqcns = $this->resolveAccessorModelFqcns($propName, $scope);
 
-            if ($modelFqcns === [] || ! array_all($modelFqcns, fn (string $fqcn): bool => $this->runsModelFilter($fqcn, $methodName))) {
+            if ($modelFqcns === [] || ! array_all($modelFqcns, fn (string $fqcn): bool => $this->typesAsModelFilter($fqcn, $methodName))) {
                 return null;
             }
 
@@ -200,7 +203,7 @@ final class RelationFilterHandler implements ExpressionHandler
             ];
         }
 
-        if (! $this->runsModelFilter($modelFqcn, $methodName)) {
+        if (! $this->typesAsModelFilter($modelFqcn, $methodName)) {
             return null;
         }
 
@@ -276,7 +279,7 @@ final class RelationFilterHandler implements ExpressionHandler
         $mapFetch = $call->var;
         $elementModel = $this->resolveMapProxyElementModel($mapFetch->var, $scope);
 
-        if ($elementModel === null || ! $this->runsModelFilter($elementModel, $methodName)) {
+        if ($elementModel === null || ! $this->typesAsModelFilter($elementModel, $methodName)) {
             return $result;
         }
 
@@ -311,6 +314,16 @@ final class RelationFilterHandler implements ExpressionHandler
             'embeddedModelFqcns' => $filterResult['modelFqcns'],
             'customImports' => $filterResult['customImports'],
         ];
+    }
+
+    /**
+     * Whether the filter answers type a model's only()/except(), asked of the receiver rules so both owners agree.
+     *
+     * @param  class-string  $modelFqcn
+     */
+    private function typesAsModelFilter(string $modelFqcn, string $methodName): bool
+    {
+        return resolve(ReceiverMethodReturnResolver::class)->typesAsModelFilter($modelFqcn, $methodName);
     }
 
     /**

@@ -68,6 +68,20 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
+     * Whether the filter answers type a model's only()/except(): it runs Model's own, or overrides it with a return
+     * reflection cannot type, such as `return parent::only($attributes)`. A typed override publishes its own return.
+     *
+     * RelationFilterHandler asks the same, so a relation, accessor or map proxy to such a model agrees with this rule.
+     *
+     * @param  class-string  $class
+     */
+    public function typesAsModelFilter(string $class, string $methodName): bool
+    {
+        return $this->runsModelFilter($class, $methodName)
+            || (is_a($class, Model::class, true) && $this->resolveOn($class, $methodName, false) === null);
+    }
+
+    /**
      * Convention rules that need the receiver's model rather than a reflected signature.
      *
      * @param  class-string  $class
@@ -94,7 +108,7 @@ final class ReceiverMethodReturnResolver
             return $keyType === null ? null : [...ValueResult::unknown(), 'type' => $keyType.'[]'];
         }
 
-        if (in_array($methodName, $this->supportedAttributeFilters(), true) && $this->runsModelFilter($class, $methodName)) {
+        if (in_array($methodName, $this->supportedAttributeFilters(), true) && $this->typesAsModelFilter($class, $methodName)) {
             return $this->attributeFilterRule($receiver, $methodName, $scope, $call);
         }
 
@@ -106,6 +120,7 @@ final class ReceiverMethodReturnResolver
      *
      * Builds exactly what RelationFilterHandler builds for a relation to the same model, from the same helpers, so the
      * two agree wherever both claim a call, including `Record<string, unknown>` for a key list that is not literal.
+     * A literal list naming nothing typed gets it too, where RelationFilterHandler declines and leaves the call here.
      * A StaticCall carries no filter keys this can read, so it declines.
      *
      * @return ValueExpressionResult|null
@@ -134,11 +149,12 @@ final class ReceiverMethodReturnResolver
 
         $result = $this->literalKeyFilterResult($models[0], $keys, $methodName === 'only', $scope->carriesImports);
 
-        if ($result !== null && ! $scope->carriesImports && TsTypeString::shapeValueHasUnimportableToken($result['type'])) {
+        // Model::only() keys a name it cannot find to null, so the value is still an attribute-keyed array.
+        if ($result === null || (! $scope->carriesImports && TsTypeString::shapeValueHasUnimportableToken($result['type']))) {
             return $this->attributeRecordResult(nullable: false);
         }
 
-        return $result !== null && ValueResult::namesOnlyPublishedModels($result) ? $result : null;
+        return ValueResult::namesOnlyPublishedModels($result) ? $result : null;
     }
 
     /**

@@ -97,7 +97,8 @@ trait FiltersAttributeKeys
     /**
      * Whether a class runs Model's own `only()`/`except()`, whose return the filter answers describe.
      *
-     * An override declares its own return, which PHP holds every subclass to, so reflection answers it instead.
+     * An override declares its own return, which reflection answers instead wherever it can type it; see
+     * ReceiverMethodReturnResolver::typesAsModelFilter() for the override it cannot.
      *
      * @param  class-string  $class
      */

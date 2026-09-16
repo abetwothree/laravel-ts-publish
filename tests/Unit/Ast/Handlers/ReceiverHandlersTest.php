@@ -26,6 +26,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverProbeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverShapedToArrayModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverStringDateProbe;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverVarProbe;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UntypedFilterOverrideModel;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -39,6 +40,7 @@ use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\ImageResource;
 use Workbench\App\Http\Resources\ModelWrappedPropResource;
 use Workbench\App\Http\Resources\NarrowedParentResource;
+use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\PostStatsResource;
 use Workbench\App\Http\Resources\ReceiverMethodResource;
 use Workbench\App\Http\Resources\ReceiverPropertyResource;
@@ -324,6 +326,38 @@ describe('ReceiverMethodCallHandler', function () {
         'method body, relation' => [FilterOverrideModel::class, null, false, '$this->twin->except($keys)', 'number'],
         'getter body' => [FilterOverrideModel::class, ResourceExpressionHandlers::forModelClosures(), true, '$this?->except([\'id\'])', 'number'],
         'getter body, relation' => [FilterOverrideModel::class, ResourceExpressionHandlers::forModelClosures(), true, '$this->twin->only($keys)', 'string'],
+    ]);
+
+    // An override that declares no return leaves reflection nothing to publish, so it keeps Model's filter answer.
+    test('keeps the filter answer for an only()/except() override that declares no return, in every scope', function (string $subject, ?array $profile, bool $carriesImports, string $php, string $type) {
+        $engine = new ResourceAstAnalyzer(new ReflectionClass($subject), UntypedFilterOverrideModel::class, 'toArray', $profile, carriesImports: $carriesImports);
+
+        expect($engine->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        'resource, own model' => [CommentResource::class, null, true, "\$this->only(['id', 'title'])", "Pick<UntypedFilterOverrideModel, 'id' | 'title'>"],
+        'resource, $this->resource' => [CommentResource::class, null, true, '$this->resource->except($keys)', 'Record<string, unknown>'],
+        'resource, relation' => [CommentResource::class, null, true, "\$this->twin->only(['id', 'title'])", "Pick<UntypedFilterOverrideModel, 'id' | 'title'>"],
+        'resource, relation ?->' => [CommentResource::class, null, true, '$this->resource->twin?->except($keys)', 'Record<string, unknown> | null'],
+        'resource, map proxy' => [CommentResource::class, null, true, "\$this->twins->map->only(['id', 'title'])", '{ id: number; title: string }[]'],
+        'resource, multi-model accessor' => [CommentResource::class, null, true, "\$this->counterpart->only(['id'])", "Pick<UntypedFilterOverrideModel, 'id'> | Pick<User, 'id'>"],
+        'method body' => [UntypedFilterOverrideModel::class, null, false, "\$this->only(['id', 'title'])", '{ id: number; title: string }'],
+        'method body, relation' => [UntypedFilterOverrideModel::class, null, false, "\$this->twin?->only(['id', 'title'])", '{ id: number; title: string } | null'],
+        'getter body' => [UntypedFilterOverrideModel::class, ResourceExpressionHandlers::forModelClosures(), true, "\$this?->only(['id', 'title'])", "Pick<UntypedFilterOverrideModel, 'id' | 'title'>"],
+        'getter body, relation' => [UntypedFilterOverrideModel::class, ResourceExpressionHandlers::forModelClosures(), true, '$this->twin->only($keys)', 'Record<string, unknown>'],
+    ]);
+
+    // Model::only() keys a name it cannot find to null, so a literal list naming nothing typed still returns an
+    // attribute-keyed array. RelationFilterHandler declines the relation spelling, and the receiver rules answer it.
+    test('types a literal key list that names nothing as Record<string, unknown>, in every scope', function (string $subject, ?array $profile, bool $carriesImports, string $php, string $type) {
+        $engine = new ResourceAstAnalyzer(new ReflectionClass($subject), Post::class, 'toArray', $profile, carriesImports: $carriesImports);
+
+        expect($engine->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        'resource, own model' => [PostResource::class, null, true, "\$this->only(['nope'])", 'Record<string, unknown>'],
+        'resource, relation' => [PostResource::class, null, true, "\$this->author->only(['nope'])", 'Record<string, unknown>'],
+        'resource, relation ?-> through $this->resource' => [PostResource::class, null, true, "\$this->resource->author?->only(['nope'])", 'Record<string, unknown> | null'],
+        'method body, relation' => [Post::class, null, false, "\$this->author->only(['nope'])", 'Record<string, unknown>'],
+        'getter body, relation' => [Post::class, ResourceExpressionHandlers::forModelClosures(), true, "\$this->author->only(['nope'])", 'Record<string, unknown>'],
     ]);
 
     test('an earlier ?-> in the chain makes the call nullable once', function () {

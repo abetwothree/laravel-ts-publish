@@ -8,8 +8,13 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationFilterHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilterOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\OwnResourceRelationModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ResourceRelationModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UntypedFilterOverrideModel;
 use Illuminate\Support\Facades\Schema;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
@@ -28,6 +33,7 @@ use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\TeamResource;
 use Workbench\App\Http\Resources\WarehouseResource;
+use Workbench\App\Models\Category;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Tag;
@@ -336,6 +342,33 @@ it('never reads $this->resource as a relation, even on a model that declares one
     expect($result)->toBeNull();
 });
 
+// Only a resource forwards to its model. In a model's own body `$this->resource` is a member like any other: the
+// model's own `resource` relation, or nothing, so a filter read through it is not a relation filter on the model.
+it('matches the $this->resource->member spelling only on a subject that forwards to its model', function (string $subject, string $model, string $php, ?array $expected) {
+    $engine = new ResourceAstAnalyzer(new ReflectionClass($subject), $model, 'toArray', ResourceExpressionHandlers::forModelClosures());
+    $scope = new AnalysisScope(new ReflectionClass($subject), $model);
+
+    expect((new RelationFilterHandler)->resolve(relationFilterExpr($php), $scope, $engine))->toBe($expected);
+})->with([
+    'resource, a model with a resource relation' => [CommentResource::class, OwnResourceRelationModel::class, '$this->resource->author->only([\'id\', \'name\'])', [
+        'type' => "Pick<Category, 'id' | 'name'>", 'optional' => false, 'modelFqcn' => Category::class,
+    ]],
+    'model body, a model with a resource relation' => [OwnResourceRelationModel::class, OwnResourceRelationModel::class, '$this->resource->author->only([\'id\', \'name\'])', null],
+    'model body, a relation' => [Post::class, Post::class, '$this->resource->author->only([\'id\'])', null],
+    'model body, a to-many relation' => [Post::class, Post::class, '$this->resource->comments->only([1])', null],
+    'model body, a map proxy' => [Post::class, Post::class, '$this->resource->comments->map->only([\'id\'])', ['type' => 'unknown', 'optional' => false]],
+]);
+
+// The model's `resource` relation leads to a Post authored by a User; its own `author` is a Category.
+it('reads a model\'s own resource relation in its getter and method bodies', function () {
+    $getter = resolve(ModelAttributeResolver::class)->resolveAttribute(OwnResourceRelationModel::class, 'resource_author');
+
+    expect($getter['type'])->toBe("Pick<User, 'id' | 'name'>")
+        ->and($getter['classFqcns'])->toBe([User::class])
+        ->and(resolve(MethodReturnTypeResolver::class)->resolve(OwnResourceRelationModel::class, 'resourceAuthorFields'))
+        ->toBe(['type' => '{ author: { id: number; email: string } }', 'optional' => false]);
+});
+
 // On a model that declares a real `map` relation, `$this->resource->map` is that relation, exactly as `$this->map` is.
 it('reads a real map relation as a relation under both spellings, not as the map proxy', function (string $php) {
     $scope = new AnalysisScope(new ReflectionClass(TeamResource::class), Team::class);
@@ -414,6 +447,7 @@ it('publishes a relation filter that names no token where the scope carries no i
         'type' => '{ id: number }[]', 'optional' => false, 'embeddedEnumFqcns' => [], 'embeddedModelFqcns' => [], 'customImports' => [],
     ]],
     'map proxy, an enum column' => [User::class, '$this->posts->map->only([\'id\', \'status\'])', ['type' => 'Record<string, unknown>[]', 'optional' => false]],
+    'map proxy ?->, an enum column' => [User::class, '$this->posts->map?->only([\'id\', \'status\'])', ['type' => 'Record<string, unknown>[] | null', 'optional' => false]],
 ]);
 
 // A model that overrides only()/except() declares its own return, which ReceiverMethodCallHandler reflects.
@@ -426,4 +460,27 @@ it('declines a relation filter on a model that overrides the filter', function (
     'single relation, runtime keys' => ['$this->resource->twin?->except($keys)', null],
     'multi-model accessor' => ['$this->counterpart->only([\'id\'])', null],
     'map proxy' => ['$this->twins->map->only([\'id\'])', ['type' => 'unknown', 'optional' => false]],
+]);
+
+// An override that declares no return, such as one returning parent::only(), leaves reflection nothing to publish,
+// so every arm answers it as it answers Model's own filter, and the receiver rules fall back to the same answer.
+it('answers a relation filter on a model whose override declares no return', function (string $php, array $expected) {
+    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), UntypedFilterOverrideModel::class);
+
+    expect((new RelationFilterHandler)->resolve(relationFilterExpr($php), $scope, relationFilterHandlerThrowingEngine()))->toBe($expected);
+})->with([
+    'single relation' => ['$this->twin->only([\'id\', \'title\'])', [
+        'type' => "Pick<UntypedFilterOverrideModel, 'id' | 'title'>", 'optional' => false, 'modelFqcn' => UntypedFilterOverrideModel::class,
+    ]],
+    'single relation, runtime keys' => ['$this->resource->twin?->except($keys)', ['type' => 'Record<string, unknown> | null', 'optional' => false]],
+    'multi-model accessor' => ['$this->counterpart->only([\'id\'])', [
+        'type' => "Pick<UntypedFilterOverrideModel, 'id'> | Pick<User, 'id'>",
+        'optional' => false,
+        'embeddedEnumFqcns' => [],
+        'embeddedModelFqcns' => [UntypedFilterOverrideModel::class, User::class],
+        'customImports' => [],
+    ]],
+    'map proxy' => ['$this->twins->map->only([\'id\', \'title\'])', [
+        'type' => '{ id: number; title: string }[]', 'optional' => false, 'embeddedEnumFqcns' => [], 'embeddedModelFqcns' => [], 'customImports' => [],
+    ]],
 ]);
