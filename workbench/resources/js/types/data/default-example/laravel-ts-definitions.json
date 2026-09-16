@@ -5877,6 +5877,10 @@
                     "type": "string"
                 },
                 {
+                    "name": "channel",
+                    "type": "string"
+                },
+                {
                     "name": "created_at",
                     "type": "string | null"
                 },

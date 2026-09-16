@@ -14,6 +14,7 @@ return new class extends Migration
             $table->id();
             $table->string('subject');
             $table->string('type');
+            $table->string('channel');
             $table->timestamps();
         });
     }

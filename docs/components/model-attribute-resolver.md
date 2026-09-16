@@ -75,6 +75,25 @@ publish it as `unknown`. `Workbench\App\Models\OutgoingNote` pins both outcomes:
 `normalizedTag` has no backing column and is dropped from the generated interface, not emitted as
 `never` or `unknown`.
 
+The rule applies to a nullable spelling of the same Get too: `Attribute<?never, ?string>` reaches
+this branch as the string `'never | null'`, because `resolveDocblockTypePartOrAlias()`'s
+nullable-prefix handling appends `| null` to the resolved `never`, and `never|null` written without
+the `?` shorthand takes the same path through `splitPhpDocUnionType()`. The check strips the null
+arm with `Ast\ValueResult::stripNullArm()` — the same helper `CoalesceHandler` and
+`ConditionalMethodHandler` use for the identical "ignore a `| null` arm before deciding" shape —
+before comparing against `never`, so both spellings are caught alike rather than only the bare one.
+`OutgoingNote::channel` pins this spelling: documented `Attribute<?never, ?string>`, it publishes
+its column's `string` type, not the literal `never | null`.
+
+`isOmittedMutator()` is the read for "was this omitted", not `resolveAttribute()`'s own `type`:
+once the accessor step's `omit` flag reaches `resolveAttribute()`, the no-backing-column path
+discards it and returns a fresh `emptyTypeScriptInfo()` — so a genuinely unresolvable attribute and
+one that resolved to `omittedTypeScriptInfo()` both read back `'unknown'` there, indistinguishably.
+`isOmittedMutator()` calls `resolveAccessorType()` directly and reads the `omit` key itself, the
+same check `ModelTransformer::resolveMutatorType()` relies on for real publish output, so it is the
+correct assertion for "this name does not appear in the generated interface" — `resolveAttribute()`'s
+`'unknown'` alone does not prove it.
+
 ## Arrayable/JsonSerializable shape-source precedence
 
 `arrayableShapeType()` takes a `bool $fallbackToProperties` argument, and the two call sites in

@@ -33,4 +33,10 @@ class OutgoingNote extends Model
     {
         return Attribute::set(fn (string $value): string => strtolower($value));
     }
+
+    /** @return Attribute<?never, ?string> */
+    protected function channel(): Attribute
+    {
+        return Attribute::set(fn (?string $value): string => $value ?? 'email');
+    }
 }

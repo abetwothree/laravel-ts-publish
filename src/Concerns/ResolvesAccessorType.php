@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Model\AccessorBodyAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Database\Eloquent\Casts\Attribute;
@@ -72,16 +73,15 @@ trait ResolvesAccessorType
                     return $docblockReturn;
                 }
 
-                // Set-only: no getter closure to read a runtime type from, but the method's own
-                // docblock may still document a Get generic (Attribute<Get, Set>). A `never` Get is how
-                // a mutator with no getter is conventionally written — it states that no getter exists,
-                // not a read type. Reading the attribute returns the raw column, so let the caller apply
-                // the column's own type.
+                // A `never` Get — bare or its nullable spelling (`?never`, `never|null`, stripped before
+                // comparing) — states that no getter exists, not what reading returns; the raw column
+                // applies instead, so this falls through to omittedTypeScriptInfo() rather than publish it.
                 $docblockReturn = LaravelTsPublish::attributeDocblockReturnTypes($method);
+                $docblockNonNullType = ValueResult::stripNullArm($docblockReturn['type']);
 
                 if (
                     $docblockReturn['type'] !== 'unknown'
-                    && $docblockReturn['type'] !== 'never'
+                    && $docblockNonNullType !== 'never'
                     && ! $this->isVagueTsType($docblockReturn['type'])
                 ) {
                     return $docblockReturn;

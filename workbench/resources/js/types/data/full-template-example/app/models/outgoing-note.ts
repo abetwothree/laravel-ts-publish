@@ -9,6 +9,7 @@ export interface OutgoingNote
     id: number;
     subject: string;
     type: string;
+    channel: string;
     created_at: string | null;
     updated_at: string | null;
 }
