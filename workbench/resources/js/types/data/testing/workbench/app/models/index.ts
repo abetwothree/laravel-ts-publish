@@ -56,6 +56,8 @@ export * from './order';
 export * from './order-item';
 export * from './order-item_meta';
 export * from './order_meta';
+export * from './outgoing-note';
+export * from './outgoing-note_meta';
 export * from './post';
 export * from './post-meta';
 export * from './post-meta_meta';

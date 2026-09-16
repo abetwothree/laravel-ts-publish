@@ -5861,6 +5861,31 @@
                 }
             ]
         },
+        "Workbench\\App\\Models\\OutgoingNote": {
+            "name": "OutgoingNote",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "subject",
+                    "type": "string"
+                },
+                {
+                    "name": "type",
+                    "type": "string"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                }
+            ]
+        },
         "Workbench\\App\\Models\\Post": {
             "name": "Post",
             "properties": [

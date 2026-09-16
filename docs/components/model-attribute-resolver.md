@@ -59,6 +59,22 @@ specific, because a `mixed`-typed key inside an otherwise-concrete shape is not 
 having no shape at all. Anything else — `string`, `OrderItem[]`, `{ value: number; label: string }`
 — is specific enough to win immediately.
 
+## Set-only mutators: a `never` Get records no getter, not a read type
+
+When an `Attribute` has no getter closure at all, `Concerns\ResolvesAccessorType` still reads the
+method's own `@return Attribute<Get, Set>` docblock, because a mutator with no getter is
+conventionally documented as `Attribute<never, string>` — the `never` states that no getter
+exists, it is not a claim about what reading the attribute returns. Reading it returns the raw,
+cast column value, so a `never` Get is excluded from the "docblock wins" check alongside `unknown`
+and falls through to `LaravelTsPublish::omittedTypeScriptInfo()`, the same as a set-only mutator
+with no docblock at all. From there the ordinary waterfall decides the answer: `ModelAttributeResolver::resolveAttribute()`
+re-resolves a real DB column's own type once the accessor step comes back empty, and
+`ModelTransformer::transformMutators()` omits a name with no backing column entirely rather than
+publish it as `unknown`. `Workbench\App\Models\OutgoingNote` pins both outcomes: `subject` and
+`type` are real columns behind `Attribute<never, string>` mutators and publish as `string`, while
+`normalizedTag` has no backing column and is dropped from the generated interface, not emitted as
+`never` or `unknown`.
+
 ## Arrayable/JsonSerializable shape-source precedence
 
 `arrayableShapeType()` takes a `bool $fallbackToProperties` argument, and the two call sites in

@@ -27,6 +27,7 @@ export * from './model-with-parent-extends';
 export * from './model-with-trait-extends';
 export * from './order';
 export * from './order-item';
+export * from './outgoing-note';
 export * from './post';
 export * from './post-meta';
 export * from './product';

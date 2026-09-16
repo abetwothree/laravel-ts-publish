@@ -684,6 +684,15 @@ declare global {
             product_count: number;
             product_exists: boolean;
         }
+        /** Set-only mutators whose docblock Get is `never`: it records no getter, not a read type. */
+        export interface OutgoingNote {
+            // Columns
+            id: number;
+            subject: string;
+            type: string;
+            created_at: string | null;
+            updated_at: string | null;
+        }
         export interface Post {
             // Columns
             id: number;

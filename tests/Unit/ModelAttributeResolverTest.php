@@ -35,6 +35,7 @@ use Workbench\App\Models\Labelable;
 use Workbench\App\Models\Marketing\Report\Report as MarketingReport;
 use Workbench\App\Models\Order;
 use Workbench\App\Models\OrderItem;
+use Workbench\App\Models\OutgoingNote;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Product;
 use Workbench\App\Models\Profile;
@@ -665,6 +666,25 @@ describe('write-only accessor waterfall', function () {
         // Order::searchIndex has neither a getter, a docblock generic, nor a matching DB column.
         $info = resolve(ModelAttributeResolver::class)
             ->resolveAttribute(Order::class, 'search_index');
+
+        expect($info['type'])->toBe('unknown');
+    });
+
+    test('a set-only mutator whose docblock Get is never resolves to its real column type', function () {
+        // OutgoingNote::subject/type are Attribute::set()/make() mutators with no getter, documented
+        // `Attribute<never, string>` — the never only records that no getter exists. Reading either
+        // attribute returns the raw column value, so the column's own type must win, not a literal 'never'.
+        $resolver = resolve(ModelAttributeResolver::class);
+
+        expect($resolver->resolveAttribute(OutgoingNote::class, 'subject')['type'])->toBe('string')
+            ->and($resolver->resolveAttribute(OutgoingNote::class, 'type')['type'])->toBe('string');
+    });
+
+    test('a set-only mutator whose docblock Get is never and has no backing column resolves to unknown, not never', function () {
+        // OutgoingNote::normalizedTag has no backing column: nothing can be read, so it must stay
+        // omitted from published output — degrading to 'unknown' rather than leaking the docblock's 'never'.
+        $info = resolve(ModelAttributeResolver::class)
+            ->resolveAttribute(OutgoingNote::class, 'normalized_tag');
 
         expect($info['type'])->toBe('unknown');
     });
