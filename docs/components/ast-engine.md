@@ -405,6 +405,13 @@ Both memoize hits *and* misses — `memo()` checks `array_key_exists()`, not a t
 their target file and hand it to `AstParser::parseFile()`, which is where the actual dependency
 recording happens; neither method records anything itself.
 
+The body fallback records dependencies for free, for the same reason. When a reflected return type is too
+vague to publish, `MethodReturnTypeResolver::resolve()` re-enters `AstEngine::analyzeMethod()` on the
+declaring class, which reaches that class's file through `MethodLocator` and therefore `AstParser` — so a
+resource whose type came from a helper's *body* is invalidated when that helper changes, not only when the
+resource does. It is one extra analysis per `class@method`, guarded against re-entry by the resolver and
+memoized by `analyzeMethod()`'s own `resultCache`.
+
 ## MethodAnalysis
 
 `MethodAnalysis` (`src/Ast/MethodAnalysis.php`) is the unified analysis DTO — the generalized

@@ -204,6 +204,7 @@
     "app\/Http\/Resources\/SameBasenameModelTrioResource.php",
     "app\/Http\/Resources\/SelfSpreadResource.php",
     "app\/Http\/Resources\/ServiceDeskResource.php",
+    "app\/Http\/Resources\/ServiceReturnResource.php",
     "app\/Http\/Resources\/ShadowedClosureParamResource.php",
     "app\/Http\/Resources\/SpreadJsonBaseResource.php",
     "app\/Http\/Resources\/SpreadWithClosureResource.php",

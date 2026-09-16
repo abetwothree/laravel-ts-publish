@@ -120,6 +120,7 @@ export * from './routable-resource';
 export * from './same-basename-model-trio-resource';
 export * from './self-spread-resource';
 export * from './service-desk-resource';
+export * from './service-return-resource';
 export * from './shadowed-closure-param-resource';
 export * from './spread-json-base-resource';
 export * from './spread-with-closure-resource';

@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
+use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
@@ -16,6 +18,7 @@ use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Do_;
@@ -26,6 +29,7 @@ use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\Stmt\Switch_;
 use PhpParser\Node\Stmt\TryCatch;
 use PhpParser\Node\Stmt\While_;
+use ReflectionClass;
 
 /**
  * Node-shape questions about a parsed expression: what it is, what it names, what it returns.
@@ -81,15 +85,45 @@ trait InspectsAstNodes
     }
 
     /**
-     * The name an array key spells, or null when it is not a plain string literal.
+     * The name an array key spells, or null when it is not a literal this can read.
+     *
+     * An int key is a real JSON object key: `[1 => 'Basic']` encodes as `{"1":"Basic"}`, not as a list.
+     *
+     * @param  ReflectionClass<object>|null  $subject  resolves `self`/`static` in a class-constant key
      */
-    protected function resolveKeyName(Expr $key): ?string
+    protected function resolveKeyName(Expr $key, ?ReflectionClass $subject = null): ?string
     {
         if ($key instanceof String_) {
             return $key->value;
         }
 
+        if ($key instanceof Int_) {
+            return $this->publishableKeyName((string) $key->value, $subject);
+        }
+
+        if ($key instanceof ClassConstFetch && $key->class instanceof Name && $key->name instanceof Identifier) {
+            $class = in_array($key->class->toLowerString(), ['self', 'static'], true) ? $subject?->getName() : $key->class->toString();
+            $constant = $class !== null ? $class.'::'.$key->name->toString() : null;
+            $value = $constant !== null && defined($constant) ? constant($constant) : null;
+
+            return is_int($value) || is_string($value) ? $this->publishableKeyName((string) $value, $subject) : null;
+        }
+
         return null;
+    }
+
+    /**
+     * Drop a numeric key that would become a published resource member, and keep every other one.
+     *
+     * PHP stores a numeric string array key as an int, so a name like `42` arrives as `int` in the
+     * transformer's `array<string, …>` property maps. A helper method's array renders as an inline type
+     * string instead (`{ "1": string }`), where the name never becomes an array key and stays valid.
+     *
+     * @param  ReflectionClass<object>|null  $subject
+     */
+    private function publishableKeyName(string $name, ?ReflectionClass $subject): ?string
+    {
+        return is_numeric($name) && $subject?->isSubclassOf(JsonResource::class) === true ? null : $name;
     }
 
     /**

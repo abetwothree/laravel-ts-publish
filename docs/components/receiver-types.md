@@ -253,13 +253,39 @@ model and the receiver model are the same class, so the two answers agree.
    declares, the call keeps the receiver's own type: `toTsType($class)`, plus `| null` when the native return
    or the `@return` docblock admits `null`. `Model::fresh()` on a `User` is `User | null`. A `self` return
    inherited from a parent names the parent, so it is not treated as the receiver's type.
-5. Otherwise `LaravelTsPublish::methodOrDocblockReturnTypes()` reads the native signature, then the
-   `@return` docblock when the signature is vague.
-6. `ReflectedTypeAcceptor::accept()` must accept the type, and it must not be vague. A vague type such as
-   `unknown[]` would claim a list where an associative array, or a `keyBy()` collection, is a JSON object.
-7. Every model the result names must be one the package publishes a file for. `ReflectedTypeAcceptor` accepts
+5. Otherwise `MethodReturnTypeResolver::resolve()` answers. It reads the native signature, then the
+   `@return` docblock when the signature is vague, through
+   `LaravelTsPublish::methodOrDocblockReturnTypes()`.
+6. When that declaration is still vague — a bare `: array` reflects to `unknown[]` — the method body is
+   analyzed once and the shape its literal return spells is used instead. `PriceQuoteService::quote()`
+   declares only `: array`, and its body publishes
+   `{ unit: string; minimum: number; discounted: { unit: string } }`. Four rules bound it:
+   - The body must spell at least one property; otherwise the vague declaration is kept unchanged. A method
+     that returns another call rather than a literal therefore stays `unknown[]`.
+   - The built inline type must name no token an import would have to bring in
+     (`TsTypeString::shapeValueHasUnimportableToken()`). The inline type carries no FQCN channel, so a
+     token needing an import could never be emitted with one. See
+     [Follow-ups](#the-body-fallback-carries-no-fqcn-channel).
+   - A `class@method` already being analyzed returns nothing, so a method whose body calls itself
+     terminates instead of recursing. The resolver is a container singleton so that guard is shared by
+     every call site rather than per instance.
+   - The result is still subject to steps 7 and 8, exactly as a reflected one is.
+7. The type must not be vague. A vague type such as `unknown[]` would claim a list where an associative
+   array, or a `keyBy()` collection, is a JSON object. An inline object type from step 6 is never vague.
+8. Every model the result names must be one the package publishes a file for. `ReflectedTypeAcceptor` accepts
    any `Model` subclass, so a model under the `Illuminate\` namespace or an abstract model declines:
    `User::resolveRouteBinding()` reflects to `Model | null` and `newPivot()` to `Pivot`.
+
+An int or class-constant array key is a real JSON object key, not a list index: `[1 => 'Basic']` encodes as
+`{"1":"Basic"}`. `InspectsAstNodes::resolveKeyName()` reads both, resolving `self`/`static` in a constant key
+against the subject under analysis, and the key emits quoted because `1` is not a bare JS identifier. So
+`PriceQuoteService::tierLabels()` publishes `{ "1": string; "2": string }`.
+
+### The body fallback carries no FQCN channel
+
+The inline type step 6 builds is a string with no accompanying enum/model FQCN channel, so a body whose shape
+names an enum or a model cannot have that token imported. Rather than emit a token nothing imports, the
+`shapeValueHasUnimportableToken()` rule drops the whole body answer and the vague declaration stands.
 
 ### Unions, `?->`, and requests
 

@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\CallChainWalker;
 use AbeTwoThree\LaravelTsPublish\Ast\CallMatcher;
 use AbeTwoThree\LaravelTsPublish\Ast\InertiaRenderLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Cache\CacheBootstrap;
@@ -36,6 +37,8 @@ class LaravelTsPublishServiceProvider extends PackageServiceProvider
         $this->app->singleton(AstEngine::class);
         $this->app->singleton(AstParser::class);
         $this->app->singleton(MethodLocator::class);
+        // Shared so the body-fallback re-entrancy guard spans every call site, not one instance.
+        $this->app->singleton(MethodReturnTypeResolver::class);
         $this->app->singleton(CallMatcher::class);
         $this->app->singleton(InertiaRenderLocator::class);
         $this->app->singleton(CallChainWalker::class);

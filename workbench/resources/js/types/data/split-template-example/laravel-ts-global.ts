@@ -2588,7 +2588,7 @@ declare global {
             parent_fluent_chain?: FluentSelfResource;
             parent_fluent_docblock?: FluentSelfResource;
             parent_summary?: { id: number };
-            foreign_summary?: unknown;
+            foreign_summary?: { slug: string };
             parent_fluent_nullable?: FluentSelfResource | null;
         }
         /** Resource using FQCN @mixin — tests resolveModelClass FQCN branch. */
@@ -3537,6 +3537,14 @@ declare global {
             title: string;
             crm_agent: crm.models.User | null;
             order_requester: { user: app.models.User } | null;
+        }
+        /**
+         * A vague `: array` helper reached two ways — through a container instance and as a static call — so
+         * both reflection sites fall back to the literal body.
+         */
+        export interface ServiceReturnResource {
+            quote: { unit: string; minimum: number; discounted: { unit: string } };
+            tiers: { "1": string; "2": string };
         }
         /**
          * Guards against the regression narrowing collectWrittenVariableNames() could introduce: a closure

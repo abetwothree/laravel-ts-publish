@@ -23,6 +23,7 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Identifier;
+use ReflectionClass;
 
 /**
  * `$this->property` — resolved against the backing model, attributes before relations, matching
@@ -64,8 +65,10 @@ final class ThisPropertyHandler implements ExpressionHandler
      *
      * Public: the analyzer's own resolveArrayOrClosureToProperties() (merge()/mergeWhen() resolution)
      * calls this directly — the array machinery moved here while that caller stayed on the analyzer.
+     *
+     * @param  ReflectionClass<object>|null  $subject  resolves `self`/`static` in a class-constant key
      */
-    public function extractPropertiesFromArray(Array_ $array, ExpressionEngine $engine, bool $optional = false): ResourceAnalysis
+    public function extractPropertiesFromArray(Array_ $array, ExpressionEngine $engine, bool $optional = false, ?ReflectionClass $subject = null): ResourceAnalysis
     {
         $analysis = new ResourceAnalysis;
 
@@ -74,7 +77,7 @@ final class ThisPropertyHandler implements ExpressionHandler
                 continue;
             }
 
-            $keyName = $this->resolveKeyName($item->key);
+            $keyName = $this->resolveKeyName($item->key, $subject);
 
             if ($keyName === null) {
                 continue;

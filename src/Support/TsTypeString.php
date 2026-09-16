@@ -29,8 +29,9 @@ class TsTypeString
     public function shapeValueHasUnimportableToken(string $type, array $importableNames = []): bool
     {
         // The `?` of an optional key is not a token separator, so a key stripped without it survives as
-        // `name?` and reads as an unimportable value.
-        $withoutKeys = (string) preg_replace('/\b\w+\s*\??\s*:/', '', $type);
+        // `name?` and reads as an unimportable value. A quoted key (`"1"`, from an int or constant array
+        // key) is a key just the same, and nothing imports it.
+        $withoutKeys = (string) preg_replace('/(?:\b\w+|"[^"]*")\s*\??\s*:/', '', $type);
 
         $tokens = preg_split('/[<>{}()|,;\[\]\s]+/', $withoutKeys, -1, PREG_SPLIT_NO_EMPTY) ?: [];
 

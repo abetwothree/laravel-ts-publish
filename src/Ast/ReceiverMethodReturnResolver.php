@@ -122,7 +122,7 @@ final class ReceiverMethodReturnResolver
 
         $result = resolve(ReceiverClassResolver::class)->returnClasses($class, $methodName) === [$class]
             ? $this->selfType($class, $this->returnAllowsNull($method))
-            : resolve(ReflectedTypeAcceptor::class)->accept(LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($class), $methodName));
+            : resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName);
 
         // A vague `unknown[]` claims a list where an associative array or a keyBy() collection is a JSON object.
         if ($result === null || TsTypeString::isVagueTsType($result['type'])) {

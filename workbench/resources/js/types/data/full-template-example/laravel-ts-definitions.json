@@ -10779,7 +10779,7 @@
                 },
                 {
                     "name": "foreign_summary",
-                    "type": "unknown",
+                    "type": "{ slug: string }",
                     "optional": true
                 },
                 {
@@ -13510,6 +13510,21 @@
                 {
                     "name": "order_requester",
                     "type": "{ user: ModelsUser } | null",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\ServiceReturnResource": {
+            "name": "ServiceReturnResource",
+            "properties": [
+                {
+                    "name": "quote",
+                    "type": "{ unit: string; minimum: number; discounted: { unit: string } }",
+                    "optional": false
+                },
+                {
+                    "name": "tiers",
+                    "type": "{ \"1\": string; \"2\": string }",
                     "optional": false
                 }
             ]

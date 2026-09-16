@@ -1104,15 +1104,17 @@ describe('ResourceAstAnalyzer with FluentSelfResource', function () {
             ->and($prop['optional'])->toBeTrue();
     });
 
-    test('a non-self-returning method on a foreign resource class stays at the unknown floor', function () {
+    test('a non-self-returning method on a foreign resource class resolves that class-s own body', function () {
         $reflection = new ReflectionClass(FluentSelfResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection, Category::class);
         $analysis = $analyzer->analyze();
 
         $prop = collect($analysis->properties)->firstWhere('name', 'foreign_summary');
 
+        // CategoryResource::summary() returns ['slug' => $this->slug], so this is the real payload —
+        // not CategoryResource, which the expression never yields.
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('unknown')
+            ->and($prop['type'])->toBe('{ slug: string }')
             ->and($prop['optional'])->toBeTrue();
     });
 

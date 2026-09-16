@@ -442,7 +442,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 continue;
             }
 
-            $keyName = $this->resolveKeyName($item->key);
+            $keyName = $this->resolveKeyName($item->key, $this->scope->subjectReflection);
 
             if ($keyName === null) {
                 continue;
@@ -669,7 +669,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
     protected function resolveArrayOrClosureToProperties(Expr $expr, bool $optional): ResourceAnalysis
     {
         if ($expr instanceof Array_) {
-            return (new ThisPropertyHandler)->extractPropertiesFromArray($expr, $this, $optional);
+            return (new ThisPropertyHandler)->extractPropertiesFromArray($expr, $this, $optional, $this->scope->subjectReflection);
         }
 
         $returnExprs = $this->resolveClosureReturnExpressions($expr);
@@ -683,10 +683,13 @@ class ResourceAstAnalyzer implements ExpressionEngine
         }
 
         if (count($arrays) === 1) {
-            return (new ThisPropertyHandler)->extractPropertiesFromArray($arrays[0], $this, $optional);
+            return (new ThisPropertyHandler)->extractPropertiesFromArray($arrays[0], $this, $optional, $this->scope->subjectReflection);
         }
 
-        $analyses = array_map(fn (Array_ $a) => (new ThisPropertyHandler)->extractPropertiesFromArray($a, $this, $optional), $arrays);
+        $analyses = array_map(
+            fn (Array_ $a) => (new ThisPropertyHandler)->extractPropertiesFromArray($a, $this, $optional, $this->scope->subjectReflection),
+            $arrays,
+        );
 
         return $this->mergeReturnBranches($analyses);
     }

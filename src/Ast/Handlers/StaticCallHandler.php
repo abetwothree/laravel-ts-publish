@@ -16,7 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
+use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectMethodTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -253,12 +253,10 @@ final class StaticCallHandler implements ExpressionHandler
             ];
         }
 
-        // Any other existing class — reflect the static method's return type. Accepted only when it
-        // cannot break generated imports; see ReflectedTypeAcceptor::accept().
+        // Any other existing class — its declared return type, else the shape its literal body spells.
+        // Accepted only when it cannot break generated imports; see MethodReturnTypeResolver::resolve().
         if (class_exists($className)) {
-            $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($className), $methodName);
-
-            return resolve(ReflectedTypeAcceptor::class)->accept($tsInfo) ?? $result;
+            return resolve(MethodReturnTypeResolver::class)->resolve($className, $methodName) ?? $result;
         }
 
         return $result;
@@ -418,7 +416,7 @@ final class StaticCallHandler implements ExpressionHandler
     /**
      * Analyze a `$this->resource::staticMethod()` call against the wrapped class, then the @mixin model.
      *
-     * Each reflection is accepted only when its tokens can be imported; see ReflectedTypeAcceptor::accept().
+     * Each answer is accepted only when its tokens can be imported; see MethodReturnTypeResolver::resolve().
      *
      * @return ValueExpressionResult
      */
@@ -429,8 +427,7 @@ final class StaticCallHandler implements ExpressionHandler
 
         if ($wrappedClass !== null && method_exists($wrappedClass, $methodName)) {
             /** @var class-string $wrappedClass */
-            $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($wrappedClass), $methodName);
-            $accepted = resolve(ReflectedTypeAcceptor::class)->accept($tsInfo);
+            $accepted = resolve(MethodReturnTypeResolver::class)->resolve($wrappedClass, $methodName);
 
             if ($accepted !== null) {
                 return $accepted;
@@ -440,8 +437,7 @@ final class StaticCallHandler implements ExpressionHandler
         if ($scope->modelClass !== null && method_exists($scope->modelClass, $methodName)) {
             /** @var class-string $modelClass */
             $modelClass = $scope->modelClass;
-            $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($modelClass), $methodName);
-            $accepted = resolve(ReflectedTypeAcceptor::class)->accept($tsInfo);
+            $accepted = resolve(MethodReturnTypeResolver::class)->resolve($modelClass, $methodName);
 
             if ($accepted !== null) {
                 return $accepted;
