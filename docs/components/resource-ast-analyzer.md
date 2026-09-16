@@ -63,17 +63,21 @@ Two limits follow from where those declines stop:
   [receiver-types § The body fallback carries no FQCN channel](receiver-types.md#the-body-fallback-carries-no-fqcn-channel)
   lists. `ReleaseColumnsResource` and `CommentRelationFiltersResource` pin both kinds of body. Where the answer
   differs from what a resource publishes, or stays `unknown`:
-  - In a method body, a literal filter whose inline shape names an enum or a model publishes
-    `Record<string, unknown>`, and a to-many filter publishes `unknown[]`, not `Comment[]`.
+  - In a method body, a literal filter publishes its inline shape, where each member whose type names a token, such
+    as an enum or class cast column or a relation to a model, is `unknown`: `{ id: number; role: unknown }`. A to-many
+    filter publishes `unknown[]`, not `Comment[]`.
   - A method body that reads an accessor whose getter filters to a `Pick<>` or `Comment[]` still loses its whole
     shape, a current limit described in
     [receiver-types § The body fallback carries no FQCN channel](receiver-types.md#the-body-fallback-carries-no-fqcn-channel).
   - A model whose `only()` or `except()` override has a return reflection types publishes that return, not
     `Record<string, unknown>` or a `Pick<>`, in a resource and a getter body: `string` for `: string`, the model for
     `: static`. A method body carries no import, so there `ReceiverMethodReturnResolver` spells that return without a
-    token, one top-level union arm at a time. An arm that is a model, or a list of one, becomes that model's
-    published columns inlined, or `Record<string, unknown>` when a column's type names a token; a `null` arm stays.
-    Any other arm naming a token, such as an enum, leaves the whole answer `unknown`. A model nested deeper is not
+    token, one top-level union arm at a time. An arm that is a model, or a list of one, becomes the object that model
+    serializes to, narrowed to the call's literal keys: the inline shape of the columns `only()` names, or of every
+    column but those `except()` names. The columns are those the model's `toArray()` writes, so a `$hidden` column,
+    or one its `$visible` list leaves out, is never named, and a column whose type names a token is `unknown`. A
+    runtime key list, or keys that select no such column, give `Record<string, unknown>`. A `null` arm stays. Any
+    other arm naming a token, such as an enum, leaves the whole answer `unknown`. A model nested deeper is not
     mapped: a docblock `array{owner: User}` already reflects to `{ owner: unknown }`. The enclosing shape survives
     either way. An override with no return reflection can read
     gets the filter answers in every scope, as `Model`'s own filter does: no declared return, or one too vague to
@@ -92,9 +96,11 @@ Two limits follow from where those declines stop:
     returning one. Three members are not this case:
     - A collection-cast column read through another receiver, such as `$this->twin->options->only([...])`, stays
       `unknown`, and so does an `AsEnumCollection` column, whose value is a list of enum cases.
-    - An accessor holding an `Eloquent\Collection` publishes its own list, as a many-relation does, because that
-      class's filters keep whole models by primary key: `Comment[]` for `Attribute<Eloquent\Collection<int, Comment>,
-      never>`, `unknown[]` in a method body or when no element model is named, `| null` through `?->`. The receiver
+    - An accessor holding an `Eloquent\Collection` publishes a list of its models, as a many-relation does, because
+      that class's filters keep whole models by primary key and re-index them with `array_values()`: `Comment[]` for
+      `Attribute<Eloquent\Collection<int, Comment>, never>` and `Attribute<Eloquent\Collection<string, Comment>, never>`
+      alike, `(Comment | User)[]` for two models, `unknown[]` in a method body or when no element model is named,
+      `| null` through `?->` or for a nullable accessor. The receiver
       rules decline an `Eloquent\Collection`, so a method returning one publishes `unknown`.
     - A cast building an `Eloquent\Collection` holds decoded JSON, whose elements have no key to filter by, so it
       publishes `unknown`.
@@ -157,10 +163,11 @@ in a resource, `$this->resource->comments`. A single relation such as `$this->au
 nothing. When the element model overrides the filter with a return reflection types, the arm publishes that return as
 a list, asking `ReceiverMethodReturnResolver` for it: `string[]` for `only(): string`, `(Post | null)[]` for
 `only(): ?static` on a `Post`. It claims `unknown` when it binds no element model, when the key list is not literal,
-or when the keys name nothing. Where the scope carries no import, a filtered shape that names a token publishes
-`Record<string, unknown>[]`, and an override return is the list of its token-free spelling: the model's columns
-inlined for `only(): static`, `unknown[]` for an enum. `$this->resource->map->only([...])` binds no element model, so it publishes that `unknown`, the answer it had
-before the proxy spelling was matched. On a model that declares a real `map` relation the relation arm answers
+or when the keys name nothing. Where the scope carries no import, a member of the filtered shape whose type names a
+token is `unknown`, as in `{ id: number; status: unknown }[]`, and an override return is the list of its token-free
+spelling: `{ id: number; title: string }[]` for `only(['id', 'title'])` on `only(): static`, `unknown[]` for an enum.
+`$this->resource->map->only([...])` binds no element model, so it publishes that `unknown`, the answer it had before
+the proxy spelling was matched. On a model that declares a real `map` relation the relation arm answers
 instead, exactly as it answers `$this->map->only([...])`.
 
 `ProxyFilterDirectResource` and `ProxyFilterWrappedResource` in the workbench write the same fifteen filters both

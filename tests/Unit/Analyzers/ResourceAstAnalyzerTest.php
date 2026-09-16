@@ -2390,7 +2390,7 @@ describe('ResourceAstAnalyzer with CommentRelationFiltersResource (relation filt
         $props = collect(new ResourceAstAnalyzer(new ReflectionClass(CommentRelationFiltersResource::class), Comment::class)->analyze()->properties)->keyBy('name');
 
         expect($props['summary']['type'])->toBe(
-            '{ id: number; author: { id: number; name: string }; author_role: Record<string, unknown> | null; '
+            '{ id: number; author: { id: number; name: string }; author_role: { id: number; role: unknown } | null; '
             .'post_fields: Record<string, unknown>; replies: unknown[]; kept_replies: unknown[] | null; '
             .'reply_previews: { id: number; content: string }[] }',
         );

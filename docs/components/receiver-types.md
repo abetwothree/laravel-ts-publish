@@ -192,7 +192,7 @@ filter on any other model receiver. What the rules may publish depends on the bo
   gets the full answer: `Pick<Release, 'major' | 'minor'>` for a list of columns, the inline shape otherwise, and
   `Record<string, unknown>` for a runtime key list.
 - **A method body reached by the body fallback** carries none, so the rules publish the most specific answer that
-  names no token: the inline shape when it names none, otherwise `Record<string, unknown>`. See
+  names no token: the inline shape, where a member whose type names a token is `unknown`. See
   [The body fallback carries no FQCN channel](#the-body-fallback-carries-no-fqcn-channel).
 
 `Release::columnSummary()` and its `column_picks` accessor pin both bodies, read through `ReleaseColumnsResource`:
@@ -226,11 +226,11 @@ reflects to the vague `unknown[] | Record<string, unknown>`.
 | `getKey()` | A concrete model that inherits `Model::getKey()` | `number` when `getKeyType()` is `int` or `integer`, else `string` |
 | `getKey()` | `Model` itself, or an abstract model that inherits `Model::getKey()` | No rule. Reflection declines the inherited `mixed`. |
 | `getKey()` | Any model that declares `getKey()` itself | No rule. Reflection publishes the override's own return, such as `getKey(): string`. |
-| `only()`, `except()` | Any model that declares the filter itself with a return reflection types | No rule. Reflection publishes the override's own return, such as `only($attributes): string`, in a resource and an accessor body. Where the scope carries no import, `ReceiverMethodReturnResolver` spells it without a token, one top-level union arm at a time: a model, or a list of one, becomes that model's columns inlined, or `Record<string, unknown>` when a column names a token, a `null` arm stays, and any other token, such as an enum, leaves `unknown` (see [The body fallback carries no FQCN channel](#the-body-fallback-carries-no-fqcn-channel)). `RelationFilterHandler` declines a single relation or accessor to such a model for the same reason, and asks this resolver for the return it publishes on a map proxy's elements and a multi-model accessor's arm. An override whose return reflection cannot type is not this row: no declared return, as in `only($attributes)` returning `parent::only($attributes)`, or one too vague to publish, which is `: array`, `: ?array`, `: mixed`, `: iterable`, `: array\|string` or a docblock `@return array<string, mixed>`. It gets the two filter rows below, and so does a relation, accessor or map proxy to it. |
+| `only()`, `except()` | Any model that declares the filter itself with a return reflection types | No rule. Reflection publishes the override's own return, such as `only($attributes): string`, in a resource and an accessor body. Where the scope carries no import, `ReceiverMethodReturnResolver` spells it without a token, one top-level union arm at a time: a model, or a list of one, becomes the object that model serializes to, narrowed to the call's literal keys, or `Record<string, unknown>` for a runtime key list, a `null` arm stays, and any other token, such as an enum, leaves `unknown` (see [The body fallback carries no FQCN channel](#the-body-fallback-carries-no-fqcn-channel)). `RelationFilterHandler` declines a single relation or accessor to such a model for the same reason, and asks this resolver for the return it publishes on a map proxy's elements and a multi-model accessor's arm. An override whose return reflection cannot type is not this row: no declared return, as in `only($attributes)` returning `parent::only($attributes)`, or one too vague to publish, which is `: array`, `: ?array`, `: mixed`, `: iterable`, `: array\|string` or a docblock `@return array<string, mixed>`. It gets the two filter rows below, and so does a relation, accessor or map proxy to it. |
 | `modelKeys()` | An Eloquent collection with `elementModel` set | The element model's key type as a list, `number[]` or `string[]` |
-| `only([...])`, `except([...])` | A receiver holding exactly one model class, where the call carries a literal key list | Exactly what `RelationFilterHandler` builds for a relation to that model: `Pick<Model, …>` when every key is a published column, else the inline shape. Where the scope carries no import (`AnalysisScope::$carriesImports`), no `Pick<>`: the inline shape when it names no token, else `Record<string, unknown>`. A list that types no member, such as `only(['nope'])`, publishes `Record<string, unknown>`, because `Model::only()` still returns an attribute-keyed array (`['nope' => null]`); `RelationFilterHandler` declines that call on a single relation, so this row answers it there too |
+| `only([...])`, `except([...])` | A receiver holding exactly one model class, where the call carries a literal key list | Exactly what `RelationFilterHandler` builds for a relation to that model: `Pick<Model, …>` when every key is a published column, else the inline shape. Where the scope carries no import (`AnalysisScope::$carriesImports`), no `Pick<>`: the inline shape, where a member whose type names a token, such as an enum column, is `unknown`. A list that types no member, such as `only(['nope'])`, publishes `Record<string, unknown>`, because `Model::only()` still returns an attribute-keyed array (`['nope' => null]`); `RelationFilterHandler` declines that call on a single relation, so this row answers it there too |
 | `only($keys)`, `except($keys)` with no literal key list, such as `only($request->input('fields'))` | A receiver holding exactly one model class, including a model subject's bare `$this` | `Record<string, unknown>` from `ResolvesFilteredRelationTypes::attributeRecordResult()`: whatever keys arrive at runtime, either filter returns an array keyed by attribute name. In `ProxyFilterDirectResource` and `ProxyFilterWrappedResource` this rule answers the own-model cells `fields_own` and `except_own` in both spellings; the relation cells `fields_author` and `except_author` get the same answer from `RelationFilterHandler`, which runs first and calls the same helper. |
-| `only()`, `except()` | A class that runs `Illuminate\Support\Collection`'s own filter (`FiltersAttributeKeys::runsCollectionFilter()`), such as a method returning `Collection`, `collect([...])`, or an accessor typed `Attribute<Collection<string, int>, never>` or `Attribute<Collection<int, User>, never>` | `Record<string, unknown>` for any key list and any element type, from `attributeRecordResult()`: both filters keep the entries whose keys are listed. `RelationFilterHandler` answers a member holding one first, asking the same check before any element model the accessor names, and a column cast with `'collection'`, `'encrypted:collection'`, `AsCollection` or `AsEncryptedCollection` included, which no reflection names. `Eloquent\Collection` overrides both filters and is not this row: this resolver declines it, and `RelationFilterHandler` publishes an accessor holding one as its own list. |
+| `only()`, `except()` | A class that runs `Illuminate\Support\Collection`'s own filter (`FiltersAttributeKeys::runsCollectionFilter()`), such as a method returning `Collection`, `collect([...])`, or an accessor typed `Attribute<Collection<string, int>, never>` or `Attribute<Collection<int, User>, never>` | `Record<string, unknown>` for any key list and any element type, from `attributeRecordResult()`: both filters keep the entries whose keys are listed. `RelationFilterHandler` answers a member holding one first, asking the same check before any element model the accessor names, and a column cast with `'collection'`, `'encrypted:collection'`, `AsCollection` or `AsEncryptedCollection` included, which no reflection names. `Eloquent\Collection` overrides both filters and is not this row: this resolver declines it, and `RelationFilterHandler` publishes an accessor holding one as a list of its models. |
 | `only()`, `except()` | Any other receiver — a union, an Eloquent collection, or a `StaticCall`, which carries no key list this can read | No rule. Reflection then declines the vague `array`. `RelationFilterHandler` answers a many-relation filter spelled `$this->comments->only(...)` or `$this->resource->comments->only(...)` before this rule runs, but it matches only a plain property fetch: `$this->resource?->comments->only([1])` reaches this row and publishes `unknown`. |
 
 The key type comes from `ModelAttributeResolver::getInstance()`, so `HasUuids`, `HasUlids`, and a
@@ -339,14 +339,19 @@ the shape. `MethodReturnTypeResolver::bodyType()` calls `AstEngine::analyzeMetho
 which sets `AnalysisScope::$carriesImports` on the scope (an inherited body's parent analyzer copies it, and the
 engine caches the analysis apart from one that keeps its channels). The filter code reads the flag:
 
-- a literal key list on one model publishes its inline shape when that names no token, else
-  `Record<string, unknown>`, never a `Pick<>`. This covers `RelationFilterHandler` and the receiver rules alike;
+- a literal key list on one model publishes its inline shape, never a `Pick<>`, and a member whose type names a
+  token, such as an enum or class cast column or a relation to a model, is `unknown` there, so the other members keep
+  their types. This covers `RelationFilterHandler` and the receiver rules alike;
 - a runtime key list publishes `Record<string, unknown>`, as it does everywhere;
 - a to-many relation filter publishes `unknown[]` instead of the relation read `Comment[]`;
-- a map proxy publishes `Record<string, unknown>[]` when the filtered shape names a token;
+- a map proxy publishes a list of that inline shape, spelled the same way;
 - an override with a class-typed return, such as `only($attributes): static`, is spelled one top-level union arm at a
-  time. An arm that is a model, or a list of one, becomes that model's published columns inlined, or
-  `Record<string, unknown>` when a column's type names a token; a `null` arm stays; any other arm naming a token,
+  time. An arm that is a model, or a list of one, becomes the object that model serializes to, narrowed to the call's
+  literal keys. `ReceiverMethodReturnResolver::serializedModelShape()` takes the columns
+  `ModelAttributeResolver::serializedColumnNames()` lists, those `toArray()` writes, so a `$hidden` column or one
+  `$visible` leaves out is never named, whatever `exclude_hidden` says. It keeps the ones `only()` names, or every one
+  but those `except()` names, and spells a column naming a token `unknown`. A runtime key list, or keys selecting no
+  such column, give `Record<string, unknown>`. A `null` arm stays; any other arm naming a token,
   such as an enum, makes the whole answer `unknown`. A model nested deeper is not mapped: a docblock
   `array{owner: User}` already reflects to `{ owner: unknown }`. `ReceiverMethodReturnResolver::resolve()` does this
   for every `only()`/`except()` it answers, so a relation, a map proxy (a list of the same spelling) and a
@@ -354,11 +359,15 @@ engine caches the analysis apart from one that keeps its channels). The filter c
   reads as holding `null`.
 
 `Comment::relationSummary()`, read through `CommentRelationFiltersResource`, pins the first three beside a typed
-`id: number` sibling that the whole-shape rule used to drop with them; its `relation_picks` accessor holds the same
-filters and publishes the full `Pick<User, …>` and `Comment[]` answers. `RelationFilterHandlerTest` pins the map
-proxy. `ReceiverHandlersTest` pins the override through `ClassTypedFilterOverrideModel::filterFields()`, whose
-`only(): ?static` and `except(): Priority` publish `{ own: { id: number; name: string; … } | null; …; rest: unknown; … }`
-over the `tags` columns.
+`id: number` sibling that the whole-shape rule used to drop with them, including `author_role: { id: number; role:
+unknown } | null` for a `User` enum column; its `relation_picks` accessor holds the same filters and publishes the
+full `Pick<User, …>` and `Comment[]` answers. `RelationFilterHandlerTest` pins the map proxy and a class cast column.
+`ReceiverHandlersTest` pins the override through `ClassTypedFilterOverrideModel::filterFields()`, whose
+`only(): ?static` and `except(): Priority` publish
+`{ own: { id: number; name: string } | null; twin: { id: number } | null; rest: unknown; id: number }`, and pins the
+serialized columns through `HiddenFilterOverrideModel` (`$hidden`, an enum and a class cast),
+`VisibleFilterOverrideModel` (`$visible` beside `$hidden`) and `UserFilterOverrideModel` (an override returning
+`User`).
 Every other value in a body keeps the whole-shape rule.
 
 That exception covers only a filter written in the method body itself. **A current limit:** a method body that reads

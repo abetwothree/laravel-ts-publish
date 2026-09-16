@@ -7,13 +7,14 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 
 /**
  * Type a filtered subset of a model's members: a `Pick<Model, …>` reference when every key is a
- * published column, else an inline object shape, and `Record<string, unknown>` when the keys arrive at runtime
- * or the typed shape names a token its scope cannot import.
+ * published column, else an inline object shape, and `Record<string, unknown>` when the keys arrive at runtime.
+ * Where the scope cannot import, the shape is inline and a member whose type names a token is `unknown`.
  *
  * Two production callers. RelationFilterHandler types `$this->relation->only([...])` through it, and
  * ReceiverMethodReturnResolver types the same filters on any model receiver. ResolvesModelTypes still
@@ -34,12 +35,15 @@ trait ResolvesFilteredRelationTypes
      *
      * @param  class-string  $relatedModelClass
      * @param  list<string>  $keys
+     * @param  bool  $tokenMembersUnknown  spell a member whose type names a token `unknown`, for a scope that cannot
+     *                                     import it, so the rest of the shape survives
      * @return array{type: string, enumFqcns: list<class-string>, modelFqcns: list<class-string>, customImports: TypesImportMap}
      */
     protected function resolveFilteredRelationType(
         string $relatedModelClass,
         array $keys,
         bool $include,
+        bool $tokenMembersUnknown = false,
     ): array {
         $result = ['type' => 'unknown', 'enumFqcns' => [], 'modelFqcns' => [], 'customImports' => []];
         $resolver = resolve(ModelAttributeResolver::class);
@@ -89,6 +93,12 @@ trait ResolvesFilteredRelationTypes
                 // The except branch yields columns now, so in practice this gate is only()'s: a write-only
                 // mutator with no getter and no docblock Get has no shape to emit, unlike a getter-backed one.
                 if ($tsInfo['type'] !== 'unknown' || ! $resolver->isOmittedMutator($relatedModelClass, $key)) {
+                    if ($tokenMembersUnknown && TsTypeString::shapeValueHasUnimportableToken($tsInfo['type'])) {
+                        $parts[] = $key.': unknown';
+
+                        continue;
+                    }
+
                     $parts[] = $key.': '.$tsInfo['type'];
 
                     /** @var list<class-string> $enumFqcns */
@@ -113,6 +123,12 @@ trait ResolvesFilteredRelationTypes
             $relationInfo = $resolver->resolveRelation($relatedModelClass, $key);
 
             if ($relationInfo['type'] !== 'unknown') {
+                if ($tokenMembersUnknown && TsTypeString::shapeValueHasUnimportableToken($relationInfo['type'])) {
+                    $parts[] = $key.': unknown';
+
+                    continue;
+                }
+
                 $parts[] = $key.': '.$relationInfo['type'];
 
                 if ($relationInfo['modelFqcn'] !== null) {
@@ -142,20 +158,21 @@ trait ResolvesFilteredRelationTypes
      *
      * @param  class-string<Model>  $modelFqcn
      * @param  list<string>  $keys
-     * @param  bool  $reference  false where the answer carries no import, so a `Pick<>` would drop the enclosing shape
+     * @param  bool  $carriesImports  false where the answer carries no import: the shape is inline, since a `Pick<>`
+     *                                would drop the enclosing shape, and a member naming a token is `unknown`
      * @return ValueExpressionResult|null
      */
-    protected function literalKeyFilterResult(string $modelFqcn, array $keys, bool $include, bool $reference = true): ?array
+    protected function literalKeyFilterResult(string $modelFqcn, array $keys, bool $include, bool $carriesImports = true): ?array
     {
         // Every filter key is a plain DB column: reference the emitted model interface directly so its
         // #[TsCasts]/@property refinements stay authoritative instead of being re-derived and lost.
-        $modelReference = $reference ? $this->relationFilterModelReference($modelFqcn, $keys, $include) : null;
+        $modelReference = $carriesImports ? $this->relationFilterModelReference($modelFqcn, $keys, $include) : null;
 
         if ($modelReference !== null) {
             return [...ValueResult::unknown(), 'type' => $modelReference, 'modelFqcn' => $modelFqcn];
         }
 
-        $filtered = $this->resolveFilteredRelationType($modelFqcn, $keys, $include);
+        $filtered = $this->resolveFilteredRelationType($modelFqcn, $keys, $include, tokenMembersUnknown: ! $carriesImports);
 
         if ($filtered['type'] === 'unknown') {
             return null;
@@ -171,8 +188,7 @@ trait ResolvesFilteredRelationTypes
     }
 
     /**
-     * The `Record<string, unknown>` a model filter returns, for keys it cannot type: a key list read at runtime, or a
-     * typed shape naming a token its scope cannot import.
+     * The `Record<string, unknown>` a model filter returns, for keys it cannot type, such as a key list read at runtime.
      *
      * @return ValueExpressionResult
      */

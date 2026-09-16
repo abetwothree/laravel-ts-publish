@@ -23,6 +23,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassTypedFilterOverrid
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CollectionMemberModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DocblockFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilterOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\HiddenFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ListTypedFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NarrowingGuardBodyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverIntegerKeyModel;
@@ -33,8 +34,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverShapedToArrayMo
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverStringDateProbe;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverVarProbe;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UntypedFilterOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UserFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UserListFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\VagueFilterOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\VisibleFilterOverrideModel;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -296,7 +299,8 @@ describe('ReceiverMethodCallHandler', function () {
     ]);
 
     // In a model's own method or accessor body `$this` is the model, and the chain handler declines its filters.
-    // A method body reached by the body fallback carries no import, so a literal list there names no token.
+    // A method body reached by the body fallback carries no import, so a literal list there names no token: a key whose
+    // type names one, such as an enum column, is `unknown`, and the rest of the shape keeps its types.
     test('types a filter on a model subject\'s own $this, naming no token where the scope carries no import', function () {
         $getter = new AnalysisScope(new ReflectionClass(Release::class), Release::class);
         $method = new AnalysisScope(new ReflectionClass(Post::class), Post::class);
@@ -313,7 +317,9 @@ describe('ReceiverMethodCallHandler', function () {
             ->and($resolve("\$this->only(['id', 'title'])", $method))->toBe([
                 'type' => '{ id: number; title: string }', 'optional' => false, 'embeddedEnumFqcns' => [], 'embeddedModelFqcns' => [], 'customImports' => [],
             ])
-            ->and($resolve("\$this?->only(['id', 'status'])", $method))->toBe($record)
+            ->and($resolve("\$this?->only(['id', 'status'])", $method))->toBe([
+                'type' => '{ id: number; status: unknown }', 'optional' => false, 'embeddedEnumFqcns' => [], 'embeddedModelFqcns' => [], 'customImports' => [],
+            ])
             ->and($resolve('$this->except($keys)', $method))->toBe($record)
             ->and($resolve('$this->getKey()', $getter))->toBeNull()
             ->and($resolve('$this->only($keys)', $plain))->toBeNull();
@@ -371,25 +377,22 @@ describe('ReceiverMethodCallHandler', function () {
         'docblock array<string, mixed>, getter body' => [DocblockFilterOverrideModel::class, DocblockFilterOverrideModel::class, ResourceExpressionHandlers::forModelClosures(), true, "\$this->only(['id'])", "Pick<DocblockFilterOverrideModel, 'id'>"],
     ]);
 
-    // The body fallback carries no FQCN channel and drops a shape naming a token. Where the scope imports nothing, an
-    // override returning a model publishes the object that model serializes to, and one naming any other token unknown.
-    // Where the scope imports nothing, a model the override returns is spelled as its own columns (`tags` here), and an
+    // The body fallback carries no FQCN channel and drops a shape naming a token. Where the scope imports nothing, a
+    // model the override returns is spelled as the object it serializes to, narrowed to the call's literal keys, and an
     // override returning any other token, such as an enum, publishes unknown; the enclosing shape survives either way.
-    $tag = '{ id: number; name: string; slug: string; color: string | null; created_at: string | null; updated_at: string | null }';
-
     test('publishes a class-typed only()/except() override with no token where the scope carries no import', function (?array $profile, bool $carriesImports, string $php, string $type) {
         $engine = new ResourceAstAnalyzer(new ReflectionClass(ClassTypedFilterOverrideModel::class), ClassTypedFilterOverrideModel::class, 'toArray', $profile, carriesImports: $carriesImports);
 
         expect($engine->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
     })->with([
-        'method body, a model return' => [null, false, "\$this->only(['id'])", "{$tag} | null"],
-        'method body, relation ?->' => [null, false, '$this->twin?->only($keys)', "{$tag} | null"],
+        'method body, a model return' => [null, false, "\$this->only(['id'])", '{ id: number } | null'],
+        'method body, relation ?->' => [null, false, '$this->twin?->only($keys)', 'Record<string, unknown> | null'],
         'method body, an enum return' => [null, false, "\$this->except(['id'])", 'unknown'],
         'method body, relation ?->, an enum return' => [null, false, "\$this->twin?->except(['id'])", 'unknown'],
-        'method body, map proxy' => [null, false, "\$this->twins->map->only(['id'])", "({$tag} | null)[]"],
+        'method body, map proxy' => [null, false, "\$this->twins->map->only(['id', 'name'])", '({ id: number; name: string } | null)[]'],
         'method body, map proxy, an enum return' => [null, false, "\$this->twins->map->except(['id'])", 'unknown[]'],
-        'method body, multi-model accessor' => [null, false, "\$this->counterpart->only(['id'])", "{$tag} | { id: number } | null"],
-        'method body, multi-model accessor, runtime keys' => [null, false, '$this->counterpart?->only($keys)', "{$tag} | Record<string, unknown> | null"],
+        'method body, multi-model accessor' => [null, false, "\$this->counterpart->only(['id'])", '{ id: number } | { id: number } | null'],
+        'method body, multi-model accessor, runtime keys' => [null, false, '$this->counterpart?->only($keys)', 'Record<string, unknown> | null'],
         'method body, multi-model accessor, an enum return' => [null, false, "\$this->counterpart->except(['id'])", 'unknown'],
         'getter body, a model return' => [ResourceExpressionHandlers::forModelClosures(), true, "\$this->only(['id'])", 'ClassTypedFilterOverrideModel | null'],
         'getter body, an enum return' => [ResourceExpressionHandlers::forModelClosures(), true, '$this->twin->except($keys)', 'PriorityType'],
@@ -397,23 +400,41 @@ describe('ReceiverMethodCallHandler', function () {
         'getter body, multi-model accessor' => [ResourceExpressionHandlers::forModelClosures(), true, "\$this->counterpart->only(['id'])", "ClassTypedFilterOverrideModel | Pick<User, 'id'> | null"],
     ]);
 
-    test('keeps a method body\'s shape around a class-typed only()/except() override', function () use ($tag) {
+    test('keeps a method body\'s shape around a class-typed only()/except() override', function () {
         expect(resolve(MethodReturnTypeResolver::class)->resolve(ClassTypedFilterOverrideModel::class, 'filterFields'))->toBe([
-            'type' => "{ own: {$tag} | null; twin: {$tag} | null; rest: unknown; id: number }",
+            'type' => '{ own: { id: number; name: string } | null; twin: { id: number } | null; rest: unknown; id: number }',
             'optional' => false,
         ]);
     });
 
-    // Only a top-level arm that is a model, or a list of one, is spelled as columns: a model nested in a shape key is
-    // a leaf the reflected docblock already spells `unknown`, and a model whose columns name a token is a record.
-    test('spells a list of models an override returns as a list of their columns where the scope carries no import', function (string $model, string $php, string $type) use ($tag) {
+    // A returned model reaches JSON through toArray(), which writes only the columns `$visible` lists, when it lists any,
+    // less those `$hidden` lists. So the literal keys select from those columns, whatever `exclude_hidden` says, and a
+    // column whose type names a token is `unknown` there. A runtime key list, or keys selecting nothing, leave a record.
+    test('spells a model an override returns as the columns it serializes, narrowed to the literal keys, where the scope carries no import', function (string $model, string $php, string $type) {
         $engine = new ResourceAstAnalyzer(new ReflectionClass($model), $model, 'toArray', carriesImports: false);
 
-        expect($engine->resolve(receiverHandlerExpr($php))['type'])->toBe(str_replace('TAG', $tag, $type));
+        expect($engine->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
     })->with([
-        'a list of token-free models' => [ListTypedFilterOverrideModel::class, "\$this->only(['id'])", '(TAG)[]'],
+        'hidden columns, an enum cast and a class cast' => [HiddenFilterOverrideModel::class, "\$this->only(['id', 'name', 'password', 'remember_token', 'role', 'options'])", '{ id: number; name: string; role: unknown; options: unknown }'],
+        'a map proxy, a key naming no column and a repeated one' => [HiddenFilterOverrideModel::class, "\$this->twins->map->only(['id', 'role', 'nope', 'id'])", '{ id: number; role: unknown }[]'],
+        'a runtime key list' => [HiddenFilterOverrideModel::class, '$this->twins->map->except($keys)', 'Record<string, unknown>[]'],
+        'keys selecting only hidden columns' => [HiddenFilterOverrideModel::class, "\$this->only(['password'])", 'Record<string, unknown>'],
+        'visible columns less a hidden one' => [VisibleFilterOverrideModel::class, "\$this->only(['id', 'slug', 'color'])", '{ id: number } | null'],
+        'the complement of the visible columns' => [VisibleFilterOverrideModel::class, "\$this->twin?->except(['id'])", '{ name: string } | null'],
+        'a complement selecting nothing' => [VisibleFilterOverrideModel::class, "\$this->except(['id', 'name'])", 'Record<string, unknown> | null'],
+        'another model, its own columns' => [UserFilterOverrideModel::class, "\$this->twins->map->only(['id', 'title', 'password', 'role'])", '{ id: number; role: unknown }[]'],
+    ]);
+
+    // Only a top-level arm that is a model, or a list of one, is spelled from its columns: a model nested in a shape key
+    // is a leaf the reflected docblock already spells `unknown`.
+    test('spells a list of models an override returns as a list of their columns where the scope carries no import', function (string $model, string $php, string $type) {
+        $engine = new ResourceAstAnalyzer(new ReflectionClass($model), $model, 'toArray', carriesImports: false);
+
+        expect($engine->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        'a list of token-free models' => [ListTypedFilterOverrideModel::class, "\$this->only(['id', 'slug'])", '{ id: number; slug: string }[]'],
         'a model nested in a shape key' => [ListTypedFilterOverrideModel::class, "\$this->except(['id'])", '{ owner: unknown; id: number }'],
-        'a list of models whose columns name an enum' => [UserListFilterOverrideModel::class, "\$this->only(['id'])", 'Record<string, unknown>[]'],
+        'a list of models whose columns name an enum' => [UserListFilterOverrideModel::class, "\$this->only(['id', 'role', 'password'])", '{ id: number; role: unknown }[]'],
     ]);
 
     // Support\Collection::only()/except() keep the entries whose keys are listed, so the value is a keyed map whether the
@@ -447,9 +468,10 @@ describe('ReceiverMethodCallHandler', function () {
         'getter body, a to-many relation' => [CollectionMemberModel::class, ResourceExpressionHandlers::forModelClosures(), true, '$this->comments->only([1])', 'Comment[]'],
     ]);
 
-    // Eloquent\Collection::only()/except() keep whole models by primary key, so an accessor holding one publishes its own
-    // list, as a many-relation does. A cast building one holds decoded JSON, whose elements have no key to filter by.
-    test('types a filter on an accessor holding an Eloquent\Collection as its own list, in every scope', function (string $subject, ?array $profile, bool $carriesImports, string $php, string $type) {
+    // Eloquent\Collection::only()/except() keep whole models by primary key and re-index them with array_values(), so an
+    // accessor holding one publishes a list of its models, as a many-relation does, whatever key type it declares. A cast
+    // building one holds decoded JSON, whose elements have no key to filter by.
+    test('types a filter on an accessor holding an Eloquent\Collection as a list of its models, in every scope', function (string $subject, ?array $profile, bool $carriesImports, string $php, string $type) {
         $engine = new ResourceAstAnalyzer(new ReflectionClass($subject), CollectionMemberModel::class, 'toArray', $profile, carriesImports: $carriesImports);
 
         expect($engine->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
@@ -461,6 +483,11 @@ describe('ReceiverMethodCallHandler', function () {
         'getter body' => [CollectionMemberModel::class, ResourceExpressionHandlers::forModelClosures(), true, '$this->kids->except($keys)', 'Comment[]'],
         'getter body, no element model ?->' => [CollectionMemberModel::class, ResourceExpressionHandlers::forModelClosures(), true, '$this->strays?->only([1])', 'unknown[] | null'],
         'getter body, a cast building one' => [CollectionMemberModel::class, ResourceExpressionHandlers::forModelClosures(), true, "\$this->metadata->only(['a'])", 'unknown'],
+        'resource, keyed by string, nullable' => [CommentResource::class, null, true, '$this->keyed_kids->only([1])', 'Comment[] | null'],
+        'resource, keyed by string, two models ?-> through $this->resource' => [CommentResource::class, null, true, "\$this->resource->mixed_kids?->except(['x'])", '(Comment | User)[] | null'],
+        'getter body, keyed by string, two models' => [CollectionMemberModel::class, ResourceExpressionHandlers::forModelClosures(), true, '$this->mixed_kids->only($keys)', '(Comment | User)[]'],
+        'method body, keyed by string, nullable' => [CollectionMemberModel::class, null, false, '$this->keyed_kids->except([1])', 'unknown[] | null'],
+        'method body, keyed by string, two models' => [CollectionMemberModel::class, null, false, "\$this->mixed_kids->only(['x'])", 'unknown[]'],
     ]);
 
     test('types a Support\Collection member\'s filter through the real getter and method-body paths', function () {

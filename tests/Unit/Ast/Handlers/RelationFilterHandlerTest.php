@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CollectionMemberModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\OwnResourceRelationModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ResourceRelationModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TokenColumnModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UntypedFilterOverrideModel;
 use Illuminate\Support\Facades\Schema;
 use PhpParser\Node\Arg;
@@ -425,7 +426,8 @@ it('binds no map proxy element model from a single relation, under both spelling
 ]);
 
 // MethodReturnTypeResolver's body fallback flattens a method body into a type with no FQCN channel and drops the whole
-// shape once a value names a token, so there a filter publishes the most specific answer that names none.
+// shape once a value names a token, so there a filter publishes the most specific answer that names none: a member whose
+// type names a token, such as an enum or class cast column or a relation to a model, is `unknown`, and the rest keep theirs.
 it('publishes a relation filter that names no token where the scope carries no import', function (string $model, string $php, array $expected) {
     $scope = new AnalysisScope(new ReflectionClass($model), $model);
     $scope->carriesImports = false;
@@ -436,23 +438,36 @@ it('publishes a relation filter that names no token where the scope carries no i
     'single relation, columns' => [Comment::class, '$this->user->only([\'id\', \'name\'])', [
         'type' => '{ id: number; name: string }', 'optional' => false, 'embeddedEnumFqcns' => [], 'embeddedModelFqcns' => [], 'customImports' => [],
     ]],
-    'single relation, an enum column' => [Comment::class, '$this->user->only([\'id\', \'role\'])', ['type' => 'Record<string, unknown>', 'optional' => false]],
-    'single relation, ?-> complement' => [Comment::class, '$this->post?->except([\'content\'])', ['type' => 'Record<string, unknown> | null', 'optional' => false]],
+    'single relation, an enum column' => [Comment::class, '$this->user->only([\'id\', \'role\'])', [
+        'type' => '{ id: number; role: unknown }', 'optional' => false, 'embeddedEnumFqcns' => [], 'embeddedModelFqcns' => [], 'customImports' => [],
+    ]],
+    'single relation, ?-> complement, a class cast column' => [TokenColumnModel::class, '$this->twin?->except([\'id\', \'name\'])', [
+        'type' => '{ slug: string; color: unknown; created_at: string | null; updated_at: string | null } | null', 'optional' => false, 'embeddedEnumFqcns' => [], 'embeddedModelFqcns' => [], 'customImports' => [],
+    ]],
+    'single relation, a relation member' => [TokenColumnModel::class, '$this->twin->only([\'id\', \'owner\'])', [
+        'type' => '{ id: number; owner: unknown }', 'optional' => false, 'embeddedEnumFqcns' => [], 'embeddedModelFqcns' => [], 'customImports' => [],
+    ]],
     'single relation, runtime keys' => [Comment::class, '$this->user->only($keys)', ['type' => 'Record<string, unknown>', 'optional' => false]],
-    'multi-model accessor, an enum column' => [Warehouse::class, '$this->last_user_activity_by?->only([\'id\', \'role\'])', ['type' => 'Record<string, unknown> | null', 'optional' => false]],
+    'multi-model accessor, an enum column' => [Warehouse::class, '$this->last_user_activity_by?->only([\'id\', \'role\'])', [
+        'type' => '{ id: number } | { id: number; role: unknown } | null', 'optional' => false, 'embeddedEnumFqcns' => [], 'embeddedModelFqcns' => [], 'customImports' => [],
+    ]],
     'multi-model accessor' => [Warehouse::class, '$this->last_user_activity_by->only([\'id\'])', [
         'type' => '{ id: number } | { id: number }', 'optional' => false, 'embeddedEnumFqcns' => [], 'embeddedModelFqcns' => [], 'customImports' => [],
     ]],
     'multi-model accessor, a typed override arm beside an enum column' => [FilterOverrideModel::class, '$this->counterpart->only([\'id\', \'role\'])', [
-        'type' => 'string | Record<string, unknown>', 'optional' => false, 'embeddedEnumFqcns' => [], 'embeddedModelFqcns' => [], 'customImports' => [],
+        'type' => 'string | { id: number; role: unknown }', 'optional' => false, 'embeddedEnumFqcns' => [], 'embeddedModelFqcns' => [], 'customImports' => [],
     ]],
     'to-many' => [Comment::class, '$this->replies->only([1, 2])', ['type' => 'unknown[]', 'optional' => false]],
     'to-many ?->' => [Comment::class, '$this->replies?->except($keys)', ['type' => 'unknown[] | null', 'optional' => false]],
     'map proxy, columns' => [Comment::class, '$this->replies->map->only([\'id\'])', [
         'type' => '{ id: number }[]', 'optional' => false, 'embeddedEnumFqcns' => [], 'embeddedModelFqcns' => [], 'customImports' => [],
     ]],
-    'map proxy, an enum column' => [User::class, '$this->posts->map->only([\'id\', \'status\'])', ['type' => 'Record<string, unknown>[]', 'optional' => false]],
-    'map proxy ?->, an enum column' => [User::class, '$this->posts->map?->only([\'id\', \'status\'])', ['type' => 'Record<string, unknown>[] | null', 'optional' => false]],
+    'map proxy, an enum column' => [User::class, '$this->posts->map->only([\'id\', \'status\'])', [
+        'type' => '{ id: number; status: unknown }[]', 'optional' => false, 'embeddedEnumFqcns' => [], 'embeddedModelFqcns' => [], 'customImports' => [],
+    ]],
+    'map proxy ?->, a class cast column and a relation member' => [TokenColumnModel::class, '$this->twins->map?->only([\'id\', \'color\', \'owner\'])', [
+        'type' => '{ id: number; color: unknown; owner: unknown }[] | null', 'optional' => false, 'embeddedEnumFqcns' => [], 'embeddedModelFqcns' => [], 'customImports' => [],
+    ]],
 ]);
 
 // A model that overrides only()/except() declares its own return. ReceiverMethodCallHandler reflects it on a single
@@ -510,6 +525,24 @@ it('publishes a filter on a member holding a Support\Collection as Record<string
     'accessor of models, read before its element model' => ['$this->people->only([\'id\'])', ['type' => 'Record<string, unknown>', 'optional' => false]],
     'accessor holding a model, not a collection' => ['$this->lead->only([\'id\'])', ['type' => "Pick<Comment, 'id'>", 'optional' => false, 'modelFqcn' => Comment::class]],
     'a cast building an Eloquent collection' => ['$this->metadata->only([\'a\'])', null],
+]);
+
+// Eloquent\Collection::only()/except() re-index the models they keep with array_values(), so an accessor holding one
+// publishes a list of its models whatever key type it declares, each model on an import channel, and `unknown[]` where
+// the scope imports nothing. A nullable accessor keeps its `null`.
+it('publishes a filter on an accessor holding an Eloquent\Collection as a list of its models, whatever its key type', function (string $subject, bool $carriesImports, string $php, array $expected) {
+    $scope = new AnalysisScope(new ReflectionClass($subject), CollectionMemberModel::class);
+    $scope->carriesImports = $carriesImports;
+    $engine = new ResourceAstAnalyzer(new ReflectionClass($subject), CollectionMemberModel::class, carriesImports: $carriesImports);
+
+    expect((new RelationFilterHandler)->resolve(relationFilterExpr($php), $scope, $engine))->toBe($expected);
+})->with([
+    'keyed by string, nullable' => [CommentResource::class, true, '$this->keyed_kids->only([1])', ['type' => 'Comment[] | null', 'optional' => false, 'modelFqcn' => Comment::class]],
+    'keyed by string, two models' => [CommentResource::class, true, '$this->mixed_kids->except($keys)', [
+        'type' => '(Comment | User)[]', 'optional' => false, 'embeddedModelFqcns' => [Comment::class, User::class],
+    ]],
+    'keyed by int, ?-> through $this->resource' => [CommentResource::class, true, '$this->resource->kids?->only([1])', ['type' => 'Comment[] | null', 'optional' => false, 'modelFqcn' => Comment::class]],
+    'keyed by string, no import' => [CollectionMemberModel::class, false, '$this->mixed_kids->only([1])', ['type' => 'unknown[]', 'optional' => false]],
 ]);
 
 // An override that declares no return, such as one returning parent::only(), leaves reflection nothing to publish,

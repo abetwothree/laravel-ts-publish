@@ -16,8 +16,8 @@ use Workbench\App\Models\User;
 
 /**
  * A model whose members hold a collection: Support\Collection columns cast by `AsCollection`, `AsEncryptedCollection`,
- * `'collection'` and `'encrypted:collection'`, accessors and a method, beside Eloquent\Collection members and a
- * to-many relation, whose filters keep models by primary key.
+ * `'collection'` and `'encrypted:collection'`, accessors and a method, beside Eloquent\Collection members, some keyed by
+ * string, and a to-many relation, whose filters keep models by primary key and return a list.
  */
 final class CollectionMemberModel extends Model
 {
@@ -71,6 +71,18 @@ final class CollectionMemberModel extends Model
 
     /** @return Attribute<EloquentCollection<int, Comment>, never> */
     protected function kids(): Attribute
+    {
+        return Attribute::get(fn () => new EloquentCollection);
+    }
+
+    /** @return Attribute<EloquentCollection<string, Comment>|null, never> */
+    protected function keyedKids(): Attribute
+    {
+        return Attribute::get(fn () => null);
+    }
+
+    /** @return Attribute<EloquentCollection<string, Comment|User>, never> */
+    protected function mixedKids(): Attribute
     {
         return Attribute::get(fn () => new EloquentCollection);
     }

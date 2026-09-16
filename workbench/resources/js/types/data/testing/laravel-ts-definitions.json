@@ -9806,7 +9806,7 @@
                 },
                 {
                     "name": "summary",
-                    "type": "{ id: number; author: { id: number; name: string }; author_role: Record<string, unknown> | null; post_fields: Record<string, unknown>; replies: unknown[]; kept_replies: unknown[] | null; reply_previews: { id: number; content: string }[] }",
+                    "type": "{ id: number; author: { id: number; name: string }; author_role: { id: number; role: unknown } | null; post_fields: Record<string, unknown>; replies: unknown[]; kept_replies: unknown[] | null; reply_previews: { id: number; content: string }[] }",
                     "optional": false
                 },
                 {

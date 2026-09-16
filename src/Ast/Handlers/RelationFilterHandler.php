@@ -37,8 +37,8 @@ use ReflectionMethod;
  * The relation arm declines what it cannot type, such as a single model whose filter override reflection types; a map
  * proxy's elements and a multi-model accessor's arm publish that override's return instead. Once the map-proxy arm
  * matches, it claims `unknown` for no element model, no literal keys, or keys naming nothing. A member holding a
- * Support\Collection publishes `Record<string, unknown>`, and an accessor holding an Eloquent\Collection its own list.
- * A scope that carries no import gets answers naming no token.
+ * Support\Collection publishes `Record<string, unknown>`, and an accessor holding an Eloquent\Collection a list of its
+ * models. A scope that carries no import gets answers naming no token, a filtered member naming one being `unknown`.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypesImportMap from Datable
@@ -159,10 +159,6 @@ final class RelationFilterHandler implements ExpressionHandler
             return null;
         }
 
-        if (! $scope->carriesImports && TsTypeString::shapeValueHasUnimportableToken($filtered['type'])) {
-            return $this->attributeRecordResult($nullable);
-        }
-
         if ($nullable) {
             $filtered['type'] .= ' | null';
         }
@@ -174,8 +170,9 @@ final class RelationFilterHandler implements ExpressionHandler
      * Analyze a filter on a member holding a collection, declining for a class whose filter is its own.
      *
      * Support\Collection's filter keeps the entries whose keys are listed. Eloquent\Collection's keeps whole models by
-     * primary key, so an accessor holding one publishes the models it names as a many-relation does, else `unknown[]`.
-     * A cast building an Eloquent\Collection holds decoded JSON, whose elements have no key to filter by.
+     * primary key and re-indexes them, so an accessor holding one publishes a list of the models it names, else
+     * `unknown[]`, whatever key type the accessor declares. A cast building an Eloquent\Collection holds decoded JSON,
+     * whose elements have no key to filter by.
      *
      * @param  class-string  $collectionClass
      * @return ValueExpressionResult|null
@@ -188,26 +185,36 @@ final class RelationFilterHandler implements ExpressionHandler
         AnalysisScope $scope,
         ExpressionEngine $engine,
     ): ?array {
-        $nullable = $call instanceof NullsafeMethodCall;
-
         if ($this->runsCollectionFilter($collectionClass, $methodName)) {
-            return $this->attributeRecordResult($nullable);
+            return $this->attributeRecordResult($call instanceof NullsafeMethodCall);
         }
 
         if (! $this->runsEloquentCollectionFilter($collectionClass, $methodName) || ! $this->isAccessorMember($propName, $scope)) {
             return null;
         }
 
-        return $this->resolveAccessorModelFqcns($propName, $scope) === []
-            ? [...ValueResult::unknown(), 'type' => $nullable ? 'unknown[] | null' : 'unknown[]']
-            : $this->manyRelationRead($call, $scope, $engine);
+        $models = $this->resolveAccessorModelFqcns($propName, $scope);
+        $nullable = $call instanceof NullsafeMethodCall || in_array('null', TsTypeString::splitTopLevelUnion($engine->resolve($call->var)['type']), true);
+        $suffix = $nullable ? ' | null' : '';
+
+        if ($models === [] || ! $scope->carriesImports) {
+            return [...ValueResult::unknown(), 'type' => 'unknown[]'.$suffix];
+        }
+
+        $element = implode(' | ', array_map(class_basename(...), $models));
+
+        return [
+            ...ValueResult::unknown(),
+            'type' => ValueResult::arrayWrapType($element).$suffix,
+            ...(count($models) === 1 ? ['modelFqcn' => $models[0]] : ['embeddedModelFqcns' => $models]),
+        ];
     }
 
     /**
      * Analyze a filter on an accessor typed as a union of models, one arm per model, declining when an arm is untyped.
      *
      * An arm whose model overrides the filter with a return reflection types publishes that return. The attribute
-     * arms become one `Record<string, unknown>` for a runtime key list, or for a shape the scope cannot import.
+     * arms become one `Record<string, unknown>` for a runtime key list.
      *
      * @param  list<class-string<Model>>  $modelFqcns
      * @return ValueExpressionResult|null
@@ -257,14 +264,8 @@ final class RelationFilterHandler implements ExpressionHandler
             }
         }
 
-        $attributeTypes = array_map(fn (array $arm): string => $arm['result']['type'], array_filter($arms, fn (array $arm): bool => $arm['attributes']));
-
-        if ($runtimeKeys || (! $scope->carriesImports && TsTypeString::shapeValueHasUnimportableToken(implode(' | ', $attributeTypes)))) {
-            if (array_all($arms, fn (array $arm): bool => $arm['attributes'])) {
-                return $this->attributeRecordResult($nullable);
-            }
-
-            $arms = array_map(fn (array $arm): array => $arm['attributes'] ? ['attributes' => true, 'result' => $this->attributeRecordResult(false)] : $arm, $arms);
+        if ($runtimeKeys && array_all($arms, fn (array $arm): bool => $arm['attributes'])) {
+            return $this->attributeRecordResult($nullable);
         }
 
         return $arms === [] ? null : $this->unionArms($arms, $nullable);
@@ -385,14 +386,10 @@ final class RelationFilterHandler implements ExpressionHandler
             return $result;
         }
 
-        $filterResult = $this->resolveFilteredRelationType($elementModel, $keys, $methodName === 'only');
+        $filterResult = $this->resolveFilteredRelationType($elementModel, $keys, $methodName === 'only', tokenMembersUnknown: ! $scope->carriesImports);
 
         if ($filterResult['type'] === 'unknown') {
             return $result;
-        }
-
-        if (! $scope->carriesImports && TsTypeString::shapeValueHasUnimportableToken($filterResult['type'])) {
-            return [...$result, 'type' => $nullable ? 'Record<string, unknown>[] | null' : 'Record<string, unknown>[]'];
         }
 
         $inlineType = ValueResult::arrayWrapType($filterResult['type']);

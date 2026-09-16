@@ -759,6 +759,30 @@ class ModelAttributeResolver
     }
 
     /**
+     * Names of the published columns a model instance writes when it serializes: toArray() keeps only the attributes
+     * `$visible` lists, when it lists any, and drops those `$hidden` lists, whatever `exclude_hidden` says.
+     *
+     * @param  class-string  $modelFqcn
+     * @return list<string>
+     */
+    public function serializedColumnNames(string $modelFqcn): array
+    {
+        $instance = $this->getInstance($modelFqcn);
+
+        if ($instance === null) {
+            return []; // @codeCoverageIgnore
+        }
+
+        $visible = $instance->getVisible();
+        $hidden = $instance->getHidden();
+
+        return array_values(array_filter(
+            $this->publishedColumnNames($modelFqcn),
+            fn (string $column): bool => ($visible === [] || in_array($column, $visible, true)) && ! in_array($column, $hidden, true),
+        ));
+    }
+
+    /**
      * Whether Eloquent $hidden attributes are excluded from published output.
      *
      * Deliberately uncached: every site that filters $hidden must observe the same value.

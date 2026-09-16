@@ -66,7 +66,7 @@ final class ReceiverMethodReturnResolver
             : ValueResult::mergeUnion(array_values(array_unique(array_column($results, 'type'))), $results);
 
         return in_array($methodName, $this->supportedAttributeFilters(), true) && ! $scope->carriesImports
-            ? $this->filterReturnWithoutImports($result)
+            ? $this->filterReturnWithoutImports($result, $methodName, $call)
             : $result;
     }
 
@@ -157,7 +157,7 @@ final class ReceiverMethodReturnResolver
         $result = $this->literalKeyFilterResult($models[0], $keys, $methodName === 'only', $scope->carriesImports);
 
         // Model::only() keys a name it cannot find to null, so the value is still an attribute-keyed array.
-        if ($result === null || (! $scope->carriesImports && TsTypeString::shapeValueHasUnimportableToken($result['type']))) {
+        if ($result === null) {
             return $this->attributeRecordResult(nullable: false);
         }
 
@@ -168,12 +168,14 @@ final class ReceiverMethodReturnResolver
      * An `only()`/`except()` answer where the scope imports nothing, such as an override declaring `: static`.
      *
      * The body fallback drops a whole shape naming a token. So a top-level arm that is a model, or a list of one, is
-     * spelled as that model's columns; any other token, such as an enum or a nested model, leaves `unknown`.
+     * spelled as the object that model serializes to; any other token, such as an enum or a nested model, leaves
+     * `unknown`.
      *
      * @param  ValueExpressionResult  $result
+     * @param  MethodCall|NullsafeMethodCall|StaticCall|null  $call  the call whose key list shapes a returned model
      * @return ValueExpressionResult
      */
-    private function filterReturnWithoutImports(array $result): array
+    private function filterReturnWithoutImports(array $result, string $methodName, MethodCall|NullsafeMethodCall|StaticCall|null $call): array
     {
         if (! TsTypeString::shapeValueHasUnimportableToken($result['type'])) {
             return $result;
@@ -182,16 +184,21 @@ final class ReceiverMethodReturnResolver
         $models = [];
 
         foreach ([...(isset($result['modelFqcn']) ? [$result['modelFqcn']] : []), ...($result['embeddedModelFqcns'] ?? [])] as $model) {
-            $models[class_basename($model)] = $model;
+            if (is_a($model, Model::class, true)) {
+                $models[class_basename($model)] = $model;
+            }
         }
 
+        $keys = $call instanceof MethodCall || $call instanceof NullsafeMethodCall
+            ? $this->extractFilterKeys($call, new ReflectionMethod(Model::class, $methodName))
+            : null;
         $arms = [];
 
         foreach (TsTypeString::splitTopLevelUnion($result['type']) as $arm) {
             $element = Str::chopEnd($arm, '[]');
 
             if (isset($models[$element])) {
-                $shape = $this->modelShapeWithoutImports($models[$element]);
+                $shape = $this->serializedModelShape($models[$element], $keys, $methodName === 'only');
                 $arm = $element === $arm ? $shape : ValueResult::arrayWrapType($shape);
             } elseif (TsTypeString::shapeValueHasUnimportableToken($arm)) {
                 return ValueResult::unknown();
@@ -204,16 +211,27 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
-     * A model's published columns as an inline shape, or `Record<string, unknown>` when a column's type names a token.
+     * The object a model an override returns serializes to, as the call's literal keys select it from the columns
+     * that model writes: those `only()` names, or all but those `except()` names.
      *
-     * @param  class-string  $model
+     * The value is the whole model, so any subset of what it writes is true of it; `$hidden` and columns `$visible`
+     * leaves out never reach JSON, so they are never named. A member whose type names a token is `unknown`. A runtime
+     * key list, or keys selecting nothing, leaves `Record<string, unknown>`.
+     *
+     * @param  class-string<Model>  $model
+     * @param  list<string>|null  $keys
      */
-    private function modelShapeWithoutImports(string $model): string
+    private function serializedModelShape(string $model, ?array $keys, bool $include): string
     {
-        $columns = resolve(ModelAttributeResolver::class)->publishedColumnNames($model);
-        $shape = $columns === [] || ! is_a($model, Model::class, true) ? null : $this->literalKeyFilterResult($model, $columns, true, false);
+        if ($keys === null) {
+            return 'Record<string, unknown>';
+        }
 
-        return $shape === null || TsTypeString::shapeValueHasUnimportableToken($shape['type']) ? 'Record<string, unknown>' : $shape['type'];
+        $columns = resolve(ModelAttributeResolver::class)->serializedColumnNames($model);
+        $picked = $include ? array_values(array_intersect(array_unique($keys), $columns)) : array_values(array_diff($columns, $keys));
+        $shape = $picked === [] ? null : $this->literalKeyFilterResult($model, $picked, true, carriesImports: false);
+
+        return $shape['type'] ?? 'Record<string, unknown>';
     }
 
     /**
