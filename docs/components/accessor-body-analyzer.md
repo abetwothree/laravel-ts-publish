@@ -73,6 +73,31 @@ models. A single relation's filter, and one on an accessor returning a `Support\
 to-many members: `replies` publishes `Comment[]`, `kept_replies` `Comment[] | null` and `reply_previews`
 `{ id: number; content: string }[]`. Its `Pick<User, 'id' | 'name'>` would survive without the handler.
 
+## A reader that carries no import
+
+The model file publishes the getter's analysis with its FQCN channels, so a filter there publishes `Pick<User, …>` or
+`Comment[]`. A method body reached by the body fallback carries no import and drops any shape naming such a token; see
+[receiver-types § The body fallback carries no FQCN channel](receiver-types.md#the-body-fallback-carries-no-fqcn-channel).
+So when such a scope reads the accessor, `analyze()` takes `carriesImports: false` and passes it to
+`AstEngine::analyzeModelClosure()`, which sets it on the getter's scope. The getter's filters then publish what they
+would written in the method body itself: the inline shape, where a member naming a token is `unknown`,
+`Record<string, unknown>` for a runtime key list, and `unknown[]` for a to-many relation.
+
+`Concerns\ResolvesAccessorType::resolveAccessorBodyType()` keeps the waterfall step the model file took. A spelling
+without imports can be vague where the published one is not: a getter returning `$this->comments->only([1, 2])`
+publishes `Comment[]`, and `unknown[]` without imports. That vague spelling still wins whenever the analysis with
+imports is non-vague, so the reader gets `unknown[]` instead of falling through to an `unknown` signature. When both are
+vague, as for a runtime key list returned whole, both fall through, and the reader gets `unknown`, as the model file
+does. For the same reason `ModelAttributeResolver::refineAccessorType()` refines a vague spelling from an `@property`
+tag only where the published type is vague too: the tag never refines `Comment[]`, so it must not turn `unknown[]` back
+into `Comment[]`.
+
+Only this body step reads the flag. An accessor typed by its closure signature, its `Attribute<>` docblock or an
+`@property` tag reads the same in both modes, so one naming a class, such as `Attribute<User, never>`, still costs a
+reading method its shape, and so does a getter returning a class without a filter, such as `fn () => $this->author`.
+`FilteringAccessorModel` in the unit fixtures pins each getter kind and read position, and `Comment::picksSummary()`
+pins the rule end to end.
+
 ## Cycles
 
 Two accessors that read each other would recurse forever: the body of `loop_a` reads `$this->loop_b`,
@@ -85,6 +110,13 @@ This guard is deliberately separate from `AstEngine`'s own: `analyzeMethod()` gu
 `class@method@modelClass`, while `analyzeModelClosure()` uses neither — which is exactly why this
 class carries its own `model@attribute` guard on a shared singleton instead of leaning on the engine's.
 The two keys are not interchangeable, so unifying them is not a tidy-up; it would break this guard.
+
+The guard is keyed per import mode as well, `model@attribute` and `model@attribute@importless`. A getter being
+analyzed with imports can call a method whose body reads the same accessor without them. A shared key cuts that read
+short whenever the getter's own analysis is on the stack, so the getter and the method each published a different
+type depending on which of them was read first. Each mode's key still terminates its own cycle:
+`FilteringAccessorModel::loopA()`/`loopB()`, read from a method body, terminate without imports as `Release`'s do with
+them, and `selfReport()`, whose `report()` reads it back, publishes the same type whichever of the two is read first.
 
 ## What stays vague
 

@@ -80,7 +80,7 @@ trait FiltersModelAttributes
 
         // Model::only() returns every requested key, including withCount()/selectRaw() virtuals the schema lacks.
         foreach (array_unique(array_diff($keys, $present)) as $key) {
-            $accepted = $acceptor->accept($resolver->resolveAttribute($modelClass, $key));
+            $accepted = $acceptor->accept($resolver->resolveAttribute($modelClass, $key, $this->scope->carriesImports));
 
             if ($accepted !== null) {
                 $filtered->addProperty($key, $accepted);

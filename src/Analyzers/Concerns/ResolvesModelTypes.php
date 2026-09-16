@@ -68,7 +68,8 @@ trait ResolvesModelTypes
             return ['type' => 'unknown', 'enumFqcn' => null, 'classFqcns' => [], 'customImports' => []];
         }
 
-        $tsInfo = resolve(ModelAttributeResolver::class)->resolveAttribute($this->scope->modelClass, $attributeName);
+        $tsInfo = resolve(ModelAttributeResolver::class)
+            ->resolveAttribute($this->scope->modelClass, $attributeName, $this->scope->carriesImports);
 
         /** @var class-string|null $enumFqcn */
         $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;

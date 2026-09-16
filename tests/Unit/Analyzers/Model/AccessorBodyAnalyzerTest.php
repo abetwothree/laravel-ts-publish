@@ -2,8 +2,14 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilteringAccessorModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UntypedFilterOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
+use Workbench\App\Models\Comment;
 use Workbench\App\Models\Release;
+use Workbench\App\Models\User;
 
 describe('AccessorBodyAnalyzer through ModelAttributeResolver', function () {
     test('types accessors from their getter bodies', function (string $attribute, string $expected) {
@@ -44,4 +50,70 @@ describe('AccessorBodyAnalyzer through ModelAttributeResolver', function () {
     test('a cycle between two accessors terminates as unknown', function () {
         expect(resolve(ModelAttributeResolver::class)->resolveAttribute(Release::class, 'loop_a')['type'])->toBe('unknown');
     });
+});
+
+describe('AccessorBodyAnalyzer for a getter a method body reads without imports', function () {
+    $published = [
+        'own_picks' => ["{ v: Pick<FilteringAccessorModel, 'id' | 'title'>; id: number }", [FilteringAccessorModel::class]],
+        'own_runtime' => ['{ v: Record<string, unknown>; id: number }', []],
+        'own_nullsafe' => ["{ v: Pick<FilteringAccessorModel, 'id' | 'content'>; id: number }", [FilteringAccessorModel::class]],
+        'author_picks' => ["{ v: Pick<User, 'id' | 'role'> | null; id: number }", [User::class]],
+        'comment_picks' => ['{ v: Comment[]; id: number }', [Comment::class]],
+        'comment_list' => ['Comment[]', [Comment::class]],
+        'tagged_fields' => ['{ id: number }[]', []],
+        'loose_picks' => ["{ v: Pick<UntypedFilterOverrideModel, 'id' | 'title'>; id: number }", [UntypedFilterOverrideModel::class]],
+        'counterpart_picks' => ["{ v: Pick<Comment, 'id'> | Pick<User, 'id'> | null; id: number }", [Comment::class, User::class]],
+        'loop_a' => ["{ v: { v: unknown; p: Pick<User, 'id'> }; p: Pick<User, 'id'> }", [User::class]],
+    ];
+
+    $readers = [
+        'readOwnPicks', 'readOwnRuntime', 'readOwnNullsafe', 'readAuthorPicks', 'readCommentPicks', 'readCommentList',
+        'readTaggedFields', 'readLoosePicks', 'readCounterpartPicks', 'readLoop',
+    ];
+
+    // The model file publishes the analysis that keeps imports; a method body's import-less read must not replace it.
+    test('the accessor keeps its published type and imports after a method body reads it', function () use ($published, $readers) {
+        foreach ($readers as $reader) {
+            resolve(MethodReturnTypeResolver::class)->resolve(FilteringAccessorModel::class, $reader);
+        }
+
+        $mutators = (new ModelTransformer(FilteringAccessorModel::class))->data()->mutators;
+
+        foreach ($published as $attribute => [$type, $classFqcns]) {
+            $resolved = resolve(ModelAttributeResolver::class)->resolveAttribute(FilteringAccessorModel::class, $attribute);
+
+            expect($resolved['type'])->toBe($type)
+                ->and($resolved['classFqcns'])->toBe($classFqcns)
+                ->and($mutators[$attribute]['type'])->toBe($type);
+        }
+    });
+
+    test('a method body reads the accessor without imports after the model publishes it', function () use ($published) {
+        foreach (array_keys($published) as $attribute) {
+            resolve(ModelAttributeResolver::class)->resolveAttribute(FilteringAccessorModel::class, $attribute);
+        }
+
+        expect(resolve(MethodReturnTypeResolver::class)->resolve(FilteringAccessorModel::class, 'readAuthorPicks')['type'] ?? null)
+            ->toBe('{ v: { v: { id: number; role: unknown } | null; id: number }; id: number }')
+            ->and(resolve(MethodReturnTypeResolver::class)->resolve(FilteringAccessorModel::class, 'readCommentList')['type'] ?? null)
+            ->toBe('{ v: unknown[]; id: number }');
+    });
+
+    test('a cycle between two accessors terminates when a method body reads it without imports', function () {
+        expect(resolve(MethodReturnTypeResolver::class)->resolve(FilteringAccessorModel::class, 'readLoop')['type'] ?? null)
+            ->toBe('{ v: { v: { v: unknown; p: { id: number } }; p: { id: number } }; id: number }');
+    });
+
+    // The getter calls report(), whose body reads the getter back without imports: a guard shared by both modes would
+    // cut that read short while the getter's own analysis is on the stack, so the answer would depend on who asked first.
+    test('a getter being analyzed with imports does not cut short its own read without them', function (bool $getterFirst) {
+        $getter = fn () => resolve(ModelAttributeResolver::class)->resolveAttribute(FilteringAccessorModel::class, 'self_report')['type'];
+        $method = fn () => resolve(MethodReturnTypeResolver::class)->resolve(FilteringAccessorModel::class, 'report')['type'] ?? null;
+        $report = '{ self: { v: { id: number }; report: unknown[] }; id: number }';
+
+        [$first, $second] = $getterFirst ? [$getter(), $method()] : [$method(), $getter()];
+
+        expect($getterFirst ? $first : $second)->toBe("{ v: Pick<User, 'id'>; report: $report }")
+            ->and($getterFirst ? $second : $first)->toBe($report);
+    })->with(['getter first' => true, 'method first' => false]);
 });

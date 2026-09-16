@@ -88,9 +88,10 @@ class ModelAttributeResolver
      * Resolve a model attribute's TypeScript type through the accessor → cast → DB type waterfall.
      *
      * @param  class-string  $modelFqcn
+     * @param  bool  $carriesImports  false when the reader carries no import, so a getter body is analyzed without them
      * @return TypeScriptTypeInfo
      */
-    public function resolveAttribute(string $modelFqcn, string $attributeName): array
+    public function resolveAttribute(string $modelFqcn, string $attributeName, bool $carriesImports = true): array
     {
         $empty = LaravelTsPublish::emptyTypeScriptInfo();
         $ctx = $this->resolveContext($modelFqcn);
@@ -102,17 +103,17 @@ class ModelAttributeResolver
         $attr = $ctx['attributes']->firstWhere('name', $attributeName);
 
         if ($attr === null) {
-            return $this->resolveAttributeFallbacks($modelFqcn, $ctx, $attributeName);
+            return $this->resolveAttributeFallbacks($modelFqcn, $ctx, $attributeName, $carriesImports);
         }
 
         $cast = $attr['cast'];
 
         if (($cast === 'attribute' || $cast === 'accessor')) {
             try {
-                $accessorInfo = $this->resolveAccessorType($attributeName, $ctx['instance'], $ctx['reflection']);
+                $accessorInfo = $this->resolveAccessorType($attributeName, $ctx['instance'], $ctx['reflection'], $carriesImports);
 
                 if ($accessorInfo['type'] !== 'unknown') {
-                    $accessorInfo = $this->refineWithPropertyDocblock($ctx['reflection'], $attributeName, $accessorInfo);
+                    $accessorInfo = $this->refineAccessorType($ctx, $attributeName, $accessorInfo, $carriesImports);
 
                     return $this->appendNullable($accessorInfo, $attr['nullable']);
                 }
@@ -154,7 +155,7 @@ class ModelAttributeResolver
      * @param  array{attributes: Collection<int, AttributeInfo>, relations: Collection<int, RelationInfo>, reflection: ReflectionClass<Model>, ...}  $ctx
      * @return TypeScriptTypeInfo
      */
-    protected function resolveAttributeFallbacks(string $modelFqcn, array $ctx, string $attributeName): array
+    protected function resolveAttributeFallbacks(string $modelFqcn, array $ctx, string $attributeName, bool $carriesImports): array
     {
         $empty = LaravelTsPublish::emptyTypeScriptInfo();
 
@@ -166,7 +167,7 @@ class ModelAttributeResolver
         // Only accessors: Eloquent camel-cases the key when looking for a mutator method, but never when
         // reading $attributes, so $order->placedAt on a plain placed_at column is null at runtime.
         if ($snakeAttr !== null && ($snakeAttr['cast'] === 'attribute' || $snakeAttr['cast'] === 'accessor')) {
-            return $this->resolveAttribute($modelFqcn, $snake);
+            return $this->resolveAttribute($modelFqcn, $snake, $carriesImports);
         }
 
         // Requires a matching relation, so a real column ending in "_count" is never guessed at here.
@@ -199,6 +200,29 @@ class ModelAttributeResolver
         }
 
         return $empty;
+    }
+
+    /**
+     * Refine an accessor's vague type from an `@property` tag wherever the published accessor type is refined too.
+     *
+     * Without imports a vague answer can spell a precise published one, `unknown[]` for a getter's `Comment[]`. No tag
+     * refines that published type, so none may turn its spelling into a token the reader cannot import.
+     *
+     * @param  array{instance: Model, reflection: ReflectionClass<Model>, ...}  $ctx
+     * @param  TypeScriptTypeInfo  $accessorInfo
+     * @return TypeScriptTypeInfo
+     */
+    protected function refineAccessorType(array $ctx, string $attributeName, array $accessorInfo, bool $carriesImports): array
+    {
+        $refined = $this->refineWithPropertyDocblock($ctx['reflection'], $attributeName, $accessorInfo);
+
+        if ($carriesImports || $refined === $accessorInfo) {
+            return $refined;
+        }
+
+        $published = $this->resolveAccessorType($attributeName, $ctx['instance'], $ctx['reflection']);
+
+        return $this->isVagueTsType($published['type']) ? $refined : $accessorInfo;
     }
 
     /**

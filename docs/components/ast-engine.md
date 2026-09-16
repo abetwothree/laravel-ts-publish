@@ -700,5 +700,6 @@ runs `ResourceAstAnalyzer::resolve()` on `ResourceExpressionHandlers::forModelCl
 a resource `toArray()`, so `ConditionalMethodHandler` and `ToResourceHandler` are dropped, while
 `RelationFilterHandler` stays to type the model's own relation filters. Its result is one value, not a property
 map, so it returns `ValueExpressionResult` and the analyzer carries the FQCN channels across into the
-model engine's own `TypeScriptTypeInfo`. See
+model engine's own `TypeScriptTypeInfo`. A reader that carries no import passes `carriesImports: false`, which it sets
+on the getter's scope. See
 [accessor-body-analyzer.md](accessor-body-analyzer.md).

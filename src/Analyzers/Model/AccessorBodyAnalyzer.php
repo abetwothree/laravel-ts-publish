@@ -39,18 +39,24 @@ final class AccessorBodyAnalyzer
     use InspectsAstNodes;
     use NamesAccessorMethods;
 
-    /** @var array<string, true> model@attribute bodies on the stack, so two accessors reading each other terminate */
+    /**
+     * model@attribute bodies on the stack, so two accessors reading each other terminate. Keyed per import mode: an
+     * analysis that keeps imports never stands in for one that carries none, nor cuts it short.
+     *
+     * @var array<string, true>
+     */
     private array $analyzing = [];
 
     /**
      * The TypeScript type a model accessor's getter body resolves to.
      *
      * @param  class-string<Model>  $modelFqcn
+     * @param  bool  $carriesImports  false when the reader carries no import, so the getter's filters name no token
      * @return TypeScriptTypeInfo|null null when there is no readable body, a cycle, or nothing better than unknown
      */
-    public function analyze(string $modelFqcn, string $attributeName): ?array
+    public function analyze(string $modelFqcn, string $attributeName, bool $carriesImports = true): ?array
     {
-        $key = $modelFqcn.'@'.$attributeName;
+        $key = $modelFqcn.'@'.$attributeName.($carriesImports ? '' : '@importless');
 
         if (isset($this->analyzing[$key])) {
             return null;
@@ -59,7 +65,7 @@ final class AccessorBodyAnalyzer
         $this->analyzing[$key] = true;
 
         try {
-            $result = $this->resolveBody($modelFqcn, $attributeName);
+            $result = $this->resolveBody($modelFqcn, $attributeName, $carriesImports);
         } finally {
             unset($this->analyzing[$key]);
         }
@@ -79,7 +85,7 @@ final class AccessorBodyAnalyzer
      * @param  class-string<Model>  $modelFqcn
      * @return ValueExpressionResult|null
      */
-    private function resolveBody(string $modelFqcn, string $attributeName): ?array
+    private function resolveBody(string $modelFqcn, string $attributeName, bool $carriesImports): ?array
     {
         $locator = resolve(MethodLocator::class);
         $engine = resolve(AstEngine::class);
@@ -89,7 +95,7 @@ final class AccessorBodyAnalyzer
         $getter = $newStyle === null ? null : $this->getterClosure($newStyle->method);
 
         if ($newStyle !== null && $getter !== null) {
-            return $engine->analyzeModelClosure($modelFqcn, $getter, $newStyle);
+            return $engine->analyzeModelClosure($modelFqcn, $getter, $newStyle, $carriesImports);
         }
 
         // A new-style method whose getter is not a closure — or a same-named non-accessor, e.g. a relation —
@@ -101,7 +107,7 @@ final class AccessorBodyAnalyzer
             return null;
         }
 
-        return $engine->analyzeModelClosure($modelFqcn, new ClosureExpr(['stmts' => $oldStyle->method->stmts]), $oldStyle);
+        return $engine->analyzeModelClosure($modelFqcn, new ClosureExpr(['stmts' => $oldStyle->method->stmts]), $oldStyle, $carriesImports);
     }
 
     /**

@@ -39,6 +39,15 @@ class Comment extends Model
         ];
     }
 
+    /** The relation_picks accessor read by a method body, which reads its getter without imports too. */
+    public function picksSummary(): array
+    {
+        return [
+            'id' => $this->id,
+            'picks' => $this->relation_picks,
+        ];
+    }
+
     #[TsCasts(['metadata' => 'Record<string, unknown>'])]
     protected function casts(): array
     {

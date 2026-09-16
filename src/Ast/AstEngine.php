@@ -170,17 +170,23 @@ final class AstEngine
      * Resolve one closure (an accessor getter, or a method body wrapped as one) against a model subject.
      *
      * @param  class-string<Model>  $modelClass
+     * @param  bool  $carriesImports  false when an analysis that carries no import reads the accessor
      * @return ValueExpressionResult
      *
      * @internal
      */
-    public function analyzeModelClosure(string $modelClass, ClosureExpr|ArrowFunction $closure, MethodContext $context): array
-    {
+    public function analyzeModelClosure(
+        string $modelClass,
+        ClosureExpr|ArrowFunction $closure,
+        MethodContext $context,
+        bool $carriesImports = true,
+    ): array {
         $scope = $this->bindingsFor($context);
 
         // A trait-declared accessor still reads `$this` as the model that uses the trait.
         $scope->subjectReflection = self::genericReflection($modelClass);
         $scope->modelClass = $modelClass;
+        $scope->carriesImports = $carriesImports;
 
         $analyzer = new ResourceAstAnalyzer(
             $scope->subjectReflection,

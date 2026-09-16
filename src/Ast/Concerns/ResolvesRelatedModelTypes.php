@@ -38,7 +38,7 @@ trait ResolvesRelatedModelTypes
             return ValueResult::unknown(); // @codeCoverageIgnore
         }
 
-        $tsInfo = resolve(ModelAttributeResolver::class)->resolveAttribute($modelFqcn, $propertyName);
+        $tsInfo = resolve(ModelAttributeResolver::class)->resolveAttribute($modelFqcn, $propertyName, $scope->carriesImports);
 
         if ($tsInfo['type'] === 'unknown') {
             return ValueResult::unknown();

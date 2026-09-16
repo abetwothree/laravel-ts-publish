@@ -2396,6 +2396,12 @@ describe('ResourceAstAnalyzer with CommentRelationFiltersResource (relation filt
         );
     });
 
+    test('a model method body reading that accessor publishes the filters its own body would', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(CommentRelationFiltersResource::class), Comment::class)->analyze()->properties)->keyBy('name');
+
+        expect($props['picks_summary']['type'])->toBe('{ id: number; picks: '.$props['summary']['type'].' }');
+    });
+
     test('an accessor getter publishes the Pick<> and the to-many relation read, with their imports', function () {
         $expected = "{ id: number; author: Pick<User, 'id' | 'name'>; author_role: Pick<User, 'id' | 'role'> | null; "
             .'post_fields: Record<string, unknown>; replies: Comment[]; kept_replies: Comment[] | null; '

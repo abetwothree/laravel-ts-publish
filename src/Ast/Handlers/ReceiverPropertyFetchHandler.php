@@ -63,7 +63,7 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
 
         foreach ($receiver->classes as $class) {
             $result = is_a($class, Model::class, true)
-                ? $this->modelMember($class, $name)
+                ? $this->modelMember($class, $name, $scope->carriesImports)
                 : $this->reflectedProperty($class, $name);
 
             // One untypable arm would make the union a lie; decline so dispatch reaches the floor.
@@ -93,10 +93,10 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
      * @param  class-string<Model>  $modelFqcn
      * @return ValueExpressionResult|null
      */
-    private function modelMember(string $modelFqcn, string $name): ?array
+    private function modelMember(string $modelFqcn, string $name, bool $carriesImports): ?array
     {
         $resolver = resolve(ModelAttributeResolver::class);
-        $attribute = resolve(ReflectedTypeAcceptor::class)->accept($resolver->resolveAttribute($modelFqcn, $name));
+        $attribute = resolve(ReflectedTypeAcceptor::class)->accept($resolver->resolveAttribute($modelFqcn, $name, $carriesImports));
 
         if ($attribute !== null) {
             return $attribute;

@@ -441,9 +441,11 @@ that limit differently, and the difference decides where you go looking for the 
   one, publishes the columns and appended accessors that model serializes, narrowed to the call's literal keys, with
   a member naming a token spelled `unknown`. Any other arm naming a token, such as an enum, makes the value
   `unknown`, and a model nested deeper, as in `array{owner: User}`, is already `unknown` in its reflected docblock
-  shape. A method body
-  that reads an accessor whose getter filters still does: the getter keeps its imports and publishes
-  `Pick<User, …>` or `Comment[]`, and that token drops the method body's whole shape. That is a current limit. See
+  shape. A filter in the getter of an accessor the method body reads costs no shape either: when the accessor's type
+  comes from its getter body, that getter is analyzed without imports too. An accessor whose type names a class any
+  other way still drops the method body's whole shape: one typed by its closure signature, its `Attribute<>` docblock
+  or an `@property` tag, and one whose getter returns a class-typed value that is no filter, such as
+  `fn () => $this->author`. See
   [receiver-types § The body fallback carries no FQCN channel](./components/receiver-types.md#the-body-fallback-carries-no-fqcn-channel).
 - **A docblock shape degrades just the leaf.** An `Arrayable` whose `@return array{owner: User}` names a
   class publishes `{ owner: unknown }`, and every sibling key keeps its real type;

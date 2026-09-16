@@ -373,11 +373,22 @@ cast, appended accessors), `VisibleFilterOverrideModel` (`$visible` beside `$hid
 `AppendingModelFilterOverrideModel` (an override returning a model that appends).
 Every other value in a body keeps the whole-shape rule.
 
-That exception covers only a filter written in the method body itself. **A current limit:** a method body that reads
-an accessor whose getter filters still loses its whole shape. The getter's analysis is the one its model file
-publishes, so it keeps its imports and publishes `Pick<User, …>` or `Comment[]`. The method body then reads that
-token and drops the shape to the vague declaration, such as `unknown[]`. A getter whose filter names no token, such as
-a map proxy's `{ id: number }[]`, keeps the body's shape.
+A filter in the getter of an accessor the body reads is covered too. Every model attribute read a scope makes passes
+the scope's flag to `ModelAttributeResolver::resolveAttribute()`: `$this->accessor` and its camelCase alias, a relation
+chain, a local variable or closure parameter holding a model, a key that `only()` selects, and an appended accessor
+of a spread or filtered model. When the accessor's type comes from its getter body, `AccessorBodyAnalyzer` analyzes
+that getter without imports as well, so its filters publish exactly what they would written in the method body, and
+the method keeps its shape. The model file and every resource still publish the getter's own analysis, with its
+`Pick<User, …>` and `Comment[]`; see
+[accessor-body-analyzer § A reader that carries no import](accessor-body-analyzer.md#a-reader-that-carries-no-import).
+`Comment::picksSummary()` reads the `relation_picks` accessor, and `CommentRelationFiltersResource` publishes its
+`picks` as the same object `relationSummary()` publishes. `FilteringAccessorModel` pins each getter kind and read
+position in `MethodReturnTypeResolverTest`.
+
+The rule reaches only the getter body step. An accessor whose type names a class any other way still costs the reading
+method its whole shape: one typed by its closure signature, its `Attribute<>` docblock such as `Attribute<User, never>`,
+or an `@property` tag, and one whose getter returns a value that names a class without a filter, such as
+`fn () => $this->author`.
 
 ### Unions, `?->`, and requests
 

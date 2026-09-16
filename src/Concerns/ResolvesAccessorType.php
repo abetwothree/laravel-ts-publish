@@ -28,10 +28,15 @@ trait ResolvesAccessorType
      * Handles new-style `Attribute::make(get: fn () => ...)` and old-style `get*Attribute()`.
      *
      * @param  ReflectionClass<Model>  $reflectionModel
+     * @param  bool  $carriesImports  false when the reader carries no import; only the getter body step reads it
      * @return TypeScriptTypeInfo
      */
-    protected function resolveAccessorType(string $name, Model $modelInstance, ReflectionClass $reflectionModel): array
-    {
+    protected function resolveAccessorType(
+        string $name,
+        Model $modelInstance,
+        ReflectionClass $reflectionModel,
+        bool $carriesImports = true,
+    ): array {
         $result = LaravelTsPublish::emptyTypeScriptInfo();
         ['newStyle' => $newStyle, 'oldStyle' => $oldStyle] = $this->accessorMethodNames($name);
 
@@ -60,9 +65,9 @@ trait ResolvesAccessorType
                     }
 
                     // Both annotations are vague, so what the getter body returns is the better answer.
-                    $bodyReturn = resolve(AccessorBodyAnalyzer::class)->analyze($reflectionModel->getName(), $name);
+                    $bodyReturn = $this->resolveAccessorBodyType($reflectionModel->getName(), $name, $carriesImports);
 
-                    if ($bodyReturn !== null && ! $this->isVagueTsType($bodyReturn['type'])) {
+                    if ($bodyReturn !== null) {
                         return $bodyReturn;
                     }
 
@@ -101,9 +106,9 @@ trait ResolvesAccessorType
                 return $getterReturn;
             }
 
-            $bodyReturn = resolve(AccessorBodyAnalyzer::class)->analyze($reflectionModel->getName(), $name);
+            $bodyReturn = $this->resolveAccessorBodyType($reflectionModel->getName(), $name, $carriesImports);
 
-            if ($bodyReturn !== null && ! $this->isVagueTsType($bodyReturn['type'])) {
+            if ($bodyReturn !== null) {
                 return $bodyReturn;
             }
 
@@ -113,6 +118,33 @@ trait ResolvesAccessorType
         }
 
         return $result;
+    }
+
+    /**
+     * The getter body's type when it beats vague annotations, or null to fall back to them.
+     *
+     * A reader that carries no import gets the getter analyzed without imports. That spelling can be vague where the
+     * published one is not, `unknown[]` for `Comment[]`, so it still wins wherever the published body answer wins.
+     *
+     * @param  class-string<Model>  $modelFqcn
+     * @return TypeScriptTypeInfo|null
+     */
+    protected function resolveAccessorBodyType(string $modelFqcn, string $name, bool $carriesImports): ?array
+    {
+        $analyzer = resolve(AccessorBodyAnalyzer::class);
+        $bodyReturn = $analyzer->analyze($modelFqcn, $name, $carriesImports);
+
+        if ($bodyReturn === null || ! $this->isVagueTsType($bodyReturn['type'])) {
+            return $bodyReturn;
+        }
+
+        if ($carriesImports) {
+            return null;
+        }
+
+        $publishedReturn = $analyzer->analyze($modelFqcn, $name);
+
+        return $publishedReturn !== null && ! $this->isVagueTsType($publishedReturn['type']) ? $bodyReturn : null;
     }
 
     /**

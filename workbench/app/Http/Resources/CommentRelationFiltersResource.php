@@ -26,6 +26,7 @@ final class CommentRelationFiltersResource extends JsonResource
             'id' => $this->id,
             'summary' => $this->relationSummary(),
             'picks' => $this->relation_picks,
+            'picks_summary' => $this->picksSummary(),
         ];
     }
 }

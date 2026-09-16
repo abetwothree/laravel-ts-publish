@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConstantKeyFixture;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConstantKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilteringAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\InheritedFilterRelease;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RecursiveVagueFixture;
 use Workbench\App\Http\Resources\ServiceReturnResource;
@@ -62,4 +63,37 @@ test('a body the model inherits is analyzed without imports too', function () {
     expect(resolve(MethodReturnTypeResolver::class)->resolve(InheritedFilterRelease::class, 'columnSummary')['type'] ?? null)
         ->toBe('{ named: { major: number; minor: number }; rest: { id: number; major: number; minor: number; '
             .'created_at: string | null; updated_at: string | null }; picked: Record<string, unknown>; left: Record<string, unknown> }');
+});
+
+// The getter a method body reads is analyzed without imports too, so its filters publish the answer the same call
+// written in the method body would, and the method keeps its shape.
+test('a method body reading an accessor whose getter filters keeps its shape', function (string $method, string $expected) {
+    expect(resolve(MethodReturnTypeResolver::class)->resolve(FilteringAccessorModel::class, $method)['type'] ?? null)
+        ->toBe($expected);
+})->with([
+    'bare $this, literal keys' => ['readOwnPicks', '{ v: { v: { id: number; title: string }; id: number }; id: number }'],
+    'bare $this, runtime keys' => ['readOwnRuntime', '{ v: { v: Record<string, unknown>; id: number }; id: number }'],
+    'runtime keys returned whole, which the model publishes as unknown' => ['readRuntimeFields', '{ v: unknown; id: number }'],
+    'a vague getter its @property-read tag types' => ['readTaggedFields', '{ v: { id: number }[]; id: number }'],
+    'bare $this through ?->' => ['readOwnNullsafe', '{ v: { v: { id: number; content: string }; id: number }; id: number }'],
+    'a single relation' => ['readAuthorPicks', '{ v: { v: { id: number; role: unknown } | null; id: number }; id: number }'],
+    'a to-many relation' => ['readCommentPicks', '{ v: { v: unknown[]; id: number }; id: number }'],
+    'a to-many relation returned whole, beside a @property-read tag naming the model' => ['readCommentList', '{ v: unknown[]; id: number }'],
+    'a relation to an untyped override' => ['readLoosePicks', '{ v: { v: { id: number; title: string }; id: number }; id: number }'],
+    'a multi-model accessor' => ['readCounterpartPicks', '{ v: { v: { id: number } | { id: number } | null; id: number }; id: number }'],
+    'an old-style accessor' => ['readLegacyPicks', '{ v: { v: { id: number; name: string }; id: number }; id: number }'],
+    'a camelCase alias' => ['readCamelAlias', '{ v: { v: { id: number; role: unknown } | null; id: number }; id: number }'],
+    'through a relation' => ['readThroughRelation', '{ v: { v: { id: number; role: unknown } | null; id: number } | null; id: number }'],
+    'through a local variable' => ['readThroughLocal', '{ v: { v: { id: number; role: unknown } | null; id: number }; id: number }'],
+    'through a closure parameter' => ['readThroughVariable', '{ v: unknown[][]; id: number }'],
+    'as a filtered key' => ['readAsFilteredKey', '{ v: { id: number; author_picks: { v: { id: number; role: unknown } | null; id: number } }; id: number }'],
+    'as a spread key' => ['readAsSpreadKey', '{ id: number; author_picks: { v: { id: number; role: unknown } | null; id: number }; x: number }'],
+    'as a spread camelCase key' => ['readAsSpreadAlias', '{ id: number; authorPicks: { v: { id: number; role: unknown } | null; id: number }; x: number }'],
+    'a literal getter' => ['readLiteral', '{ v: { a: number; b: string }; id: number }'],
+    'a docblock-typed getter still drops the shape' => ['readOwner', 'unknown[]'],
+]);
+
+test('a spread model reads its appended filtering accessor without imports', function () {
+    expect(resolve(MethodReturnTypeResolver::class)->resolve(FilteringAccessorModel::class, 'readAsSpreadAppend')['type'] ?? null)
+        ->toContain('; author_picks: { v: { id: number; role: unknown } | null; id: number }; x: number }');
 });

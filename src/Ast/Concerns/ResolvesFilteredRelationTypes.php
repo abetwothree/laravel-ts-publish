@@ -36,7 +36,8 @@ trait ResolvesFilteredRelationTypes
      * @param  class-string  $relatedModelClass
      * @param  list<string>  $keys
      * @param  bool  $tokenMembersUnknown  spell a member whose type names a token `unknown`, for a scope that cannot
-     *                                     import it, so the rest of the shape survives
+     *                                     import it, so the rest of the shape survives; an accessor member's getter
+     *                                     is analyzed without imports too
      * @return array{type: string, enumFqcns: list<class-string>, modelFqcns: list<class-string>, customImports: TypesImportMap}
      */
     protected function resolveFilteredRelationType(
@@ -88,7 +89,7 @@ trait ResolvesFilteredRelationTypes
             $attr = $relatedAttributes->firstWhere('name', $key);
 
             if ($attr !== null) {
-                $tsInfo = $resolver->resolveAttribute($relatedModelClass, $key);
+                $tsInfo = $resolver->resolveAttribute($relatedModelClass, $key, carriesImports: ! $tokenMembersUnknown);
 
                 // The except branch yields columns now, so in practice this gate is only()'s: a write-only
                 // mutator with no getter and no docblock Get has no shape to emit, unlike a getter-backed one.

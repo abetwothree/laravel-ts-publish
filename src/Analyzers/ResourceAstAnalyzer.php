@@ -552,7 +552,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                     }
                 }
             } else {
-                $tsInfo = $resolver->resolveAttribute($modelFqcn, $column);
+                $tsInfo = $resolver->resolveAttribute($modelFqcn, $column, $this->scope->carriesImports);
 
                 // Mirrors ModelTransformer::resolveMutatorType()'s own omit check: no getter, no
                 // docblock generic, no backing column — nothing to publish for this name.

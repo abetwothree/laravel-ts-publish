@@ -66,9 +66,12 @@ Two limits follow from where those declines stop:
   - In a method body, a literal filter publishes its inline shape, where each member whose type names a token, such
     as an enum or class cast column or a relation to a model, is `unknown`: `{ id: number; role: unknown }`. A to-many
     filter publishes `unknown[]`, not `Comment[]`.
-  - A method body that reads an accessor whose getter filters to a `Pick<>` or `Comment[]` still loses its whole
-    shape, a current limit described in
-    [receiver-types § The body fallback carries no FQCN channel](receiver-types.md#the-body-fallback-carries-no-fqcn-channel).
+  - A method body that reads an accessor whose getter filters analyzes that getter without imports too, so the
+    filter publishes what it would in the method body: `Comment::picksSummary()` publishes `relationSummary()`'s
+    object under `picks`. An accessor whose type names a class through its signature, its docblock or a getter value
+    that is no filter still costs the method its shape, as
+    [receiver-types § The body fallback carries no FQCN channel](receiver-types.md#the-body-fallback-carries-no-fqcn-channel)
+    describes.
   - A model whose `only()` or `except()` override has a return reflection types publishes that return, not
     `Record<string, unknown>` or a `Pick<>`, in a resource and a getter body: `string` for `: string`, the model for
     `: static`. A method body carries no import, so there `ReceiverMethodReturnResolver` spells that return without a
