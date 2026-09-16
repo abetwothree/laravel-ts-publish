@@ -82,6 +82,11 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             && $this->isThisPropertyFetch($expr->var)
             && $expr->name instanceof Identifier
         ) {
+            // `$this->resource->only([...])` is the proxy spelling of `$this->only([...])`: step aside as below.
+            if ($this->isResourceFetch($expr->var) && $scope->modelClass !== null && $this->filtersLiteralAttributeKeys($expr)) {
+                return null;
+            }
+
             $info = $this->analyzeWrappedResourceMethodCall($expr, $scope);
 
             /** @var class-string<Model>|null $closureModelClass */

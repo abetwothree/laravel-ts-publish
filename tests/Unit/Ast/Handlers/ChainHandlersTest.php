@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ResourceRelationModel;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\MethodCall;
@@ -233,6 +234,18 @@ it('treats concat() as identity for the same collection type and declines a diff
 
     expect($analyzer->resolve($same)['type'])->toBe('Comment[]')
         ->and($analyzer->resolve($different)['type'])->toBe('unknown');
+});
+
+// `$this->resource->only([...])` is `$this->only([...])` through the proxy, so the wrapped-method branch leaves a
+// literal key list to the receiver rules, as the generic `$this->method()` arm does. Without one, nothing would Pick<>.
+it('steps aside for a literal only() through $this->resource, and keeps the reflected shape without one', function () {
+    $scope = fn (): AnalysisScope => new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
+    $literal = new MethodCall(chainThisProp('resource'), 'only', [new Arg(new Array_([new ArrayItem(new String_('id'))]))]);
+    $dynamic = new MethodCall(chainThisProp('resource'), 'only', [new Arg(new Variable('fields'))]);
+
+    expect((new RelationCollectionChainHandler)->resolve($literal, $scope(), chainHandlersThrowingEngine()))->toBeNull()
+        ->and((new RelationCollectionChainHandler)->resolve($dynamic, $scope(), chainHandlersThrowingEngine()))
+        ->toBe(['type' => 'Record<string, unknown>', 'optional' => false]);
 });
 
 it('declines a method call rooted at a bare variable, not $this', function () {

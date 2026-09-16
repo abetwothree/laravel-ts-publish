@@ -157,10 +157,10 @@ it('tries FirstClassCallableHandler before ConditionalMethodHandler for a first-
 
 // Ordering pin #2: both handlers claim NullsafeMethodCall. MethodChainHandler declines what it cannot
 // type, but this chain ends on a relation, so it reflects only() on Post and would degrade this Pick<>
-// reference to that reflected type if it ran first.
-it('tries RelationFilterHandler before MethodChainHandler for $this->relation?->only([...])', function () {
+// reference to that reflected type if it ran first. The $this->resource spelling reads the same relation.
+it('tries RelationFilterHandler before MethodChainHandler for $this->relation?->only([...])', function (Expr $relation) {
     $expr = new NullsafeMethodCall(
-        new PropertyFetch(new Variable('this'), 'post'),
+        $relation,
         'only',
         [new Arg(new Array_([
             new ArrayItem(new String_('id')),
@@ -174,7 +174,10 @@ it('tries RelationFilterHandler before MethodChainHandler for $this->relation?->
         'optional' => false,
         'modelFqcn' => Post::class,
     ]);
-});
+})->with([
+    '$this->post' => fn (): Expr => new PropertyFetch(new Variable('this'), 'post'),
+    '$this->resource->post' => fn (): Expr => new PropertyFetch(new PropertyFetch(new Variable('this'), 'resource'), 'post'),
+]);
 
 // MethodChainHandler claims NullsafeMethodCall ahead of ReceiverMethodCallHandler. A `static|null` return reflects
 // to `unknown | null` on the related model; flooring there would split this from `$this->author->fresh()`'s type.

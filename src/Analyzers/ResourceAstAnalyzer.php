@@ -373,13 +373,10 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 continue;
             }
 
-            // Handle ...$this->only([...]) or ...$this->except([...]) spread
+            // Handle ...$this->only([...]) or ...$this->except([...]) spread, or ...$this->resource->only([...])
             if ($item->key === null && $item->unpack
                 && $item->value instanceof MethodCall
-                && $item->value->var instanceof Variable
-                && $item->value->var->name === 'this'
-                && $item->value->name instanceof Identifier
-                && in_array($item->value->name->toString(), $this->supportedAttributeFilters(), true)) {
+                && $this->filtersOwnModel($item->value)) {
                 $filterAnalysis = $this->analyzeThisAttributeFilter($item->value);
 
                 if ($filterAnalysis !== null) {

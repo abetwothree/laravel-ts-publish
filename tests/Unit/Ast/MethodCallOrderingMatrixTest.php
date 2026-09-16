@@ -77,6 +77,9 @@ function methodCallCorpus(): array
         new MethodCall(new PropertyFetch($this_, 'post'), 'toResource', []),
         new MethodCall(new PropertyFetch($this_, 'post'), 'only', [new Arg($arr(['id', 'title']))]),
         new MethodCall(new PropertyFetch($this_, 'post'), 'except', [new Arg($arr(['body']))]),
+        // The same filters through the $this->resource proxy, on the resource's own model and on a relation.
+        new MethodCall(new PropertyFetch($this_, 'resource'), 'only', [new Arg($arr(['id', 'content']))]),
+        new MethodCall(new PropertyFetch(new PropertyFetch($this_, 'resource'), 'post'), 'only', [new Arg($arr(['id', 'title']))]),
         new MethodCall(new MethodCall($this_, 'comments'), 'pluck', [new Arg(new String_('id'))]),
         new MethodCall(new Variable('request'), 'ip', []),
         new MethodCall(new Variable('request'), 'user', []),

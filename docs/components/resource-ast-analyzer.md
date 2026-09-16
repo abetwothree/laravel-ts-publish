@@ -11,7 +11,7 @@ back to their source.
 ## Attribute filters on any model receiver
 
 `only([...])` / `except([...])` (and their `?->` nullsafe forms) type against **any receiver holding a
-model**, not only a relation. `$this->relation->only([...])` analyzes via
+model**, not only a relation. `$this->relation->only([...])` and `$this->resource->relation->only([...])` analyze via
 `RelationFilterHandler::analyzeRelationFilter()`; every other receiver — a bare `$this->only([...])` the
 resource forwards to its model, a `whenLoaded` closure parameter's `$category->only([...])`, a local
 variable holding a model — reaches `ReceiverMethodReturnResolver::attributeFilterRule()`, which builds the
@@ -38,6 +38,43 @@ Two handler branches step aside so the receiver rule can answer: `RelationCollec
 `$this->method()` arm declines `only`/`except` on a model-backed scope, and `VariableHandler`'s
 `$variable->method()` arm skips them. Both used to reflect the method on a model and floor the value at
 `only()`'s bare `array`.
+
+### `$this->resource` spells the same filter
+
+A resource forwards what it does not declare to `$this->resource`, so `$this->only([...])` and
+`$this->resource->only([...])` filter the same model. Every attribute filter publishes the same type under both
+spellings: in spread and value position, for `only()` and `except()`, on the resource's own model and on a
+single-model relation, `?->` included. Each position needs its own piece:
+
+- **Spread, own model.** `FiltersModelAttributes::filtersOwnModel()` accepts a `$this` receiver or
+  `InspectsAstNodes::isResourceFetch()`. Both `ResourceAstAnalyzer::analyzeReturnArray()`'s filter-spread branch
+  and `FiltersModelAttributes::analyzeThisAttributeFilter()` ask it, so `...$this->resource->only([...])` flattens
+  its keys and a whole `return $this->resource->only([...])` resolves too. Relaxing only the branch would not
+  be enough: the analyzer method behind it would still decline.
+- **Value, own model.** `$this->resource` is the model itself, not a member named `resource`, so
+  `RelationFilterHandler` does not claim `$this->resource->only([...])`. `RelationCollectionChainHandler`'s
+  `$this->anyProp->method()` branch steps aside for a literal key list on a model-backed scope, as its generic
+  `$this->method()` arm does. `ReceiverMethodReturnResolver::attributeFilterRule()` then answers both spellings.
+  Without a literal list the branch keeps the reflected `Record<string, unknown>`, which is also what
+  `$this->only($fields)` gets.
+- **Value, relation.** `RelationFilterHandler` matches `$this->resource->relation` wherever it matches
+  `$this->relation`. That keeps the proxy `?->` form ahead of `MethodChainHandler`, which would reflect `only()`
+  to `Record<string, unknown> | null`.
+
+`RelationFilterHandler` declines (`null`) whenever it cannot type a filter: the member is neither a relation nor
+a model-returning accessor, the key list is not literal, or the keys name nothing. It used to claim `unknown`,
+which stopped every later handler, including the receiver rules. `ProxyFilterDirectResource` and
+`ProxyFilterWrappedResource` in the workbench write the same six filters both ways, and `ResourceAstAnalyzerTest`
+asserts their published properties and imports are identical.
+
+Two shapes are deliberately left out of that pair:
+
+- **A many-relation filter.** `$this->comments->only([...])` is not an attribute filter.
+  `Illuminate\Database\Eloquent\Collection::only()` keeps the models whose **primary key** is in the list and
+  returns them whole. The `Pick<Comment, …>[]` this handler publishes for it is wrong, so an equivalence
+  fixture would make a wrong answer its target.
+- **Spreading a relation's filter.** `...$this->author->only([...])` flattens under neither spelling today, so a
+  cell for it would pass without proving anything.
 
 ### When a Pick reference is emitted
 

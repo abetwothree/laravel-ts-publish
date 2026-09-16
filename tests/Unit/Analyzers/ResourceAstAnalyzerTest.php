@@ -114,6 +114,8 @@ use Workbench\App\Http\Resources\PreserveKeysCollection;
 use Workbench\App\Http\Resources\PreserveKeysPropertyCollection;
 use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\ProfileResource;
+use Workbench\App\Http\Resources\ProxyFilterDirectResource;
+use Workbench\App\Http\Resources\ProxyFilterWrappedResource;
 use Workbench\App\Http\Resources\QuirkyResource;
 use Workbench\App\Http\Resources\ReflectedMethodChannelResource;
 use Workbench\App\Http\Resources\Registrar as BareRegistrarResource;
@@ -2324,6 +2326,31 @@ describe('ResourceAstAnalyzer with OnlyValueResource (only() off a relation rece
 
         expect($props['dynamic']['type'])->toBe('Record<string, unknown>')
             ->and($props['dynamic_category']['type'])->toBe('Record<string, unknown>');
+    });
+});
+
+describe('ResourceAstAnalyzer with ProxyFilterDirectResource and ProxyFilterWrappedResource (only()/except() through $this->resource)', function () {
+    test('the direct spelling publishes a typed Pick<> or column for every filter', function () {
+        $data = (new ResourceTransformer(ProxyFilterDirectResource::class))->data();
+
+        expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe([
+            'id' => 'number',
+            'title' => 'string',
+            'summary' => "Pick<Post, 'id' | 'title'>",
+            'without_body' => "Pick<Post, 'id' | 'title' | 'user_id' | 'status' | 'published_at' | 'rating' | 'category' | 'deleted_at' | 'created_at' | 'updated_at' | 'category_id' | 'visibility' | 'priority' | 'word_count' | 'reading_time_minutes' | 'featured_image_url' | 'is_pinned'>",
+            'author_brief' => "Pick<User, 'id' | 'name'>",
+            'author_rest' => "Pick<User, 'id' | 'name' | 'email_verified_at' | 'password' | 'options' | 'remember_token' | 'created_at' | 'updated_at' | 'role' | 'membership_level' | 'phone' | 'avatar' | 'bio' | 'settings' | 'last_login_at' | 'last_login_ip'>",
+            'author_maybe' => "Pick<User, 'id' | 'name'> | null",
+        ]);
+    });
+
+    test('$this->resource publishes exactly what $this publishes, apart from the interface name', function () {
+        $direct = (new ResourceTransformer(ProxyFilterDirectResource::class))->data();
+        $wrapped = (new ResourceTransformer(ProxyFilterWrappedResource::class))->data();
+
+        expect($wrapped->properties)->toBe($direct->properties)
+            ->and($wrapped->typeImports)->toBe($direct->typeImports)
+            ->and($wrapped->valueImports)->toBe($direct->valueImports);
     });
 });
 

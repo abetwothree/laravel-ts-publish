@@ -395,6 +395,9 @@ describe('RelationFilterHandler and ReceiverMethodCallHandler are inert against 
         // The Pick<> branch, both spellings, carrying the modelFqcn channel.
         ['$this->post->only([\'id\', \'title\'])', ['type' => "Pick<Post, 'id' | 'title'>", 'optional' => false, 'modelFqcn' => Post::class]],
         ['$this->post?->only([\'id\', \'title\'])', ['type' => "Pick<Post, 'id' | 'title'> | null", 'optional' => false, 'modelFqcn' => Post::class]],
+        // The same relation read through the $this->resource proxy.
+        ['$this->resource->post->only([\'id\', \'title\'])', ['type' => "Pick<Post, 'id' | 'title'>", 'optional' => false, 'modelFqcn' => Post::class]],
+        ['$this->resource->post?->only([\'id\', \'title\'])', ['type' => "Pick<Post, 'id' | 'title'> | null", 'optional' => false, 'modelFqcn' => Post::class]],
         // The inline branch: 'excerpt' is an accessor rather than a column, so relationFilterModelReference()
         // declines on both sides and each falls to resolveFilteredRelationType() — a different channel set.
         ['$this->post->only([\'id\', \'excerpt\'])', [

@@ -21,7 +21,6 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
-use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use ReflectionMethod;
 
@@ -51,13 +50,12 @@ final class RelationFilterHandler implements ExpressionHandler
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        // $this->relation->only([...]) or $this->relation?->only([...])
+        // $this->relation->only([...]), $this->relation?->only([...]), or either through $this->resource
         if (($expr instanceof MethodCall || $expr instanceof NullsafeMethodCall)
             && $expr->name instanceof Identifier
             && in_array($expr->name->toString(), $this->supportedAttributeFilters(), true)
             && $expr->var instanceof PropertyFetch
-            && $expr->var->var instanceof Variable
-            && $expr->var->var->name === 'this'
+            && $this->isModelMemberFetch($expr->var)
         ) {
             return $this->analyzeRelationFilter($expr, $scope);
         }
@@ -79,11 +77,21 @@ final class RelationFilterHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze `$this->relation->only([...])` or `$this->relation?->only([...])`.
+     * Whether a fetch reads a member of the resource's model: `$this->prop` or `$this->resource->prop`.
      *
-     * @return ValueExpressionResult
+     * `$this->resource` itself is the model, not a member named `resource`; its filters belong to the receiver rules.
      */
-    private function analyzeRelationFilter(MethodCall|NullsafeMethodCall $call, AnalysisScope $scope): array
+    private function isModelMemberFetch(PropertyFetch $fetch): bool
+    {
+        return ($this->isThisPropertyFetch($fetch) && ! $this->isResourceFetch($fetch)) || $this->isResourceFetch($fetch->var);
+    }
+
+    /**
+     * Analyze `$this->relation->only([...])` or `$this->relation?->only([...])`, declining when nothing types it.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function analyzeRelationFilter(MethodCall|NullsafeMethodCall $call, AnalysisScope $scope): ?array
     {
         $result = ValueResult::unknown();
 
@@ -91,7 +99,7 @@ final class RelationFilterHandler implements ExpressionHandler
         $methodName = $call->name instanceof Identifier ? $call->name->toString() : null;
 
         if ($methodName === null) {
-            return $result; // @codeCoverageIgnore
+            return null; // @codeCoverageIgnore
         }
 
         /** @var PropertyFetch $varExpr */
@@ -99,7 +107,7 @@ final class RelationFilterHandler implements ExpressionHandler
         $propName = $varExpr->name instanceof Identifier ? $varExpr->name->toString() : null;
 
         if ($propName === null) {
-            return $result; // @codeCoverageIgnore
+            return null; // @codeCoverageIgnore
         }
 
         $relationInfo = $this->resolveModelRelationTypeInfo($propName, $scope);
@@ -110,13 +118,13 @@ final class RelationFilterHandler implements ExpressionHandler
             $modelFqcns = $this->resolveAccessorModelFqcns($propName, $scope);
 
             if ($modelFqcns === []) {
-                return $result; // @codeCoverageIgnore
+                return null;
             }
 
             $keys = $this->extractFilterKeys($call, new ReflectionMethod(Model::class, $methodName));
 
             if ($keys === null || $keys === []) {
-                return $result; // @codeCoverageIgnore
+                return null; // @codeCoverageIgnore
             }
 
             $include = $methodName === 'only';
@@ -169,7 +177,7 @@ final class RelationFilterHandler implements ExpressionHandler
             }
 
             if ($inlineTypes === []) {
-                return $result; // @codeCoverageIgnore
+                return null; // @codeCoverageIgnore
             }
 
             $inlineType = implode(' | ', $inlineTypes);
@@ -194,7 +202,7 @@ final class RelationFilterHandler implements ExpressionHandler
         $keys = $this->extractFilterKeys($call, new ReflectionMethod($receiver, $methodName));
 
         if ($keys === null || $keys === []) {
-            return $result; // @codeCoverageIgnore
+            return null; // @codeCoverageIgnore
         }
 
         $include = $methodName === 'only';
@@ -222,14 +230,19 @@ final class RelationFilterHandler implements ExpressionHandler
         }
 
         $filterResult = $this->resolveFilteredRelationType($modelFqcn, $keys, $include);
+
+        if ($filterResult['type'] === 'unknown') {
+            return null;
+        }
+
         $inlineType = $filterResult['type'];
 
         // Wrap in array suffix when the relation is a *-many type (HasMany, BelongsToMany, etc.)
-        if (str_ends_with($relationInfo['type'], '[]') && $inlineType !== 'unknown') {
+        if (str_ends_with($relationInfo['type'], '[]')) {
             $inlineType .= '[]';
         }
 
-        if ($nullable && $inlineType !== 'unknown') {
+        if ($nullable) {
             $inlineType .= ' | null';
         }
 

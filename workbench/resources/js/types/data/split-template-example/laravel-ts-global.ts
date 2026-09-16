@@ -3391,6 +3391,33 @@ declare global {
             meta_info: unknown[] | null;
             tags: unknown[] | null;
         }
+        /**
+         * only() and except() written against $this, in spread and value position, on the resource's own model and
+         * on a single-model relation. ProxyFilterWrappedResource spells every call through $this->resource and must
+         * publish exactly this shape.
+         */
+        export interface ProxyFilterDirectResource {
+            id: number;
+            title: string;
+            summary: Pick<app.models.Post, 'id' | 'title'>;
+            without_body: Pick<app.models.Post, 'id' | 'title' | 'user_id' | 'status' | 'published_at' | 'rating' | 'category' | 'deleted_at' | 'created_at' | 'updated_at' | 'category_id' | 'visibility' | 'priority' | 'word_count' | 'reading_time_minutes' | 'featured_image_url' | 'is_pinned'>;
+            author_brief: Pick<app.models.User, 'id' | 'name'>;
+            author_rest: Pick<app.models.User, 'id' | 'name' | 'email_verified_at' | 'password' | 'options' | 'remember_token' | 'created_at' | 'updated_at' | 'role' | 'membership_level' | 'phone' | 'avatar' | 'bio' | 'settings' | 'last_login_at' | 'last_login_ip'>;
+            author_maybe: Pick<app.models.User, 'id' | 'name'> | null;
+        }
+        /**
+         * ProxyFilterDirectResource with every only() and except() spelled through $this->resource. The resource
+         * forwards to the same model either way, so the two must publish the same shape.
+         */
+        export interface ProxyFilterWrappedResource {
+            id: number;
+            title: string;
+            summary: Pick<app.models.Post, 'id' | 'title'>;
+            without_body: Pick<app.models.Post, 'id' | 'title' | 'user_id' | 'status' | 'published_at' | 'rating' | 'category' | 'deleted_at' | 'created_at' | 'updated_at' | 'category_id' | 'visibility' | 'priority' | 'word_count' | 'reading_time_minutes' | 'featured_image_url' | 'is_pinned'>;
+            author_brief: Pick<app.models.User, 'id' | 'name'>;
+            author_rest: Pick<app.models.User, 'id' | 'name' | 'email_verified_at' | 'password' | 'options' | 'remember_token' | 'created_at' | 'updated_at' | 'role' | 'membership_level' | 'phone' | 'avatar' | 'bio' | 'settings' | 'last_login_at' | 'last_login_ip'>;
+            author_maybe: Pick<app.models.User, 'id' | 'name'> | null;
+        }
         /** Edge-case resource exercising unusual but valid patterns for AST analyzer guard clauses. */
         export interface QuirkyResource {
             id: number;

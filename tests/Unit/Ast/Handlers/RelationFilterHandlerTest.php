@@ -127,6 +127,41 @@ it('relation only() still resolves a named accessor and a named relation, unlike
     ]);
 });
 
+it('resolves $this->resource->relation->only([...]) exactly as $this->relation->only([...])', function () {
+    $expr = new MethodCall(
+        new PropertyFetch(new PropertyFetch(new Variable('this'), 'resource'), 'post'),
+        'only',
+        [new Arg(new Array_([
+            new ArrayItem(new String_('id')),
+            new ArrayItem(new String_('title')),
+        ]))],
+    );
+    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
+
+    $result = (new RelationFilterHandler)->resolve($expr, $scope, relationFilterHandlerThrowingEngine());
+
+    expect($result)->toBe(['type' => "Pick<Post, 'id' | 'title'>", 'optional' => false, 'modelFqcn' => Post::class]);
+});
+
+// Each of these used to be claimed as `unknown`, which kept the receiver rules and every later handler from answering.
+it('declines a filter it cannot type so a later handler gets its turn', function (Expr $receiver, array $keys) {
+    $expr = new MethodCall(
+        $receiver,
+        'only',
+        [new Arg(new Array_(array_map(fn (string $key): ArrayItem => new ArrayItem(new String_($key)), $keys)))],
+    );
+    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
+
+    $result = (new RelationFilterHandler)->resolve($expr, $scope, relationFilterHandlerThrowingEngine());
+
+    expect($result)->toBeNull();
+})->with([
+    // The proxy is the resource's own model, not a member named `resource`.
+    '$this->resource' => [fn (): Expr => new PropertyFetch(new Variable('this'), 'resource'), ['id', 'content']],
+    'neither a relation nor an accessor' => [fn (): Expr => new PropertyFetch(new Variable('this'), 'not_a_member'), ['id']],
+    'a relation whose keys name nothing' => [fn (): Expr => new PropertyFetch(new Variable('this'), 'post'), ['not_a_key']],
+]);
+
 it('declines a method call whose name is not only/except', function () {
     $expr = new MethodCall(
         new PropertyFetch(new Variable('this'), 'post'),

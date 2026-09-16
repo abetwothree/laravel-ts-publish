@@ -108,6 +108,8 @@ export * from './preserve-keys-team-resource';
 export * from './product-resource';
 export * from './profile-resource';
 export * from './property-docblock-edge-resource';
+export * from './proxy-filter-direct-resource';
+export * from './proxy-filter-wrapped-resource';
 export * from './quirky-resource';
 export * from './receiver-method-resource';
 export * from './receiver-property-resource';

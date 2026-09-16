@@ -62,6 +62,11 @@ The one asymmetry is deliberate: a property the resource declares itself answers
 spelling, because PHP reads a declared property before `__get()` runs, and `$this->resource->prop` always
 reads the model.
 
+Attribute filters follow the same rule. `$this->resource->only([...])` publishes what `$this->only([...])`
+publishes, and `$this->resource->author?->except([...])` what `$this->author?->except([...])` does, in spread and
+value position alike. The pieces that make that hold are in
+[ResourceAstAnalyzer § `$this->resource` spells the same filter](resource-ast-analyzer.md#this-resource-spells-the-same-filter).
+
 ### `self` and `parent`
 
 PHP resolves `self` and `parent` against the class that declares the method body, not the class the method
@@ -316,10 +321,14 @@ that do not serialize as reflected.
 
 ### Which handlers step aside
 
-The handler sits last before `KnownMethodRuleHandler`, so every more specific handler answers first. Three
-earlier claimants used to floor these calls at `unknown`, and now decline instead:
+The handler sits last before `KnownMethodRuleHandler`, so every more specific handler answers first. Four
+earlier claimants used to floor or blur these calls, and now decline instead:
 
 - `RelationCollectionChainHandler`'s `$this->anyProp->method()` branch declines when it would answer `unknown`.
+  It also steps aside for `$this->resource->only([...])` or `->except([...])` with a literal key list on a
+  model-backed scope, where it would reflect the vague `Record<string, unknown>` on the scope model.
+- `RelationFilterHandler` does not claim a filter on `$this->resource` itself, and declines a relation filter it
+  cannot type. It used to claim both as `unknown`.
 - `MethodChainHandler` declines when its answer is only `unknown` once `null` arms are removed. A `static|null`
   docblock such as `Model::fresh()`'s reflects to `unknown | null`, and flooring there made
   `$this->author?->fresh()` disagree with `$this->author->fresh()`; both are now `User | null`. It also declines

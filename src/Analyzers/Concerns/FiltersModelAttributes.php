@@ -10,7 +10,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr\MethodCall;
-use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use ReflectionMethod;
 
@@ -23,20 +22,15 @@ trait FiltersModelAttributes
     use FiltersAttributeKeys;
 
     /**
-     * Route a $this->only([...]) or $this->except([...]) call to the appropriate handler.
+     * Route a $this->only([...]) or $this->except([...]) call, or the same call on $this->resource, to its handler.
      */
     protected function analyzeThisAttributeFilter(MethodCall $call): ?ResourceAnalysis
     {
-        if (! ($call->var instanceof Variable && $call->var->name === 'this' && $call->name instanceof Identifier)) {
+        if (! $this->filtersOwnModel($call) || ! $call->name instanceof Identifier) {
             return null;
         }
 
         $methodName = $call->name->toString();
-
-        if (! in_array($methodName, $this->supportedAttributeFilters(), true)) {
-            return null; // @codeCoverageIgnore
-        }
-
         $keys = $this->extractFilterKeys($call, new ReflectionMethod(Model::class, $methodName));
 
         if ($keys === null || $keys === []) {
@@ -48,6 +42,18 @@ trait FiltersModelAttributes
             'except' => $this->analyzeExceptFilter($keys),
             default => null, // @codeCoverageIgnore
         };
+    }
+
+    /**
+     * Whether a call is only()/except() on the resource's own model, spelled `$this->…` or `$this->resource->…`.
+     *
+     * A resource forwards `$this->only()` to `$this->resource`, so both spellings filter the same model.
+     */
+    protected function filtersOwnModel(MethodCall $call): bool
+    {
+        return ($this->hasThisReceiver($call) || $this->isResourceFetch($call->var))
+            && $call->name instanceof Identifier
+            && in_array($call->name->toString(), $this->supportedAttributeFilters(), true);
     }
 
     /**

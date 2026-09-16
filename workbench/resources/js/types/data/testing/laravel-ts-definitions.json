@@ -13082,6 +13082,86 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\ProxyFilterDirectResource": {
+            "name": "ProxyFilterDirectResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "title",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "summary",
+                    "type": "Pick<Post, 'id' | 'title'>",
+                    "optional": false
+                },
+                {
+                    "name": "without_body",
+                    "type": "Pick<Post, 'id' | 'title' | 'user_id' | 'status' | 'published_at' | 'rating' | 'category' | 'deleted_at' | 'created_at' | 'updated_at' | 'category_id' | 'visibility' | 'priority' | 'word_count' | 'reading_time_minutes' | 'featured_image_url' | 'is_pinned'>",
+                    "optional": false
+                },
+                {
+                    "name": "author_brief",
+                    "type": "Pick<User, 'id' | 'name'>",
+                    "optional": false
+                },
+                {
+                    "name": "author_rest",
+                    "type": "Pick<User, 'id' | 'name' | 'email_verified_at' | 'password' | 'options' | 'remember_token' | 'created_at' | 'updated_at' | 'role' | 'membership_level' | 'phone' | 'avatar' | 'bio' | 'settings' | 'last_login_at' | 'last_login_ip'>",
+                    "optional": false
+                },
+                {
+                    "name": "author_maybe",
+                    "type": "Pick<User, 'id' | 'name'> | null",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\ProxyFilterWrappedResource": {
+            "name": "ProxyFilterWrappedResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "title",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "summary",
+                    "type": "Pick<Post, 'id' | 'title'>",
+                    "optional": false
+                },
+                {
+                    "name": "without_body",
+                    "type": "Pick<Post, 'id' | 'title' | 'user_id' | 'status' | 'published_at' | 'rating' | 'category' | 'deleted_at' | 'created_at' | 'updated_at' | 'category_id' | 'visibility' | 'priority' | 'word_count' | 'reading_time_minutes' | 'featured_image_url' | 'is_pinned'>",
+                    "optional": false
+                },
+                {
+                    "name": "author_brief",
+                    "type": "Pick<User, 'id' | 'name'>",
+                    "optional": false
+                },
+                {
+                    "name": "author_rest",
+                    "type": "Pick<User, 'id' | 'name' | 'email_verified_at' | 'password' | 'options' | 'remember_token' | 'created_at' | 'updated_at' | 'role' | 'membership_level' | 'phone' | 'avatar' | 'bio' | 'settings' | 'last_login_at' | 'last_login_ip'>",
+                    "optional": false
+                },
+                {
+                    "name": "author_maybe",
+                    "type": "Pick<User, 'id' | 'name'> | null",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\QuirkyResource": {
             "name": "QuirkyResource",
             "properties": [
