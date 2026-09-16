@@ -93,16 +93,21 @@ test('a method body reading an accessor whose getter filters keeps its shape', f
     'a docblock-typed getter still drops the shape' => ['readOwner', 'unknown[]'],
 ]);
 
-// Without imports a to-many filter spells `unknown[]`. A token-free annotation or `@property` tag that keeps more structure
-// still types the reader, as it did before the getter body typed the accessor; one naming a class never does.
-test('a vague spelling without imports gives way to a more structured token-free annotation', function (string $method, string $expected) {
+// Without imports a to-many filter spells `unknown[]`. As when the body itself is vague, a fallback annotation or tag
+// types the reader unless it is `unknown` or names a class, which would cost the reader its shape.
+test('a vague spelling without imports gives way to a fallback that is not unknown and names no class', function (string $method, string $expected) {
     expect(resolve(MethodReturnTypeResolver::class)->resolve(FilteringAccessorModel::class, $method)['type'] ?? null)
         ->toBe($expected);
 })->with([
     'a list docblock' => ['readDocRecords', '{ v: Record<string, unknown>[]; id: number }'],
     'a nullable list docblock through ?->' => ['readDocRecordsNullsafe', '{ v: Record<string, unknown>[] | null; id: number }'],
     'a list docblock over runtime keys' => ['readDocRecordsRuntime', '{ v: Record<string, unknown>[]; id: number }'],
-    'a keyed docblock no more structured than the list' => ['readDocKeyed', '{ v: unknown[]; id: number }'],
+    'a nested list docblock over a nested vague spelling' => ['readDocNestedRecords', '{ v: Record<string, unknown>[][]; id: number }'],
+    // The value is a list, but the reader trusts the annotation's keyed object, as it did before the getter body typed
+    // the accessor: the waterfall never checks an annotation against the body.
+    'a keyed docblock' => ['readDocKeyed', '{ v: Record<string, unknown>; id: number }'],
+    'a docblock with an unknown arm' => ['readDocIntMixed', '{ v: number | unknown; id: number }'],
+    'a keyed-or-list docblock' => ['readDocRecordOrList', '{ v: Record<string, unknown> | unknown[]; id: number }'],
     'a docblock naming a class' => ['readDocClassList', '{ v: unknown[]; id: number }'],
     'no annotation' => ['readCommentList', '{ v: unknown[]; id: number }'],
     'a token-free tag over a vague signature' => ['readSignedTagRows', '{ v: { id: number }[]; id: number }'],

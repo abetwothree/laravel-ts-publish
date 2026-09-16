@@ -64,6 +64,10 @@ describe('AccessorBodyAnalyzer for a getter a method body reads without imports'
         'doc_records' => ['Comment[]', [Comment::class]],
         'doc_records_nullsafe' => ['Comment[] | null', [Comment::class]],
         'doc_class_list' => ['Comment[]', [Comment::class]],
+        'doc_keyed' => ['Comment[]', [Comment::class]],
+        'doc_int_mixed' => ['Comment[]', [Comment::class]],
+        'doc_record_or_list' => ['Comment[]', [Comment::class]],
+        'doc_nested_records' => ['Comment[][]', []],
         'signed_tag_rows' => ['Comment[]', [Comment::class]],
         'legacy_tag_rows' => ['Comment[]', [Comment::class]],
         'loose_picks' => ["{ v: Pick<UntypedFilterOverrideModel, 'id' | 'title'>; id: number }", [UntypedFilterOverrideModel::class]],
@@ -74,7 +78,8 @@ describe('AccessorBodyAnalyzer for a getter a method body reads without imports'
     $readers = [
         'readOwnPicks', 'readOwnRuntime', 'readOwnNullsafe', 'readAuthorPicks', 'readCommentPicks', 'readCommentList',
         'readTaggedFields', 'readLoosePicks', 'readCounterpartPicks', 'readLoop', 'readDocRecords', 'readDocRecordsNullsafe',
-        'readDocClassList', 'readSignedTagRows', 'readLegacyTagRows',
+        'readDocClassList', 'readSignedTagRows', 'readLegacyTagRows', 'readDocKeyed', 'readDocIntMixed', 'readDocRecordOrList',
+        'readDocNestedRecords',
     ];
 
     // The model file publishes the analysis that keeps imports; a method body's import-less read must not replace it.

@@ -85,14 +85,16 @@ would written in the method body itself: the inline shape, where a member naming
 
 `Concerns\ResolvesAccessorType::resolveAccessorBodyType()` keeps the waterfall step the model file took. A spelling
 without imports can be vague where the published one is not: a getter returning `$this->comments->only([1, 2])`
-publishes `Comment[]`, and `unknown[]` without imports. That vague spelling still wins whenever the analysis with
-imports is non-vague, so the reader gets `unknown[]` instead of falling through to an `unknown` signature. The one
-exception is a vague annotation that names no class and keeps more structure: `@return Attribute<list<array<string,
-mixed>>, never>` gives the reader `Record<string, unknown>[]`. `vagueTypeStructure()` ranks the two spellings,
-`unknown` below a container of unknowns such as `unknown[]` or `Record<string, unknown>`, below anything nesting more;
-a tie keeps the body's spelling, and an annotation naming a class never competes, since it would cost the reader its
-shape. When both analyses are vague, as for a runtime key list returned whole, both fall through, and the reader gets
-`unknown`, as the model file does.
+publishes `Comment[]`, and `unknown[]` without imports. The fallback is the annotation the waterfall returns when the
+body step declines: the closure signature unless it is `unknown`, else the `Attribute<>` docblock, or an old-style
+getter's own return type or `@return` docblock, `unknown` when it has none. Where the analysis with imports is
+non-vague, the vague spelling wins over just two fallbacks: one that is `unknown`, so the reader gets `unknown[]`
+instead, and one that names a class the reader cannot import (`TsTypeString::shapeValueHasUnimportableToken()`), which
+would cost the reader its whole shape. Any other fallback wins, exactly as it wins whenever the body is vague, and it
+is never checked against the body: `Attribute<list<array<string, mixed>>, never>` gives the reader
+`Record<string, unknown>[]`, and `Attribute<array<string, mixed>, never>` gives it `Record<string, unknown>` even over
+a filter that returns a list. When both analyses are vague, as for a runtime key list returned whole, both fall
+through, and the reader gets the fallback the model file publishes, `unknown` when the getter has no annotation.
 
 `ModelAttributeResolver::refineAccessorType()` then refines a vague spelling from an `@property` tag. Without imports
 it skips a tag naming a class only where the published type is not vague: the tag never refines `Comment[]`, so it

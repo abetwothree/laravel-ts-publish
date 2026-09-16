@@ -377,9 +377,10 @@ A filter in the getter of an accessor the body reads is covered too. A model att
 passes the scope's flag to `ModelAttributeResolver::resolveAttribute()`: `$this->accessor` and its camelCase alias, a
 relation chain, a local variable or closure parameter holding a model, a key that `only()` selects, and an appended
 accessor of a spread or filtered model. One read keeps imports:
-`ResolvesEnumPropertyArgTypes::resolveEnumFromPropertyArg()` resolves `EnumResource::make($author->role)` inside a
-`whenLoaded()` closure from the attribute's first enum FQCN, a channel a spelling without imports can lose, and the
-value it builds names an enum the body fallback drops anyway. When the accessor's type comes from its getter body,
+`ResolvesEnumPropertyArgTypes::resolveEnumFromPropertyArg()` resolves `EnumResource::make($author->role)` on a closure
+parameter bound to a model, inside a `whenLoaded()` closure or a collection's `map()` closure, from the attribute's
+first enum FQCN, a channel a spelling without imports can lose, and the value it builds names an enum the body
+fallback drops anyway. When the accessor's type comes from its getter body,
 `AccessorBodyAnalyzer` analyzes that getter without imports as well, so its filters publish exactly what they would
 written in the method body, and the method keeps its shape. The model file and every resource still publish the getter's own analysis, with its
 `Pick<User, …>` and `Comment[]`; see

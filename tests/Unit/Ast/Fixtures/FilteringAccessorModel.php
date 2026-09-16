@@ -117,6 +117,24 @@ final class FilteringAccessorModel extends Model
         return Attribute::get(fn () => $this->comments->only([1, 2]));
     }
 
+    /** @return Attribute<int|mixed, never> */
+    protected function docIntMixed(): Attribute
+    {
+        return Attribute::get(fn () => $this->comments->only([1, 2]));
+    }
+
+    /** @return Attribute<array<string, mixed>|list<mixed>, never> */
+    protected function docRecordOrList(): Attribute
+    {
+        return Attribute::get(fn () => $this->comments->only([1, 2]));
+    }
+
+    /** @return Attribute<list<list<array<string, mixed>>>, never> */
+    protected function docNestedRecords(): Attribute
+    {
+        return Attribute::get(fn () => $this->twins->map(fn (FilteringAccessorModel $twin) => $twin->comment_list));
+    }
+
     /** @return Attribute<array<int, Comment|mixed>, never> */
     protected function docClassList(): Attribute
     {
@@ -315,6 +333,24 @@ final class FilteringAccessorModel extends Model
     public function readDocKeyed(): array
     {
         return ['v' => $this->doc_keyed, 'id' => $this->id];
+    }
+
+    /** @return array<string, mixed> */
+    public function readDocIntMixed(): array
+    {
+        return ['v' => $this->doc_int_mixed, 'id' => $this->id];
+    }
+
+    /** @return array<string, mixed> */
+    public function readDocRecordOrList(): array
+    {
+        return ['v' => $this->doc_record_or_list, 'id' => $this->id];
+    }
+
+    /** @return array<string, mixed> */
+    public function readDocNestedRecords(): array
+    {
+        return ['v' => $this->doc_nested_records, 'id' => $this->id];
     }
 
     /** @return array<string, mixed> */
