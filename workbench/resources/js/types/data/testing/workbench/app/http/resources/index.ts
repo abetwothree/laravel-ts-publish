@@ -151,3 +151,4 @@ export * from './var-return-spread-resource';
 export * from './venue-resource';
 export * from './viewer-permissions-resource';
 export * from './warehouse-resource';
+export * from './when-has-value-resource';

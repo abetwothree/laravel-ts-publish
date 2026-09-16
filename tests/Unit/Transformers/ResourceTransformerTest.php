@@ -2301,9 +2301,9 @@ describe('ResourceTransformer with EnumCollectionResource — EnumResource::coll
             ->toBe('{ week_days: AsEnum<typeof WeekDays>[] | null }');
     });
 
-    // whenHas() never analyzes its value argument for a type, but IS checked for EnumResource
-    // shape, so the wrapped first-class-callable value still gets the AsEnum rewrite — this is
-    // the real reported bug pattern: $this->whenHas('kinds', EnumResource::collection(...)).
+    // whenHas() declines to type from an EnumResource-wrapped value, so the wrapped first-class-
+    // callable value still gets the AsEnum rewrite — this is the real reported bug pattern:
+    // $this->whenHas('kinds', EnumResource::collection(...)).
     test('first-class callable inside whenHas() rewrites to AsEnum<typeof WeekDays>[] | null', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(EnumCollectionResource::class))->data();

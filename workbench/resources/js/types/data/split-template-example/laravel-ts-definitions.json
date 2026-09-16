@@ -15289,6 +15289,41 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\WhenHasValueResource": {
+            "name": "WhenHasValueResource",
+            "properties": [
+                {
+                    "name": "has_title",
+                    "type": "boolean",
+                    "optional": true
+                },
+                {
+                    "name": "title_length",
+                    "type": "number",
+                    "optional": true
+                },
+                {
+                    "name": "title_passthrough",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "appended_label",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "comments_flag",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "title_unresolvable",
+                    "type": "string",
+                    "optional": true
+                }
+            ]
+        },
         "Workbench\\Blog\\Http\\Resources\\ApiArticleResource": {
             "name": "ApiArticleResource",
             "properties": [

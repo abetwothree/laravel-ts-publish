@@ -28,6 +28,7 @@ use Workbench\App\Http\Resources\ConditionalDefaultsResource;
 use Workbench\App\Http\Resources\ReviewResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Http\Resources\VenueResource;
+use Workbench\App\Http\Resources\WhenHasValueResource;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Artist;
 use Workbench\App\Models\ArtistReview;
@@ -511,6 +512,32 @@ describe('positional null value arm', function () {
         expect($types['has_with_null'])->toBe('number | null')
             ->and($types['appended_with_null'])->toBe('number | null')
             ->and($types['exists_with_default'])->toBe('string | null');
+    });
+});
+
+// Laravel ends all three in value($value, …), so a resolvable value argument — not the named
+// attribute — is what the property carries.
+describe('value argument types the arm', function () {
+    test('whenHas, whenAppended and whenExistsLoaded type from the value Laravel returns', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(WhenHasValueResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+        expect($props->map->type->all())->toMatchArray([
+            'has_title' => 'boolean',
+            'title_length' => 'number',
+            'title_passthrough' => 'string',
+            'appended_label' => 'string',
+            'comments_flag' => 'string',
+        ])->and($props->every(fn (array $p): bool => $p['optional']))->toBeTrue();
+    });
+
+    // The fallback the value rule must never break: an unresolvable value leaves the attribute's own
+    // type standing rather than publishing a fresh `unknown`. json_decode() returns mixed, so the
+    // closure body resolves to unknown and `title`'s own `string` has to survive.
+    test('an unresolvable value keeps the named attribute type instead of becoming unknown', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(WhenHasValueResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+        expect($props['title_unresolvable']['type'])->toBe('string')
+            ->and($props['title_unresolvable']['optional'])->toBeTrue();
     });
 });
 

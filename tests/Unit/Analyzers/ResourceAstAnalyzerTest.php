@@ -792,9 +792,9 @@ describe('ResourceAstAnalyzer with EnumCollectionResource (EnumResource::collect
             ->toBe('{ week_days: AsEnum<typeof WeekDays>[] | null }');
     });
 
-    // whenHas() never resolves its value argument's own type — the attribute supplies type and
-    // array-ness — but IS checked for EnumResource::make()/::collection() shape (isEnumResourceWrapCall()),
-    // so this first-class-callable value still promotes to the 'enumFqcn' (wrapped) channel.
+    // An EnumResource::make()/::collection() value is the one shape whenHas() declines to type from
+    // (isEnumResourceWrapCall()): the attribute goes on supplying type and array-ness, and this
+    // first-class-callable value promotes to the 'enumFqcn' (wrapped) channel.
     test('first-class callable inside whenHas() promotes to the enumFqcn (wrapped) channel', function () {
         expect($this->props['week_days_when_has']['type'])->toBe('WeekDaysType[] | null')
             ->and($this->analysis->enumResources)->toHaveKey('week_days_when_has')

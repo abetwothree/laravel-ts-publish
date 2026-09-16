@@ -235,6 +235,7 @@
     "app\/Http\/Resources\/VenueResource.php",
     "app\/Http\/Resources\/ViewerPermissionsResource.php",
     "app\/Http\/Resources\/WarehouseResource.php",
+    "app\/Http\/Resources\/WhenHasValueResource.php",
     "app\/Models\/Activity.php",
     "app\/Models\/Address.php",
     "app\/Models\/Admin\/Store.php",

@@ -40,9 +40,9 @@ class EnumCollectionResource extends JsonResource
                 'week_days' => EnumResource::collection($this->week_days),
             ],
 
-            // whenHas() never resolves its value argument for its own type — it re-derives the
-            // type from the named attribute directly — but IS checked for EnumResource shape, so
-            // this first-class-callable value still gets the AsEnum rewrite, not the raw type.
+            // An EnumResource wrap is the one value shape whenHas() declines to type from: the named
+            // attribute keeps supplying the type, and this first-class-callable value still gets the
+            // AsEnum rewrite rather than the raw type.
             'week_days_when_has' => $this->whenHas('week_days', EnumResource::collection(...)),
 
             // An explicit default arm unions in an extra type the old AsEnum<typeof X>[] rebuild

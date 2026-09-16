@@ -1122,20 +1122,36 @@ through. Negating which branch of an `if` runs never changes what either branch'
 `analyzeMergeExpression()` treats `mergeUnless` exactly like `mergeWhen()` (array/closure argument at index
 1, always optional). Neither needed a new method.
 
-### `whenAppended()` types from the named attribute, like `whenHas()`
+### `whenHas()`, `whenAppended()` and `whenExistsLoaded()` type from their value argument
 
-`whenAppended('attribute', $value, $default)` mirrors `ConditionalMethodHandler::analyzeWhenHas()`:
-`analyzeWhenAppended()` resolves the accessor's type via its own `resolveModelAttributeTypeInfo()` helper
-from the attribute name alone, never from analyzing `$value`. That helper is a `ConditionalMethodHandler`-
-private duplicate of the shared trait method of the same name, calling `ModelAttributeResolver` directly
-with `$scope->modelClass` rather than the trait's cached-property gate (see its own docblock). This matters
-because Laravel's `whenAppended()` does **not** forward the resolved value
-into a `$value` closure the way `whenHas()`/`whenLoaded()`/`whenCounted()`/`whenAggregated()`/
-`whenExistsLoaded()` do — it calls `value($value)` with zero arguments, not `value($value, $resolved)` — so
-a `$value` closure parameter has nothing bound to it in Laravel's own implementation. Typing from the
-attribute name sidesteps that distinction entirely. The *default* at index 2 is still analyzed and unioned
-in by `applyConditionalDefault()` — it is a plain eagerly-evaluated argument, not a closure needing a
-binding.
+All three end in a `value(...)` call, so the value argument — not the named attribute — is what the
+property carries whenever the engine can type it. In Laravel's `ConditionallyLoadsAttributes`, `whenHas()`
+returns `value($value, $this->resource->{$attribute})`, `whenAppended()` returns `value($value)`, and
+`whenExistsLoaded()` returns `value($value, $this->resource->{$attribute})` — its `$attribute` being the
+relationship snaked and finished with `_exists`. So `whenHas('priority', fn ($p): string => 'x')` is
+`string`, not the attribute's own enum type: typing that from the attribute was wrong, not merely vague.
+
+`ConditionalMethodHandler::resolveValueArgument()` is the single helper all three call. It binds a
+closure's first parameter to the expression Laravel forwards — `$this->{attribute}` for `whenHas()`,
+`$this->{relation}_exists` for `whenExistsLoaded()`, and nothing at all for `whenAppended()`, which
+invokes its value with zero arguments — resolves the value under that binding, then restores the binding
+map in a `finally`, per [Writing a scope binding](./ast-engine.md#writing-a-scope-binding).
+
+**The named attribute still answers in three cases**, each a `null` return from that helper:
+
+- a skipped or literal-`null` value (see [below](#a-null-value-makes-the-arm-null-not-the-attribute-or-the-flag));
+- an `EnumResource::make()/::collection()` wrap, declined deliberately so the attribute keeps supplying
+  type and array-ness while the wrap's shape decides only whether the enum channel is `enumFqcn`
+  (wrapped — gets the AsEnum rewrite) or `directEnumFqcn` (read as-is);
+- a value the engine resolves to `unknown`.
+
+That last case is the one worth stating plainly: an unresolvable value leaves the attribute's own type
+standing rather than trading a real type for a fresh `unknown`.
+`WhenHasValueResource::$title_unresolvable` — `whenHas('title', fn ($title) => json_decode($title))`,
+whose body is `mixed` and so resolves to `unknown` — is pinned as `string`, the column's own type.
+
+The *default* argument is analyzed and unioned in by `applyConditionalDefault()` either way: it is a plain
+eagerly-evaluated argument, not a closure needing a binding.
 
 ### `whenExistsLoaded()` resolves to the generated `{relation}_exists` flag — and must agree with `ModelTransformer`
 
@@ -1144,8 +1160,11 @@ binding.
 properties (the `_exists` suffix → `boolean` fallback, mirroring `_count` → `number`).
 `ConditionalMethodHandler::analyzeWhenExistsLoaded()` emits that same `boolean`, deliberately: a resource and the model it wraps
 disagreeing about the type of the same underlying flag is exactly the kind of divergence this package
-exists to prevent. An explicit default unions its own type alongside that `boolean` — but only when a real
-`$value` is passed too, per the next section.
+exists to prevent. That `boolean` is what a bare `whenExistsLoaded('relation')` carries, and what the
+handler falls back to when a value argument cannot be typed; a value that *can* be typed wins, per
+[above](#whenhas-whenappended-and-whenexistsloaded-type-from-their-value-argument) — and the flag is
+also what a value closure's first parameter binds to. An explicit default unions its own type alongside
+whichever of the two answered — but only when a real `$value` is passed too, per the next section.
 
 ### A null `$value` makes the arm `null`, not the attribute or the flag
 
@@ -1153,9 +1172,10 @@ exists to prevent. An explicit default unions its own type alongside that `boole
 substitutes the attribute for an unhelpful `$value` the way `whenLoaded()` and `whenCounted()` do. So a
 `$value` that is skipped by a later named argument, or written as a literal `null`, leaves Laravel
 evaluating `value(null, $attribute)` — or, for `whenAppended()`, `value(null)` with no extra argument, per
-[above](#whenappended-types-from-the-named-attribute-like-whenhas). Both are `null`.
-`ConditionalMethodHandler::valueSkipped()` recognises both spellings and the three handlers emit a `null`
-arm for them, leaving only the default to carry a type:
+[above](#whenhas-whenappended-and-whenexistsloaded-type-from-their-value-argument). Both are `null`.
+`ConditionalMethodHandler::valueSkipped()` recognises both spellings, and each handler checks it *before*
+resolving the value argument, so a `null` arm is never mistaken for a value worth typing. The three
+handlers emit that `null` arm, leaving only the default to carry a type:
 `whenExistsLoaded('user', null, 'absent')` is `string | null`, never `boolean | string`. A genuinely
 absent `$value` is different again — Laravel's one-argument branch returns the attribute itself, so
 `whenExistsLoaded('user')` stays an optional `boolean`.

@@ -16,12 +16,14 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\BinaryOp;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
@@ -207,12 +209,13 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze $this->whenHas('attribute') — the attribute name is the first arg string.
+     * Analyze $this->whenHas('attribute') — Laravel returns `value($value, $this->resource->{$attribute})`.
      *
-     * The value arg (2nd) is never evaluated for its own type: Laravel invokes it with the named
-     * attribute's own value, so the attribute is authoritative for type and array-ness. It IS
-     * checked for EnumResource::make()/::collection() shape, since that decides whether the enum
-     * channel is 'enumFqcn' (wrapped — gets the AsEnum rewrite) or 'directEnumFqcn' (read as-is).
+     * A resolvable value argument is therefore what the property carries, with a closure's first
+     * parameter bound to the named attribute. The attribute itself answers only when no value can:
+     * a skipped one, an EnumResource::make()/::collection() wrap — whose shape decides whether the
+     * enum channel is 'enumFqcn' (wrapped — gets the AsEnum rewrite) or 'directEnumFqcn' (read as-is)
+     * — or a value the engine cannot type.
      *
      * @return ValueExpressionResult
      */
@@ -231,6 +234,12 @@ final class ConditionalMethodHandler implements ExpressionHandler
             return $this->applyConditionalDefault(['type' => 'null', 'optional' => false], $args, $scope, $engine);
         }
 
+        $fromValue = $this->resolveValueArgument($args, new PropertyFetch(new Variable('this'), $attribute->value), $scope, $engine);
+
+        if ($fromValue !== null) {
+            return $this->applyConditionalDefault($fromValue, $args, $scope, $engine);
+        }
+
         $info = $this->resolveModelAttributeTypeInfo($attribute->value, $scope);
         $result = ['type' => $info['type'], 'optional' => false];
 
@@ -244,11 +253,12 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze $this->whenAppended('attribute', $value, $default) — types from the named attribute,
-     * the same way whenHas() does, since the appended accessor is what surfaces. Unlike whenHas()/
-     * whenLoaded(), Laravel's whenAppended() invokes a Closure value with no arguments at all, so
-     * only a non-first-class-callable EnumResource::make()/::collection() value is realistically
-     * reachable here — still checked for consistency, since it costs nothing.
+     * Analyze $this->whenAppended('attribute', $value, $default) — Laravel returns `value($value)`.
+     *
+     * A resolvable value types the arm here too, but nothing binds to a closure parameter: unlike
+     * whenHas()/whenExistsLoaded(), whenAppended() forwards no attribute into the call. The appended
+     * accessor answers for a skipped value, an EnumResource::make()/::collection() wrap, and any
+     * value the engine cannot type.
      *
      * @return ValueExpressionResult
      */
@@ -264,6 +274,12 @@ final class ConditionalMethodHandler implements ExpressionHandler
         // Same as whenHas(): a skipped $value is value(null) at runtime.
         if ($this->valueSkipped($args)) {
             return $this->applyConditionalDefault(['type' => 'null', 'optional' => false], $args, $scope, $engine);
+        }
+
+        $fromValue = $this->resolveValueArgument($args, null, $scope, $engine);
+
+        if ($fromValue !== null) {
+            return $this->applyConditionalDefault($fromValue, $args, $scope, $engine);
         }
 
         $info = $this->resolveModelAttributeTypeInfo($attribute->value, $scope);
@@ -297,22 +313,34 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze $this->whenExistsLoaded('relation', $value, $default) — resolves to the relation's
-     * generated `{relation}_exists` flag.
+     * Analyze $this->whenExistsLoaded('relation', $value, $default) — Laravel returns
+     * `value($value, $this->resource->{$attribute})`, where $attribute is the relation name snaked and
+     * finished with `_exists`.
+     *
+     * A resolvable value types the arm, with a closure's first parameter bound to that flag; the
+     * generated `{relation}_exists` boolean answers when no value can.
      *
      * @return ValueExpressionResult
      */
     protected function analyzeWhenExistsLoaded(MethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): array
     {
         $args = $this->arguments($call, 'whenExistsLoaded');
+        $relationship = $args->named('relationship')?->value;
 
-        if (! $args->named('relationship')?->value instanceof String_) {
+        if (! $relationship instanceof String_) {
             return [...ValueResult::unknown(), 'optional' => true]; // @codeCoverageIgnore
         }
 
         // Unlike whenLoaded(), a skipped $value is not swapped for the identity closure: value(null, …) is null.
         if ($this->valueSkipped($args)) {
             return $this->applyConditionalDefault(['type' => 'null', 'optional' => false], $args, $scope, $engine);
+        }
+
+        $flag = new PropertyFetch(new Variable('this'), Str::finish(Str::snake($relationship->value), '_exists'));
+        $fromValue = $this->resolveValueArgument($args, $flag, $scope, $engine);
+
+        if ($fromValue !== null) {
+            return $this->applyConditionalDefault($fromValue, $args, $scope, $engine);
         }
 
         return $this->applyConditionalDefault(['type' => 'boolean', 'optional' => false], $args, $scope, $engine);
@@ -529,6 +557,43 @@ final class ConditionalMethodHandler implements ExpressionHandler
         }
 
         return ! $args->hasUnpack() && $args->passedCount() > $position;
+    }
+
+    /**
+     * The type Laravel's `value($value, ...$args)` produces, binding a closure's first parameter to $argument.
+     *
+     * Null means there is no usable value — none written, a literal null, an EnumResource wrap whose channel
+     * the caller decides, or a resolution the engine cannot type — so the caller keeps its own
+     * attribute-derived answer instead of publishing a fresh `unknown`.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function resolveValueArgument(CallArguments $args, ?Expr $argument, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $value = $args->named('value')?->value;
+
+        if ($value === null || $this->isNullConstFetch($value) || $this->isEnumResourceWrapCall($value)) {
+            return null;
+        }
+
+        $previousBindings = $scope->closureParamExprBindings;
+
+        try {
+            if ($argument !== null
+                && ($value instanceof ClosureExpr || $value instanceof ArrowFunction)
+                && isset($value->params[0])
+                && $value->params[0]->var instanceof Variable
+                && is_string($value->params[0]->var->name)
+            ) {
+                $scope->closureParamExprBindings[$value->params[0]->var->name] = $argument;
+            }
+
+            $inner = $engine->resolve($value);
+        } finally {
+            $scope->closureParamExprBindings = $previousBindings;
+        }
+
+        return $inner['type'] === 'unknown' ? null : $inner;
     }
 
     /**

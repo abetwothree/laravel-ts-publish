@@ -4061,6 +4061,20 @@ declare global {
             crm_contact_partial: { status: workbench.crm.enums.StatusType; images: workbench.app.models.Image[] } | null;
             probe_mixed: { id: number } | Pick<workbench.app.models.User, 'id' | 'phone'> | null;
         }
+        /**
+         * Exercises whenHas()/whenAppended()/whenExistsLoaded() typing from the value Laravel actually
+         * returns rather than from the named attribute: each one ends in `value($value, ...)`, so a
+         * closure's own return is what the property carries. whenHas()/whenExistsLoaded() forward the
+         * attribute into the closure's first parameter; whenAppended() forwards nothing.
+         */
+        export interface WhenHasValueResource {
+            has_title?: boolean;
+            title_length?: number;
+            title_passthrough?: string;
+            appended_label?: string;
+            comments_flag?: string;
+            title_unresolvable?: string;
+        }
     }
     export namespace workbench.app.http.resources.admin {
         export interface Store {

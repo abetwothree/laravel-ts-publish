@@ -202,7 +202,7 @@ Every writer hand-rolls this; there is no helper. The current set:
 | --- | --- |
 | `ResourceAstAnalyzer::analyzeThisMethodSpread()` | `localVarBindings`, `resolvingLocalVars`, `varModelBindings`, `varClassBindings`, `requestVarNames`, and the `visitedSpreadMethods` entry |
 | `ClosureHandler::resolve()` | `localVarBindings`, `varClassBindings` |
-| `ConditionalMethodHandler` | `closureRelationModelClass`, `varModelBindings`, `varCollectionBindings`, `varClassBindings` around a `whenLoaded` closure; `closureParamExprBindings` at its two `when()`-condition sites |
+| `ConditionalMethodHandler` | `closureRelationModelClass`, `varModelBindings`, `varCollectionBindings`, `varClassBindings` around a `whenLoaded` closure; `closureParamExprBindings` at its three binding sites — the `when()`/`unless()` condition, `transform()`'s callback, and `resolveValueArgument()`'s value closure |
 | `TernaryHandler::narrowedArmResult()` | `varClassBindings` for a narrowed variable; `modelClass` + `forwardsUndeclaredMembersTo` for a narrowed `$this->resource` |
 | `RelationCollectionChainHandler` | `closureRelationModelClass` around `pluck()`; that plus `varModelBindings` around a `map()` closure |
 | `CollectionPipelineHandler::resolveMapBody()` | `varValueBindings` around a `collect(...)->map()` closure |
