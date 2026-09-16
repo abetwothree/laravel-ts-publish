@@ -261,6 +261,25 @@ non-empty) but only the first is importable, so every `classFqcns` entry must pa
 `is_a($fqcn, Model::class, true)` check or the whole result is rejected — accepting the enum
 half while dropping an unimportable class token would still leak a compile error.
 
+### The reverse direction: a result carried back into a `TypeScriptTypeInfo`
+
+`ReflectedTypeAcceptor::accept()` reads one direction — reflected type in, engine result out.
+`AbeTwoThree\LaravelTsPublish\Ast\ResultTypeInfoBridge::toTypeInfo()` is its documented inverse: a
+`ValueExpressionResult` in, a `TypeScriptTypeInfo` out, for a consumer (`AccessorBodyAnalyzer` today)
+that needs an engine result expressed in the model layer's own currency.
+
+| Result channel read | Carried into |
+| --- | --- |
+| `directEnumFqcn` | merged into the FQCN list resolved via `LaravelTsPublish::toTsType()` |
+| `modelFqcn` | merged into the same FQCN list |
+| `embeddedEnumFqcns` | merged into the same FQCN list |
+| `embeddedModelFqcns` | merged into the same FQCN list |
+| `customImports` | unioned (not replaced) into the resolved info's own `customImports` |
+
+It reads only those five of the twelve channels `ValueExpressionResult` declares — the same five
+`ReflectedTypeAcceptor` writes. Widening it to the other channels is a behaviour change with its own
+audit, recorded in the plan's follow-ups ledger rather than done here.
+
 ### `directEnumFqcn` carries two entry kinds
 
 The `directEnumFqcn` channel and `ResourceTransformer::$directEnumProperties` map share one array

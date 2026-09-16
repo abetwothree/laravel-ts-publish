@@ -9,7 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Ast\ResultTypeInfoBridge;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
@@ -67,7 +67,7 @@ final class AccessorBodyAnalyzer
             return null;
         }
 
-        return $this->toTypeInfo($result);
+        return resolve(ResultTypeInfoBridge::class)->toTypeInfo($result);
     }
 
     /**
@@ -136,38 +136,5 @@ final class AccessorBodyAnalyzer
         }
 
         return null;
-    }
-
-    /**
-     * Carry an engine result's type and every FQCN channel into the model engine's TypeScriptTypeInfo.
-     *
-     * @param  ValueExpressionResult  $result
-     * @return TypeScriptTypeInfo
-     */
-    private function toTypeInfo(array $result): array
-    {
-        $fqcns = array_values(array_unique(array_filter([
-            $result['directEnumFqcn'] ?? null,
-            $result['modelFqcn'] ?? null,
-            ...($result['embeddedEnumFqcns'] ?? []),
-            ...($result['embeddedModelFqcns'] ?? []),
-        ])));
-
-        $info = $fqcns === []
-            ? LaravelTsPublish::emptyTypeScriptInfo()
-            : LaravelTsPublish::mergeTypeScriptInfos(array_map(
-                fn (string $fqcn): array => LaravelTsPublish::toTsType($fqcn),
-                $fqcns,
-            ));
-
-        $info['type'] = $result['type'];
-
-        // Union, not replace: the merged copy carries a #[TsType] channel's own import, the engine result
-        // carries the ones its expression named, and dropping either emits a token with no import.
-        foreach ($result['customImports'] ?? [] as $path => $names) {
-            $info['customImports'][$path] = array_values(array_unique([...$info['customImports'][$path] ?? [], ...$names]));
-        }
-
-        return $info;
     }
 }
