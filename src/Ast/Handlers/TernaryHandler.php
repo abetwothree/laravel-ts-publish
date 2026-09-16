@@ -5,16 +5,15 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Instanceof_;
-use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Ternary;
 use PhpParser\Node\Expr\Variable;
-use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 
 /**
@@ -26,6 +25,8 @@ use PhpParser\Node\Name;
  */
 final class TernaryHandler implements ExpressionHandler
 {
+    use InspectsAstNodes;
+
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
     {
@@ -101,25 +102,20 @@ final class TernaryHandler implements ExpressionHandler
         }
 
         $previousModelClass = $scope->modelClass;
+        $previousForwardsTo = $scope->forwardsUndeclaredMembersTo;
         $scope->modelClass = $class;
+
+        // A subject that proxies forwards to its backing model, so narrowing the model narrows the target too.
+        if ($previousForwardsTo !== null) {
+            $scope->forwardsUndeclaredMembersTo = $class;
+        }
 
         try {
             return $engine->resolve($ifExpr);
         } finally {
             $scope->modelClass = $previousModelClass;
+            $scope->forwardsUndeclaredMembersTo = $previousForwardsTo;
         }
-    }
-
-    /**
-     * Whether an expression is the `$this->resource` a JsonResource wraps its model in.
-     */
-    private function isResourceFetch(Expr $expr): bool
-    {
-        return $expr instanceof PropertyFetch
-            && $expr->var instanceof Variable
-            && $expr->var->name === 'this'
-            && $expr->name instanceof Identifier
-            && $expr->name->toString() === 'resource';
     }
 
     /**

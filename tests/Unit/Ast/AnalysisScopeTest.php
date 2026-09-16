@@ -12,6 +12,7 @@ it('constructs with the given subject reflection and model class', function () {
     expect($scope->subjectReflection)->toBe($reflection)
         ->and($scope->modelClass)->toBe('App\\Models\\Post')
         ->and($scope->instanceOfWrappedClass)->toBeNull()
+        ->and($scope->forwardsUndeclaredMembersTo)->toBeNull()
         ->and($scope->closureRelationModelClass)->toBeNull()
         ->and($scope->closureParamExprBindings)->toBe([])
         ->and($scope->varModelBindings)->toBe([])

@@ -85,10 +85,7 @@ trait ResolvesEnumPropertyArgTypes
             // is the underlying model instance.
             if (
                 $argExpr instanceof PropertyFetch
-                && $argExpr->var instanceof PropertyFetch
-                && $this->isThisPropertyFetch($argExpr->var)
-                && $argExpr->var->name instanceof Identifier
-                && $argExpr->var->name->toString() === 'resource'
+                && $this->isResourceFetch($argExpr->var)
                 && $argExpr->name instanceof Identifier
             ) {
                 $propName = $argExpr->name->toString();

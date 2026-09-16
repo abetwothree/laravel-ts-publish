@@ -787,6 +787,27 @@ class ModelAttributeResolver
     }
 
     /**
+     * The TypeScript spelling of a model's primary key type, or null when the model cannot be instantiated.
+     *
+     * Returns null rather than defaulting, because the callers disagree on the no-instance case: the
+     * receiver rules decline, while the auth and getKey rules fall back to `string`. Folding a default in
+     * here would make an uninstantiable model publish `string` where it currently declines.
+     *
+     * @param  class-string  $modelFqcn
+     */
+    public function keyTsType(string $modelFqcn): ?string
+    {
+        $instance = $this->getInstance($modelFqcn);
+
+        if ($instance === null) {
+            return null;
+        }
+
+        // getCasts() casts an incrementing key as getKeyType(), and castAttribute() treats `int` and `integer` alike.
+        return in_array($instance->getKeyType(), ['int', 'integer'], true) ? 'number' : 'string';
+    }
+
+    /**
      * @param  class-string  $modelFqcn
      * @return ReflectionClass<Model>|null
      */

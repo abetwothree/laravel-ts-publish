@@ -37,9 +37,8 @@ trait ResolvesAuthHelperCalls
             return null;
         }
 
-        $instance = resolve(ModelAttributeResolver::class)->getInstance($model);
-
-        $keyType = in_array($instance?->getKeyType(), ['int', 'integer'], true) ? 'number' : 'string';
+        // An uninstantiable model names no key type; this caller has always fallen back to string.
+        $keyType = resolve(ModelAttributeResolver::class)->keyTsType($model) ?? 'string';
 
         return ['type' => $keyType.' | null', 'optional' => false];
     }

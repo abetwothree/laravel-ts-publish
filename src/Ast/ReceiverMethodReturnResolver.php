@@ -61,14 +61,16 @@ final class ReceiverMethodReturnResolver
      */
     private function ruleFor(ReceiverType $receiver, string $class, string $methodName): ?array
     {
+        $resolver = resolve(ModelAttributeResolver::class);
+
         if ($methodName === 'getKey' && $this->runsModelGetKey($class)) {
-            $keyType = $this->keyType($class);
+            $keyType = $resolver->keyTsType($class);
 
             return $keyType === null ? null : [...ValueResult::unknown(), 'type' => $keyType];
         }
 
         if ($methodName === 'modelKeys' && $receiver->elementModel !== null) {
-            $keyType = $this->keyType($receiver->elementModel);
+            $keyType = $resolver->keyTsType($receiver->elementModel);
 
             return $keyType === null ? null : [...ValueResult::unknown(), 'type' => $keyType.'[]'];
         }
@@ -88,23 +90,6 @@ final class ReceiverMethodReturnResolver
         return is_a($class, Model::class, true)
             && ! new ReflectionClass($class)->isAbstract()
             && new ReflectionMethod($class, 'getKey')->getDeclaringClass()->getName() === Model::class;
-    }
-
-    /**
-     * The TypeScript spelling of a model's primary key type, or null when the model cannot be instantiated.
-     *
-     * @param  class-string  $modelFqcn
-     */
-    private function keyType(string $modelFqcn): ?string
-    {
-        $instance = resolve(ModelAttributeResolver::class)->getInstance($modelFqcn);
-
-        if ($instance === null) {
-            return null;
-        }
-
-        // getCasts() casts an incrementing key as getKeyType(), and castAttribute() treats `int` and `integer` alike.
-        return in_array($instance->getKeyType(), ['int', 'integer'], true) ? 'number' : 'string';
     }
 
     /**

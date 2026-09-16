@@ -62,6 +62,18 @@ trait InspectsAstNodes
             && $expr->var->name === 'this';
     }
 
+    /**
+     * Whether an expression is the `$this->resource` a JsonResource wraps its model in.
+     */
+    protected function isResourceFetch(Expr $expr): bool
+    {
+        return $expr instanceof PropertyFetch
+            && $expr->var instanceof Variable
+            && $expr->var->name === 'this'
+            && $expr->name instanceof Identifier
+            && $expr->name->toString() === 'resource';
+    }
+
     protected function resolveKeyName(Expr $key): ?string
     {
         if ($key instanceof String_) {

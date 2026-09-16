@@ -160,6 +160,22 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
+     * The class an undeclared `$this->member` forwards to: a JsonResource proxies both reads and calls to
+     * its backing. AnalysisScope derives this from the subject; this re-derives it once an `instanceof`
+     * guard has supplied a backing the constructor had none for.
+     *
+     * @return class-string|null
+     */
+    private function proxyTarget(): ?string
+    {
+        $backing = $this->scope->modelClass ?? $this->scope->instanceOfWrappedClass;
+
+        return $backing !== null && $this->scope->subjectReflection->isSubclassOf(JsonResource::class)
+            ? $backing
+            : null;
+    }
+
+    /**
      * `ReflectionClass`'s template is invariant, so a caller's `ReflectionClass<JsonResource>` cannot
      * be assigned into `AnalysisScope`'s `<object>` slot; re-reflecting by name erases the generic.
      *
@@ -208,6 +224,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $finder = new NodeFinder;
 
         $this->scope->instanceOfWrappedClass = $this->resolveInstanceOfType($toArrayMethod, $finder);
+        $this->scope->forwardsUndeclaredMembersTo = $this->proxyTarget();
 
         $this->seedVarBindings($toArrayMethod->stmts);
 

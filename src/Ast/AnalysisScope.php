@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
 use ReflectionClass;
 
@@ -31,6 +32,15 @@ final class AnalysisScope
      * @var class-string|null
      */
     public ?string $instanceOfWrappedClass = null;
+
+    /**
+     * The class an undeclared `$this->member` read or call forwards to — a JsonResource proxies both to
+     * `$this->resource` — or null when the subject forwards nothing. Whoever builds the scope decides
+     * this, so ReceiverClassResolver stays plain PHP semantics instead of testing for one framework class.
+     *
+     * @var class-string|null
+     */
+    public ?string $forwardsUndeclaredMembersTo = null;
 
     /**
      * Related model set while analyzing a whenLoaded closure, so `$variable->prop`/`->method()` inside it resolve.
@@ -115,5 +125,11 @@ final class AnalysisScope
     public function __construct(
         public ReflectionClass $subjectReflection,
         public ?string $modelClass = null,
-    ) {}
+    ) {
+        // The subject alone decides this, so every scope carries it without the builder having to remember;
+        // ResourceAstAnalyzer re-derives it once an instanceof guard supplies a backing the constructor lacked.
+        $this->forwardsUndeclaredMembersTo = $modelClass !== null && $subjectReflection->isSubclassOf(JsonResource::class)
+            ? $modelClass
+            : null;
+    }
 }

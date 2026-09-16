@@ -48,18 +48,12 @@ trait AppliesKnownMethodRules
         }
 
         if ($method === 'getKey') {
-            $isResourceReceiver = $expr->var instanceof PropertyFetch
-                && $this->isThisPropertyFetch($expr->var)
-                && $expr->var->name instanceof Identifier
-                && $expr->var->name->toString() === 'resource';
-
-            if (! $isResourceReceiver || $scope->modelClass === null) {
+            if (! $this->isResourceFetch($expr->var) || $scope->modelClass === null) {
                 return null;
             }
 
-            $instance = resolve(ModelAttributeResolver::class)->getInstance($scope->modelClass);
-
-            $type = in_array($instance?->getKeyType(), ['int', 'integer'], true) ? 'number' : 'string';
+            // An uninstantiable model names no key type; this caller has always fallen back to string.
+            $type = resolve(ModelAttributeResolver::class)->keyTsType($scope->modelClass) ?? 'string';
 
             return [...ValueResult::unknown(), 'type' => $type, 'optional' => false];
         }

@@ -22,7 +22,15 @@ use ReflectionProperty;
  */
 final class SubjectPropertyTypeResolver
 {
-    /** Framework base classes whose own property names a subclass never owns, however it redeclares them. */
+    /**
+     * Framework base classes whose own property names a subclass never owns, however it redeclares them.
+     *
+     * This list is the extension point a new subject kind edits: add the base whose declared properties
+     * that subject inherits but must not answer `$this->prop` from. `Model` earns its place here because
+     * a model's own property names are the shared model engine's knowledge, which every layer reads; the
+     * two resource bases are the analyzer's, and sit here only because `declaresOwnProperty()` is the one
+     * caller that has to consult all three at once.
+     */
     private const array FRAMEWORK_BASES = [JsonResource::class, ResourceCollection::class, Model::class];
 
     /**

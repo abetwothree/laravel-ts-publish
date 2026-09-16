@@ -10,7 +10,6 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
-use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use PhpParser\Node\Expr;
@@ -128,17 +127,18 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The class a bare `$this->m()` runs on when a resource does not declare `m`: its backing class.
+     * The class a bare `$this->m()` runs on when the subject does not declare `m`: its proxy target.
      *
-     * JsonResource::__call() forwards an undeclared method to `$this->resource`, so the call is `$this->resource->m()`.
+     * `JsonResource::__call()` forwards an undeclared method to `$this->resource`, so the call is
+     * `$this->resource->m()`. Which subjects forward, and to what, is policy the scope carries — reading it
+     * here keeps this resolver plain PHP semantics rather than one framework class's magic.
      */
     public function forwardedThisReceiver(string $method, AnalysisScope $scope): ?ReceiverType
     {
-        $subject = $scope->subjectReflection;
-        $backing = $scope->modelClass ?? $scope->instanceOfWrappedClass;
+        $target = $scope->forwardsUndeclaredMembersTo;
 
-        return $backing !== null && ! $subject->hasMethod($method) && $subject->isSubclassOf(JsonResource::class)
-            ? ReceiverType::of($backing)
+        return $target !== null && ! $scope->subjectReflection->hasMethod($method)
+            ? ReceiverType::of($target)
             : null;
     }
 
@@ -266,7 +266,9 @@ final class ReceiverClassResolver
             return $declared;
         }
 
-        return $name === 'resource' && $backing !== null ? ReceiverType::of($backing) : null;
+        return $name === 'resource' && $scope->forwardsUndeclaredMembersTo !== null
+            ? ReceiverType::of($scope->forwardsUndeclaredMembersTo)
+            : null;
     }
 
     /**
