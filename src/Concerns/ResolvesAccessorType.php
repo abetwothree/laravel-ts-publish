@@ -65,17 +65,10 @@ trait ResolvesAccessorType
                     }
 
                     // Both annotations are vague, so what the getter body returns is the better answer.
-                    $bodyReturn = $this->resolveAccessorBodyType($reflectionModel->getName(), $name, $carriesImports);
+                    $fallbackReturn = $getterReturn['type'] !== 'unknown' ? $getterReturn : $docblockReturn;
+                    $bodyReturn = $this->resolveAccessorBodyType($reflectionModel->getName(), $name, $carriesImports, $fallbackReturn);
 
-                    if ($bodyReturn !== null) {
-                        return $bodyReturn;
-                    }
-
-                    if ($getterReturn['type'] !== 'unknown') {
-                        return $getterReturn;
-                    }
-
-                    return $docblockReturn;
+                    return $bodyReturn ?? $fallbackReturn;
                 }
 
                 // A `never` Get — bare or its nullable spelling (`?never`, `never|null`, stripped before
@@ -106,30 +99,27 @@ trait ResolvesAccessorType
                 return $getterReturn;
             }
 
-            $bodyReturn = $this->resolveAccessorBodyType($reflectionModel->getName(), $name, $carriesImports);
+            $fallbackReturn = $getterReturn['type'] !== 'unknown' ? $getterReturn : $result;
+            $bodyReturn = $this->resolveAccessorBodyType($reflectionModel->getName(), $name, $carriesImports, $fallbackReturn);
 
-            if ($bodyReturn !== null) {
-                return $bodyReturn;
-            }
-
-            if ($getterReturn['type'] !== 'unknown') {
-                return $getterReturn;
-            }
+            return $bodyReturn ?? $fallbackReturn;
         }
 
         return $result;
     }
 
     /**
-     * The getter body's type when it beats vague annotations, or null to fall back to them.
+     * The getter body's type when it beats the vague annotations, or null to fall back to them.
      *
      * A reader that carries no import gets the getter analyzed without imports. That spelling can be vague where the
-     * published one is not, `unknown[]` for `Comment[]`, so it still wins wherever the published body answer wins.
+     * published one is not, `unknown[]` for `Comment[]`. It still wins wherever the published body answer wins, unless
+     * the fallback is token-free and keeps more structure, as `Record<string, unknown>[]` does over `unknown[]`.
      *
      * @param  class-string<Model>  $modelFqcn
+     * @param  TypeScriptTypeInfo  $fallbackReturn  what the waterfall yields when the body step declines
      * @return TypeScriptTypeInfo|null
      */
-    protected function resolveAccessorBodyType(string $modelFqcn, string $name, bool $carriesImports): ?array
+    protected function resolveAccessorBodyType(string $modelFqcn, string $name, bool $carriesImports, array $fallbackReturn): ?array
     {
         $analyzer = resolve(AccessorBodyAnalyzer::class);
         $bodyReturn = $analyzer->analyze($modelFqcn, $name, $carriesImports);
@@ -138,13 +128,34 @@ trait ResolvesAccessorType
             return $bodyReturn;
         }
 
-        if ($carriesImports) {
+        // A fallback naming a class would cost the reader its whole shape, so only a token-free one competes.
+        $fallbackKeepsMore = ! TsTypeString::shapeValueHasUnimportableToken($fallbackReturn['type'])
+            && $this->vagueTypeStructure($fallbackReturn['type']) > $this->vagueTypeStructure($bodyReturn['type']);
+
+        if ($carriesImports || $fallbackKeepsMore) {
             return null;
         }
 
         $publishedReturn = $analyzer->analyze($modelFqcn, $name);
 
         return $publishedReturn !== null && ! $this->isVagueTsType($publishedReturn['type']) ? $bodyReturn : null;
+    }
+
+    /**
+     * How much structure a vague type keeps, ignoring a `null` arm, so two vague spellings of one value compare.
+     *
+     * 0 for `unknown`, 1 for a container of unknowns such as `unknown[]` or `Record<string, unknown>`, and 2 for any
+     * other vague type, which nests or names more, such as `Record<string, unknown>[]`.
+     */
+    protected function vagueTypeStructure(string $type): int
+    {
+        $bare = implode(' | ', array_diff(TsTypeString::splitTopLevelUnion($type), ['null']));
+
+        return match (true) {
+            $bare === 'unknown' => 0,
+            in_array($bare, ['unknown[]', 'object', 'Record<string, unknown>', 'unknown[] | Record<string, unknown>'], true) => 1,
+            default => 2,
+        };
     }
 
     /**

@@ -40,8 +40,9 @@ final class AccessorBodyAnalyzer
     use NamesAccessorMethods;
 
     /**
-     * model@attribute bodies on the stack, so two accessors reading each other terminate. Keyed per import mode: an
-     * analysis that keeps imports never stands in for one that carries none, nor cuts it short.
+     * model@attribute bodies on the stack, so two accessors reading each other terminate. Keyed per import mode, so an
+     * analysis that keeps imports never stands in for one that carries none. It can still cut short the check with
+     * imports that an import-less read makes of a vague spelling.
      *
      * @var array<string, true>
      */

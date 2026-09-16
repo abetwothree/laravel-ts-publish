@@ -17,10 +17,15 @@ use Workbench\App\Models\User;
  *
  * @property-read list<Comment> $comment_list
  * @property-read list<array{id: int}> $tagged_fields
+ * @property-read list<array{id: int}> $signed_tag_rows
+ * @property-read list<array{id: int, content: string}> $legacy_tag_rows
  */
 final class FilteringAccessorModel extends Model
 {
     protected $table = 'posts';
+
+    /** @var list<string> Read at runtime, so a filter given this list names no key it could type. */
+    protected $filterKeys = ['id'];
 
     /** @return BelongsTo<User, $this> */
     public function author(): BelongsTo
@@ -86,6 +91,42 @@ final class FilteringAccessorModel extends Model
     protected function taggedFields(): Attribute
     {
         return Attribute::get(fn (): array => array_values($this->only(request()->input('fields'))));
+    }
+
+    /** @return Attribute<list<array<string, mixed>>, never> */
+    protected function docRecords(): Attribute
+    {
+        return Attribute::get(fn () => $this->comments->only([1, 2]));
+    }
+
+    /** @return Attribute<list<array<string, mixed>>|null, never> */
+    protected function docRecordsNullsafe(): Attribute
+    {
+        return Attribute::get(fn () => $this->comments?->only([1, 2]));
+    }
+
+    /** @return Attribute<array<int, array<string, mixed>>, never> */
+    protected function docRecordsRuntime(): Attribute
+    {
+        return Attribute::get(fn () => $this->comments->except($this->filterKeys));
+    }
+
+    /** @return Attribute<array<string, mixed>, never> */
+    protected function docKeyed(): Attribute
+    {
+        return Attribute::get(fn () => $this->comments->only([1, 2]));
+    }
+
+    /** @return Attribute<array<int, Comment|mixed>, never> */
+    protected function docClassList(): Attribute
+    {
+        return Attribute::get(fn () => $this->comments->only([1, 2]));
+    }
+
+    /** A vague signature over a to-many filter, typed further by its `@property-read` tag. */
+    protected function signedTagRows(): Attribute
+    {
+        return Attribute::get(fn (): array => $this->comments->only([1, 2]));
     }
 
     /** Filters bare `$this` through `?->`. */
@@ -156,6 +197,16 @@ final class FilteringAccessorModel extends Model
     public function getLegacyPicksAttribute(): array
     {
         return ['v' => $this->author->only(['id', 'name']), 'id' => $this->id];
+    }
+
+    /**
+     * An old-style accessor filtering a to-many relation, typed further by its `@property-read` tag.
+     *
+     * @return array<string, mixed>
+     */
+    public function getLegacyTagRowsAttribute(): array
+    {
+        return $this->comments->only([1, 2]);
     }
 
     /** Calls a method whose body reads this accessor back. */
@@ -240,6 +291,48 @@ final class FilteringAccessorModel extends Model
     public function readLegacyPicks(): array
     {
         return ['v' => $this->legacy_picks, 'id' => $this->id];
+    }
+
+    /** @return array<string, mixed> */
+    public function readDocRecords(): array
+    {
+        return ['v' => $this->doc_records, 'id' => $this->id];
+    }
+
+    /** @return array<string, mixed> */
+    public function readDocRecordsNullsafe(): array
+    {
+        return ['v' => $this->doc_records_nullsafe, 'id' => $this->id];
+    }
+
+    /** @return array<string, mixed> */
+    public function readDocRecordsRuntime(): array
+    {
+        return ['v' => $this->doc_records_runtime, 'id' => $this->id];
+    }
+
+    /** @return array<string, mixed> */
+    public function readDocKeyed(): array
+    {
+        return ['v' => $this->doc_keyed, 'id' => $this->id];
+    }
+
+    /** @return array<string, mixed> */
+    public function readDocClassList(): array
+    {
+        return ['v' => $this->doc_class_list, 'id' => $this->id];
+    }
+
+    /** @return array<string, mixed> */
+    public function readSignedTagRows(): array
+    {
+        return ['v' => $this->signed_tag_rows, 'id' => $this->id];
+    }
+
+    /** @return array<string, mixed> */
+    public function readLegacyTagRows(): array
+    {
+        return ['v' => $this->legacy_tag_rows, 'id' => $this->id];
     }
 
     /** @return array<string, mixed> */

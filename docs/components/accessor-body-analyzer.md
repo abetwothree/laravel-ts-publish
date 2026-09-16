@@ -86,15 +86,23 @@ would written in the method body itself: the inline shape, where a member naming
 `Concerns\ResolvesAccessorType::resolveAccessorBodyType()` keeps the waterfall step the model file took. A spelling
 without imports can be vague where the published one is not: a getter returning `$this->comments->only([1, 2])`
 publishes `Comment[]`, and `unknown[]` without imports. That vague spelling still wins whenever the analysis with
-imports is non-vague, so the reader gets `unknown[]` instead of falling through to an `unknown` signature. When both are
-vague, as for a runtime key list returned whole, both fall through, and the reader gets `unknown`, as the model file
-does. For the same reason `ModelAttributeResolver::refineAccessorType()` refines a vague spelling from an `@property`
-tag only where the published type is vague too: the tag never refines `Comment[]`, so it must not turn `unknown[]` back
-into `Comment[]`.
+imports is non-vague, so the reader gets `unknown[]` instead of falling through to an `unknown` signature. The one
+exception is a vague annotation that names no class and keeps more structure: `@return Attribute<list<array<string,
+mixed>>, never>` gives the reader `Record<string, unknown>[]`. `vagueTypeStructure()` ranks the two spellings,
+`unknown` below a container of unknowns such as `unknown[]` or `Record<string, unknown>`, below anything nesting more;
+a tie keeps the body's spelling, and an annotation naming a class never competes, since it would cost the reader its
+shape. When both analyses are vague, as for a runtime key list returned whole, both fall through, and the reader gets
+`unknown`, as the model file does.
 
-Only this body step reads the flag. An accessor typed by its closure signature, its `Attribute<>` docblock or an
-`@property` tag reads the same in both modes, so one naming a class, such as `Attribute<User, never>`, still costs a
-reading method its shape, and so does a getter returning a class without a filter, such as `fn () => $this->author`.
+`ModelAttributeResolver::refineAccessorType()` then refines a vague spelling from an `@property` tag. Without imports
+it skips a tag naming a class only where the published type is not vague: the tag never refines `Comment[]`, so it
+must not turn `unknown[]` back into `Comment[]`. A token-free tag, such as `list<array{id: int}>`, applies as it does
+to any vague type.
+
+The body step and that refinement are the only places the flag decides anything. An accessor typed by its closure
+signature, its `Attribute<>` docblock, an old-style getter's own return type or `@return` docblock, or an `@property`
+tag reads the same in both modes, so one naming a class, such as `Attribute<User, never>`, still costs a reading
+method its shape, and so does a getter returning a class without a filter, such as `fn () => $this->author`.
 `FilteringAccessorModel` in the unit fixtures pins each getter kind and read position, and `Comment::picksSummary()`
 pins the rule end to end.
 

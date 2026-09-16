@@ -373,22 +373,26 @@ cast, appended accessors), `VisibleFilterOverrideModel` (`$visible` beside `$hid
 `AppendingModelFilterOverrideModel` (an override returning a model that appends).
 Every other value in a body keeps the whole-shape rule.
 
-A filter in the getter of an accessor the body reads is covered too. Every model attribute read a scope makes passes
-the scope's flag to `ModelAttributeResolver::resolveAttribute()`: `$this->accessor` and its camelCase alias, a relation
-chain, a local variable or closure parameter holding a model, a key that `only()` selects, and an appended accessor
-of a spread or filtered model. When the accessor's type comes from its getter body, `AccessorBodyAnalyzer` analyzes
-that getter without imports as well, so its filters publish exactly what they would written in the method body, and
-the method keeps its shape. The model file and every resource still publish the getter's own analysis, with its
+A filter in the getter of an accessor the body reads is covered too. A model attribute read a scope makes for its value
+passes the scope's flag to `ModelAttributeResolver::resolveAttribute()`: `$this->accessor` and its camelCase alias, a
+relation chain, a local variable or closure parameter holding a model, a key that `only()` selects, and an appended
+accessor of a spread or filtered model. One read keeps imports:
+`ResolvesEnumPropertyArgTypes::resolveEnumFromPropertyArg()` resolves `EnumResource::make($author->role)` inside a
+`whenLoaded()` closure from the attribute's first enum FQCN, a channel a spelling without imports can lose, and the
+value it builds names an enum the body fallback drops anyway. When the accessor's type comes from its getter body,
+`AccessorBodyAnalyzer` analyzes that getter without imports as well, so its filters publish exactly what they would
+written in the method body, and the method keeps its shape. The model file and every resource still publish the getter's own analysis, with its
 `Pick<User, …>` and `Comment[]`; see
 [accessor-body-analyzer § A reader that carries no import](accessor-body-analyzer.md#a-reader-that-carries-no-import).
 `Comment::picksSummary()` reads the `relation_picks` accessor, and `CommentRelationFiltersResource` publishes its
 `picks` as the same object `relationSummary()` publishes. `FilteringAccessorModel` pins each getter kind and read
 position in `MethodReturnTypeResolverTest`.
 
-The rule reaches only the getter body step. An accessor whose type names a class any other way still costs the reading
-method its whole shape: one typed by its closure signature, its `Attribute<>` docblock such as `Attribute<User, never>`,
-or an `@property` tag, and one whose getter returns a value that names a class without a filter, such as
-`fn () => $this->author`.
+The rule reaches the getter body step and the `@property` refinement of its spelling. An accessor whose type names a
+class any other way still costs the reading method its whole shape: one typed by its closure signature, its
+`Attribute<>` docblock such as `Attribute<User, never>`, an old-style getter's own return type or `@return` docblock
+such as `/** @return list<Comment> */ getReplyListAttribute(): array`, or an `@property` tag, and one whose getter
+returns a value that names a class without a filter, such as `fn () => $this->author`.
 
 ### Unions, `?->`, and requests
 

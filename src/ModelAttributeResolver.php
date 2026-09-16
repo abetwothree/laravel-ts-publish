@@ -203,10 +203,11 @@ class ModelAttributeResolver
     }
 
     /**
-     * Refine an accessor's vague type from an `@property` tag wherever the published accessor type is refined too.
+     * Refine an accessor's vague type from an `@property` tag.
      *
      * Without imports a vague answer can spell a precise published one, `unknown[]` for a getter's `Comment[]`. No tag
-     * refines that published type, so none may turn its spelling into a token the reader cannot import.
+     * refines that published type, so a tag naming a class may not turn the spelling into a token the reader cannot
+     * import. A token-free tag refines it as it refines any vague type.
      *
      * @param  array{instance: Model, reflection: ReflectionClass<Model>, ...}  $ctx
      * @param  TypeScriptTypeInfo  $accessorInfo
@@ -216,7 +217,7 @@ class ModelAttributeResolver
     {
         $refined = $this->refineWithPropertyDocblock($ctx['reflection'], $attributeName, $accessorInfo);
 
-        if ($carriesImports || $refined === $accessorInfo) {
+        if ($carriesImports || $refined === $accessorInfo || ! TsTypeString::shapeValueHasUnimportableToken($refined['type'])) {
             return $refined;
         }
 

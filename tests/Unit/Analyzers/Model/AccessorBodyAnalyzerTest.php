@@ -61,6 +61,11 @@ describe('AccessorBodyAnalyzer for a getter a method body reads without imports'
         'comment_picks' => ['{ v: Comment[]; id: number }', [Comment::class]],
         'comment_list' => ['Comment[]', [Comment::class]],
         'tagged_fields' => ['{ id: number }[]', []],
+        'doc_records' => ['Comment[]', [Comment::class]],
+        'doc_records_nullsafe' => ['Comment[] | null', [Comment::class]],
+        'doc_class_list' => ['Comment[]', [Comment::class]],
+        'signed_tag_rows' => ['Comment[]', [Comment::class]],
+        'legacy_tag_rows' => ['Comment[]', [Comment::class]],
         'loose_picks' => ["{ v: Pick<UntypedFilterOverrideModel, 'id' | 'title'>; id: number }", [UntypedFilterOverrideModel::class]],
         'counterpart_picks' => ["{ v: Pick<Comment, 'id'> | Pick<User, 'id'> | null; id: number }", [Comment::class, User::class]],
         'loop_a' => ["{ v: { v: unknown; p: Pick<User, 'id'> }; p: Pick<User, 'id'> }", [User::class]],
@@ -68,7 +73,8 @@ describe('AccessorBodyAnalyzer for a getter a method body reads without imports'
 
     $readers = [
         'readOwnPicks', 'readOwnRuntime', 'readOwnNullsafe', 'readAuthorPicks', 'readCommentPicks', 'readCommentList',
-        'readTaggedFields', 'readLoosePicks', 'readCounterpartPicks', 'readLoop',
+        'readTaggedFields', 'readLoosePicks', 'readCounterpartPicks', 'readLoop', 'readDocRecords', 'readDocRecordsNullsafe',
+        'readDocClassList', 'readSignedTagRows', 'readLegacyTagRows',
     ];
 
     // The model file publishes the analysis that keeps imports; a method body's import-less read must not replace it.

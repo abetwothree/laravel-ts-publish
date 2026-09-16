@@ -93,6 +93,22 @@ test('a method body reading an accessor whose getter filters keeps its shape', f
     'a docblock-typed getter still drops the shape' => ['readOwner', 'unknown[]'],
 ]);
 
+// Without imports a to-many filter spells `unknown[]`. A token-free annotation or `@property` tag that keeps more structure
+// still types the reader, as it did before the getter body typed the accessor; one naming a class never does.
+test('a vague spelling without imports gives way to a more structured token-free annotation', function (string $method, string $expected) {
+    expect(resolve(MethodReturnTypeResolver::class)->resolve(FilteringAccessorModel::class, $method)['type'] ?? null)
+        ->toBe($expected);
+})->with([
+    'a list docblock' => ['readDocRecords', '{ v: Record<string, unknown>[]; id: number }'],
+    'a nullable list docblock through ?->' => ['readDocRecordsNullsafe', '{ v: Record<string, unknown>[] | null; id: number }'],
+    'a list docblock over runtime keys' => ['readDocRecordsRuntime', '{ v: Record<string, unknown>[]; id: number }'],
+    'a keyed docblock no more structured than the list' => ['readDocKeyed', '{ v: unknown[]; id: number }'],
+    'a docblock naming a class' => ['readDocClassList', '{ v: unknown[]; id: number }'],
+    'no annotation' => ['readCommentList', '{ v: unknown[]; id: number }'],
+    'a token-free tag over a vague signature' => ['readSignedTagRows', '{ v: { id: number }[]; id: number }'],
+    'a token-free tag over an old-style getter' => ['readLegacyTagRows', '{ v: { id: number; content: string }[]; id: number }'],
+]);
+
 test('a spread model reads its appended filtering accessor without imports', function () {
     expect(resolve(MethodReturnTypeResolver::class)->resolve(FilteringAccessorModel::class, 'readAsSpreadAppend')['type'] ?? null)
         ->toContain('; author_picks: { v: { id: number; role: unknown } | null; id: number }; x: number }');

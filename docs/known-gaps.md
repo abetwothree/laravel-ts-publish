@@ -443,9 +443,9 @@ that limit differently, and the difference decides where you go looking for the 
   `unknown`, and a model nested deeper, as in `array{owner: User}`, is already `unknown` in its reflected docblock
   shape. A filter in the getter of an accessor the method body reads costs no shape either: when the accessor's type
   comes from its getter body, that getter is analyzed without imports too. An accessor whose type names a class any
-  other way still drops the method body's whole shape: one typed by its closure signature, its `Attribute<>` docblock
-  or an `@property` tag, and one whose getter returns a class-typed value that is no filter, such as
-  `fn () => $this->author`. See
+  other way still drops the method body's whole shape: one typed by its closure signature, its `Attribute<>` docblock,
+  an old-style getter's own return type or `@return` docblock, or an `@property` tag, and one whose getter returns a
+  class-typed value that is no filter, such as `fn () => $this->author`. See
   [receiver-types § The body fallback carries no FQCN channel](./components/receiver-types.md#the-body-fallback-carries-no-fqcn-channel).
 - **A docblock shape degrades just the leaf.** An `Arrayable` whose `@return array{owner: User}` names a
   class publishes `{ owner: unknown }`, and every sibling key keeps its real type;

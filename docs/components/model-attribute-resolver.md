@@ -33,11 +33,12 @@ instead of `unknown[]`. A specific annotation still wins outright, and the step 
 old-style `get*Attribute()` branch. See
 [accessor-body-analyzer.md](accessor-body-analyzer.md).
 
-`resolveAttribute()` takes a `carriesImports` flag for that body step alone. An analysis scope passes its own
+`resolveAttribute()` takes a `carriesImports` flag for that body step and for the `@property` refinement of its result.
+An analysis scope passes its own
 `AnalysisScope::$carriesImports`, so a method body the body fallback reads gets each getter analyzed without imports,
 and its filters name no token. The model transformer, resources and every other caller keep the default `true`, so
-the published accessor type does not change. `refineAccessorType()` applies the `@property` refinement below to a
-vague spelling without imports only where the published type is vague too. See
+the published accessor type does not change. Without imports, `refineAccessorType()` skips the `@property` refinement
+below when the tag names a class and the published type is not vague; a token-free tag refines as usual. See
 [accessor-body-analyzer § A reader that carries no import](accessor-body-analyzer.md#a-reader-that-carries-no-import).
 The resolver's one per-attribute cache, `$attributeClassCache`, needs no split: `resolveAttributeClass()` reads
 reflection only, never a getter body. `resolveAccessorModelFqcns()` takes no flag either, because the models a getter
