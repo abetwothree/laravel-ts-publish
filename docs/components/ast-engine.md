@@ -62,15 +62,24 @@ it follows a method's return type through any receiver class, see
 [Receiver types](./receiver-types.md#following-a-methods-return-type).
 `ReceiverPropertyFetchHandler` sits immediately before it and does the same for a property read, see
 [Property access on a receiver](./receiver-types.md#property-access-on-a-receiver).
-`ResourceExpressionHandlers::generic()` is that same list minus the three
+`ResourceExpressionHandlers::withoutResourceHandlers()` is that same list minus the three
 resource-only handlers (`ConditionalMethodHandler`, `ToResourceHandler`, `RelationFilterHandler`)
 — every other handler is class-agnostic and safe to reuse outside a resource's `toArray()`.
+
+**But being safe to reuse is not the same as being used.** That profile has exactly one production
+caller, `ControllerExpressionHandlers::make()`. Every other non-resource subject — a broadcast event,
+model metadata, any DTO reaching `AstEngine::analyzeMethod()` — runs the **resource** profile, so
+`ConditionalMethodHandler`, `ToResourceHandler` and `RelationFilterHandler` are live inside event and
+metadata bodies today. The method is named for what it drops rather than for who may use it, because its
+former name (`generic()`) promised a layering nothing wires. Pointing `analyzeMethod()` at it would move
+published broadcast-event and model-metadata types, which makes that a typed-output decision rather than
+a cleanup: measure the diff both ways and pin whichever answer is right before changing it.
 
 The executable ordering contract lives in `tests/Unit/Ast/ResourceExpressionHandlersTest.php`:
 
 - One test asserts `make()`'s exact class-name sequence, so an accidental reorder fails a test
   instead of silently changing generated output.
-- One test asserts `generic()`'s exclusion set and relative order.
+- One test asserts `withoutResourceHandlers()`'s exclusion set and relative order.
 - Six tests pin the *behavioral* precedence between handlers that both really claim a shared node
   class — proven by mutation: swap the pinned pair, watch the pinned test fail, revert.
   - `FirstClassCallableHandler` before `ConditionalMethodHandler` for a first-class-callable
@@ -104,7 +113,7 @@ with, rather than trusting a hand-picked example per pair — see that node clas
 ### Controller profile
 
 `ControllerExpressionHandlers::make()` is the profile `InertiaPageAnalyzer` runs an
-`Inertia::render()` props expression through. It is `ResourceExpressionHandlers::generic()` with two
+`Inertia::render()` props expression through. It is `ResourceExpressionHandlers::withoutResourceHandlers()` with two
 handlers inserted **immediately before `StaticCallHandler`**:
 
 - `ModelFinderHandler` — a chain rooted at a `Model` static call, typed by its terminal:
@@ -119,7 +128,7 @@ That position is load-bearing in both directions. `StaticCallHandler`'s final ar
 `StaticCall` on a named class and never declines one, so anything registered after it never sees one; and `NewResourceHandler`
 sits directly after `StaticCallHandler` and resolves a `ResourceCollection` to its collected element
 array, so a `New_` handler has to precede that too. `tests/Unit/Ast/ControllerExpressionHandlersTest.php`
-pins the structure (the profile equals `generic()` with exactly those two inserted at that point) plus
+pins the structure (the profile equals `withoutResourceHandlers()` with exactly those two inserted at that point) plus
 three behavioural ordering pins, each proven by mutation.
 
 `InertiaPageAnalyzer` pairs the profile with `AstEngine::bindingsFor()`, which seeds the scope from the
@@ -136,7 +145,7 @@ actually claim the same expression, so their relative order cannot change output
 
 | Node class | Claimants | Status |
 | --- | --- | --- |
-| `MethodCall` | `FirstClassCallableHandler`, `KnownFunctionCallHandler`, `ConditionalMethodHandler`, `ToResourceHandler`, `StaticCallHandler`, `RelationFilterHandler`, `RelationCollectionChainHandler`, `VariableHandler`, `ReceiverMethodCallHandler`, `KnownMethodRuleHandler` (10) | Four of the 45 unordered pairs are pinned: `FirstClassCallableHandler` before `ConditionalMethodHandler` and before `ToResourceHandler` (both crash-level — the loser calls `getArgs()`, which asserts `!isFirstClassCallable()`); `FirstClassCallableHandler` before `KnownFunctionCallHandler` (a silent divergence: `auth()->user(...)` as a first-class callable resolves to the guard's model instead of `unknown`); `RelationFilterHandler` before `RelationCollectionChainHandler` (its separate `$this->anyProp->method()` branch would otherwise answer `$this->post->only([...])` first with the reflected `only()` return instead of the `Pick<>`). The former `ToResourceHandler`-before-`RelationCollectionChainHandler` pin is gone: that branch now declines where it used to floor at `unknown`, so `$this->post->toResource()` reaches `ToResourceHandler` in either order. `ReceiverMethodCallHandler` is inert against every other claimant on the corpus: it declines a vague return such as `only()`'s `Record<string, unknown>`, a receiver holding a `Request`, and a bare `$this->method()` the resource declares itself, for which `ReceiverClassResolver::forwardedThisReceiver()` names no class. A bare `$this->getKey()` the resource forwards to its model is in the corpus: `SubjectMethodTypeResolver` rejects `Model::getKey()`'s `mixed`, so only `ReceiverMethodCallHandler` answers it. `SubjectMethodTypeResolver::resolve()` declines when nothing in scope declares the method, so `RelationCollectionChainHandler` no longer floors every `$this->method()` at `unknown`; `ConditionalMethodHandler` and `KnownMethodRuleHandler` therefore answer `$this->when()`/`whenLoaded()` and `can()`/`cannot()`/`canAny()` in either order. The decline is not ordering alone: a model that declares `can()` with a return type `ReflectedTypeAcceptor` rejects — `can(): void` — falls through the same way, so it too lands on `KnownMethodRuleHandler`'s `boolean` where it used to floor at `unknown`. Every unordered pair is run in both orders by `tests/Unit/Ast/MethodCallOrderingMatrixTest.php` over a curated corpus: the pairs in its `METHOD_CALL_PINNED` map disagree and are held in the direction `handlers()` lists them; every other pair is proven inert on that corpus (a new expression shape that makes an inert pair disagree fails the matrix, which is the signal to pin it). In the controller profile, `generic()` drops `ConditionalMethodHandler`, `ToResourceHandler`, and `RelationFilterHandler`, and `ControllerExpressionHandlers` splices `ModelFinderHandler` (`StaticCall` + `MethodCall`) ahead of `StaticCallHandler`, making eight claimants there. |
+| `MethodCall` | `FirstClassCallableHandler`, `KnownFunctionCallHandler`, `ConditionalMethodHandler`, `ToResourceHandler`, `StaticCallHandler`, `RelationFilterHandler`, `RelationCollectionChainHandler`, `VariableHandler`, `ReceiverMethodCallHandler`, `KnownMethodRuleHandler` (10) | Four of the 45 unordered pairs are pinned: `FirstClassCallableHandler` before `ConditionalMethodHandler` and before `ToResourceHandler` (both crash-level — the loser calls `getArgs()`, which asserts `!isFirstClassCallable()`); `FirstClassCallableHandler` before `KnownFunctionCallHandler` (a silent divergence: `auth()->user(...)` as a first-class callable resolves to the guard's model instead of `unknown`); `RelationFilterHandler` before `RelationCollectionChainHandler` (its separate `$this->anyProp->method()` branch would otherwise answer `$this->post->only([...])` first with the reflected `only()` return instead of the `Pick<>`). The former `ToResourceHandler`-before-`RelationCollectionChainHandler` pin is gone: that branch now declines where it used to floor at `unknown`, so `$this->post->toResource()` reaches `ToResourceHandler` in either order. `ReceiverMethodCallHandler` is inert against every other claimant on the corpus: it declines a vague return such as `only()`'s `Record<string, unknown>`, a receiver holding a `Request`, and a bare `$this->method()` the resource declares itself, for which `ReceiverClassResolver::forwardedThisReceiver()` names no class. A bare `$this->getKey()` the resource forwards to its model is in the corpus: `SubjectMethodTypeResolver` rejects `Model::getKey()`'s `mixed`, so only `ReceiverMethodCallHandler` answers it. `SubjectMethodTypeResolver::resolve()` declines when nothing in scope declares the method, so `RelationCollectionChainHandler` no longer floors every `$this->method()` at `unknown`; `ConditionalMethodHandler` and `KnownMethodRuleHandler` therefore answer `$this->when()`/`whenLoaded()` and `can()`/`cannot()`/`canAny()` in either order. The decline is not ordering alone: a model that declares `can()` with a return type `ReflectedTypeAcceptor` rejects — `can(): void` — falls through the same way, so it too lands on `KnownMethodRuleHandler`'s `boolean` where it used to floor at `unknown`. Every unordered pair is run in both orders by `tests/Unit/Ast/MethodCallOrderingMatrixTest.php` over a curated corpus: the pairs in its `METHOD_CALL_PINNED` map disagree and are held in the direction `handlers()` lists them; every other pair is proven inert on that corpus (a new expression shape that makes an inert pair disagree fails the matrix, which is the signal to pin it). In the controller profile, `withoutResourceHandlers()` drops `ConditionalMethodHandler`, `ToResourceHandler`, and `RelationFilterHandler`, and `ControllerExpressionHandlers` splices `ModelFinderHandler` (`StaticCall` + `MethodCall`) ahead of `StaticCallHandler`, making eight claimants there. |
 | `NullsafeMethodCall` | `RelationFilterHandler`, `MethodChainHandler`, `ReceiverMethodCallHandler` (3) | `RelationFilterHandler` before `MethodChainHandler` is pinned by the `$this->relation?->only([...])` test: `MethodChainHandler` types that call as the reflected `only()` return. `RelationFilterHandler` vs. `ReceiverMethodCallHandler` is **inert**: `ReceiverMethodCallHandler` declines the vague `Record<string, unknown>` that `only()` and `except()` reflect to, so moving it ahead of `RelationFilterHandler` leaves that test green. `MethodChainHandler` vs. `ReceiverMethodCallHandler` used to disagree on `$this->author?->fresh()`: `MethodChainHandler` reflected the `static\|null` docblock to `unknown \| null` and answered first, while `ReceiverMethodCallHandler` gives `User \| null`, the type `$this->author->fresh()` already had. `MethodChainHandler` now declines a type that is only `unknown` once its `null` arms are removed, and `ResourceExpressionHandlersTest`'s `lets MethodChainHandler decline an unknown-only $this->relation?->fresh()` test pins that decline: restoring the floor fails it. The test does not pin the order. With the decline in place both orders give `User \| null`, and a both-orders probe of 50 model methods across five `$this->relation?->m()` chains found no disagreement. That is probe-level evidence only, since no matrix runs this node class. |
 | `PropertyFetch` | `ThisPropertyHandler`, `PropertyChainHandler`, `VariableHandler`, `ReceiverPropertyFetchHandler` (4) | One of the six pairs is pinned (`ThisPropertyHandler` before `PropertyChainHandler`). Three are **inert by construction**: `ThisPropertyHandler` vs. `VariableHandler` never both claim the same expression (`isThisPropertyFetch()` requires a `$this` receiver; `VariableHandler`'s property branch requires the receiver not be `$this`); `PropertyChainHandler` vs. `VariableHandler` likewise — `PropertyChainHandler`'s fallback declines any chain not rooted at `$this`, which is exactly `VariableHandler`'s territory; and `ThisPropertyHandler` vs. `ReceiverPropertyFetchHandler`, since the receiver handler declines every `$this->prop` leaf outright. The remaining two are **inert by mutation**: registering `ReceiverPropertyFetchHandler` ahead of `PropertyChainHandler`, and then ahead of `VariableHandler`, each regenerated the committed trees byte-identically, with only the two registration-order tests failing. Neither is vacuous by accident — `ReceiverHandlersTest`'s `both claim $this->relation?->attr and answer it the same` shows the `PropertyChainHandler` pair genuinely overlapping and agreeing. The `VariableHandler` pair has a shape where the two *would* differ and the corpus is silent: for a variable bound in `varModelBindings`, `VariableHandler::analyzeRelatedModelProperty()` answers `unknown` rather than declining when the member is a relation rather than an attribute, and the receiver handler would type that relation. No fixture writes `$x->relation` inside a `whenLoaded` closure today, which is why the swap moved nothing; read this row's inertness the way the note below this table asks. |
 | `NullsafePropertyFetch` | `PropertyChainHandler`, `ReceiverPropertyFetchHandler` (2) | **Inert by the same mutation** as the `PropertyFetch` row. `PropertyChainHandler` still answers a `$this`-rooted chain it can type, and now declines one whose answer is only `unknown` once its `null` arms are removed — `TsTypeString::isUnknownOnly()`, the same test `MethodChainHandler` applies to a nullsafe call chain. Its `NullsafePropertyFetch` arm used to return that floor unconditionally, which is what kept `$post?->title` at `unknown` instead of letting the receiver rules type it. `ReceiverHandlersTest` pins both halves: the decline, and the agreement on a chain both claim. |
@@ -161,8 +170,9 @@ itself reaches the same instance as `$this->scope`.
 | Field | Type | Holds |
 | --- | --- | --- |
 | `subjectReflection` | `ReflectionClass<object>` | The resource (or other AST subject) under analysis. Constructor argument. |
-| `modelClass` | `class-string<Model>\|null` | The subject's resolved backing model, if any. Constructor argument. |
+| `modelClass` | `class-string<Model>\|null` | The subject's resolved backing model, if any. Constructor argument. **Scoped, not fixed:** `TernaryHandler` narrows it to the guarded class while an `instanceof` true arm resolves, then restores it — see [Narrowing](#narrowing) rule 3. That mutation happens *below* `AstEngine`'s `class@method@modelClass` result-cache key, so the key does not describe the value a nested resolution actually ran under. |
 | `instanceOfWrappedClass` | `class-string\|null` | Wrapped class from an `instanceof` guard in `toArray()`; fallback when `resolveClassOnProperty()` returns `null`. |
+| `forwardsUndeclaredMembersTo` | `class-string\|null` | The class an undeclared `$this->member` read or call forwards to — a `JsonResource` proxies both to `$this->resource`. Derived in the constructor from the subject, so every scope carries it without its builder having to remember; `ResourceAstAnalyzer` re-derives it once an `instanceof` guard supplies a backing the constructor lacked. `ReceiverClassResolver` reads this instead of testing for `JsonResource` itself. Scoped: `TernaryHandler` narrows and restores it alongside `modelClass`. |
 | `closureRelationModelClass` | `class-string<Model>\|null` | Related model set while analyzing a `whenLoaded` closure, so `$variable->prop`/`->method()` inside it resolve. |
 | `closureParamExprBindings` | `array<string, Expr>` | Closure parameter names bound to the `$this->prop` expression found in the surrounding `when()` condition, so `EnumResource::make($status)` resolves like `EnumResource::make($this->status)`. |
 | `varClassBindings` | `array<string, non-empty-list<class-string>>` | Variables an `instanceof` guard or ternary has proven to hold a class. Read **first** in `ReceiverClassResolver::fromVariable()`. What that ordering actually buys today is precedence over the `closureParamExprBindings ?? localVarBindings` fallback, since a guarded variable is normally bound by a plain local assignment; sitting above `varModelBindings` is the same concern for a narrowed closure param or loop variable, and is motivating rather than currently proven. Scoped: `ClosureHandler` and `TernaryHandler` save and restore it around the body they narrow for. See [Narrowing](#narrowing). |
@@ -179,6 +189,30 @@ binding to hold only for one nested body — a closure, a loop, a spread — sav
 key it is about to overwrite), mutates it, analyzes the body, then restores the snapshot, typically in
 a `finally` so an exception path restores it too. This mirrors the analyzer's own pre-refactor save/
 restore discipline and is why the field inventory above calls out scoping per field rather than once.
+
+### Writing a scope binding
+
+Every writer hand-rolls this; there is no helper. The current set:
+
+| Writer | Fields it scopes |
+| --- | --- |
+| `ResourceAstAnalyzer::analyzeThisMethodSpread()` | `localVarBindings`, `resolvingLocalVars`, `varModelBindings`, `varClassBindings`, `requestVarNames`, and the `visitedSpreadMethods` entry |
+| `ClosureHandler::resolve()` | `localVarBindings`, `varClassBindings` |
+| `ConditionalMethodHandler` | `closureRelationModelClass`, `varModelBindings`, `varCollectionBindings`, `varClassBindings` around a `whenLoaded` closure; `closureParamExprBindings` at its two `when()`-condition sites |
+| `TernaryHandler::narrowedArmResult()` | `varClassBindings` for a narrowed variable; `modelClass` + `forwardsUndeclaredMembersTo` for a narrowed `$this->resource` |
+| `RelationCollectionChainHandler` | `closureRelationModelClass` around `pluck()`; that plus `varModelBindings` around a `map()` closure |
+| `VariableHandler`, `ReceiverClassResolver::fromVariable()` | the `resolvingLocalVars` re-entrancy guard |
+
+**The rule: every mutation must sit inside the `try` whose `finally` restores it.** A review during the
+receiver phase caught the opposite shape — seeding done *outside* the `try` — and it is worth stating why
+that is worse than it looks. The scope outlives the expression being resolved, so a binding left in force
+by an escaping path does not raise anything; it silently answers some *later* property with a
+wrong-but-plausible type, arbitrarily far from the writer that leaked it.
+
+The plain assignments that currently sit between the snapshot and the `try` are safe only because an
+assignment cannot throw. The moment seeding needs to resolve, reflect, or call back into the engine — as
+`ConditionalMethodHandler`'s relation lookup does — it belongs inside the `try`. Prefer restoring the
+whole map over unsetting the single key you believe you wrote.
 
 ### How `varModelBindings` gets populated, and how scoping holds
 

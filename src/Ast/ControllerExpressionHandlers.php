@@ -29,7 +29,7 @@ final class ControllerExpressionHandlers
     {
         $handlers = [];
 
-        foreach (ResourceExpressionHandlers::generic() as $handler) {
+        foreach (ResourceExpressionHandlers::withoutResourceHandlers() as $handler) {
             if ($handler instanceof StaticCallHandler) {
                 $handlers[] = new ModelFinderHandler;
                 $handlers[] = new InertiaResourcePropHandler;

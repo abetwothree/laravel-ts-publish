@@ -40,7 +40,7 @@ it('inserts both controller handlers immediately before StaticCallHandler and ch
 
     $generic = array_map(
         fn (ExpressionHandler $handler): string => $handler::class,
-        ResourceExpressionHandlers::generic(),
+        ResourceExpressionHandlers::withoutResourceHandlers(),
     );
 
     $expected = [];

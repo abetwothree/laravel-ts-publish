@@ -120,7 +120,10 @@ final class AnalysisScope
 
     /**
      * @param  ReflectionClass<object>  $subjectReflection  the resource (or other AST subject) under analysis
-     * @param  class-string<Model>|null  $modelClass  its resolved backing model, if any
+     * @param  class-string<Model>|null  $modelClass  its resolved backing model, if any. Scoped rather than
+     *                                                fixed: TernaryHandler narrows it for an `instanceof`
+     *                                                true arm and restores it after — a mutation below
+     *                                                AstEngine's class@method@modelClass cache key.
      */
     public function __construct(
         public ReflectionClass $subjectReflection,

@@ -93,7 +93,7 @@ function resourceExpressionHandlerOrder(): array
     ];
 }
 
-/** A throwaway engine: make()/generic() only construct handlers, they never resolve anything. */
+/** A throwaway engine: make()/withoutResourceHandlers() only construct handlers, they never resolve anything. */
 function resourceExpressionHandlersTestEngine(): ExpressionEngine
 {
     return new class implements ExpressionEngine
@@ -124,10 +124,10 @@ it('returns all 26 handlers in the documented dispatch order', function () {
     expect($classes)->toBe(resourceExpressionHandlerOrder());
 });
 
-it('excludes exactly the three resource-only handlers from generic(), same relative order', function () {
+it('excludes exactly the three resource-only handlers from withoutResourceHandlers(), same relative order', function () {
     $classes = array_map(
         fn (ExpressionHandler $handler): string => $handler::class,
-        ResourceExpressionHandlers::generic(),
+        ResourceExpressionHandlers::withoutResourceHandlers(),
     );
 
     $expected = array_values(array_filter(

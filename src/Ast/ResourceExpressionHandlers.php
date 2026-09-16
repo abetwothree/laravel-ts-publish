@@ -55,12 +55,16 @@ final class ResourceExpressionHandlers
     }
 
     /**
-     * The class-agnostic profile: make() minus the three resource-only handlers
-     * (ConditionalMethodHandler, ToResourceHandler, RelationFilterHandler), same relative order.
+     * make() minus the three resource-only handlers (ConditionalMethodHandler, ToResourceHandler,
+     * RelationFilterHandler), same relative order.
+     *
+     * Named for what it drops, not for who may use it: the one production caller is
+     * ControllerExpressionHandlers::make(). Every other non-resource subject — a broadcast event, model
+     * metadata, any DTO reaching AstEngine::analyzeMethod() — runs the full resource profile instead.
      *
      * @return list<ExpressionHandler>
      */
-    public static function generic(): array
+    public static function withoutResourceHandlers(): array
     {
         return array_values(array_filter(
             self::handlers(),
