@@ -61,7 +61,8 @@ final class ReceiverMethodCallHandler implements ExpressionHandler
         }
 
         $fromInside = $expr instanceof StaticCall && $expr->class instanceof Name && $expr->class->isSpecialClassName();
-        $result = resolve(ReceiverMethodReturnResolver::class)->resolve($receiver, $expr->name->toString(), $scope, $fromInside);
+        $result = resolve(ReceiverMethodReturnResolver::class)
+            ->resolve($receiver, $expr->name->toString(), $scope, $fromInside, $expr);
 
         if ($result === null) {
             return null;

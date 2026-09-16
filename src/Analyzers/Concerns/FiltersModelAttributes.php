@@ -6,6 +6,8 @@ namespace AbeTwoThree\LaravelTsPublish\Analyzers\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
+use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\Variable;
@@ -62,7 +64,23 @@ trait FiltersModelAttributes
             return null;
         }
 
-        return $this->filterAnalysisByKeys($fullAnalysis, $keys, include: true);
+        /** @var class-string $modelClass buildModelDelegatedAnalysis() returns null without one */
+        $modelClass = $this->scope->modelClass;
+
+        $filtered = $this->filterAnalysisByKeys($fullAnalysis, $keys, include: true);
+        $present = array_column($filtered->properties, 'name');
+
+        // Model::only() returns every requested key, including withCount()/selectRaw() virtuals the schema lacks.
+        foreach (array_diff($keys, $present) as $key) {
+            $accepted = resolve(ReflectedTypeAcceptor::class)
+                ->accept(resolve(ModelAttributeResolver::class)->resolveAttribute($modelClass, $key));
+
+            if ($accepted !== null) {
+                $filtered->addProperty($key, $accepted);
+            }
+        }
+
+        return $filtered;
     }
 
     /**

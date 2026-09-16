@@ -92,6 +92,7 @@ use Workbench\App\Http\Resources\MutuallyRecursiveSpreadResource;
 use Workbench\App\Http\Resources\NestedResourceSpreadResource;
 use Workbench\App\Http\Resources\NonArrayReturnResource;
 use Workbench\App\Http\Resources\NonThisReceiverSpreadResource;
+use Workbench\App\Http\Resources\OnlyValueResource;
 use Workbench\App\Http\Resources\OrderClosureResource;
 use Workbench\App\Http\Resources\OrderCollection;
 use Workbench\App\Http\Resources\OrderCountsResource;
@@ -2285,6 +2286,16 @@ describe('ResourceAstAnalyzer with OrderOnlyResource (spread only)', function ()
 
         expect($searchIndex)->not->toBeNull()
             ->and($searchIndex['type'])->toBe('unknown');
+    });
+});
+
+describe('ResourceAstAnalyzer with OnlyValueResource (only() off a relation receiver)', function () {
+    test('only() keeps typed virtual keys at the top level and references the model in value position', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(OnlyValueResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+        expect($props['comments_count']['type'])->toBe('number')
+            ->and($props['summary']['type'])->toBe("Pick<Post, 'id' | 'title'>")
+            ->and($props['category']['type'])->toBe("Pick<Category, 'id' | 'name'>");
     });
 });
 

@@ -3023,6 +3023,17 @@ declare global {
         export interface NonThisReceiverSpreadResource {
             id: number;
         }
+        /**
+         * only() away from a relation receiver: a top-level spread that names a withCount() virtual the schema
+         * lacks, and two value-position calls — on $this (forwarded to the model) and on a whenLoaded closure
+         * parameter — which must reference the model the receiver holds rather than only()'s vague array return.
+         */
+        export interface OnlyValueResource {
+            id: number;
+            comments_count: number;
+            summary?: Pick<workbench.app.models.Post, 'id' | 'title'>;
+            category?: Pick<workbench.app.models.Category, 'id' | 'name'>;
+        }
         /** Exercises closure / arrow function patterns in value expressions and merge methods. */
         export interface OrderClosureResource {
             id: number;

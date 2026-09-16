@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationCollectionChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationFilterHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
@@ -40,6 +41,9 @@ const METHOD_CALL_PINNED = [
     'FirstClassCallableHandler|ToResourceHandler' => FirstClassCallableHandler::class,
     'FirstClassCallableHandler|KnownFunctionCallHandler' => FirstClassCallableHandler::class,
     'RelationCollectionChainHandler|RelationFilterHandler' => RelationFilterHandler::class,
+    // Only visible in a two-handler profile: production registers RelationFilterHandler ahead of both,
+    // and it claims every `$this->prop->only([...])`, so neither of these two decides that call there.
+    'ReceiverMethodCallHandler|RelationCollectionChainHandler' => RelationCollectionChainHandler::class,
 ];
 
 /**

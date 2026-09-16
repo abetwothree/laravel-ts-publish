@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MethodChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverPropertyFetchHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationFilterHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
@@ -32,6 +33,7 @@ use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Stmt;
 use Workbench\App\Enums\Priority;
+use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\ImageResource;
 use Workbench\App\Http\Resources\ModelWrappedPropResource;
 use Workbench\App\Http\Resources\NarrowedParentResource;
@@ -374,6 +376,25 @@ describe('a property the subject declares wins over the model', function () {
         expect($inherited->resolve(receiverHandlerExpr('$this->resource->title'))['type'])->toBe('string')
             ->and($redeclared->resolve(receiverHandlerExpr('$this->resource->title'))['type'])->toBe('string');
     });
+});
+
+// The MethodCall/NullsafeMethodCall rows' inert claim, re-proven for its NEW reason: the receiver
+// handler used to DECLINE only()'s vague reflected return, and now answers it with the same Pick<>
+// RelationFilterHandler builds, so the pair still cannot change an answer by being reordered.
+describe('RelationFilterHandler and ReceiverMethodCallHandler are inert against each other', function () {
+    test('both claim $this->relation->only([...]) and answer it the same', function (string $php, string $type) {
+        $expr = receiverHandlerExpr($php);
+        $scope = fn (): AnalysisScope => new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
+
+        $filter = new RelationFilterHandler()->resolve($expr, $scope(), chainHandlersThrowingEngine());
+        $receiver = new ReceiverMethodCallHandler()->resolve($expr, $scope(), chainHandlersThrowingEngine());
+
+        expect($filter)->toBe(['type' => $type, 'optional' => false, 'modelFqcn' => Post::class])
+            ->and($receiver)->toBe($filter);
+    })->with([
+        ['$this->post->only([\'id\', \'title\'])', "Pick<Post, 'id' | 'title'>"],
+        ['$this->post?->only([\'id\', \'title\'])', "Pick<Post, 'id' | 'title'> | null"],
+    ]);
 });
 
 // The inert half of the ordering inventory's PropertyFetch row: both handlers really claim

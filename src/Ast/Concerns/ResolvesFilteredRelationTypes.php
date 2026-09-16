@@ -6,13 +6,16 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use Illuminate\Database\Eloquent\Model;
 
 /**
- * Build an inline TypeScript object type for a filtered subset of a related model's members.
+ * Type a filtered subset of a model's members: a `Pick<Model, …>` reference when every key is a
+ * published column, else an inline object shape.
  *
- * RelationFilterHandler is the only production caller. ResolvesModelTypes still composes this trait
- * so the analyzer keeps inheriting the method: ResourceAstAnalyzerTest probes it through two
- * anonymous subclasses, which is the only coverage the except-branch column rule has.
+ * Two production callers. RelationFilterHandler types `$this->relation->only([...])` through it, and
+ * ReceiverMethodReturnResolver types the same filters on any model receiver. ResolvesModelTypes still
+ * composes this trait so the analyzer keeps inheriting the method: ResourceAstAnalyzerTest probes it
+ * through two anonymous subclasses, which is the only coverage the except-branch column rule has.
  *
  * @phpstan-import-type TypesImportMap from Datable
  *
@@ -127,5 +130,40 @@ trait ResolvesFilteredRelationTypes
             'modelFqcns' => $collectedModelFqcns,
             'customImports' => $collectedCustomImports,
         ];
+    }
+
+    /**
+     * Build a Pick<Model, …> reference when every filter key is a declared model column.
+     *
+     * Targets the bare model interface: except() iterates only $this->getAttributes(), so relations and
+     * accessors never surface. Picks the complement, not Omit<>, to stay independent of the active template.
+     *
+     * @param  class-string<Model>  $modelFqcn
+     * @param  list<string>  $keys
+     */
+    protected function relationFilterModelReference(string $modelFqcn, array $keys, bool $include): ?string
+    {
+        $resolver = resolve(ModelAttributeResolver::class);
+        $columns = $resolver->publishedColumnNames($modelFqcn);
+
+        if ($columns === []) {
+            return null; // @codeCoverageIgnore
+        }
+
+        foreach ($keys as $key) {
+            if (! in_array($key, $columns, true)) {
+                return null;
+            }
+        }
+
+        $picked = $include ? $keys : array_values(array_diff($columns, $keys));
+
+        if ($picked === []) {
+            return 'Pick<'.class_basename($modelFqcn).', never>';
+        }
+
+        $quoted = implode(' | ', array_map(fn (string $k): string => "'".$k."'", $picked));
+
+        return 'Pick<'.class_basename($modelFqcn).', '.$quoted.'>';
     }
 }

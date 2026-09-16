@@ -121,12 +121,14 @@ final class VariableHandler implements ExpressionHandler
         }
 
         // $variable->method() — resolve against the variable's own bound model, falling back to the
-        // ambient whenLoaded closure model.
+        // ambient whenLoaded closure model. only()/except() are skipped: they belong to the receiver
+        // rules' attribute filter, which types the named keys rather than only()'s vague `array` return.
         if ($expr instanceof MethodCall
             && $expr->var instanceof Variable
             && is_string($expr->var->name)
             && $expr->var->name !== 'this'
             && $expr->name instanceof Identifier
+            && ! in_array($expr->name->toString(), ['only', 'except'], true)
         ) {
             /** @var class-string<Model>|null $boundModel */
             $boundModel = $scope->varModelBindings[$expr->var->name] ?? $scope->closureRelationModelClass;

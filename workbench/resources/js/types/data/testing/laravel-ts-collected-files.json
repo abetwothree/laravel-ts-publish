@@ -164,6 +164,7 @@
     "app\/Http\/Resources\/NestedResourceSpreadResource.php",
     "app\/Http\/Resources\/NonArrayReturnResource.php",
     "app\/Http\/Resources\/NonThisReceiverSpreadResource.php",
+    "app\/Http\/Resources\/OnlyValueResource.php",
     "app\/Http\/Resources\/OrderClosureResource.php",
     "app\/Http\/Resources\/OrderCollection.php",
     "app\/Http\/Resources\/OrderCountsResource.php",

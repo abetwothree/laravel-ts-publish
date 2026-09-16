@@ -98,6 +98,12 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             && $expr->var->name === 'this'
             && $expr->name instanceof Identifier
         ) {
+            // A model-backed `$this->only([...])` is the receiver rules' attribute filter, which types the
+            // named keys; reflecting Model::only() here would floor it at that vague `array` return instead.
+            if ($scope->modelClass !== null && in_array($expr->name->toString(), ['only', 'except'], true)) {
+                return null;
+            }
+
             return resolve(SubjectMethodTypeResolver::class)->resolve($scope, $expr->name->toString());
         }
 

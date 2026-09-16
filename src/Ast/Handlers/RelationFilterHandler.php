@@ -294,41 +294,6 @@ final class RelationFilterHandler implements ExpressionHandler
     }
 
     /**
-     * Build a Pick<Model, …> reference when every filter key is a declared model column.
-     *
-     * Targets the bare model interface: except() iterates only $this->getAttributes(), so relations and
-     * accessors never surface. Picks the complement, not Omit<>, to stay independent of the active template.
-     *
-     * @param  class-string<Model>  $modelFqcn
-     * @param  list<string>  $keys
-     */
-    private function relationFilterModelReference(string $modelFqcn, array $keys, bool $include): ?string
-    {
-        $resolver = resolve(ModelAttributeResolver::class);
-        $columns = $resolver->publishedColumnNames($modelFqcn);
-
-        if ($columns === []) {
-            return null; // @codeCoverageIgnore
-        }
-
-        foreach ($keys as $key) {
-            if (! in_array($key, $columns, true)) {
-                return null;
-            }
-        }
-
-        $picked = $include ? $keys : array_values(array_diff($columns, $keys));
-
-        if ($picked === []) {
-            return 'Pick<'.class_basename($modelFqcn).', never>';
-        }
-
-        $quoted = implode(' | ', array_map(fn (string $k): string => "'".$k."'", $picked));
-
-        return 'Pick<'.class_basename($modelFqcn).', '.$quoted.'>';
-    }
-
-    /**
      * If $propName is an accessor attribute whose getter returns exactly one Eloquent Model
      * subclass, return its FQCN. Used as a fallback when the property is not a database relation.
      * The sole implementation — the analyzer-side copy was deleted as dead code, not moved here.

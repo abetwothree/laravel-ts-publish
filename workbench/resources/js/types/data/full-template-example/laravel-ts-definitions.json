@@ -11839,6 +11839,31 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\OnlyValueResource": {
+            "name": "OnlyValueResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "comments_count",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "summary",
+                    "type": "Pick<Post, 'id' | 'title'>",
+                    "optional": true
+                },
+                {
+                    "name": "category",
+                    "type": "Pick<Category, 'id' | 'name'>",
+                    "optional": true
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\OrderClosureResource": {
             "name": "OrderClosureResource",
             "properties": [

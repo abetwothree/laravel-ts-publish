@@ -8,18 +8,37 @@ subclass's `toArray()` method as PHP AST (not reflection) and infers a TypeScrip
 every returned property, following relation chains, closures, casts, and accessor waterfalls
 back to their source.
 
-## Relation filters
+## Attribute filters on any model receiver
 
-`$this->relation->only([...])` / `->except([...])` (and their `?->` nullsafe forms) analyze
-via `RelationFilterHandler::analyzeRelationFilter()`. When the related model resolves to a single class (not a
+`only([...])` / `except([...])` (and their `?->` nullsafe forms) type against **any receiver holding a
+model**, not only a relation. `$this->relation->only([...])` analyzes via
+`RelationFilterHandler::analyzeRelationFilter()`; every other receiver — a bare `$this->only([...])` the
+resource forwards to its model, a `whenLoaded` closure parameter's `$category->only([...])`, a local
+variable holding a model — reaches `ReceiverMethodReturnResolver::attributeFilterRule()`, which builds the
+**same** answer against the receiver's own model. When that model resolves to a single class (not a
 multi-model accessor union such as `Attribute<ModelA|ModelB, never>`), the analyzer prefers to
-**reference the related model's own generated interface** instead of re-deriving an inline
+**reference the model's own generated interface** instead of re-deriving an inline
 object shape — the model interface already carries `#[TsCasts]` overrides and `@property`
 docblock refinements that a from-scratch recompute loses.
 
+The two paths agree by construction rather than by coincidence: the `Pick<>` builder and the inline-shape
+builder both live on `ResolvesFilteredRelationTypes`, and both callers invoke them in the same order with the
+same arguments. That is what keeps `RelationFilterHandler` and `ReceiverMethodCallHandler` inert against each
+other even though both claim `$this->relation->only([...])` — see the ordering inventory in
+[AST engine](ast-engine.md#the-honest-ordering-inventory), whose rows used to record the opposite reason (the
+receiver handler *declining* `only()`'s vague return). `OnlyValueResource` in the workbench pins the receiver
+side: `$this->when(true, fn () => $this->only(['id', 'title']))` publishes `Pick<Post, 'id' | 'title'>` and
+`$this->whenLoaded('categoryRel', fn ($category) => $category->only(['id', 'name']))` publishes
+`Pick<Category, 'id' | 'name'>`, where both previously published `Record<string, unknown>`.
+
+Two handler branches step aside so the receiver rule can answer: `RelationCollectionChainHandler`'s generic
+`$this->method()` arm declines `only`/`except` on a model-backed scope, and `VariableHandler`'s
+`$variable->method()` arm skips them. Both used to reflect the method on a model and floor the value at
+`only()`'s bare `array`.
+
 ### When a Pick reference is emitted
 
-`RelationFilterHandler::relationFilterModelReference()` builds `Pick<Model, 'a' | 'b'>` — `[]`-suffixed for
+`ResolvesFilteredRelationTypes::relationFilterModelReference()` builds `Pick<Model, 'a' | 'b'>` — `[]`-suffixed for
 many-relations, `| null`-suffixed for nullsafe calls — whenever **every filter key is a column
 the model interface actually declares**, per `ModelAttributeResolver::publishedColumnNames()`.
 For `only()` the picked keys are the caller's own list, verbatim. For `except()` they are the
@@ -133,6 +152,21 @@ in practice the include branch's gate: a named write-only mutator with no getter
 survives as `key: unknown` — runtime-faithful, since `Model::only()` resolves through
 `getAttribute()`, which does return that key.
 
+### Top-level `only()` keeps a typed key the schema lacks
+
+`return $this->only([...])` and `...$this->only([...])` build their property set from
+`buildModelDelegatedAnalysis()`, which enumerates the model's own attributes and relations. A requested key
+that set had no entry for used to vanish silently. `FiltersModelAttributes::analyzeOnlyFilter()` now appends,
+in request order, every requested key the analysis lacks but `ModelAttributeResolver::resolveAttribute()` can
+still type — a `withCount()`/`withExists()` virtual such as `comments_count: number`, or a name a class-level
+`@property` tag declares. That is runtime-faithful: `HasAttributes::only()` calls `getAttribute($key)` per
+named key and returns whatever it finds, a query-selected virtual the schema never declares included. A key
+nothing can type is still dropped rather than published as `unknown`.
+
+`except()` is deliberately untouched by this. It iterates `$this->getAttributes()`, so it can only ever
+return database columns and a virtual it was never asked about cannot appear — the same asymmetry between the
+two methods that the sections above already rest on.
+
 ### `exclude_hidden` on the top-level resource, not just relation filters
 
 The rule established above for `$this->relation->only()/except()` — hidden columns fall out of an
@@ -177,7 +211,7 @@ passes `false`. `resolveFilteredRelationType()`'s except branch has no such shar
 builds its key list fresh per call — so it filters unconditionally there. `WarehouseResource`'s own
 union-accessor `except()` calls (`last_user_activity_by_mostly`, `last_checked_by_mostly`) no
 longer reach this branch: every excluded key there is a non-hidden published column, so each arm
-resolves through `RelationFilterHandler::relationFilterModelReference()` instead — see [Multi-model accessor unions
+resolves through `ResolvesFilteredRelationTypes::relationFilterModelReference()` instead — see [Multi-model accessor unions
 reference each arm's own model](#multi-model-accessor-unions-reference-each-arms-own-model) below.
 `ModelAttributeResolver::publishedColumnNames()` is `relationFilterModelReference()`'s own
 `$hidden` gate, and it is still pinned directly — `PostAttachmentFilterResource::$attachment_hidden`

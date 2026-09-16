@@ -191,10 +191,11 @@ receiver kind:
 
 ### Receiver rules
 
-`ReceiverMethodReturnResolver` checks two convention rules for each class before the order below. They read
-the receiver's model rather than a signature, because Laravel declares both methods loosely: `Model::getKey()`
-returns `mixed`, and `Collection::modelKeys()` returns `array<int, array-key>`, which reflects to
-`(string | number)[]`.
+`ReceiverMethodReturnResolver` checks three convention rules for each class before the order below. They read
+the receiver's model rather than a signature, because Laravel declares all three loosely: `Model::getKey()`
+returns `mixed`, `Collection::modelKeys()` returns `array<int, array-key>`, which reflects to
+`(string | number)[]`, and `Model::only()`/`except()` return a bare `array`, which reflects to the vague
+`Record<string, unknown>`.
 
 | Call | Receiver | Published type |
 | --- | --- | --- |
@@ -202,6 +203,8 @@ returns `mixed`, and `Collection::modelKeys()` returns `array<int, array-key>`, 
 | `getKey()` | `Model` itself, or an abstract model that inherits `Model::getKey()` | No rule. Reflection declines the inherited `mixed`. |
 | `getKey()` | Any model that declares `getKey()` itself | No rule. Reflection publishes the override's own return, such as `getKey(): string`. |
 | `modelKeys()` | An Eloquent collection with `elementModel` set | The element model's key type as a list, `number[]` or `string[]` |
+| `only([...])`, `except([...])` | A receiver holding exactly one concrete model, where the call carries a literal key list | Exactly what `RelationFilterHandler` builds for a relation to that model: `Pick<Model, …>` when every key is a published column, else the inline shape |
+| `only()`, `except()` | Any other receiver — a union, an Eloquent collection, or a `StaticCall`, which carries no key list this can read | No rule. Reflection then declines the vague `array`. |
 
 The key type comes from `ModelAttributeResolver::getInstance()`, so `HasUuids`, `HasUlids`, and a
 `#[Table(keyType: ...)]` attribute all count. Both `int` and `integer` map to `number`, because
@@ -216,8 +219,10 @@ When no instance can be built, no rule answers and the order below runs: `getKey
 and `modelKeys()` keeps its reflected `(string | number)[]`.
 
 A rule answers for the receiver's own model, never the subject's: `getKey()` on a `UuidPost` receiver is
-`string` even when the subject is backed by the integer-keyed `Post`. The rules name no model token, so steps 3
-and 7 have nothing to check.
+`string` even when the subject is backed by the integer-keyed `Post`. The `getKey()`/`modelKeys()` rules name no
+model token, so steps 3 and 7 have nothing to check. The filter rule does name one — `Pick<Post, …>` — so it
+applies step 8's published-model check (`ValueResult::namesOnlyPublishedModels()`) itself, and declines rather
+than emit a token no file backs.
 
 | Expression in `ReceiverMethodResource` | Published type |
 | --- | --- |

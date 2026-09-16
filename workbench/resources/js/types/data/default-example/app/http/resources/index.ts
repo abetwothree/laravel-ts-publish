@@ -80,6 +80,7 @@ export * from './narrowed-parent-resource';
 export * from './nested-resource-spread-resource';
 export * from './non-array-return-resource';
 export * from './non-this-receiver-spread-resource';
+export * from './only-value-resource';
 export * from './order-closure-resource';
 export * from './order-collection';
 export * from './order-counts-resource';

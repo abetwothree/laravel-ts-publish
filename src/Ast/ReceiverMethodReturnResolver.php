@@ -4,12 +4,17 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesFilteredRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use Illuminate\Database\Eloquent\Model;
+use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\NullsafeMethodCall;
+use PhpParser\Node\Expr\StaticCall;
 use ReflectionClass;
 use ReflectionMethod;
 
@@ -23,20 +28,29 @@ use ReflectionMethod;
  */
 final class ReceiverMethodReturnResolver
 {
+    use FiltersAttributeKeys;
+    use ResolvesFilteredRelationTypes;
+
     /**
      * Type a method on every class the receiver holds, unioning the answers.
      *
      * @param  bool  $fromInside  a non-public method is reachable, as through `self::`, `static::` or `parent::`. For
      *                            direct callers resolving the analyzed class's own body: dispatch never passes it today,
      *                            because StaticCallHandler answers every call on a named class first.
+     * @param  MethodCall|NullsafeMethodCall|StaticCall|null  $call  the call node, for a rule that reads its arguments
      * @return ValueExpressionResult|null null when any receiver class cannot type the method
      */
-    public function resolve(ReceiverType $receiver, string $methodName, AnalysisScope $scope, bool $fromInside = false): ?array
-    {
+    public function resolve(
+        ReceiverType $receiver,
+        string $methodName,
+        AnalysisScope $scope,
+        bool $fromInside = false,
+        MethodCall|NullsafeMethodCall|StaticCall|null $call = null,
+    ): ?array {
         $results = [];
 
         foreach ($receiver->classes as $class) {
-            $result = $this->ruleFor($receiver, $class, $methodName) ?? $this->resolveOn($class, $methodName, $fromInside);
+            $result = $this->ruleFor($receiver, $class, $methodName, $call) ?? $this->resolveOn($class, $methodName, $fromInside);
 
             // One untypable arm would make the union a lie; decline so dispatch reaches the floor.
             if ($result === null) {
@@ -59,8 +73,12 @@ final class ReceiverMethodReturnResolver
      * @param  class-string  $class
      * @return ValueExpressionResult|null
      */
-    private function ruleFor(ReceiverType $receiver, string $class, string $methodName): ?array
-    {
+    private function ruleFor(
+        ReceiverType $receiver,
+        string $class,
+        string $methodName,
+        MethodCall|NullsafeMethodCall|StaticCall|null $call,
+    ): ?array {
         $resolver = resolve(ModelAttributeResolver::class);
 
         if ($methodName === 'getKey' && $this->runsModelGetKey($class)) {
@@ -75,7 +93,66 @@ final class ReceiverMethodReturnResolver
             return $keyType === null ? null : [...ValueResult::unknown(), 'type' => $keyType.'[]'];
         }
 
+        if (in_array($methodName, $this->supportedAttributeFilters(), true)) {
+            return $this->attributeFilterRule($receiver, $methodName, $call);
+        }
+
         return null;
+    }
+
+    /**
+     * `only()`/`except()` on a lone concrete model receiver, typed as that model's own filtered members.
+     *
+     * Builds exactly what RelationFilterHandler builds for a relation to the same model, so the two agree
+     * wherever both claim a call. A StaticCall carries no filter keys this can read, so it declines.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function attributeFilterRule(
+        ReceiverType $receiver,
+        string $methodName,
+        MethodCall|NullsafeMethodCall|StaticCall|null $call,
+    ): ?array {
+        if (! $call instanceof MethodCall && ! $call instanceof NullsafeMethodCall) {
+            return null;
+        }
+
+        $models = $receiver->models();
+
+        if (count($models) !== 1 || $models !== $receiver->classes) {
+            return null;
+        }
+
+        $keys = $this->extractFilterKeys($call, new ReflectionMethod(Model::class, $methodName));
+
+        if ($keys === null || $keys === []) {
+            return null;
+        }
+
+        $include = $methodName === 'only';
+        $reference = $this->relationFilterModelReference($models[0], $keys, $include);
+
+        if ($reference !== null) {
+            $result = [...ValueResult::unknown(), 'type' => $reference, 'modelFqcn' => $models[0]];
+
+            return ValueResult::namesOnlyPublishedModels($result) ? $result : null;
+        }
+
+        $filtered = $this->resolveFilteredRelationType($models[0], $keys, $include);
+
+        if ($filtered['type'] === 'unknown') {
+            return null;
+        }
+
+        $result = [
+            ...ValueResult::unknown(),
+            'type' => $filtered['type'],
+            'embeddedEnumFqcns' => $filtered['enumFqcns'],
+            'embeddedModelFqcns' => $filtered['modelFqcns'],
+            'customImports' => $filtered['customImports'],
+        ];
+
+        return ValueResult::namesOnlyPublishedModels($result) ? $result : null;
     }
 
     /**
