@@ -8703,6 +8703,21 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\ArtistResource": {
+            "name": "ArtistResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "name",
+                    "type": "string",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\BareFuncCallResource": {
             "name": "BareFuncCallResource",
             "properties": [
@@ -13370,6 +13385,26 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\ReviewResource": {
+            "name": "ReviewResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "reviewable",
+                    "type": "ArtistResource | VenueResource",
+                    "optional": true
+                },
+                {
+                    "name": "reviewable_name",
+                    "type": "string",
+                    "optional": true
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\RoutableResource": {
             "name": "RoutableResource",
             "properties": []
@@ -15004,6 +15039,21 @@
                 },
                 {
                     "name": "status",
+                    "type": "string",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\VenueResource": {
+            "name": "VenueResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "name",
                     "type": "string",
                     "optional": false
                 }

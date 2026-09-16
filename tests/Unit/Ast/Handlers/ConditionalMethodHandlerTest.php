@@ -2,11 +2,13 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -21,12 +23,20 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
+use Workbench\App\Http\Resources\ArtistResource;
 use Workbench\App\Http\Resources\ConditionalDefaultsResource;
+use Workbench\App\Http\Resources\ReviewResource;
 use Workbench\App\Http\Resources\UserResource;
+use Workbench\App\Http\Resources\VenueResource;
 use Workbench\App\Models\Address;
+use Workbench\App\Models\Artist;
+use Workbench\App\Models\ArtistReview;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Profile;
+use Workbench\App\Models\Review;
 use Workbench\App\Models\User;
+use Workbench\App\Models\Venue;
+use Workbench\App\Models\VenueReview;
 
 /**
  * An AnalysisScope for tests that don't need a real backing model.
@@ -502,4 +512,16 @@ describe('positional null value arm', function () {
             ->and($types['appended_with_null'])->toBe('number | null')
             ->and($types['exists_with_default'])->toBe('string | null');
     });
+});
+
+test('a morph union closure param binds every target and toResource unions their resources', function () {
+    resolve(ModelAttributeResolver::class)->buildMorphTargetMap([Venue::class, Artist::class, Review::class, VenueReview::class, ArtistReview::class]);
+
+    $analysis = new ResourceAstAnalyzer(new ReflectionClass(ReviewResource::class), Review::class)->analyze();
+    $props = collect($analysis->properties)->keyBy('name');
+
+    expect($props['reviewable']['type'])->toBe('ArtistResource | VenueResource')
+        ->and($props['reviewable']['optional'])->toBeTrue()
+        ->and($props['reviewable_name']['type'])->toBe('string')
+        ->and(array_keys($analysis->nestedResources))->toContain(ArtistResource::class, VenueResource::class);
 });

@@ -1970,6 +1970,11 @@ declare global {
             category_class_name?: string;
             category_table_name?: string;
         }
+        /** The other arm of the reviewable morph union ReviewResource unions over. */
+        export interface ArtistResource {
+            id: number;
+            name: string;
+        }
         /** Fixture resource exercising bare function call spreads (without $this->). */
         export interface BareFuncCallResource {
             morphValue: string;
@@ -3465,6 +3470,15 @@ declare global {
             category_status?: app.enums.StatusType;
             category_visibility?: app.enums.VisibilityType | null;
         }
+        /**
+         * Exercises a morphTo closure parameter: $subject binds to every morph target, so toResource()
+         * unions their resources and a plain attribute read unions the targets' own column types.
+         */
+        export interface ReviewResource {
+            id: number;
+            reviewable?: ArtistResource | VenueResource;
+            reviewable_name?: string;
+        }
         export interface RoutableResource extends ResourceRoutes, Pick<Routable, "store" | "update"> {
         }
         /**
@@ -3956,6 +3970,11 @@ declare global {
             whileKey?: string;
             doWhileKey?: string;
             status: string;
+        }
+        /** One arm of the reviewable morph union ReviewResource unions over. */
+        export interface VenueResource {
+            id: number;
+            name: string;
         }
         /**
          * Fixture for a resource whose model nothing can resolve — no TsResource attribute, no mixin or

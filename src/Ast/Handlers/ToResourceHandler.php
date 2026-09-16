@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
@@ -90,7 +91,33 @@ final class ToResourceHandler implements ExpressionHandler
             return [...$result, 'type' => TsNaming::resourceTypeName($explicit), 'optional' => false, 'resourceFqcn' => $explicit];
         }
 
-        $modelFqcn = $this->resolveToResourceReceiverModel($call->var, $scope);
+        $models = $this->resolveToResourceReceiverModels($call->var, $scope);
+
+        if (count($models) > 1) {
+            $resourceFqcns = [];
+
+            foreach ($models as $model) {
+                $resolved = $this->resolveResourceForModel($model);
+
+                // All or nothing: a union missing an arm publishes a type that is wrong for that arm.
+                if ($resolved === null) {
+                    return $result;
+                }
+
+                $resourceFqcns[] = $resolved;
+            }
+
+            $resourceFqcns = array_values(array_unique($resourceFqcns));
+
+            return [
+                ...$result,
+                'type' => implode(' | ', array_map(fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn), $resourceFqcns)),
+                'optional' => false,
+                'embeddedResourceFqcns' => $resourceFqcns,
+            ];
+        }
+
+        $modelFqcn = $models[0] ?? null;
         $resourceFqcn = $modelFqcn !== null ? $this->resolveResourceForModel($modelFqcn) : null;
 
         if ($resourceFqcn === null) {
@@ -182,6 +209,18 @@ final class ToResourceHandler implements ExpressionHandler
         }
 
         return null;
+    }
+
+    /**
+     * Every model a toResource() receiver may hold: the existing single-model bindings first, then the receiver resolver.
+     *
+     * @return list<class-string<Model>>
+     */
+    private function resolveToResourceReceiverModels(Expr $receiver, AnalysisScope $scope): array
+    {
+        $single = $this->resolveToResourceReceiverModel($receiver, $scope);
+
+        return $single !== null ? [$single] : (resolve(ReceiverClassResolver::class)->resolve($receiver, $scope)?->models() ?? []);
     }
 
     /**

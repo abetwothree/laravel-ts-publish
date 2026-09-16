@@ -1106,6 +1106,40 @@ stays ungated on purpose — an explicitly named resource is a declaration, not 
   `new` expression in the analyzed source, not an invented candidate, so it stays ungated on the
   same basis
 
+### A morph union binds every target, and `toResource()` unions their resources
+
+`ConditionalMethodHandler::analyzeWhenLoaded()` binds a closure parameter to the relation's model, but a
+`morphTo` names no single model: `ModelAttributeResolver::resolveRelation()` answers `modelFqcn: null` and
+fills `morphFqcns` with every parent instead. Such a parameter binds into `AnalysisScope::$varClassBindings`
+— the narrowing map, which holds a *list* of classes — carrying all the targets at once. That fourth map is
+saved and restored beside the other three in the same `finally`, so the binding cannot leak into the next
+key of the same `toArray()`.
+
+`ToResourceHandler::resolveToResourceReceiverModels()` then answers the receiver's whole model list: the
+existing single-model bindings first, then `ReceiverClassResolver::resolve()`'s `ReceiverType::models()`.
+Given more than one model, `analyzeToResourceCall()` maps each through `resolveResourceForModel()` and joins
+their `TsNaming::resourceTypeName()`s with ` | `, reporting the FQCNs on the `embeddedResourceFqcns` channel
+so every name in the rendered union is imported rather than emitted bare.
+
+**The decline is all-or-nothing.** If any model in the union has no resource class, the result stays at the
+existing `unknown` floor instead of publishing a partial union — a union missing an arm is not vaguer than
+the truth, it is *wrong* for the omitted arm.
+
+`ReviewResource` is the fixture. `whenLoaded('reviewable', fn ($subject) => $subject->toResource())` over the
+`Venue`/`Artist` morph union emits:
+
+```ts
+reviewable?: ArtistResource | VenueResource;
+```
+
+The same binding also types a plain attribute read on the parameter: `$subject->name` reaches
+`ReceiverPropertyFetchHandler`, which resolves the property on each bound class and unions the results, so
+`reviewable_name` is `string` rather than `unknown`.
+
+Union order is the morph-target order, and `ModelAttributeResolver::buildMorphTargetMap()` sorts each
+target list as it builds it, so the rendered union is stable across runs rather than dependent on the order
+models happen to be discovered in.
+
 ### One resolver, not many — every `#[Collects]` caller shares it
 
 `Ast\Concerns\ResolvesSingularResourceClass`, `ToResourceHandler`, `StaticCallHandler` and

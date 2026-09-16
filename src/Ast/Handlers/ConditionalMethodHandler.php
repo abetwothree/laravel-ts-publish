@@ -380,6 +380,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
             $previousRelationModel = $scope->closureRelationModelClass;
             $previousVarModelBindings = $scope->varModelBindings;
             $previousVarCollectionBindings = $scope->varCollectionBindings;
+            $previousVarClassBindings = $scope->varClassBindings;
             $relationInfo = null;
 
             if ($relationship instanceof String_) {
@@ -409,12 +410,26 @@ final class ConditionalMethodHandler implements ExpressionHandler
                 }
             }
 
+            // A morphTo names no single model, so its param holds any one of the targets: bind them all
+            // and let each reader union them.
+            if ($relationInfo !== null
+                && $relationInfo['modelFqcn'] === null
+                && $relationInfo['morphFqcns'] !== []
+                && ($valueExpr instanceof ClosureExpr || $valueExpr instanceof ArrowFunction)
+                && isset($valueExpr->params[0])
+                && $valueExpr->params[0]->var instanceof Variable
+                && is_string($valueExpr->params[0]->var->name)
+            ) {
+                $scope->varClassBindings[$valueExpr->params[0]->var->name] = $relationInfo['morphFqcns'];
+            }
+
             try {
                 $inner = $engine->resolve($valueExpr);
             } finally {
                 $scope->closureRelationModelClass = $previousRelationModel;
                 $scope->varModelBindings = $previousVarModelBindings;
                 $scope->varCollectionBindings = $previousVarCollectionBindings;
+                $scope->varClassBindings = $previousVarClassBindings;
             }
 
             return $this->applyConditionalDefault($inner, $args, $scope, $engine);
