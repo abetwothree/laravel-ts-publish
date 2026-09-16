@@ -165,7 +165,7 @@ itself reaches the same instance as `$this->scope`.
 | `instanceOfWrappedClass` | `class-string\|null` | Wrapped class from an `instanceof` guard in `toArray()`; fallback when `resolveClassOnProperty()` returns `null`. |
 | `closureRelationModelClass` | `class-string<Model>\|null` | Related model set while analyzing a `whenLoaded` closure, so `$variable->prop`/`->method()` inside it resolve. |
 | `closureParamExprBindings` | `array<string, Expr>` | Closure parameter names bound to the `$this->prop` expression found in the surrounding `when()` condition, so `EnumResource::make($status)` resolves like `EnumResource::make($this->status)`. |
-| `varClassBindings` | `array<string, non-empty-list<class-string>>` | Variables an `instanceof` guard or ternary has proven to hold a class. Read **before** `varModelBindings` in `ReceiverClassResolver::fromVariable()`: a narrowed variable is usually also bound to its parent model, and that binding would otherwise win and undo the narrowing. Scoped: `ClosureHandler` and `TernaryHandler` save and restore it around the body they narrow for. See [Narrowing](#narrowing). |
+| `varClassBindings` | `array<string, non-empty-list<class-string>>` | Variables an `instanceof` guard or ternary has proven to hold a class. Read **first** in `ReceiverClassResolver::fromVariable()`. What that ordering actually buys today is precedence over the `closureParamExprBindings ?? localVarBindings` fallback, since a guarded variable is normally bound by a plain local assignment; sitting above `varModelBindings` is the same concern for a narrowed closure param or loop variable, and is motivating rather than currently proven. Scoped: `ClosureHandler` and `TernaryHandler` save and restore it around the body they narrow for. See [Narrowing](#narrowing). |
 | `varModelBindings` | `array<string, class-string<Model>>` | Closure params / loop vars bound to a model class (`whenLoaded` params, relation-chain `map()` params, `foreach` over a many-relation), so `$var`, `$var->prop`, `$var->method()` resolve against that model. Scoped: writers save and restore around the body. Also seeded, via `AstEngine::bindingsFor()`, from every `Model`-typed parameter of the located method — a route-bound `Post $post`, a metadata provider's `Model $model` — bound to the parameter's **declared** type. |
 | `varCollectionBindings` | `array<string, array{type: string, modelFqcn: class-string<Model>}>` | Closure params bound to a whole relation collection rather than one element — a to-many `whenLoaded` param. Read for a bare return of the param, and as the element-model fallback for an untyped `->map()` closure param. |
 | `localVarBindings` | `array<string, Expr>` | Top-level `$var = expr;` bindings for the method last analyzed, so a bare `Variable` value expression resolves through its bound expression instead of degrading to `unknown`. Only variables written exactly once are recorded; `analyzeThisMethodSpread()` saves and restores this per method. |
@@ -243,6 +243,16 @@ restored in a `finally`:
 `CollectsLocalVarBindings::collectWrittenVariableNames()`. A flat statement list cannot tell which write
 is live at a given guard, so a reassigned variable stays unnarrowed rather than taking a
 wrong-but-plausible type — the same trade `localVarBindings` already makes.
+
+**A guard whose own body reads the guarded variable binds nothing.** The walk is flat and holds one
+binding per method, with no position tracking, so a binding written for "the statements after the guard"
+would also be in force while the guard's *own* body is analyzed — the branch that proves `$x` is **not** a
+`C`. That branch is live to this engine: `ClosureHandler` unions every return, and
+`ResourceAstAnalyzer::analyzeThisMethodSpread()` reads the **first** one, which for a guarded method is the
+guard's own return. Rather than track statement positions, `collectInstanceofGuards()` asks whether the
+guard body mentions `$x` at all and skips the binding when it does. `NarrowingGuardBodyResource` (a test
+fixture, not a workbench one) pins both halves: a guard body reading `$parent` leaves it `unknown` on the
+exit path, while a sibling guard that exits by `throw` without reading it still narrows what follows.
 
 **A positive `if ($x instanceof C) { … }` body is not narrowed.** Its returns are analyzed without any
 per-branch scope, so a binding made for that body would still be in force for the statements *after* it,

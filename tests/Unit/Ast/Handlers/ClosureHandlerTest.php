@@ -220,13 +220,16 @@ it('restores the suppressed binding in a finally even when body resolution throw
     $outerBoundExpr = new Variable('outerSource');
     $scope->localVarBindings['slug'] = $outerBoundExpr;
 
+    $scope->varClassBindings['slug'] = [stdClass::class];
+
     $param = new Param(new Variable('slug'));
     $expr = new ArrowFunction(['params' => [$param], 'expr' => new Variable('slug')]);
 
     expect(fn () => (new ClosureHandler)->resolve($expr, $scope, closureHandlerBlowingUpEngine()))
         ->toThrow(RuntimeException::class);
 
-    expect($scope->localVarBindings)->toBe(['slug' => $outerBoundExpr]);
+    expect($scope->localVarBindings)->toBe(['slug' => $outerBoundExpr])
+        ->and($scope->varClassBindings)->toBe(['slug' => [stdClass::class]]);
 });
 
 it('declines a non-closure, non-arrow-function expression without calling the engine', function () {
@@ -295,6 +298,18 @@ it('binds a single-write closure-body local, and leaves one written twice unboun
 
     expect(array_keys($once))->toBe(['u'])
         ->and($twice)->toBe([]);
+});
+
+it('restores varClassBindings after a closure body narrowed one of its own locals', function () {
+    $scope = closureHandlerTestScope();
+    $scope->varClassBindings['outer'] = [stdClass::class];
+
+    closureHandlerBodyBindings(
+        '$u = $this->owner; if (! $u instanceof \Workbench\App\Models\Post) { return null; } return $u;',
+        $scope,
+    );
+
+    expect($scope->varClassBindings)->toBe(['outer' => [stdClass::class]]);
 });
 
 it('shadows an outer local with the closure body\'s own binding, and leaks nothing when the body rebinds it', function () {

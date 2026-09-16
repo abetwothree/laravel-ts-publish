@@ -62,7 +62,7 @@ final class TernaryHandler implements ExpressionHandler
             ? ValueResult::analyzeClosureUnion([$ifExpr, $expr->else], $engine)
             : ValueResult::unionResults([$narrowed, $engine->resolve($expr->else)]);
 
-        return $this->recordMixedArmShapes($result, $ifExpr, $expr->else, $engine);
+        return $this->recordMixedArmShapes($result, $ifExpr, $expr->else, $engine, $narrowed);
     }
 
     /**
@@ -128,15 +128,18 @@ final class TernaryHandler implements ExpressionHandler
      * scalar one — re-resolving each arm here, while still distinct, is the only place that survives.
      *
      * @param  ValueExpressionResult  $result
+     * @param  ValueExpressionResult|null  $ifResult  the true arm already resolved under its narrowing, if any
      * @return ValueExpressionResult
      */
-    private function recordMixedArmShapes(array $result, Expr $ifExpr, Expr $elseExpr, ExpressionEngine $engine): array
+    private function recordMixedArmShapes(array $result, Expr $ifExpr, Expr $elseExpr, ExpressionEngine $engine, ?array $ifResult = null): array
     {
         if (! isset($result['enumFqcn'], $result['directEnumFqcn']) || $result['enumFqcn'] !== $result['directEnumFqcn']) {
             return $result;
         }
 
-        $ifResult = $engine->resolve($ifExpr);
+        // Reuse the narrowed resolution when there was one: resolving again here would drop the narrowing
+        // and let two resolutions of the same arm disagree by construction.
+        $ifResult ??= $engine->resolve($ifExpr);
         $elseResult = $engine->resolve($elseExpr);
 
         $wrapResult = $this->unambiguousArm($ifResult, $elseResult, 'enumFqcn');

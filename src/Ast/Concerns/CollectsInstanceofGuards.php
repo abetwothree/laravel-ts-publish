@@ -16,6 +16,7 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Stmt\Expression as ExpressionStmt;
 use PhpParser\Node\Stmt\If_;
 use PhpParser\Node\Stmt\Return_;
+use PhpParser\NodeFinder;
 
 /**
  * The early-exit `instanceof` guard pass. Hosts must also use CollectsLocalVarBindings: its write
@@ -40,11 +41,28 @@ trait CollectsInstanceofGuards
             }
 
             foreach ($this->negatedInstanceofs($stmt->cond) as [$name, $class]) {
-                if (($writeCounts[$name] ?? 0) <= 1) {
+                if (($writeCounts[$name] ?? 0) <= 1 && ! $this->readsVariable($stmt->stmts, $name)) {
                     $scope->varClassBindings[$name] = [$class];
                 }
             }
         }
+    }
+
+    /**
+     * Whether a guard body mentions the variable it guards — the one branch proving it is NOT that class.
+     *
+     * This binding is method-wide with no position tracking, so it would otherwise also be in force while
+     * the guard's own body is analyzed, and that body is live: `analyzeThisMethodSpread()` reads the first
+     * return, which for a guarded method is the guard's own.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     */
+    private function readsVariable(array $stmts, string $name): bool
+    {
+        return new NodeFinder()->findFirst(
+            $stmts,
+            fn (Node $node): bool => $node instanceof Variable && $node->name === $name,
+        ) !== null;
     }
 
     /**

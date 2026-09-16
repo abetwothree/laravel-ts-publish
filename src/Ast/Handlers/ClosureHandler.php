@@ -59,26 +59,26 @@ final class ClosureHandler implements ExpressionHandler
             $previousLocalVarBindings = $scope->localVarBindings;
             $previousVarClassBindings = $scope->varClassBindings;
 
-            if ($expr instanceof ArrowFunction || $expr instanceof ClosureExpr) {
-                foreach ($expr->params as $param) {
-                    if ($param->var instanceof Variable && is_string($param->var->name)) {
-                        unset($scope->localVarBindings[$param->var->name]);
+            try {
+                if ($expr instanceof ArrowFunction || $expr instanceof ClosureExpr) {
+                    foreach ($expr->params as $param) {
+                        if ($param->var instanceof Variable && is_string($param->var->name)) {
+                            unset($scope->localVarBindings[$param->var->name]);
+                        }
                     }
                 }
-            }
 
-            if ($expr instanceof ClosureExpr) {
-                // A body-local shadows the outer one of the same name however often it is written, so
-                // suppress every written name before the single-write pass decides what to rebind.
-                foreach ($this->collectWrittenVariableNames($expr->stmts) as $name) {
-                    unset($scope->localVarBindings[$name]);
+                if ($expr instanceof ClosureExpr) {
+                    // A body-local shadows the outer one of the same name however often it is written, so
+                    // suppress every written name before the single-write pass decides what to rebind.
+                    foreach ($this->collectWrittenVariableNames($expr->stmts) as $name) {
+                        unset($scope->localVarBindings[$name]);
+                    }
+
+                    $this->collectLocalVarBindings($expr->stmts, $scope);
+                    $this->collectInstanceofGuards($expr->stmts, $scope);
                 }
 
-                $this->collectLocalVarBindings($expr->stmts, $scope);
-                $this->collectInstanceofGuards($expr->stmts, $scope);
-            }
-
-            try {
                 $bodyResult = count($closureReturns) === 1
                     ? $engine->resolve($closureReturns[0])
                     : ValueResult::analyzeClosureUnion($closureReturns, $engine);

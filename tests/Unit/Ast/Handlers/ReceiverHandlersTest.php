@@ -11,9 +11,11 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MethodChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverPropertyFetchHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NarrowingGuardBodyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverIntegerKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverMethodProbe;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverProbeEnum;
@@ -401,6 +403,33 @@ describe('PropertyChainHandler declines an unknown-only chain', function () {
     });
 });
 
+/**
+ * The varClassBindings collectInstanceofGuards() writes for one parsed method body.
+ *
+ * @return array<string, non-empty-list<class-string>>
+ */
+function narrowingBindings(string $body): array
+{
+    $scope = new AnalysisScope(new ReflectionClass(NarrowedParentResource::class), Attachment::class);
+    $stmts = new AstParser()->parseSource('<?php '.$body);
+
+    $host = new class
+    {
+        use CollectsInstanceofGuards;
+        use CollectsLocalVarBindings;
+
+        /** @param  array<Stmt>  $stmts */
+        public function run(array $stmts, AnalysisScope $scope): void
+        {
+            $this->collectInstanceofGuards($stmts, $scope);
+        }
+    };
+
+    $host->run($stmts, $scope);
+
+    return $scope->varClassBindings;
+}
+
 describe('narrowing', function () {
     test('an early-return instanceof guard narrows a closure-local variable', function () {
         $props = collect(new ResourceAstAnalyzer(new ReflectionClass(NarrowedParentResource::class), Attachment::class)->analyze()->properties)->keyBy('name');
@@ -416,24 +445,47 @@ describe('narrowing', function () {
         expect($props['subscriber_name']['type'])->toBe('string | null');
     });
 
-    test('a guard on a variable written twice does not narrow', function () {
+    test('a guard whose body reads the variable leaves it un-narrowed, while a clean guard still narrows after it', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(NarrowingGuardBodyResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+        // dirty_label is read inside the branch proving $parent is NOT a Post; User has no `title`.
+        expect($props['dirty_label']['type'])->toBe('unknown')
+            ->and($props['clean_label']['type'])->toBe('string');
+    });
+
+    test('a narrowed variable outranks both its model binding and the local-assignment fallback', function () {
         $scope = new AnalysisScope(new ReflectionClass(NarrowedParentResource::class), Attachment::class);
-        $stmts = new AstParser()->parseSource('<?php $a = 1; $a = 2; if (! $a instanceof \Workbench\App\Models\Post) { return; }');
+        $scope->varClassBindings['x'] = [Post::class];
+        $scope->varModelBindings['x'] = User::class;
+        $scope->localVarBindings['x'] = receiverHandlerExpr('$this->filename');
 
-        $host = new class
-        {
-            use CollectsInstanceofGuards;
-            use CollectsLocalVarBindings;
+        expect(resolve(ReceiverClassResolver::class)->resolve(new Variable('x'), $scope)?->classes)->toBe([Post::class]);
+    });
 
-            /** @param  array<Stmt>  $stmts */
-            public function run(array $stmts, AnalysisScope $scope): void
-            {
-                $this->collectInstanceofGuards($stmts, $scope);
-            }
-        };
+    test('a guard on a variable written twice does not narrow', function () {
+        expect(narrowingBindings('$a = 1; $a = 2; if (! $a instanceof \Workbench\App\Models\Post) { return; }'))->toBe([]);
+    });
 
-        $host->run($stmts, $scope);
+    test('a guard body that reads the guarded variable binds nothing', function () {
+        expect(narrowingBindings('$a = $this->author; if (! $a instanceof \Workbench\App\Models\Post) { return $a->title; }'))
+            ->toBe([]);
+    });
 
-        expect($scope->varClassBindings)->toBe([]);
+    test('a guard body that reads nothing binds, including through an || chain and a throw exit', function () {
+        expect(narrowingBindings('$a = $this->author; if (! $a instanceof \Workbench\App\Models\Post) { return null; }'))
+            ->toBe(['a' => [Post::class]])
+            ->and(narrowingBindings('$a = $this->author; if (! $a || ! $a instanceof \Workbench\App\Models\Post) { return null; }'))
+            ->toBe(['a' => [Post::class]])
+            ->and(narrowingBindings('$a = $this->author; if (! $a instanceof \Workbench\App\Models\Post) { throw new \RuntimeException(); }'))
+            ->toBe(['a' => [Post::class]]);
+    });
+
+    test('an elseif, an else, or a positive instanceof test binds nothing', function () {
+        expect(narrowingBindings('$a = $this->author; if (! $a instanceof \Workbench\App\Models\Post) { return null; } elseif ($a) { return null; }'))
+            ->toBe([])
+            ->and(narrowingBindings('$a = $this->author; if (! $a instanceof \Workbench\App\Models\Post) { return null; } else { return null; }'))
+            ->toBe([])
+            ->and(narrowingBindings('$a = $this->author; if ($a instanceof \Workbench\App\Models\Post) { return $a->title; }'))
+            ->toBe([]);
     });
 });

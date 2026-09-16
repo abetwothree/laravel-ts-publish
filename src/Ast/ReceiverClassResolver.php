@@ -177,8 +177,8 @@ final class ReceiverClassResolver
             return null;
         }
 
-        // Above varModelBindings: a narrowed variable is usually also bound to its parent model, and
-        // that binding would otherwise win and undo the narrowing.
+        // First, so a narrowing outranks the localVarBindings fallback a guarded variable normally reaches
+        // through; varModelBindings is the same concern for a narrowed closure param or loop variable.
         if (isset($scope->varClassBindings[$name])) {
             return new ReceiverType($scope->varClassBindings[$name]);
         }

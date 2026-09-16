@@ -729,16 +729,16 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $previousVarModelBindings = $this->scope->varModelBindings;
         $previousVarClassBindings = $this->scope->varClassBindings;
         $previousRequestVarNames = $this->scope->requestVarNames;
-        $this->scope->localVarBindings = [];
-        $this->scope->resolvingLocalVars = [];
-        $this->scope->varModelBindings = [];
-        $this->scope->varClassBindings = [];
-        // The spread method has its own signature: the entry method's Request params say nothing
-        // about which of ITS variables hold one. analyzeParentToArray() re-derives the same way.
-        $this->scope->requestVarNames = $this->resolveRequestVarNames($methodName);
-        $this->seedVarBindings($targetMethod->stmts);
-
         try {
+            $this->scope->localVarBindings = [];
+            $this->scope->resolvingLocalVars = [];
+            $this->scope->varModelBindings = [];
+            $this->scope->varClassBindings = [];
+            // The spread method has its own signature: the entry method's Request params say nothing
+            // about which of ITS variables hold one. analyzeParentToArray() re-derives the same way.
+            $this->scope->requestVarNames = $this->resolveRequestVarNames($methodName);
+            $this->seedVarBindings($targetMethod->stmts);
+
             $returnStmt = $finder->findFirst($targetMethod->stmts, function (Node $node): bool {
                 return $node instanceof Return_;
             });
