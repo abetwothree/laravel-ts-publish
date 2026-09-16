@@ -441,7 +441,7 @@ class ModelAttributeResolver
      */
     protected function accessorReturnClass(ReflectionClass $reflection, Model $instance, string $attributeName): ?string
     {
-        $newStyle = Str::camel($attributeName);
+        ['newStyle' => $newStyle, 'oldStyle' => $oldStyle] = $this->accessorMethodNames($attributeName);
 
         try {
             $attribute = $reflection->hasMethod($newStyle) ? $reflection->getMethod($newStyle)->invoke($instance) : null;
@@ -463,8 +463,6 @@ class ModelAttributeResolver
 
             return $this->attributeDocblockGetClass($reflection->getMethod($newStyle));
         }
-
-        $oldStyle = 'get'.Str::studly($attributeName).'Attribute';
 
         return $reflection->hasMethod($oldStyle) ? $this->methodReturnClass($reflection->getName(), $oldStyle) : null;
     }

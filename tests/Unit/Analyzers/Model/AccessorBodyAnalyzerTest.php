@@ -36,7 +36,7 @@ describe('AccessorBodyAnalyzer through ModelAttributeResolver', function () {
 
     test('a trait-declared accessor resolves $this against the model that uses the trait', function () {
         // The body lives in DerivesReleaseVersion's own file; `major` is a column on releases, so it
-        // only resolves because analyzeClosure() puts the model class on the scope.
+        // only resolves because analyzeModelClosure() puts the model class on the scope.
         expect(resolve(ModelAttributeResolver::class)->resolveAttribute(Release::class, 'trait_version')['type'])
             ->toBe('{ major: number; label: string }');
     });

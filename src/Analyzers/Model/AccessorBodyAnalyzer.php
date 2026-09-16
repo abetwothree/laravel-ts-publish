@@ -10,9 +10,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\ResultTypeInfoBridge;
+use AbeTwoThree\LaravelTsPublish\Concerns\NamesAccessorMethods;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
@@ -31,10 +31,13 @@ use ReflectionMethod;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypeScriptTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
+ *
+ * @internal
  */
 final class AccessorBodyAnalyzer
 {
     use InspectsAstNodes;
+    use NamesAccessorMethods;
 
     /** @var array<string, true> model@attribute bodies on the stack, so two accessors reading each other terminate */
     private array $analyzing = [];
@@ -80,24 +83,25 @@ final class AccessorBodyAnalyzer
     {
         $locator = resolve(MethodLocator::class);
         $engine = resolve(AstEngine::class);
+        ['newStyle' => $newStyleName, 'oldStyle' => $oldStyleName] = $this->accessorMethodNames($attributeName);
 
-        $newStyle = $locator->locate($modelFqcn, Str::camel($attributeName));
+        $newStyle = $locator->locate($modelFqcn, $newStyleName);
         $getter = $newStyle === null ? null : $this->getterClosure($newStyle->method);
 
         if ($newStyle !== null && $getter !== null) {
-            return $engine->analyzeClosure($modelFqcn, $getter, $newStyle);
+            return $engine->analyzeModelClosure($modelFqcn, $getter, $newStyle);
         }
 
         // A new-style method whose getter is not a closure — or a same-named non-accessor, e.g. a relation —
         // falls through. Eloquent would prefer the new-style getter, but an unreadable one types nothing, and
         // the fallthrough is what lets `get{Name}Attribute()` still answer for a camel-named collision.
-        $oldStyle = $locator->locate($modelFqcn, 'get'.Str::studly($attributeName).'Attribute');
+        $oldStyle = $locator->locate($modelFqcn, $oldStyleName);
 
         if ($oldStyle === null || $oldStyle->method->stmts === null) {
             return null;
         }
 
-        return $engine->analyzeClosure($modelFqcn, new ClosureExpr(['stmts' => $oldStyle->method->stmts]), $oldStyle);
+        return $engine->analyzeModelClosure($modelFqcn, new ClosureExpr(['stmts' => $oldStyle->method->stmts]), $oldStyle);
     }
 
     /**

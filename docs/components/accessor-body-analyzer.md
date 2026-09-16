@@ -53,7 +53,7 @@ literal.
 
 ## Scope: the model is the subject
 
-`AstEngine::analyzeClosure()` seeds the scope with `bindingsFor()`, which binds parameters and local
+`AstEngine::analyzeModelClosure()` seeds the scope with `bindingsFor()`, which binds parameters and local
 variables but leaves `modelClass` **null** — so the load-bearing line is `$scope->modelClass =
 $modelClass`. Without it nothing in the body resolves against the model and `$this->major` is
 `unknown`. The subject is re-asserted as the model alongside it: `resolveBody()` locates on the model

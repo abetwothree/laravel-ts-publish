@@ -678,7 +678,7 @@ enum imports the surviving inferred types spell. It strips the `customImports` t
 `TsCastsImportResolver` owns. See [model-metadata.md](model-metadata.md#body-inference-is-an-engine-consumer).
 
 `AccessorBodyAnalyzer` (`src/Analyzers/Model/`) is the fourth shape, and the first to resolve a
-**closure** rather than a method: `analyzeClosure()` takes an accessor's `get` closure (or an old-style
+**closure** rather than a method: `analyzeModelClosure()` takes an accessor's `get` closure (or an old-style
 accessor body wrapped as one), seeds the scope with `bindingsFor()`, then overwrites the subject with
 the model class so a trait-declared accessor still reads `$this` as the model that uses the trait, and
 runs `ResourceAstAnalyzer::resolve()` on the generic profile — an accessor body is not a resource

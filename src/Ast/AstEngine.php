@@ -169,7 +169,7 @@ final class AstEngine
      *
      * @internal
      */
-    public function analyzeClosure(string $modelClass, ClosureExpr|ArrowFunction $closure, MethodContext $context): array
+    public function analyzeModelClosure(string $modelClass, ClosureExpr|ArrowFunction $closure, MethodContext $context): array
     {
         $scope = $this->bindingsFor($context);
 

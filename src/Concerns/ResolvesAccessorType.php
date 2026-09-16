@@ -9,7 +9,6 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Str;
 use ReflectionClass;
 
 /**
@@ -19,6 +18,7 @@ use ReflectionClass;
  */
 trait ResolvesAccessorType
 {
+    use NamesAccessorMethods;
     use ResolvesClassNames;
 
     /**
@@ -32,8 +32,7 @@ trait ResolvesAccessorType
     protected function resolveAccessorType(string $name, Model $modelInstance, ReflectionClass $reflectionModel): array
     {
         $result = LaravelTsPublish::emptyTypeScriptInfo();
-        $newStyle = Str::camel($name);
-        $oldStyle = 'get'.Str::studly($name).'Attribute';
+        ['newStyle' => $newStyle, 'oldStyle' => $oldStyle] = $this->accessorMethodNames($name);
 
         // New-style `protected function titleDisplay(): Attribute` — protected, so invoke via reflection.
         if ($reflectionModel->hasMethod($newStyle)) {
