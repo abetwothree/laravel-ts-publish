@@ -213,8 +213,14 @@ leaked it.
 
 Every writer in the table above now restores through a `finally`, and every seeding step that can throw
 sits inside its `try` — including `analyzeWhenLoaded()`'s relation lookup, which resolves and reflects.
-What still sits between a snapshot and its `try` is plain assignment only, which cannot throw. That is the
-line to hold: the moment seeding needs to resolve, reflect, or call back into the engine, it belongs
+What still sits between a snapshot and its `try` is plain assignment, plus one guard worth naming rather
+than glossing: `TernaryHandler` narrows the forwarding target behind
+`$scope->subjectReflection->isSubclassOf(JsonResource::class)`. That is a reflection call, not an
+assignment, and `isSubclassOf()` *does* throw `ReflectionException` when its argument names a class that
+cannot be loaded. It is safe there on a precondition rather than by its shape: `JsonResource` is an
+ancestor of the very subject being reflected, so it is necessarily already loaded by the time the guard
+runs. Read that as the exception that proves the line to hold — the moment seeding needs to resolve,
+reflect, or call back into the engine on anything whose loading is not already guaranteed, it belongs
 inside the `try`. Prefer restoring the whole map over unsetting the single key you believe you wrote.
 
 ### How `varModelBindings` gets populated, and how scoping holds
