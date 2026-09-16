@@ -676,3 +676,13 @@ FQCN channels of overridden or unreturned keys are forgotten, `modelFqcns` / `ne
 enum imports the surviving inferred types spell. It strips the `customImports` that
 `applyTsCastsFromMethod()` already appended for the method's own `#[TsCasts]`, whose imports
 `TsCastsImportResolver` owns. See [model-metadata.md](model-metadata.md#body-inference-is-an-engine-consumer).
+
+`AccessorBodyAnalyzer` (`src/Analyzers/Model/`) is the fourth shape, and the first to resolve a
+**closure** rather than a method: `analyzeClosure()` takes an accessor's `get` closure (or an old-style
+accessor body wrapped as one), seeds the scope with `bindingsFor()`, then overwrites the subject with
+the model class so a trait-declared accessor still reads `$this` as the model that uses the trait, and
+runs `ResourceAstAnalyzer::resolve()` on the generic profile — an accessor body is not a resource
+`toArray()`, so the three resource-only handlers are dropped. Its result is one value, not a property
+map, so it returns `ValueExpressionResult` and the analyzer carries the FQCN channels across into the
+model engine's own `TypeScriptTypeInfo`. See
+[accessor-body-analyzer.md](accessor-body-analyzer.md).

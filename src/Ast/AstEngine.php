@@ -7,9 +7,12 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsInstanceofGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\Closure as ClosureExpr;
 use ReflectionClass;
 use ReflectionNamedType;
 use ReflectionProperty;
@@ -17,8 +20,10 @@ use ReflectionProperty;
 /**
  * Public entry point: `analyze()` — a class and a method in, properties and imports out.
  *
- * It and `AnalysisResult` are the engine's whole public surface. The other three methods here are
+ * It and `AnalysisResult` are the engine's whole public surface. The other four methods here are
  * `@internal` like the rest of `src/Ast`: each traffics in a DTO whose shape tracks inference.
+ *
+ * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  */
 final class AstEngine
 {
@@ -157,6 +162,34 @@ final class AstEngine
     }
 
     /**
+     * Resolve one closure (an accessor getter, or a method body wrapped as one) against a model subject.
+     *
+     * @param  class-string<Model>  $modelClass
+     * @return ValueExpressionResult
+     *
+     * @internal
+     */
+    public function analyzeClosure(string $modelClass, ClosureExpr|ArrowFunction $closure, MethodContext $context): array
+    {
+        $scope = $this->bindingsFor($context);
+
+        // A trait-declared accessor still reads `$this` as the model that uses the trait.
+        $scope->subjectReflection = self::genericReflection($modelClass);
+        $scope->modelClass = $modelClass;
+
+        $analyzer = new ResourceAstAnalyzer(
+            $scope->subjectReflection,
+            $modelClass,
+            $context->method->name->toString(),
+            ResourceExpressionHandlers::withoutResourceHandlers(),
+            $scope,
+            $context,
+        );
+
+        return $analyzer->resolve($closure);
+    }
+
+    /**
      * Analyze a class's public properties — promoted constructor params AND class-body declarations,
      * `@var` docblock first, native type second — into properties + enum/model FQCN channels.
      * A property that is neither promoted nor defaulted is optional: `json_encode()` omits it when it
@@ -188,6 +221,17 @@ final class AstEngine
         }
 
         return $analysis;
+    }
+
+    /**
+     * A reflection typed as the invariant `ReflectionClass<object>` the scope's own property declares.
+     *
+     * @param  class-string  $className
+     * @return ReflectionClass<object>
+     */
+    private static function genericReflection(string $className): ReflectionClass
+    {
+        return new ReflectionClass($className);
     }
 
     /**

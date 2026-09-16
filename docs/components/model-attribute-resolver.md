@@ -25,6 +25,14 @@ final. A native PHP signature is often deliberately loose — `: array`, `: iter
    wins.
 3. **Whichever of the two is non-`unknown`**, signature preferred, as a last-resort fallback.
 
+Accessors insert a third source between 2 and 3: **what the getter body returns**. Once both the
+getter signature and the `Attribute<>` docblock have proven vague, `Concerns\ResolvesAccessorType`
+asks `Analyzers\Model\AccessorBodyAnalyzer` what the body resolves to and returns that if it is
+non-vague, so `Attribute::get(fn () => ['major' => $this->major])` publishes `{ major: number }`
+instead of `unknown[]`. A specific annotation still wins outright, and the step is identical on the
+old-style `get*Attribute()` branch. See
+[accessor-body-analyzer.md](accessor-body-analyzer.md).
+
 ```php
 /** @return array{value: int, label: string} */
 public function asAutoCompleteOption(): array

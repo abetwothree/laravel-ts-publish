@@ -2526,14 +2526,14 @@ describe('ResourceTransformer with morphTo-backed resources', function () {
             ->and($allTypeImports)->toContain('Post', 'Product', 'User as WorkbenchUser', 'User as CrmUser');
     });
 
-    test('a get-having accessor with an unresolvable type survives model-delegated analysis as unknown', function () {
-        // no_docblock_accessor has a real getter (unlike search_index's write-only case), just
-        // nothing to read a type from. ModelTransformer::transformMutators() keeps such a mutator
-        // as 'unknown' rather than omitting it, and buildModelDelegatedAnalysis() must agree.
+    test('a get-having accessor with no annotation survives model-delegated analysis typed by its body', function () {
+        // no_docblock_accessor has a real getter (unlike search_index's write-only case) and no
+        // annotation to read, so its body types it: `fn () => null`. ModelTransformer::transformMutators()
+        // keeps such a mutator rather than omitting it, and buildModelDelegatedAnalysis() must agree.
         $data = (new ResourceTransformer(ImageDelegatedResource::class))->data();
 
         expect($data->properties)->toHaveKey('no_docblock_accessor')
-            ->and($data->properties['no_docblock_accessor']['type'])->toBe('unknown');
+            ->and($data->properties['no_docblock_accessor']['type'])->toBe('null');
     });
 
     // A widened container names its element in both arms; aliasing only the first left the second bare.

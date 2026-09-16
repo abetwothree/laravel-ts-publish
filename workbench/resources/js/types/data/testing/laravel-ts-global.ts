@@ -453,7 +453,7 @@ declare global {
             tree_from_docblock: { label: string; child: unknown[] };
             price_from_docblock: { amount: number; currency: string };
             label_from_docblock: string;
-            no_docblock_accessor: unknown;
+            no_docblock_accessor: null;
             wrong_format_docblock: string | null;
             positive_int_accessor: number;
             numeric_string_accessor: string;
@@ -666,7 +666,7 @@ declare global {
             keyed_items: Record<string, OrderItem>;
             listed_items: OrderItem[];
             /** All items on the order, in their natural database order. */
-            unsorted_items: unknown[] | Record<string, unknown>;
+            unsorted_items: OrderItem[];
             state_ids: number[] | null;
             capabilities: { typeName: string; tracksSteelDetails: boolean; warehouseDocsKey: string | null } | null;
             summary_items: workbench.app.models.admin.Store[];
@@ -983,6 +983,29 @@ declare global {
             // Columns
             id: number;
             name: string;
+        }
+        /** Accessors typed only by their getter bodies: literal shapes, helpers, collection pipelines, cycles. */
+        export interface Release {
+            // Columns
+            id: number;
+            major: number;
+            minor: number;
+            notes: string | null;
+            tags_csv: string;
+            created_at: string | null;
+            updated_at: string | null;
+            // Mutators
+            version_data: { major: number; minor: number };
+            label: { full: string; notes: string | null };
+            tag_list: { name: string }[];
+            channel_options: { "1": string; "2": string };
+            channels: string[];
+            loop_a: unknown;
+            loop_b: unknown;
+            /** Loop-built dynamic keys: must stay unknown[], nothing here is statically knowable. */
+            dynamic_totals: unknown[];
+            /** Old-style accessor with a vague signature and a literal body. */
+            summary: { major: number };
         }
         export interface Review {
             // Columns
@@ -2686,7 +2709,7 @@ declare global {
             tree_from_docblock: { label: string; child: unknown[] };
             price_from_docblock: { amount: number; currency: string };
             label_from_docblock: string;
-            no_docblock_accessor: unknown;
+            no_docblock_accessor: null;
             wrong_format_docblock: string | null;
             positive_int_accessor: number;
             numeric_string_accessor: string;
@@ -3110,7 +3133,7 @@ declare global {
             sorted_items: workbench.app.models.OrderItem[];
             keyed_items: Record<string, workbench.app.models.OrderItem>;
             listed_items: workbench.app.models.OrderItem[];
-            unsorted_items: unknown[] | Record<string, unknown>;
+            unsorted_items: workbench.app.models.OrderItem[];
             state_ids: number[] | null;
             capabilities: { typeName: string; tracksSteelDetails: boolean; warehouseDocsKey: string | null } | null;
             summary_items: workbench.app.models.admin.Store[];
@@ -3706,7 +3729,7 @@ declare global {
             sorted_items: workbench.app.models.OrderItem[];
             keyed_items: Record<string, workbench.app.models.OrderItem>;
             listed_items: workbench.app.models.OrderItem[];
-            unsorted_items: unknown[] | Record<string, unknown>;
+            unsorted_items: workbench.app.models.OrderItem[];
             state_ids: number[] | null;
             capabilities: { typeName: string; tracksSteelDetails: boolean; warehouseDocsKey: string | null } | null;
             summary_items: workbench.app.models.admin.Store[];
@@ -3747,7 +3770,7 @@ declare global {
             sorted_items: workbench.app.models.OrderItem[];
             keyed_items: Record<string, workbench.app.models.OrderItem>;
             listed_items: workbench.app.models.OrderItem[];
-            unsorted_items: unknown[] | Record<string, unknown>;
+            unsorted_items: workbench.app.models.OrderItem[];
             state_ids: number[] | null;
             capabilities: { typeName: string; tracksSteelDetails: boolean; warehouseDocsKey: string | null } | null;
             summary_items: workbench.app.models.admin.Store[];

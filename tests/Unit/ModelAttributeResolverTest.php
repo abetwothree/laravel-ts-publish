@@ -492,13 +492,14 @@ test('accessor with @phpstan-return docblock resolves through docblock', functio
 
 test('bare @return Attribute docblock does not override a usable closure signature type', function () {
     // 'unsortedItems' pairs a bare `@return Attribute` with a vague `: Collection` closure signature;
-    // the @return parser must not resolve the bare word to Eloquent's own Attribute class.
+    // the @return parser must not resolve the bare word to Eloquent's own Attribute class. Both are
+    // vague, so the getter body types it from the relation it returns.
     $info = resolve(ModelAttributeResolver::class)
         ->resolveAttribute(Order::class, 'unsorted_items');
 
     expect($info['type'])->not->toBe('Attribute')
-        ->and($info['type'])->toBe('unknown[] | Record<string, unknown>')
-        ->and($info['classFqcns'])->toBe([]);
+        ->and($info['type'])->toBe('OrderItem[]')
+        ->and($info['classFqcns'])->toBe([OrderItem::class]);
 });
 
 test('attributeDocblockReturnTypes resolves Attribute<> written as a fully-qualified class name', function () {

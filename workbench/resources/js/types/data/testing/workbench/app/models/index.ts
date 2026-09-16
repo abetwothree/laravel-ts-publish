@@ -78,6 +78,8 @@ export * from './property-docblock-trait-fixture';
 export * from './property-docblock-trait-fixture_meta';
 export * from './registrar';
 export * from './registrar_meta';
+export * from './release';
+export * from './release_meta';
 export * from './review';
 export * from './review_meta';
 export * from './service-desk';

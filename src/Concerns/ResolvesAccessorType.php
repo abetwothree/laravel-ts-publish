@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Concerns;
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Model\AccessorBodyAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Database\Eloquent\Casts\Attribute;
@@ -58,6 +59,13 @@ trait ResolvesAccessorType
                         return $docblockReturn;
                     }
 
+                    // Both annotations are vague, so what the getter body returns is the better answer.
+                    $bodyReturn = resolve(AccessorBodyAnalyzer::class)->analyze($reflectionModel->getName(), $name);
+
+                    if ($bodyReturn !== null && ! $this->isVagueTsType($bodyReturn['type'])) {
+                        return $bodyReturn;
+                    }
+
                     if ($getterReturn['type'] !== 'unknown') {
                         return $getterReturn;
                     }
@@ -82,6 +90,16 @@ trait ResolvesAccessorType
         // Old-style: public function getTitleDisplayAttribute($value): string
         if ($reflectionModel->hasMethod($oldStyle)) {
             $getterReturn = LaravelTsPublish::methodOrDocblockReturnTypes($reflectionModel, $oldStyle);
+
+            if ($getterReturn['type'] !== 'unknown' && ! $this->isVagueTsType($getterReturn['type'])) {
+                return $getterReturn;
+            }
+
+            $bodyReturn = resolve(AccessorBodyAnalyzer::class)->analyze($reflectionModel->getName(), $name);
+
+            if ($bodyReturn !== null && ! $this->isVagueTsType($bodyReturn['type'])) {
+                return $bodyReturn;
+            }
 
             if ($getterReturn['type'] !== 'unknown') {
                 return $getterReturn;

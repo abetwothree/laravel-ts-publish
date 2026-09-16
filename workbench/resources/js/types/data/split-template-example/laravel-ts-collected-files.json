@@ -280,6 +280,7 @@
     "app\/Models\/PropertyDocblockRejectFixture.php",
     "app\/Models\/PropertyDocblockTraitFixture.php",
     "app\/Models\/Registrar.php",
+    "app\/Models\/Release.php",
     "app\/Models\/Review.php",
     "app\/Models\/Sales\/Report\/Report.php",
     "app\/Models\/ServiceDesk.php",

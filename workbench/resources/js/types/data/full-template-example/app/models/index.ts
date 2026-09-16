@@ -38,6 +38,7 @@ export * from './property-docblock-edge';
 export * from './property-docblock-reject-fixture';
 export * from './property-docblock-trait-fixture';
 export * from './registrar';
+export * from './release';
 export * from './review';
 export * from './service-desk';
 export * from './slug-post';

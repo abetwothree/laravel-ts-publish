@@ -5049,7 +5049,7 @@
                 },
                 {
                     "name": "no_docblock_accessor",
-                    "type": "unknown"
+                    "type": "null"
                 },
                 {
                     "name": "wrong_format_docblock",
@@ -5744,7 +5744,7 @@
                 },
                 {
                     "name": "unsorted_items",
-                    "type": "unknown[] | Record<string, unknown>"
+                    "type": "OrderItem[]"
                 },
                 {
                     "name": "state_ids",
@@ -6553,6 +6553,75 @@
                 {
                     "name": "name",
                     "type": "string"
+                }
+            ]
+        },
+        "Workbench\\App\\Models\\Release": {
+            "name": "Release",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "major",
+                    "type": "number"
+                },
+                {
+                    "name": "minor",
+                    "type": "number"
+                },
+                {
+                    "name": "notes",
+                    "type": "string | null"
+                },
+                {
+                    "name": "tags_csv",
+                    "type": "string"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "summary",
+                    "type": "{ major: number }"
+                },
+                {
+                    "name": "version_data",
+                    "type": "{ major: number; minor: number }"
+                },
+                {
+                    "name": "label",
+                    "type": "{ full: string; notes: string | null }"
+                },
+                {
+                    "name": "tag_list",
+                    "type": "{ name: string }[]"
+                },
+                {
+                    "name": "channel_options",
+                    "type": "{ \"1\": string; \"2\": string }"
+                },
+                {
+                    "name": "channels",
+                    "type": "string[]"
+                },
+                {
+                    "name": "loop_a",
+                    "type": "unknown"
+                },
+                {
+                    "name": "loop_b",
+                    "type": "unknown"
+                },
+                {
+                    "name": "dynamic_totals",
+                    "type": "unknown[]"
                 }
             ]
         },
@@ -11081,7 +11150,7 @@
                 },
                 {
                     "name": "no_docblock_accessor",
-                    "type": "unknown",
+                    "type": "null",
                     "optional": false
                 },
                 {
@@ -12166,7 +12235,7 @@
                 },
                 {
                     "name": "unsorted_items",
-                    "type": "unknown[] | Record<string, unknown>",
+                    "type": "OrderItem[]",
                     "optional": false
                 },
                 {
@@ -14111,7 +14180,7 @@
                 },
                 {
                     "name": "unsorted_items",
-                    "type": "unknown[] | Record<string, unknown>",
+                    "type": "OrderItem[]",
                     "optional": false
                 },
                 {
@@ -14311,7 +14380,7 @@
                 },
                 {
                     "name": "unsorted_items",
-                    "type": "unknown[] | Record<string, unknown>",
+                    "type": "OrderItem[]",
                     "optional": false
                 },
                 {
