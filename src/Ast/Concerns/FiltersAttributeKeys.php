@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafeMethodCall;
@@ -15,7 +16,7 @@ use ReflectionMethod;
 
 /**
  * The `only`/`except` filter vocabulary, the key list read off such a call's arguments, and whether a class runs
- * Model's own filter.
+ * Model's or Support\Collection's own filter.
  *
  * The single home for all three: the filter-aware code (FiltersModelAttributes, RelationFilterHandler and
  * ReceiverMethodReturnResolver) reads keys and overrides here, and the generic reflectors ask it which calls to
@@ -106,5 +107,19 @@ trait FiltersAttributeKeys
     {
         return method_exists($class, $methodName)
             && new ReflectionMethod($class, $methodName)->getDeclaringClass()->getName() === Model::class;
+    }
+
+    /**
+     * Whether a class runs Support\Collection's own `only()`/`except()`, which keep the entries whose keys are listed.
+     *
+     * Eloquent\Collection overrides both to keep whole models by primary key, so it never matches.
+     *
+     * @param  class-string  $class
+     */
+    protected function runsCollectionFilter(string $class, string $methodName): bool
+    {
+        return is_a($class, Collection::class, true)
+            && method_exists($class, $methodName)
+            && new ReflectionMethod($class, $methodName)->getDeclaringClass()->getName() === Collection::class;
     }
 }

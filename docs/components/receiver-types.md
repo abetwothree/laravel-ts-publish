@@ -218,16 +218,19 @@ the receiver's model rather than a signature, because Laravel declares all three
 returns `mixed`, `Collection::modelKeys()` returns `array<int, array-key>`, which reflects to
 `(string | number)[]`, `Model::only()` returns `array<string, mixed>`, which reflects to the vague
 `Record<string, unknown>`, and `Model::except()` returns a bare `array`, which reflects to the list `unknown[]`.
+The filter rule also covers `Illuminate\Support\Collection`, whose `only()` and `except()` return `static`, which
+reflects to the vague `unknown[] | Record<string, unknown>`.
 
 | Call | Receiver | Published type |
 | --- | --- | --- |
 | `getKey()` | A concrete model that inherits `Model::getKey()` | `number` when `getKeyType()` is `int` or `integer`, else `string` |
 | `getKey()` | `Model` itself, or an abstract model that inherits `Model::getKey()` | No rule. Reflection declines the inherited `mixed`. |
 | `getKey()` | Any model that declares `getKey()` itself | No rule. Reflection publishes the override's own return, such as `getKey(): string`. |
-| `only()`, `except()` | Any model that declares the filter itself with a return reflection types | No rule. Reflection publishes the override's own return, such as `only($attributes): string`, in a resource, a method body and an accessor body alike. `RelationFilterHandler` declines a relation or accessor to such a model for the same reason. An override whose return reflection cannot type, such as `only($attributes)` returning `parent::only($attributes)` with no declared return, is not this row: it gets the two filter rows below, and so does a relation, accessor or map proxy to it. |
+| `only()`, `except()` | Any model that declares the filter itself with a return reflection types | No rule. Reflection publishes the override's own return, such as `only($attributes): string`, in a resource and an accessor body. Where the scope carries no import, `ReceiverMethodReturnResolver` spells it without a token: a model becomes `Record<string, unknown>`, keeping any `\| null`, and any other token, such as an enum, leaves `unknown` (see [The body fallback carries no FQCN channel](#the-body-fallback-carries-no-fqcn-channel)). `RelationFilterHandler` declines a single relation or accessor to such a model for the same reason, and asks this resolver for the return it publishes on a map proxy's elements and a multi-model accessor's arm. An override whose return reflection cannot type is not this row: no declared return, as in `only($attributes)` returning `parent::only($attributes)`, or one too vague to publish, which is `: array`, `: ?array`, `: mixed`, `: iterable`, `: array\|string` or a docblock `@return array<string, mixed>`. It gets the two filter rows below, and so does a relation, accessor or map proxy to it. |
 | `modelKeys()` | An Eloquent collection with `elementModel` set | The element model's key type as a list, `number[]` or `string[]` |
 | `only([...])`, `except([...])` | A receiver holding exactly one model class, where the call carries a literal key list | Exactly what `RelationFilterHandler` builds for a relation to that model: `Pick<Model, …>` when every key is a published column, else the inline shape. Where the scope carries no import (`AnalysisScope::$carriesImports`), no `Pick<>`: the inline shape when it names no token, else `Record<string, unknown>`. A list that types no member, such as `only(['nope'])`, publishes `Record<string, unknown>`, because `Model::only()` still returns an attribute-keyed array (`['nope' => null]`); `RelationFilterHandler` declines that call on a single relation, so this row answers it there too |
 | `only($keys)`, `except($keys)` with no literal key list, such as `only($request->input('fields'))` | A receiver holding exactly one model class, including a model subject's bare `$this` | `Record<string, unknown>` from `ResolvesFilteredRelationTypes::attributeRecordResult()`: whatever keys arrive at runtime, either filter returns an array keyed by attribute name. In `ProxyFilterDirectResource` and `ProxyFilterWrappedResource` this rule answers the own-model cells `fields_own` and `except_own` in both spellings; the relation cells `fields_author` and `except_author` get the same answer from `RelationFilterHandler`, which runs first and calls the same helper. |
+| `only()`, `except()` | A class that runs `Illuminate\Support\Collection`'s own filter (`FiltersAttributeKeys::runsCollectionFilter()`), such as a method returning `Collection`, `collect([...])`, or an accessor typed `Attribute<Collection<string, int>, never>` | `Record<string, unknown>` for any key list, from `attributeRecordResult()`: both filters keep the entries whose keys are listed. `RelationFilterHandler` answers a member holding one first, a collection-cast column (`AsCollection`) included, which no reflection names. `Eloquent\Collection` overrides both filters and is not this row. |
 | `only()`, `except()` | Any other receiver — a union, an Eloquent collection, or a `StaticCall`, which carries no key list this can read | No rule. Reflection then declines the vague `array`. `RelationFilterHandler` answers a many-relation filter spelled `$this->comments->only(...)` or `$this->resource->comments->only(...)` before this rule runs, but it matches only a plain property fetch: `$this->resource?->comments->only([1])` reaches this row and publishes `unknown`. |
 
 The key type comes from `ModelAttributeResolver::getInstance()`, so `HasUuids`, `HasUlids`, and a
@@ -242,9 +245,10 @@ abstract model. The filter rules check much the same way, through
 `ReceiverMethodReturnResolver::typesAsModelFilter()`, which `RelationFilterHandler` asks too. It answers yes when
 `FiltersAttributeKeys::runsModelFilter()` finds `Model`'s own declaration, and also for an override whose return
 reflection cannot type. So a model that overrides `only()` or
-`except()` with a return reflection types, such as `: string`, keeps that return wherever the call is written. An
-override with no return reflection can read, such as one returning `parent::only($attributes)`, keeps the filter
-answers instead, in a resource and in either body.
+`except()` with a return reflection types, such as `: string`, keeps that return wherever the call is written,
+spelled without a token where the scope carries no import. An override with no return reflection can read keeps the
+filter answers instead, in a resource and in either body: one returning `parent::only($attributes)` with no declared
+return, and one declaring a return too vague to publish, such as `: array`, which reflects to `unknown[]`.
 When no instance can be built, no rule answers and the order below runs: `getKey()` then declines on `mixed`,
 and `modelKeys()` keeps its reflected `(string | number)[]`.
 
@@ -339,12 +343,19 @@ engine caches the analysis apart from one that keeps its channels). The filter c
   `Record<string, unknown>`, never a `Pick<>`. This covers `RelationFilterHandler` and the receiver rules alike;
 - a runtime key list publishes `Record<string, unknown>`, as it does everywhere;
 - a to-many relation filter publishes `unknown[]` instead of the relation read `Comment[]`;
-- a map proxy publishes `Record<string, unknown>[]` when the filtered shape names a token.
+- a map proxy publishes `Record<string, unknown>[]` when the filtered shape names a token;
+- an override with a class-typed return, such as `only($attributes): static`, publishes a model in that return as
+  `Record<string, unknown>`, keeping any `| null`, and publishes `unknown` when the return names any other token,
+  such as an enum. `ReceiverMethodReturnResolver::resolve()` does this for every `only()`/`except()` it answers, so
+  a relation, a map proxy (`Record<string, unknown>[]`) and a multi-model accessor arm to such a model agree. A `?->`
+  adds no `| null` to `unknown`, which TypeScript already reads as holding `null`.
 
 `Comment::relationSummary()`, read through `CommentRelationFiltersResource`, pins the first three beside a typed
 `id: number` sibling that the whole-shape rule used to drop with them; its `relation_picks` accessor holds the same
 filters and publishes the full `Pick<User, …>` and `Comment[]` answers. `RelationFilterHandlerTest` pins the map
-proxy. Every other value in a body keeps the whole-shape rule.
+proxy. `ReceiverHandlersTest` pins the override through `ClassTypedFilterOverrideModel::filterFields()`, whose
+`only(): ?static` and `except(): Priority` publish `{ own: Record<string, unknown> | null; …; rest: unknown; … }`.
+Every other value in a body keeps the whole-shape rule.
 
 That exception covers only a filter written in the method body itself. **A current limit:** a method body that reads
 an accessor whose getter filters still loses its whole shape. The getter's analysis is the one its model file
@@ -360,7 +371,7 @@ A receiver holding several classes types the method on each one and merges the a
 
 The call gains `| null` when it is itself `?->`, or when the receiver's `shortCircuits` flag records an
 earlier `?->` in the chain. `$this?->m()` is the exception: `$this` is never null, so it adds nothing. So `$this->resource?->author->getMorphClass()` is `string | null`. `null` is
-never added twice.
+never added twice, and never added to `unknown`.
 
 A receiver that holds an `Illuminate\Http\Request` declines. `KnownMethodRuleHandler` owns request calls:
 it reads a form request's rules for `validated()`, the auth guard's model for `user()`, and refuses returns

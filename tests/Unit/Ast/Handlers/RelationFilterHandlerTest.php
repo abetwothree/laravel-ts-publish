@@ -11,6 +11,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassTypedFilterOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CollectionMemberModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\OwnResourceRelationModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ResourceRelationModel;
@@ -441,6 +443,9 @@ it('publishes a relation filter that names no token where the scope carries no i
     'multi-model accessor' => [Warehouse::class, '$this->last_user_activity_by->only([\'id\'])', [
         'type' => '{ id: number } | { id: number }', 'optional' => false, 'embeddedEnumFqcns' => [], 'embeddedModelFqcns' => [], 'customImports' => [],
     ]],
+    'multi-model accessor, a typed override arm beside an enum column' => [FilterOverrideModel::class, '$this->counterpart->only([\'id\', \'role\'])', [
+        'type' => 'string | Record<string, unknown>', 'optional' => false, 'embeddedEnumFqcns' => [], 'embeddedModelFqcns' => [], 'customImports' => [],
+    ]],
     'to-many' => [Comment::class, '$this->replies->only([1, 2])', ['type' => 'unknown[]', 'optional' => false]],
     'to-many ?->' => [Comment::class, '$this->replies?->except($keys)', ['type' => 'unknown[] | null', 'optional' => false]],
     'map proxy, columns' => [Comment::class, '$this->replies->map->only([\'id\'])', [
@@ -450,16 +455,56 @@ it('publishes a relation filter that names no token where the scope carries no i
     'map proxy ?->, an enum column' => [User::class, '$this->posts->map?->only([\'id\', \'status\'])', ['type' => 'Record<string, unknown>[] | null', 'optional' => false]],
 ]);
 
-// A model that overrides only()/except() declares its own return, which ReceiverMethodCallHandler reflects.
-it('declines a relation filter on a model that overrides the filter', function (string $php, ?array $expected) {
-    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), FilterOverrideModel::class);
+// A model that overrides only()/except() declares its own return. ReceiverMethodCallHandler reflects it on a single
+// relation, and this handler reads the same reflection for a map proxy's elements and a multi-model accessor's arm.
+it('publishes a typed filter override\'s own return for a map proxy or multi-model accessor, and declines a relation', function (string $model, string $php, ?array $expected) {
+    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), $model);
 
     expect((new RelationFilterHandler)->resolve(relationFilterExpr($php), $scope, relationFilterHandlerThrowingEngine()))->toBe($expected);
 })->with([
-    'single relation' => ['$this->twin->only([\'id\'])', null],
-    'single relation, runtime keys' => ['$this->resource->twin?->except($keys)', null],
-    'multi-model accessor' => ['$this->counterpart->only([\'id\'])', null],
-    'map proxy' => ['$this->twins->map->only([\'id\'])', ['type' => 'unknown', 'optional' => false]],
+    'single relation' => [FilterOverrideModel::class, '$this->twin->only([\'id\'])', null],
+    'single relation, runtime keys' => [FilterOverrideModel::class, '$this->resource->twin?->except($keys)', null],
+    'multi-model accessor' => [FilterOverrideModel::class, '$this->counterpart->only([\'id\'])', [
+        'type' => "string | Pick<User, 'id'>",
+        'optional' => false,
+        'embeddedEnumFqcns' => [],
+        'embeddedModelFqcns' => [User::class],
+        'customImports' => [],
+    ]],
+    'multi-model accessor, runtime keys' => [FilterOverrideModel::class, '$this->counterpart?->except($keys)', [
+        'type' => 'number | Record<string, unknown> | null',
+        'optional' => false,
+        'embeddedEnumFqcns' => [],
+        'embeddedModelFqcns' => [],
+        'customImports' => [],
+    ]],
+    'multi-model accessor, a nullable model return' => [ClassTypedFilterOverrideModel::class, '$this->counterpart->only([\'id\'])', [
+        'type' => "ClassTypedFilterOverrideModel | Pick<User, 'id'> | null",
+        'optional' => false,
+        'embeddedEnumFqcns' => [],
+        'embeddedModelFqcns' => [ClassTypedFilterOverrideModel::class, User::class],
+        'customImports' => [],
+    ]],
+    'map proxy' => [FilterOverrideModel::class, '$this->twins->map->only([\'id\'])', ['type' => 'string[]', 'optional' => false]],
+    'map proxy ?->, a nullable model return' => [ClassTypedFilterOverrideModel::class, '$this->resource->twins->map?->only([\'id\'])', [
+        'type' => '(ClassTypedFilterOverrideModel | null)[] | null', 'optional' => false, 'modelFqcn' => ClassTypedFilterOverrideModel::class,
+    ]],
+    'map proxy, an enum return' => [ClassTypedFilterOverrideModel::class, '$this->twins->map->except([\'id\'])', [
+        'type' => 'PriorityType[]', 'optional' => false, 'directEnumFqcn' => Priority::class,
+    ]],
+]);
+
+// Laravel's collection casts build their collection with no return type reflection can read, so the receiver rules
+// never see one; this arm types every member holding Support\Collection's own filter, which keeps keys.
+it('publishes a filter on a member holding a Support\Collection as Record<string, unknown>, under both spellings', function (string $php, ?array $expected) {
+    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), CollectionMemberModel::class);
+
+    expect((new RelationFilterHandler)->resolve(relationFilterExpr($php), $scope, relationFilterHandlerThrowingEngine()))->toBe($expected);
+})->with([
+    'collection-cast column' => ['$this->options->only([\'a\'])', ['type' => 'Record<string, unknown>', 'optional' => false]],
+    'collection-cast column ?->, through $this->resource' => ['$this->resource->options?->except($keys)', ['type' => 'Record<string, unknown> | null', 'optional' => false]],
+    'accessor' => ['$this->stats->except([\'a\'])', ['type' => 'Record<string, unknown>', 'optional' => false]],
+    'a cast building an Eloquent collection' => ['$this->metadata->only([\'a\'])', null],
 ]);
 
 // An override that declares no return, such as one returning parent::only(), leaves reflection nothing to publish,

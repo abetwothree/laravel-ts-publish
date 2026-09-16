@@ -60,11 +60,13 @@ final class ReceiverMethodReturnResolver
             $results[] = $result;
         }
 
-        if (count($results) === 1) {
-            return $results[0];
-        }
+        $result = count($results) === 1
+            ? $results[0]
+            : ValueResult::mergeUnion(array_values(array_unique(array_column($results, 'type'))), $results);
 
-        return ValueResult::mergeUnion(array_values(array_unique(array_column($results, 'type'))), $results);
+        return in_array($methodName, $this->supportedAttributeFilters(), true) && ! $scope->carriesImports
+            ? $this->filterReturnWithoutImports($result)
+            : $result;
     }
 
     /**
@@ -108,11 +110,15 @@ final class ReceiverMethodReturnResolver
             return $keyType === null ? null : [...ValueResult::unknown(), 'type' => $keyType.'[]'];
         }
 
-        if (in_array($methodName, $this->supportedAttributeFilters(), true) && $this->typesAsModelFilter($class, $methodName)) {
-            return $this->attributeFilterRule($receiver, $methodName, $scope, $call);
+        if (! in_array($methodName, $this->supportedAttributeFilters(), true)) {
+            return null;
         }
 
-        return null;
+        if ($this->runsCollectionFilter($class, $methodName)) {
+            return $this->attributeRecordResult(nullable: false);
+        }
+
+        return $this->typesAsModelFilter($class, $methodName) ? $this->attributeFilterRule($receiver, $methodName, $scope, $call) : null;
     }
 
     /**
@@ -155,6 +161,37 @@ final class ReceiverMethodReturnResolver
         }
 
         return ValueResult::namesOnlyPublishedModels($result) ? $result : null;
+    }
+
+    /**
+     * An `only()`/`except()` answer where the scope imports nothing, such as an override declaring `: static`.
+     *
+     * The body fallback drops a whole shape naming a token, so a model arm becomes the object the model serializes to.
+     * Any other token, such as an enum, leaves `unknown`, which still keeps the enclosing shape.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return ValueExpressionResult
+     */
+    private function filterReturnWithoutImports(array $result): array
+    {
+        if (! TsTypeString::shapeValueHasUnimportableToken($result['type'])) {
+            return $result;
+        }
+
+        $models = array_map(class_basename(...), [...(isset($result['modelFqcn']) ? [$result['modelFqcn']] : []), ...($result['embeddedModelFqcns'] ?? [])]);
+        $arms = [];
+
+        foreach (TsTypeString::splitTopLevelUnion($result['type']) as $arm) {
+            if (in_array($arm, $models, true)) {
+                $arm = 'Record<string, unknown>';
+            } elseif (TsTypeString::shapeValueHasUnimportableToken($arm)) {
+                return ValueResult::unknown();
+            }
+
+            $arms[] = $arm;
+        }
+
+        return [...ValueResult::unknown(), 'type' => TsTypeString::hoistNull($arms)];
     }
 
     /**
