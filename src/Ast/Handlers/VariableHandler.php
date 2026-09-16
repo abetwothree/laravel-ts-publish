@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesMapProxyElementModels;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
@@ -42,6 +43,7 @@ final class VariableHandler implements ExpressionHandler
     use ResolvesMapProxyElementModels;
     use ResolvesModelRelationTypes;
     use ResolvesRelatedModelTypes;
+    use SpellsKeyedCollections;
 
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
@@ -52,8 +54,9 @@ final class VariableHandler implements ExpressionHandler
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        // A trailing argument-less values()/all() is identity on the published type: only the receiver
-        // chain knows its own element type and how its keys were reordered, so it answers for both.
+        // A trailing argument-less values()/all() takes its element type from the receiver chain, which
+        // is the only thing that knows it. The receiver carries one op FEWER, so values() must still
+        // drop the keyed arm it restores 0..n-1 over; all() hands that array back, keys and all.
         if ($expr instanceof MethodCall
             && $expr->var instanceof MethodCall
             && $expr->name instanceof Identifier
@@ -64,6 +67,10 @@ final class VariableHandler implements ExpressionHandler
             $receiverResult = $engine->resolve($expr->var);
 
             if ($receiverResult['type'] !== 'unknown') {
+                if ($expr->name->toString() === 'values') {
+                    $receiverResult['type'] = $this->withoutKeyedObjectArm($receiverResult['type']);
+                }
+
                 return $receiverResult;
             }
         }
@@ -228,17 +235,20 @@ final class VariableHandler implements ExpressionHandler
 
         /** @var class-string<Model> $paramClass */
         $previousRelationModel = $scope->closureRelationModelClass;
-        $scope->closureRelationModelClass = $paramClass;
 
-        $returnExprs = $this->resolveClosureReturnExpressions($closureArg);
+        try {
+            $scope->closureRelationModelClass = $paramClass;
 
-        $bodyResult = match (count($returnExprs)) {
-            0 => null,
-            1 => $engine->resolve($returnExprs[0]),
-            default => ValueResult::analyzeClosureUnion($returnExprs, $engine),
-        };
+            $returnExprs = $this->resolveClosureReturnExpressions($closureArg);
 
-        $scope->closureRelationModelClass = $previousRelationModel;
+            $bodyResult = match (count($returnExprs)) {
+                0 => null,
+                1 => $engine->resolve($returnExprs[0]),
+                default => ValueResult::analyzeClosureUnion($returnExprs, $engine),
+            };
+        } finally {
+            $scope->closureRelationModelClass = $previousRelationModel;
+        }
 
         if ($bodyResult === null || $bodyResult['type'] === 'unknown') {
             return null;

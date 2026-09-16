@@ -5,9 +5,30 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CollectionPipelineHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownFunctionCallHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\VariableHandler;
+use PhpParser\Node\Expr;
 use Workbench\App\Http\Resources\CollectionPipelineResource;
 use Workbench\App\Models\Post;
+
+/** Parse one expression statement. */
+function collectionPipelineExpr(string $php): Expr
+{
+    return new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+}
+
+/** A Post-backed scope on the pipeline fixture. */
+function collectionPipelineScope(): AnalysisScope
+{
+    return new AnalysisScope(new ReflectionClass(CollectionPipelineResource::class), Post::class);
+}
+
+/** The full resource profile over a scope the caller also holds, the way production shares one. */
+function collectionPipelineEngine(AnalysisScope $scope): ResourceAstAnalyzer
+{
+    return new ResourceAstAnalyzer(new ReflectionClass(CollectionPipelineResource::class), Post::class, 'toArray', null, $scope);
+}
 
 test('collection pipelines keep their element types to the end of the chain', function () {
     $props = collect(new ResourceAstAnalyzer(new ReflectionClass(CollectionPipelineResource::class), Post::class)->analyze()->properties)->keyBy('name');
@@ -22,8 +43,60 @@ test('collection pipelines keep their element types to the end of the chain', fu
 });
 
 test('data_get declines a wildcard key', function () {
-    $scope = new AnalysisScope(new ReflectionClass(CollectionPipelineResource::class), Post::class);
-    $expr = new AstParser()->parseSource('<?php data_get($this->comments, "*.id");')[0]->expr;
+    $scope = collectionPipelineScope();
+    $expr = collectionPipelineExpr('data_get($this->comments, "*.id")');
 
-    expect(new KnownFunctionCallHandler()->resolve($expr, $scope, new ResourceAstAnalyzer(new ReflectionClass(CollectionPipelineResource::class), Post::class)))->toBeNull();
+    expect(new KnownFunctionCallHandler()->resolve($expr, $scope, collectionPipelineEngine($scope)))->toBeNull();
+});
+
+// The inert half of the ordering inventory's MethodCall row for this pair. Both handlers really claim
+// a trailing `values()` on a collect() chain, and they must answer it identically: the peel resolves a
+// receiver carrying one op FEWER, so a `filter()` the peel never sees would otherwise leave a keyed
+// Record arm that cannot survive values(). Registration order must not decide this.
+test('the values() peel and the pipeline handler agree on a filtered collect() chain', function () {
+    $scope = collectionPipelineScope();
+    $engine = collectionPipelineEngine($scope);
+    $expr = collectionPipelineExpr('collect($this->comments->pluck(\'id\'))->filter()->values()');
+
+    $pipeline = new CollectionPipelineHandler()->resolve($expr, $scope, $engine);
+    $peel = new VariableHandler()->resolve($expr, $scope, $engine);
+
+    // values() restores 0..n-1, so the sequential arm alone is the accurate answer.
+    expect($pipeline['type'])->toBe('number[]')
+        ->and($peel)->toBe($pipeline);
+});
+
+// all() hands back the underlying array with its keys untouched, so it stays pure identity — the
+// keyed arm genuinely survives it, and dropping it there would be the opposite error.
+test('the all() peel keeps a keyed arm the receiver really carries', function () {
+    $scope = collectionPipelineScope();
+    $engine = collectionPipelineEngine($scope);
+    $expr = collectionPipelineExpr('collect($this->comments->pluck(\'id\'))->filter()->all()');
+
+    expect(new VariableHandler()->resolve($expr, $scope, $engine)['type'])
+        ->toBe('number[] | Record<string, number>');
+});
+
+test('a collect() root whose keys broke carries the keyed Record arm', function () {
+    $scope = collectionPipelineScope();
+    $engine = collectionPipelineEngine($scope);
+    $expr = collectionPipelineExpr('collect($this->comments->pluck(\'id\'))->filter()');
+
+    expect(new CollectionPipelineHandler()->resolve($expr, $scope, $engine)['type'])
+        ->toBe('number[] | Record<string, number>');
+});
+
+// elementTypeOf() declines a top-level union: sortBy() leaves `Comment[] | Record<string, Comment>`,
+// and which arm the elements came from is exactly what a union does not say.
+test('a collect() root resolving to a top-level union declines', function () {
+    $scope = collectionPipelineScope();
+    $engine = collectionPipelineEngine($scope);
+
+    expect($engine->resolve(collectionPipelineExpr('$this->comments->sortBy(\'id\')'))['type'])
+        ->toBe('Comment[] | Record<string, Comment>')
+        ->and(new CollectionPipelineHandler()->resolve(
+            collectionPipelineExpr('collect($this->comments->sortBy(\'id\'))->values()'),
+            $scope,
+            $engine,
+        ))->toBeNull();
 });

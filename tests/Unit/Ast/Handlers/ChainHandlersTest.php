@@ -28,6 +28,7 @@ use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use Workbench\App\Enums\Role;
 use Workbench\App\Http\Resources\ClosureResourceRootResource;
+use Workbench\App\Http\Resources\CollectionPipelineResource;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\HelperCallResource;
 use Workbench\App\Http\Resources\MediaTypeResource;
@@ -220,6 +221,18 @@ it('resolves a take()->map()->values() chain through the engine, array-wrapping 
         ->and($engine->boundParamModel)->toBe(User::class)
         ->and($scope->closureRelationModelClass)->toBeNull()
         ->and($scope->varModelBindings)->toBe([]);
+});
+
+// concat() is identity ONLY on exact type equality. Loosening the comparison to "both are arrays"
+// would publish Comment[] for a chain that really appends Tag[] — a different collection, not a
+// longer one — so the declining half is the half worth pinning.
+it('treats concat() as identity for the same collection type and declines a different one', function () {
+    $analyzer = new ResourceAstAnalyzer(new ReflectionClass(CollectionPipelineResource::class), Post::class);
+    $same = new MethodCall(chainThisProp('comments'), 'concat', [new Arg(chainThisProp('comments'))]);
+    $different = new MethodCall(chainThisProp('comments'), 'concat', [new Arg(chainThisProp('tags'))]);
+
+    expect($analyzer->resolve($same)['type'])->toBe('Comment[]')
+        ->and($analyzer->resolve($different)['type'])->toBe('unknown');
 });
 
 it('declines a method call rooted at a bare variable, not $this', function () {

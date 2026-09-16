@@ -118,6 +118,15 @@ function methodCallCorpus(): array
         new MethodCall(new MethodCall(new PropertyFetch($this_, 'replies'), 'concat', [
             new Arg(new PropertyFetch($this_, 'replies')),
         ]), 'values'),
+        // A collect() root the pipeline handler can type with only its PARTNER in the profile: the
+        // argument needs RelationCollectionChainHandler, not the KnownFunctionCallHandler/ClosureHandler
+        // pair above, neither of which is a MethodCall claimant and so is in no pair at all.
+        new MethodCall(new FuncCall(new Name('collect'), [
+            new Arg(new MethodCall(new PropertyFetch($this_, 'replies'), 'pluck', [new Arg(new String_('content'))])),
+        ]), 'values'),
+        new MethodCall(new MethodCall(new FuncCall(new Name('collect'), [
+            new Arg(new MethodCall(new PropertyFetch($this_, 'replies'), 'pluck', [new Arg(new String_('content'))])),
+        ]), 'filter'), 'values'),
     ];
 }
 

@@ -536,6 +536,13 @@ A collection starts keyed `0..n-1`. Each op says whether that still holds:
 | `concat($source)` | unchanged, **only** on exact type equality | unchanged |
 | `first`, `last`, argument-less and outermost | one element or `null` | terminal |
 
+**Two `match` statements implement this table** — one in
+`RelationCollectionChainHandler::analyzeRelationCollectionChain()`, one in
+`CollectionPipelineHandler::resolve()` — and both must stay in sync with the rows above. They are
+deliberately *not* abstracted into one: the op sets genuinely differ, since a `collect()` root has no
+`take`, no `pluck` and no `first`/`last` terminal, and collapsing them would mean a single `match`
+carrying arms that are unreachable for half its callers.
+
 `all` is identity on the *published* type: a `Collection<X>` and the `array<X>` behind it both render
 `X[]`, so `$this->comments->map(...)->values()->all()` publishes what the chain already had rather than
 decaying to `unknown`. `VariableHandler` peels a trailing argument-less `values()`/`all()` off any
