@@ -509,8 +509,10 @@ describe('Arrayable DTO shape inference', function () {
         expect($this->service->shapeValueHasUnimportableToken('{ assignedLater?: string; promoted: string }'))->toBeFalse()
             ->and($this->service->shapeValueHasUnimportableToken('{ a ?: string }'))->toBeFalse()
             ->and($this->service->shapeValueHasUnimportableToken('{ nested: { deep?: number } }'))->toBeFalse()
-            // An int or class-constant array key emits quoted, and a quoted key is still a key.
+            // An int or class-constant array key emits quoted, and a quoted key is still a key. Its value
+            // is still a value, so widening the key rule must not start excusing the type beside it.
             ->and($this->service->shapeValueHasUnimportableToken('{ "1": string; "2": string }'))->toBeFalse()
+            ->and($this->service->shapeValueHasUnimportableToken('{ "1": User }'))->toBeTrue()
             ->and($this->service->shapeValueHasUnimportableToken('{ owner?: User }'))->toBeTrue();
     });
 });

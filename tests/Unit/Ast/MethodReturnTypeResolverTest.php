@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConstantKeyFixture;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConstantKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RecursiveVagueFixture;
 use Workbench\App\Http\Resources\ServiceReturnResource;
 use Workbench\App\Models\Post;
@@ -23,6 +25,17 @@ test('a self-recursive vague method declines instead of looping', function () {
         ->toBe(['type' => 'unknown[]', 'optional' => false])
         ->and(resolve(MethodReturnTypeResolver::class)->resolve(RecursiveVagueFixture::class, 'againKeyed'))
         ->toBe(['type' => '{ again: unknown[] }', 'optional' => false]);
+});
+
+test('a constant key resolves through parent, self and a foreign class', function () {
+    // `parent::PARENT_TIER` is 7 and survives as a quoted key, because the subject is not a resource.
+    expect(resolve(MethodReturnTypeResolver::class)->resolve(ConstantKeyFixture::class, 'shape'))
+        ->toBe(['type' => '{ "7": string; label: string; external: string }', 'optional' => false]);
+});
+
+test('a numeric constant key is dropped when the analyzed subject is a resource', function () {
+    expect(resolve(MethodReturnTypeResolver::class)->resolve(ConstantKeyResource::class, 'shape'))
+        ->toBe(['type' => '{ external: string }', 'optional' => false]);
 });
 
 test('a precise declaration is kept, and an absent method declines', function () {

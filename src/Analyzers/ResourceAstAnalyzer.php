@@ -669,7 +669,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
     protected function resolveArrayOrClosureToProperties(Expr $expr, bool $optional): ResourceAnalysis
     {
         if ($expr instanceof Array_) {
-            return (new ThisPropertyHandler)->extractPropertiesFromArray($expr, $this, $optional, $this->scope->subjectReflection);
+            return (new ThisPropertyHandler)->extractPropertiesFromArray($expr, $this, $this->scope->subjectReflection, $optional);
         }
 
         $returnExprs = $this->resolveClosureReturnExpressions($expr);
@@ -683,11 +683,11 @@ class ResourceAstAnalyzer implements ExpressionEngine
         }
 
         if (count($arrays) === 1) {
-            return (new ThisPropertyHandler)->extractPropertiesFromArray($arrays[0], $this, $optional, $this->scope->subjectReflection);
+            return (new ThisPropertyHandler)->extractPropertiesFromArray($arrays[0], $this, $this->scope->subjectReflection, $optional);
         }
 
         $analyses = array_map(
-            fn (Array_ $a) => (new ThisPropertyHandler)->extractPropertiesFromArray($a, $this, $optional, $this->scope->subjectReflection),
+            fn (Array_ $a) => (new ThisPropertyHandler)->extractPropertiesFromArray($a, $this, $this->scope->subjectReflection, $optional),
             $arrays,
         );
 

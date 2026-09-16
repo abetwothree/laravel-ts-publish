@@ -89,9 +89,9 @@ trait InspectsAstNodes
      *
      * An int key is a real JSON object key: `[1 => 'Basic']` encodes as `{"1":"Basic"}`, not as a list.
      *
-     * @param  ReflectionClass<object>|null  $subject  resolves `self`/`static` in a class-constant key
+     * @param  ReflectionClass<object>  $subject  resolves `self`, `static` and `parent` in a constant key
      */
-    protected function resolveKeyName(Expr $key, ?ReflectionClass $subject = null): ?string
+    protected function resolveKeyName(Expr $key, ReflectionClass $subject): ?string
     {
         if ($key instanceof String_) {
             return $key->value;
@@ -102,7 +102,12 @@ trait InspectsAstNodes
         }
 
         if ($key instanceof ClassConstFetch && $key->class instanceof Name && $key->name instanceof Identifier) {
-            $class = in_array($key->class->toLowerString(), ['self', 'static'], true) ? $subject?->getName() : $key->class->toString();
+            $parent = $subject->getParentClass();
+            $class = match ($key->class->toLowerString()) {
+                'self', 'static' => $subject->getName(),
+                'parent' => $parent === false ? null : $parent->getName(),
+                default => $key->class->toString(),
+            };
             $constant = $class !== null ? $class.'::'.$key->name->toString() : null;
             $value = $constant !== null && defined($constant) ? constant($constant) : null;
 
@@ -113,17 +118,17 @@ trait InspectsAstNodes
     }
 
     /**
-     * Drop a numeric key that would become a published resource member, and keep every other one.
+     * Drop a numeric key when the analyzed subject is a resource, and keep every other one.
      *
-     * PHP stores a numeric string array key as an int, so a name like `42` arrives as `int` in the
-     * transformer's `array<string, …>` property maps. A helper method's array renders as an inline type
-     * string instead (`{ "1": string }`), where the name never becomes an array key and stays valid.
+     * A published member name cannot be numeric: PHP stores a numeric string array key as an int, so it
+     * would arrive as an `int` in the transformer's `array<string, …>` property maps. The test is the
+     * subject, not the position, so a numeric key nested inside a resource is dropped as well.
      *
-     * @param  ReflectionClass<object>|null  $subject
+     * @param  ReflectionClass<object>  $subject
      */
-    private function publishableKeyName(string $name, ?ReflectionClass $subject): ?string
+    private function publishableKeyName(string $name, ReflectionClass $subject): ?string
     {
-        return is_numeric($name) && $subject?->isSubclassOf(JsonResource::class) === true ? null : $name;
+        return is_numeric($name) && $subject->isSubclassOf(JsonResource::class) ? null : $name;
     }
 
     /**

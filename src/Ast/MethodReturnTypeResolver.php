@@ -16,7 +16,9 @@ use ReflectionClass;
  * declaration is too vague to publish.
  *
  * The rules are in docs/components/receiver-types.md § Following a method's return type. A container
- * singleton, so the re-entrancy guard below is shared by every call site rather than per instance.
+ * singleton, so the re-entrancy guard below is shared by every call site rather than per instance. That
+ * guard is deliberate defence-in-depth and changes no result today: AstEngine::analyzeMethod() cuts the
+ * same cycle itself, so this one only stops a cycle before it reaches the engine.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *

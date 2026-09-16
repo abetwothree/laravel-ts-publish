@@ -7,7 +7,6 @@ namespace Workbench\App\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Enums\Priority;
-use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Models\Post;
 
 /**

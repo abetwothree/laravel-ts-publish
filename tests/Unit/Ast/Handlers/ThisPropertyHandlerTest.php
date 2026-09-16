@@ -108,7 +108,7 @@ it('extractPropertiesFromArray() resolves each keyed item through the engine, fo
         [$nameValue, ['type' => 'string', 'optional' => false]],
     ]);
 
-    $analysis = (new ThisPropertyHandler)->extractPropertiesFromArray($array, $engine, optional: true);
+    $analysis = (new ThisPropertyHandler)->extractPropertiesFromArray($array, $engine, new ReflectionClass(UserResource::class), optional: true);
 
     expect($analysis)->toBeInstanceOf(ResourceAnalysis::class)
         ->and($analysis->properties)->toBe([
@@ -121,7 +121,7 @@ it('extractPropertiesFromArray() skips unkeyed items — it does not support spr
         new ArrayItem(new Variable('spread'), null, unpack: true),
     ]);
 
-    $analysis = (new ThisPropertyHandler)->extractPropertiesFromArray($array, thisPropertyHandlerThrowingEngine());
+    $analysis = (new ThisPropertyHandler)->extractPropertiesFromArray($array, thisPropertyHandlerThrowingEngine(), new ReflectionClass(UserResource::class));
 
     expect($analysis->properties)->toBe([]);
 });

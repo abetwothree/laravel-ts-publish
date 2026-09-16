@@ -66,9 +66,9 @@ final class ThisPropertyHandler implements ExpressionHandler
      * Public: the analyzer's own resolveArrayOrClosureToProperties() (merge()/mergeWhen() resolution)
      * calls this directly — the array machinery moved here while that caller stayed on the analyzer.
      *
-     * @param  ReflectionClass<object>|null  $subject  resolves `self`/`static` in a class-constant key
+     * @param  ReflectionClass<object>  $subject  the analyzed subject, which decides whether a numeric key survives
      */
-    public function extractPropertiesFromArray(Array_ $array, ExpressionEngine $engine, bool $optional = false, ?ReflectionClass $subject = null): ResourceAnalysis
+    public function extractPropertiesFromArray(Array_ $array, ExpressionEngine $engine, ReflectionClass $subject, bool $optional = false): ResourceAnalysis
     {
         $analysis = new ResourceAnalysis;
 

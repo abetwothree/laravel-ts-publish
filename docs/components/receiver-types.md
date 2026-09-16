@@ -277,9 +277,17 @@ model and the receiver model are the same class, so the two answers agree.
    `User::resolveRouteBinding()` reflects to `Model | null` and `newPivot()` to `Pivot`.
 
 An int or class-constant array key is a real JSON object key, not a list index: `[1 => 'Basic']` encodes as
-`{"1":"Basic"}`. `InspectsAstNodes::resolveKeyName()` reads both, resolving `self`/`static` in a constant key
-against the subject under analysis, and the key emits quoted because `1` is not a bare JS identifier. So
-`PriceQuoteService::tierLabels()` publishes `{ "1": string; "2": string }`.
+`{"1":"Basic"}`. `InspectsAstNodes::resolveKeyName()` reads both, resolving `self`, `static` and `parent` in a
+constant key against the subject under analysis, and the key emits quoted because `1` is not a bare JS
+identifier. So `PriceQuoteService::tierLabels()` publishes `{ "1": string; "2": string }`.
+
+A **numeric** key is still dropped whenever the analyzed subject is a `JsonResource`. So `42 => $this->total`
+in a resource publishes nothing, and `quirky-resource` pins that it must not. A published member name cannot
+be numeric: `ResourceTransformer` keys its property maps by name as `array<string, …>`, and PHP stores a
+numeric string array key as an `int`, so such a name arrives as an `int` where a `string` is declared. The
+test is the *subject*, not whether that particular key becomes a member — a numeric key nested in an inline
+array inside a resource, or in a resource's own helper reached by the body fallback, is dropped too. A helper
+on a plain class keeps them, which is the only reason `PriceQuoteService` can publish `{ "1": string }` at all.
 
 ### The body fallback carries no FQCN channel
 
