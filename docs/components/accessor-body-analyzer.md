@@ -54,11 +54,11 @@ literal.
 ## Scope: the model is the subject
 
 `AstEngine::analyzeModelClosure()` seeds the scope with `bindingsFor()`, which binds the *enclosing
-method's* parameters and local variables — not the `get` closure's own, so for a new-style accessor
-this seeding is only really load-bearing on the old-style path, where the wrapped body **is** the
-method — but leaves `modelClass` **null** — so the load-bearing line is `$scope->modelClass =
-$modelClass`. Without it nothing in the body resolves against the model and `$this->major` is
-`unknown`. The subject is re-asserted as the model alongside it: `resolveBody()` locates on the model
+method's* parameters and local variables, not the `get` closure's own. That seeding therefore does
+little for a new-style accessor; it earns its keep on the old-style path, where the wrapped body
+**is** the method. What `bindingsFor()` does not set is `modelClass`, which it leaves **null**, so
+the load-bearing line is `$scope->modelClass = $modelClass`. Without it nothing in the body resolves
+against the model and `$this->major` is `unknown`. The subject is re-asserted as the model alongside it: `resolveBody()` locates on the model
 FQCN, so `MethodContext::$reflection` already *is* the model even when the body it found lives in a
 trait's file, and re-asserting keeps that true for any future caller that locates on the declaring
 class instead. `Release` uses `DerivesReleaseVersion` to pin the trait-declared case end to end. The
