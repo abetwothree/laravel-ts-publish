@@ -1041,7 +1041,13 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         foreach ($parts as $part) {
             if ($part instanceof InterpolatedStringPart || $part instanceof String_) {
-                $pattern .= str_replace(['`', '${'], ['\\`', '\\${'], $part->value);
+                // isIndexSignatureKey()'s backtick alternative has no escape clause, so an escaped
+                // backtick could never be read back; decline rather than publish an unmatchable name.
+                if (str_contains($part->value, '`')) {
+                    return null;
+                }
+
+                $pattern .= str_replace('${', '\\${', $part->value);
                 $hasLiteral = true;
             } else {
                 $pattern .= '${string}';
@@ -1210,8 +1216,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Whether a property name is a generated `[key: number]`/`[key: string]` index signature —
-     * those can never carry `?:`, unlike a merely-missing-in-some-branch named property.
+     * Whether a property name is a generated `[key: number]`/`[key: string]`/template-literal index
+     * signature — those can never carry `?:`, unlike a merely-missing-in-some-branch named property.
      */
     private static function isIndexSignatureKey(string $name): bool
     {

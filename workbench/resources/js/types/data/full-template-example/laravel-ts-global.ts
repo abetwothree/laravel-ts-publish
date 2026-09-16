@@ -3192,6 +3192,7 @@ declare global {
             extra_label?: string;
             primary_label: string;
             [key: `${string}_label`]: string | undefined;
+            [key: `${string}_region`]: string | undefined;
             id: number;
         }
         /**

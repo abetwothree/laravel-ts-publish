@@ -6060,3 +6060,9 @@ test('an interpolated key becomes a template-literal index signature', function 
     expect($props['[key: `${string}_label`]'])->toMatchArray(['type' => 'string | undefined', 'optional' => false])
         ->and($props['primary_label']['type'])->toBe('string');
 });
+
+test('a concatenated key becomes a template-literal index signature', function () {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(PermissionsSpreadResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+    expect($props['[key: `${string}_region`]'])->toMatchArray(['type' => 'string | undefined', 'optional' => false]);
+});

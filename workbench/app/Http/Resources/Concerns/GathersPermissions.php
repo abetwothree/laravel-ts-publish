@@ -55,6 +55,22 @@ trait GathersPermissions
         return $data;
     }
 
+    /**
+     * The `.` concatenation form of an interpolated key, pinned separately from the encapsed one.
+     *
+     * @return array<string, string>
+     */
+    public function gatherRegionLabels(): array
+    {
+        $data = [];
+
+        foreach (['east', 'west'] as $name) {
+            $data[$name.'_region'] = 'Region';
+        }
+
+        return $data;
+    }
+
     /** Deliberately untyped so only the docblocks above can type what it returns. */
     protected function opaque()
     {

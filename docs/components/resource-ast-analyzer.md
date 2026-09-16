@@ -812,26 +812,45 @@ variable and the other returns a literal, and the honest answer is `unknown`.
 A key built from literal text around a variable — `$data["{$name}_label"] = 'Channel'` inside a
 `foreach`, or the equivalent `$data[$name.'_label'] = …` — cannot be a fixed property name, because
 the runtime key varies per iteration. `collectVariableArrayAssignments()` recognizes this shape
-through `interpolatedKeyName()`, which reads an `InterpolatedString`'s parts (v5's node, aliasing
-v4's `Encapsed`) or a `Concat`'s two operands, and requires **both** a literal segment and a dynamic
-one — a purely dynamic dim (`$data[$name]`) or a purely literal one is left to the existing handling.
-It publishes a template-literal index signature, e.g. ``[key: `${string}_label`]``, with the
-backtick and `${` in any literal segment escaped so the pattern stays valid TypeScript syntax.
+through `interpolatedKeyName()`, which reads an `InterpolatedString`'s parts (v5's live node — v4's
+`Encapsed` is now the deprecated shim that extends it, not the other way round) or a `Concat`'s two
+operands, and requires **both** a literal segment and a dynamic one — a purely dynamic dim
+(`$data[$name]`) or a purely literal one is left to the existing handling. A literal segment
+containing a backtick declines the whole key (returns `null`): `isIndexSignatureKey()`'s backtick
+alternative has no escape clause, so an escaped backtick could not be read back, and there is no
+fixture that needs it. Otherwise it publishes a template-literal index signature, e.g.
+``[key: `${string}_label`]``, with `${` in any literal segment escaped so the pattern stays valid
+TypeScript syntax without being misread as an actual interpolation.
 
 Such a key always publishes `optional = false` with its value type widened to include `| undefined`,
-never `key?:` on the signature itself. Two reasons converge: `[key: T]?:` is a TypeScript syntax
-error regardless of how the analyzer produced the name (`isIndexSignatureKey()`'s existing
-`mergeReturnBranches()` guard already establishes this), and TS2411 rejects an optional *named*
-property whose type is not assignable to a sibling index signature's type — `string` alone is not
-assignable from `string | undefined`. `GathersPermissions::gatherChannelLabels()` and
-`gatherLabels()` publish into the same `PermissionsSpreadResource` interface: `extra_label?: string`
-sits beside `` [key: `${string}_label`]: string | undefined; ``, and only the `| undefined` keeps
-that combination type-checking.
+never `key?:` on the signature itself. `[key: T]?:` is a TypeScript syntax error regardless of how
+the analyzer produced the name (`isIndexSignatureKey()`'s existing `mergeReturnBranches()` guard
+already establishes this) — that alone rules out `key?:`. Whether the `| undefined` on the *value*
+side is doing anything measurable depends on the consumer's own `tsconfig`, which is why it stays
+regardless:
+
+- **Consumer protection.** This package publishes into projects whose `tsconfig` it does not
+  control. Under plain `strict` — without `exactOptionalPropertyTypes`, the common case — an optional
+  named property sitting beside a matching index signature genuinely fails TS2411 if the index
+  signature's value type does not include `undefined`; `GathersPermissions::gatherLabels()`'s
+  `extra_label?: string` beside `gatherChannelLabels()`'s `` [key: `${string}_label`] `` in the same
+  `PermissionsSpreadResource` interface is exactly that shape. `| undefined` is real protection for
+  that consumer, even where it is redundant here.
+- **Runtime accuracy — the check that holds regardless of any flag.** A key matching the pattern is
+  not guaranteed present; `gatherChannelLabels()`'s loop only ever assigns what it iterates.
+  `| undefined` is what makes the published type match runtime, independent of what any particular
+  `tsconfig` happens to accept — the same standard every property in this package is held to.
+
+This repo's own `tsconfig.json` sets `exactOptionalPropertyTypes: true`, which keeps `extra_label?`'s
+type exactly `string` (never widened to `string | undefined`) for this specific check, so the
+workbench trees here compile clean with or without the `| undefined` — do not read that as evidence
+the `| undefined` is redundant everywhere; it is redundant only under this flag combination, and the
+consumer case above is real.
 
 `validJsObjectKey()` and `isIndexSignatureKey()` both widen their index-signature regex with a
 `` `[^`]*` `` alternative alongside `string`/`number`, so the new key shape prints unquoted in a type
-position exactly like the existing `[key: number]`/`[key: string]` signatures, and still merges
-correctly across spread branches.
+position exactly like the existing `[key: number]`/`[key: string]`/`` `template` `` signatures, and
+still merges correctly across spread branches.
 
 ## Inline-array spreads become intersection arms
 

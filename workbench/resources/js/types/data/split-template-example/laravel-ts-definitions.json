@@ -12454,6 +12454,11 @@
                     "optional": false
                 },
                 {
+                    "name": "[key: `${string}_region`]",
+                    "type": "string | undefined",
+                    "optional": false
+                },
+                {
                     "name": "id",
                     "type": "number",
                     "optional": false
