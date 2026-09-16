@@ -43,6 +43,7 @@ export * from './service-desk';
 export * from './slug-post';
 export * from './strict-composite-comment';
 export * from './strict-task-assignment';
+export * from './subscribed-team';
 export * from './supplier';
 export * from './tag';
 export * from './task-assignment';

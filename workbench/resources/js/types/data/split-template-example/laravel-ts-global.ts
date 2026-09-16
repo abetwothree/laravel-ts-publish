@@ -1058,6 +1058,54 @@ declare global {
             assignee_exists: boolean;
         }
         /**
+         * A Team read through a subclass that knows one more relation — the narrowing target.
+         *
+         * `subscriber()` is deliberately a third relation on `owner_id`, distinct from Team's own `owner()`
+         * and `map()`: TeamSubscriberResource asserts that narrowing reaches a relation only the subclass knows.
+         */
+        export interface SubscribedTeam {
+            // Columns
+            id: number;
+            name: string;
+            slug: string;
+            description: string | null;
+            owner_id: number;
+            is_active: boolean;
+            settings: Record<string, unknown> | null;
+            grid_config: { filters?: Record<string, unknown>; sorts?: string[]; columns?: string[] } | null;
+            created_at: string | null;
+            updated_at: string | null;
+            deleted_at: string | null;
+            week_days: app.enums.WeekDaysType[] | null;
+            grid_configs: { label: string; config: Record<string, unknown> }[] | null;
+            grid_preset: { name: string; locked?: boolean } | null;
+            // Mutators
+            /** Whether the team has any members */
+            has_member: boolean;
+            /** Number of members */
+            member_count: number;
+            status_history: app.enums.StatusType[];
+            /** A single scalar Status, distinct from statusHistory()'s array shape. */
+            latest_status: app.enums.StatusType;
+            // Relations
+            /** The user subscribed to this team */
+            subscriber: User;
+            subscriber_count: number;
+            subscriber_exists: boolean;
+            /** The user who owns this team */
+            owner: User;
+            owner_count: number;
+            owner_exists: boolean;
+            /** Named literally 'map' to pin the relation-filter guard against Laravel's ->map proxy. */
+            map: User;
+            map_count: number;
+            map_exists: boolean;
+            /** Members of the team (pivot includes role and joined_at) */
+            members: User[];
+            members_count: number;
+            members_exists: boolean;
+        }
+        /**
          * Exercises toResourceCollection()'s naming-convention order: the guessed SupplierCollection
          * class must win over the bare SupplierResource fallback, and since it collects a different
          * resource (SupplierSummaryResource), the two orderings are visibly distinguishable.
@@ -2900,6 +2948,14 @@ declare global {
             counted_named_out_of_order: number;
         }
         /**
+         * Narrowing fixture: `attachable` is a morphTo, so `$parent` holds a union until an early-return
+         * `instanceof` guard proves it a Post. `$record`'s ternary narrows the same way in one expression.
+         */
+        export interface NarrowedParentResource {
+            parent?: { title: string; class: string; morph: string } | null;
+            record_title: string | null;
+        }
+        /**
          * Exercises spreading a resolved resource inside a NESTED inline array literal — a map()
          * closure's return body — as opposed to the four already-supported top-level toArray() spreads.
          *
@@ -3715,6 +3771,13 @@ declare global {
         export interface TeamStatusAuditResource {
             id: number;
             audit: { status: app.enums.StatusType[] | app.enums.StatusType[] };
+        }
+        /**
+         * A `$this->resource instanceof <Model>` ternary narrows the backing model for its true arm, so a
+         * relation only the subclass declares resolves there.
+         */
+        export interface TeamSubscriberResource {
+            subscriber_name: string | null;
         }
         /**
          * Exercises: ternary operator in various return-value positions.

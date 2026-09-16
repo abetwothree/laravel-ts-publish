@@ -88,6 +88,8 @@ export * from './strict-composite-comment';
 export * from './strict-composite-comment_meta';
 export * from './strict-task-assignment';
 export * from './strict-task-assignment_meta';
+export * from './subscribed-team';
+export * from './subscribed-team_meta';
 export * from './supplier';
 export * from './supplier_meta';
 export * from './tag';

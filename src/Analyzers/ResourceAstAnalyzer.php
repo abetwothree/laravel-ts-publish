@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ResolvesModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsInstanceofGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
@@ -75,6 +76,7 @@ use ReflectionNamedType;
 class ResourceAstAnalyzer implements ExpressionEngine
 {
     use ChecksPreserveKeys;
+    use CollectsInstanceofGuards;
     use CollectsLocalVarBindings;
     use FiltersModelAttributes;
     use InspectsAstNodes;
@@ -292,6 +294,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
     protected function seedVarBindings(array $stmts): void
     {
         $this->collectLocalVarBindings($stmts, $this->scope);
+        $this->collectInstanceofGuards($stmts, $this->scope);
         $this->bindForeachLoopVariables($stmts);
     }
 
@@ -697,7 +700,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
     /**
      * Resolve and analyze a $this->method() spread; $topLevel carries the caller's own
      * flatten-eligibility down into the target's own return (see analyzeReturnArray()).
-     * $localVarBindings/$resolvingLocalVars/$varModelBindings save/clear/restore via `finally`.
+     * $localVarBindings/$resolvingLocalVars/$varModelBindings/$varClassBindings save/clear/restore via `finally`.
      */
     protected function analyzeThisMethodSpread(string $methodName, bool $topLevel = true): ?ResourceAnalysis
     {
@@ -724,10 +727,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $previousLocalVarBindings = $this->scope->localVarBindings;
         $previousResolvingLocalVars = $this->scope->resolvingLocalVars;
         $previousVarModelBindings = $this->scope->varModelBindings;
+        $previousVarClassBindings = $this->scope->varClassBindings;
         $previousRequestVarNames = $this->scope->requestVarNames;
         $this->scope->localVarBindings = [];
         $this->scope->resolvingLocalVars = [];
         $this->scope->varModelBindings = [];
+        $this->scope->varClassBindings = [];
         // The spread method has its own signature: the entry method's Request params say nothing
         // about which of ITS variables hold one. analyzeParentToArray() re-derives the same way.
         $this->scope->requestVarNames = $this->resolveRequestVarNames($methodName);
@@ -760,6 +765,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $this->scope->localVarBindings = $previousLocalVarBindings;
             $this->scope->resolvingLocalVars = $previousResolvingLocalVars;
             $this->scope->varModelBindings = $previousVarModelBindings;
+            $this->scope->varClassBindings = $previousVarClassBindings;
             $this->scope->requestVarNames = $previousRequestVarNames;
             unset($this->scope->visitedSpreadMethods[$methodName]);
         }

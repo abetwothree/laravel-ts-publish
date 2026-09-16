@@ -6842,6 +6842,131 @@
                 }
             ]
         },
+        "Workbench\\App\\Models\\SubscribedTeam": {
+            "name": "SubscribedTeam",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "name",
+                    "type": "string"
+                },
+                {
+                    "name": "slug",
+                    "type": "string"
+                },
+                {
+                    "name": "description",
+                    "type": "string | null"
+                },
+                {
+                    "name": "owner_id",
+                    "type": "number"
+                },
+                {
+                    "name": "is_active",
+                    "type": "boolean"
+                },
+                {
+                    "name": "settings",
+                    "type": "Record<string, unknown> | null"
+                },
+                {
+                    "name": "grid_config",
+                    "type": "{ filters?: Record<string, unknown>; sorts?: string[]; columns?: string[] } | null"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "deleted_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "week_days",
+                    "type": "WeekDaysType[] | null"
+                },
+                {
+                    "name": "grid_configs",
+                    "type": "{ label: string; config: Record<string, unknown> }[] | null"
+                },
+                {
+                    "name": "grid_preset",
+                    "type": "{ name: string; locked?: boolean } | null"
+                },
+                {
+                    "name": "has_member",
+                    "type": "boolean"
+                },
+                {
+                    "name": "member_count",
+                    "type": "number"
+                },
+                {
+                    "name": "status_history",
+                    "type": "StatusType[]"
+                },
+                {
+                    "name": "latest_status",
+                    "type": "StatusType"
+                },
+                {
+                    "name": "subscriber",
+                    "type": "User"
+                },
+                {
+                    "name": "owner",
+                    "type": "User"
+                },
+                {
+                    "name": "map",
+                    "type": "User"
+                },
+                {
+                    "name": "members",
+                    "type": "User[]"
+                },
+                {
+                    "name": "subscriber_count",
+                    "type": "number"
+                },
+                {
+                    "name": "owner_count",
+                    "type": "number"
+                },
+                {
+                    "name": "map_count",
+                    "type": "number"
+                },
+                {
+                    "name": "members_count",
+                    "type": "number"
+                },
+                {
+                    "name": "subscriber_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "owner_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "map_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "members_exists",
+                    "type": "boolean"
+                }
+            ]
+        },
         "Workbench\\App\\Models\\Supplier": {
             "name": "Supplier",
             "properties": [
@@ -11499,6 +11624,21 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\NarrowedParentResource": {
+            "name": "NarrowedParentResource",
+            "properties": [
+                {
+                    "name": "parent",
+                    "type": "{ title: string; class: string; morph: string } | null",
+                    "optional": true
+                },
+                {
+                    "name": "record_title",
+                    "type": "string | null",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\NestedResourceSpreadResource": {
             "name": "NestedResourceSpreadResource",
             "properties": [
@@ -14255,6 +14395,16 @@
                 {
                     "name": "audit",
                     "type": "{ status: AsEnum<typeof Status>[] | StatusType[] }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\TeamSubscriberResource": {
+            "name": "TeamSubscriberResource",
+            "properties": [
+                {
+                    "name": "subscriber_name",
+                    "type": "string | null",
                     "optional": false
                 }
             ]

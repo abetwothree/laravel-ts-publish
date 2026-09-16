@@ -6,6 +6,8 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsInstanceofGuards;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
@@ -35,6 +37,8 @@ use PhpParser\Node\NullableType;
  */
 final class ClosureHandler implements ExpressionHandler
 {
+    use CollectsInstanceofGuards;
+    use CollectsLocalVarBindings;
     use InspectsAstNodes;
 
     /** @return list<class-string<Expr>> */
@@ -53,6 +57,7 @@ final class ClosureHandler implements ExpressionHandler
             // A param merely shadows a same-named outer local for this body — it must not resolve
             // through the outer binding just because no scoped binding (e.g. whenLoaded) claimed it.
             $previousLocalVarBindings = $scope->localVarBindings;
+            $previousVarClassBindings = $scope->varClassBindings;
 
             if ($expr instanceof ArrowFunction || $expr instanceof ClosureExpr) {
                 foreach ($expr->params as $param) {
@@ -60,6 +65,17 @@ final class ClosureHandler implements ExpressionHandler
                         unset($scope->localVarBindings[$param->var->name]);
                     }
                 }
+            }
+
+            if ($expr instanceof ClosureExpr) {
+                // A body-local shadows the outer one of the same name however often it is written, so
+                // suppress every written name before the single-write pass decides what to rebind.
+                foreach ($this->collectWrittenVariableNames($expr->stmts) as $name) {
+                    unset($scope->localVarBindings[$name]);
+                }
+
+                $this->collectLocalVarBindings($expr->stmts, $scope);
+                $this->collectInstanceofGuards($expr->stmts, $scope);
             }
 
             try {
@@ -80,6 +96,7 @@ final class ClosureHandler implements ExpressionHandler
                 return $bodyResult;
             } finally {
                 $scope->localVarBindings = $previousLocalVarBindings;
+                $scope->varClassBindings = $previousVarClassBindings;
             }
         }
 

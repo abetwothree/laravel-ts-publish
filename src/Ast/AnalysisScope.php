@@ -15,6 +15,7 @@ use ReflectionClass;
  * whenLoaded relations, and recursive spreads resolve correctly as traversal descends.
  *
  * @phpstan-type ClosureParamExprBindingsMap array<string, Expr>
+ * @phpstan-type VarClassBindingsMap array<string, non-empty-list<class-string>>
  * @phpstan-type VarModelBindingsMap array<string, class-string<Model>>
  * @phpstan-type VarCollectionBindingsMap array<string, array{type: string, modelFqcn: class-string<Model>}>
  * @phpstan-type LocalVarBindingsMap array<string, Expr>
@@ -45,6 +46,15 @@ final class AnalysisScope
      * @var ClosureParamExprBindingsMap
      */
     public array $closureParamExprBindings = [];
+
+    /**
+     * Variables an `instanceof` guard or ternary has proven to hold a class. Read before
+     * varModelBindings, since a narrowed variable is usually also bound to its parent model and that
+     * binding would otherwise win. Scoped: writers save and restore around the body.
+     *
+     * @var VarClassBindingsMap
+     */
+    public array $varClassBindings = [];
 
     /**
      * Closure params / loop vars bound to a model class (whenLoaded params, relation-chain

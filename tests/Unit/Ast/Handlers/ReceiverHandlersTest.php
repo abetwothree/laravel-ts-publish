@@ -5,6 +5,8 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsInstanceofGuards;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MethodChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
@@ -26,15 +28,20 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Stmt;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Http\Resources\ImageResource;
 use Workbench\App\Http\Resources\ModelWrappedPropResource;
+use Workbench\App\Http\Resources\NarrowedParentResource;
 use Workbench\App\Http\Resources\PostStatsResource;
 use Workbench\App\Http\Resources\ReceiverMethodResource;
 use Workbench\App\Http\Resources\ReceiverPropertyResource;
+use Workbench\App\Http\Resources\TeamSubscriberResource;
+use Workbench\App\Models\Attachment;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
 
 /** Parse one expression statement written with fully-qualified names. */
@@ -391,5 +398,42 @@ describe('PropertyChainHandler declines an unknown-only chain', function () {
     test('a $this->prop->subProp chain it cannot type declines for the receiver handler', function () {
         expect(new PropertyChainHandler()->resolve(receiverHandlerExpr('$this->post->nonexistent_column'), receiverPropertyScope(), chainHandlersThrowingEngine()))
             ->toBeNull();
+    });
+});
+
+describe('narrowing', function () {
+    test('an early-return instanceof guard narrows a closure-local variable', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(NarrowedParentResource::class), Attachment::class)->analyze()->properties)->keyBy('name');
+
+        expect($props['parent']['type'])->toBe('{ title: string; class: string; morph: string } | null')
+            ->and($props['parent']['optional'])->toBeTrue()
+            ->and($props['record_title']['type'])->toBe('string | null');
+    });
+
+    test('a $this->resource instanceof ternary narrows the model for its true arm', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(TeamSubscriberResource::class), Team::class)->analyze()->properties)->keyBy('name');
+
+        expect($props['subscriber_name']['type'])->toBe('string | null');
+    });
+
+    test('a guard on a variable written twice does not narrow', function () {
+        $scope = new AnalysisScope(new ReflectionClass(NarrowedParentResource::class), Attachment::class);
+        $stmts = new AstParser()->parseSource('<?php $a = 1; $a = 2; if (! $a instanceof \Workbench\App\Models\Post) { return; }');
+
+        $host = new class
+        {
+            use CollectsInstanceofGuards;
+            use CollectsLocalVarBindings;
+
+            /** @param  array<Stmt>  $stmts */
+            public function run(array $stmts, AnalysisScope $scope): void
+            {
+                $this->collectInstanceofGuards($stmts, $scope);
+            }
+        };
+
+        $host->run($stmts, $scope);
+
+        expect($scope->varClassBindings)->toBe([]);
     });
 });

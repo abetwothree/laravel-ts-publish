@@ -165,6 +165,7 @@ itself reaches the same instance as `$this->scope`.
 | `instanceOfWrappedClass` | `class-string\|null` | Wrapped class from an `instanceof` guard in `toArray()`; fallback when `resolveClassOnProperty()` returns `null`. |
 | `closureRelationModelClass` | `class-string<Model>\|null` | Related model set while analyzing a `whenLoaded` closure, so `$variable->prop`/`->method()` inside it resolve. |
 | `closureParamExprBindings` | `array<string, Expr>` | Closure parameter names bound to the `$this->prop` expression found in the surrounding `when()` condition, so `EnumResource::make($status)` resolves like `EnumResource::make($this->status)`. |
+| `varClassBindings` | `array<string, non-empty-list<class-string>>` | Variables an `instanceof` guard or ternary has proven to hold a class. Read **before** `varModelBindings` in `ReceiverClassResolver::fromVariable()`: a narrowed variable is usually also bound to its parent model, and that binding would otherwise win and undo the narrowing. Scoped: `ClosureHandler` and `TernaryHandler` save and restore it around the body they narrow for. See [Narrowing](#narrowing). |
 | `varModelBindings` | `array<string, class-string<Model>>` | Closure params / loop vars bound to a model class (`whenLoaded` params, relation-chain `map()` params, `foreach` over a many-relation), so `$var`, `$var->prop`, `$var->method()` resolve against that model. Scoped: writers save and restore around the body. Also seeded, via `AstEngine::bindingsFor()`, from every `Model`-typed parameter of the located method — a route-bound `Post $post`, a metadata provider's `Model $model` — bound to the parameter's **declared** type. |
 | `varCollectionBindings` | `array<string, array{type: string, modelFqcn: class-string<Model>}>` | Closure params bound to a whole relation collection rather than one element — a to-many `whenLoaded` param. Read for a bare return of the param, and as the element-model fallback for an untyped `->map()` closure param. |
 | `localVarBindings` | `array<string, Expr>` | Top-level `$var = expr;` bindings for the method last analyzed, so a bare `Variable` value expression resolves through its bound expression instead of degrading to `unknown`. Only variables written exactly once are recorded; `analyzeThisMethodSpread()` saves and restores this per method. |
@@ -220,6 +221,40 @@ honest `unknown` into a confidently wrong type. `ShadowedClosureParamResource` i
 this: its `$slug = $this->slug;` followed by a `when()` call whose closure param is also named `$slug`,
 with a condition that isn't a `$this->prop` test, must resolve to `unknown` rather than leaking the
 outer `$slug`'s type.
+
+### Narrowing
+
+`CollectsInstanceofGuards` (`src/Ast/Concerns/`) and `TernaryHandler` together answer which class a
+variable holds *at one point in a body*, writing `AnalysisScope::$varClassBindings`. Three rules, each
+restored in a `finally`:
+
+1. **An early-exit guard.** A top-level `if` with no `elseif` and no `else`, whose body's last statement
+   is a `return` or a `throw`, and whose condition is `! $x instanceof C` — or an `||` chain containing
+   one — binds `$x` to `C` for the statements after it. `NarrowedParentResource` is the fixture: after
+   `if (! $parent || ! $parent instanceof Post) { return null; }`, `$parent->title` types as `string`
+   even though `attachable` is a `morphTo` holding a union.
+2. **A ternary's true arm.** `$x instanceof C ? A : B` binds `$x` to `C` while `A` resolves, and only `A`.
+3. **A ternary on `$this->resource`.** `$this->resource instanceof C ? A : B`, with `C` a `Model`, sets
+   `$scope->modelClass = C` while `A` resolves, so every `$this->prop` read in that arm resolves against
+   the narrowed model. `TeamSubscriberResource` pins it: `$this->resource->subscriber` is a relation only
+   the `SubscribedTeam` subclass declares.
+
+**The single-write requirement.** Rule 1 binds only a variable written exactly once in the body, reusing
+`CollectsLocalVarBindings::collectWrittenVariableNames()`. A flat statement list cannot tell which write
+is live at a given guard, so a reassigned variable stays unnarrowed rather than taking a
+wrong-but-plausible type — the same trade `localVarBindings` already makes.
+
+**A positive `if ($x instanceof C) { … }` body is not narrowed.** Its returns are analyzed without any
+per-branch scope, so a binding made for that body would still be in force for the statements *after* it,
+where `$x` is exactly what the guard excluded. Only the early-exit shape, whose narrowing genuinely holds
+for everything that follows, is safe to bind from a flat walk.
+
+**Closure bodies bind their own locals.** `ClosureHandler` runs `collectLocalVarBindings()` and
+`collectInstanceofGuards()` over a `Closure`'s statements, so a body-local resolves inside the closure the
+way a top-level local does in `toArray()`. Every name the body writes is unset from the outer
+`localVarBindings` first, so a body-local shadows an outer one of the same name — including one written
+twice, which binds nothing and must not fall through to the outer binding instead. An `ArrowFunction` has
+a single expression and no statement list, so only the parameter suppression above applies to it.
 
 ### What deliberately stays unbound
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsInstanceofGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
@@ -21,6 +22,7 @@ use ReflectionProperty;
  */
 final class AstEngine
 {
+    use CollectsInstanceofGuards;
     use CollectsLocalVarBindings;
 
     /** @var array<string, true> class@method@modelClass keys currently on the call stack — cycle guard. */
@@ -149,6 +151,7 @@ final class AstEngine
         }
 
         $this->collectLocalVarBindings($context->method->stmts ?? [], $scope);
+        $this->collectInstanceofGuards($context->method->stmts ?? [], $scope);
 
         return $scope;
     }

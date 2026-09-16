@@ -177,6 +177,12 @@ final class ReceiverClassResolver
             return null;
         }
 
+        // Above varModelBindings: a narrowed variable is usually also bound to its parent model, and
+        // that binding would otherwise win and undo the narrowing.
+        if (isset($scope->varClassBindings[$name])) {
+            return new ReceiverType($scope->varClassBindings[$name]);
+        }
+
         if (isset($scope->varModelBindings[$name])) {
             return ReceiverType::of($scope->varModelBindings[$name]);
         }

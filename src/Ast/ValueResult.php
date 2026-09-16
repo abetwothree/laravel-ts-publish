@@ -90,14 +90,26 @@ final class ValueResult
      */
     public static function analyzeClosureUnion(array $returns, ExpressionEngine $engine): array
     {
+        return self::unionResults(array_map($engine->resolve(...), $returns));
+    }
+
+    /**
+     * Merge already-resolved branch results into a single union-typed ValueExpressionResult.
+     *
+     * A branch the engine could not type is dropped rather than widening the union to `unknown` (D1);
+     * a caller that resolves its arms under its own narrowing enters here instead of resolving twice.
+     *
+     * @param  list<ValueExpressionResult>  $results
+     * @return ValueExpressionResult
+     */
+    public static function unionResults(array $results): array
+    {
         /** @var list<string> $types */
         $types = [];
         /** @var list<ValueExpressionResult> $branchResults every non-unknown branch, for channel merging */
         $branchResults = [];
 
-        foreach ($returns as $returnExpr) {
-            $inner = $engine->resolve($returnExpr);
-
+        foreach ($results as $inner) {
             if ($inner['type'] === 'unknown') {
                 continue; // @codeCoverageIgnore
             }

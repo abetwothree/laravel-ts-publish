@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ClosureHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
@@ -234,4 +235,79 @@ it('declines a non-closure, non-arrow-function expression without calling the en
     $result = (new ClosureHandler)->resolve($expr, closureHandlerTestScope(), closureHandlerThrowingEngine());
 
     expect($result)->toBeNull();
+});
+
+/**
+ * An engine that snapshots $scope->localVarBindings at the moment the body is resolved, so a test can
+ * assert which closure-body locals the handler had bound before it descended.
+ */
+final class ClosureHandlerBindingsSpyEngine implements ExpressionEngine
+{
+    public bool $wasCalled = false;
+
+    /** @var array<string, Expr> */
+    public array $bindingsAtResolve = [];
+
+    /** @param array<string, mixed> $result */
+    public function __construct(private AnalysisScope $scope, private array $result) {}
+
+    /** @return array<string, mixed> */
+    public function resolve(Expr $expr): array
+    {
+        $this->wasCalled = true;
+        $this->bindingsAtResolve = $this->scope->localVarBindings;
+
+        return $this->result;
+    }
+
+    public function spreadAnalysis(string $methodName): ?MethodAnalysis
+    {
+        throw new RuntimeException('spreadAnalysis() must not be called in this case');
+    }
+
+    public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
+    {
+        throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
+    }
+}
+
+/**
+ * The localVarBindings in scope while the handler resolved a closure body parsed from source.
+ *
+ * @return array<string, Expr>
+ */
+function closureHandlerBodyBindings(string $body, ?AnalysisScope $scope = null): array
+{
+    $scope ??= closureHandlerTestScope();
+    $expr = new ClosureExpr(['stmts' => new AstParser()->parseSource('<?php '.$body)]);
+    $engine = new ClosureHandlerBindingsSpyEngine($scope, ['type' => 'unknown', 'optional' => false]);
+
+    (new ClosureHandler)->resolve($expr, $scope, $engine);
+
+    expect($engine->wasCalled)->toBeTrue();
+
+    return $engine->bindingsAtResolve;
+}
+
+it('binds a single-write closure-body local, and leaves one written twice unbound', function () {
+    $once = closureHandlerBodyBindings('$u = $this->owner; return $u;');
+    $twice = closureHandlerBodyBindings('$u = $this->owner; $u = $this->author; return $u;');
+
+    expect(array_keys($once))->toBe(['u'])
+        ->and($twice)->toBe([]);
+});
+
+it('shadows an outer local with the closure body\'s own binding, and leaks nothing when the body rebinds it', function () {
+    $scope = closureHandlerTestScope();
+    $outerBoundExpr = new Variable('outerSource');
+    $scope->localVarBindings['u'] = $outerBoundExpr;
+
+    $single = closureHandlerBodyBindings('$u = $this->owner; return $u;', $scope);
+
+    $scope->localVarBindings['u'] = $outerBoundExpr;
+    $twice = closureHandlerBodyBindings('$u = $this->owner; $u = $this->author; return $u;', $scope);
+
+    expect($single['u'] ?? null)->not->toBe($outerBoundExpr)
+        ->and($twice)->toBe([])
+        ->and($scope->localVarBindings)->toBe(['u' => $outerBoundExpr]);
 });
