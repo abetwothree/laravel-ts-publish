@@ -13,5 +13,6 @@ export interface WhenHasValueResource
     title_passthrough?: string;
     appended_label?: string;
     comments_flag?: string;
+    comments_exists_flag?: boolean;
     title_unresolvable?: string;
 }

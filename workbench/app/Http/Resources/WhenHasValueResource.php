@@ -30,6 +30,10 @@ final class WhenHasValueResource extends JsonResource
             'appended_label' => $this->whenAppended('title_display', fn () => 'label'),
             'comments_flag' => $this->whenExistsLoaded('comments', fn ($exists) => $exists ? 'yes' : 'no'),
 
+            // Returns the parameter bare, so the binding itself is load-bearing: $exists is
+            // $this->comments_exists, and only the right flag name publishes its boolean.
+            'comments_exists_flag' => $this->whenExistsLoaded('comments', fn ($exists) => $exists),
+
             // json_decode() returns mixed, so the value resolves to unknown and the named attribute
             // still answers — the value rule may never trade a real type for a fresh `unknown`.
             'title_unresolvable' => $this->whenHas('title', fn ($title) => json_decode($title)),

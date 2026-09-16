@@ -3811,6 +3811,7 @@ declare global {
             email: string;
             role?: app.enums.RoleType | null;
             membership_level?: app.enums.MembershipLevelType | null;
+            role_via_value?: app.enums.RoleType | null;
             avatar?: string;
             team_role?: unknown;
             joined_at?: unknown;
@@ -4073,6 +4074,7 @@ declare global {
             title_passthrough?: string;
             appended_label?: string;
             comments_flag?: string;
+            comments_exists_flag?: boolean;
             title_unresolvable?: string;
         }
     }

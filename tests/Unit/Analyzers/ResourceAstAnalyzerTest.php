@@ -572,6 +572,22 @@ describe('ResourceAstAnalyzer with TeamMemberResource', function () {
         expect($role['optional'])->toBeTrue()
             ->and($membershipLevel['optional'])->toBeTrue();
     });
+
+    // whenHas() now returns from its value argument before it can tag the enum channel itself, so the
+    // channel has to arrive inside the engine's own result instead. A value closure on an enum column
+    // is the shape that proves it survives that reroute, import included.
+    test('resolves whenHas with a value closure on an enum column through the direct enum channel', function () {
+        $reflection = new ReflectionClass(TeamMemberResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $roleViaValue = collect($analysis->properties)->firstWhere('name', 'role_via_value');
+
+        expect($roleViaValue['type'])->toBe('RoleType | null')
+            ->and($roleViaValue['optional'])->toBeTrue()
+            ->and($analysis->directEnumFqcns)->toHaveKey('role_via_value')
+            ->and($analysis->directEnumFqcns['role_via_value'])->toBe(Role::class);
+    });
 });
 
 describe('ResourceAstAnalyzer with TeamResource', function () {

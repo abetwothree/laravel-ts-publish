@@ -14498,6 +14498,11 @@
                     "optional": true
                 },
                 {
+                    "name": "role_via_value",
+                    "type": "RoleType | null",
+                    "optional": true
+                },
+                {
                     "name": "avatar",
                     "type": "string",
                     "optional": true
@@ -15315,6 +15320,11 @@
                 {
                     "name": "comments_flag",
                     "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "comments_exists_flag",
+                    "type": "boolean",
                     "optional": true
                 },
                 {

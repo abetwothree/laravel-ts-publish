@@ -530,6 +530,16 @@ describe('value argument types the arm', function () {
         ])->and($props->every(fn (array $p): bool => $p['optional']))->toBeTrue();
     });
 
+    // comments_flag returns string literals in both arms, so it holds whatever $exists binds to — or
+    // nothing at all. Only a closure that returns the parameter makes the flag name load-bearing: a
+    // wrong name or a dropped binding leaves this `unknown` instead of the flag's own boolean.
+    test('whenExistsLoaded binds its closure parameter to the generated {relation}_exists flag', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(WhenHasValueResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+        expect($props['comments_exists_flag']['type'])->toBe('boolean')
+            ->and($props['comments_exists_flag']['optional'])->toBeTrue();
+    });
+
     // The fallback the value rule must never break: an unresolvable value leaves the attribute's own
     // type standing rather than publishing a fresh `unknown`. json_decode() returns mixed, so the
     // closure body resolves to unknown and `title`'s own `string` has to survive.
