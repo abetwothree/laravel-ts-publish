@@ -8740,12 +8740,12 @@
                 },
                 {
                     "name": "comments",
-                    "type": "{ id: number; content: string; user: User }[]",
+                    "type": "Comment[]",
                     "optional": false
                 },
                 {
                     "name": "comments_limited",
-                    "type": "Pick<Comment, 'id' | 'content'>[]",
+                    "type": "Comment[]",
                     "optional": false
                 },
                 {
@@ -9618,12 +9618,12 @@
                 },
                 {
                     "name": "comments",
-                    "type": "{ id: number; content: string; user: User }[]",
+                    "type": "Comment[]",
                     "optional": false
                 },
                 {
                     "name": "comments_limited",
-                    "type": "Pick<Comment, 'id' | 'content'>[]",
+                    "type": "Comment[]",
                     "optional": false
                 },
                 {
@@ -12684,12 +12684,12 @@
                 },
                 {
                     "name": "comments",
-                    "type": "{ id: number; content: string; user: User }[]",
+                    "type": "Comment[]",
                     "optional": false
                 },
                 {
                     "name": "comments_limited",
-                    "type": "Pick<Comment, 'id' | 'content'>[]",
+                    "type": "Comment[]",
                     "optional": false
                 },
                 {
@@ -13129,6 +13129,36 @@
                     "name": "fields_author",
                     "type": "Record<string, unknown>",
                     "optional": false
+                },
+                {
+                    "name": "except_own",
+                    "type": "Record<string, unknown>",
+                    "optional": false
+                },
+                {
+                    "name": "except_author",
+                    "type": "Record<string, unknown>",
+                    "optional": false
+                },
+                {
+                    "name": "comments_by_key",
+                    "type": "Comment[]",
+                    "optional": false
+                },
+                {
+                    "name": "comments_listed",
+                    "type": "Comment[]",
+                    "optional": false
+                },
+                {
+                    "name": "comments_by_ids",
+                    "type": "Comment[]",
+                    "optional": false
+                },
+                {
+                    "name": "comments_maybe",
+                    "type": "Comment[] | null",
+                    "optional": false
                 }
             ]
         },
@@ -13178,6 +13208,36 @@
                 {
                     "name": "fields_author",
                     "type": "Record<string, unknown>",
+                    "optional": false
+                },
+                {
+                    "name": "except_own",
+                    "type": "Record<string, unknown>",
+                    "optional": false
+                },
+                {
+                    "name": "except_author",
+                    "type": "Record<string, unknown>",
+                    "optional": false
+                },
+                {
+                    "name": "comments_by_key",
+                    "type": "Comment[]",
+                    "optional": false
+                },
+                {
+                    "name": "comments_listed",
+                    "type": "Comment[]",
+                    "optional": false
+                },
+                {
+                    "name": "comments_by_ids",
+                    "type": "Comment[]",
+                    "optional": false
+                },
+                {
+                    "name": "comments_maybe",
+                    "type": "Comment[] | null",
                     "optional": false
                 }
             ]

@@ -1,4 +1,4 @@
-import type { Post, User } from '../../models';
+import type { Comment, Post, User } from '../../models';
 
 /**
  * ProxyFilterDirectResource with every only() and except() spelled through $this->resource. The resource
@@ -17,4 +17,10 @@ export interface ProxyFilterWrappedResource
     author_maybe: Pick<User, 'id' | 'name'> | null;
     fields_own: Record<string, unknown>;
     fields_author: Record<string, unknown>;
+    except_own: Record<string, unknown>;
+    except_author: Record<string, unknown>;
+    comments_by_key: Comment[];
+    comments_listed: Comment[];
+    comments_by_ids: Comment[];
+    comments_maybe: Comment[] | null;
 }

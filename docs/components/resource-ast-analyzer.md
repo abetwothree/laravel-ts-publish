@@ -21,68 +21,83 @@ multi-model accessor union such as `Attribute<ModelA|ModelB, never>`), the analy
 object shape — the model interface already carries `#[TsCasts]` overrides and `@property`
 docblock refinements that a from-scratch recompute loses.
 
-The two paths agree by construction rather than by coincidence: the `Pick<>` builder and the inline-shape
-builder both live on `ResolvesFilteredRelationTypes`, and both callers invoke them in the same order with the
-same arguments — with one exception, which production ordering hides: `attributeFilterRule()` additionally
-runs its result through `ValueResult::namesOnlyPublishedModels()`, so for an abstract or `Illuminate\`-namespaced
-model the relation path still emits a `Pick<>` where the receiver rule declines. That is what keeps
-`RelationFilterHandler` and `ReceiverMethodCallHandler` inert against each
-other even though both claim `$this->relation->only([...])` — see the ordering inventory in
+The two paths agree by construction rather than by coincidence: the `Pick<>` builder, the inline-shape
+builder and the runtime-key answer (`runtimeKeyFilterResult()`) all live on `ResolvesFilteredRelationTypes`, and
+both callers invoke them in the same order with the same arguments — with one exception, which production
+ordering hides: `attributeFilterRule()` additionally runs its result through
+`ValueResult::namesOnlyPublishedModels()`, so for an abstract or `Illuminate\`-namespaced model the relation path
+still emits a `Pick<>` where the receiver rule declines. That is what keeps `RelationFilterHandler` and
+`ReceiverMethodCallHandler` inert against each other even though both claim a single-model
+`$this->relation->only([...])` — see the ordering inventory in
 [AST engine](ast-engine.md#the-honest-ordering-inventory), whose rows used to record the opposite reason (the
 receiver handler *declining* `only()`'s vague return). `OnlyValueResource` in the workbench pins the receiver
 side: `$this->when(true, fn () => $this->only(['id', 'title']))` publishes `Pick<Post, 'id' | 'title'>` and
 `$this->whenLoaded('categoryRel', fn ($category) => $category->only(['id', 'name']))` publishes
 `Pick<Category, 'id' | 'name'>`, where both previously published `Record<string, unknown>`.
 
-Two handler branches step aside so the receiver rule can answer: `RelationCollectionChainHandler`'s generic
-`$this->method()` arm declines `only`/`except` on a model-backed scope, and `VariableHandler`'s
-`$variable->method()` arm skips them. Both used to reflect the method on a model and floor the value at
-`only()`'s bare `array`.
+Only filter-aware code types these calls. Laravel declares `HasAttributes::except()` as `@return array`, which
+reflects to the list type `unknown[]` although the value is attribute-keyed, and on a many-relation the call
+filters models by primary key, which no reflected return describes. So the generic reflectors decline every
+`only()`/`except()`, whatever its key list: `RelationCollectionChainHandler` on a model-backed scope, in all of
+its branches; `MethodChainHandler` on a `?->` chain; and `VariableHandler`'s `$variable->method()` arm.
 
 ### `$this->resource` spells the same filter
 
 A resource forwards what it does not declare to `$this->resource`, so `$this->only([...])` and
 `$this->resource->only([...])` filter the same model. Every attribute filter publishes the same type under both
-spellings: in spread and value position, for `only()` and `except()`, on the resource's own model and on a
-single-model relation, `?->` included. Each position needs its own piece:
+spellings: in spread and value position, for `only()` and `except()`, with a literal or a runtime key list, on
+the resource's own model, a single-model relation and a many-relation, `?->` included. Each shape has one owner:
 
 - **Spread, own model.** `FiltersModelAttributes::filtersOwnModel()` accepts a `$this` receiver or
   `InspectsAstNodes::isResourceFetch()`. Both `ResourceAstAnalyzer::analyzeReturnArray()`'s filter-spread branch
   and `FiltersModelAttributes::analyzeThisAttributeFilter()` ask it, so `...$this->resource->only([...])` flattens
   its keys and a whole `return $this->resource->only([...])` resolves too. Relaxing only the branch would not
   be enough: the analyzer method behind it would still decline.
-- **Value, own model.** `$this->resource` is the model itself, not a member named `resource`, so
-  `RelationFilterHandler` does not claim `$this->resource->only([...])`. `RelationCollectionChainHandler`'s
-  `$this->anyProp->method()` branch steps aside for a literal key list on a model-backed scope, as its generic
-  `$this->method()` arm does. `ReceiverMethodReturnResolver::attributeFilterRule()` then answers both spellings.
-- **Value, relation.** `RelationFilterHandler` matches `$this->resource->relation` wherever it matches
-  `$this->relation`. That keeps the proxy `?->` form ahead of `MethodChainHandler`, which would reflect `only()`
-  to `Record<string, unknown> | null`.
-- **A runtime key list.** `only($request->input('fields'))` names nothing to pick, and `RelationFilterHandler`
-  declines it. `attributeFilterRule()` answers it for a lone model receiver with `Record<string, unknown>`, the
-  attribute-keyed array either filter returns, so `$this->author->only($fields)` and
-  `$this->resource->author->only($fields)` agree without depending on which earlier branch reflects `only()`.
+- **Value, own model.** `RelationFilterHandler`'s `isModelMemberFetch()` never matches `$this->resource` itself,
+  because PHP reads the declared `JsonResource::$resource` before any `__get()`. That holds even on a model that
+  declares a `resource` relation, as `ReceiverClassResolver` already reads it; the chain handlers' exception
+  described under [`$this->resource` inside a relation closure](#this-resource-inside-a-relation-closure-is-the-resources-own-model)
+  does not apply to filters. `ReceiverMethodCallHandler` then reaches
+  `ReceiverMethodReturnResolver::attributeFilterRule()` for both spellings.
+- **Value, single-model relation.** `RelationFilterHandler` matches `$this->resource->relation` wherever it
+  matches `$this->relation`, including a model-returning accessor, and answers the call itself: the `Pick<>` or
+  inline shape for a literal key list, `Record<string, unknown>` for any other, `| null` through `?->`.
+- **Value, many-relation.** `Illuminate\Database\Eloquent\Collection::only()`/`except()` keep the models whose
+  **primary key** is listed and return a list of whole models, whatever the key list holds. So
+  `RelationFilterHandler::manyRelationRead()` publishes exactly what the relation read publishes, by resolving
+  `$this->comments` or `$this->resource->comments` through the engine: `Comment[]` with that read's model channel,
+  `| null` through `?->`. It used to publish an attribute filter such as `Pick<Comment, 'id' | 'content'>[]` for a
+  literal string list, which names attributes the runtime value never selects; `PostResource`'s `comments` and
+  `comments_limited` now publish `Comment[]`.
+- **A runtime key list.** `only($request->input('fields'))` names nothing to pick. Both owners answer it with
+  `ResolvesFilteredRelationTypes::runtimeKeyFilterResult()`, `Record<string, unknown>`, the attribute-keyed array
+  either filter returns: `RelationFilterHandler` for a single-model relation or accessor, `attributeFilterRule()`
+  for the resource's own model or any other receiver holding one model class.
 
-`RelationFilterHandler` declines (`null`) whenever it cannot type a filter: the member is neither a relation nor
-a model-returning accessor, the key list is not literal, or the keys name nothing. It used to claim `unknown`,
-which stopped every later handler, including the receiver rules. `ProxyFilterDirectResource` and
-`ProxyFilterWrappedResource` in the workbench write the same eight filters both ways, `fields_own` and
-`fields_author` being the runtime-key cells, and `ResourceAstAnalyzerTest` asserts their published properties and
-imports are identical.
+`RelationFilterHandler`'s relation arm declines (`null`) when it cannot type a filter: the member is neither a
+relation nor a model-returning accessor, a literal key list names nothing it can type, or a many-relation's own
+read is `unknown`. A declined call on a member named `map` then reaches the map-proxy arm, which claims `unknown`
+when it cannot bind an element model — the answer `$this->resource->map->only([...])` had before the proxy
+spelling was matched. On a model that declares a real `map` relation the relation arm answers instead, exactly as
+it answers `$this->map->only([...])`.
 
-Two shapes are deliberately left out of that pair:
+`ProxyFilterDirectResource` and `ProxyFilterWrappedResource` in the workbench write the same fourteen filters both
+ways — the spread, literal own-model `only`/`except`, literal relation `only`/`except` and `?->`, runtime-key
+`only` and `except` on the model and on a relation, and four many-relation cells (an int list, a string list, a
+runtime list and `?->`). `ResourceAstAnalyzerTest` pins every direct type and asserts both publish identical
+properties and imports.
 
-- **A many-relation filter.** `$this->comments->only([...])` is not an attribute filter.
-  `Illuminate\Database\Eloquent\Collection::only()` keeps the models whose **primary key** is in the list and
-  returns them whole. The `Pick<Comment, …>[]` this handler publishes for it is wrong, so an equivalence
-  fixture would make a wrong answer its target.
-- **Spreading a relation's filter.** `...$this->author->only([...])` flattens under neither spelling today, so a
-  cell for it would pass without proving anything.
+Two shapes stay outside that pair:
+
+- **Spreading a relation's filter.** `...$this->author->only([...])` flattens under neither spelling, so a cell
+  for it would pass without proving anything.
+- **`?->` on the resource's own model.** `$this` is never null, so `$this?->only($keys)` publishes
+  `Record<string, unknown>`, while `$this->resource?->only($keys)` adds `| null` for a resource that wraps nothing.
 
 ### When a Pick reference is emitted
 
-`ResolvesFilteredRelationTypes::relationFilterModelReference()` builds `Pick<Model, 'a' | 'b'>` — `[]`-suffixed for
-many-relations, `| null`-suffixed for nullsafe calls — whenever **every filter key is a column
+`ResolvesFilteredRelationTypes::relationFilterModelReference()` builds `Pick<Model, 'a' | 'b'>` — `| null`-suffixed
+for nullsafe calls, and never for a many-relation, which publishes its own read — whenever **every filter key is a column
 the model interface actually declares**, per `ModelAttributeResolver::publishedColumnNames()`.
 For `only()` the picked keys are the caller's own list, verbatim. For `except()` they are the
 **complement**: `publishedColumnNames()` minus the named keys, in schema order — so the emitted

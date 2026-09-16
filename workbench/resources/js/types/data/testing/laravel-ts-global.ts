@@ -1990,8 +1990,8 @@ declare global {
             visibility_new: workbench.app.enums.VisibilityType | null;
             priority: workbench.app.enums.PriorityType | null;
             priority_new: workbench.app.enums.PriorityType | null;
-            comments: { id: number; content: string; user: workbench.app.models.User }[];
-            comments_limited: Pick<workbench.app.models.Comment, 'id' | 'content'>[];
+            comments: workbench.app.models.Comment[];
+            comments_limited: workbench.app.models.Comment[];
             published: boolean;
             rating_display: number;
             word_count: string;
@@ -2267,8 +2267,8 @@ declare global {
             visibility_new: workbench.app.enums.VisibilityType | null;
             priority: workbench.app.enums.PriorityType | null;
             priority_new: workbench.app.enums.PriorityType | null;
-            comments: { id: number; content: string; user: workbench.app.models.User }[];
-            comments_limited: Pick<workbench.app.models.Comment, 'id' | 'content'>[];
+            comments: workbench.app.models.Comment[];
+            comments_limited: workbench.app.models.Comment[];
             published: boolean;
             rating_display: number;
             word_count: string;
@@ -3273,8 +3273,8 @@ declare global {
             visibility_new: workbench.app.enums.VisibilityType | null;
             priority: workbench.app.enums.PriorityType | null;
             priority_new: workbench.app.enums.PriorityType | null;
-            comments: { id: number; content: string; user: workbench.app.models.User }[];
-            comments_limited: Pick<workbench.app.models.Comment, 'id' | 'content'>[];
+            comments: workbench.app.models.Comment[];
+            comments_limited: workbench.app.models.Comment[];
             published: boolean;
             rating_display: number;
             word_count: string;
@@ -3392,9 +3392,11 @@ declare global {
             tags: unknown[] | null;
         }
         /**
-         * only() and except() written against $this, in spread and value position, on the resource's own model and
-         * on a single-model relation. ProxyFilterWrappedResource spells every call through $this->resource and must
-         * publish exactly this shape.
+         * only() and except() written against $this, in spread and value position, on the resource's own model, a
+         * single-model relation and a many-relation, with literal and runtime key lists. ProxyFilterWrappedResource
+         * spells every call through $this->resource and must publish exactly this shape.
+         *
+         * A many-relation filter keeps whole models by primary key, so it publishes the relation's own list type.
          */
         export interface ProxyFilterDirectResource {
             id: number;
@@ -3406,6 +3408,12 @@ declare global {
             author_maybe: Pick<workbench.app.models.User, 'id' | 'name'> | null;
             fields_own: Record<string, unknown>;
             fields_author: Record<string, unknown>;
+            except_own: Record<string, unknown>;
+            except_author: Record<string, unknown>;
+            comments_by_key: workbench.app.models.Comment[];
+            comments_listed: workbench.app.models.Comment[];
+            comments_by_ids: workbench.app.models.Comment[];
+            comments_maybe: workbench.app.models.Comment[] | null;
         }
         /**
          * ProxyFilterDirectResource with every only() and except() spelled through $this->resource. The resource
@@ -3421,6 +3429,12 @@ declare global {
             author_maybe: Pick<workbench.app.models.User, 'id' | 'name'> | null;
             fields_own: Record<string, unknown>;
             fields_author: Record<string, unknown>;
+            except_own: Record<string, unknown>;
+            except_author: Record<string, unknown>;
+            comments_by_key: workbench.app.models.Comment[];
+            comments_listed: workbench.app.models.Comment[];
+            comments_by_ids: workbench.app.models.Comment[];
+            comments_maybe: workbench.app.models.Comment[] | null;
         }
         /** Edge-case resource exercising unusual but valid patterns for AST analyzer guard clauses. */
         export interface QuirkyResource {

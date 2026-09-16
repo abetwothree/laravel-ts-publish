@@ -2,7 +2,7 @@ import { type AsEnum } from '@tolki/ts';
 
 import { Priority, Status, Visibility } from '../../enums';
 import type { MembershipLevelType, RoleType } from '../../enums';
-import type { Comment, Tag, User } from '../../models';
+import type { Comment, Tag } from '../../models';
 import type { CommentResource } from '.';
 
 /**
@@ -23,8 +23,8 @@ export interface CommentComposedResource
     visibility_new: AsEnum<typeof Visibility> | null;
     priority: AsEnum<typeof Priority> | null;
     priority_new: AsEnum<typeof Priority> | null;
-    comments: { id: number; content: string; user: User }[];
-    comments_limited: Pick<Comment, 'id' | 'content'>[];
+    comments: Comment[];
+    comments_limited: Comment[];
     published: boolean;
     rating_display: number;
     word_count: string;

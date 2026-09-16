@@ -101,11 +101,11 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
-     * `only()`/`except()` on a lone concrete model receiver, typed as that model's own filtered members.
+     * `only()`/`except()` on a receiver holding exactly one model class, typed as that model's own filtered members.
      *
-     * Builds exactly what RelationFilterHandler builds for a relation to the same model, so the two agree
-     * wherever both claim a call. Without a literal key list it is the model's attribute-keyed array,
-     * `Record<string, unknown>`. A StaticCall carries no filter keys this can read, so it declines.
+     * Builds exactly what RelationFilterHandler builds for a relation to the same model, from the same helpers, so the
+     * two agree wherever both claim a call, including `Record<string, unknown>` for a key list that is not literal.
+     * A StaticCall carries no filter keys this can read, so it declines.
      *
      * @return ValueExpressionResult|null
      */
@@ -126,9 +126,8 @@ final class ReceiverMethodReturnResolver
 
         $keys = $this->extractFilterKeys($call, new ReflectionMethod(Model::class, $methodName));
 
-        // A runtime key list names nothing to pick, but either filter still returns an array keyed by attribute name.
         if ($keys === null || $keys === []) {
-            return [...ValueResult::unknown(), 'type' => 'Record<string, unknown>'];
+            return $this->runtimeKeyFilterResult(nullable: false);
         }
 
         $include = $methodName === 'only';

@@ -7,8 +7,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationCollectionChainHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationFilterHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
 use PhpParser\Node\Arg;
@@ -40,10 +38,6 @@ const METHOD_CALL_PINNED = [
     'ConditionalMethodHandler|FirstClassCallableHandler' => FirstClassCallableHandler::class,
     'FirstClassCallableHandler|ToResourceHandler' => FirstClassCallableHandler::class,
     'FirstClassCallableHandler|KnownFunctionCallHandler' => FirstClassCallableHandler::class,
-    'RelationCollectionChainHandler|RelationFilterHandler' => RelationFilterHandler::class,
-    // Only visible in a two-handler profile: production registers RelationFilterHandler ahead of both,
-    // and it claims every `$this->prop->only([...])`, so neither of these two decides that call there.
-    'ReceiverMethodCallHandler|RelationCollectionChainHandler' => RelationCollectionChainHandler::class,
 ];
 
 /**
@@ -80,8 +74,11 @@ function methodCallCorpus(): array
         // The same filters through the $this->resource proxy, on the resource's own model and on a relation.
         new MethodCall(new PropertyFetch($this_, 'resource'), 'only', [new Arg($arr(['id', 'content']))]),
         new MethodCall(new PropertyFetch(new PropertyFetch($this_, 'resource'), 'post'), 'only', [new Arg($arr(['id', 'title']))]),
-        // A runtime key list, which the receiver rules and the wrapped-property branch both answer.
+        // Runtime key lists and a many-relation filtered by primary key, which only filter-aware handlers may answer.
         new MethodCall(new PropertyFetch($this_, 'post'), 'only', [new Arg(new Variable('fields'))]),
+        new MethodCall(new PropertyFetch($this_, 'post'), 'except', [new Arg(new Variable('fields'))]),
+        new MethodCall(new PropertyFetch($this_, 'resource'), 'except', [new Arg(new Variable('fields'))]),
+        new MethodCall(new PropertyFetch($this_, 'replies'), 'only', [new Arg(new Array_([new ArrayItem(new Int_(1))]))]),
         new MethodCall(new MethodCall($this_, 'comments'), 'pluck', [new Arg(new String_('id'))]),
         new MethodCall(new Variable('request'), 'ip', []),
         new MethodCall(new Variable('request'), 'user', []),

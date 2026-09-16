@@ -211,16 +211,16 @@ describe('ResourceAstAnalyzer with PostResource', function () {
             ->and($comments['type'])->toEndWith('[]');
     });
 
-    test('hasMany relation with only() includes relation keys in inline type', function () {
+    test('hasMany relation with only() keeps the relation read and its model channel, not an inline shape of the keys', function () {
+        // Eloquent\Collection::only('id', 'content', 'user') matches the strings against primary keys, keeping models.
         $reflection = new ReflectionClass(PostResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
         $analysis = $analyzer->analyze();
 
         $comments = collect($analysis->properties)->firstWhere('name', 'comments');
 
-        expect($comments['type'])->toContain('id: number')
-            ->and($comments['type'])->toContain('content: string')
-            ->and($comments['type'])->toContain('user: User');
+        expect($comments['type'])->toBe('Comment[]')
+            ->and($analysis->modelFqcns['comments'] ?? null)->toBe(Comment::class);
     });
 
     // cast, mixin method, and resolve() expressions ————————————
@@ -1405,13 +1405,14 @@ describe('relation filters reference the emitted model interface', function () {
         expect($props['order_extended']['type'])->toMatch("/^Pick<Order, '[a-z_]+'( \| '[a-z_]+')*>$/");
     });
 
-    test('hasMany relation with all-column only() keys emits Pick with the [] suffix', function () {
-        // PostResource: comments_limited = $this->comments->only(['id', 'content']) — HasMany, so the
-        // many-relation [] suffix is preserved on top of the Pick<> reference.
+    test('a hasMany filter publishes the relation read, since it keeps whole models by primary key', function () {
+        // PostResource: comments_limited = $this->comments->only(['id', 'content']) and comments = ->only('id',
+        // 'content', 'user'). Eloquent\Collection::only() matches those strings against primary keys, never attributes.
         $analyzer = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class);
         $props = collect($analyzer->analyze()->properties)->keyBy('name');
 
-        expect($props['comments_limited']['type'])->toBe("Pick<Comment, 'id' | 'content'>[]");
+        expect($props['comments_limited']['type'])->toBe('Comment[]')
+            ->and($props['comments']['type'])->toBe('Comment[]');
     });
 
     test('a filter key that is an accessor still falls back to inline expansion', function () {
@@ -2318,10 +2319,9 @@ describe('ResourceAstAnalyzer with OnlyValueResource (only() off a relation rece
             ->and($props['category']['type'])->toBe("Pick<Category, 'id' | 'name'>");
     });
 
-    test('a filter call with no literal key list keeps its vague reflected shape instead of falling to unknown', function () {
-        // $this->only($request->input('fields')) names no keys the receiver rule could Pick<>, so the two
-        // skip guards must stand aside only for a literal list — otherwise nothing answers and this is unknown,
-        // which is strictly less specific than the Record<string, unknown> the old claimant published.
+    test('a filter call with no literal key list publishes Record<string, unknown> instead of falling to unknown', function () {
+        // $this->only($request->input('fields')) names no keys to Pick<>, but the receiver rule still knows the value
+        // is an attribute-keyed array, the same Record<string, unknown> reflection gave before the rule owned the call.
         $props = collect(new ResourceAstAnalyzer(new ReflectionClass(OnlyValueResource::class), Post::class)->analyze()->properties)->keyBy('name');
 
         expect($props['dynamic']['type'])->toBe('Record<string, unknown>')
@@ -2343,6 +2343,12 @@ describe('ResourceAstAnalyzer with ProxyFilterDirectResource and ProxyFilterWrap
             'author_maybe' => "Pick<User, 'id' | 'name'> | null",
             'fields_own' => 'Record<string, unknown>',
             'fields_author' => 'Record<string, unknown>',
+            'except_own' => 'Record<string, unknown>',
+            'except_author' => 'Record<string, unknown>',
+            'comments_by_key' => 'Comment[]',
+            'comments_listed' => 'Comment[]',
+            'comments_by_ids' => 'Comment[]',
+            'comments_maybe' => 'Comment[] | null',
         ]);
     });
 

@@ -155,10 +155,9 @@ it('tries FirstClassCallableHandler before ConditionalMethodHandler for a first-
     expect($analyzer->resolve($expr))->toBe(['type' => 'unknown', 'optional' => false]);
 });
 
-// Ordering pin #2: both handlers claim NullsafeMethodCall. MethodChainHandler declines what it cannot
-// type, but this chain ends on a relation, so it reflects only() on Post and would degrade this Pick<>
-// reference to that reflected type if it ran first. The $this->resource spelling reads the same relation.
-it('tries RelationFilterHandler before MethodChainHandler for $this->relation?->only([...])', function (Expr $relation) {
+// Formerly ordering pin #2: MethodChainHandler reflected only() on Post and degraded this Pick<> whenever it ran first.
+// It now declines every only()/except(), so the order of the two no longer decides the call, in either spelling.
+it('answers $this->relation?->only([...]) with the Pick<> whichever of RelationFilterHandler and MethodChainHandler runs first', function (Expr $relation) {
     $expr = new NullsafeMethodCall(
         $relation,
         'only',
@@ -167,13 +166,17 @@ it('tries RelationFilterHandler before MethodChainHandler for $this->relation?->
             new ArrayItem(new String_('title')),
         ]))],
     );
+    $expected = ['type' => "Pick<Post, 'id' | 'title'> | null", 'optional' => false, 'modelFqcn' => Post::class];
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class);
+    $swapped = new ResourceAstAnalyzer(
+        new ReflectionClass(CommentResource::class),
+        Comment::class,
+        'toArray',
+        [new MethodChainHandler, new RelationFilterHandler],
+    );
 
-    expect($analyzer->resolve($expr))->toBe([
-        'type' => "Pick<Post, 'id' | 'title'> | null",
-        'optional' => false,
-        'modelFqcn' => Post::class,
-    ]);
+    expect($analyzer->resolve($expr))->toBe($expected)
+        ->and($swapped->resolve($expr))->toBe($expected);
 })->with([
     '$this->post' => fn (): Expr => new PropertyFetch(new Variable('this'), 'post'),
     '$this->resource->post' => fn (): Expr => new PropertyFetch(new PropertyFetch(new Variable('this'), 'resource'), 'post'),

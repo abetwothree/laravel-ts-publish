@@ -268,8 +268,8 @@ describe('ReceiverMethodCallHandler', function () {
             ->and($handler->resolve(receiverHandlerExpr('$probe::secret()'), $scope, chainHandlersThrowingEngine()))->toBeNull();
     });
 
-    // Laravel's only()/except() return an attribute-keyed array whatever keys arrive at runtime, so both spellings
-    // of a runtime filter hold the same answer here instead of depending on which earlier handler reflects it.
+    // Laravel's only()/except() return an attribute-keyed array whatever keys arrive at runtime. In a resource this
+    // rule answers the own-model spellings; RelationFilterHandler answers a relation first, from the same helper.
     test('types a filter with no literal key list on a lone model as Record<string, unknown>', function (string $php, string $type) {
         $scope = new AnalysisScope(new ReflectionClass(ReceiverMethodResource::class), Post::class);
 
@@ -412,6 +412,9 @@ describe('RelationFilterHandler and ReceiverMethodCallHandler are inert against 
         // The same relation read through the $this->resource proxy.
         ['$this->resource->post->only([\'id\', \'title\'])', ['type' => "Pick<Post, 'id' | 'title'>", 'optional' => false, 'modelFqcn' => Post::class]],
         ['$this->resource->post?->only([\'id\', \'title\'])', ['type' => "Pick<Post, 'id' | 'title'> | null", 'optional' => false, 'modelFqcn' => Post::class]],
+        // A runtime key list: both build Record<string, unknown> from ResolvesFilteredRelationTypes.
+        ['$this->post->except($fields)', ['type' => 'Record<string, unknown>', 'optional' => false]],
+        ['$this->resource->post?->only($fields)', ['type' => 'Record<string, unknown> | null', 'optional' => false]],
         // The inline branch: 'excerpt' is an accessor rather than a column, so relationFilterModelReference()
         // declines on both sides and each falls to resolveFilteredRelationType() — a different channel set.
         ['$this->post->only([\'id\', \'excerpt\'])', [

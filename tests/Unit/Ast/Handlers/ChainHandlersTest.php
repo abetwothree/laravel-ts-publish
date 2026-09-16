@@ -236,17 +236,29 @@ it('treats concat() as identity for the same collection type and declines a diff
         ->and($analyzer->resolve($different)['type'])->toBe('unknown');
 });
 
-// `$this->resource->only([...])` is `$this->only([...])` through the proxy, so the wrapped-method branch leaves a
-// literal key list to the receiver rules, as the generic `$this->method()` arm does. Without one, nothing would Pick<>.
-it('steps aside for a literal only() through $this->resource, and keeps the reflected shape without one', function () {
-    $scope = fn (): AnalysisScope => new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
-    $literal = new MethodCall(chainThisProp('resource'), 'only', [new Arg(new Array_([new ArrayItem(new String_('id'))]))]);
-    $dynamic = new MethodCall(chainThisProp('resource'), 'only', [new Arg(new Variable('fields'))]);
+// Model::only()/except() are declared `@return array`, which reflects to a list or a vague object, and a many-relation
+// filters models by primary key: filter-aware code owns every spelling, so both reflectors decline all of them.
+it('declines only() and except() in both reflecting branches, whatever the receiver and key list', function (Expr $expr) {
+    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
 
-    expect((new RelationCollectionChainHandler)->resolve($literal, $scope(), chainHandlersThrowingEngine()))->toBeNull()
-        ->and((new RelationCollectionChainHandler)->resolve($dynamic, $scope(), chainHandlersThrowingEngine()))
-        ->toBe(['type' => 'Record<string, unknown>', 'optional' => false]);
-});
+    expect((new RelationCollectionChainHandler)->resolve($expr, $scope, chainHandlersThrowingEngine()))->toBeNull();
+})->with([
+    '$this->resource->only([\'id\'])' => fn (): Expr => new MethodCall(chainThisProp('resource'), 'only', [new Arg(new Array_([new ArrayItem(new String_('id'))]))]),
+    '$this->resource->except($fields)' => fn (): Expr => new MethodCall(chainThisProp('resource'), 'except', [new Arg(new Variable('fields'))]),
+    '$this->post->except($fields)' => fn (): Expr => new MethodCall(chainThisProp('post'), 'except', [new Arg(new Variable('fields'))]),
+    '$this->replies->only([1, 2])' => fn (): Expr => new MethodCall(chainThisProp('replies'), 'only', [new Arg(new Array_([new ArrayItem(new Int_(1)), new ArrayItem(new Int_(2))]))]),
+    '$this->except($fields)' => fn (): Expr => new MethodCall(new Variable('this'), 'except', [new Arg(new Variable('fields'))]),
+]);
+
+it('declines only() and except() on a nullsafe relation chain', function (NullsafeMethodCall $expr) {
+    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
+
+    expect((new MethodChainHandler)->resolve($expr, $scope, chainHandlersThrowingEngine()))->toBeNull();
+})->with([
+    '$this->post?->except($fields)' => fn (): NullsafeMethodCall => new NullsafeMethodCall(chainThisProp('post'), 'except', [new Arg(new Variable('fields'))]),
+    '$this->resource->post?->only([\'id\'])' => fn (): NullsafeMethodCall => new NullsafeMethodCall(new PropertyFetch(chainThisProp('resource'), 'post'), 'only', [new Arg(new Array_([new ArrayItem(new String_('id'))]))]),
+    '$this->replies?->only($ids)' => fn (): NullsafeMethodCall => new NullsafeMethodCall(chainThisProp('replies'), 'only', [new Arg(new Variable('ids'))]),
+]);
 
 it('declines a method call rooted at a bare variable, not $this', function () {
     $expr = new MethodCall(new Variable('members'), 'take', [new Arg(new Int_(5))]);

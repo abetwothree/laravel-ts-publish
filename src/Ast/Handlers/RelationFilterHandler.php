@@ -14,8 +14,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
-use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\MethodCall;
@@ -25,8 +25,10 @@ use PhpParser\Node\Identifier;
 use ReflectionMethod;
 
 /**
- * `$this->relation->only([...])`/`->except([...])` and Laravel's `map` HigherOrderCollectionProxy
- * filter (`$var->map->only([...])`/`->except([...])`) — relation/collection attribute filters.
+ * `$this->relation->only([...])`/`->except([...])`, also read through `$this->resource`, and Laravel's `map`
+ * HigherOrderCollectionProxy filter (`$var->map->only([...])`/`->except([...])`) — relation/collection filters.
+ *
+ * The relation arm declines what it cannot type; the map-proxy arm, once it matches, still claims `unknown`.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypesImportMap from Datable
@@ -50,26 +52,25 @@ final class RelationFilterHandler implements ExpressionHandler
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        // $this->relation->only([...]), $this->relation?->only([...]), or either through $this->resource
-        if (($expr instanceof MethodCall || $expr instanceof NullsafeMethodCall)
-            && $expr->name instanceof Identifier
-            && in_array($expr->name->toString(), $this->supportedAttributeFilters(), true)
-            && $expr->var instanceof PropertyFetch
-            && $this->isModelMemberFetch($expr->var)
+        if (! ($expr instanceof MethodCall || $expr instanceof NullsafeMethodCall)
+            || ! $this->callsAttributeFilter($expr)
+            || ! $expr->var instanceof PropertyFetch
         ) {
-            return $this->analyzeRelationFilter($expr, $scope);
+            return null;
         }
 
-        // $var->map->only([...]) / ->except([...]) — Laravel's HigherOrderCollectionProxy on `map`:
-        // call the filter method on every element and collect the results. The PropertyFetch here is
-        // literally named 'map' (the proxy), never 'this' — disjoint from the relation guard above.
-        if (($expr instanceof MethodCall || $expr instanceof NullsafeMethodCall)
-            && $expr->name instanceof Identifier
-            && in_array($expr->name->toString(), $this->supportedAttributeFilters(), true)
-            && $expr->var instanceof PropertyFetch
-            && $expr->var->name instanceof Identifier
-            && $expr->var->name->toString() === 'map'
-        ) {
+        // $this->relation->only([...]), $this->relation?->only([...]), or either through $this->resource
+        if ($this->isModelMemberFetch($expr->var)) {
+            $result = $this->analyzeRelationFilter($expr, $scope, $engine);
+
+            if ($result !== null) {
+                return $result;
+            }
+        }
+
+        // $var->map->only([...]) / ->except([...]) — Laravel's HigherOrderCollectionProxy on `map`: call the filter on
+        // every element and collect the results. `$this->resource->map` reaches here once no member `map` answers.
+        if ($expr->var->name instanceof Identifier && $expr->var->name->toString() === 'map') {
             return $this->analyzeMapProxyFilter($expr, $scope);
         }
 
@@ -89,9 +90,11 @@ final class RelationFilterHandler implements ExpressionHandler
     /**
      * Analyze `$this->relation->only([...])` or `$this->relation?->only([...])`, declining when nothing types it.
      *
+     * A many-relation publishes its own read, since `Eloquent\Collection::only()` keeps whole models by primary key.
+     *
      * @return ValueExpressionResult|null
      */
-    private function analyzeRelationFilter(MethodCall|NullsafeMethodCall $call, AnalysisScope $scope): ?array
+    private function analyzeRelationFilter(MethodCall|NullsafeMethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         $result = ValueResult::unknown();
 
@@ -111,6 +114,11 @@ final class RelationFilterHandler implements ExpressionHandler
         }
 
         $relationInfo = $this->resolveModelRelationTypeInfo($propName, $scope);
+
+        if (str_ends_with($relationInfo['type'], '[]')) {
+            return $this->manyRelationRead($call, $engine);
+        }
+
         $modelFqcn = $relationInfo['modelFqcn'] ?? $this->resolveAccessorModelFqcn($propName, $scope);
 
         if ($modelFqcn === null) {
@@ -124,7 +132,7 @@ final class RelationFilterHandler implements ExpressionHandler
             $keys = $this->extractFilterKeys($call, new ReflectionMethod(Model::class, $methodName));
 
             if ($keys === null || $keys === []) {
-                return null; // @codeCoverageIgnore
+                return $this->runtimeKeyFilterResult($nullable);
             }
 
             $include = $methodName === 'only';
@@ -198,11 +206,10 @@ final class RelationFilterHandler implements ExpressionHandler
             ];
         }
 
-        $receiver = str_ends_with($relationInfo['type'], '[]') ? EloquentCollection::class : Model::class;
-        $keys = $this->extractFilterKeys($call, new ReflectionMethod($receiver, $methodName));
+        $keys = $this->extractFilterKeys($call, new ReflectionMethod(Model::class, $methodName));
 
         if ($keys === null || $keys === []) {
-            return null; // @codeCoverageIgnore
+            return $this->runtimeKeyFilterResult($nullable);
         }
 
         $include = $methodName === 'only';
@@ -212,19 +219,9 @@ final class RelationFilterHandler implements ExpressionHandler
         $modelReference = $this->relationFilterModelReference($modelFqcn, $keys, $include);
 
         if ($modelReference !== null) {
-            $type = $modelReference;
-
-            if (str_ends_with($relationInfo['type'], '[]')) {
-                $type .= '[]';
-            }
-
-            if ($nullable) {
-                $type .= ' | null';
-            }
-
             return [
                 ...$result,
-                'type' => $type,
+                'type' => $nullable ? $modelReference.' | null' : $modelReference,
                 'modelFqcn' => $modelFqcn,
             ];
         }
@@ -235,24 +232,36 @@ final class RelationFilterHandler implements ExpressionHandler
             return null;
         }
 
-        $inlineType = $filterResult['type'];
-
-        // Wrap in array suffix when the relation is a *-many type (HasMany, BelongsToMany, etc.)
-        if (str_ends_with($relationInfo['type'], '[]')) {
-            $inlineType .= '[]';
-        }
-
-        if ($nullable) {
-            $inlineType .= ' | null';
-        }
-
         return [
             ...$result,
-            'type' => $inlineType,
+            'type' => $nullable ? $filterResult['type'].' | null' : $filterResult['type'],
             'embeddedEnumFqcns' => $filterResult['enumFqcns'],
             'embeddedModelFqcns' => $filterResult['modelFqcns'],
             'customImports' => $filterResult['customImports'],
         ];
+    }
+
+    /**
+     * The many-relation read a filter on it publishes, with `| null` through `?->`, or null when the read is untyped.
+     *
+     * `Eloquent\Collection::only()`/`except()` keep the models whose primary key is listed and return them whole, so
+     * any key list leaves exactly the relation's own read, import channels included.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function manyRelationRead(MethodCall|NullsafeMethodCall $call, ExpressionEngine $engine): ?array
+    {
+        $read = $engine->resolve($call->var);
+
+        if (TsTypeString::isUnknownOnly($read['type'])) {
+            return null;
+        }
+
+        if ($call instanceof NullsafeMethodCall && ! in_array('null', TsTypeString::splitTopLevelUnion($read['type']), true)) {
+            $read['type'] .= ' | null';
+        }
+
+        return $read;
     }
 
     /**

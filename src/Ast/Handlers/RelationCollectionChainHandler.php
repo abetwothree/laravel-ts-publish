@@ -66,6 +66,12 @@ final class RelationCollectionChainHandler implements ExpressionHandler
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
+        // On a model-backed scope a filter belongs to RelationFilterHandler or the receiver rules. Reflection reads
+        // Model::except()'s `@return array` as a list, and a many-relation's filter keeps whole models by primary key.
+        if ($expr instanceof MethodCall && $scope->modelClass !== null && $this->callsAttributeFilter($expr)) {
+            return null;
+        }
+
         // Collection chains rooted at `$this->{manyRelation}` (e.g. `->take(5)->map(...)->values()`).
         // Must precede the `$this->anyProp->method()` branch below: a 1-deep `$this->items->count()`
         // matches both, and this returns null for it so knownMethodRule()'s count()/exists() rule wins.
@@ -82,11 +88,6 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             && $this->isThisPropertyFetch($expr->var)
             && $expr->name instanceof Identifier
         ) {
-            // `$this->resource->only([...])` is the proxy spelling of `$this->only([...])`: step aside as below.
-            if ($this->isResourceFetch($expr->var) && $scope->modelClass !== null && $this->filtersLiteralAttributeKeys($expr)) {
-                return null;
-            }
-
             $info = $this->analyzeWrappedResourceMethodCall($expr, $scope);
 
             /** @var class-string<Model>|null $closureModelClass */
@@ -105,13 +106,6 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             && $expr->var->name === 'this'
             && $expr->name instanceof Identifier
         ) {
-            // A model-backed `$this->only(['a', 'b'])` is the receiver rules' attribute filter, which types the
-            // named keys. Gated on a literal list: without one that rule declines too, and stepping aside
-            // anyway would strand the call at `unknown` instead of the vague shape reflection still gives.
-            if ($scope->modelClass !== null && $this->filtersLiteralAttributeKeys($expr)) {
-                return null;
-            }
-
             return resolve(SubjectMethodTypeResolver::class)->resolve($scope, $expr->name->toString());
         }
 

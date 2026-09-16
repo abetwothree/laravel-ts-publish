@@ -199,8 +199,8 @@ receiver kind:
 `ReceiverMethodReturnResolver` checks three convention rules for each class before the order below. They read
 the receiver's model rather than a signature, because Laravel declares all three loosely: `Model::getKey()`
 returns `mixed`, `Collection::modelKeys()` returns `array<int, array-key>`, which reflects to
-`(string | number)[]`, and `Model::only()`/`except()` return a bare `array`, which reflects to the vague
-`Record<string, unknown>`.
+`(string | number)[]`, `Model::only()` returns `array<string, mixed>`, which reflects to the vague
+`Record<string, unknown>`, and `Model::except()` returns a bare `array`, which reflects to the list `unknown[]`.
 
 | Call | Receiver | Published type |
 | --- | --- | --- |
@@ -208,9 +208,9 @@ returns `mixed`, `Collection::modelKeys()` returns `array<int, array-key>`, whic
 | `getKey()` | `Model` itself, or an abstract model that inherits `Model::getKey()` | No rule. Reflection declines the inherited `mixed`. |
 | `getKey()` | Any model that declares `getKey()` itself | No rule. Reflection publishes the override's own return, such as `getKey(): string`. |
 | `modelKeys()` | An Eloquent collection with `elementModel` set | The element model's key type as a list, `number[]` or `string[]` |
-| `only([...])`, `except([...])` | A receiver holding exactly one concrete model, where the call carries a literal key list | Exactly what `RelationFilterHandler` builds for a relation to that model: `Pick<Model, …>` when every key is a published column, else the inline shape |
-| `only($keys)`, `except($keys)` with no literal key list, such as `only($request->input('fields'))` | A receiver holding exactly one concrete model | `Record<string, unknown>`: whatever keys arrive at runtime, either filter returns an array keyed by attribute name. `ProxyFilterDirectResource` and `ProxyFilterWrappedResource` pin it in both spellings as `fields_own` and `fields_author`. |
-| `only()`, `except()` | Any other receiver — a union, an Eloquent collection, or a `StaticCall`, which carries no key list this can read | No rule. Reflection then declines the vague `array`. |
+| `only([...])`, `except([...])` | A receiver holding exactly one model class, where the call carries a literal key list | Exactly what `RelationFilterHandler` builds for a relation to that model: `Pick<Model, …>` when every key is a published column, else the inline shape |
+| `only($keys)`, `except($keys)` with no literal key list, such as `only($request->input('fields'))` | A receiver holding exactly one model class | `Record<string, unknown>` from `ResolvesFilteredRelationTypes::runtimeKeyFilterResult()`: whatever keys arrive at runtime, either filter returns an array keyed by attribute name. In `ProxyFilterDirectResource` and `ProxyFilterWrappedResource` this rule answers the own-model cells `fields_own` and `except_own` in both spellings; the relation cells `fields_author` and `except_author` get the same answer from `RelationFilterHandler`, which runs first and calls the same helper. |
+| `only()`, `except()` | Any other receiver — a union, an Eloquent collection, or a `StaticCall`, which carries no key list this can read | No rule. Reflection then declines the vague `array`. A many-relation read off `$this` or `$this->resource` never reaches this row: `RelationFilterHandler` publishes the relation read first. |
 
 The key type comes from `ModelAttributeResolver::getInstance()`, so `HasUuids`, `HasUlids`, and a
 `#[Table(keyType: ...)]` attribute all count. Both `int` and `integer` map to `number`, because
@@ -322,18 +322,20 @@ that do not serialize as reflected.
 
 ### Which handlers step aside
 
-The handler sits last before `KnownMethodRuleHandler`, so every more specific handler answers first. Four
-earlier claimants used to floor or blur these calls, and now decline instead:
+The handler sits last before `KnownMethodRuleHandler`, so every more specific handler answers first. These
+earlier claimants used to floor or misread calls it can answer, and now decline instead:
 
 - `RelationCollectionChainHandler`'s `$this->anyProp->method()` branch declines when it would answer `unknown`.
-  It also steps aside for `$this->resource->only([...])` or `->except([...])` with a literal key list on a
-  model-backed scope, where it would reflect the vague `Record<string, unknown>` on the scope model.
-- `RelationFilterHandler` does not claim a filter on `$this->resource` itself, and declines a relation filter it
-  cannot type. It used to claim both as `unknown`.
-- `MethodChainHandler` declines when its answer is only `unknown` once `null` arms are removed. A `static|null`
-  docblock such as `Model::fresh()`'s reflects to `unknown | null`, and flooring there made
-  `$this->author?->fresh()` disagree with `$this->author->fresh()`; both are now `User | null`. It also declines
-  when the last step of the chain is not a relation. It used to reflect the method on the model that declares
+  On a model-backed scope every branch of the handler also declines `only()`/`except()`, whatever the key list:
+  reflection reads `except()`'s `@return array` as `unknown[]`, and a many-relation's filter keeps models by
+  primary key.
+- `RelationFilterHandler` does not claim a filter on `$this->resource` itself, and its relation arm declines a
+  filter it cannot type. It used to claim both as `unknown`.
+- `VariableHandler`'s `$variable->method()` arm skips every `only()`/`except()`, for the same reasons.
+- `MethodChainHandler` declines every `only()`/`except()`. It also declines when its answer is only `unknown` once
+  `null` arms are removed. A `static|null` docblock such as `Model::fresh()`'s reflects to `unknown | null`, and
+  flooring there made `$this->author?->fresh()` disagree with `$this->author->fresh()`; both are now
+  `User | null`. It also declines when the last step of the chain is not a relation. It used to reflect the method on the model that declares
   the step, which is the wrong receiver: `$this->imageable?->getTable()` read `Image::getTable()`.
 - `StaticCallHandler` declines a static call whose class is an expression, such as `$record::className()`.
 

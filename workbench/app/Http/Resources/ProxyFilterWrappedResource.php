@@ -30,6 +30,12 @@ final class ProxyFilterWrappedResource extends JsonResource
             'author_maybe' => $this->resource->author?->only(['id', 'name']),
             'fields_own' => $this->resource->only($request->input('fields')),
             'fields_author' => $this->resource->author->only($request->input('fields')),
+            'except_own' => $this->resource->except($request->input('fields')),
+            'except_author' => $this->resource->author->except($request->input('fields')),
+            'comments_by_key' => $this->resource->comments->only([1, 2]),
+            'comments_listed' => $this->resource->comments->only(['id', 'content']),
+            'comments_by_ids' => $this->resource->comments->only($request->input('ids')),
+            'comments_maybe' => $this->resource->comments?->only($request->input('ids')),
         ];
     }
 }

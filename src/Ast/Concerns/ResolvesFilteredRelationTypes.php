@@ -4,19 +4,22 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 
 /**
  * Type a filtered subset of a model's members: a `Pick<Model, …>` reference when every key is a
- * published column, else an inline object shape.
+ * published column, else an inline object shape, and `Record<string, unknown>` when the keys arrive at runtime.
  *
  * Two production callers. RelationFilterHandler types `$this->relation->only([...])` through it, and
  * ReceiverMethodReturnResolver types the same filters on any model receiver. ResolvesModelTypes still
  * composes this trait so the analyzer keeps inheriting the method: ResourceAstAnalyzerTest probes it
  * through two anonymous subclasses, which is the only coverage the except-branch column rule has.
  *
+ * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypesImportMap from Datable
  *
  * @internal
@@ -130,6 +133,16 @@ trait ResolvesFilteredRelationTypes
             'modelFqcns' => $collectedModelFqcns,
             'customImports' => $collectedCustomImports,
         ];
+    }
+
+    /**
+     * The type of a model filter whose key list is not literal: it returns an attribute-keyed array whatever arrives.
+     *
+     * @return ValueExpressionResult
+     */
+    protected function runtimeKeyFilterResult(bool $nullable): array
+    {
+        return [...ValueResult::unknown(), 'type' => $nullable ? 'Record<string, unknown> | null' : 'Record<string, unknown>'];
     }
 
     /**

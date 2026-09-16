@@ -2,10 +2,13 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationFilterHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ResourceRelationModel;
 use Illuminate\Support\Facades\Schema;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
@@ -16,13 +19,24 @@ use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Scalar\String_;
+use PhpParser\Node\Stmt\Expression;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Resources\CommentResource;
+use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Tag;
+
+/** The single expression a PHP snippet spells. */
+function relationFilterExpr(string $php): Expr
+{
+    /** @var Expression $statement */
+    $statement = new AstParser()->parseSource('<?php '.$php.';')[0];
+
+    return $statement->expr;
+}
 
 /**
  * An engine that fails the test if a handler calls back into it, proving the handler resolved or
@@ -208,22 +222,59 @@ it('reads a lone only(attributes: \'id\') as a single-key list', function () {
     expect($result)->toBe(['type' => "Pick<Post, 'id'>", 'optional' => false, 'modelFqcn' => Post::class]);
 });
 
-// Post::comments() is a HasMany, so the relation resolves through Illuminate\Database\Eloquent\Collection,
-// whose only() parameter is `keys` — not Model::only()'s `attributes`. A wrong reflected receiver here
-// makes named('keys') miss and the filter keys silently vanish; this pins the Collection-side name.
-it('reads only(keys: [...]) by name on a to-many relation, matching Collection::only()\'s own parameter', function () {
-    $expr = new MethodCall(
-        new PropertyFetch(new Variable('this'), 'comments'),
-        'only',
-        [new Arg(new Array_([new ArrayItem(new String_('id')), new ArrayItem(new String_('content'))]), name: new Identifier('keys'))],
-    );
-    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Post::class);
+// Eloquent\Collection::only()/except() keep the models whose primary key is listed and return them whole, so a
+// many-relation filter publishes the relation read itself, channels included, whatever the key list holds.
+it('publishes a many-relation filter as the relation read, under both spellings and any key list', function (string $php, string $read, string $type) {
+    $engine = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class);
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $expected = $engine->resolve(relationFilterExpr($read));
 
-    $result = (new RelationFilterHandler)->resolve($expr, $scope, relationFilterHandlerThrowingEngine());
+    expect($expected['type'])->toBe('Comment[]');
 
-    expect($result)->toBe([
-        'type' => "Pick<Comment, 'id' | 'content'>[]",
-        'optional' => false,
-        'modelFqcn' => Comment::class,
-    ]);
+    $expected['type'] = $type;
+
+    expect((new RelationFilterHandler)->resolve(relationFilterExpr($php), $scope, $engine))->toBe($expected);
+})->with([
+    ['$this->comments->only([1, 2])', '$this->comments', 'Comment[]'],
+    ['$this->comments->only(keys: [\'id\', \'content\'])', '$this->comments', 'Comment[]'],
+    ['$this->comments->except($ids)', '$this->comments', 'Comment[]'],
+    ['$this->resource->comments->only($ids)', '$this->resource->comments', 'Comment[]'],
+    ['$this->comments?->only($ids)', '$this->comments', 'Comment[] | null'],
+    ['$this->resource->comments?->except([1])', '$this->resource->comments', 'Comment[] | null'],
+]);
+
+// Model::only()/except() return an attribute-keyed array whatever keys arrive at runtime; the receiver rule builds the
+// same answer for the resource's own model from the same ResolvesFilteredRelationTypes helper.
+it('publishes a single-relation filter with no literal key list as Record<string, unknown>, under both spellings', function (string $php, string $type) {
+    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
+
+    $result = (new RelationFilterHandler)->resolve(relationFilterExpr($php), $scope, relationFilterHandlerThrowingEngine());
+
+    expect($result)->toBe(['type' => $type, 'optional' => false]);
+})->with([
+    ['$this->post->only($fields)', 'Record<string, unknown>'],
+    ['$this->resource->post->except($fields)', 'Record<string, unknown>'],
+    ['$this->post->except(self::FIELDS)', 'Record<string, unknown>'],
+    ['$this->post->only([1, 2])', 'Record<string, unknown>'],
+    ['$this->resource->post?->only($fields)', 'Record<string, unknown> | null'],
+]);
+
+// PHP reads the declared JsonResource::$resource before any __get(), so a model's own `resource` relation is
+// unreachable through it. The filter is on the resource's model, which the receiver rules own, not on that relation.
+it('never reads $this->resource as a relation, even on a model that declares one', function () {
+    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), ResourceRelationModel::class);
+
+    $result = (new RelationFilterHandler)->resolve(relationFilterExpr('$this->resource->only([\'id\'])'), $scope, relationFilterHandlerThrowingEngine());
+
+    expect($result)->toBeNull();
+});
+
+// `map` is no member of the model, so the member arm declines and the map-proxy arm claims the call, as it did before
+// the proxy spelling was matched. That arm is the only path here that returns `unknown` rather than null.
+it('lets $this->resource->map->only([...]) reach the map-proxy arm', function () {
+    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
+
+    $result = (new RelationFilterHandler)->resolve(relationFilterExpr('$this->resource->map->only([\'id\'])'), $scope, relationFilterHandlerThrowingEngine());
+
+    expect($result)->toBe(['type' => 'unknown', 'optional' => false]);
 });

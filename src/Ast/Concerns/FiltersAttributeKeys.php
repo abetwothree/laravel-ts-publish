@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
-use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafeMethodCall;
@@ -80,24 +79,15 @@ trait FiltersAttributeKeys
     }
 
     /**
-     * Whether a call is an `only()`/`except()` whose key list is literal enough for the receiver rules to read.
+     * Whether a call is an `only()`/`except()` attribute filter, whatever its key list.
      *
-     * The handler arms that step aside for ReceiverMethodReturnResolver::attributeFilterRule() ask this first:
-     * a filter call carrying a runtime value (`only($request->input('fields'))`) names no keys, so that rule
-     * declines too, and an unconditional skip would strand the call at `unknown`.
+     * The generic reflectors ask this to decline: `Model::except()`'s `@return array` reflects to a list, and a
+     * many-relation's filter keeps models by primary key. RelationFilterHandler and the receiver rules own them.
      */
-    protected function filtersLiteralAttributeKeys(MethodCall|NullsafeMethodCall $call): bool
+    protected function callsAttributeFilter(MethodCall|NullsafeMethodCall $call): bool
     {
-        if ($call->isFirstClassCallable() || ! $call->name instanceof Identifier) {
-            return false;
-        }
-
-        $methodName = $call->name->toString();
-
-        if (! in_array($methodName, $this->supportedAttributeFilters(), true)) {
-            return false;
-        }
-
-        return $this->extractFilterKeys($call, new ReflectionMethod(Model::class, $methodName)) !== null;
+        return ! $call->isFirstClassCallable()
+            && $call->name instanceof Identifier
+            && in_array($call->name->toString(), $this->supportedAttributeFilters(), true);
     }
 }

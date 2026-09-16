@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Instanceof_;
 use PhpParser\Node\Expr\MethodCall;
@@ -221,6 +222,22 @@ it('degrades a cyclic local-variable binding to unknown instead of recursing for
     expect($engine->resolve(new Variable('a')))->toBe(['type' => 'unknown', 'optional' => false])
         ->and($scope->resolvingLocalVars)->toBe([]);
 });
+
+// Reflecting Model::except()'s `@return array` gives a list, and a collection-bound variable filters by primary key:
+// the receiver rules own a filter on a variable, so the bound-method guard never answers one.
+it('declines only() and except() on a bound variable, whatever the key list', function (string $method, Arg $keys) {
+    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
+    $scope->varModelBindings['author'] = User::class;
+    $scope->closureRelationModelClass = User::class;
+
+    $result = (new VariableHandler)->resolve(new MethodCall(new Variable('author'), $method, [$keys]), $scope, variableHandlersThrowingEngine());
+
+    expect($result)->toBeNull();
+})->with([
+    'except($fields)' => ['except', new Arg(new Variable('fields'))],
+    'only($fields)' => ['only', new Arg(new Variable('fields'))],
+    'only([1])' => ['only', new Arg(new Array_([new ArrayItem(new Int_(1))]))],
+]);
 
 it('declines an expression it does not claim, leaving later handlers their turn', function () {
     $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);

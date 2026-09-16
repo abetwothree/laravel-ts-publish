@@ -1,9 +1,11 @@
-import type { Post, User } from '../../models';
+import type { Comment, Post, User } from '../../models';
 
 /**
- * only() and except() written against $this, in spread and value position, on the resource's own model and
- * on a single-model relation. ProxyFilterWrappedResource spells every call through $this->resource and must
- * publish exactly this shape.
+ * only() and except() written against $this, in spread and value position, on the resource's own model, a
+ * single-model relation and a many-relation, with literal and runtime key lists. ProxyFilterWrappedResource
+ * spells every call through $this->resource and must publish exactly this shape.
+ *
+ * A many-relation filter keeps whole models by primary key, so it publishes the relation's own list type.
  *
  * @see Workbench\App\Http\Resources\ProxyFilterDirectResource
  */
@@ -18,4 +20,10 @@ export interface ProxyFilterDirectResource
     author_maybe: Pick<User, 'id' | 'name'> | null;
     fields_own: Record<string, unknown>;
     fields_author: Record<string, unknown>;
+    except_own: Record<string, unknown>;
+    except_author: Record<string, unknown>;
+    comments_by_key: Comment[];
+    comments_listed: Comment[];
+    comments_by_ids: Comment[];
+    comments_maybe: Comment[] | null;
 }

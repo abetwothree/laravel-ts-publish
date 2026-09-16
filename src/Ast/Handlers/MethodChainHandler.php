@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\AppliesKnownMethodRules;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DecomposesPropertyChains;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
@@ -23,7 +24,7 @@ use PhpParser\Node\Identifier;
 /**
  * Nullsafe method-call chains rooted at `$this` — `$this->user?->fullName()` — resolved on the
  * terminal relation model. The `?->` operator always makes the result nullable. A chain that does not
- * end on a relation, or a method it cannot type, declines to ReceiverMethodCallHandler.
+ * end on a relation, a method it cannot type, or an `only()`/`except()` filter declines.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -33,6 +34,7 @@ final class MethodChainHandler implements ExpressionHandler
 {
     use AppliesKnownMethodRules;
     use DecomposesPropertyChains;
+    use FiltersAttributeKeys;
     use InspectsAstNodes;
     use InspectsResourceSubject;
     use ResolvesModelRelationTypes;
@@ -46,7 +48,8 @@ final class MethodChainHandler implements ExpressionHandler
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        if (! $expr instanceof NullsafeMethodCall) {
+        // A filter belongs to RelationFilterHandler or the receiver rules, which know what it returns.
+        if (! $expr instanceof NullsafeMethodCall || $this->callsAttributeFilter($expr)) {
             return null;
         }
 
