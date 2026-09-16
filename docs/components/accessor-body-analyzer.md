@@ -53,8 +53,10 @@ literal.
 
 ## Scope: the model is the subject
 
-`AstEngine::analyzeModelClosure()` seeds the scope with `bindingsFor()`, which binds parameters and local
-variables but leaves `modelClass` **null** — so the load-bearing line is `$scope->modelClass =
+`AstEngine::analyzeModelClosure()` seeds the scope with `bindingsFor()`, which binds the *enclosing
+method's* parameters and local variables — not the `get` closure's own, so for a new-style accessor
+this seeding is only really load-bearing on the old-style path, where the wrapped body **is** the
+method — but leaves `modelClass` **null** — so the load-bearing line is `$scope->modelClass =
 $modelClass`. Without it nothing in the body resolves against the model and `$this->major` is
 `unknown`. The subject is re-asserted as the model alongside it: `resolveBody()` locates on the model
 FQCN, so `MethodContext::$reflection` already *is* the model even when the body it found lives in a
@@ -72,6 +74,11 @@ which resolves through the model engine straight back into `loop_b`'s body. `ana
 `model@attribute` for the duration of the call and returns `null` on re-entry, so the inner read
 degrades to `unknown` and the outer one terminates. `Release::loopA()`/`loopB()` pin it: both publish
 `unknown`.
+
+This guard is deliberately separate from `AstEngine`'s own: `analyzeMethod()` guards and memoizes on
+`class@method@modelClass`, while `analyzeModelClosure()` uses neither — which is exactly why this
+class carries its own `model@attribute` guard on a shared singleton instead of leaning on the engine's.
+The two keys are not interchangeable, so unifying them is not a tidy-up; it would break this guard.
 
 ## What stays vague
 

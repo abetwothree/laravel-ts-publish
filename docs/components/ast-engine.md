@@ -531,6 +531,12 @@ else here — `analyzeMethod()`, `analyzePublicProperties()`, `bindingsFor()`, `
 [known gaps](../known-gaps.md). The rest of this section documents those internals for people working
 *on* the engine, not for consumers of it.
 
+The `@internal` tag on `analyzeModelClosure()` and `bindingsFor()` is load-bearing, not decorative:
+both name `MethodContext` — an `@internal` class — in a public method of the un-tagged `AstEngine`,
+which only clears the boundary test's "never names an internal type in a public signature" rule
+because that rule skips a method carrying its own `@internal` tag. Removing either tag as cleanup
+would silently widen the engine's public API without the test ever failing to say so.
+
 `analyze()` runs `analyzeMethod()` for the raw DTO and hands it to `AnalysisComposer`, which is what
 makes the three fields agree with each other:
 
