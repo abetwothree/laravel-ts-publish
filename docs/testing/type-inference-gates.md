@@ -553,7 +553,7 @@ When changing `unknown-regression-gate.py` itself, also run its
   an import of a class the package never writes a file for (the failure mode `PublishedResourceRegistry`
   exists to prevent, documented under
   [convention guesses are gated on the published set](../components/resource-ast-analyzer.md#toresource-convention-guesses-are-gated-on-the-published-set),
-  including its shared `InspectsAstNodes::resolveCollectedResourceClass()` resolver, which both
+  including its shared `InspectsResourceCalls::resolveCollectedResourceClass()` resolver, which both
   `ResourceAstAnalyzer` and `InertiaPageAnalyzer` call), and the bare-specifier count, gated separately so
   that ordinary bare-alias churn can never mask a new relative-specifier regression inside a combined total.
 

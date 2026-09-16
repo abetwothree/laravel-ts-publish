@@ -10,8 +10,9 @@ use Illuminate\Http\Resources\Json\JsonResource;
 /**
  * The resource a ResourceCollection subject collects.
  *
- * Kept apart from InspectsResourceSubject because this one needs InspectsAstNodes, which two of
- * that trait's consumers do not use. Requires the host to also use InspectsAstNodes.
+ * Kept apart from InspectsResourceSubject because this one needs InspectsResourceCalls, which two of
+ * that trait's consumers do not use. Requires the host to also use
+ * Analyzers\Concerns\InspectsResourceCalls.
  *
  * @internal
  */
@@ -19,7 +20,7 @@ trait ResolvesSingularResourceClass
 {
     /**
      * Resolve the singular resource FQCN this ResourceCollection collects.
-     * See InspectsAstNodes::resolveCollectedResourceClass() for the resolution order.
+     * See InspectsResourceCalls::resolveCollectedResourceClass() for the resolution order.
      *
      * @return class-string<JsonResource>|null
      */

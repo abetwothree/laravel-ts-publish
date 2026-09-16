@@ -23,7 +23,7 @@ use PhpParser\Node\Name;
  * resource-construction shapes that both hand a bare property-fetch expression to this same
  * resolution order.
  *
- * Requires the host to also `use InspectsAstNodes` (for `isThisPropertyFetch()`).
+ * Requires the host to also `use Ast\Concerns\InspectsAstNodes` (for `isThisPropertyFetch()`).
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *

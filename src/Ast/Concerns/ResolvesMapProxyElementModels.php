@@ -15,7 +15,8 @@ use PhpParser\Node\Identifier;
  * Resolve the element model behind a `->map` proxy receiver.
  *
  * The single home for this: RelationFilterHandler and VariableHandler both need it for an untyped
- * map closure. Requires the host to also use InspectsAstNodes and ResolvesModelRelationTypes.
+ * map closure. Requires the host to also use Ast\Concerns\InspectsAstNodes and
+ * ResolvesModelRelationTypes.
  *
  * @internal
  */

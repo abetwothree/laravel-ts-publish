@@ -714,7 +714,7 @@ subtract nothing anyway.
 
 The shape that *would* collide is a numeric explicit sibling key — `[...$members->toArray(), 5 => 'x']`
 puts `5` in both halves. It is unreachable rather than unhandled: `resolveKeyName()` in
-`src/Analyzers/Concerns/InspectsAstNodes.php` returns a name only for a `String_` key, and
+`src/Ast/Concerns/InspectsAstNodes.php` returns a name only for a `String_` key, and
 `analyzeReturnArray()` skips every item whose key resolves to `null`, so a numeric key never becomes
 a property in the first place. `QuirkyResource` pins that independently — it writes `42 => $this->total`
 and `42 => 'number_keyed'`, and the generated `QuirkyResource` interface has no `42` member. So the
@@ -998,7 +998,7 @@ strictly worse than the optional `unknown` an unrecognized conditional should pr
 key tells the consumer the value is always present.
 
 All five (`unless`, `whenAppended`, `whenExistsLoaded`, `transform`, `mergeUnless`) also belong to
-`InspectsAstNodes::$conditionalMethods`, the separate list consulted when one of them wraps a *nested
+`InspectsResourceCalls::$conditionalMethods`, the separate list consulted when one of them wraps a *nested
 resource constructor* (`Resource::make(...)`/`new Resource(...)`), so that case is optional too.
 
 ### `unless()` and `mergeUnless()` reuse `when()`/`mergeWhen()` unchanged
@@ -1066,7 +1066,7 @@ excluded as unreachable anywhere else in the family.
 
 ## `#[Collects]` resolution is Laravel-version-guarded
 
-`InspectsAstNodes::resolveCollectedResourceClass()` — called directly by every consumer
+`InspectsResourceCalls::resolveCollectedResourceClass()` — called directly by every consumer
 (`Ast\Concerns\ResolvesSingularResourceClass`, `ToResourceHandler`, `StaticCallHandler`,
 `NewResourceHandler`) — checks for `Illuminate\Http\Resources\Attributes\Collects` behind
 `class_exists()` rather than a `use` import,
@@ -1093,7 +1093,7 @@ that invents a candidate class name, four in total:
 | `ToResourceHandler::resolveResourceForModel()`'s candidate loop | `{Model}Resource`, then bare `{Model}` |
 | `ToResourceHandler::resolveResourceCollectionForModel()`'s `{Guessed}Collection` loop | `{Model}ResourceCollection`, then `{Model}Collection` — the inline `class_exists()`/`is_a()` pair gained a third `PublishedResourceRegistry::isPublished()` conjunct |
 | `ToResourceHandler::resolveResourceCollectionForModel()`'s bare-candidate loop | the `{Model}Resource` fallback |
-| `InspectsAstNodes::resolveCollectedResourceClass()`'s naming-convention branch | `{X}Resource`, then bare `{X}` — shared by every direct caller (`ResourceAstAnalyzer`, `ToResourceHandler`, `StaticCallHandler`, `NewResourceHandler`) |
+| `InspectsResourceCalls::resolveCollectedResourceClass()`'s naming-convention branch | `{X}Resource`, then bare `{X}` — shared by every direct caller (`ResourceAstAnalyzer`, `ToResourceHandler`, `StaticCallHandler`, `NewResourceHandler`) |
 
 **`isResourceClass()` itself is unchanged.** Every branch that reads a class the developer wrote down
 stays ungated on purpose — an explicitly named resource is a declaration, not a guess:
@@ -1156,7 +1156,7 @@ order.
 naming-convention resolution order,
 including the same third, naming-convention branch — the one gap this section used to carry as a
 recorded follow-up rather than a fix. Every one of them now calls
-`InspectsAstNodes::resolveCollectedResourceClass()` directly, the only place that logic exists; its
+`InspectsResourceCalls::resolveCollectedResourceClass()` directly, the only place that logic exists; its
 naming-convention branch is gated on `PublishedResourceRegistry` exactly like the three sites above.
 No call site can drift apart on this resolution order, because there is only one implementation left
 to diverge from.
@@ -1173,7 +1173,7 @@ references. Only those. The registry is consulted at four candidate-inventing si
 `ToResourceHandler::resolveResourceForModel()`'s naming-convention loop,
 `resolveResourceCollectionForModel()`'s two naming-convention loops (the `{Guessed}Collection`
 candidates, then the bare guessed resources), plus the candidate list inside the naming-convention
-branch of `InspectsAstNodes::resolveCollectedResourceClass()`. An explicitly named reference never
+branch of `InspectsResourceCalls::resolveCollectedResourceClass()`. An explicitly named reference never
 reaches it and would survive — `SomeResource::make()` and the `::collection()` arm of `StaticCallHandler`
 test `isResourceClass()` rather than `isPublishedResourceClass()`, and so do the explicit-argument arms of
 `ToResourceHandler::analyzeToResourceCall()` and `analyzeToResourceCollectionCall()`.

@@ -2,8 +2,9 @@
 
 declare(strict_types=1);
 
-namespace AbeTwoThree\LaravelTsPublish\Ast;
+namespace AbeTwoThree\LaravelTsPublish\Support;
 
+use AbeTwoThree\LaravelTsPublish\Ast\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use DateTimeInterface;
 use Illuminate\Contracts\Support\Arrayable;

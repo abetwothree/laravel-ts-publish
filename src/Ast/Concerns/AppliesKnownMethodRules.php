@@ -18,7 +18,8 @@ use PhpParser\Node\Identifier;
  * by KnownMethodRuleHandler, the dispatch floor. The sole implementation — the analyzer's own copy
  * went with its legacy chain.
  *
- * Requires the host to also use InspectsAstNodes, InspectsResourceSubject and ResolvesModelRelationTypes.
+ * Requires the host to also use Ast\Concerns\InspectsAstNodes, InspectsResourceSubject and
+ * ResolvesModelRelationTypes.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *

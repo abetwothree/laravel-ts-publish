@@ -26,6 +26,7 @@ Ask what the helper's **input domain** is, not what happens to call it:
 | **"What does this go into a generated file as?"** — a PHP value or docblock text turned into the literal, key, identifier or comment a `.ts` file carries | `JsEmitter` |
 | **"What is true of this TypeScript type string, or what does it become?"** — type string in, answer or rewritten type string out | `TsTypeString` |
 | **"What is this called, and where does it live?"** — an FQCN, a file path or an array key resolved to a name, a directory, or another path | `TsNaming` |
+| **"Does this class actually reach JSON as a string?"** — a PHP class, or a method's declared return, resolved to whether `json_encode()` really emits a string for it | `StringSerialization` |
 | **"What *is* this, as a type?"** — a PHP type, a `ReflectionX` or a docblock resolved to a `TypeScriptTypeInfo` | stays on `LaravelTsPublish` |
 
 Read the question, not the signature: two of the clusters have members whose return type alone would
@@ -88,6 +89,24 @@ It holds the only state of the three: `$resourceTypeNames`, a per-instance FQCN 
 name cache that `resourceTypeName()` fills, since resolving a name means reading a `#[TsResource]`
 attribute off the class. That cache is the entire reason the container binding below is not pure
 decoration.
+
+### `StringSerialization`
+
+The fourth `src/Support/` class, and the one exception to the shape above: it has **no facade and no
+delegation**, because it is not part of the frozen pre-extraction surface — it was written inside
+`src/Ast/` and moved here once the rule in this file was applied to it. Callers name the class directly.
+
+PHP classes and method return declarations in, one boolean out: `isFalseString()` and
+`methodReturnsFalseString()`. No state, no config. It answers the question `toTsType()` cannot ask
+itself — `toTsType()` maps `DateTime` and any `__toString()` class to `string`, but `json_encode()`
+ignores `__toString()` and writes a plain `DateTime` as a `{date, timezone_type, timezone}` object, so a
+receiver rule that trusted the `string` would publish a type the payload never carries. Its callers
+decline instead; see [Receiver types](./receiver-types.md#following-a-methods-return-type).
+
+It lives here rather than in `src/Ast/` because it never touches a `PhpParser` node — it asks a pure
+type-engine question, which is this file's test, not the layer its callers happen to sit in. It keeps
+its `@internal` tag deliberately: leaving `src/Ast/` also leaves `InternalBoundaryTest`'s per-directory
+sweep, and nothing else would reinstate the tag.
 
 ## What stayed on `LaravelTsPublish`, and why the docblock engine could not follow
 

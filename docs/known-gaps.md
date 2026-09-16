@@ -39,7 +39,7 @@ rather than guessing. **The workaround is fully supported:** `public $collects =
 on both versions. So does the `FooCollection` → `FooResource` naming convention, with one condition the
 explicit property does not carry: `resolveCollectedResourceClass()` gates the guess on
 `isPublishedResourceClass()`, so a `FooResource` the run excludes is not guessed into. The guard is in
-`src/Analyzers/Concerns/InspectsAstNodes.php`; see
+`src/Analyzers/Concerns/InspectsResourceCalls.php`; see
 [docs/laravel-version-guards.md](./laravel-version-guards.md) for how the version floor was established and
 which tests are skipped below it.
 
