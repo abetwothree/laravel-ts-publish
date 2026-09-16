@@ -38,6 +38,12 @@ test('a shape value naming a bare class is not applied', function () {
     expect($props['handle']['type'])->toBe('unknown');
 });
 
+test('a shape value naming no PHP type at all keeps the name the app declares', function () {
+    $props = collect(refinedAnalysis([['name' => 'custom', 'type' => 'unknown']], 'shaped')->properties)->keyBy('name');
+
+    expect($props['custom'])->toMatchArray(['type' => 'CustomThing', 'optional' => true]);
+});
+
 test('a key the shape declares optional becomes optional, keeping its own type', function () {
     $props = collect(refinedAnalysis([['name' => 'maybe', 'type' => 'unknown']], 'shaped')->properties)->keyBy('name');
 

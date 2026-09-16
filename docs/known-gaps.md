@@ -60,6 +60,32 @@ the former nest a `?:` inside a shape value for `NestedOptionalKeyDto`. It is de
 — that fixture needs an optional key — but it is the same heuristic, so a future fix to optionality has
 to expect those fixtures to move.
 
+### A `return []` guard makes keys optional in a method body, but not inside a `merge()` closure
+
+`if (! $policy) { return []; } return ['authorizations' => …];` publishes `authorizations?`, because the
+guard branch really does omit the key: `ResourceAstAnalyzer::analyzeAllReturnBranches()` counts an empty
+return as a branch, and `analyzeThisMethodSpread()` does the same for a `...$this->method()` spread. A
+closure handed to `merge()` or `mergeWhen()` does not follow that rule — `resolveArrayOrClosureToProperties()`
+filters the closure's empty returns out before merging, so the identical guard publishes its keys **required**.
+
+`MergeClosureResource` is the shape: its `merge()` closure returns `[]` when `$this->user` is null and two
+keys otherwise, and the generated `merge-closure-resource.ts` spells both of them required.
+
+```ts
+export interface MergeClosureResource
+{
+    id: number;
+    user_name: string;
+    user_email: string;
+}
+```
+
+Nothing degrades to `unknown` and both keys carry their real types, so no gate moves — the payload simply
+omits them on the guard path while the type promises them. Declare the key with an `'optional' => true`
+`#[TsCasts]` entry, or hoist the closure into a method the resource spreads, which does honour the guard.
+Aligning the closure path with the method path changes published output for every guarded `merge()` closure
+at once, so it is its own decision rather than a rider on the rule that established it.
+
 ### `#[TsCasts]` and the top-level spread flatten disagree by scope, in three separate ways
 
 The analyzer flattens a top-level `...SomeResource::make(...)->resolve()`, `...$model->toArray()`, or

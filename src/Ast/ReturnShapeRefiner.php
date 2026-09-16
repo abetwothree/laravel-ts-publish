@@ -62,7 +62,8 @@ final class ReturnShapeRefiner
         }
 
         // A shape value naming no PHP type at all resolves to 'unknown', but the app declares it as a
-        // global (`custom_val: CustomObject`), so its own name stays the most specific thing known.
+        // global (`custom_val: CustomObject`), so its own name stays the most specific thing known. It is
+        // deliberately unguarded: an undeclared token cannot ship, because tsc reports TS2304 at baseline 0.
         return $rawType !== null && preg_match('/^[A-Z]\w*$/', $rawType) === 1 ? $rawType : null;
     }
 

@@ -9,7 +9,9 @@ use Workbench\App\ValueObjects\OpaqueHandle;
 final class ReturnShapeFixture
 {
     /**
-     * @return array{known: string, handle: OpaqueHandle, maybe?: int}
+     * `CustomThing` names no PHP type, standing for a type the consuming app declares as a global.
+     *
+     * @return array{known: string, handle: OpaqueHandle, maybe?: int, custom?: CustomThing}
      */
     public function shaped(): array
     {

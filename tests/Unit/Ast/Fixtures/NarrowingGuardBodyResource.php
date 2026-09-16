@@ -10,10 +10,11 @@ use RuntimeException;
 use Workbench\App\Models\Post;
 
 /**
- * Both halves of the guard-body rule, read through analyzeThisMethodSpread()'s first-Return_ path.
+ * Both halves of the guard-body rule, read through analyzeThisMethodSpread()'s branch sweep.
  *
  * `author` is a User, and User has no `title`, so a narrowing that reaches the wrong branch is
- * visible as `string` where the honest answer is `unknown`.
+ * visible as `string` where the honest answer is `unknown`. dirtyRows() classifies both of its
+ * returns, so dirty_label unions an untypable arm with a literal and collapses back to `unknown`.
  *
  * @mixin Post
  */
