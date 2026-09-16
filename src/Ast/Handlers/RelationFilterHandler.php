@@ -28,8 +28,9 @@ use ReflectionMethod;
  * `$this->relation->only([...])`/`->except([...])`, also read through `$this->resource`, and Laravel's `map`
  * HigherOrderCollectionProxy filter (`$var->map->only([...])`/`->except([...])`) — relation/collection filters.
  *
- * The relation arm declines what it cannot type. Once the map-proxy arm matches, it claims `unknown` when it binds no
- * element model, reads no literal keys, or the keys name nothing.
+ * The relation arm declines what it cannot type, including a model that overrides the filter. Once the map-proxy arm
+ * matches, it claims `unknown` when it binds no element model, that model overrides the filter, it reads no literal
+ * keys, or the keys name nothing. A scope that carries no import gets answers naming no model or enum.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypesImportMap from Datable
@@ -117,7 +118,7 @@ final class RelationFilterHandler implements ExpressionHandler
         $relationInfo = $this->resolveModelRelationTypeInfo($propName, $scope);
 
         if (str_ends_with($relationInfo['type'], '[]')) {
-            return $this->manyRelationRead($call, $engine);
+            return $this->manyRelationRead($call, $scope, $engine);
         }
 
         $modelFqcn = $relationInfo['modelFqcn'] ?? $this->resolveAccessorModelFqcn($propName, $scope);
@@ -126,14 +127,14 @@ final class RelationFilterHandler implements ExpressionHandler
             // Try the multi-model accessor path (e.g. Attribute<ModelA|ModelB, never>).
             $modelFqcns = $this->resolveAccessorModelFqcns($propName, $scope);
 
-            if ($modelFqcns === []) {
+            if ($modelFqcns === [] || ! array_all($modelFqcns, fn (string $fqcn): bool => $this->runsModelFilter($fqcn, $methodName))) {
                 return null;
             }
 
             $keys = $this->extractFilterKeys($call, new ReflectionMethod(Model::class, $methodName));
 
             if ($keys === null || $keys === []) {
-                return $this->runtimeKeyFilterResult($nullable);
+                return $this->attributeRecordResult($nullable);
             }
 
             $include = $methodName === 'only';
@@ -158,29 +159,17 @@ final class RelationFilterHandler implements ExpressionHandler
                 }
 
                 $seenFqcns[] = $fqcn;
+                $arm = $this->literalKeyFilterResult($fqcn, $keys, $include, $scope->carriesImports);
 
-                // Every filter key is a plain DB column: reference the arm's own model interface so
-                // its #[TsCasts]/@property refinements stay authoritative, same as the single-model path.
-                $modelReference = $this->relationFilterModelReference($fqcn, $keys, $include);
-
-                if ($modelReference !== null) {
-                    $inlineTypes[] = $modelReference;
-                    $embeddedModelFqcns[] = $fqcn;
-
+                if ($arm === null) {
                     continue;
                 }
 
-                $filterResult = $this->resolveFilteredRelationType($fqcn, $keys, $include);
+                $inlineTypes[] = $arm['type'];
+                array_push($embeddedEnumFqcns, ...($arm['embeddedEnumFqcns'] ?? []));
+                array_push($embeddedModelFqcns, ...(isset($arm['modelFqcn']) ? [$arm['modelFqcn']] : []), ...($arm['embeddedModelFqcns'] ?? []));
 
-                if ($filterResult['type'] === 'unknown') {
-                    continue;
-                }
-
-                $inlineTypes[] = $filterResult['type'];
-                array_push($embeddedEnumFqcns, ...$filterResult['enumFqcns']);
-                array_push($embeddedModelFqcns, ...$filterResult['modelFqcns']);
-
-                foreach ($filterResult['customImports'] as $path => $names) {
+                foreach ($arm['customImports'] ?? [] as $path => $names) {
                     $embeddedCustomImports[$path] = [...($embeddedCustomImports[$path] ?? []), ...$names];
                 }
             }
@@ -190,6 +179,10 @@ final class RelationFilterHandler implements ExpressionHandler
             }
 
             $inlineType = implode(' | ', $inlineTypes);
+
+            if (! $scope->carriesImports && TsTypeString::shapeValueHasUnimportableToken($inlineType)) {
+                return $this->attributeRecordResult($nullable);
+            }
 
             if ($nullable) {
                 $inlineType .= ' | null';
@@ -207,55 +200,53 @@ final class RelationFilterHandler implements ExpressionHandler
             ];
         }
 
-        $keys = $this->extractFilterKeys($call, new ReflectionMethod(Model::class, $methodName));
-
-        if ($keys === null || $keys === []) {
-            return $this->runtimeKeyFilterResult($nullable);
-        }
-
-        $include = $methodName === 'only';
-
-        // Every filter key is a plain DB column: reference the emitted model interface directly so its
-        // #[TsCasts]/@property refinements stay authoritative instead of being re-derived and lost.
-        $modelReference = $this->relationFilterModelReference($modelFqcn, $keys, $include);
-
-        if ($modelReference !== null) {
-            return [
-                ...$result,
-                'type' => $nullable ? $modelReference.' | null' : $modelReference,
-                'modelFqcn' => $modelFqcn,
-            ];
-        }
-
-        $filterResult = $this->resolveFilteredRelationType($modelFqcn, $keys, $include);
-
-        if ($filterResult['type'] === 'unknown') {
+        if (! $this->runsModelFilter($modelFqcn, $methodName)) {
             return null;
         }
 
-        return [
-            ...$result,
-            'type' => $nullable ? $filterResult['type'].' | null' : $filterResult['type'],
-            'embeddedEnumFqcns' => $filterResult['enumFqcns'],
-            'embeddedModelFqcns' => $filterResult['modelFqcns'],
-            'customImports' => $filterResult['customImports'],
-        ];
+        $keys = $this->extractFilterKeys($call, new ReflectionMethod(Model::class, $methodName));
+
+        if ($keys === null || $keys === []) {
+            return $this->attributeRecordResult($nullable);
+        }
+
+        $filtered = $this->literalKeyFilterResult($modelFqcn, $keys, $methodName === 'only', $scope->carriesImports);
+
+        if ($filtered === null) {
+            return null;
+        }
+
+        if (! $scope->carriesImports && TsTypeString::shapeValueHasUnimportableToken($filtered['type'])) {
+            return $this->attributeRecordResult($nullable);
+        }
+
+        if ($nullable) {
+            $filtered['type'] .= ' | null';
+        }
+
+        return $filtered;
     }
 
     /**
      * The many-relation read a filter on it publishes, with `| null` through `?->`, or null when the read is untyped.
      *
      * `Eloquent\Collection::only()`/`except()` keep the models whose primary key is listed and return them whole, so
-     * any key list leaves exactly the relation's own read, import channels included.
+     * any key list leaves exactly the relation's own read, import channels included. A scope that cannot import the
+     * element model keeps the list alone.
      *
      * @return ValueExpressionResult|null
      */
-    private function manyRelationRead(MethodCall|NullsafeMethodCall $call, ExpressionEngine $engine): ?array
+    private function manyRelationRead(MethodCall|NullsafeMethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         $read = $engine->resolve($call->var);
 
         if (TsTypeString::isUnknownOnly($read['type'])) {
             return null;
+        }
+
+        if (! $scope->carriesImports && TsTypeString::shapeValueHasUnimportableToken($read['type'])) {
+            $nullableRead = in_array('null', TsTypeString::splitTopLevelUnion($read['type']), true);
+            $read = [...ValueResult::unknown(), 'type' => $nullableRead ? 'unknown[] | null' : 'unknown[]'];
         }
 
         if ($call instanceof NullsafeMethodCall && ! in_array('null', TsTypeString::splitTopLevelUnion($read['type']), true)) {
@@ -285,7 +276,7 @@ final class RelationFilterHandler implements ExpressionHandler
         $mapFetch = $call->var;
         $elementModel = $this->resolveMapProxyElementModel($mapFetch->var, $scope);
 
-        if ($elementModel === null) {
+        if ($elementModel === null || ! $this->runsModelFilter($elementModel, $methodName)) {
             return $result;
         }
 
@@ -301,9 +292,15 @@ final class RelationFilterHandler implements ExpressionHandler
             return $result;
         }
 
+        $nullable = $call instanceof NullsafeMethodCall;
+
+        if (! $scope->carriesImports && TsTypeString::shapeValueHasUnimportableToken($filterResult['type'])) {
+            return [...$result, 'type' => $nullable ? 'Record<string, unknown>[] | null' : 'Record<string, unknown>[]'];
+        }
+
         $inlineType = ValueResult::arrayWrapType($filterResult['type']);
 
-        if ($call instanceof NullsafeMethodCall) {
+        if ($nullable) {
             $inlineType .= ' | null';
         }
 

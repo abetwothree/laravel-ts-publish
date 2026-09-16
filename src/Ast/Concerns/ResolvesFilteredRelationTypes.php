@@ -12,7 +12,8 @@ use Illuminate\Database\Eloquent\Model;
 
 /**
  * Type a filtered subset of a model's members: a `Pick<Model, …>` reference when every key is a
- * published column, else an inline object shape, and `Record<string, unknown>` when the keys arrive at runtime.
+ * published column, else an inline object shape, and `Record<string, unknown>` when the keys arrive at runtime
+ * or the typed shape names a token its scope cannot import.
  *
  * Two production callers. RelationFilterHandler types `$this->relation->only([...])` through it, and
  * ReceiverMethodReturnResolver types the same filters on any model receiver. ResolvesModelTypes still
@@ -136,11 +137,46 @@ trait ResolvesFilteredRelationTypes
     }
 
     /**
-     * The type of a model filter whose key list is not literal: it returns an attribute-keyed array whatever arrives.
+     * A literal-key filter on one model: the `Pick<>` reference when every key is a published column, else the inline
+     * shape, or null when the keys name nothing.
+     *
+     * @param  class-string<Model>  $modelFqcn
+     * @param  list<string>  $keys
+     * @param  bool  $reference  false where the answer carries no import, so a `Pick<>` would drop the enclosing shape
+     * @return ValueExpressionResult|null
+     */
+    protected function literalKeyFilterResult(string $modelFqcn, array $keys, bool $include, bool $reference = true): ?array
+    {
+        // Every filter key is a plain DB column: reference the emitted model interface directly so its
+        // #[TsCasts]/@property refinements stay authoritative instead of being re-derived and lost.
+        $modelReference = $reference ? $this->relationFilterModelReference($modelFqcn, $keys, $include) : null;
+
+        if ($modelReference !== null) {
+            return [...ValueResult::unknown(), 'type' => $modelReference, 'modelFqcn' => $modelFqcn];
+        }
+
+        $filtered = $this->resolveFilteredRelationType($modelFqcn, $keys, $include);
+
+        if ($filtered['type'] === 'unknown') {
+            return null;
+        }
+
+        return [
+            ...ValueResult::unknown(),
+            'type' => $filtered['type'],
+            'embeddedEnumFqcns' => $filtered['enumFqcns'],
+            'embeddedModelFqcns' => $filtered['modelFqcns'],
+            'customImports' => $filtered['customImports'],
+        ];
+    }
+
+    /**
+     * The `Record<string, unknown>` a model filter returns, for keys it cannot type: a key list read at runtime, or a
+     * typed shape naming a token its scope cannot import.
      *
      * @return ValueExpressionResult
      */
-    protected function runtimeKeyFilterResult(bool $nullable): array
+    protected function attributeRecordResult(bool $nullable): array
     {
         return [...ValueResult::unknown(), 'type' => $nullable ? 'Record<string, unknown> | null' : 'Record<string, unknown>'];
     }

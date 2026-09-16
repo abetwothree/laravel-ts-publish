@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
+use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafeMethodCall;
@@ -13,10 +14,12 @@ use PhpParser\Node\Scalar\String_;
 use ReflectionMethod;
 
 /**
- * The `only`/`except` filter vocabulary and the key list read off such a call's arguments.
+ * The `only`/`except` filter vocabulary, the key list read off such a call's arguments, and whether a class runs
+ * Model's own filter.
  *
- * The single home for both: FiltersModelAttributes composes this trait for `$this->only([...])`,
- * RelationFilterHandler for `$this->relation->only([...])`. Stateless — no host state is read.
+ * The single home for all three: the filter-aware code (FiltersModelAttributes, RelationFilterHandler and
+ * ReceiverMethodReturnResolver) reads keys and overrides here, and the generic reflectors ask it which calls to
+ * decline. Stateless — no host state is read.
  *
  * @internal
  */
@@ -89,5 +92,18 @@ trait FiltersAttributeKeys
         return ! $call->isFirstClassCallable()
             && $call->name instanceof Identifier
             && in_array($call->name->toString(), $this->supportedAttributeFilters(), true);
+    }
+
+    /**
+     * Whether a class runs Model's own `only()`/`except()`, whose return the filter answers describe.
+     *
+     * An override declares its own return, which PHP holds every subclass to, so reflection answers it instead.
+     *
+     * @param  class-string  $class
+     */
+    protected function runsModelFilter(string $class, string $methodName): bool
+    {
+        return method_exists($class, $methodName)
+            && new ReflectionMethod($class, $methodName)->getDeclaringClass()->getName() === Model::class;
     }
 }

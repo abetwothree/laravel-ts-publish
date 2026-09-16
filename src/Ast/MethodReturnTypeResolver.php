@@ -70,7 +70,12 @@ final class MethodReturnTypeResolver
         $this->analyzing[$key] = true;
 
         try {
-            $analysis = resolve(AstEngine::class)->analyzeMethod($class, $methodName, is_a($class, Model::class, true) ? $class : null);
+            $analysis = resolve(AstEngine::class)->analyzeMethod(
+                $class,
+                $methodName,
+                is_a($class, Model::class, true) ? $class : null,
+                carriesImports: false,
+            );
         } finally {
             unset($this->analyzing[$key]);
         }

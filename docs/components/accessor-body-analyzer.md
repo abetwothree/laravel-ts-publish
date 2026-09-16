@@ -62,10 +62,10 @@ against the model and `$this->major` is `unknown`. The subject is re-asserted as
 FQCN, so `MethodContext::$reflection` already *is* the model even when the body it found lives in a
 trait's file, and re-asserting keeps that true for any future caller that locates on the declaring
 class instead. `Release` uses `DerivesReleaseVersion` to pin the trait-declared case end to end. The
-analyzer runs on the
-[generic profile](ast-engine.md#controller-profile) (`ResourceExpressionHandlers::withoutResourceHandlers()`)
-— an accessor body is not a resource `toArray()`, so `ConditionalMethodHandler`, `ToResourceHandler`
-and `RelationFilterHandler` have no business claiming its expressions.
+analyzer runs on `ResourceExpressionHandlers::forModelClosures()` — an accessor body is not a resource
+`toArray()`, so `ConditionalMethodHandler` and `ToResourceHandler` have no business claiming its expressions.
+`RelationFilterHandler` stays: the body reads the model's own relations, and only that handler types their
+`only()`/`except()`. `Comment::relationPicks()` pins it, publishing `Pick<User, 'id' | 'name'>` and `Comment[]`.
 
 ## Cycles
 

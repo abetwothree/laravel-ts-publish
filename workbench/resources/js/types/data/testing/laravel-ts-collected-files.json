@@ -107,6 +107,7 @@
     "app\/Http\/Resources\/CoalesceChannelResource.php",
     "app\/Http\/Resources\/CollectionPipelineResource.php",
     "app\/Http\/Resources\/CommentComposedResource.php",
+    "app\/Http\/Resources\/CommentRelationFiltersResource.php",
     "app\/Http\/Resources\/CommentResource.php",
     "app\/Http\/Resources\/ConditionalDefaultsResource.php",
     "app\/Http\/Resources\/ConditionalParamArrayResource.php",

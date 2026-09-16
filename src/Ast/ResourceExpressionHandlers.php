@@ -60,8 +60,9 @@ final class ResourceExpressionHandlers
      * RelationFilterHandler), same relative order.
      *
      * Named for what it drops, not for who may use it: the one production caller is
-     * ControllerExpressionHandlers::make(). Every other non-resource subject — a broadcast event, model
-     * metadata, any DTO reaching AstEngine::analyzeMethod() — runs the full resource profile instead.
+     * ControllerExpressionHandlers::make(). A model's getter body runs forModelClosures(), and every other
+     * non-resource subject — a broadcast event, model metadata, any DTO reaching AstEngine::analyzeMethod() — runs
+     * the full resource profile instead.
      *
      * @return list<ExpressionHandler>
      */
@@ -72,6 +73,23 @@ final class ResourceExpressionHandlers
             static fn (ExpressionHandler $handler): bool => ! $handler instanceof ConditionalMethodHandler
                 && ! $handler instanceof ToResourceHandler
                 && ! $handler instanceof RelationFilterHandler,
+        ));
+    }
+
+    /**
+     * make() minus ConditionalMethodHandler and ToResourceHandler, same relative order: a model getter body's profile.
+     *
+     * AstEngine::analyzeModelClosure() is its one caller. A getter body reads the model's own relations, and only
+     * RelationFilterHandler types their only()/except().
+     *
+     * @return list<ExpressionHandler>
+     */
+    public static function forModelClosures(): array
+    {
+        return array_values(array_filter(
+            self::handlers(),
+            static fn (ExpressionHandler $handler): bool => ! $handler instanceof ConditionalMethodHandler
+                && ! $handler instanceof ToResourceHandler,
         ));
     }
 

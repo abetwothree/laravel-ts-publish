@@ -109,6 +109,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
      * @param  list<ExpressionHandler>|null  $handlerProfile  overrides the resource profile
      * @param  AnalysisScope|null  $scope  a scope already seeded by AstEngine::bindingsFor(), used as-is
      * @param  MethodContext|null  $context  a context already located for $methodName, used instead of locating one
+     * @param  bool  $carriesImports  seeds AnalysisScope::$carriesImports; a supplied scope keeps its own
      */
     public function __construct(
         protected ReflectionClass $resourceReflection,
@@ -117,6 +118,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         protected ?array $handlerProfile = null,
         ?AnalysisScope $scope = null,
         protected ?MethodContext $context = null,
+        bool $carriesImports = true,
     ) {
         $this->scope = $scope ?? new AnalysisScope(
             self::genericReflection($this->resourceReflection->getName()),
@@ -125,6 +127,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         if ($scope === null) {
             $this->scope->requestVarNames = $this->resolveRequestVarNames($this->methodName);
+            $this->scope->carriesImports = $carriesImports;
         }
 
         if ($this->scope->modelClass !== null) {
@@ -717,6 +720,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $this->scope->modelClass,
             $this->methodName,
             $this->handlerProfile,
+            carriesImports: $this->scope->carriesImports,
         );
 
         return $parentAnalyzer->analyze();

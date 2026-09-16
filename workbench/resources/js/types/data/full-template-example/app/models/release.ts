@@ -26,7 +26,7 @@ export interface Release
     loop_a: unknown;
     loop_b: unknown;
     /** The same four filters on the model itself, read as a getter body. */
-    column_picks: { named: unknown; rest: unknown; picked: Record<string, unknown>; left: Record<string, unknown> };
+    column_picks: { named: Pick<Release, 'major' | 'minor'>; rest: Pick<Release, 'id' | 'major' | 'minor' | 'created_at' | 'updated_at'>; picked: Record<string, unknown>; left: Record<string, unknown> };
     /** Loop-built dynamic keys: must stay unknown[], nothing here is statically knowable. */
     dynamic_totals: unknown[];
     trait_version: { major: number; label: string };

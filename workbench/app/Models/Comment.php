@@ -22,6 +22,23 @@ class Comment extends Model
         'metadata',
     ];
 
+    /** Read at runtime, so a filter given this list names no key it could type. */
+    protected $filterKeys = ['id'];
+
+    /** Relation filters on a single relation and a to-many one, written in the model itself and read as a method body. */
+    public function relationSummary(): array
+    {
+        return [
+            'id' => $this->id,
+            'author' => $this->user->only(['id', 'name']),
+            'author_role' => $this->user?->only(['id', 'role']),
+            'post_fields' => $this->post->except($this->filterKeys),
+            'replies' => $this->replies->only([1, 2]),
+            'kept_replies' => $this->replies?->except($this->filterKeys),
+            'reply_previews' => $this->replies->map->only(['id', 'content']),
+        ];
+    }
+
     #[TsCasts(['metadata' => 'Record<string, unknown>'])]
     protected function casts(): array
     {
@@ -54,5 +71,19 @@ class Comment extends Model
         return Attribute::make(
             get: fn (): string => substr($this->content ?? '', 0, 100),
         );
+    }
+
+    /** The same relation filters, read as a getter body. */
+    protected function relationPicks(): Attribute
+    {
+        return Attribute::get(fn () => [
+            'id' => $this->id,
+            'author' => $this->user->only(['id', 'name']),
+            'author_role' => $this->user?->only(['id', 'role']),
+            'post_fields' => $this->post->except($this->filterKeys),
+            'replies' => $this->replies->only([1, 2]),
+            'kept_replies' => $this->replies?->except($this->filterKeys),
+            'reply_previews' => $this->replies->map->only(['id', 'content']),
+        ]);
     }
 }

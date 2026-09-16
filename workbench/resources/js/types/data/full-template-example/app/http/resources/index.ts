@@ -22,6 +22,7 @@ export * from './closure-union-metadata-resource';
 export * from './coalesce-channel-resource';
 export * from './collection-pipeline-resource';
 export * from './comment-composed-resource';
+export * from './comment-relation-filters-resource';
 export * from './comment-resource';
 export * from './conditional-defaults-resource';
 export * from './conditional-param-array-resource';

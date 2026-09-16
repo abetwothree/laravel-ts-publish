@@ -50,7 +50,7 @@ final class ReceiverMethodReturnResolver
         $results = [];
 
         foreach ($receiver->classes as $class) {
-            $result = $this->ruleFor($receiver, $class, $methodName, $call) ?? $this->resolveOn($class, $methodName, $fromInside);
+            $result = $this->ruleFor($receiver, $class, $methodName, $scope, $call) ?? $this->resolveOn($class, $methodName, $fromInside);
 
             // One untypable arm would make the union a lie; decline so dispatch reaches the floor.
             if ($result === null) {
@@ -77,6 +77,7 @@ final class ReceiverMethodReturnResolver
         ReceiverType $receiver,
         string $class,
         string $methodName,
+        AnalysisScope $scope,
         MethodCall|NullsafeMethodCall|StaticCall|null $call,
     ): ?array {
         $resolver = resolve(ModelAttributeResolver::class);
@@ -93,8 +94,8 @@ final class ReceiverMethodReturnResolver
             return $keyType === null ? null : [...ValueResult::unknown(), 'type' => $keyType.'[]'];
         }
 
-        if (in_array($methodName, $this->supportedAttributeFilters(), true)) {
-            return $this->attributeFilterRule($receiver, $methodName, $call);
+        if (in_array($methodName, $this->supportedAttributeFilters(), true) && $this->runsModelFilter($class, $methodName)) {
+            return $this->attributeFilterRule($receiver, $methodName, $scope, $call);
         }
 
         return null;
@@ -112,6 +113,7 @@ final class ReceiverMethodReturnResolver
     private function attributeFilterRule(
         ReceiverType $receiver,
         string $methodName,
+        AnalysisScope $scope,
         MethodCall|NullsafeMethodCall|StaticCall|null $call,
     ): ?array {
         if (! $call instanceof MethodCall && ! $call instanceof NullsafeMethodCall) {
@@ -127,33 +129,16 @@ final class ReceiverMethodReturnResolver
         $keys = $this->extractFilterKeys($call, new ReflectionMethod(Model::class, $methodName));
 
         if ($keys === null || $keys === []) {
-            return $this->runtimeKeyFilterResult(nullable: false);
+            return $this->attributeRecordResult(nullable: false);
         }
 
-        $include = $methodName === 'only';
-        $reference = $this->relationFilterModelReference($models[0], $keys, $include);
+        $result = $this->literalKeyFilterResult($models[0], $keys, $methodName === 'only', $scope->carriesImports);
 
-        if ($reference !== null) {
-            $result = [...ValueResult::unknown(), 'type' => $reference, 'modelFqcn' => $models[0]];
-
-            return ValueResult::namesOnlyPublishedModels($result) ? $result : null;
+        if ($result !== null && ! $scope->carriesImports && TsTypeString::shapeValueHasUnimportableToken($result['type'])) {
+            return $this->attributeRecordResult(nullable: false);
         }
 
-        $filtered = $this->resolveFilteredRelationType($models[0], $keys, $include);
-
-        if ($filtered['type'] === 'unknown') {
-            return null;
-        }
-
-        $result = [
-            ...ValueResult::unknown(),
-            'type' => $filtered['type'],
-            'embeddedEnumFqcns' => $filtered['enumFqcns'],
-            'embeddedModelFqcns' => $filtered['modelFqcns'],
-            'customImports' => $filtered['customImports'],
-        ];
-
-        return ValueResult::namesOnlyPublishedModels($result) ? $result : null;
+        return $result !== null && ValueResult::namesOnlyPublishedModels($result) ? $result : null;
     }
 
     /**

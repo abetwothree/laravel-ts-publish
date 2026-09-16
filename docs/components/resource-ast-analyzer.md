@@ -21,11 +21,12 @@ multi-model accessor union such as `Attribute<ModelA|ModelB, never>`), the analy
 object shape — the model interface already carries `#[TsCasts]` overrides and `@property`
 docblock refinements that a from-scratch recompute loses.
 
-The two paths agree by construction rather than by coincidence: the `Pick<>` builder, the inline-shape
-builder and the runtime-key answer (`runtimeKeyFilterResult()`) all live on `ResolvesFilteredRelationTypes`, and
-both callers invoke them in the same order on the same model and keys. The `?->` flag differs:
-`RelationFilterHandler` passes it to `runtimeKeyFilterResult()` itself, while `attributeFilterRule()` passes `false`
-and leaves `| null` to `ReceiverMethodCallHandler`. One further difference is hidden by production ordering: `attributeFilterRule()` additionally runs its result through
+The two paths agree by construction rather than by coincidence: the literal-key answer (`literalKeyFilterResult()`,
+the `Pick<>` or else the inline shape) and the `Record<string, unknown>` answer (`attributeRecordResult()`) both live
+on `ResolvesFilteredRelationTypes`, and both callers invoke them on the same model, keys and
+`AnalysisScope::$carriesImports`, and gate them on the same `FiltersAttributeKeys::runsModelFilter()` override check.
+The `?->` flag differs: `RelationFilterHandler` adds `| null` itself, while `attributeFilterRule()` leaves it to
+`ReceiverMethodCallHandler`. One further difference is hidden by production ordering: `attributeFilterRule()` additionally runs its result through
 `ValueResult::namesOnlyPublishedModels()`, so for an abstract or `Illuminate\`-namespaced model the relation path
 still emits a `Pick<>` where the receiver rule declines. That is what keeps `RelationFilterHandler` and
 `ReceiverMethodCallHandler` inert against each other even though both claim a single-model
@@ -48,13 +49,28 @@ Two limits follow from where those declines stop:
 - **A model-less scope.** A controller's scope has no model, so `RelationCollectionChainHandler` still reflects a
   filter there: `$this->post->except($keys)` publishes `unknown[]` and `$this->post->only(['id', 'title'])`
   publishes `Record<string, unknown>`.
-- **A model's own body.** A model method or accessor body is analyzed with the model as its subject. There
-  `ReceiverMethodCallHandler` reads a bare `$this` as the model for a runtime-key filter, so `$this->only($keys)`
-  and `$this->except($keys)` publish `Record<string, unknown>`, as a relation filter does. A literal key list on
-  bare `$this` publishes `unknown`: its `Pick<Model, …>` names a token, and a method-body shape carries no FQCN
-  channel, so `MethodReturnTypeResolver` would drop the whole shape. An accessor body runs without
-  `RelationFilterHandler`, so a many-relation filter there publishes `unknown` too. `ReleaseColumnsResource` reads
-  `Release::columnSummary()` and the `column_picks` accessor, and pins both kinds of body.
+- **A model's own body.** A model method or accessor body is analyzed with the model as its subject, and the same
+  filter-aware code answers there. `ReceiverMethodCallHandler` reads a bare `$this` as the model for any
+  `only()`/`except()`, so the receiver rules answer it; `RelationFilterHandler` answers a relation, in a method body
+  through the resource profile and in a getter body through `ResourceExpressionHandlers::forModelClosures()`. A
+  getter body carries its imports, so it publishes exactly what a resource would: `Pick<Release, 'major' | 'minor'>`,
+  `Pick<User, 'id' | 'name'>`, `Comment[]`. A method body reached by the body fallback carries none, so each filter
+  publishes the most specific answer naming no token, as
+  [receiver-types § The body fallback carries no FQCN channel](receiver-types.md#the-body-fallback-carries-no-fqcn-channel)
+  lists. `ReleaseColumnsResource` and `CommentRelationFiltersResource` pin both kinds of body. Where the answer
+  differs from what a resource publishes, or stays `unknown`:
+  - In a method body, a literal filter whose inline shape names an enum or a model publishes
+    `Record<string, unknown>`, and a to-many filter publishes `unknown[]`, not `Comment[]`.
+  - A model that overrides `only()` or `except()` publishes the override's own return, not `Record<string, unknown>`
+    or a `Pick<>`, in every scope.
+  - A literal key list that names nothing the model publishes, or a member that is neither a relation nor a
+    model-returning accessor, publishes `unknown` in either body. An accessor body gave both
+    `Record<string, unknown>` before the generic reflectors declined filters; `unknown` there is the filter-aware
+    answer for keys it cannot type.
+  - A multi-model accessor filter where one arm's model overrides the filter publishes `unknown`: the relation arm
+    declines it, and the receiver rules type no union.
+  - `$this->resource->relation` is matched in a model body as in a resource, although a model has no `resource`
+    proxy.
 
 ### `$this->resource` spells the same filter
 
@@ -85,20 +101,23 @@ the resource's own model, a single-model relation and a many-relation, `?->` inc
   literal string list, which names attributes the runtime value never selects; `PostResource`'s `comments` and
   `comments_limited` now publish `Comment[]`.
 - **A runtime key list.** `only($request->input('fields'))` names nothing to pick. Both owners answer it with
-  `ResolvesFilteredRelationTypes::runtimeKeyFilterResult()`, `Record<string, unknown>`, the attribute-keyed array
+  `ResolvesFilteredRelationTypes::attributeRecordResult()`, `Record<string, unknown>`, the attribute-keyed array
   either filter returns: `RelationFilterHandler` for a single-model relation, a model-returning accessor, or an
   accessor typed as a union of models (`Attribute<CrmUser|User|null, never>`), and `attributeFilterRule()` for the
   resource's own model or any other receiver holding one model class. A relation typed as a union of models, such as
   `MorphTo<CrmUser|User, $this>`, reaches neither and publishes `unknown` under both spellings.
 
 `RelationFilterHandler`'s relation arm declines (`null`) when it cannot type a filter: the member is neither a
-relation nor a model-returning accessor, a literal key list names nothing it can type, or a many-relation's own
-read is `unknown`. A declined call on a member named `map` then reaches the map-proxy arm.
+relation nor a model-returning accessor, the related model overrides the filter, a literal key list names nothing
+it can type, or a many-relation's own read is `unknown`. A declined call on a member named `map` then reaches the
+map-proxy arm.
 
 The map-proxy arm types `$this->comments->map->only(['id'])` as `{ id: number }[]` when it can bind the element
 model of the receiver: a `whenLoaded` to-many closure parameter, or a to-many relation read as `$this->comments` or
-`$this->resource->comments`. It claims `unknown` when it binds no element model, when the key list is not literal,
-or when the keys name nothing. `$this->resource->map->only([...])` binds no element model, so it publishes that
+`$this->resource->comments`. A single relation such as `$this->author` is no collection and binds nothing. It claims
+`unknown` when it binds no element model, when that model overrides the filter, when the key list is not literal, or
+when the keys name nothing. Where the scope carries no import, a filtered shape that names a token publishes
+`Record<string, unknown>[]`. `$this->resource->map->only([...])` binds no element model, so it publishes that
 `unknown`, the answer it had before the proxy spelling was matched. On a model that declares a real `map` relation
 the relation arm answers instead, exactly as it answers `$this->map->only([...])`.
 

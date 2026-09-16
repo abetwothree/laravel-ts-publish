@@ -4607,6 +4607,10 @@
                     "type": "string"
                 },
                 {
+                    "name": "relation_picks",
+                    "type": "{ id: number; author: Pick<User, 'id' | 'name'>; author_role: Pick<User, 'id' | 'role'> | null; post_fields: Record<string, unknown>; replies: Comment[]; kept_replies: Comment[] | null; reply_previews: { id: number; content: string }[] }"
+                },
+                {
                     "name": "post",
                     "type": "Post"
                 },
@@ -6658,7 +6662,7 @@
                 },
                 {
                     "name": "column_picks",
-                    "type": "{ named: unknown; rest: unknown; picked: Record<string, unknown>; left: Record<string, unknown> }"
+                    "type": "{ named: Pick<Release, 'major' | 'minor'>; rest: Pick<Release, 'id' | 'major' | 'minor' | 'created_at' | 'updated_at'>; picked: Record<string, unknown>; left: Record<string, unknown> }"
                 },
                 {
                     "name": "dynamic_totals",
@@ -9788,6 +9792,26 @@
                 {
                     "name": "[key: number]",
                     "type": "Tag",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\CommentRelationFiltersResource": {
+            "name": "CommentRelationFiltersResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "summary",
+                    "type": "{ id: number; author: { id: number; name: string }; author_role: Record<string, unknown> | null; post_fields: Record<string, unknown>; replies: unknown[]; kept_replies: unknown[] | null; reply_previews: { id: number; content: string }[] }",
+                    "optional": false
+                },
+                {
+                    "name": "picks",
+                    "type": "{ id: number; author: Pick<User, 'id' | 'name'>; author_role: Pick<User, 'id' | 'role'> | null; post_fields: Record<string, unknown>; replies: Comment[]; kept_replies: Comment[] | null; reply_previews: { id: number; content: string }[] }",
                     "optional": false
                 }
             ]
@@ -13691,12 +13715,12 @@
                 },
                 {
                     "name": "columns",
-                    "type": "{ named: unknown; rest: unknown; picked: Record<string, unknown>; left: Record<string, unknown> }",
+                    "type": "{ named: { major: number; minor: number }; rest: { id: number; major: number; minor: number; created_at: string | null; updated_at: string | null }; picked: Record<string, unknown>; left: Record<string, unknown> }",
                     "optional": false
                 },
                 {
                     "name": "picks",
-                    "type": "{ named: unknown; rest: unknown; picked: Record<string, unknown>; left: Record<string, unknown> }",
+                    "type": "{ named: Pick<Release, 'major' | 'minor'>; rest: Pick<Release, 'id' | 'major' | 'minor' | 'created_at' | 'updated_at'>; picked: Record<string, unknown>; left: Record<string, unknown> }",
                     "optional": false
                 }
             ]

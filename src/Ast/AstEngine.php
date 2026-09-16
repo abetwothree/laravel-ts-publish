@@ -46,18 +46,23 @@ final class AstEngine
      *
      * @param  class-string  $class
      * @param  class-string<Model>|null  $modelClass  Backing model for `$this->prop` resolution; null to skip.
+     * @param  bool  $carriesImports  false when the caller keeps only the flattened types, never the FQCN channels
      *
      * @internal
      */
-    public function analyzeMethod(string $class, string $method = 'toArray', ?string $modelClass = null): MethodAnalysis
-    {
+    public function analyzeMethod(
+        string $class,
+        string $method = 'toArray',
+        ?string $modelClass = null,
+        bool $carriesImports = true,
+    ): MethodAnalysis {
         $reflection = new ReflectionClass($class);
 
         if ($modelClass === null && is_a($class, JsonResource::class, true)) {
             $modelClass = resolve(ModelClassResolver::class)->resolve($reflection);
         }
 
-        $key = $class.'@'.$method.'@'.($modelClass ?? '');
+        $key = $class.'@'.$method.'@'.($modelClass ?? '').($carriesImports ? '' : '@importless');
 
         if (isset($this->resultCache[$key])) {
             return clone $this->resultCache[$key];
@@ -77,7 +82,7 @@ final class AstEngine
         $this->analyzing[$key] = true;
 
         try {
-            $analysis = new ResourceAstAnalyzer($reflection, $modelClass, $method)->analyze();
+            $analysis = new ResourceAstAnalyzer($reflection, $modelClass, $method, carriesImports: $carriesImports)->analyze();
         } finally {
             unset($this->analyzing[$key]);
         }
@@ -181,7 +186,7 @@ final class AstEngine
             $scope->subjectReflection,
             $modelClass,
             $context->method->name->toString(),
-            ResourceExpressionHandlers::withoutResourceHandlers(),
+            ResourceExpressionHandlers::forModelClosures(),
             $scope,
             $context,
         );

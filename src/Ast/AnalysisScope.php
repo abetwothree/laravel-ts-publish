@@ -49,6 +49,13 @@ final class AnalysisScope
     public ?string $forwardsUndeclaredMembersTo = null;
 
     /**
+     * False while MethodReturnTypeResolver's body fallback analyzes a method: it flattens the shape into a type string
+     * with no FQCN channel and drops the whole shape once a value names a token. Filter code reads it to publish the
+     * most specific answer that names none.
+     */
+    public bool $carriesImports = true;
+
+    /**
      * Related model set while analyzing a whenLoaded closure, so `$variable->prop`/`->method()` inside it resolve.
      *
      * @var class-string<Model>|null

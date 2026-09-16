@@ -433,7 +433,9 @@ that limit differently, and the difference decides where you go looking for the 
 - **The body fallback discards the whole answer.** When a bare `: array` signature sends
   `MethodReturnTypeResolver::bodyType()` to the literal body, the inline type it builds is tested with
   `TsTypeString::shapeValueHasUnimportableToken()`, and a single class-named value throws the entire body
-  result away rather than degrading one leaf. The vague declaration then stands. See
+  result away rather than degrading one leaf. The vague declaration then stands. An `only()`/`except()` value is
+  the one exception: it publishes an answer that names no token (its inline shape, `Record<string, unknown>`, or
+  `unknown[]` for a to-many relation), so a method body's filters no longer cost the shape. See
   [receiver-types § The body fallback carries no FQCN channel](./components/receiver-types.md#the-body-fallback-carries-no-fqcn-channel).
 - **A docblock shape degrades just the leaf.** An `Arrayable` whose `@return array{owner: User}` names a
   class publishes `{ owner: unknown }`, and every sibling key keeps its real type;

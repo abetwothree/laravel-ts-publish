@@ -3,12 +3,15 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConstantKeyFixture;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConstantKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\InheritedFilterRelease;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RecursiveVagueFixture;
 use Workbench\App\Http\Resources\ServiceReturnResource;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\Release;
 use Workbench\App\Services\PostStatsService;
 
 test('a vague array signature falls back to the literal body', function () {
@@ -43,4 +46,20 @@ test('a precise declaration is kept, and an absent method declines', function ()
         ->toBe(['type' => '{ views: number; likes: number }', 'optional' => false])
         ->and(resolve(MethodReturnTypeResolver::class)->resolve(PostStatsService::class, 'missingMethod'))
         ->toBeNull();
+});
+
+// The flattened body keeps no FQCN channel, so its filters publish no token; an analysis whose caller keeps the
+// channels is cached apart and keeps the Pick<>.
+test('a body fallback analyzes its method without imports, apart from an analysis that keeps them', function () {
+    $withImports = resolve(AstEngine::class)->analyzeMethod(Release::class, 'columnSummary', Release::class);
+    $withoutImports = resolve(AstEngine::class)->analyzeMethod(Release::class, 'columnSummary', Release::class, carriesImports: false);
+
+    expect(collect($withImports->properties)->keyBy('name')['named']['type'])->toBe("Pick<Release, 'major' | 'minor'>")
+        ->and(collect($withoutImports->properties)->keyBy('name')['named']['type'])->toBe('{ major: number; minor: number }');
+});
+
+test('a body the model inherits is analyzed without imports too', function () {
+    expect(resolve(MethodReturnTypeResolver::class)->resolve(InheritedFilterRelease::class, 'columnSummary')['type'] ?? null)
+        ->toBe('{ named: { major: number; minor: number }; rest: { id: number; major: number; minor: number; '
+            .'created_at: string | null; updated_at: string | null }; picked: Record<string, unknown>; left: Record<string, unknown> }');
 });

@@ -47,6 +47,7 @@ use Workbench\App\Http\Resources\ClosureControlFlowResource;
 use Workbench\App\Http\Resources\ClosureParamShadowResource;
 use Workbench\App\Http\Resources\ClosureUnionMetadataResource;
 use Workbench\App\Http\Resources\CoalesceChannelResource;
+use Workbench\App\Http\Resources\CommentRelationFiltersResource;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\CommonResource;
 use Workbench\App\Http\Resources\ConditionalDefaultsResource;
@@ -2367,15 +2368,46 @@ describe('ResourceAstAnalyzer with ProxyFilterDirectResource and ProxyFilterWrap
 });
 
 describe('ResourceAstAnalyzer with ReleaseColumnsResource (filters inside the model itself)', function () {
-    test('a runtime key list types as Record<string, unknown> in a model method body and in an accessor getter', function () {
-        // `$this` is the model in both bodies. A literal list stays unknown there: its Pick<Release, …> would name a
-        // token the method-body shape cannot import, and MethodReturnTypeResolver would then drop the whole shape.
-        $expected = '{ named: unknown; rest: unknown; picked: Record<string, unknown>; left: Record<string, unknown> }';
+    test('a model method body publishes token-free filters and an accessor getter publishes the Pick<>', function () {
+        // `$this` is the model in both bodies. The method body's shape carries no import, so its literal filters inline
+        // the columns; the getter's channels reach the model file, so it keeps the Pick<> references.
+        $method = '{ named: { major: number; minor: number }; rest: { id: number; major: number; minor: number; '
+            .'created_at: string | null; updated_at: string | null }; picked: Record<string, unknown>; left: Record<string, unknown> }';
+        $getter = "{ named: Pick<Release, 'major' | 'minor'>; rest: Pick<Release, 'id' | 'major' | 'minor' | 'created_at' | "
+            ."'updated_at'>; picked: Record<string, unknown>; left: Record<string, unknown> }";
         $props = collect(new ResourceAstAnalyzer(new ReflectionClass(ReleaseColumnsResource::class), Release::class)->analyze()->properties)->keyBy('name');
+        $accessor = resolve(ModelAttributeResolver::class)->resolveAttribute(Release::class, 'column_picks');
 
-        expect($props['columns']['type'])->toBe($expected)
-            ->and($props['picks']['type'])->toBe($expected)
-            ->and(resolve(ModelAttributeResolver::class)->resolveAttribute(Release::class, 'column_picks')['type'])->toBe($expected);
+        expect($props['columns']['type'])->toBe($method)
+            ->and($props['picks']['type'])->toBe($getter)
+            ->and($accessor['type'])->toBe($getter)
+            ->and($accessor['classFqcns'])->toBe([Release::class]);
+    });
+});
+
+describe('ResourceAstAnalyzer with CommentRelationFiltersResource (relation filters inside the model itself)', function () {
+    test('a model method body publishes token-free relation filters beside its typed keys', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(CommentRelationFiltersResource::class), Comment::class)->analyze()->properties)->keyBy('name');
+
+        expect($props['summary']['type'])->toBe(
+            '{ id: number; author: { id: number; name: string }; author_role: Record<string, unknown> | null; '
+            .'post_fields: Record<string, unknown>; replies: unknown[]; kept_replies: unknown[] | null; '
+            .'reply_previews: { id: number; content: string }[] }',
+        );
+    });
+
+    test('an accessor getter publishes the Pick<> and the to-many relation read, with their imports', function () {
+        $expected = "{ id: number; author: Pick<User, 'id' | 'name'>; author_role: Pick<User, 'id' | 'role'> | null; "
+            .'post_fields: Record<string, unknown>; replies: Comment[]; kept_replies: Comment[] | null; '
+            .'reply_previews: { id: number; content: string }[] }';
+        $result = resolve(AstEngine::class)->analyze(CommentRelationFiltersResource::class);
+        $props = collect($result->properties)->keyBy('name');
+        $accessor = resolve(ModelAttributeResolver::class)->resolveAttribute(Comment::class, 'relation_picks');
+
+        expect($props['picks']['type'])->toBe($expected)
+            ->and($accessor['type'])->toBe($expected)
+            ->and($accessor['classFqcns'])->toBe([User::class, Comment::class])
+            ->and($result->typeImports)->toBe(['./workbench/app/models' => ['Comment', 'User']]);
     });
 });
 

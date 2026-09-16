@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationFilterHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ResourceRelationModel;
 use Illuminate\Support\Facades\Schema;
 use PhpParser\Node\Arg;
@@ -335,8 +336,6 @@ it('never reads $this->resource as a relation, even on a model that declares one
     expect($result)->toBeNull();
 });
 
-// `map` is no member of the model, so the member arm declines and the map-proxy arm claims the call, as it did before
-// the proxy spelling was matched. That arm is the only path here that returns `unknown` rather than null.
 // On a model that declares a real `map` relation, `$this->resource->map` is that relation, exactly as `$this->map` is.
 it('reads a real map relation as a relation under both spellings, not as the map proxy', function (string $php) {
     $scope = new AnalysisScope(new ReflectionClass(TeamResource::class), Team::class);
@@ -367,6 +366,8 @@ it('types a map proxy filter on a relation the same under both spellings', funct
     '$this->resource->comments->map->only([\'id\'])',
 ]);
 
+// `map` is no member of the model, so the member arm declines and the map-proxy arm claims the call, as it did before
+// the proxy spelling was matched. That arm is the only path here that returns `unknown` rather than null.
 it('lets $this->resource->map->only([...]) reach the map-proxy arm', function () {
     $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
 
@@ -374,3 +375,55 @@ it('lets $this->resource->map->only([...]) reach the map-proxy arm', function ()
 
     expect($result)->toBe(['type' => 'unknown', 'optional' => false]);
 });
+
+// A single relation is no collection, so the map proxy binds no element model from it; without that check
+// `$this->author->map->only(['id'])` would publish a list of filtered authors that the call never returns.
+it('binds no map proxy element model from a single relation, under both spellings', function (string $php) {
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+
+    $result = (new RelationFilterHandler)->resolve(relationFilterExpr($php), $scope, relationFilterHandlerThrowingEngine());
+
+    expect($result)->toBe(['type' => 'unknown', 'optional' => false]);
+})->with([
+    '$this->author->map->only([\'id\'])',
+    '$this->resource->author->map->only([\'id\'])',
+]);
+
+// MethodReturnTypeResolver's body fallback flattens a method body into a type with no FQCN channel and drops the whole
+// shape once a value names a token, so there a filter publishes the most specific answer that names none.
+it('publishes a relation filter that names no token where the scope carries no import', function (string $model, string $php, array $expected) {
+    $scope = new AnalysisScope(new ReflectionClass($model), $model);
+    $scope->carriesImports = false;
+    $engine = new ResourceAstAnalyzer(new ReflectionClass($model), $model, carriesImports: false);
+
+    expect((new RelationFilterHandler)->resolve(relationFilterExpr($php), $scope, $engine))->toBe($expected);
+})->with([
+    'single relation, columns' => [Comment::class, '$this->user->only([\'id\', \'name\'])', [
+        'type' => '{ id: number; name: string }', 'optional' => false, 'embeddedEnumFqcns' => [], 'embeddedModelFqcns' => [], 'customImports' => [],
+    ]],
+    'single relation, an enum column' => [Comment::class, '$this->user->only([\'id\', \'role\'])', ['type' => 'Record<string, unknown>', 'optional' => false]],
+    'single relation, ?-> complement' => [Comment::class, '$this->post?->except([\'content\'])', ['type' => 'Record<string, unknown> | null', 'optional' => false]],
+    'single relation, runtime keys' => [Comment::class, '$this->user->only($keys)', ['type' => 'Record<string, unknown>', 'optional' => false]],
+    'multi-model accessor, an enum column' => [Warehouse::class, '$this->last_user_activity_by?->only([\'id\', \'role\'])', ['type' => 'Record<string, unknown> | null', 'optional' => false]],
+    'multi-model accessor' => [Warehouse::class, '$this->last_user_activity_by->only([\'id\'])', [
+        'type' => '{ id: number } | { id: number }', 'optional' => false, 'embeddedEnumFqcns' => [], 'embeddedModelFqcns' => [], 'customImports' => [],
+    ]],
+    'to-many' => [Comment::class, '$this->replies->only([1, 2])', ['type' => 'unknown[]', 'optional' => false]],
+    'to-many ?->' => [Comment::class, '$this->replies?->except($keys)', ['type' => 'unknown[] | null', 'optional' => false]],
+    'map proxy, columns' => [Comment::class, '$this->replies->map->only([\'id\'])', [
+        'type' => '{ id: number }[]', 'optional' => false, 'embeddedEnumFqcns' => [], 'embeddedModelFqcns' => [], 'customImports' => [],
+    ]],
+    'map proxy, an enum column' => [User::class, '$this->posts->map->only([\'id\', \'status\'])', ['type' => 'Record<string, unknown>[]', 'optional' => false]],
+]);
+
+// A model that overrides only()/except() declares its own return, which ReceiverMethodCallHandler reflects.
+it('declines a relation filter on a model that overrides the filter', function (string $php, ?array $expected) {
+    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), FilterOverrideModel::class);
+
+    expect((new RelationFilterHandler)->resolve(relationFilterExpr($php), $scope, relationFilterHandlerThrowingEngine()))->toBe($expected);
+})->with([
+    'single relation' => ['$this->twin->only([\'id\'])', null],
+    'single relation, runtime keys' => ['$this->resource->twin?->except($keys)', null],
+    'multi-model accessor' => ['$this->counterpart->only([\'id\'])', null],
+    'map proxy' => ['$this->twins->map->only([\'id\'])', ['type' => 'unknown', 'optional' => false]],
+]);

@@ -145,6 +145,23 @@ it('excludes exactly the three resource-only handlers from withoutResourceHandle
         ->and($classes)->toBe($expected);
 });
 
+// A model's getter body reads the model's own relations, whose only()/except() only RelationFilterHandler types.
+it('keeps RelationFilterHandler in forModelClosures() and excludes the two other resource-only handlers, same relative order', function () {
+    $classes = array_map(
+        fn (ExpressionHandler $handler): string => $handler::class,
+        ResourceExpressionHandlers::forModelClosures(),
+    );
+
+    $expected = array_values(array_filter(
+        resourceExpressionHandlerOrder(),
+        fn (string $class): bool => ! in_array($class, [ConditionalMethodHandler::class, ToResourceHandler::class], true),
+    ));
+
+    expect($classes)->toHaveCount(25)
+        ->and($classes)->toBe($expected)
+        ->and($classes)->toContain(RelationFilterHandler::class);
+});
+
 // Ordering pin #1: both handlers claim a first-class-callable $this->when(...) —
 // isThisMethodCall() matches on method name alone, ignoring args — so if ConditionalMethodHandler
 // ran first it would call getArgs(), which asserts !isFirstClassCallable() and fatals.

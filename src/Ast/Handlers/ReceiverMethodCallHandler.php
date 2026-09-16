@@ -12,7 +12,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\MethodCall;
@@ -21,7 +20,6 @@ use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
-use ReflectionMethod;
 
 /**
  * `<receiver>->m()`, `<receiver>?->m()` and `$expr::m()` typed from the method's return on the receiver's PHP class,
@@ -85,19 +83,14 @@ final class ReceiverMethodCallHandler implements ExpressionHandler
     }
 
     /**
-     * `$this` itself for a runtime-key `only()`/`except()` in a model's own body, which the chain handler declines.
+     * `$this` itself for an `only()`/`except()` in a model's own body, which the chain handler declines.
      *
-     * A literal key list stays unanswered there: its `Pick<Model, …>` names a token a method-body shape cannot import,
-     * so MethodReturnTypeResolver would drop the whole shape the call sits in.
+     * The receiver rules then answer as they do for any model receiver, token-free where the scope carries no import.
      */
     private function filteredModelSubject(MethodCall|NullsafeMethodCall|StaticCall $call, AnalysisScope $scope): ?ReceiverType
     {
-        if ($call instanceof StaticCall || ! $this->callsAttributeFilter($call) || ! $call->name instanceof Identifier) {
-            return null;
-        }
-
-        return $this->extractFilterKeys($call, new ReflectionMethod(Model::class, $call->name->toString())) === null
-            ? resolve(ReceiverClassResolver::class)->modelSubject($scope)
-            : null;
+        return $call instanceof StaticCall || ! $this->callsAttributeFilter($call)
+            ? null
+            : resolve(ReceiverClassResolver::class)->modelSubject($scope);
     }
 }

@@ -15,7 +15,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationFilterHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
+use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NarrowingGuardBodyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverIntegerKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverMethodProbe;
@@ -284,19 +286,45 @@ describe('ReceiverMethodCallHandler', function () {
     ]);
 
     // In a model's own method or accessor body `$this` is the model, and the chain handler declines its filters.
-    test('types a runtime-key filter on a model subject\'s own $this, and leaves a literal list and other subjects alone', function () {
-        $model = new AnalysisScope(new ReflectionClass(Release::class), Release::class);
+    // A method body reached by the body fallback carries no import, so a literal list there names no token.
+    test('types a filter on a model subject\'s own $this, naming no token where the scope carries no import', function () {
+        $getter = new AnalysisScope(new ReflectionClass(Release::class), Release::class);
+        $method = new AnalysisScope(new ReflectionClass(Post::class), Post::class);
+        $method->carriesImports = false;
         $plain = new AnalysisScope(new ReflectionClass(ReceiverVarProbe::class), Post::class);
         $handler = new ReceiverMethodCallHandler;
         $resolve = fn (string $php, AnalysisScope $scope): ?array => $handler->resolve(receiverHandlerExpr($php), $scope, chainHandlersThrowingEngine());
+        $record = ['type' => 'Record<string, unknown>', 'optional' => false];
 
-        expect($resolve('$this->only($keys)', $model))->toBe(['type' => 'Record<string, unknown>', 'optional' => false])
-            ->and($resolve('$this->except($this->keys)', $model))->toBe(['type' => 'Record<string, unknown>', 'optional' => false])
-            ->and($resolve('$this?->except($keys)', $model))->toBe(['type' => 'Record<string, unknown>', 'optional' => false])
-            ->and($resolve("\$this->only(['major'])", $model))->toBeNull()
-            ->and($resolve('$this->getKey()', $model))->toBeNull()
+        expect($resolve('$this->only($keys)', $getter))->toBe($record)
+            ->and($resolve('$this->except($this->keys)', $getter))->toBe($record)
+            ->and($resolve('$this?->except($keys)', $getter))->toBe($record)
+            ->and($resolve("\$this->only(['major'])", $getter))->toBe(['type' => "Pick<Release, 'major'>", 'optional' => false, 'modelFqcn' => Release::class])
+            ->and($resolve("\$this->only(['id', 'title'])", $method))->toBe([
+                'type' => '{ id: number; title: string }', 'optional' => false, 'embeddedEnumFqcns' => [], 'embeddedModelFqcns' => [], 'customImports' => [],
+            ])
+            ->and($resolve("\$this?->only(['id', 'status'])", $method))->toBe($record)
+            ->and($resolve('$this->except($keys)', $method))->toBe($record)
+            ->and($resolve('$this->getKey()', $getter))->toBeNull()
             ->and($resolve('$this->only($keys)', $plain))->toBeNull();
     });
+
+    // Model::only()/except() are what the filter rules describe; an override declares its own return, which PHP holds
+    // every subclass to, so reflection answers it, as it answers a getKey() override.
+    test('keeps a model\'s own only()/except() override return, in every scope', function (string $subject, ?array $profile, bool $carriesImports, string $php, string $type) {
+        $engine = new ResourceAstAnalyzer(new ReflectionClass($subject), FilterOverrideModel::class, 'toArray', $profile, carriesImports: $carriesImports);
+
+        expect($engine->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        'resource, own model' => [CommentResource::class, null, true, "\$this->only(['id'])", 'string'],
+        'resource, $this->resource' => [CommentResource::class, null, true, '$this->resource->except($keys)', 'number'],
+        'resource, relation' => [CommentResource::class, null, true, "\$this->twin->only(['id'])", 'string'],
+        'resource, relation ?->' => [CommentResource::class, null, true, '$this->resource->twin?->except($keys)', 'number | null'],
+        'method body' => [FilterOverrideModel::class, null, false, "\$this->only(['id', 'title'])", 'string'],
+        'method body, relation' => [FilterOverrideModel::class, null, false, '$this->twin->except($keys)', 'number'],
+        'getter body' => [FilterOverrideModel::class, ResourceExpressionHandlers::forModelClosures(), true, '$this?->except([\'id\'])', 'number'],
+        'getter body, relation' => [FilterOverrideModel::class, ResourceExpressionHandlers::forModelClosures(), true, '$this->twin->only($keys)', 'string'],
+    ]);
 
     test('an earlier ?-> in the chain makes the call nullable once', function () {
         $scope = new AnalysisScope(new ReflectionClass(ReceiverMethodResource::class), Post::class);
