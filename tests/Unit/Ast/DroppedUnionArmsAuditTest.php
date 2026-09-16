@@ -7,12 +7,13 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Http\Resources\Json\JsonResource;
+
+use function Orchestra\Testbench\workbench_path;
+
 use Workbench\App\Http\Resources\ClassConstantResource;
 use Workbench\App\Http\Resources\StaticCallResource;
 use Workbench\App\Http\Resources\UnionHonestyResource;
 use Workbench\App\Models\Post;
-
-use function Orchestra\Testbench\workbench_path;
 
 test('a union records the arm it leaves out, and its published type is unchanged', function () {
     DroppedUnionArms::start();
