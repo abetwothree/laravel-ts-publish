@@ -210,7 +210,7 @@ final class KnownFunctionCallHandler implements ExpressionHandler
 
         // This path resolves its arms itself, so it records its own drop: analyzeClosureUnion() never sees it.
         if ($defaultResult['type'] === 'unknown') {
-            DroppedUnionArms::record($default, $scope);
+            DroppedUnionArms::record($default, $scope, 'data-get-default');
         }
 
         // The default stands in only for a MISSING key, never for a present-but-null value, so it

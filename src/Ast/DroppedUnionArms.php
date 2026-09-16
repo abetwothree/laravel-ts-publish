@@ -12,7 +12,7 @@ use PhpParser\PrettyPrinter\Standard;
  *
  * Recording is off until a test calls start(), so a publish run pays one null check per dropped arm.
  *
- * @phpstan-type DroppedUnionArm array{subject: string, line: int, expression: string}
+ * @phpstan-type DroppedUnionArm array{subject: string, line: int, expression: string, site: string}
  *
  * @internal
  */
@@ -40,17 +40,18 @@ final class DroppedUnionArms
         return array_values(array_unique($arms, SORT_REGULAR));
     }
 
-    /** Record one union arm that was left out because it resolved to unknown. */
-    public static function record(Expr $arm, ?AnalysisScope $scope): void
+    /** Record one union arm that was left out because it resolved to unknown, naming the site that dropped it. */
+    public static function record(Expr $arm, AnalysisScope $scope, string $site): void
     {
         if (self::$arms === null) {
             return;
         }
 
         self::$arms[] = [
-            'subject' => $scope?->subjectReflection->getName() ?? '',
+            'subject' => $scope->subjectReflection->getName(),
             'line' => $arm->getStartLine(),
             'expression' => new Standard()->prettyPrintExpr($arm),
+            'site' => $site,
         ];
     }
 }

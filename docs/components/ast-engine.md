@@ -496,21 +496,27 @@ publishing `unknown` where it used to publish `null`; what it gained is a record
 cannot name the expression it dropped. `ValueResult::analyzeClosureUnion()` therefore pairs each `Expr`
 with its own result before delegating, and records there. Two callers reach `unionResults()` directly and
 record their own drops: `TernaryHandler`'s `instanceof`-narrowed arm, and `KnownFunctionCallHandler`'s
-`data_get()` default.
+`data_get()` default. `CoalesceHandler` records too: it deliberately does not delegate to
+`analyzeClosureUnion()` — that would leave `null` in the union twice — and computes its own member list, so
+it records whichever operand of `??` it drops. Each entry names the site that recorded it, so a site going
+silent is visible rather than merely absent.
 
 `DroppedUnionArms` is the recorder — `start()`, `stop()`, `record()`. Recording is off until a test calls
 `start()`, so a publish run pays one null check per dropped arm; `stop()` returns each distinct
 `{subject, line, expression}` once.
 
-`tests/Unit/Ast/DroppedUnionArmsAuditTest.php` runs every workbench resource through `analyzeMethod()` and
-fails on any arm missing from `tests/Unit/Ast/Fixtures/dropped-union-arms-baseline.php`. **The baseline may
-only shrink:** teach a rule to type a shape, then delete its entries. It currently holds only
-`UnionHonestyResource`, which drops arms on purpose — one key per recording site, so the audit also proves
-each site still fires. Across 159 analysed resources and 1,235 properties, nothing else drops an arm.
+`tests/Unit/Ast/DroppedUnionArmsAuditTest.php` runs every non-abstract resource in the workbench corpus
+through `analyzeMethod()` and fails on any arm missing from
+`tests/Unit/Ast/Fixtures/dropped-union-arms-baseline.php` — and on any baseline entry the corpus no longer
+drops. **The baseline may only shrink:** teach a rule to type a shape, then delete its entries. Every entry
+carries a comment naming why it is pinned: most are fixtures whose arm is deliberately untypable, and one
+is an incidental drop whose property the surviving `??` operand still types. `UnionHonestyResource` carries
+one key per recording site, so the audit also proves each site still fires.
 
-**What the audit does not see: `??`.** `CoalesceHandler` deliberately does not delegate to
-`analyzeClosureUnion()` (that would leave `null` in the union twice) and computes its own member list, so
-an operand it cannot type is dropped without being recorded. Extending the recorder there is the next step.
+**A recorded arm is a candidate gap, not a proven published loss.** `ClosureHandler` and `VariableHandler`
+both discard an `unknown` union result and fall back to a return-type annotation or to `null`, so an entry
+can name an arm whose property is ultimately typed correctly by another rule. Read the published property
+before treating an entry as a bug.
 
 ## Public API
 

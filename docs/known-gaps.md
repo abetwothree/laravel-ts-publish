@@ -394,12 +394,6 @@ Absent on purpose. Do not "fix" these without raising it first.
 
 ## Green signals that are narrower than they look
 
-### The dropped-union-arm audit does not cover `??`
-
-`tests/Unit/Ast/DroppedUnionArmsAuditTest.php` pins every union arm the workbench corpus drops, but only
-for the sites that union through `ValueResult`. `CoalesceHandler` computes its own member list and records
-nothing, so a `??` operand the engine cannot type is dropped without the audit ever seeing it.
-
 ### Handler ordering is pinned pairwise, corpus-bounded
 
 Ten of the twenty-five handlers in the resource profile claim `MethodCall`

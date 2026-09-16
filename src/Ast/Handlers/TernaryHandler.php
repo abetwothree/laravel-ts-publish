@@ -69,11 +69,11 @@ final class TernaryHandler implements ExpressionHandler
             // This path resolves its arms itself, so it records its own drops: analyzeClosureUnion()
             // never sees them.
             if ($narrowed['type'] === 'unknown') {
-                DroppedUnionArms::record($ifExpr, $scope);
+                DroppedUnionArms::record($ifExpr, $scope, 'ternary-narrowed');
             }
 
             if ($elseResult['type'] === 'unknown') {
-                DroppedUnionArms::record($expr->else, $scope);
+                DroppedUnionArms::record($expr->else, $scope, 'ternary-narrowed');
             }
 
             $result = ValueResult::unionResults([$narrowed, $elseResult]);
