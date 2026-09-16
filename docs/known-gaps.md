@@ -390,6 +390,78 @@ property with an import-aware `#[TsCasts]`. The real fix is to carry these FQCNs
 channel so the alias pass reaches them, which is cross-cutting rather than local: `InlineArrayHandler`
 builds the identical FQCN-keyed shape for inline arrays.
 
+### `instanceof` narrowing depends on the spelling, in three different ways
+
+There is one rule per spelling, not one rule overall. Check which spelling you wrote before assuming a
+value is `unknown`:
+
+- **A negated early-exit `if` on a local variable binds.** `if (! $x instanceof Post) { return null; }`
+  binds `$x` to `Post` for every statement after it, including through an `||` chain and a `throw` exit.
+  `NarrowedParentResource`'s closure is the fixture: after
+  `if (! $parent || ! $parent instanceof Post) { return null; }`, `$parent->title` publishes `string`.
+- **A positive `if`-statement on a local variable binds nothing.**
+  `if ($x instanceof Post) { return $x->title; }` leaves `$x->title` as `unknown`, pinned by
+  `tests/Unit/Ast/Handlers/ReceiverHandlersTest.php`. The walk is flat, so a binding made for that body
+  would still be in force *after* the `if`, where `$x` is exactly what the guard excluded. Only the
+  early-exit shape narrows for everything that follows.
+- **A positive *ternary* on a local variable does bind, for its true arm only.** `TernaryHandler` binds
+  `$x` to `C` while `A` resolves in `$x instanceof C ? A : B`, which is sound because the binding cannot
+  outlive the arm. `NarrowedParentResource`'s `$record instanceof Post ? $record->title : null` — where
+  `$record` holds a `morphTo` union — publishes `record_title: string | null`, not `unknown`.
+
+So the statement form and the ternary form of the *same* positive test disagree. That is the distinction
+to check first, and the one an earlier draft of this entry got wrong.
+
+**`$this->resource` is not a local variable, and it narrows in either polarity.** A different mechanism
+answers there: `ResourceAstAnalyzer::resolveInstanceOfType()` scans the analyzed method for any
+`$this->resource instanceof C` test, negated or not, and seeds `AnalysisScope::$instanceOfWrappedClass`
+with `C` as the subject's backing class for the whole method. So `MediaTypePositiveInstanceOfResource`,
+whose only guard is the positive `if ($this->resource instanceof MediaType)`, publishes `name` and `value`
+as `string` rather than `unknown`. Both keys still publish **optional**, because the method's other branch
+is a `return []` — that is the return-branch rule, not a narrowing failure.
+
+The negated `if` form binds only a variable the method writes once, and only when the guard's own body does
+not read it. A resource that already guards on `$this->resource` needs no `#[TsCasts]` for the properties
+that guard proves.
+
+### A shape whose values name a class loses those values, in one of two ways
+
+Neither the method-body fallback nor a docblock array shape carries an FQCN channel. Both are plain type
+strings, so a class token inside one could never be emitted with the import it needs. The two paths spend
+that limit differently, and the difference decides where you go looking for the missing type.
+
+- **The body fallback discards the whole answer.** When a bare `: array` signature sends
+  `MethodReturnTypeResolver::bodyType()` to the literal body, the inline type it builds is tested with
+  `TsTypeString::shapeValueHasUnimportableToken()`, and a single class-named value throws the entire body
+  result away rather than degrading one leaf. The vague declaration then stands. See
+  [receiver-types § The body fallback carries no FQCN channel](./components/receiver-types.md#the-body-fallback-carries-no-fqcn-channel).
+- **A docblock shape degrades just the leaf.** An `Arrayable` whose `@return array{owner: User}` names a
+  class publishes `{ owner: unknown }`, and every sibling key keeps its real type;
+  `tests/Unit/LaravelTsPublishTest.php` pins that, alongside `Record<string, User>` degrading whole
+  because it has no shape to recurse into. A docblock **intersection** behaves the same way:
+  `Collection<int, User&object{pivot: TaskAssignment}>` publishes `(User & { pivot: unknown })[]`, so the
+  intersection's own member keeps its import while the class named inside the `object{...}` part does not.
+
+Declare the property with an import-aware `#[TsCasts]` when you need the token, or give the method a native
+return type that names the class directly.
+
+### `Model::toArray()` on a receiver declines, deliberately
+
+`ReceiverMethodReturnResolver::resolveOn()` answers nothing for `toArray()` on an Eloquent model receiver,
+so `$this->author->toArray()` in value position gets no shape from this path. It declines **even when the
+model declares a precise shape of its own**, which `tests/Unit/Ast/Handlers/ReceiverHandlersTest.php` pins.
+`Model::toArray()` merges `attributesToArray()` with `relationsToArray()`, and which relations happen to be
+loaded is runtime state that no declaration describes, so a shape read off the signature would claim more
+than the code guarantees. See
+[receiver-types § The order for one class](./components/receiver-types.md#the-order-for-one-class).
+
+What a value-position call publishes *instead* is not pinned by anything. Every `$model->toArray()` in the
+corpus sits in spread position, so whatever the remaining handlers make of the declined call is untested —
+expect something vague rather than a shape, and do not rely on the exact token.
+
+The spread form is the supported one, and it is typed: `[...$user->toArray(), 'flag' => true]` publishes
+`Omit<User, 'flag'> & { flag: boolean }`. Reach for that, or name the keys you want explicitly.
+
 ## Deliberate non-goals
 
 Absent on purpose. Do not "fix" these without raising it first.
