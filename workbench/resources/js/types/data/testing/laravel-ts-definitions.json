@@ -14799,6 +14799,36 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\UnionHonestyResource": {
+            "name": "UnionHonestyResource",
+            "properties": [
+                {
+                    "name": "elvis",
+                    "type": "null",
+                    "optional": false
+                },
+                {
+                    "name": "ternary",
+                    "type": "null",
+                    "optional": false
+                },
+                {
+                    "name": "still_typed",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "narrowed",
+                    "type": "null",
+                    "optional": false
+                },
+                {
+                    "name": "data_get_default",
+                    "type": "string | null",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\UnitEnumResource": {
             "name": "UnitEnumResource",
             "properties": [

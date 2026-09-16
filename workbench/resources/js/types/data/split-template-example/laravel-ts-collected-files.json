@@ -225,6 +225,7 @@
     "app\/Http\/Resources\/ToArrayCastsResource.php",
     "app\/Http\/Resources\/TrackingEventResource.php",
     "app\/Http\/Resources\/TraitSpreadCoverageResource.php",
+    "app\/Http\/Resources\/UnionHonestyResource.php",
     "app\/Http\/Resources\/UnitEnumResource.php",
     "app\/Http\/Resources\/UserCollection.php",
     "app\/Http\/Resources\/UserExceptResource.php",

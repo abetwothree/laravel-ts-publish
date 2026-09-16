@@ -141,6 +141,7 @@ export * from './ternary-resource';
 export * from './to-array-casts-resource';
 export * from './tracking-event-resource';
 export * from './trait-spread-coverage-resource';
+export * from './union-honesty-resource';
 export * from './unit-enum-resource';
 export * from './user-collection';
 export * from './user-except-resource';

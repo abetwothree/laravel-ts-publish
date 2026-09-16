@@ -88,9 +88,19 @@ final class ValueResult
      * @param  list<Expr>  $returns
      * @return ValueExpressionResult
      */
-    public static function analyzeClosureUnion(array $returns, ExpressionEngine $engine): array
+    public static function analyzeClosureUnion(array $returns, ExpressionEngine $engine, ?AnalysisScope $scope = null): array
     {
-        return self::unionResults(array_map($engine->resolve(...), $returns));
+        $results = array_map($engine->resolve(...), $returns);
+
+        // Paired with their expressions here because unionResults() receives results only, and by then
+        // the Expr an audit has to name is gone. The arm is still dropped, never widened to `unknown`.
+        foreach ($results as $index => $result) {
+            if ($result['type'] === 'unknown') {
+                DroppedUnionArms::record($returns[$index], $scope);
+            }
+        }
+
+        return self::unionResults($results);
     }
 
     /**

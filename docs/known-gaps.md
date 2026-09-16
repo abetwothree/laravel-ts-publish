@@ -19,6 +19,12 @@ if neither, it does not go in this file.
 
 ## Types the generator will not give you
 
+### A union arm the engine cannot type is left out, so the union publishes the other arm
+
+`$cond ? $untypable : null` publishes `null`, and `$this->opaque() ?: null` does the same. The arm that
+resolved to nothing is dropped rather than widening the union to `unknown`, which would be more honest but
+less specific. Type the arm with a return type, a `@return` docblock, or `#[TsCasts]` and it comes back.
+
 ### `config()` on an absent key with no default types as null
 
 `config('key', $default)` types from the default expression only when the key is absent; a key set to
@@ -387,6 +393,12 @@ Absent on purpose. Do not "fix" these without raising it first.
   nothing in `src/` writes a `.php` file.
 
 ## Green signals that are narrower than they look
+
+### The dropped-union-arm audit does not cover `??`
+
+`tests/Unit/Ast/DroppedUnionArmsAuditTest.php` pins every union arm the workbench corpus drops, but only
+for the sites that union through `ValueResult`. `CoalesceHandler` computes its own member list and records
+nothing, so a `??` operand the engine cannot type is dropped without the audit ever seeing it.
 
 ### Handler ordering is pinned pairwise, corpus-bounded
 

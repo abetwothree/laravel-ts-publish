@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -61,7 +62,7 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             }
 
             if ($name === 'data_get') {
-                return $this->dataGetRule(CallArguments::for($expr, new ReflectionFunction('data_get')), $engine);
+                return $this->dataGetRule(CallArguments::for($expr, new ReflectionFunction('data_get')), $scope, $engine);
             }
 
             $tsType = $this->resolveKnownFunctionCallType($name);
@@ -178,7 +179,7 @@ final class KnownFunctionCallHandler implements ExpressionHandler
      *
      * @return ValueExpressionResult|null
      */
-    private function dataGetRule(CallArguments $args, ExpressionEngine $engine): ?array
+    private function dataGetRule(CallArguments $args, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         $target = $args->named('target')?->value;
         $key = $args->named('key')?->value;
@@ -201,11 +202,20 @@ final class KnownFunctionCallHandler implements ExpressionHandler
 
         $default = $args->named('default')?->value;
 
+        if ($default === null) {
+            return $result;
+        }
+
+        $defaultResult = $engine->resolve($default);
+
+        // This path resolves its arms itself, so it records its own drop: analyzeClosureUnion() never sees it.
+        if ($defaultResult['type'] === 'unknown') {
+            DroppedUnionArms::record($default, $scope);
+        }
+
         // The default stands in only for a MISSING key, never for a present-but-null value, so it
         // unions alongside the chain's own `null` arm rather than removing it.
-        return $default === null
-            ? $result
-            : ValueResult::unionResults([$result, $engine->resolve($default)]);
+        return ValueResult::unionResults([$result, $defaultResult]);
     }
 
     /**

@@ -482,6 +482,36 @@ See
 [ResourceAstAnalyzer § `mergeReturnBranches()` carries every `MethodAnalysis::merge()` channel](resource-ast-analyzer.md#mergereturnbranches-carries-every-methodanalysismerge-channel-plus-two-flat-scalars)
 for the corpus evidence behind the per-occurrence rule.
 
+## Dropped union arms
+
+A union arm the engine cannot type is **left out of the union**, never widened to `unknown`. So
+`$cond ? <untypable> : null` publishes `null`, and so does `$this->opaque() ?: null`.
+
+That is deliberate and it stays. `unknown` would be more honest but strictly less specific, and no change
+may make a published type less specific. A dropped arm is a gap to *close* — give the arm a return type, a
+`@return` docblock, or `#[TsCasts]` — not a reason to widen the type around it. The engine did not start
+publishing `unknown` where it used to publish `null`; what it gained is a record of what it dropped.
+
+`ValueResult::unionResults()` is where the arm is skipped, but it receives already-resolved results and so
+cannot name the expression it dropped. `ValueResult::analyzeClosureUnion()` therefore pairs each `Expr`
+with its own result before delegating, and records there. Two callers reach `unionResults()` directly and
+record their own drops: `TernaryHandler`'s `instanceof`-narrowed arm, and `KnownFunctionCallHandler`'s
+`data_get()` default.
+
+`DroppedUnionArms` is the recorder — `start()`, `stop()`, `record()`. Recording is off until a test calls
+`start()`, so a publish run pays one null check per dropped arm; `stop()` returns each distinct
+`{subject, line, expression}` once.
+
+`tests/Unit/Ast/DroppedUnionArmsAuditTest.php` runs every workbench resource through `analyzeMethod()` and
+fails on any arm missing from `tests/Unit/Ast/Fixtures/dropped-union-arms-baseline.php`. **The baseline may
+only shrink:** teach a rule to type a shape, then delete its entries. It currently holds only
+`UnionHonestyResource`, which drops arms on purpose — one key per recording site, so the audit also proves
+each site still fires. Across 159 analysed resources and 1,235 properties, nothing else drops an arm.
+
+**What the audit does not see: `??`.** `CoalesceHandler` deliberately does not delegate to
+`analyzeClosureUnion()` (that would leave `null` in the union twice) and computes its own member list, so
+an operand it cannot type is dropped without being recorded. Extending the recorder there is the next step.
+
 ## Public API
 
 ```php

@@ -248,7 +248,7 @@ final class VariableHandler implements ExpressionHandler
             $bodyResult = match (count($returnExprs)) {
                 0 => null,
                 1 => $engine->resolve($returnExprs[0]),
-                default => ValueResult::analyzeClosureUnion($returnExprs, $engine),
+                default => ValueResult::analyzeClosureUnion($returnExprs, $engine, $scope),
             };
         } finally {
             $scope->closureRelationModelClass = $previousRelationModel;

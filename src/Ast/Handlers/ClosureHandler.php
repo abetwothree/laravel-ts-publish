@@ -81,7 +81,7 @@ final class ClosureHandler implements ExpressionHandler
 
                 $bodyResult = count($closureReturns) === 1
                     ? $engine->resolve($closureReturns[0])
-                    : ValueResult::analyzeClosureUnion($closureReturns, $engine);
+                    : ValueResult::analyzeClosureUnion($closureReturns, $engine, $scope);
 
                 if ($bodyResult['type'] !== 'unknown') {
                     return $bodyResult;

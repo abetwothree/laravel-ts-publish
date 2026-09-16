@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -60,9 +61,23 @@ final class TernaryHandler implements ExpressionHandler
             ? $this->narrowedArmResult($expr->cond, $ifExpr, $scope, $engine)
             : null;
 
-        $result = $narrowed === null
-            ? ValueResult::analyzeClosureUnion([$ifExpr, $expr->else], $engine)
-            : ValueResult::unionResults([$narrowed, $engine->resolve($expr->else)]);
+        if ($narrowed === null) {
+            $result = ValueResult::analyzeClosureUnion([$ifExpr, $expr->else], $engine, $scope);
+        } else {
+            $elseResult = $engine->resolve($expr->else);
+
+            // This path resolves its arms itself, so it records its own drops: analyzeClosureUnion()
+            // never sees them.
+            if ($narrowed['type'] === 'unknown') {
+                DroppedUnionArms::record($ifExpr, $scope);
+            }
+
+            if ($elseResult['type'] === 'unknown') {
+                DroppedUnionArms::record($expr->else, $scope);
+            }
+
+            $result = ValueResult::unionResults([$narrowed, $elseResult]);
+        }
 
         return $this->recordMixedArmShapes($result, $ifExpr, $expr->else, $engine, $narrowed);
     }
