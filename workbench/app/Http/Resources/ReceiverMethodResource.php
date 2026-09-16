@@ -7,6 +7,7 @@ namespace Workbench\App\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Enums\Priority;
+use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Models\Post;
 
 /**
@@ -44,6 +45,7 @@ final class ReceiverMethodResource extends JsonResource
             'resource_key' => $this->resource->getKey(),
             'bare_comments_count' => $this->commentsCount(),
             'resource_comments_count' => $this->resource->commentsCount(),
+            'author_resource' => $this->when(true, fn () => new UserResource($this->author)->resolve($request)),
         ];
     }
 }

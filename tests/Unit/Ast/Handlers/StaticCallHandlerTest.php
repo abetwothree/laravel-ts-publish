@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\NewResourceHandler;
@@ -27,6 +28,7 @@ use Workbench\App\Http\Resources\CategoryResource;
 use Workbench\App\Http\Resources\EventLogResource;
 use Workbench\App\Http\Resources\FluentSelfResource;
 use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Http\Resources\ReceiverMethodResource;
 use Workbench\App\Models\Activity;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Post;
@@ -234,6 +236,13 @@ it('declines an expression it does not claim', function () {
     $result = (new StaticCallHandler)->resolve($expr, $scope, staticCallHandlerThrowingEngine());
 
     expect($result)->toBeNull();
+});
+
+test('new SomeResource(...)->resolve() strips resolve() like the static form', function () {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(ReceiverMethodResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+    expect($props['author_resource']['type'])->toBe('UserResource')
+        ->and($props['author_resource']['optional'])->toBeTrue();
 });
 
 // NewResourceHandler

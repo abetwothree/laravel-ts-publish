@@ -91,6 +91,21 @@ final class StaticCallHandler implements ExpressionHandler
             return $this->analyzeStaticCall($expr->var, $scope, $engine);
         }
 
+        // new SomeResource(...)->resolve() — resolve() is Laravel's serializer, not the resource's own
+        // method, so strip it and keep the constructed receiver's type. Must precede the fluent arm
+        // below, which would otherwise see this shape first and decline a foreign resource's resolve().
+        if ($expr instanceof MethodCall
+            && $expr->name instanceof Identifier
+            && $expr->name->toString() === 'resolve'
+            && $expr->var instanceof New_
+        ) {
+            $receiver = $engine->resolve($expr->var);
+
+            if (isset($receiver['resourceFqcn'])) {
+                return $receiver;
+            }
+        }
+
         // A fluent method chained onto a resource-resolving receiver — `new self($x)->foo()`,
         // `SomeResource::make($x)->foo()`, or a chain of such calls — keeps the receiver's type
         // when the method's own declared return type hands the same instance back.

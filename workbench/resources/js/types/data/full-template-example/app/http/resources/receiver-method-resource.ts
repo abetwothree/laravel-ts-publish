@@ -1,4 +1,5 @@
 import type { User } from '../../models';
+import type { UserResource } from '.';
 
 /**
  * Method return types followed through every receiver kind: an enum cast, a Carbon cast, a local model,
@@ -29,4 +30,5 @@ export interface ReceiverMethodResource
     resource_key: number;
     bare_comments_count: number;
     resource_comments_count: number;
+    author_resource?: UserResource;
 }

@@ -715,6 +715,15 @@ returns a different shape (`['slug' => $this->slug]`) from `FluentSelfResource::
 `['id' => $this->id]`, so a regression that dropped the guard would emit `{ id: number }` there and
 fail the test. Widening this to foreign receivers is therefore a deliberate change, not an accident.
 
+`resolve()` is the one method exempt from this guard. It is Laravel's serializer
+(`Illuminate\Http\Resources\Json\JsonResource::resolve()`), never a method the resource itself
+declares, so `new SomeResource($x)->resolve()` should type exactly like `SomeResource::make($x)->resolve()`
+— the receiver's own resource type, regardless of which class analyzeThisMethodSpread() was built for.
+`StaticCallHandler::resolve()` strips the trailing `->resolve()` off a `New_` receiver the same way it
+already does for a `StaticCall` receiver, and only when the resolved receiver carries a `resourceFqcn`;
+otherwise it declines rather than guessing. `ReceiverMethodResource::author_resource` in the workbench
+pins this: `new UserResource($this->author)->resolve($request)` publishes `UserResource`, not `unknown`.
+
 ## Inline-array spreads become intersection arms
 
 An inline array literal that spreads a named type alongside its own keys —

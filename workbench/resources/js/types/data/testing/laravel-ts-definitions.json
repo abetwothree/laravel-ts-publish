@@ -13077,6 +13077,11 @@
                     "name": "resource_comments_count",
                     "type": "number",
                     "optional": false
+                },
+                {
+                    "name": "author_resource",
+                    "type": "UserResource",
+                    "optional": true
                 }
             ]
         },

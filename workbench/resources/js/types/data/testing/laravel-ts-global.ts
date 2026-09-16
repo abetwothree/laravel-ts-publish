@@ -3369,6 +3369,7 @@ declare global {
             resource_key: number;
             bare_comments_count: number;
             resource_comments_count: number;
+            author_resource?: UserResource;
         }
         /**
          * Property chains read from a local variable that holds a model, with and without nullsafe steps.
