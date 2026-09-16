@@ -2202,6 +2202,19 @@ declare global {
             status: app.enums.OrderStatusType;
         }
         /**
+         * Exercises collection pipelines that must keep their element type to the end of the chain:
+         * a trailing values()->all(), concat() of the same relation, a chain rooted at collect(),
+         * and data_get() standing in for a nullsafe property chain.
+         */
+        export interface CollectionPipelineResource {
+            comment_ids: number[];
+            title_words: { word: string }[];
+            author_name: string | null;
+            author_name_or_guest: string | null;
+            doubled: app.models.Comment[];
+            typed?: { id: number }[];
+        }
+        /**
          * Three key-less spreads at the top level of toArray(): a resource's resolve(), a model's toArray(),
          * and a collection's toArray(). Each flattens into this resource's own properties.
          */

@@ -104,6 +104,7 @@
     "app\/Http\/Resources\/ClosureResourceRootResource.php",
     "app\/Http\/Resources\/ClosureUnionMetadataResource.php",
     "app\/Http\/Resources\/CoalesceChannelResource.php",
+    "app\/Http\/Resources\/CollectionPipelineResource.php",
     "app\/Http\/Resources\/CommentComposedResource.php",
     "app\/Http\/Resources\/CommentResource.php",
     "app\/Http\/Resources\/ConditionalDefaultsResource.php",

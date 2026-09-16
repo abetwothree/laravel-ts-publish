@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CastHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ClassConstantHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ClosureHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CoalesceHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CollectionPipelineHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConstFetchHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
@@ -75,7 +76,7 @@ final class ResourceExpressionHandlers
     }
 
     /**
-     * Construct all 26 handlers in registration order — the single source both profiles above filter.
+     * Construct all 27 handlers in registration order — the single source both profiles above filter.
      *
      * @return list<ExpressionHandler>
      */
@@ -103,6 +104,7 @@ final class ResourceExpressionHandlers
             new MethodChainHandler,
             new PropertyChainHandler,
             new RelationCollectionChainHandler,
+            new CollectionPipelineHandler,
             new VariableHandler,
             new TernaryHandler,
             new ReceiverPropertyFetchHandler,

@@ -9406,6 +9406,41 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\CollectionPipelineResource": {
+            "name": "CollectionPipelineResource",
+            "properties": [
+                {
+                    "name": "comment_ids",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
+                    "name": "title_words",
+                    "type": "{ word: string }[]",
+                    "optional": false
+                },
+                {
+                    "name": "author_name",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "author_name_or_guest",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "doubled",
+                    "type": "Comment[]",
+                    "optional": false
+                },
+                {
+                    "name": "typed",
+                    "type": "{ id: number }[]",
+                    "optional": true
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\CommentComposedResource": {
             "name": "CommentComposedResource",
             "properties": [

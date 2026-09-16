@@ -107,7 +107,9 @@ key walks that same rule trie by path (`FormRequestRulesAnalyzer::analyzeField()
   call returns. `$request->validated('options.*')` would otherwise type `string | null` where the runtime
   value is `(string | null)[]`, so `validatedKeyRule()` declines the key outright and the property types as
   `unknown`. Typing it means array-wrapping the composed element type once per `*` hop, plus reproducing
-  `Arr::collapse()`'s flattening for a key with more than one — its own task, not a guard.
+  `Arr::collapse()`'s flattening for a key with more than one — its own task, not a guard. A direct
+  `data_get($target, 'a.*.b')` declines for exactly this reason too, in
+  `KnownFunctionCallHandler::dataGetRule()`, so the two call sites onto `data_get()` agree.
 - **A `#[TsCasts]` key with a dot in it is ignored, on the request as well as here.**
   `FormRequestTransformer::applyTsCastsOverrides()` matches an override against a top-level field path, and
   `analyze()` emits only top-level paths, so `#[TsCasts(['options.default' => 'number'])]` moves nothing in

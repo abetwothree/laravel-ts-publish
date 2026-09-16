@@ -11,12 +11,14 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
+use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Config\Repository;
 use Illuminate\Support\Facades\Config;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
@@ -56,6 +58,10 @@ final class KnownFunctionCallHandler implements ExpressionHandler
 
             if ($name === 'config') {
                 return $this->resolveConfigCallType(CallArguments::for($expr, new ReflectionFunction('config')), $engine);
+            }
+
+            if ($name === 'data_get') {
+                return $this->dataGetRule(CallArguments::for($expr, new ReflectionFunction('data_get')), $engine);
             }
 
             $tsType = $this->resolveKnownFunctionCallType($name);
@@ -165,10 +171,54 @@ final class KnownFunctionCallHandler implements ExpressionHandler
     }
 
     /**
+     * `data_get($target, 'a.b')` as the nullsafe chain `$target?->a?->b`, unioned with an explicit default.
+     *
+     * A `*` segment expands to a list of every match, so the chain would describe one element rather
+     * than the value the call returns — the same decline `validated('options.*')` makes.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function dataGetRule(CallArguments $args, ExpressionEngine $engine): ?array
+    {
+        $target = $args->named('target')?->value;
+        $key = $args->named('key')?->value;
+
+        if ($target === null || ! $key instanceof String_ || in_array('*', explode('.', $key->value), true)) {
+            return null;
+        }
+
+        $chain = $target;
+
+        foreach (explode('.', $key->value) as $segment) {
+            $chain = new NullsafePropertyFetch($chain, $segment);
+        }
+
+        $result = $engine->resolve($chain);
+
+        if ($result['type'] === 'unknown') {
+            return null;
+        }
+
+        $default = $args->named('default')?->value;
+
+        // The default stands in only for a MISSING key, never for a present-but-null value, so it
+        // unions alongside the chain's own `null` arm rather than removing it.
+        return $default === null
+            ? $result
+            : ValueResult::unionResults([$result, $engine->resolve($default)]);
+    }
+
+    /**
      * Resolve a PHP built-in function name to its TypeScript return type, or null when unresolvable.
      */
     private function resolveKnownFunctionCallType(string $name): ?string
     {
+        // Both are natively `array`, which reflects to the `unknown[]` rejected below, but every
+        // element either one produces is a string.
+        if ($name === 'explode' || $name === 'str_split') {
+            return 'string[]';
+        }
+
         $tsInfo = LaravelTsPublish::nativePhpFunctionReturnedTypes($name);
 
         return ! str_contains($tsInfo['type'], 'unknown') ? $tsInfo['type'] : null;

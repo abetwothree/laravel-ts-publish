@@ -52,6 +52,22 @@ final class VariableHandler implements ExpressionHandler
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
+        // A trailing argument-less values()/all() is identity on the published type: only the receiver
+        // chain knows its own element type and how its keys were reordered, so it answers for both.
+        if ($expr instanceof MethodCall
+            && $expr->var instanceof MethodCall
+            && $expr->name instanceof Identifier
+            && in_array($expr->name->toString(), ['values', 'all'], true)
+            && ! $expr->isFirstClassCallable()
+            && CallArguments::for($expr, new ReflectionMethod(EloquentCollection::class, $expr->name->toString()))->isEmpty()
+        ) {
+            $receiverResult = $engine->resolve($expr->var);
+
+            if ($receiverResult['type'] !== 'unknown') {
+                return $receiverResult;
+            }
+        }
+
         // $variable->property — resolve against the variable's own bound model (whenLoaded param,
         // chain map param, foreach value var), falling back to the ambient whenLoaded closure model.
         if ($expr instanceof PropertyFetch
@@ -138,6 +154,12 @@ final class VariableHandler implements ExpressionHandler
                 'optional' => false,
                 'modelFqcn' => $binding['modelFqcn'],
             ];
+        }
+
+        // Bare variable bound to an already-resolved value — a `collect(...)->map()` closure param,
+        // whose element type CollectionPipelineHandler resolved before descending into the body.
+        if ($expr instanceof Variable && is_string($expr->name) && isset($scope->varValueBindings[$expr->name])) {
+            return $scope->varValueBindings[$expr->name];
         }
 
         // Bare variable bound either to a closure parameter (ConditionalMethodHandler's

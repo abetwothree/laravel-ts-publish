@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
@@ -52,6 +53,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
     use InspectsResourceSubject;
     use ResolvesModelRelationTypes;
     use ResolvesRelatedModelTypes;
+    use SpellsKeyedCollections;
 
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
@@ -115,7 +117,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
         $identityOps = [
             'take', 'skip', 'filter', 'reject', 'values', 'unique',
             'sortBy', 'sortByDesc', 'slice', 'reverse', 'where', 'whereNotNull',
-            'load', 'loadMissing',
+            'load', 'loadMissing', 'all',
         ];
 
         // Walk down the chain collecting op names until we reach $this->prop.
@@ -167,7 +169,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
                 $sequentialKeys = match ($op['name']) {
                     'values' => true,
                     'take' => $sequentialKeys && $this->isFrontAnchoredTake($op['node']),
-                    'load', 'loadMissing' => $sequentialKeys,
+                    'load', 'loadMissing', 'all' => $sequentialKeys,
                     default => false,
                 };
 
@@ -186,6 +188,18 @@ final class RelationCollectionChainHandler implements ExpressionHandler
                 $sequentialKeys = $this->collectionArguments($op['node'], 'pluck')->named('key') === null;
 
                 continue;
+            }
+
+            // concat() is identity only when it appends the very same collection type; a different
+            // element type makes a genuinely different collection, so that declines instead.
+            if ($op['name'] === 'concat') {
+                $argument = $this->collectionArguments($op['node'], 'concat')->named('source')?->value;
+
+                if ($argument !== null && $engine->resolve($argument)['type'] === $relationInfo['type']) {
+                    continue;
+                }
+
+                return null;
             }
 
             // Unsupported op, including a 2nd map()/pluck() or map()+pluck() combined.
@@ -398,14 +412,6 @@ final class RelationCollectionChainHandler implements ExpressionHandler
         $args = $this->collectionArguments($call, 'take');
 
         return $args->passedCount() === 1 && ! $args->hasUnpack() && $args->named('limit')?->value instanceof Int_;
-    }
-
-    /**
-     * Add the object arm json_encode emits for a gapped or reordered collection: `X[]` → `X[] | Record<string, X>`.
-     */
-    private function keyedObjectArm(string $arrayType): string
-    {
-        return $arrayType.' | Record<string, '.substr($arrayType, 0, -2).'>';
     }
 
     /**

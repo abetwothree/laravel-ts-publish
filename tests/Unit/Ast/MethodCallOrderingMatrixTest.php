@@ -46,11 +46,15 @@ const METHOD_CALL_PINNED = [
  * Whether $handler alone answers $expr non-null, isolated from any partner — the measure of "the
  * corpus exercises this pair" a vacuous-pair check needs. A handler's own internal recursion into
  * $engine->resolve() for some unrelated sub-expression must not count as claiming $expr itself.
+ *
+ * The engine is given the very scope the handler receives, as production does. With two separate
+ * scopes a handler that seeds a binding and then recurses — VariableHandler's map() arm,
+ * CollectionPipelineHandler's — reads back an unseeded scope and can never claim anything.
  */
 function methodCallHandlerClaims(ExpressionHandler $handler, MethodCall $expr): bool
 {
-    $engine = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class, 'toArray', [$handler]);
     $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
+    $engine = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class, 'toArray', [$handler], $scope);
 
     return $handler->resolve($expr, $scope, $engine) !== null;
 }
@@ -95,6 +99,25 @@ function methodCallCorpus(): array
         new MethodCall(new PropertyFetch($this_, 'post'), 'fresh'),
         // A bare call the resource forwards to its model, which only ReceiverMethodCallHandler answers.
         new MethodCall($this_, 'getKey'),
+        // Collection pipelines: a trailing values()->all() on a relation root, the same shape on a
+        // collect() root, and concat() of the receiver's own relation.
+        new MethodCall(new MethodCall(new MethodCall(new PropertyFetch($this_, 'replies'), 'map', [
+            new Arg(new ArrowFunction([
+                'params' => [new Param(new Variable('reply'))],
+                'expr' => new PropertyFetch(new Variable('reply'), 'id'),
+            ])),
+        ]), 'values'), 'all'),
+        new MethodCall(new MethodCall(new MethodCall(new FuncCall(new Name('collect'), [
+            new Arg(new FuncCall(new Name('explode'), [new Arg(new String_(' ')), new Arg(new PropertyFetch($this_, 'content'))])),
+        ]), 'map', [
+            new Arg(new ArrowFunction([
+                'params' => [new Param(new Variable('word'))],
+                'expr' => new Array_([new ArrayItem(new Variable('word'), new String_('word'))]),
+            ])),
+        ]), 'values'), 'all'),
+        new MethodCall(new MethodCall(new PropertyFetch($this_, 'replies'), 'concat', [
+            new Arg(new PropertyFetch($this_, 'replies')),
+        ]), 'values'),
     ];
 }
 

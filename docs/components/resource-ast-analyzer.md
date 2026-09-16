@@ -512,6 +512,64 @@ expansion, from a relation the arm's shape happens to reference — belong in th
 branch, mirroring the single-model path's `'embeddedModelFqcns' => $filterResult['modelFqcns']`
 just above (never the arm's own FQCN there either).
 
+## Collection pipelines
+
+Two handlers type a chain of collection operations, differing only in what roots it:
+`RelationCollectionChainHandler` for a chain rooted at `$this->{manyRelation}`, and
+`CollectionPipelineHandler` for one rooted at `collect($arg)`, whose element type is read off `$arg`
+resolving to `X[]` (a top-level `|` makes it ambiguous which arm the elements came from, so that
+declines). Both array-wrap the result through `ValueResult::arrayWrapType()` and, when the keys are no
+longer `0..n-1`, add the object arm `json_encode()` really emits — the shared
+`SpellsKeyedCollections::keyedObjectArm()`.
+
+A collection starts keyed `0..n-1`. Each op says whether that still holds:
+
+| Op | Element type | Keys |
+| --- | --- | --- |
+| `values` | unchanged | restored to `0..n-1` |
+| `all` | unchanged | unchanged — it hands back the underlying array, it does not reindex |
+| `load`, `loadMissing` | unchanged | unchanged |
+| `take(n)`, literal positive `n` | unchanged | unchanged |
+| `filter`, `reject`, `unique`, `where`, `sortBy`, `slice`, `reverse`, … | unchanged | broken, so the `Record<string, X>` arm is added |
+| `map(closure)` | the closure body's type | unchanged |
+| `pluck(value)` | the plucked column | broken when a `key` argument is passed |
+| `concat($source)` | unchanged, **only** on exact type equality | unchanged |
+| `first`, `last`, argument-less and outermost | one element or `null` | terminal |
+
+`all` is identity on the *published* type: a `Collection<X>` and the `array<X>` behind it both render
+`X[]`, so `$this->comments->map(...)->values()->all()` publishes what the chain already had rather than
+decaying to `unknown`. `VariableHandler` peels a trailing argument-less `values()`/`all()` off any
+method-call receiver for the same reason, which is what carries the element type through a pipeline
+rooted at a local variable.
+
+### `concat()` is identity only on exact type equality
+
+`concat($source)` resolves `$source` and treats the op as identity only when it resolves to **exactly**
+the receiver's own collection type; anything else declines the whole chain. Loosening that to "both are
+arrays" would publish `Comment[]` for a concat of `Comment[]` and `Tag[]` — a different collection, not
+a longer one — so the decline is the honest answer.
+
+### A `collect()` pipeline binds its map parameter to a value, not a model
+
+A relation chain's `map()` parameter is bound to the element **model** (`AnalysisScope::$varModelBindings`),
+because `$m->prop` has to resolve against that model's attributes. A `collect()` pipeline has no model:
+its elements are whatever the argument's element type says. Its parameter is therefore bound in
+`AnalysisScope::$varValueBindings` to an already-resolved result, and a bare read of the parameter
+resolves straight to it — `collect(explode(' ', $this->title))->map(fn ($word) => ['word' => $word])`
+types `$word` as `string` that way, giving `{ word: string }[]`. The binding is scoped; see
+[AstEngine § Writing a scope binding](ast-engine.md#writing-a-scope-binding).
+
+### `data_get()` is the nullsafe chain it stands for, and declines a wildcard
+
+`data_get($target, 'a.b')` resolves as `$target?->a?->b`, so `data_get($this->author, 'name')` types
+exactly as `$this->author?->name` does. An explicit default unions its own type in rather than removing
+the chain's `null` arm: `data_get()` returns the default only when the key is **missing**, never when a
+present value is null, so `data_get($this->author, 'name', 'guest')` stays `string | null`.
+
+A key with a `*` segment declines outright, the same call the
+[`$request->validated('options.*')` gap](../known-gaps.md) records: `*` expands to a list of every
+match, so the chain would describe one element rather than the value the call returns.
+
 ## Variable bindings
 
 `AnalysisScope`'s binding maps — `$varModelBindings`, `$varCollectionBindings`, `$localVarBindings`,

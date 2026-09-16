@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CastHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ClassConstantHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ClosureHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CoalesceHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CollectionPipelineHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConstFetchHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
@@ -85,6 +86,7 @@ function resourceExpressionHandlerOrder(): array
         MethodChainHandler::class,
         PropertyChainHandler::class,
         RelationCollectionChainHandler::class,
+        CollectionPipelineHandler::class,
         VariableHandler::class,
         TernaryHandler::class,
         ReceiverPropertyFetchHandler::class,
@@ -115,7 +117,7 @@ function resourceExpressionHandlersTestEngine(): ExpressionEngine
     };
 }
 
-it('returns all 26 handlers in the documented dispatch order', function () {
+it('returns all 27 handlers in the documented dispatch order', function () {
     $classes = array_map(
         fn (ExpressionHandler $handler): string => $handler::class,
         ResourceExpressionHandlers::make(resourceExpressionHandlersTestEngine()),
@@ -139,7 +141,7 @@ it('excludes exactly the three resource-only handlers from withoutResourceHandle
         ], true),
     ));
 
-    expect($classes)->toHaveCount(23)
+    expect($classes)->toHaveCount(24)
         ->and($classes)->toBe($expected);
 });
 

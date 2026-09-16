@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -15,10 +16,13 @@ use ReflectionClass;
  * analysis and its backing model, plus the closure/spread bookkeeping that makes local variables,
  * whenLoaded relations, and recursive spreads resolve correctly as traversal descends.
  *
+ * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
  * @phpstan-type ClosureParamExprBindingsMap array<string, Expr>
  * @phpstan-type VarClassBindingsMap array<string, non-empty-list<class-string>>
  * @phpstan-type VarModelBindingsMap array<string, class-string<Model>>
  * @phpstan-type VarCollectionBindingsMap array<string, array{type: string, modelFqcn: class-string<Model>}>
+ * @phpstan-type VarValueBindingsMap array<string, ValueExpressionResult>
  * @phpstan-type LocalVarBindingsMap array<string, Expr>
  * @phpstan-type RequestVarNamesMap array<string, class-string<Request>>
  *
@@ -85,6 +89,15 @@ final class AnalysisScope
      * @var VarCollectionBindingsMap
      */
     public array $varCollectionBindings = [];
+
+    /**
+     * Closure params bound to an already-resolved value rather than to a class — a `collect(...)->map()`
+     * param, whose element type the pipeline resolved before descending into the body. Scoped: writers
+     * save and restore around the body.
+     *
+     * @var VarValueBindingsMap
+     */
+    public array $varValueBindings = [];
 
     /**
      * Top-level `$var = expr;` bindings for the method last analyzed, so a bare `Variable` value
