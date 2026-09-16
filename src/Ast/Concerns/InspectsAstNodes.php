@@ -38,6 +38,9 @@ use PhpParser\Node\Stmt\While_;
  */
 trait InspectsAstNodes
 {
+    /**
+     * Whether an expression is `$this->{$methodName}(...)`, called directly on `$this`.
+     */
     protected function isThisMethodCall(Expr $expr, string $methodName): bool
     {
         return $expr instanceof MethodCall
@@ -55,6 +58,9 @@ trait InspectsAstNodes
         return $call->var instanceof Variable && $call->var->name === 'this';
     }
 
+    /**
+     * Whether an expression is a `$this->prop` property fetch, whichever property it names.
+     */
     protected function isThisPropertyFetch(Expr $expr): bool
     {
         return $expr instanceof PropertyFetch
@@ -74,6 +80,9 @@ trait InspectsAstNodes
             && $expr->name->toString() === 'resource';
     }
 
+    /**
+     * The name an array key spells, or null when it is not a plain string literal.
+     */
     protected function resolveKeyName(Expr $key): ?string
     {
         if ($key instanceof String_) {
@@ -83,6 +92,9 @@ trait InspectsAstNodes
         return null;
     }
 
+    /**
+     * The class name a static call is made on, or null when the class is an expression.
+     */
     protected function resolveStaticCallClassName(StaticCall $call): ?string
     {
         if ($call->class instanceof Name) {

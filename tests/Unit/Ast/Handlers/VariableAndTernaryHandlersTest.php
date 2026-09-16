@@ -17,6 +17,7 @@ use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\Instanceof_;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Ternary;
@@ -28,8 +29,10 @@ use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\HelperCallResource;
+use Workbench\App\Http\Resources\TeamSubscriberResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Order;
+use Workbench\App\Models\SubscribedTeam;
 use Workbench\App\Models\User;
 
 /**
@@ -74,6 +77,42 @@ final class VariableHandlersLoopEngine implements ExpressionEngine
     public function resolve(Expr $expr): array
     {
         return $this->dispatcher->dispatch($expr, $this->scope, $this) ?? ValueResult::unknown();
+    }
+
+    public function spreadAnalysis(string $methodName): ?MethodAnalysis
+    {
+        throw new RuntimeException('spreadAnalysis() must not be called in this case');
+    }
+
+    public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
+    {
+        throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
+    }
+}
+
+/**
+ * Records the scope's narrowing fields as each ternary arm resolves, keyed by that arm's string literal,
+ * so a binding that is only in force *during* one arm can be asserted after the fact.
+ */
+final class TernaryArmRecordingEngine implements ExpressionEngine
+{
+    /** @var array<string, string|null> */
+    public array $forwardsPerArm = [];
+
+    /** @var array<string, string|null> */
+    public array $modelPerArm = [];
+
+    public function __construct(private AnalysisScope $scope) {}
+
+    /** @return array<string, mixed> */
+    public function resolve(Expr $expr): array
+    {
+        if ($expr instanceof String_) {
+            $this->forwardsPerArm[$expr->value] = $this->scope->forwardsUndeclaredMembersTo;
+            $this->modelPerArm[$expr->value] = $this->scope->modelClass;
+        }
+
+        return ['type' => 'string', 'optional' => false];
     }
 
     public function spreadAnalysis(string $methodName): ?MethodAnalysis
@@ -281,4 +320,32 @@ it('reads $variable->map(callback: …) by name', function () {
     $engine = new VariableHandlersLoopEngine([new VariableHandler], $scope);
 
     expect((new VariableHandler)->resolve($expr, $scope, $engine))->toBe(['type' => 'string[]', 'optional' => false]);
+});
+
+it('narrows the forwarding target from the subject even when modelClass is null', function () {
+    // resolveInstanceOfType() searches only If_ nodes, so a ternary-only `$this->resource instanceof X`
+    // leaves both the backing model and the wrapped class null — the shape no workbench fixture builds.
+    $scope = new AnalysisScope(new ReflectionClass(TeamSubscriberResource::class));
+
+    expect($scope->forwardsUndeclaredMembersTo)->toBeNull();
+
+    $engine = new TernaryArmRecordingEngine($scope);
+
+    (new TernaryHandler)->resolve(
+        new Ternary(
+            new Instanceof_(new PropertyFetch(new Variable('this'), 'resource'), new Name(SubscribedTeam::class)),
+            new String_('if'),
+            new String_('else'),
+        ),
+        $scope,
+        $engine,
+    );
+
+    // The true arm forwards to the narrowed model, so `$this->undeclaredMethod()` there resolves against
+    // it rather than declining; the else arm and the scope afterwards are untouched.
+    expect($engine->forwardsPerArm['if'])->toBe(SubscribedTeam::class)
+        ->and($engine->modelPerArm['if'])->toBe(SubscribedTeam::class)
+        ->and($engine->forwardsPerArm['else'])->toBeNull()
+        ->and($scope->forwardsUndeclaredMembersTo)->toBeNull()
+        ->and($scope->modelClass)->toBeNull();
 });

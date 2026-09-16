@@ -84,6 +84,9 @@ trait InspectsResourceCalls
         return false;
     }
 
+    /**
+     * Whether a class name refers to the package's own EnumResource wrapper.
+     */
     protected function isEnumResourceClass(string $fqcn): bool
     {
         return $fqcn === EnumResource::class
@@ -91,6 +94,9 @@ trait InspectsResourceCalls
             || is_a($fqcn, EnumResource::class, true);
     }
 
+    /**
+     * Whether a class exists and is a JsonResource subclass.
+     */
     protected function isResourceClass(string $fqcn): bool
     {
         return class_exists($fqcn) && is_a($fqcn, JsonResource::class, true);

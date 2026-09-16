@@ -194,11 +194,14 @@ final class ConditionalMethodHandler implements ExpressionHandler
         }
 
         $previousBindings = $scope->closureParamExprBindings;
-        $this->bindClosureParamsFromCondition($condition->value, $valueArg->value, $scope);
 
-        $inner = $engine->resolve($valueArg->value);
+        try {
+            $this->bindClosureParamsFromCondition($condition->value, $valueArg->value, $scope);
 
-        $scope->closureParamExprBindings = $previousBindings;
+            $inner = $engine->resolve($valueArg->value);
+        } finally {
+            $scope->closureParamExprBindings = $previousBindings;
+        }
 
         return $this->applyConditionalDefault($inner, $args, $scope, $engine);
     }
@@ -383,49 +386,50 @@ final class ConditionalMethodHandler implements ExpressionHandler
             $previousVarModelBindings = $scope->varModelBindings;
             $previousVarCollectionBindings = $scope->varCollectionBindings;
             $previousVarClassBindings = $scope->varClassBindings;
-            $relationInfo = null;
-
-            if ($relationship instanceof String_) {
-                $relationInfo = $this->resolveModelRelationTypeInfo($relationship->value, $scope);
-
-                if ($relationInfo['modelFqcn'] !== null) {
-                    $scope->closureRelationModelClass = $relationInfo['modelFqcn'];
-                }
-            }
-
-            if ($relationInfo !== null
-                && $relationInfo['modelFqcn'] !== null
-                && ($valueExpr instanceof ClosureExpr || $valueExpr instanceof ArrowFunction)
-                && isset($valueExpr->params[0])
-                && $valueExpr->params[0]->var instanceof Variable
-                && is_string($valueExpr->params[0]->var->name)
-            ) {
-                $paramName = $valueExpr->params[0]->var->name;
-
-                if (str_ends_with($relationInfo['type'], '[]')) {
-                    $scope->varCollectionBindings[$paramName] = [
-                        'type' => $relationInfo['type'],
-                        'modelFqcn' => $relationInfo['modelFqcn'],
-                    ];
-                } else {
-                    $scope->varModelBindings[$paramName] = $relationInfo['modelFqcn'];
-                }
-            }
-
-            // A morphTo names no single model, so its param holds any one of the targets: bind them all
-            // and let each reader union them.
-            if ($relationInfo !== null
-                && $relationInfo['modelFqcn'] === null
-                && $relationInfo['morphFqcns'] !== []
-                && ($valueExpr instanceof ClosureExpr || $valueExpr instanceof ArrowFunction)
-                && isset($valueExpr->params[0])
-                && $valueExpr->params[0]->var instanceof Variable
-                && is_string($valueExpr->params[0]->var->name)
-            ) {
-                $scope->varClassBindings[$valueExpr->params[0]->var->name] = $relationInfo['morphFqcns'];
-            }
 
             try {
+                $relationInfo = null;
+
+                if ($relationship instanceof String_) {
+                    $relationInfo = $this->resolveModelRelationTypeInfo($relationship->value, $scope);
+
+                    if ($relationInfo['modelFqcn'] !== null) {
+                        $scope->closureRelationModelClass = $relationInfo['modelFqcn'];
+                    }
+                }
+
+                if ($relationInfo !== null
+                    && $relationInfo['modelFqcn'] !== null
+                    && ($valueExpr instanceof ClosureExpr || $valueExpr instanceof ArrowFunction)
+                    && isset($valueExpr->params[0])
+                    && $valueExpr->params[0]->var instanceof Variable
+                    && is_string($valueExpr->params[0]->var->name)
+                ) {
+                    $paramName = $valueExpr->params[0]->var->name;
+
+                    if (str_ends_with($relationInfo['type'], '[]')) {
+                        $scope->varCollectionBindings[$paramName] = [
+                            'type' => $relationInfo['type'],
+                            'modelFqcn' => $relationInfo['modelFqcn'],
+                        ];
+                    } else {
+                        $scope->varModelBindings[$paramName] = $relationInfo['modelFqcn'];
+                    }
+                }
+
+                // A morphTo names no single model, so its param holds any one of the targets: bind them all
+                // and let each reader union them.
+                if ($relationInfo !== null
+                    && $relationInfo['modelFqcn'] === null
+                    && $relationInfo['morphFqcns'] !== []
+                    && ($valueExpr instanceof ClosureExpr || $valueExpr instanceof ArrowFunction)
+                    && isset($valueExpr->params[0])
+                    && $valueExpr->params[0]->var instanceof Variable
+                    && is_string($valueExpr->params[0]->var->name)
+                ) {
+                    $scope->varClassBindings[$valueExpr->params[0]->var->name] = $relationInfo['morphFqcns'];
+                }
+
                 $inner = $engine->resolve($valueExpr);
             } finally {
                 $scope->closureRelationModelClass = $previousRelationModel;
@@ -474,11 +478,14 @@ final class ConditionalMethodHandler implements ExpressionHandler
         }
 
         $previousBindings = $scope->closureParamExprBindings;
-        $this->bindClosureParamsFromCondition($valueArg->value, $callbackArg->value, $scope);
 
-        $inner = $engine->resolve($callbackArg->value);
+        try {
+            $this->bindClosureParamsFromCondition($valueArg->value, $callbackArg->value, $scope);
 
-        $scope->closureParamExprBindings = $previousBindings;
+            $inner = $engine->resolve($callbackArg->value);
+        } finally {
+            $scope->closureParamExprBindings = $previousBindings;
+        }
 
         // transform()'s default runs through the global transform() helper's $default($value) — one
         // argument — unlike the rest of the family's zero-argument value($default).

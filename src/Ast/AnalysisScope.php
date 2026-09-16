@@ -35,8 +35,10 @@ final class AnalysisScope
 
     /**
      * The class an undeclared `$this->member` read or call forwards to — a JsonResource proxies both to
-     * `$this->resource` — or null when the subject forwards nothing. Whoever builds the scope decides
-     * this, so ReceiverClassResolver stays plain PHP semantics instead of testing for one framework class.
+     * `$this->resource` — or null when the subject forwards nothing. Derived from the subject in this
+     * class's own constructor, so every scope carries it however it was built; ResourceAstAnalyzer
+     * re-derives it once an instanceof guard supplies a backing the constructor lacked, and TernaryHandler
+     * narrows it alongside modelClass. ReceiverClassResolver reads it rather than testing for JsonResource.
      *
      * @var class-string|null
      */

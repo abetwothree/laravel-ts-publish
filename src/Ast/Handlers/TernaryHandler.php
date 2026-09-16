@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Instanceof_;
 use PhpParser\Node\Expr\Ternary;
@@ -105,8 +106,10 @@ final class TernaryHandler implements ExpressionHandler
         $previousForwardsTo = $scope->forwardsUndeclaredMembersTo;
         $scope->modelClass = $class;
 
-        // A subject that proxies forwards to its backing model, so narrowing the model narrows the target too.
-        if ($previousForwardsTo !== null) {
+        // Derived from the subject, never from the previous value: the live rule this replaced re-read
+        // `modelClass` after the assignment, so a proxying subject forwarded here whether or not it had
+        // been forwarding before — a ternary-only guard leaves instanceOfWrappedClass unseeded.
+        if ($scope->subjectReflection->isSubclassOf(JsonResource::class)) {
             $scope->forwardsUndeclaredMembersTo = $class;
         }
 

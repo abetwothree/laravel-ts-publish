@@ -203,16 +203,19 @@ Every writer hand-rolls this; there is no helper. The current set:
 | `RelationCollectionChainHandler` | `closureRelationModelClass` around `pluck()`; that plus `varModelBindings` around a `map()` closure |
 | `VariableHandler`, `ReceiverClassResolver::fromVariable()` | the `resolvingLocalVars` re-entrancy guard |
 
-**The rule: every mutation must sit inside the `try` whose `finally` restores it.** A review during the
-receiver phase caught the opposite shape — seeding done *outside* the `try` — and it is worth stating why
-that is worse than it looks. The scope outlives the expression being resolved, so a binding left in force
-by an escaping path does not raise anything; it silently answers some *later* property with a
-wrong-but-plausible type, arbitrarily far from the writer that leaked it.
+**The rule: every mutation must sit inside the `try` whose `finally` restores it.** Reviews during the
+receiver phase caught the opposite shape twice — `ConditionalMethodHandler::analyzeWhen()` and
+`::analyzeTransform()` bound a closure parameter, resolved, and restored on the **success path only**,
+with no `try` at all — and it is worth stating why that is worse than it looks. The scope outlives the
+expression being resolved, so a binding left in force by an escaping path raises nothing; it silently
+answers some *later* property with a wrong-but-plausible type, arbitrarily far from the writer that
+leaked it.
 
-The plain assignments that currently sit between the snapshot and the `try` are safe only because an
-assignment cannot throw. The moment seeding needs to resolve, reflect, or call back into the engine — as
-`ConditionalMethodHandler`'s relation lookup does — it belongs inside the `try`. Prefer restoring the
-whole map over unsetting the single key you believe you wrote.
+Every writer in the table above now restores through a `finally`, and every seeding step that can throw
+sits inside its `try` — including `analyzeWhenLoaded()`'s relation lookup, which resolves and reflects.
+What still sits between a snapshot and its `try` is plain assignment only, which cannot throw. That is the
+line to hold: the moment seeding needs to resolve, reflect, or call back into the engine, it belongs
+inside the `try`. Prefer restoring the whole map over unsetting the single key you believe you wrote.
 
 ### How `varModelBindings` gets populated, and how scoping holds
 
