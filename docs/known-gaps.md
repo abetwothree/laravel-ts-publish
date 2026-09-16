@@ -333,6 +333,29 @@ subclass that overrode the sort-group predicate to reorder imports, or that reac
 exception: it was `private` before the move and is `private` on `JsEmitter` now, so no subclass could ever
 reach it and nothing was actually taken away.
 
+### A morph union whose targets' resources share a basename spells the same token twice
+
+A `morphTo` relation exposed as `whenLoaded('rel', fn ($subject) => $subject->toResource())` publishes one
+resource per morph target — `reviewable?: ArtistResource | VenueResource;`. When two of those targets
+resolve to resource classes that live in different namespaces but share a **basename**, the property
+renders that basename twice: `subject?: StoreResource | StoreResource;`, standing for two genuinely
+different classes. Same-basename resources are real rather than hypothetical — this repo keeps the
+`Admin\Store` and `SameBasenameModelTrio` fixtures for exactly that reason.
+
+The aliasing pass that would rename one of them never runs for this property. A union reports its classes
+on the FQCN-keyed `embeddedResourceFqcns` channel, so the entry lands in `nestedResources` keyed by FQCN
+instead of by property name; `ResourceTransformer::rewriteTypeReferences()` looks up property names, none
+of which contain backslashes, so `TsTypeString::aliasPropertyType()` is never reached for it. Both imports
+still resolve, so `tsc` reports nothing and the unimportable-token gate stays green — read that green gate
+as saying nothing about this case either way.
+
+**What to do about it.** Give one of the colliding resources a distinct generated name with
+`#[TsResource(name: 'AdminStoreResource')]`, which `TsNaming::resourceTypeName()` honours everywhere the
+token is emitted and imported; renaming the class itself has the same effect. Otherwise declare the
+property with an import-aware `#[TsCasts]`. The real fix is to carry these FQCNs on a property-keyed
+channel so the alias pass reaches them, which is cross-cutting rather than local: `InlineArrayHandler`
+builds the identical FQCN-keyed shape for inline arrays.
+
 ## Deliberate non-goals
 
 Absent on purpose. Do not "fix" these without raising it first.

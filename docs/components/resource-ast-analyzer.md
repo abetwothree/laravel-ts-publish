@@ -1136,9 +1136,18 @@ The same binding also types a plain attribute read on the parameter: `$subject->
 `ReceiverPropertyFetchHandler`, which resolves the property on each bound class and unions the results, so
 `reviewable_name` is `string` rather than `unknown`.
 
-Union order is the morph-target order, and `ModelAttributeResolver::buildMorphTargetMap()` sorts each
-target list as it builds it, so the rendered union is stable across runs rather than dependent on the order
-models happen to be discovered in.
+Union order is the morph-target order, and the sort key is the **model** FQCN, never the rendered resource
+name. Two of the three paths sort: `ModelAttributeResolver::buildMorphTargetMap()` sorts each target list as
+it builds it, and `getMorphToTargets()` sorts again after unioning in the parents that target a *subclass*
+of the child under the same morph name. The third does not sort at all — `resolveMorphToTargets()` returns
+`morphToDocblockTargets()` first whenever a `@return MorphTo<X|Y, …>` generic names the targets, in the
+order the docblock writes them. All three are deterministic, so the rendered union is stable across runs
+either way.
+
+`ReviewResource::reviewable` therefore pins *sorted by model FQCN*, not *sorted union*: the two orderings
+agree in that fixture only because `Artist` sorts before `Venue` and `ArtistResource` before
+`VenueResource`. A morph target whose resource name sorts the other way would still be emitted in model
+order.
 
 ### One resolver, not many — every `#[Collects]` caller shares it
 
