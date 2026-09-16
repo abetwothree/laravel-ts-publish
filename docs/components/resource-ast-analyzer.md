@@ -55,17 +55,20 @@ single-model relation, `?->` included. Each position needs its own piece:
   `RelationFilterHandler` does not claim `$this->resource->only([...])`. `RelationCollectionChainHandler`'s
   `$this->anyProp->method()` branch steps aside for a literal key list on a model-backed scope, as its generic
   `$this->method()` arm does. `ReceiverMethodReturnResolver::attributeFilterRule()` then answers both spellings.
-  Without a literal list the branch keeps the reflected `Record<string, unknown>`, which is also what
-  `$this->only($fields)` gets.
 - **Value, relation.** `RelationFilterHandler` matches `$this->resource->relation` wherever it matches
   `$this->relation`. That keeps the proxy `?->` form ahead of `MethodChainHandler`, which would reflect `only()`
   to `Record<string, unknown> | null`.
+- **A runtime key list.** `only($request->input('fields'))` names nothing to pick, and `RelationFilterHandler`
+  declines it. `attributeFilterRule()` answers it for a lone model receiver with `Record<string, unknown>`, the
+  attribute-keyed array either filter returns, so `$this->author->only($fields)` and
+  `$this->resource->author->only($fields)` agree without depending on which earlier branch reflects `only()`.
 
 `RelationFilterHandler` declines (`null`) whenever it cannot type a filter: the member is neither a relation nor
 a model-returning accessor, the key list is not literal, or the keys name nothing. It used to claim `unknown`,
 which stopped every later handler, including the receiver rules. `ProxyFilterDirectResource` and
-`ProxyFilterWrappedResource` in the workbench write the same six filters both ways, and `ResourceAstAnalyzerTest`
-asserts their published properties and imports are identical.
+`ProxyFilterWrappedResource` in the workbench write the same eight filters both ways, `fields_own` and
+`fields_author` being the runtime-key cells, and `ResourceAstAnalyzerTest` asserts their published properties and
+imports are identical.
 
 Two shapes are deliberately left out of that pair:
 

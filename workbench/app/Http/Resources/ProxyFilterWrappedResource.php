@@ -28,6 +28,8 @@ final class ProxyFilterWrappedResource extends JsonResource
             'author_brief' => $this->resource->author->only(['id', 'name']),
             'author_rest' => $this->resource->author->except(['email']),
             'author_maybe' => $this->resource->author?->only(['id', 'name']),
+            'fields_own' => $this->resource->only($request->input('fields')),
+            'fields_author' => $this->resource->author->only($request->input('fields')),
         ];
     }
 }

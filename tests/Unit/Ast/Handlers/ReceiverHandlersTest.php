@@ -268,6 +268,20 @@ describe('ReceiverMethodCallHandler', function () {
             ->and($handler->resolve(receiverHandlerExpr('$probe::secret()'), $scope, chainHandlersThrowingEngine()))->toBeNull();
     });
 
+    // Laravel's only()/except() return an attribute-keyed array whatever keys arrive at runtime, so both spellings
+    // of a runtime filter hold the same answer here instead of depending on which earlier handler reflects it.
+    test('types a filter with no literal key list on a lone model as Record<string, unknown>', function (string $php, string $type) {
+        $scope = new AnalysisScope(new ReflectionClass(ReceiverMethodResource::class), Post::class);
+
+        expect(new ReceiverMethodCallHandler()->resolve(receiverHandlerExpr($php), $scope, chainHandlersThrowingEngine()))
+            ->toBe(['type' => $type, 'optional' => false]);
+    })->with([
+        ['$this->resource->only($fields)', 'Record<string, unknown>'],
+        ['$this->resource->author->only($fields)', 'Record<string, unknown>'],
+        ['$this->author->except($fields)', 'Record<string, unknown>'],
+        ['$this->resource->author?->only($fields)', 'Record<string, unknown> | null'],
+    ]);
+
     test('an earlier ?-> in the chain makes the call nullable once', function () {
         $scope = new AnalysisScope(new ReflectionClass(ReceiverMethodResource::class), Post::class);
         $handler = new ReceiverMethodCallHandler;

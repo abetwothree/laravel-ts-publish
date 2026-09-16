@@ -29,6 +29,8 @@ final class ProxyFilterDirectResource extends JsonResource
             'author_brief' => $this->author->only(['id', 'name']),
             'author_rest' => $this->author->except(['email']),
             'author_maybe' => $this->author?->only(['id', 'name']),
+            'fields_own' => $this->only($request->input('fields')),
+            'fields_author' => $this->author->only($request->input('fields')),
         ];
     }
 }

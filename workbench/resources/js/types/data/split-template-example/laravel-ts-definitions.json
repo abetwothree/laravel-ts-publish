@@ -13119,6 +13119,16 @@
                     "name": "author_maybe",
                     "type": "Pick<User, 'id' | 'name'> | null",
                     "optional": false
+                },
+                {
+                    "name": "fields_own",
+                    "type": "Record<string, unknown>",
+                    "optional": false
+                },
+                {
+                    "name": "fields_author",
+                    "type": "Record<string, unknown>",
+                    "optional": false
                 }
             ]
         },
@@ -13158,6 +13168,16 @@
                 {
                     "name": "author_maybe",
                     "type": "Pick<User, 'id' | 'name'> | null",
+                    "optional": false
+                },
+                {
+                    "name": "fields_own",
+                    "type": "Record<string, unknown>",
+                    "optional": false
+                },
+                {
+                    "name": "fields_author",
+                    "type": "Record<string, unknown>",
                     "optional": false
                 }
             ]

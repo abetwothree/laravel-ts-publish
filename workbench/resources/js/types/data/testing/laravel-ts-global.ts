@@ -3404,6 +3404,8 @@ declare global {
             author_brief: Pick<workbench.app.models.User, 'id' | 'name'>;
             author_rest: Pick<workbench.app.models.User, 'id' | 'name' | 'email_verified_at' | 'password' | 'options' | 'remember_token' | 'created_at' | 'updated_at' | 'role' | 'membership_level' | 'phone' | 'avatar' | 'bio' | 'settings' | 'last_login_at' | 'last_login_ip'>;
             author_maybe: Pick<workbench.app.models.User, 'id' | 'name'> | null;
+            fields_own: Record<string, unknown>;
+            fields_author: Record<string, unknown>;
         }
         /**
          * ProxyFilterDirectResource with every only() and except() spelled through $this->resource. The resource
@@ -3417,6 +3419,8 @@ declare global {
             author_brief: Pick<workbench.app.models.User, 'id' | 'name'>;
             author_rest: Pick<workbench.app.models.User, 'id' | 'name' | 'email_verified_at' | 'password' | 'options' | 'remember_token' | 'created_at' | 'updated_at' | 'role' | 'membership_level' | 'phone' | 'avatar' | 'bio' | 'settings' | 'last_login_at' | 'last_login_ip'>;
             author_maybe: Pick<workbench.app.models.User, 'id' | 'name'> | null;
+            fields_own: Record<string, unknown>;
+            fields_author: Record<string, unknown>;
         }
         /** Edge-case resource exercising unusual but valid patterns for AST analyzer guard clauses. */
         export interface QuirkyResource {

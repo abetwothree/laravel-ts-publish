@@ -15,4 +15,6 @@ export interface ProxyFilterWrappedResource
     author_brief: Pick<User, 'id' | 'name'>;
     author_rest: Pick<User, 'id' | 'name' | 'email_verified_at' | 'password' | 'options' | 'remember_token' | 'created_at' | 'updated_at' | 'role' | 'membership_level' | 'phone' | 'avatar' | 'bio' | 'settings' | 'last_login_at' | 'last_login_ip'>;
     author_maybe: Pick<User, 'id' | 'name'> | null;
+    fields_own: Record<string, unknown>;
+    fields_author: Record<string, unknown>;
 }

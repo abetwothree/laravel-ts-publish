@@ -209,6 +209,7 @@ returns `mixed`, `Collection::modelKeys()` returns `array<int, array-key>`, whic
 | `getKey()` | Any model that declares `getKey()` itself | No rule. Reflection publishes the override's own return, such as `getKey(): string`. |
 | `modelKeys()` | An Eloquent collection with `elementModel` set | The element model's key type as a list, `number[]` or `string[]` |
 | `only([...])`, `except([...])` | A receiver holding exactly one concrete model, where the call carries a literal key list | Exactly what `RelationFilterHandler` builds for a relation to that model: `Pick<Model, …>` when every key is a published column, else the inline shape |
+| `only($keys)`, `except($keys)` with no literal key list, such as `only($request->input('fields'))` | A receiver holding exactly one concrete model | `Record<string, unknown>`: whatever keys arrive at runtime, either filter returns an array keyed by attribute name. `ProxyFilterDirectResource` and `ProxyFilterWrappedResource` pin it in both spellings as `fields_own` and `fields_author`. |
 | `only()`, `except()` | Any other receiver — a union, an Eloquent collection, or a `StaticCall`, which carries no key list this can read | No rule. Reflection then declines the vague `array`. |
 
 The key type comes from `ModelAttributeResolver::getInstance()`, so `HasUuids`, `HasUlids`, and a
