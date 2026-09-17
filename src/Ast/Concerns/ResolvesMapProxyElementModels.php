@@ -15,7 +15,8 @@ use PhpParser\Node\Identifier;
  * Resolve the element model behind a `->map` proxy receiver.
  *
  * The single home for this: RelationFilterHandler and VariableHandler both need it for an untyped
- * map closure. Requires the host to also use InspectsAstNodes and ResolvesModelRelationTypes.
+ * map closure. Requires the host to also use Ast\Concerns\InspectsAstNodes and
+ * ResolvesModelRelationTypes.
  *
  * @internal
  */
@@ -23,8 +24,9 @@ trait ResolvesMapProxyElementModels
 {
     /**
      * Resolve the element model behind a `->map` proxy receiver: a whenLoaded to-many closure
-     * parameter, or `$this->relation` itself. A singular relation's bound variable is not a
-     * collection and must not match, so it returns null rather than guessing a shape.
+     * parameter, or `$this->relation` itself, also read as `$this->resource->relation` on a subject that forwards to
+     * its model. A singular relation's bound variable is not a collection and must not match, so it returns null
+     * rather than guessing a shape.
      *
      * The binding is never invalidated by a reassignment inside the closure (e.g.
      * `$members = $members->flatMap(...)` before `$members->map(...)`), so a reassigned receiver
@@ -42,7 +44,7 @@ trait ResolvesMapProxyElementModels
         }
 
         if ($receiver instanceof PropertyFetch
-            && $this->isThisPropertyFetch($receiver)
+            && ($this->isThisPropertyFetch($receiver) || ($this->isResourceFetch($receiver->var) && $scope->forwardsUndeclaredMembersTo !== null))
             && $receiver->name instanceof Identifier
         ) {
             $relationInfo = $this->resolveModelRelationTypeInfo($receiver->name->toString(), $scope);

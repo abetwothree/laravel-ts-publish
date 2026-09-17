@@ -5,16 +5,37 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MissingTableModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\InvalidPivotClassParent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\InverseMorphToManyParent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\NotAModelPivot;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverAttributeBaseModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverAttributeChildModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverChildDto;
+use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
+use Workbench\App\Enums\Priority;
+use Workbench\App\Enums\ShirtSize;
 use Workbench\App\Models\Activity;
 use Workbench\App\Models\Admin\Store;
 use Workbench\App\Models\ArrayObjectCastFixture;
+use Workbench\App\Models\Artist;
+use Workbench\App\Models\ArtistReview;
 use Workbench\App\Models\Attachment;
+use Workbench\App\Models\Comment;
 use Workbench\App\Models\CompositeComment;
+use Workbench\App\Models\DocblockGenericsFixture;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Kpi;
+use Workbench\App\Models\Label;
+use Workbench\App\Models\Labelable;
 use Workbench\App\Models\Marketing\Report\Report as MarketingReport;
 use Workbench\App\Models\Order;
 use Workbench\App\Models\OrderItem;
+use Workbench\App\Models\OutgoingNote;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Product;
 use Workbench\App\Models\Profile;
@@ -24,9 +45,116 @@ use Workbench\App\Models\PropertyDocblockDescribedTagFixture;
 use Workbench\App\Models\PropertyDocblockEdge;
 use Workbench\App\Models\PropertyDocblockRejectFixture;
 use Workbench\App\Models\PropertyDocblockTraitFixture;
+use Workbench\App\Models\Review;
 use Workbench\App\Models\Sales\Report\Report as SalesReport;
 use Workbench\App\Models\Team;
+use Workbench\App\Models\TrackingEvent;
 use Workbench\App\Models\User;
+use Workbench\App\Models\Venue;
+use Workbench\App\Models\VenueReview;
+use Workbench\App\Models\Warehouse;
+use Workbench\App\ValueObjects\Coordinate;
+
+describe('resolveAttributeClass()', function () {
+    test('an enum cast holds its enum and a date cast holds Carbon', function () {
+        $resolver = resolve(ModelAttributeResolver::class);
+
+        expect($resolver->resolveAttributeClass(Post::class, 'priority'))->toBe(Priority::class)
+            ->and($resolver->resolveAttributeClass(Post::class, 'published_at'))->toBe(Carbon::class);
+    });
+
+    test('a CastsAttributes cast holds its get() return class', function () {
+        expect(resolve(ModelAttributeResolver::class)->resolveAttributeClass(Warehouse::class, 'coordinate_data'))
+            ->toBe(Coordinate::class);
+    });
+
+    test('an accessor holds its getter closure class, else its Attribute docblock Get class', function () {
+        $resolver = resolve(ModelAttributeResolver::class);
+
+        expect($resolver->resolveAttributeClass(Image::class, 'shirt_size'))->toBe(ShirtSize::class)
+            ->and($resolver->resolveAttributeClass(Post::class, 'latest_comment'))->toBe(Comment::class)
+            ->and($resolver->resolveAttributeClass(Image::class, 'uploader_from_docblock'))->toBe(User::class)
+            ->and($resolver->resolveAttributeClass(Image::class, 'uploaders_from_docblock'))->toBe(Collection::class);
+    });
+
+    test('an old-style accessor holds its native return class', function () {
+        expect(resolve(ModelAttributeResolver::class)->resolveAttributeClass(TrackingEvent::class, 'changes'))
+            ->toBe(Collection::class);
+    });
+
+    test('a scalar column, a scalar accessor, and an unknown name hold no class', function () {
+        $resolver = resolve(ModelAttributeResolver::class);
+
+        expect($resolver->resolveAttributeClass(Post::class, 'title'))->toBeNull()
+            ->and($resolver->resolveAttributeClass(Image::class, 'is_landscape'))->toBeNull()
+            ->and($resolver->resolveAttributeClass(Post::class, 'options'))->toBeNull()
+            ->and($resolver->resolveAttributeClass(ArrayObjectCastFixture::class, 'owner_snapshot'))->toBeNull()
+            ->and($resolver->resolveAttributeClass(Post::class, 'no_such_attribute'))->toBeNull()
+            ->and($resolver->resolveAttributeClass('Workbench\\App\\Models\\NoSuchModel', 'title'))->toBeNull();
+    });
+});
+
+describe('resolveAttributeClass() edge cases', function () {
+    test('an immutable date cast holds CarbonImmutable; a timestamp cast holds no class', function () {
+        $resolver = resolve(ModelAttributeResolver::class);
+
+        expect($resolver->resolveAttributeClass(ReceiverAttributeBaseModel::class, 'published_at'))->toBe(CarbonImmutable::class)
+            ->and($resolver->resolveAttributeClass(ReceiverAttributeBaseModel::class, 'deleted_at'))->toBeNull();
+    });
+
+    test('a Castable cast is asked for its caster before its own CastsAttributes get()', function () {
+        expect(resolve(ModelAttributeResolver::class)->resolveAttributeClass(ReceiverAttributeBaseModel::class, 'content'))
+            ->toBe(Coordinate::class);
+    });
+
+    test('a native getter type is authoritative even when the Attribute docblock names a class', function () {
+        expect(resolve(ModelAttributeResolver::class)->resolveAttributeClass(ReceiverAttributeBaseModel::class, 'typed_label'))
+            ->toBeNull();
+    });
+
+    test('a getter returning self names its declaring model; one returning static names the model read through', function () {
+        $resolver = resolve(ModelAttributeResolver::class);
+
+        expect($resolver->resolveAttributeClass(ReceiverAttributeChildModel::class, 'self_copy'))->toBe(ReceiverAttributeBaseModel::class)
+            ->and($resolver->resolveAttributeClass(ReceiverAttributeChildModel::class, 'static_copy'))->toBe(ReceiverAttributeChildModel::class);
+    });
+
+    test('a docblock Get naming an array of a generic class holds no class, while the bare generic holds its base', function () {
+        $resolver = resolve(ModelAttributeResolver::class);
+
+        expect($resolver->resolveAttributeClass(ReceiverAttributeBaseModel::class, 'collection_list'))->toBeNull()
+            ->and($resolver->resolveAttributeClass(Image::class, 'uploaders_from_docblock'))->toBe(Collection::class);
+    });
+
+    test('a typed getter closure returning static names the class it was called on', function () {
+        expect(resolve(ModelAttributeResolver::class)->resolveAttributeClass(ReceiverAttributeBaseModel::class, 'borrowed_static'))
+            ->toBe(ReceiverChildDto::class);
+    });
+
+    test('the answer is memoized per model and attribute, including a null answer', function () {
+        $resolver = resolve(ModelAttributeResolver::class);
+        $resolver->resolveAttributeClass(Post::class, 'priority');
+        $resolver->resolveAttributeClass(Post::class, 'title');
+
+        expect(new ReflectionProperty($resolver, 'attributeClassCache')->getValue($resolver))
+            ->toBe([Post::class.'::priority' => Priority::class, Post::class.'::title' => null]);
+    });
+});
+
+describe('resolveMorphToBound()', function () {
+    test('a single-model generic is its own bound', function () {
+        expect(resolve(ModelAttributeResolver::class)->resolveMorphToBound(Activity::class, 'causer'))->toBe(User::class);
+    });
+
+    test('a Model generic, a union generic, and no generic are all bounded by Model', function () {
+        $resolver = resolve(ModelAttributeResolver::class);
+
+        expect($resolver->resolveMorphToBound(Kpi::class, 'reportable'))->toBe(Model::class)
+            ->and($resolver->resolveMorphToBound(Image::class, 'reviewable'))->toBe(Model::class)
+            ->and($resolver->resolveMorphToBound(Image::class, 'imageable'))->toBe(Model::class)
+            ->and($resolver->resolveMorphToBound(Image::class, 'noSuchRelation'))->toBe(Model::class);
+    });
+});
 
 test('resolveAttribute returns empty info for non-existent model class', function () {
     $resolver = resolve(ModelAttributeResolver::class);
@@ -289,6 +417,36 @@ describe('morphTo docblock generics', function () {
     });
 });
 
+test('getMorphToTargets unions parents that target subclasses of the child', function () {
+    $resolver = resolve(ModelAttributeResolver::class);
+    $resolver->buildMorphTargetMap([Venue::class, Artist::class, Review::class, VenueReview::class, ArtistReview::class]);
+
+    expect($resolver->getMorphToTargets(Review::class, 'reviewable'))->toBe([Artist::class, Venue::class])
+        ->and($resolver->getMorphToTargets(VenueReview::class, 'reviewable'))->toBe([Venue::class])
+        ->and($resolver->resolveRelation(Review::class, 'reviewable')['type'])->toBe('Artist | Venue');
+});
+
+test('buildMorphTargetMap maps a morphToMany pivot model back to its declaring parents', function () {
+    $resolver = resolve(ModelAttributeResolver::class);
+    $resolver->buildMorphTargetMap([Venue::class, Artist::class, Label::class, Labelable::class]);
+
+    expect($resolver->getMorphToTargets(Labelable::class, 'labelable'))->toBe([Artist::class, Venue::class]);
+});
+
+test('a using() pointing at a non-Model class adds no pivot map entry', function () {
+    $resolver = resolve(ModelAttributeResolver::class);
+    $resolver->buildMorphTargetMap([InvalidPivotClassParent::class]);
+
+    expect($resolver->getMorphToTargets(NotAModelPivot::class, 'labelable'))->toBe([]);
+});
+
+test('the morphedByMany inverse side of a custom pivot adds no pivot map entry', function () {
+    $resolver = resolve(ModelAttributeResolver::class);
+    $resolver->buildMorphTargetMap([InverseMorphToManyParent::class]);
+
+    expect($resolver->getMorphToTargets(Labelable::class, 'labelable'))->toBe([]);
+});
+
 test('attributeDocblockReturnTypes captures nested generic getter type', function () {
     $method = new ReflectionMethod(Order::class, 'sortedItems');
     $info = app(LaravelTsPublishService::class)->attributeDocblockReturnTypes($method);
@@ -335,13 +493,14 @@ test('accessor with @phpstan-return docblock resolves through docblock', functio
 
 test('bare @return Attribute docblock does not override a usable closure signature type', function () {
     // 'unsortedItems' pairs a bare `@return Attribute` with a vague `: Collection` closure signature;
-    // the @return parser must not resolve the bare word to Eloquent's own Attribute class.
+    // the @return parser must not resolve the bare word to Eloquent's own Attribute class. Both are
+    // vague, so the getter body types it from the relation it returns.
     $info = resolve(ModelAttributeResolver::class)
         ->resolveAttribute(Order::class, 'unsorted_items');
 
     expect($info['type'])->not->toBe('Attribute')
-        ->and($info['type'])->toBe('unknown[] | Record<string, unknown>')
-        ->and($info['classFqcns'])->toBe([]);
+        ->and($info['type'])->toBe('OrderItem[]')
+        ->and($info['classFqcns'])->toBe([OrderItem::class]);
 });
 
 test('attributeDocblockReturnTypes resolves Attribute<> written as a fully-qualified class name', function () {
@@ -503,12 +662,48 @@ describe('write-only accessor waterfall', function () {
         expect($info['type'])->toBe('string | null');
     });
 
-    test('a set-only mutator with no docblock generic and no backing column resolves to unknown', function () {
-        // Order::searchIndex has neither a getter, a docblock generic, nor a matching DB column.
-        $info = resolve(ModelAttributeResolver::class)
-            ->resolveAttribute(Order::class, 'search_index');
+    test('a set-only mutator with no docblock generic and no backing column resolves to unknown and is omitted', function () {
+        // Order::searchIndex has neither a getter, a docblock generic, nor a matching DB column. The
+        // type alone can't tell "should be omitted" apart from "genuinely unresolvable" — both read
+        // 'unknown' — so isOmittedMutator() (reads the 'omit' flag resolveAttribute() discards) pins it.
+        $resolver = resolve(ModelAttributeResolver::class);
+        $info = $resolver->resolveAttribute(Order::class, 'search_index');
 
-        expect($info['type'])->toBe('unknown');
+        expect($info['type'])->toBe('unknown')
+            ->and($resolver->isOmittedMutator(Order::class, 'search_index'))->toBeTrue();
+    });
+
+    test('a set-only mutator whose docblock Get is never resolves to its real column type', function () {
+        // OutgoingNote::subject/type are Attribute::set()/make() mutators with no getter, documented
+        // `Attribute<never, string>` — the never only records that no getter exists. Reading either
+        // attribute returns the raw column value, so the column's own type must win, not a literal 'never'.
+        $resolver = resolve(ModelAttributeResolver::class);
+
+        expect($resolver->resolveAttribute(OutgoingNote::class, 'subject')['type'])->toBe('string')
+            ->and($resolver->resolveAttribute(OutgoingNote::class, 'type')['type'])->toBe('string');
+    });
+
+    test('a set-only mutator whose docblock Get is never and has no backing column resolves to unknown, not never, and is omitted', function () {
+        // OutgoingNote::normalizedTag has no backing column: nothing can be read, so it must stay
+        // omitted from published output — degrading to 'unknown' rather than leaking the docblock's
+        // 'never'. resolveAttribute()'s 'unknown' alone doesn't distinguish omission from an ordinary
+        // unresolvable attribute, so isOmittedMutator() (reads the 'omit' flag directly) pins it too.
+        $resolver = resolve(ModelAttributeResolver::class);
+        $info = $resolver->resolveAttribute(OutgoingNote::class, 'normalized_tag');
+
+        expect($info['type'])->toBe('unknown')
+            ->and($resolver->isOmittedMutator(OutgoingNote::class, 'normalized_tag'))->toBeTrue();
+    });
+
+    test('a set-only mutator whose docblock Get is a nullable never resolves to its real column type', function () {
+        // OutgoingNote::channel is documented `Attribute<?never, ?string>`. The nullable-prefix handling
+        // in resolveDocblockTypePartOrAlias() turns `?never` into the string 'never | null' before it
+        // reaches the set-only branch — that spelling must be caught the same as bare 'never', not
+        // published verbatim.
+        $info = resolve(ModelAttributeResolver::class)
+            ->resolveAttribute(OutgoingNote::class, 'channel');
+
+        expect($info['type'])->toBe('string');
     });
 });
 
@@ -586,5 +781,37 @@ describe('attribute-lookup fallbacks', function () {
             ->resolveAttribute(Order::class, 'totallyMadeUpAttribute');
 
         expect($info['type'])->toBe('unknown');
+    });
+});
+
+test('resolveContext warns when a model table does not exist', function () {
+    AnalysisWarnings::reset();
+
+    resolve(ModelAttributeResolver::class)->resolveAttribute(MissingTableModel::class, 'anything');
+
+    expect(AnalysisWarnings::all())->toHaveCount(1)
+        ->and(AnalysisWarnings::all()[0]['subject'])->toBe(MissingTableModel::class)
+        ->and(AnalysisWarnings::all()[0]['message'])->toContain('table_that_was_never_migrated');
+});
+
+test('resolveContext warns only once per model per run, because the context is cached', function () {
+    AnalysisWarnings::reset();
+
+    $resolver = resolve(ModelAttributeResolver::class);
+    $resolver->resolveAttribute(MissingTableModel::class, 'anything');
+    $resolver->resolveAttribute(MissingTableModel::class, 'something_else');
+
+    expect(AnalysisWarnings::all())->toHaveCount(1);
+});
+
+describe('resolveAttribute() @property fallback for virtual attributes', function () {
+    test('types a query-selected attribute from its @property tag', function () {
+        expect(resolve(ModelAttributeResolver::class)->resolveAttribute(DocblockGenericsFixture::class, 'children_total')['type'])
+            ->toBe('number | null');
+    });
+
+    test('never answers a relation name from an ide-helper @property-read tag', function () {
+        expect(resolve(ModelAttributeResolver::class)->resolveAttribute(DocblockGenericsFixture::class, 'child_rows')['type'])
+            ->toBe('unknown');
     });
 });

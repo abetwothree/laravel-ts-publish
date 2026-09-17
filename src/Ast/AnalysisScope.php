@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
 use ReflectionClass;
 
@@ -14,9 +16,13 @@ use ReflectionClass;
  * analysis and its backing model, plus the closure/spread bookkeeping that makes local variables,
  * whenLoaded relations, and recursive spreads resolve correctly as traversal descends.
  *
+ * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
  * @phpstan-type ClosureParamExprBindingsMap array<string, Expr>
+ * @phpstan-type VarClassBindingsMap array<string, non-empty-list<class-string>>
  * @phpstan-type VarModelBindingsMap array<string, class-string<Model>>
  * @phpstan-type VarCollectionBindingsMap array<string, array{type: string, modelFqcn: class-string<Model>}>
+ * @phpstan-type VarValueBindingsMap array<string, ValueExpressionResult>
  * @phpstan-type LocalVarBindingsMap array<string, Expr>
  * @phpstan-type RequestVarNamesMap array<string, class-string<Request>>
  *
@@ -32,6 +38,24 @@ final class AnalysisScope
     public ?string $instanceOfWrappedClass = null;
 
     /**
+     * The class an undeclared `$this->member` read or call forwards to — a JsonResource proxies both to
+     * `$this->resource` — or null when the subject forwards nothing. Derived from the subject in this
+     * class's own constructor, so every scope carries it however it was built; ResourceAstAnalyzer
+     * re-derives it once an instanceof guard supplies a backing the constructor lacked, and TernaryHandler
+     * narrows it alongside modelClass. ReceiverClassResolver reads it rather than testing for JsonResource.
+     *
+     * @var class-string|null
+     */
+    public ?string $forwardsUndeclaredMembersTo = null;
+
+    /**
+     * False while MethodReturnTypeResolver's body fallback analyzes a method: it flattens the shape into a type string
+     * with no FQCN channel and drops the whole shape once a value names a token. Filter code reads it to publish the
+     * most specific answer that names none.
+     */
+    public bool $carriesImports = true;
+
+    /**
      * Related model set while analyzing a whenLoaded closure, so `$variable->prop`/`->method()` inside it resolve.
      *
      * @var class-string<Model>|null
@@ -45,6 +69,15 @@ final class AnalysisScope
      * @var ClosureParamExprBindingsMap
      */
     public array $closureParamExprBindings = [];
+
+    /**
+     * Variables an `instanceof` guard or ternary has proven to hold a class. Read before
+     * varModelBindings, since a narrowed variable is usually also bound to its parent model and that
+     * binding would otherwise win. Scoped: writers save and restore around the body.
+     *
+     * @var VarClassBindingsMap
+     */
+    public array $varClassBindings = [];
 
     /**
      * Closure params / loop vars bound to a model class (whenLoaded params, relation-chain
@@ -63,6 +96,15 @@ final class AnalysisScope
      * @var VarCollectionBindingsMap
      */
     public array $varCollectionBindings = [];
+
+    /**
+     * Closure params bound to an already-resolved value rather than to a class — a `collect(...)->map()`
+     * param, whose element type the pipeline resolved before descending into the body. Scoped: writers
+     * save and restore around the body.
+     *
+     * @var VarValueBindingsMap
+     */
+    public array $varValueBindings = [];
 
     /**
      * Top-level `$var = expr;` bindings for the method last analyzed, so a bare `Variable` value
@@ -100,10 +142,19 @@ final class AnalysisScope
 
     /**
      * @param  ReflectionClass<object>  $subjectReflection  the resource (or other AST subject) under analysis
-     * @param  class-string<Model>|null  $modelClass  its resolved backing model, if any
+     * @param  class-string<Model>|null  $modelClass  its resolved backing model, if any. Scoped rather than
+     *                                                fixed: TernaryHandler narrows it for an `instanceof`
+     *                                                true arm and restores it after — a mutation below
+     *                                                AstEngine's class@method@modelClass cache key.
      */
     public function __construct(
         public ReflectionClass $subjectReflection,
         public ?string $modelClass = null,
-    ) {}
+    ) {
+        // The subject alone decides this, so every scope carries it without the builder having to remember;
+        // ResourceAstAnalyzer re-derives it once an instanceof guard supplies a backing the constructor lacked.
+        $this->forwardsUndeclaredMembersTo = $modelClass !== null && $subjectReflection->isSubclassOf(JsonResource::class)
+            ? $modelClass
+            : null;
+    }
 }

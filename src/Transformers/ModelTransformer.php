@@ -500,8 +500,7 @@ class ModelTransformer extends CoreTransformer
 
     protected function isMutatorExcluded(string $name): bool
     {
-        $newStyle = Str::camel($name);
-        $oldStyle = 'get'.Str::studly($name).'Attribute';
+        ['newStyle' => $newStyle, 'oldStyle' => $oldStyle] = $this->accessorMethodNames($name);
 
         if ($this->reflectionModel->hasMethod($newStyle)
             && $this->reflectionModel->getMethod($newStyle)->getAttributes(TsExclude::class) !== []
@@ -530,8 +529,7 @@ class ModelTransformer extends CoreTransformer
 
     protected function resolveAccessorDescription(string $name): string
     {
-        $newStyle = Str::camel($name);
-        $oldStyle = 'get'.Str::studly($name).'Attribute';
+        ['newStyle' => $newStyle, 'oldStyle' => $oldStyle] = $this->accessorMethodNames($name);
 
         if ($this->reflectionModel->hasMethod($newStyle)) {
             $desc = JsEmitter::parseDocBlockDescription(

@@ -8,19 +8,191 @@ subclass's `toArray()` method as PHP AST (not reflection) and infers a TypeScrip
 every returned property, following relation chains, closures, casts, and accessor waterfalls
 back to their source.
 
-## Relation filters
+## Attribute filters on any model receiver
 
-`$this->relation->only([...])` / `->except([...])` (and their `?->` nullsafe forms) analyze
-via `RelationFilterHandler::analyzeRelationFilter()`. When the related model resolves to a single class (not a
+`only([...])` / `except([...])` (and their `?->` nullsafe forms) type against **any receiver holding a
+model**, not only a relation. `$this->relation->only([...])` and `$this->resource->relation->only([...])` analyze via
+`RelationFilterHandler::analyzeRelationFilter()`; every other receiver — a bare `$this->only([...])` the
+resource forwards to its model, a `whenLoaded` closure parameter's `$category->only([...])`, a local
+variable holding a model — reaches `ReceiverMethodReturnResolver::attributeFilterRule()`, which builds the
+**same** answer against the receiver's own model. When that model resolves to a single class (not a
 multi-model accessor union such as `Attribute<ModelA|ModelB, never>`), the analyzer prefers to
-**reference the related model's own generated interface** instead of re-deriving an inline
+**reference the model's own generated interface** instead of re-deriving an inline
 object shape — the model interface already carries `#[TsCasts]` overrides and `@property`
 docblock refinements that a from-scratch recompute loses.
 
+The two paths agree by construction rather than by coincidence: the literal-key answer (`literalKeyFilterResult()`,
+the `Pick<>` or else the inline shape) and the `Record<string, unknown>` answer (`attributeRecordResult()`) both live
+on `ResolvesFilteredRelationTypes`, and both callers invoke them on the same model, keys and
+`AnalysisScope::$carriesImports`, and gate them on the same `ReceiverMethodReturnResolver::typesAsModelFilter()`
+override check. A receiver holding a `Support\Collection` agrees the same way: both ask
+`FiltersAttributeKeys::runsCollectionFilter()` and publish `attributeRecordResult()`, and `RelationFilterHandler`
+asks it before reading any element model an accessor's `Collection<int, User>` names. The `?->` flag differs:
+`RelationFilterHandler` adds `| null` itself, while `attributeFilterRule()` leaves it to `ReceiverMethodCallHandler`. A literal key list that types no member differs too: the relation arm
+declines it, and `attributeFilterRule()` answers it with `Record<string, unknown>`, so both spellings still agree.
+One further difference is hidden by production ordering: `attributeFilterRule()` additionally runs its result through
+`ValueResult::namesOnlyPublishedModels()`, so for an abstract or `Illuminate\`-namespaced model the relation path
+still emits a `Pick<>` where the receiver rule declines. That is what keeps `RelationFilterHandler` and
+`ReceiverMethodCallHandler` inert against each other even though both claim a single-model
+`$this->relation->only([...])` — see the ordering inventory in
+[AST engine](ast-engine.md#the-honest-ordering-inventory), whose rows used to record the opposite reason (the
+receiver handler *declining* `only()`'s vague return). `OnlyValueResource` in the workbench pins the receiver
+side: `$this->when(true, fn () => $this->only(['id', 'title']))` publishes `Pick<Post, 'id' | 'title'>` and
+`$this->whenLoaded('categoryRel', fn ($category) => $category->only(['id', 'name']))` publishes
+`Pick<Category, 'id' | 'name'>`, where both previously published `Record<string, unknown>`.
+
+In a scope with a model, only filter-aware code types these calls. Laravel declares `HasAttributes::except()` as
+`@return array`, which reflects to the list type `unknown[]` although the value is attribute-keyed, and on a
+many-relation the call filters models by primary key, which no reflected return describes. So the generic
+reflectors decline every `only()`/`except()`, whatever its key list: `RelationCollectionChainHandler` on a
+model-backed scope, in all of its branches; `MethodChainHandler` on a `?->` chain; and `VariableHandler`'s
+`$variable->method()` arm.
+
+Two limits follow from where those declines stop:
+
+- **A model-less scope.** A controller's scope has no model, so `RelationCollectionChainHandler` still reflects a
+  filter there: `$this->post->except($keys)` publishes `unknown[]` and `$this->post->only(['id', 'title'])`
+  publishes `Record<string, unknown>`.
+- **A model's own body.** A model method or accessor body is analyzed with the model as its subject, and the same
+  filter-aware code answers there. `ReceiverMethodCallHandler` reads a bare `$this` as the model for any
+  `only()`/`except()`, so the receiver rules answer it; `RelationFilterHandler` answers a relation, in a method body
+  through the resource profile and in a getter body through `ResourceExpressionHandlers::forModelClosures()`. A
+  getter body carries its imports, so it publishes what a resource would: `Pick<Release, 'major' | 'minor'>`,
+  `Pick<User, 'id' | 'name'>`, `Comment[]`. The `$this->resource` spelling is the exception, below. A method body
+  reached by the body fallback carries none, so each filter publishes the most specific answer naming no token, as
+  [receiver-types § The body fallback carries no FQCN channel](receiver-types.md#the-body-fallback-carries-no-fqcn-channel)
+  lists. `ReleaseColumnsResource` and `CommentRelationFiltersResource` pin both kinds of body. Where the answer
+  differs from what a resource publishes, or stays `unknown`:
+  - In a method body, a literal filter publishes its inline shape, where each member whose type names a token, such
+    as an enum or class cast column or a relation to a model, is `unknown`: `{ id: number; role: unknown }`. A to-many
+    filter publishes `unknown[]`, not `Comment[]`.
+  - A method body that reads an accessor whose getter filters analyzes that getter without imports too, so the
+    filter publishes what it would in the method body: `Comment::picksSummary()` publishes `relationSummary()`'s
+    object under `picks`. An accessor whose type names a class through its signature, its docblock, an old-style
+    getter's own return type or `@return` docblock, an `@property` tag or a getter value that is no filter still costs
+    the method its shape, as
+    [receiver-types § The body fallback carries no FQCN channel](receiver-types.md#the-body-fallback-carries-no-fqcn-channel)
+    describes.
+  - A model whose `only()` or `except()` override has a return reflection types publishes that return, not
+    `Record<string, unknown>` or a `Pick<>`, in a resource and a getter body: `string` for `: string`, the model for
+    `: static`. A method body carries no import, so there `ReceiverMethodReturnResolver` spells that return without a
+    token, one top-level union arm at a time. An arm that is a model, or a list of one, becomes the object that model
+    serializes to, narrowed to the call's literal keys: the inline shape of the attributes `only()` names, or of every
+    attribute but those `except()` names. The attributes are those the model's `toArray()` writes, its columns and its
+    appended accessors (`$appends` or `#[Appends]`), so a `$hidden` column or append, one its `$visible` list leaves
+    out, and an accessor it does not append are never named, and a member whose type names a token is `unknown`:
+    `{ id: number; badge: string }[]` for `map->only(['id', 'badge'])` with `badge` appended. A runtime key list, or
+    keys that select no such attribute, give `Record<string, unknown>`. A `null` arm stays. Any
+    other arm naming a token, such as an enum, leaves the whole answer `unknown`. A model nested deeper is not
+    mapped: a docblock `array{owner: User}` already reflects to `{ owner: unknown }`. The enclosing shape survives
+    either way. An override with no return reflection can read
+    gets the filter answers in every scope, as `Model`'s own filter does: no declared return, or one too vague to
+    publish, which is `: array`, `: ?array`, `: mixed`, `: iterable`, `: array|string` or a docblock
+    `@return array<string, mixed>`.
+  - A literal `only()` list that types no member of a single model publishes `Record<string, unknown>` in every
+    scope, since `Model::only(['nope'])` returns `['nope' => null]`.
+  - A member the package reads as holding a `Support\Collection` that runs that class's own filter publishes
+    `Record<string, unknown>` in every scope, `| null` through `?->`, because `Collection::only()`/`except()` keep
+    the entries whose keys are listed. That is a column cast with `'collection'`, `'encrypted:collection'`,
+    `AsCollection` or `AsEncryptedCollection` (or their `using()` class), or an accessor or cast whose getter returns a
+    `Collection`, whatever its elements: `Attribute<Collection<int, User>, never>` publishes the record, not a `User`
+    pick. `RelationFilterHandler` reads the member's collection class before any element model the accessor names,
+    and reads a collection-cast column's class from the cast itself, since Laravel's casts declare no return type.
+    The receiver rules answer any other receiver whose class runs `Collection`'s own filter, such as a method
+    returning one. Three members are not this case:
+    - A collection-cast column read through another receiver, such as `$this->twin->options->only([...])`, stays
+      `unknown`, and so does an `AsEnumCollection` column, whose value is a list of enum cases.
+    - An accessor holding an `Eloquent\Collection` publishes a list of its models, as a many-relation does, because
+      that class's filters keep whole models by primary key and re-index them with `array_values()`: `Comment[]` for
+      `Attribute<Eloquent\Collection<int, Comment>, never>` and `Attribute<Eloquent\Collection<string, Comment>, never>`
+      alike, `(Comment | User)[]` for two models, `unknown[]` in a method body or when no element model is named,
+      `| null` through `?->` or for a nullable accessor. The receiver
+      rules decline an `Eloquent\Collection`, so a method returning one publishes `unknown`.
+    - A cast building an `Eloquent\Collection` holds decoded JSON, whose elements have no key to filter by, so it
+      publishes `unknown`.
+  - A multi-model accessor filter where one arm's model overrides the filter with a return reflection types
+    publishes that return for the arm, beside the other arms' answers: `string | Pick<User, 'id'>`. Where the scope
+    carries no import, an arm whose return names any token other than a model or a list of one leaves the filter
+    `unknown`.
+  - `$this->resource->relation` is matched as the resource's proxy only where the subject forwards to its model
+    (`AnalysisScope::$forwardsUndeclaredMembersTo` is set), which is a resource. In a model's own body
+    `$this->resource` is the model's own member, which `ReceiverMethodCallHandler` reads. On a model whose `resource`
+    member is a relation or an accessor returning a `Post`, `$this->resource->author->only(['id', 'name'])` filters
+    that post's `author`: `Pick<User, 'id' | 'name'>` in a getter body, `{ id: number; name: string }` in a method
+    body. On a model with no `resource` member the read fails at runtime and publishes `unknown`.
+
+### `$this->resource` spells the same filter
+
+A resource forwards what it does not declare to `$this->resource`, so `$this->only([...])` and
+`$this->resource->only([...])` filter the same model. Every attribute filter publishes the same type under both
+spellings: in spread and value position, for `only()` and `except()`, with a literal or a runtime key list, on
+the resource's own model, a single-model relation and a many-relation, `?->` included. Each shape has one owner:
+
+- **Spread, own model.** `FiltersModelAttributes::filtersOwnModel()` accepts a `$this` receiver or
+  `InspectsAstNodes::isResourceFetch()`. Both `ResourceAstAnalyzer::analyzeReturnArray()`'s filter-spread branch
+  and `FiltersModelAttributes::analyzeThisAttributeFilter()` ask it, so `...$this->resource->only([...])` flattens
+  its keys and a whole `return $this->resource->only([...])` resolves too. Relaxing only the branch would not
+  be enough: the analyzer method behind it would still decline.
+- **Value, own model.** `RelationFilterHandler`'s `isModelMemberFetch()` never matches `$this->resource` itself,
+  because PHP reads the declared `JsonResource::$resource` before any `__get()`. That holds even on a model that
+  declares a `resource` relation, as `ReceiverClassResolver` already reads it; the chain handlers' exception
+  described under [`$this->resource` inside a relation closure](#this-resource-inside-a-relation-closure-is-the-resources-own-model)
+  does not apply to filters. `ReceiverMethodCallHandler` then reaches
+  `ReceiverMethodReturnResolver::attributeFilterRule()` for both spellings.
+- **Value, single-model relation.** In a resource, `RelationFilterHandler` matches `$this->resource->relation`
+  wherever it matches `$this->relation`, including a model-returning accessor, and answers the call itself: the
+  `Pick<>` or inline shape for a literal key list, `Record<string, unknown>` for any other, `| null` through `?->`.
+- **Value, many-relation.** `Illuminate\Database\Eloquent\Collection::only()`/`except()` keep the models whose
+  **primary key** is listed and return a list of whole models, whatever the key list holds. So
+  `RelationFilterHandler::manyRelationRead()` publishes exactly what the relation read publishes, by resolving
+  `$this->comments` or `$this->resource->comments` through the engine: `Comment[]` with that read's model channel,
+  `| null` through `?->`. It used to publish an attribute filter such as `Pick<Comment, 'id' | 'content'>[]` for a
+  literal string list, which names attributes the runtime value never selects; `PostResource`'s `comments` and
+  `comments_limited` now publish `Comment[]`.
+- **A runtime key list.** `only($request->input('fields'))` names nothing to pick. Both owners answer it with
+  `ResolvesFilteredRelationTypes::attributeRecordResult()`, `Record<string, unknown>`, the attribute-keyed array
+  either filter returns: `RelationFilterHandler` for a single-model relation, a model-returning accessor, or an
+  accessor typed as a union of models (`Attribute<CrmUser|User|null, never>`), and `attributeFilterRule()` for the
+  resource's own model or any other receiver holding one model class. A relation typed as a union of models, such as
+  `MorphTo<CrmUser|User, $this>`, reaches neither and publishes `unknown` under both spellings.
+
+`RelationFilterHandler`'s relation arm declines (`null`) when it cannot type a filter: the member is neither a
+relation, a model-returning accessor, a member holding a `Support\Collection` that runs its own filter, nor an
+accessor holding an `Eloquent\Collection`; the related model overrides the filter with a return reflection types; a
+literal key list names nothing it can type; a many-relation's own read is `unknown`; or an arm of a multi-model
+accessor has an override return that is `unknown` where the scope carries no import. A declined call on a member
+named `map` then reaches the map-proxy arm.
+
+The map-proxy arm types `$this->comments->map->only(['id'])` as `{ id: number }[]` when it can bind the element
+model of the receiver: a `whenLoaded` to-many closure parameter, or a to-many relation read as `$this->comments` or,
+in a resource, `$this->resource->comments`. A single relation such as `$this->author` is no collection and binds
+nothing. When the element model overrides the filter with a return reflection types, the arm publishes that return as
+a list, asking `ReceiverMethodReturnResolver` for it: `string[]` for `only(): string`, `(Post | null)[]` for
+`only(): ?static` on a `Post`. It claims `unknown` when it binds no element model, when the key list is not literal,
+or when the keys name nothing. Where the scope carries no import, a member of the filtered shape whose type names a
+token is `unknown`, as in `{ id: number; status: unknown }[]`, and an override return is the list of its token-free
+spelling: `{ id: number; title: string }[]` for `only(['id', 'title'])` on `only(): static`, `unknown[]` for an enum.
+`$this->resource->map->only([...])` binds no element model, so it publishes that `unknown`, the answer it had before
+the proxy spelling was matched. On a model that declares a real `map` relation the relation arm answers
+instead, exactly as it answers `$this->map->only([...])`.
+
+`ProxyFilterDirectResource` and `ProxyFilterWrappedResource` in the workbench write the same fifteen filters both
+ways — the spread, literal own-model `only`/`except`, literal relation `only`/`except` and `?->`, runtime-key
+`only` and `except` on the model and on a relation, four many-relation cells (an int list, a string list, a
+runtime list and `?->`), and a map proxy on a many-relation. `ResourceAstAnalyzerTest` pins every direct type and
+asserts both publish identical properties and imports.
+
+Two shapes stay outside that pair:
+
+- **Spreading a relation's filter.** `...$this->author->only([...])` flattens under neither spelling, so a cell
+  for it would pass without proving anything.
+- **`?->` on the resource's own model.** `$this` is never null, so `$this?->only($keys)` publishes
+  `Record<string, unknown>`, while `$this->resource?->only($keys)` adds `| null` for a resource that wraps nothing.
+
 ### When a Pick reference is emitted
 
-`RelationFilterHandler::relationFilterModelReference()` builds `Pick<Model, 'a' | 'b'>` — `[]`-suffixed for
-many-relations, `| null`-suffixed for nullsafe calls — whenever **every filter key is a column
+`ResolvesFilteredRelationTypes::relationFilterModelReference()` builds `Pick<Model, 'a' | 'b'>` — `| null`-suffixed
+for nullsafe calls, and never for a many-relation, which publishes its own read — whenever **every filter key is a column
 the model interface actually declares**, per `ModelAttributeResolver::publishedColumnNames()`.
 For `only()` the picked keys are the caller's own list, verbatim. For `except()` they are the
 **complement**: `publishedColumnNames()` minus the named keys, in schema order — so the emitted
@@ -133,6 +305,21 @@ in practice the include branch's gate: a named write-only mutator with no getter
 survives as `key: unknown` — runtime-faithful, since `Model::only()` resolves through
 `getAttribute()`, which does return that key.
 
+### Top-level `only()` keeps a typed key the schema lacks
+
+`return $this->only([...])` and `...$this->only([...])` build their property set from
+`buildModelDelegatedAnalysis()`, which enumerates the model's own attributes and relations. A requested key
+that set had no entry for used to vanish silently. `FiltersModelAttributes::analyzeOnlyFilter()` now appends,
+in request order, every requested key the analysis lacks but `ModelAttributeResolver::resolveAttribute()` can
+still type — a `withCount()`/`withExists()` virtual such as `comments_count: number`, or a name a class-level
+`@property` tag declares. That is runtime-faithful: `HasAttributes::only()` calls `getAttribute($key)` per
+named key and returns whatever it finds, a query-selected virtual the schema never declares included. A key
+nothing can type is still dropped rather than published as `unknown`.
+
+`except()` is deliberately untouched by this. It iterates `$this->getAttributes()`, so it can only ever
+return database columns and a virtual it was never asked about cannot appear — the same asymmetry between the
+two methods that the sections above already rest on.
+
 ### `exclude_hidden` on the top-level resource, not just relation filters
 
 The rule established above for `$this->relation->only()/except()` — hidden columns fall out of an
@@ -177,7 +364,7 @@ passes `false`. `resolveFilteredRelationType()`'s except branch has no such shar
 builds its key list fresh per call — so it filters unconditionally there. `WarehouseResource`'s own
 union-accessor `except()` calls (`last_user_activity_by_mostly`, `last_checked_by_mostly`) no
 longer reach this branch: every excluded key there is a non-hidden published column, so each arm
-resolves through `RelationFilterHandler::relationFilterModelReference()` instead — see [Multi-model accessor unions
+resolves through `ResolvesFilteredRelationTypes::relationFilterModelReference()` instead — see [Multi-model accessor unions
 reference each arm's own model](#multi-model-accessor-unions-reference-each-arms-own-model) below.
 `ModelAttributeResolver::publishedColumnNames()` is `relationFilterModelReference()`'s own
 `$hidden` gate, and it is still pinned directly — `PostAttachmentFilterResource::$attachment_hidden`
@@ -223,6 +410,25 @@ The non-`Model`-class rejection is a single guard checked before any channel is 
 non-empty) but only the first is importable, so every `classFqcns` entry must pass the
 `is_a($fqcn, Model::class, true)` check or the whole result is rejected — accepting the enum
 half while dropping an unimportable class token would still leak a compile error.
+
+### The reverse direction: a result carried back into a `TypeScriptTypeInfo`
+
+`ReflectedTypeAcceptor::accept()` reads one direction — reflected type in, engine result out.
+`AbeTwoThree\LaravelTsPublish\Ast\ResultTypeInfoBridge::toTypeInfo()` is its documented inverse: a
+`ValueExpressionResult` in, a `TypeScriptTypeInfo` out, for a consumer (`AccessorBodyAnalyzer` today)
+that needs an engine result expressed in the model layer's own currency.
+
+| Result channel read | Carried into |
+| --- | --- |
+| `directEnumFqcn` | merged into the FQCN list resolved via `LaravelTsPublish::toTsType()` |
+| `modelFqcn` | merged into the same FQCN list |
+| `embeddedEnumFqcns` | merged into the same FQCN list |
+| `embeddedModelFqcns` | merged into the same FQCN list |
+| `customImports` | unioned (not replaced) into the resolved info's own `customImports` |
+
+It reads only those five of the twelve channels `ValueExpressionResult` declares — the same five
+`ReflectedTypeAcceptor` writes. Widening it to the other channels is a behaviour change with its own
+audit, recorded in the plan's follow-ups ledger rather than done here.
 
 ### `directEnumFqcn` carries two entry kinds
 
@@ -427,7 +633,7 @@ alone, silently dropping the scalar arm.
 `RelationFilterHandler::analyzeRelationFilter()`'s other branch handles an accessor typed as a union of two or more
 Eloquent models, e.g. `Attribute<CrmUser|User, never>`. The `$modelFqcn === null` guard diverts
 this receiver into a loop over `resolveAccessorModelFqcns()`'s FQCN list — one arm per model — and,
-like the single-model path just above, that loop now tries `RelationFilterHandler::relationFilterModelReference()` for
+like the single-model path just above, that loop now tries `ResolvesFilteredRelationTypes::relationFilterModelReference()` for
 each arm *first*, falling back to `ResolvesFilteredRelationTypes::resolveFilteredRelationType()`'s inline expansion only when a
 filter key is not one of that arm's own published columns (an accessor, mutator, or relation name).
 Every filter key on `WarehouseResource::$last_user_activity_by_mostly` (`except(['id', 'name'])`)
@@ -512,6 +718,71 @@ expansion, from a relation the arm's shape happens to reference — belong in th
 branch, mirroring the single-model path's `'embeddedModelFqcns' => $filterResult['modelFqcns']`
 just above (never the arm's own FQCN there either).
 
+## Collection pipelines
+
+Two handlers type a chain of collection operations, differing only in what roots it:
+`RelationCollectionChainHandler` for a chain rooted at `$this->{manyRelation}`, and
+`CollectionPipelineHandler` for one rooted at `collect($arg)`, whose element type is read off `$arg`
+resolving to `X[]` (a top-level `|` makes it ambiguous which arm the elements came from, so that
+declines). Both array-wrap the result through `ValueResult::arrayWrapType()` and, when the keys are no
+longer `0..n-1`, add the object arm `json_encode()` really emits — the shared
+`SpellsKeyedCollections::keyedObjectArm()`.
+
+A collection starts keyed `0..n-1`. Each op says whether that still holds:
+
+| Op | Element type | Keys |
+| --- | --- | --- |
+| `values` | unchanged | restored to `0..n-1` |
+| `all` | unchanged | unchanged — it hands back the underlying array, it does not reindex |
+| `load`, `loadMissing` | unchanged | unchanged |
+| `take(n)`, literal positive `n` | unchanged | unchanged |
+| `filter`, `reject`, `unique`, `where`, `sortBy`, `slice`, `reverse`, … | unchanged | broken, so the `Record<string, X>` arm is added |
+| `map(closure)` | the closure body's type | unchanged |
+| `pluck(value)` | the plucked column | broken when a `key` argument is passed |
+| `concat($source)` | unchanged, **only** on exact type equality | unchanged |
+| `first`, `last`, argument-less and outermost | one element or `null` | terminal |
+
+**Two `match` statements implement this table** — one in
+`RelationCollectionChainHandler::analyzeRelationCollectionChain()`, one in
+`CollectionPipelineHandler::resolve()` — and both must stay in sync with the rows above. They are
+deliberately *not* abstracted into one: the op sets genuinely differ, since a `collect()` root has no
+`take`, no `pluck` and no `first`/`last` terminal, and collapsing them would mean a single `match`
+carrying arms that are unreachable for half its callers.
+
+`all` is identity on the *published* type: a `Collection<X>` and the `array<X>` behind it both render
+`X[]`, so `$this->comments->map(...)->values()->all()` publishes what the chain already had rather than
+decaying to `unknown`. `VariableHandler` peels a trailing argument-less `values()`/`all()` off any
+method-call receiver for the same reason, which is what carries the element type through a pipeline
+rooted at a local variable.
+
+### `concat()` is identity only on exact type equality
+
+`concat($source)` resolves `$source` and treats the op as identity only when it resolves to **exactly**
+the receiver's own collection type; anything else declines the whole chain. Loosening that to "both are
+arrays" would publish `Comment[]` for a concat of `Comment[]` and `Tag[]` — a different collection, not
+a longer one — so the decline is the honest answer.
+
+### A `collect()` pipeline binds its map parameter to a value, not a model
+
+A relation chain's `map()` parameter is bound to the element **model** (`AnalysisScope::$varModelBindings`),
+because `$m->prop` has to resolve against that model's attributes. A `collect()` pipeline has no model:
+its elements are whatever the argument's element type says. Its parameter is therefore bound in
+`AnalysisScope::$varValueBindings` to an already-resolved result, and a bare read of the parameter
+resolves straight to it — `collect(explode(' ', $this->title))->map(fn ($word) => ['word' => $word])`
+types `$word` as `string` that way, giving `{ word: string }[]`. The binding is scoped; see
+[AstEngine § Writing a scope binding](ast-engine.md#writing-a-scope-binding).
+
+### `data_get()` is the nullsafe chain it stands for, and declines a wildcard
+
+`data_get($target, 'a.b')` resolves as `$target?->a?->b`, so `data_get($this->author, 'name')` types
+exactly as `$this->author?->name` does. An explicit default unions its own type in rather than removing
+the chain's `null` arm: `data_get()` returns the default only when the key is **missing**, never when a
+present value is null, so `data_get($this->author, 'name', 'guest')` stays `string | null`.
+
+A key with a `*` segment declines outright, the same call the
+[`$request->validated('options.*')` gap](../known-gaps.md) records: `*` expands to a list of every
+match, so the chain would describe one element rather than the value the call returns.
+
 ## Variable bindings
 
 `AnalysisScope`'s binding maps — `$varModelBindings`, `$varCollectionBindings`, `$localVarBindings`,
@@ -529,6 +800,31 @@ written twice, and `collectLocalVarBindings()` (which only binds names written e
 bound `$member` — even at the top-level site the closure never touches. `outer_member` in
 `ClosureParamShadowResource` demonstrated the gap; fixed by narrowing `collectWrittenVariableNames()`
 to count only assignments, mutations, `foreach` targets, and a `Closure`'s by-ref `use (&$x)` clause.
+
+## `$this->resource` inside a relation closure is the resource's own model
+
+Inside a `whenLoaded('rel', fn () => …)` closure, `AnalysisScope::$closureRelationModelClass` holds the
+*relation's* model, and both chain handlers root their walk at `$closureRelationModelClass ?? $modelClass`.
+That is right for a bare `$this->prop` — the resource's proxy to the loaded relation — and wrong for
+`$this->resource->…`: `JsonResource::$resource` is always the resource's *own* model, whichever closure
+it is read inside. So `whenLoaded('comments', fn () => $this->resource->author->name)` must walk
+`Post → author → User::name`, never `Comment`.
+
+`PropertyChainHandler::analyzePropertyChain()` and `MethodChainHandler::analyzeMethodChain()` therefore
+root a chain whose first step is `resource` at `AnalysisScope::$modelClass` and record `$rootedAtResource`,
+which also suppresses the closure-proxy `startIndex` heuristic. That heuristic skips the chain's first
+step as a relation proxy, which on a `$this->resource` chain would drop a real relation step — it is the
+reason the walk above would otherwise resolve `name` straight off `Comment`. In `MethodChainHandler` the
+flag governs the last-step relation branch as well as the walk loop, because both read `startIndex`.
+`PropertyChainHandler::resolve()` likewise excludes a `$this->resource->prop` receiver from the
+`closureRelationModelClass` arm that resolves a bare property name against the relation model.
+
+**The one exception:** a model that really declares a `resource` relation keeps the old walk. The rule is
+guarded on `ModelAttributeResolver::resolveRelation()` returning `unknown` for `resource` on the resource's
+own model, so `resource` is treated as the wrapper property only when it is not a real relation.
+
+`ClosureResourceRootResource` pins both spellings: `published_outside`/`published_inside` and
+`author_titled_outside`/`author_titled_inside` agree, inside the closure and out.
 
 ## Method-spread recursion guard
 
@@ -625,6 +921,106 @@ returns a different shape (`['slug' => $this->slug]`) from `FluentSelfResource::
 `['id' => $this->id]`, so a regression that dropped the guard would emit `{ id: number }` there and
 fail the test. Widening this to foreign receivers is therefore a deliberate change, not an accident.
 
+`resolve()` is the one method exempt from this guard. It is Laravel's serializer
+(`Illuminate\Http\Resources\Json\JsonResource::resolve()`), never a method the resource itself
+declares, so `new SomeResource($x)->resolve()` should type exactly like `SomeResource::make($x)->resolve()`
+— the receiver's own resource type, regardless of which class analyzeThisMethodSpread() was built for.
+`StaticCallHandler::resolve()` strips the trailing `->resolve()` off a `New_` receiver the same way it
+already does for a `StaticCall` receiver, and only when the resolved receiver carries a `resourceFqcn`;
+otherwise it declines rather than guessing. `ReceiverMethodResource::author_resource` in the workbench
+pins this: `new UserResource($this->author)->resolve($request)` publishes `UserResource`, not `unknown`.
+
+## Return branches and the method's own `@return`
+
+A spread method is no longer read through its *first* `return`. `analyzeThisMethodSpread()` sweeps
+every direct return with `InspectsAstNodes::collectReturnExpressions()` and classifies each one: an
+array literal becomes a branch via `analyzeReturnArray()`, a variable the method builds becomes one
+via `resolveVariableReturnAnalysis()`, and an empty `[]` becomes an empty branch. When every return
+classifies, the branches merge through `mergeReturnBranches()`, so **a key missing from any branch
+publishes optional**. When any return is something else — a `MethodCall`, a ternary, a non-array
+expression — the whole sweep is abandoned for `analyzeFirstReturn()`, which is the original
+first-`Return_` chain moved verbatim, so every shape that path already resolved still resolves
+identically.
+
+`analyzeAllReturnBranches()` treats a guard's `return []` the same way, which is the rule for
+`toArray()` bodies: it declines only when *no* candidate has items, and otherwise contributes each
+empty return as an empty branch. `MediaTypeInstanceOfResource` is the shape this changes —
+`if (! $this->resource instanceof MediaType) { return []; }` means `name`, `value` and `meta` really
+are absent from one path, so they publish `name?`/`value?`/`meta?` rather than claiming to be
+required. Nothing loses a type; a key only gains `?`.
+
+### The method's own `@return` fills what the body could not
+
+`ReturnShapeRefiner::refine()` runs for a spread method and for the analyzed method itself, in both
+cases before `applyTsCastsFromMethod()`, so the precedence is body → docblock → `#[TsCasts]`. **The
+body always wins:** the refiner only ever writes a property the AST left `unknown`, so a stale
+docblock can never overwrite a resolved type — `TraitSpreadCoverageResource::id` stays the model's
+`number` even though its trait's shape says `string`. It reads two sources: a `@return array{…}`
+shape per key, and a `@return array<string, V>` value type applied to every unknown key. A key the
+shape writes `key?:` also marks the property optional.
+
+Two values are declined rather than published. A shape value that resolves to a token needing an
+import the shape cannot carry (`TsTypeString::shapeValueHasUnimportableToken()`) is skipped, because
+the map is string-only and could never supply the FQCN. A value naming no PHP type at all is the
+opposite case: it resolves to `unknown`, but the consuming app declares it as a global, so the raw
+name is kept — `IncludesExtras`'s `custom_val: CustomObject` publishes `CustomObject`, matching the
+`CustomObject` stub under `tests/types/stubs`. Dropping it there would have replaced a real published
+type with `unknown`.
+
+### An untypable branch makes the union `unknown`, not the typed arm
+
+`unionBranchTypes()` returns `unknown` as soon as one branch resolved to `unknown`, because `unknown`
+absorbs every arm it is unioned with — `unknown | string` *is* `unknown`, spelled longer. The
+alternative, dropping the untypable arm the way `ValueResult::analyzeClosureUnion()` does for ternary
+unions, would promise the typed arm's `string` for a branch that guarantees no such thing.
+`NarrowingGuardBodyResource::dirty_label` pins it: one branch reads a member off an un-narrowed
+variable and the other returns a literal, and the honest answer is `unknown`.
+
+## Interpolated keys
+
+A key built from literal text around a variable — `$data["{$name}_label"] = 'Channel'` inside a
+`foreach`, or the equivalent `$data[$name.'_label'] = …` — cannot be a fixed property name, because
+the runtime key varies per iteration. `collectVariableArrayAssignments()` recognizes this shape
+through `interpolatedKeyName()`, which reads an `InterpolatedString`'s parts (v5's live node — v4's
+`Encapsed` is now the deprecated shim that extends it, not the other way round) or a `Concat`'s two
+operands, and requires **both** a literal segment and a dynamic one — a purely dynamic dim
+(`$data[$name]`) or a purely literal one is left to the existing handling. A literal segment
+containing a backtick declines the whole key (returns `null`): `isIndexSignatureKey()`'s backtick
+alternative has no escape clause, so an escaped backtick could not be read back, and there is no
+fixture that needs it. Otherwise it publishes a template-literal index signature, e.g.
+``[key: `${string}_label`]``, with `${` in any literal segment escaped so the pattern stays valid
+TypeScript syntax without being misread as an actual interpolation.
+
+Such a key always publishes `optional = false` with its value type widened to include `| undefined`,
+never `key?:` on the signature itself. `[key: T]?:` is a TypeScript syntax error regardless of how
+the analyzer produced the name (`isIndexSignatureKey()`'s existing `mergeReturnBranches()` guard
+already establishes this) — that alone rules out `key?:`. Whether the `| undefined` on the *value*
+side is doing anything measurable depends on the consumer's own `tsconfig`, which is why it stays
+regardless:
+
+- **Consumer protection.** This package publishes into projects whose `tsconfig` it does not
+  control. Under plain `strict` — without `exactOptionalPropertyTypes`, the common case — an optional
+  named property sitting beside a matching index signature genuinely fails TS2411 if the index
+  signature's value type does not include `undefined`; `GathersPermissions::gatherLabels()`'s
+  `extra_label?: string` beside `gatherChannelLabels()`'s `` [key: `${string}_label`] `` in the same
+  `PermissionsSpreadResource` interface is exactly that shape. `| undefined` is real protection for
+  that consumer, even where it is redundant here.
+- **Runtime accuracy — the check that holds regardless of any flag.** A key matching the pattern is
+  not guaranteed present; `gatherChannelLabels()`'s loop only ever assigns what it iterates.
+  `| undefined` is what makes the published type match runtime, independent of what any particular
+  `tsconfig` happens to accept — the same standard every property in this package is held to.
+
+This repo's own `tsconfig.json` sets `exactOptionalPropertyTypes: true`, which keeps `extra_label?`'s
+type exactly `string` (never widened to `string | undefined`) for this specific check, so the
+workbench trees here compile clean with or without the `| undefined` — do not read that as evidence
+the `| undefined` is redundant everywhere; it is redundant only under this flag combination, and the
+consumer case above is real.
+
+`validJsObjectKey()` and `isIndexSignatureKey()` both widen their index-signature regex with a
+`` `[^`]*` `` alternative alongside `string`/`number`, so the new key shape prints unquoted in a type
+position exactly like the existing `[key: number]`/`[key: string]`/`` `template` `` signatures, and
+still merges correctly across spread branches.
+
 ## Inline-array spreads become intersection arms
 
 An inline array literal that spreads a named type alongside its own keys —
@@ -689,7 +1085,7 @@ subtract nothing anyway.
 
 The shape that *would* collide is a numeric explicit sibling key — `[...$members->toArray(), 5 => 'x']`
 puts `5` in both halves. It is unreachable rather than unhandled: `resolveKeyName()` in
-`src/Analyzers/Concerns/InspectsAstNodes.php` returns a name only for a `String_` key, and
+`src/Ast/Concerns/InspectsAstNodes.php` returns a name only for a `String_` key, and
 `analyzeReturnArray()` skips every item whose key resolves to `null`, so a numeric key never becomes
 a property in the first place. `QuirkyResource` pins that independently — it writes `42 => $this->total`
 and `42 => 'number_keyed'`, and the generated `QuirkyResource` interface has no `42` member. So the
@@ -973,7 +1369,7 @@ strictly worse than the optional `unknown` an unrecognized conditional should pr
 key tells the consumer the value is always present.
 
 All five (`unless`, `whenAppended`, `whenExistsLoaded`, `transform`, `mergeUnless`) also belong to
-`InspectsAstNodes::$conditionalMethods`, the separate list consulted when one of them wraps a *nested
+`InspectsResourceCalls::$conditionalMethods`, the separate list consulted when one of them wraps a *nested
 resource constructor* (`Resource::make(...)`/`new Resource(...)`), so that case is optional too.
 
 ### `unless()` and `mergeUnless()` reuse `when()`/`mergeWhen()` unchanged
@@ -986,20 +1382,36 @@ through. Negating which branch of an `if` runs never changes what either branch'
 `analyzeMergeExpression()` treats `mergeUnless` exactly like `mergeWhen()` (array/closure argument at index
 1, always optional). Neither needed a new method.
 
-### `whenAppended()` types from the named attribute, like `whenHas()`
+### `whenHas()`, `whenAppended()` and `whenExistsLoaded()` type from their value argument
 
-`whenAppended('attribute', $value, $default)` mirrors `ConditionalMethodHandler::analyzeWhenHas()`:
-`analyzeWhenAppended()` resolves the accessor's type via its own `resolveModelAttributeTypeInfo()` helper
-from the attribute name alone, never from analyzing `$value`. That helper is a `ConditionalMethodHandler`-
-private duplicate of the shared trait method of the same name, calling `ModelAttributeResolver` directly
-with `$scope->modelClass` rather than the trait's cached-property gate (see its own docblock). This matters
-because Laravel's `whenAppended()` does **not** forward the resolved value
-into a `$value` closure the way `whenHas()`/`whenLoaded()`/`whenCounted()`/`whenAggregated()`/
-`whenExistsLoaded()` do — it calls `value($value)` with zero arguments, not `value($value, $resolved)` — so
-a `$value` closure parameter has nothing bound to it in Laravel's own implementation. Typing from the
-attribute name sidesteps that distinction entirely. The *default* at index 2 is still analyzed and unioned
-in by `applyConditionalDefault()` — it is a plain eagerly-evaluated argument, not a closure needing a
-binding.
+All three end in a `value(...)` call, so the value argument — not the named attribute — is what the
+property carries whenever the engine can type it. In Laravel's `ConditionallyLoadsAttributes`, `whenHas()`
+returns `value($value, $this->resource->{$attribute})`, `whenAppended()` returns `value($value)`, and
+`whenExistsLoaded()` returns `value($value, $this->resource->{$attribute})` — its `$attribute` being the
+relationship snaked and finished with `_exists`. So `whenHas('priority', fn ($p): string => 'x')` is
+`string`, not the attribute's own enum type: typing that from the attribute was wrong, not merely vague.
+
+`ConditionalMethodHandler::resolveValueArgument()` is the single helper all three call. It binds a
+closure's first parameter to the expression Laravel forwards — `$this->{attribute}` for `whenHas()`,
+`$this->{relation}_exists` for `whenExistsLoaded()`, and nothing at all for `whenAppended()`, which
+invokes its value with zero arguments — resolves the value under that binding, then restores the binding
+map in a `finally`, per [Writing a scope binding](./ast-engine.md#writing-a-scope-binding).
+
+**The named attribute still answers in three cases**, each a `null` return from that helper:
+
+- a skipped or literal-`null` value (see [below](#a-null-value-makes-the-arm-null-not-the-attribute-or-the-flag));
+- an `EnumResource::make()/::collection()` wrap, declined deliberately so the attribute keeps supplying
+  type and array-ness while the wrap's shape decides only whether the enum channel is `enumFqcn`
+  (wrapped — gets the AsEnum rewrite) or `directEnumFqcn` (read as-is);
+- a value the engine resolves to `unknown`.
+
+That last case is the one worth stating plainly: an unresolvable value leaves the attribute's own type
+standing rather than trading a real type for a fresh `unknown`.
+`WhenHasValueResource::$title_unresolvable` — `whenHas('title', fn ($title) => json_decode($title))`,
+whose body is `mixed` and so resolves to `unknown` — is pinned as `string`, the column's own type.
+
+The *default* argument is analyzed and unioned in by `applyConditionalDefault()` either way: it is a plain
+eagerly-evaluated argument, not a closure needing a binding.
 
 ### `whenExistsLoaded()` resolves to the generated `{relation}_exists` flag — and must agree with `ModelTransformer`
 
@@ -1008,8 +1420,11 @@ binding.
 properties (the `_exists` suffix → `boolean` fallback, mirroring `_count` → `number`).
 `ConditionalMethodHandler::analyzeWhenExistsLoaded()` emits that same `boolean`, deliberately: a resource and the model it wraps
 disagreeing about the type of the same underlying flag is exactly the kind of divergence this package
-exists to prevent. An explicit default unions its own type alongside that `boolean` — but only when a real
-`$value` is passed too, per the next section.
+exists to prevent. That `boolean` is what a bare `whenExistsLoaded('relation')` carries, and what the
+handler falls back to when a value argument cannot be typed; a value that *can* be typed wins, per
+[above](#whenhas-whenappended-and-whenexistsloaded-type-from-their-value-argument) — and the flag is
+also what a value closure's first parameter binds to. An explicit default unions its own type alongside
+whichever of the two answered — but only when a real `$value` is passed too, per the next section.
 
 ### A null `$value` makes the arm `null`, not the attribute or the flag
 
@@ -1017,9 +1432,10 @@ exists to prevent. An explicit default unions its own type alongside that `boole
 substitutes the attribute for an unhelpful `$value` the way `whenLoaded()` and `whenCounted()` do. So a
 `$value` that is skipped by a later named argument, or written as a literal `null`, leaves Laravel
 evaluating `value(null, $attribute)` — or, for `whenAppended()`, `value(null)` with no extra argument, per
-[above](#whenappended-types-from-the-named-attribute-like-whenhas). Both are `null`.
-`ConditionalMethodHandler::valueSkipped()` recognises both spellings and the three handlers emit a `null`
-arm for them, leaving only the default to carry a type:
+[above](#whenhas-whenappended-and-whenexistsloaded-type-from-their-value-argument). Both are `null`.
+`ConditionalMethodHandler::valueSkipped()` recognises both spellings, and each handler checks it *before*
+resolving the value argument, so a `null` arm is never mistaken for a value worth typing. The three
+handlers emit that `null` arm, leaving only the default to carry a type:
 `whenExistsLoaded('user', null, 'absent')` is `string | null`, never `boolean | string`. A genuinely
 absent `$value` is different again — Laravel's one-argument branch returns the attribute itself, so
 `whenExistsLoaded('user')` stays an optional `boolean`.
@@ -1041,7 +1457,7 @@ excluded as unreachable anywhere else in the family.
 
 ## `#[Collects]` resolution is Laravel-version-guarded
 
-`InspectsAstNodes::resolveCollectedResourceClass()` — called directly by every consumer
+`InspectsResourceCalls::resolveCollectedResourceClass()` — called directly by every consumer
 (`Ast\Concerns\ResolvesSingularResourceClass`, `ToResourceHandler`, `StaticCallHandler`,
 `NewResourceHandler`) — checks for `Illuminate\Http\Resources\Attributes\Collects` behind
 `class_exists()` rather than a `use` import,
@@ -1068,7 +1484,7 @@ that invents a candidate class name, four in total:
 | `ToResourceHandler::resolveResourceForModel()`'s candidate loop | `{Model}Resource`, then bare `{Model}` |
 | `ToResourceHandler::resolveResourceCollectionForModel()`'s `{Guessed}Collection` loop | `{Model}ResourceCollection`, then `{Model}Collection` — the inline `class_exists()`/`is_a()` pair gained a third `PublishedResourceRegistry::isPublished()` conjunct |
 | `ToResourceHandler::resolveResourceCollectionForModel()`'s bare-candidate loop | the `{Model}Resource` fallback |
-| `InspectsAstNodes::resolveCollectedResourceClass()`'s naming-convention branch | `{X}Resource`, then bare `{X}` — shared by every direct caller (`ResourceAstAnalyzer`, `ToResourceHandler`, `StaticCallHandler`, `NewResourceHandler`) |
+| `InspectsResourceCalls::resolveCollectedResourceClass()`'s naming-convention branch | `{X}Resource`, then bare `{X}` — shared by every direct caller (`ResourceAstAnalyzer`, `ToResourceHandler`, `StaticCallHandler`, `NewResourceHandler`) |
 
 **`isResourceClass()` itself is unchanged.** Every branch that reads a class the developer wrote down
 stays ungated on purpose — an explicitly named resource is a declaration, not a guess:
@@ -1081,6 +1497,49 @@ stays ungated on purpose — an explicitly named resource is a declaration, not 
   `new` expression in the analyzed source, not an invented candidate, so it stays ungated on the
   same basis
 
+### A morph union binds every target, and `toResource()` unions their resources
+
+`ConditionalMethodHandler::analyzeWhenLoaded()` binds a closure parameter to the relation's model, but a
+`morphTo` names no single model: `ModelAttributeResolver::resolveRelation()` answers `modelFqcn: null` and
+fills `morphFqcns` with every parent instead. Such a parameter binds into `AnalysisScope::$varClassBindings`
+— the narrowing map, which holds a *list* of classes — carrying all the targets at once. That fourth map is
+saved and restored beside the other three in the same `finally`, so the binding cannot leak into the next
+key of the same `toArray()`.
+
+`ToResourceHandler::resolveToResourceReceiverModels()` then answers the receiver's whole model list: the
+existing single-model bindings first, then `ReceiverClassResolver::resolve()`'s `ReceiverType::models()`.
+Given more than one model, `analyzeToResourceCall()` maps each through `resolveResourceForModel()` and joins
+their `TsNaming::resourceTypeName()`s with ` | `, reporting the FQCNs on the `embeddedResourceFqcns` channel
+so every name in the rendered union is imported rather than emitted bare.
+
+**The decline is all-or-nothing.** If any model in the union has no resource class, the result stays at the
+existing `unknown` floor instead of publishing a partial union — a union missing an arm is not vaguer than
+the truth, it is *wrong* for the omitted arm.
+
+`ReviewResource` is the fixture. `whenLoaded('reviewable', fn ($subject) => $subject->toResource())` over the
+`Venue`/`Artist` morph union emits:
+
+```ts
+reviewable?: ArtistResource | VenueResource;
+```
+
+The same binding also types a plain attribute read on the parameter: `$subject->name` reaches
+`ReceiverPropertyFetchHandler`, which resolves the property on each bound class and unions the results, so
+`reviewable_name` is `string` rather than `unknown`.
+
+Union order is the morph-target order, and the sort key is the **model** FQCN, never the rendered resource
+name. Two of the three paths sort: `ModelAttributeResolver::buildMorphTargetMap()` sorts each target list as
+it builds it, and `getMorphToTargets()` sorts again after unioning in the parents that target a *subclass*
+of the child under the same morph name. The third does not sort at all — `resolveMorphToTargets()` returns
+`morphToDocblockTargets()` first whenever a `@return MorphTo<X|Y, …>` generic names the targets, in the
+order the docblock writes them. All three are deterministic, so the rendered union is stable across runs
+either way.
+
+`ReviewResource::reviewable` therefore pins *sorted by model FQCN*, not *sorted union*: the two orderings
+agree in that fixture only because `Artist` sorts before `Venue` and `ArtistResource` before
+`VenueResource`. A morph target whose resource name sorts the other way would still be emitted in model
+order.
+
 ### One resolver, not many — every `#[Collects]` caller shares it
 
 `Ast\Concerns\ResolvesSingularResourceClass`, `ToResourceHandler`, `StaticCallHandler` and
@@ -1088,7 +1547,7 @@ stays ungated on purpose — an explicitly named resource is a declaration, not 
 naming-convention resolution order,
 including the same third, naming-convention branch — the one gap this section used to carry as a
 recorded follow-up rather than a fix. Every one of them now calls
-`InspectsAstNodes::resolveCollectedResourceClass()` directly, the only place that logic exists; its
+`InspectsResourceCalls::resolveCollectedResourceClass()` directly, the only place that logic exists; its
 naming-convention branch is gated on `PublishedResourceRegistry` exactly like the three sites above.
 No call site can drift apart on this resolution order, because there is only one implementation left
 to diverge from.
@@ -1105,7 +1564,7 @@ references. Only those. The registry is consulted at four candidate-inventing si
 `ToResourceHandler::resolveResourceForModel()`'s naming-convention loop,
 `resolveResourceCollectionForModel()`'s two naming-convention loops (the `{Guessed}Collection`
 candidates, then the bare guessed resources), plus the candidate list inside the naming-convention
-branch of `InspectsAstNodes::resolveCollectedResourceClass()`. An explicitly named reference never
+branch of `InspectsResourceCalls::resolveCollectedResourceClass()`. An explicitly named reference never
 reaches it and would survive — `SomeResource::make()` and the `::collection()` arm of `StaticCallHandler`
 test `isResourceClass()` rather than `isPublishedResourceClass()`, and so do the explicit-argument arms of
 `ToResourceHandler::analyzeToResourceCall()` and `analyzeToResourceCollectionCall()`.

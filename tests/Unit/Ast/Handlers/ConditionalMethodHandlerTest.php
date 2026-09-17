@@ -2,11 +2,13 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -21,12 +23,21 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
+use Workbench\App\Http\Resources\ArtistResource;
 use Workbench\App\Http\Resources\ConditionalDefaultsResource;
+use Workbench\App\Http\Resources\ReviewResource;
 use Workbench\App\Http\Resources\UserResource;
+use Workbench\App\Http\Resources\VenueResource;
+use Workbench\App\Http\Resources\WhenHasValueResource;
 use Workbench\App\Models\Address;
+use Workbench\App\Models\Artist;
+use Workbench\App\Models\ArtistReview;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Profile;
+use Workbench\App\Models\Review;
 use Workbench\App\Models\User;
+use Workbench\App\Models\Venue;
+use Workbench\App\Models\VenueReview;
 
 /**
  * An AnalysisScope for tests that don't need a real backing model.
@@ -502,4 +513,52 @@ describe('positional null value arm', function () {
             ->and($types['appended_with_null'])->toBe('number | null')
             ->and($types['exists_with_default'])->toBe('string | null');
     });
+});
+
+// Laravel ends all three in value($value, …), so a resolvable value argument — not the named
+// attribute — is what the property carries.
+describe('value argument types the arm', function () {
+    test('whenHas, whenAppended and whenExistsLoaded type from the value Laravel returns', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(WhenHasValueResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+        expect($props->map->type->all())->toMatchArray([
+            'has_title' => 'boolean',
+            'title_length' => 'number',
+            'title_passthrough' => 'string',
+            'appended_label' => 'string',
+            'comments_flag' => 'string',
+        ])->and($props->every(fn (array $p): bool => $p['optional']))->toBeTrue();
+    });
+
+    // comments_flag returns string literals in both arms, so it holds whatever $exists binds to — or
+    // nothing at all. Only a closure that returns the parameter makes the flag name load-bearing: a
+    // wrong name or a dropped binding leaves this `unknown` instead of the flag's own boolean.
+    test('whenExistsLoaded binds its closure parameter to the generated {relation}_exists flag', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(WhenHasValueResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+        expect($props['comments_exists_flag']['type'])->toBe('boolean')
+            ->and($props['comments_exists_flag']['optional'])->toBeTrue();
+    });
+
+    // The fallback the value rule must never break: an unresolvable value leaves the attribute's own
+    // type standing rather than publishing a fresh `unknown`. json_decode() returns mixed, so the
+    // closure body resolves to unknown and `title`'s own `string` has to survive.
+    test('an unresolvable value keeps the named attribute type instead of becoming unknown', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(WhenHasValueResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+        expect($props['title_unresolvable']['type'])->toBe('string')
+            ->and($props['title_unresolvable']['optional'])->toBeTrue();
+    });
+});
+
+test('a morph union closure param binds every target and toResource unions their resources', function () {
+    resolve(ModelAttributeResolver::class)->buildMorphTargetMap([Venue::class, Artist::class, Review::class, VenueReview::class, ArtistReview::class]);
+
+    $analysis = new ResourceAstAnalyzer(new ReflectionClass(ReviewResource::class), Review::class)->analyze();
+    $props = collect($analysis->properties)->keyBy('name');
+
+    expect($props['reviewable']['type'])->toBe('ArtistResource | VenueResource')
+        ->and($props['reviewable']['optional'])->toBeTrue()
+        ->and($props['reviewable_name']['type'])->toBe('string')
+        ->and(array_keys($analysis->nestedResources))->toContain(ArtistResource::class, VenueResource::class);
 });

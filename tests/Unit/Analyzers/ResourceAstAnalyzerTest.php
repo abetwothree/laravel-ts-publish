@@ -7,6 +7,8 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendedCustomImportResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclinedTopLevelSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeArrayMergeChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeSpreadChildResource;
@@ -26,6 +28,7 @@ use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\Visibility;
 use Workbench\App\Enums\WeekDays;
+use Workbench\App\Events\DocblockShapedEvent;
 use Workbench\App\Http\Resources\AddressResource;
 use Workbench\App\Http\Resources\Admin\Store as AdminStore;
 use Workbench\App\Http\Resources\Admin\StoreCollection as AdminStoreCollection;
@@ -37,6 +40,14 @@ use Workbench\App\Http\Resources\BareMethodReturnResource;
 use Workbench\App\Http\Resources\BodylessTeamResource;
 use Workbench\App\Http\Resources\BooleanExprResource;
 use Workbench\App\Http\Resources\BranchedInlineFqcnResource;
+use Workbench\App\Http\Resources\BulletinArchiveResource;
+use Workbench\App\Http\Resources\BulletinBoardResource;
+use Workbench\App\Http\Resources\BulletinDigestSpreadResource;
+use Workbench\App\Http\Resources\BulletinFeedResource;
+use Workbench\App\Http\Resources\BulletinLoadedResource;
+use Workbench\App\Http\Resources\BulletinOwnershipSpreadResource;
+use Workbench\App\Http\Resources\BulletinResource;
+use Workbench\App\Http\Resources\BulletinWrappedResource;
 use Workbench\App\Http\Resources\CaseSpreadResource;
 use Workbench\App\Http\Resources\CategoryResource;
 use Workbench\App\Http\Resources\ChildSharedResource;
@@ -45,6 +56,7 @@ use Workbench\App\Http\Resources\ClosureControlFlowResource;
 use Workbench\App\Http\Resources\ClosureParamShadowResource;
 use Workbench\App\Http\Resources\ClosureUnionMetadataResource;
 use Workbench\App\Http\Resources\CoalesceChannelResource;
+use Workbench\App\Http\Resources\CommentRelationFiltersResource;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\CommonResource;
 use Workbench\App\Http\Resources\ConditionalDefaultsResource;
@@ -92,6 +104,7 @@ use Workbench\App\Http\Resources\MutuallyRecursiveSpreadResource;
 use Workbench\App\Http\Resources\NestedResourceSpreadResource;
 use Workbench\App\Http\Resources\NonArrayReturnResource;
 use Workbench\App\Http\Resources\NonThisReceiverSpreadResource;
+use Workbench\App\Http\Resources\OnlyValueResource;
 use Workbench\App\Http\Resources\OrderClosureResource;
 use Workbench\App\Http\Resources\OrderCollection;
 use Workbench\App\Http\Resources\OrderCountsResource;
@@ -102,6 +115,7 @@ use Workbench\App\Http\Resources\OrderItemResource;
 use Workbench\App\Http\Resources\OrderOnlyResource;
 use Workbench\App\Http\Resources\OrderResource;
 use Workbench\App\Http\Resources\OrderSummaryResource;
+use Workbench\App\Http\Resources\PermissionsSpreadResource;
 use Workbench\App\Http\Resources\PostAttachmentFilterResource;
 use Workbench\App\Http\Resources\PostCollection;
 use Workbench\App\Http\Resources\PostFlatCollection;
@@ -111,11 +125,14 @@ use Workbench\App\Http\Resources\PreserveKeysCollection;
 use Workbench\App\Http\Resources\PreserveKeysPropertyCollection;
 use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\ProfileResource;
+use Workbench\App\Http\Resources\ProxyFilterDirectResource;
+use Workbench\App\Http\Resources\ProxyFilterWrappedResource;
 use Workbench\App\Http\Resources\QuirkyResource;
 use Workbench\App\Http\Resources\ReflectedMethodChannelResource;
 use Workbench\App\Http\Resources\Registrar as BareRegistrarResource;
 use Workbench\App\Http\Resources\RegistrarResource;
 use Workbench\App\Http\Resources\RelationChainResource;
+use Workbench\App\Http\Resources\ReleaseColumnsResource;
 use Workbench\App\Http\Resources\ResourceWrappedEnumResource;
 use Workbench\App\Http\Resources\ShadowedClosureParamResource;
 use Workbench\App\Http\Resources\SpreadJsonBaseResource;
@@ -140,6 +157,9 @@ use Workbench\App\Http\Resources\UserOnlyHiddenResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Http\Resources\VarReturnSpreadResource;
 use Workbench\App\Http\Resources\WarehouseResource;
+use Workbench\App\Http\Resources\WarehouseReviewAppendedResource;
+use Workbench\App\Http\Resources\WarehouseReviewHasResource;
+use Workbench\App\Http\Resources\WarehouseSettingsResource;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Admin\Store as AdminStoreModel;
 use Workbench\App\Models\Category;
@@ -151,6 +171,7 @@ use Workbench\App\Models\OrderItem;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Product;
 use Workbench\App\Models\Profile;
+use Workbench\App\Models\Release;
 use Workbench\App\Models\Tag;
 use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
@@ -206,16 +227,16 @@ describe('ResourceAstAnalyzer with PostResource', function () {
             ->and($comments['type'])->toEndWith('[]');
     });
 
-    test('hasMany relation with only() includes relation keys in inline type', function () {
+    test('hasMany relation with only() keeps the relation read and its model channel, not an inline shape of the keys', function () {
+        // Eloquent\Collection::only('id', 'content', 'user') matches the strings against primary keys, keeping models.
         $reflection = new ReflectionClass(PostResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
         $analysis = $analyzer->analyze();
 
         $comments = collect($analysis->properties)->firstWhere('name', 'comments');
 
-        expect($comments['type'])->toContain('id: number')
-            ->and($comments['type'])->toContain('content: string')
-            ->and($comments['type'])->toContain('user: User');
+        expect($comments['type'])->toBe('Comment[]')
+            ->and($analysis->modelFqcns['comments'] ?? null)->toBe(Comment::class);
     });
 
     // cast, mixin method, and resolve() expressions ————————————
@@ -571,6 +592,22 @@ describe('ResourceAstAnalyzer with TeamMemberResource', function () {
         expect($role['optional'])->toBeTrue()
             ->and($membershipLevel['optional'])->toBeTrue();
     });
+
+    // whenHas() now returns from its value argument before it can tag the enum channel itself, so the
+    // channel has to arrive inside the engine's own result instead. A value closure on an enum column
+    // is the shape that proves it survives that reroute, import included.
+    test('resolves whenHas with a value closure on an enum column through the direct enum channel', function () {
+        $reflection = new ReflectionClass(TeamMemberResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $roleViaValue = collect($analysis->properties)->firstWhere('name', 'role_via_value');
+
+        expect($roleViaValue['type'])->toBe('RoleType | null')
+            ->and($roleViaValue['optional'])->toBeTrue()
+            ->and($analysis->directEnumFqcns)->toHaveKey('role_via_value')
+            ->and($analysis->directEnumFqcns['role_via_value'])->toBe(Role::class);
+    });
 });
 
 describe('ResourceAstAnalyzer with TeamResource', function () {
@@ -791,9 +828,9 @@ describe('ResourceAstAnalyzer with EnumCollectionResource (EnumResource::collect
             ->toBe('{ week_days: AsEnum<typeof WeekDays>[] | null }');
     });
 
-    // whenHas() never resolves its value argument's own type — the attribute supplies type and
-    // array-ness — but IS checked for EnumResource::make()/::collection() shape (isEnumResourceWrapCall()),
-    // so this first-class-callable value still promotes to the 'enumFqcn' (wrapped) channel.
+    // An EnumResource::make()/::collection() value is the one shape whenHas() declines to type from
+    // (isEnumResourceWrapCall()): the attribute goes on supplying type and array-ness, and this
+    // first-class-callable value promotes to the 'enumFqcn' (wrapped) channel.
     test('first-class callable inside whenHas() promotes to the enumFqcn (wrapped) channel', function () {
         expect($this->props['week_days_when_has']['type'])->toBe('WeekDaysType[] | null')
             ->and($this->analysis->enumResources)->toHaveKey('week_days_when_has')
@@ -1104,15 +1141,17 @@ describe('ResourceAstAnalyzer with FluentSelfResource', function () {
             ->and($prop['optional'])->toBeTrue();
     });
 
-    test('a non-self-returning method on a foreign resource class stays at the unknown floor', function () {
+    test('a non-self-returning method on a foreign resource class resolves that class-s own body', function () {
         $reflection = new ReflectionClass(FluentSelfResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection, Category::class);
         $analysis = $analyzer->analyze();
 
         $prop = collect($analysis->properties)->firstWhere('name', 'foreign_summary');
 
+        // CategoryResource::summary() returns ['slug' => $this->slug], so this is the real payload —
+        // not CategoryResource, which the expression never yields.
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('unknown')
+            ->and($prop['type'])->toBe('{ slug: string }')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -1382,13 +1421,14 @@ describe('relation filters reference the emitted model interface', function () {
         expect($props['order_extended']['type'])->toMatch("/^Pick<Order, '[a-z_]+'( \| '[a-z_]+')*>$/");
     });
 
-    test('hasMany relation with all-column only() keys emits Pick with the [] suffix', function () {
-        // PostResource: comments_limited = $this->comments->only(['id', 'content']) — HasMany, so the
-        // many-relation [] suffix is preserved on top of the Pick<> reference.
+    test('a hasMany filter publishes the relation read, since it keeps whole models by primary key', function () {
+        // PostResource: comments_limited = $this->comments->only(['id', 'content']) and comments = ->only('id',
+        // 'content', 'user'). Eloquent\Collection::only() matches those strings against primary keys, never attributes.
         $analyzer = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class);
         $props = collect($analyzer->analyze()->properties)->keyBy('name');
 
-        expect($props['comments_limited']['type'])->toBe("Pick<Comment, 'id' | 'content'>[]");
+        expect($props['comments_limited']['type'])->toBe('Comment[]')
+            ->and($props['comments']['type'])->toBe('Comment[]');
     });
 
     test('a filter key that is an accessor still falls back to inline expansion', function () {
@@ -2283,6 +2323,187 @@ describe('ResourceAstAnalyzer with OrderOnlyResource (spread only)', function ()
 
         expect($searchIndex)->not->toBeNull()
             ->and($searchIndex['type'])->toBe('unknown');
+    });
+});
+
+describe('ResourceAstAnalyzer with OnlyValueResource (only() off a relation receiver)', function () {
+    test('only() keeps typed virtual keys at the top level and references the model in value position', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(OnlyValueResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+        expect($props['comments_count']['type'])->toBe('number')
+            ->and($props['summary']['type'])->toBe("Pick<Post, 'id' | 'title'>")
+            ->and($props['category']['type'])->toBe("Pick<Category, 'id' | 'name'>");
+    });
+
+    test('a filter call with no literal key list publishes Record<string, unknown> instead of falling to unknown', function () {
+        // $this->only($request->input('fields')) names no keys to Pick<>, but the receiver rule still knows the value
+        // is an attribute-keyed array, the same Record<string, unknown> reflection gave before the rule owned the call.
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(OnlyValueResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+        expect($props['dynamic']['type'])->toBe('Record<string, unknown>')
+            ->and($props['dynamic_category']['type'])->toBe('Record<string, unknown>');
+    });
+});
+
+describe('ResourceAstAnalyzer with ProxyFilterDirectResource and ProxyFilterWrappedResource (only()/except() through $this->resource)', function () {
+    test('the direct spelling publishes a typed Pick<> or column for every filter', function () {
+        $data = (new ResourceTransformer(ProxyFilterDirectResource::class))->data();
+
+        expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe([
+            'id' => 'number',
+            'title' => 'string',
+            'summary' => "Pick<Post, 'id' | 'title'>",
+            'without_body' => "Pick<Post, 'id' | 'title' | 'user_id' | 'status' | 'published_at' | 'rating' | 'category' | 'deleted_at' | 'created_at' | 'updated_at' | 'category_id' | 'visibility' | 'priority' | 'word_count' | 'reading_time_minutes' | 'featured_image_url' | 'is_pinned'>",
+            'author_brief' => "Pick<User, 'id' | 'name'>",
+            'author_rest' => "Pick<User, 'id' | 'name' | 'email_verified_at' | 'password' | 'options' | 'remember_token' | 'created_at' | 'updated_at' | 'role' | 'membership_level' | 'phone' | 'avatar' | 'bio' | 'settings' | 'last_login_at' | 'last_login_ip'>",
+            'author_maybe' => "Pick<User, 'id' | 'name'> | null",
+            'fields_own' => 'Record<string, unknown>',
+            'fields_author' => 'Record<string, unknown>',
+            'except_own' => 'Record<string, unknown>',
+            'except_author' => 'Record<string, unknown>',
+            'comments_by_key' => 'Comment[]',
+            'comments_listed' => 'Comment[]',
+            'comments_by_ids' => 'Comment[]',
+            'comments_maybe' => 'Comment[] | null',
+            'comments_mapped' => '{ id: number; content: string }[]',
+        ]);
+    });
+
+    test('$this->resource publishes exactly what $this publishes, apart from the interface name', function () {
+        $direct = (new ResourceTransformer(ProxyFilterDirectResource::class))->data();
+        $wrapped = (new ResourceTransformer(ProxyFilterWrappedResource::class))->data();
+
+        expect($wrapped->properties)->toBe($direct->properties)
+            ->and($wrapped->typeImports)->toBe($direct->typeImports)
+            ->and($wrapped->valueImports)->toBe($direct->valueImports);
+    });
+});
+
+describe('ResourceAstAnalyzer with ReleaseColumnsResource (filters inside the model itself)', function () {
+    test('a model method body publishes token-free filters and an accessor getter publishes the Pick<>', function () {
+        // `$this` is the model in both bodies. The method body's shape carries no import, so its literal filters inline
+        // the columns; the getter's channels reach the model file, so it keeps the Pick<> references.
+        $method = '{ named: { major: number; minor: number }; rest: { id: number; major: number; minor: number; '
+            .'created_at: string | null; updated_at: string | null }; picked: Record<string, unknown>; left: Record<string, unknown> }';
+        $getter = "{ named: Pick<Release, 'major' | 'minor'>; rest: Pick<Release, 'id' | 'major' | 'minor' | 'created_at' | "
+            ."'updated_at'>; picked: Record<string, unknown>; left: Record<string, unknown> }";
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(ReleaseColumnsResource::class), Release::class)->analyze()->properties)->keyBy('name');
+        $accessor = resolve(ModelAttributeResolver::class)->resolveAttribute(Release::class, 'column_picks');
+
+        expect($props['columns']['type'])->toBe($method)
+            ->and($props['picks']['type'])->toBe($getter)
+            ->and($accessor['type'])->toBe($getter)
+            ->and($accessor['classFqcns'])->toBe([Release::class]);
+    });
+});
+
+describe('ResourceAstAnalyzer with CommentRelationFiltersResource (relation filters inside the model itself)', function () {
+    test('a model method body publishes token-free relation filters beside its typed keys', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(CommentRelationFiltersResource::class), Comment::class)->analyze()->properties)->keyBy('name');
+
+        expect($props['summary']['type'])->toBe(
+            '{ id: number; author: { id: number; name: string }; author_role: { id: number; role: unknown } | null; '
+            .'post_fields: Record<string, unknown>; replies: unknown[]; kept_replies: unknown[] | null; '
+            .'reply_previews: { id: number; content: string }[] }',
+        );
+    });
+
+    test('a model method body reading that accessor publishes the filters its own body would', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(CommentRelationFiltersResource::class), Comment::class)->analyze()->properties)->keyBy('name');
+
+        expect($props['picks_summary']['type'])->toBe('{ id: number; picks: '.$props['summary']['type'].' }');
+    });
+
+    test('an accessor getter publishes the Pick<> and the to-many relation read, with their imports', function () {
+        $expected = "{ id: number; author: Pick<User, 'id' | 'name'>; author_role: Pick<User, 'id' | 'role'> | null; "
+            .'post_fields: Record<string, unknown>; replies: Comment[]; kept_replies: Comment[] | null; '
+            .'reply_previews: { id: number; content: string }[] }';
+        $result = resolve(AstEngine::class)->analyze(CommentRelationFiltersResource::class);
+        $props = collect($result->properties)->keyBy('name');
+        $accessor = resolve(ModelAttributeResolver::class)->resolveAttribute(Comment::class, 'relation_picks');
+
+        expect($props['picks']['type'])->toBe($expected)
+            ->and($accessor['type'])->toBe($expected)
+            ->and($accessor['classFqcns'])->toBe([User::class, Comment::class])
+            ->and($result->typeImports)->toBe(['./workbench/app/models' => ['Comment', 'User']]);
+    });
+});
+
+describe('ResourceAstAnalyzer reading an accessor whose type names a class', function () {
+    // Each key names a class only through the accessor it reads, and no key shares an accessor's name, so the only
+    // import a key can get is the one its read carries.
+    test('each read carries the class the accessor names into the resource imports', function (string $resource, array $types, array $imports) {
+        $result = resolve(AstEngine::class)->analyze($resource);
+        $props = collect($result->properties)->mapWithKeys(fn (array $prop) => [$prop['name'] => $prop['type']])->all();
+
+        expect(array_intersect_key($props, $types))->toBe($types)
+            ->and($result->typeImports)->toBe(['./workbench/app/models' => $imports]);
+    })->with([
+        'a typed closure parameter and a nullsafe relation chain' => [BulletinBoardResource::class, [
+            'lists' => 'Comment[][]',
+            'lead_pick' => "Pick<User, 'id' | 'name'> | null",
+        ], ['Comment', 'User']],
+        'a relation chain and an untyped closure parameter over a docblock accessor' => [BulletinFeedResource::class, [
+            'lead_list' => 'Comment[]',
+            'owner_list' => 'User[]',
+        ], ['Comment', 'User']],
+        'pluck() and a shape a closure parameter builds' => [BulletinArchiveResource::class, [
+            'plucked' => 'Comment[][]',
+            'rows' => "({ author: Pick<User, 'id' | 'name'> })[]",
+            'own_picks' => "(Pick<Bulletin, 'id' | 'title'>)[]",
+        ], ['Bulletin', 'Comment', 'User']],
+        'a relation chain, a closure parameter and pluck() inside whenLoaded()' => [BulletinLoadedResource::class, [
+            'lead_list' => 'Comment[]',
+            'lead_owner' => 'User',
+            'own_picks' => "(Pick<Bulletin, 'id' | 'title'>)[]",
+        ], ['Bulletin', 'Comment', 'User']],
+        'the resource\'s own model through $this->resource, whenAppended() and whenHas()' => [BulletinResource::class, [
+            'list' => 'Comment[]',
+            'picked' => "Pick<User, 'id' | 'name'>",
+            'own' => "Pick<Bulletin, 'id' | 'title'>",
+        ], ['Bulletin', 'Comment', 'User']],
+        'a $resource property its docblock types' => [BulletinWrappedResource::class, [
+            'list' => 'Comment[]',
+            'owned_by' => 'User',
+        ], ['Comment', 'User']],
+        'a spread model\'s appended filters' => [BulletinDigestSpreadResource::class, [
+            'comment_list' => 'Comment[]',
+            'author_pick' => "Pick<User, 'id' | 'name'>",
+            'own_pick' => "Pick<BulletinDigest, 'id' | 'title'>",
+        ], ['BulletinDigest', 'Comment', 'User']],
+        'a spread model\'s appended docblock accessor' => [BulletinOwnershipSpreadResource::class, [
+            'owner' => 'User',
+        ], ['User']],
+    ]);
+
+    test('a value-less whenHas() or whenAppended() carries every enum the accessor names', function (string $resource) {
+        $result = resolve(AstEngine::class)->analyze($resource);
+
+        expect(collect($result->properties)->firstWhere('name', 'review_level')['type'] ?? null)->toBe('StatusType | PriorityType | null')
+            ->and($result->typeImports)->toBe(['./workbench/app/enums' => ['PriorityType', 'StatusType']]);
+    })->with([
+        'whenHas()' => [WarehouseReviewHasResource::class],
+        'whenAppended()' => [WarehouseReviewAppendedResource::class],
+    ]);
+
+    test('$this->accessor under a key no accessor shares carries its #[TsType] import', function () {
+        $result = resolve(AstEngine::class)->analyze(WarehouseSettingsResource::class);
+
+        expect(collect($result->properties)->firstWhere('name', 'settings')['type'] ?? null)->toBe('MenuSettingsType | null')
+            ->and($result->typeImports)->toBe(['@js/types/settings' => ['MenuSettingsType']]);
+    });
+
+    test('whenAppended() carries the #[TsType] import of the accessor it reads', function () {
+        $result = resolve(AstEngine::class)->analyze(AppendedCustomImportResource::class);
+
+        expect(collect($result->properties)->firstWhere('name', 'settings')['type'] ?? null)->toBe('MenuSettingsType | null')
+            ->and($result->typeImports)->toBe(['@js/types/settings' => ['MenuSettingsType']]);
+    });
+
+    test('a model method body making the same reads publishes them without a class', function () {
+        $props = collect(resolve(AstEngine::class)->analyze(BulletinBoardResource::class)->properties)->keyBy('name');
+
+        expect($props['summary']['type'])->toBe('{ comment_lists: unknown[][]; lead_author: { id: number; name: string } | null; id: number }');
     });
 });
 
@@ -5111,8 +5332,8 @@ describe('helper and receiver method inference', function () {
         expect($this->props['to_immutable']['type'])->toBe('string');
     });
 
-    // getKey()'s type is receiver-dependent, unlike can()/cannot(), so it may fire only on $this->resource.
-    test('getKey() on a non-$this->resource receiver stays unknown', function () {
+    // Resources leave `$request` unbound (resolveRequestVarNames()), so `$request->user()` names no receiver model.
+    test('getKey() on an unbound request user stays unknown', function () {
         expect($this->props['user_key']['type'])->toBe('unknown');
     });
 });
@@ -5991,4 +6212,37 @@ describe('ResourceAstAnalyzer with ImageDelegatedResource — the model-delegate
         expect($config['type'])->toBe('MenuSettingsType')
             ->and($analysis->customImports)->toBe(['@js/types/settings' => ['MenuSettingsType']]);
     });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Every return branch of a spread method counts, and the method's own @return shape
+// types what its body could not — PermissionsSpreadResource / DocblockShapedEvent
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('spread methods merge every return branch and take unknown types from their own @return', function () {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(PermissionsSpreadResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+    expect($props['permissions'])->toMatchArray(['type' => 'Record<string, boolean>', 'optional' => true])
+        ->and($props['links'])->toMatchArray(['type' => '{ self: string; related: Record<string, { name: string }> }', 'optional' => true])
+        ->and($props['main_label'])->toMatchArray(['type' => 'string', 'optional' => false])
+        ->and($props['extra_label'])->toMatchArray(['type' => 'string', 'optional' => true]);
+});
+
+test('broadcastWith honours its own @return shape', function () {
+    $props = collect(resolve(AstEngine::class)->analyzeMethod(DocblockShapedEvent::class, 'broadcastWith')->properties)->keyBy('name');
+
+    expect($props['published_at']['type'])->toBe('string | null');
+});
+
+test('an interpolated key becomes a template-literal index signature', function () {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(PermissionsSpreadResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+    expect($props['[key: `${string}_label`]'])->toMatchArray(['type' => 'string | undefined', 'optional' => false])
+        ->and($props['primary_label']['type'])->toBe('string');
+});
+
+test('a concatenated key becomes a template-literal index signature', function () {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(PermissionsSpreadResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+    expect($props['[key: `${string}_region`]'])->toMatchArray(['type' => 'string | undefined', 'optional' => false]);
 });

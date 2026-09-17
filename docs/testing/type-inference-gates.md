@@ -11,10 +11,10 @@ emitting TypeScript that does not compile. These gates check the committed outpu
 Types are gated here; speed is gated separately — see
 [`performance-gate.md`](performance-gate.md) for the publish-speed A/B gate.
 
-| Script                       | Catches                                                                      |
-| ---------------------------- | ---------------------------------------------------------------------------- |
-| `unknown-regression-gate.py` | A property that had a real type now emits `unknown`                          |
-| `unimportable-token-gate.sh` | A type token emitted without its `import` — TypeScript that will not compile |
+| Script                       | Catches                                                                                                                  |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `unknown-regression-gate.py` | A property that had a real type now emits `unknown`                                                                      |
+| `unimportable-token-gate.sh` | A type token emitted without its `import` — TypeScript that will not compile, or that compiles against a DOM global of the same name |
 
 The two are complements, not overlaps. A leaked token is a *new* property carrying a plausible-looking
 type, not an existing property degrading, so the regression gate structurally cannot see it.
@@ -129,6 +129,8 @@ TS2552 (`Did you mean…`), which TypeScript emits instead when a similarly-name
 with TS2300 (`Duplicate identifier`), TS2440 (`Import declaration conflicts with local declaration`),
 TS2344 (`does not satisfy the constraint`), TS2305/TS2724 (`has no exported member`) and TS6196
 (`declared but never used`) — the trace a dropped `extends` clause or an overridden cast leaves behind.
+A second program over the same tree, without the DOM lib, counts the tokens those codes cannot see; see
+[The DOM-global count](#the-dom-global-count).
 
 **It runs once per generated tree**, against its own tsconfig file — `tsconfig.json` for
 `data/default-example`, plus `tsconfig.testing.json`, `tsconfig.full-template-example.json` and
@@ -190,8 +192,10 @@ TSCONFIGS=tsconfig.testing.json .github/scripts/unimportable-token-gate.sh 0 0 0
 TS2300/TS2304/TS2305/TS2344/TS2440/TS2552/TS2724/TS6196 (duplicate identifier / cannot find name / unexported name / bad type argument / import-local conflict / unused import) in generated tree: 0
 TS2307 (cannot find module) with a relative specifier in generated tree: 0
 TS2307 (cannot find module) with a bare specifier in generated tree: 0
+TS2304/TS2552 (cannot find name) for names only the DOM lib declares, in generated tree: 0
 
 PASS - no new unimportable or colliding tokens (baseline 0)
+PASS - no token named like a DOM global emitted without its import
 PASS - no new relative-specifier TS2307s (baseline 0)
 PASS - no new bare-specifier TS2307s (baseline 0)
 == tsconfig.testing.json ==
@@ -200,6 +204,32 @@ PASS - no new bare-specifier TS2307s (baseline 0)
 
 Each zero count prints one blank histogram line — `printf '%s\n' ""` on an empty match. Cosmetic, and now
 the permanent steady state.
+
+### The DOM-global count
+
+`tsconfig.json` sets no `lib`, so `tsc` loads the DOM lib, and a leaked token that shares a DOM global's name binds to
+that global instead of failing. `Comment` is the case that forced this: a model's getter that read another model's
+`Comment[]` accessor through a closure parameter published `Comment[][]` without importing `Comment`, and the file
+compiled against the DOM's `Comment` node. None of the codes above fires on it.
+
+So `gate_one()` runs the same tsconfig a second time with `--lib esnext`. A `file(line,col) name` pair that TS2304 or
+TS2552 reports only in that second program names something only the DOM declares, and it is counted on its own line.
+`missing_names()` builds both lists and `comm` keeps the pairs the first program never reported, so a leaked `User`,
+which fails in both programs, stays in the main count alone. The second program gets the first one's setup-error
+guard; it parses the same files, so the syntax guard needs no second run.
+
+The package writes one DOM name on purpose without an import: `File`, `FormRequestRulesAnalyzer`'s type for an uploaded
+file. `DOM_GLOBALS` at the top of the script lists it, and the count skips it. `Blob` appears only in
+the shipped config's commented `'binary' => 'Blob'` mapping, and no workbench fixture enables it, so it is not listed:
+a fixture that maps a type to another DOM name adds that name to `DOM_GLOBALS` by hand, the same way a new app-side
+name is added to a stub. Any other name only the DOM-less program reports is a leak. `Date`,
+`Record`, `Pick` and the other names the package writes without an import come from the ES lib, which both programs
+load.
+
+The count has no baseline argument of its own. `BASELINE_COUNT`, the first argument, arms it, and any non-zero reading
+fails: every DOM name the package means to write is already in `DOM_GLOBALS`, so no other one is legitimate. A failure
+still lets the two TS2307 sub-gates print their `PASS`/`FAIL` lines before the tree fails. The
+other three counts, their arguments and their baselines mean what they meant before it existed.
 
 ### The app-side stubs
 
@@ -367,7 +397,7 @@ opposite sign. `npx tsc --noEmit -p tsconfig.json 2>&1 | grep "error TS2307" | g
 
 #### Proving each gate fires
 
-Five detection controls and one comparison control, each checked separately — a multi-count gate where
+Six detection controls and one comparison control, each checked separately — a multi-count gate where
 only one branch was ever exercised is not meaningfully better than the single-count gate it replaced.
 Every expected number below has been reproduced against the committed tree; two of them were wrong once.
 
@@ -430,6 +460,19 @@ printf "import type { Nope } from './deliberately-missing';\nexport type Control
 .github/scripts/unimportable-token-gate.sh 0 0 0   # exit 1: "relative-specifier TS2307 count rose from 0 to 1"
 rm tests/types/relative-subgate-control.ts
 ```
+
+**DOM-global count — a DOM-named token with no import.** No stub is involved: plant a leaked `Comment` beside the
+allowed `File`:
+
+```bash
+printf "export interface Control {\n    node: Comment;\n    upload: File;\n}\n" > tests/types/dom-global-control.ts
+.github/scripts/unimportable-token-gate.sh 0 0 0   # exit 1: "names only the DOM lib declares, in generated tree: 1", histogram "1 Comment"
+rm tests/types/dom-global-control.ts
+```
+
+Before the DOM-less program existed, that file left every count at `0` and the gate exited 0. `--selftest` runs this
+control after its relative-specifier case and demands exactly one count, a `FAIL` line naming the DOM, `Comment` in
+the histogram and no `File`.
 
 *Comparison control (no setup).* A negative baseline makes `rel_count -gt relative_baseline` true no matter
 the committed count, so this fails against the committed tree with nothing to clean up:
@@ -544,6 +587,14 @@ When changing `unknown-regression-gate.py` itself, also run its
   adding an inference path, add a fixture for the hazardous shape too — several real defects were found
   only by constructing a fixture and regenerating, never by reading the code or running the suite.
 
+- **A leaked token named like a name in `DOM_GLOBALS`.** The DOM-global count skips `File` wherever it appears, so a
+  class named `File` emitted without its import compiles against the DOM's `File` and passes every count. No workbench
+  class has that name.
+
+- **A leaked token named like an ES-lib global.** `Error`, `Map`, `Date`, `Promise` and the rest are declared by the
+  ES lib, which both programs load, so a class of that name emitted without its import binds to the global in both and
+  no count sees it.
+
 - **TS2307 (`Cannot find module`) is counted, in two separate counts, not the main one.**
   `unimportable-token-gate.sh`'s main count greps only
   TS2300/TS2304/TS2305/TS2344/TS2440/TS2552/TS2724/TS6196, and an
@@ -553,7 +604,7 @@ When changing `unknown-regression-gate.py` itself, also run its
   an import of a class the package never writes a file for (the failure mode `PublishedResourceRegistry`
   exists to prevent, documented under
   [convention guesses are gated on the published set](../components/resource-ast-analyzer.md#toresource-convention-guesses-are-gated-on-the-published-set),
-  including its shared `InspectsAstNodes::resolveCollectedResourceClass()` resolver, which both
+  including its shared `InspectsResourceCalls::resolveCollectedResourceClass()` resolver, which both
   `ResourceAstAnalyzer` and `InertiaPageAnalyzer` call), and the bare-specifier count, gated separately so
   that ordinary bare-alias churn can never mask a new relative-specifier regression inside a combined total.
 

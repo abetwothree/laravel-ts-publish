@@ -50,7 +50,7 @@ export interface SpreadWithGuardClauseClosureResource
     sorted_items: OrderItem[];
     keyed_items: Record<string, OrderItem>;
     listed_items: OrderItem[];
-    unsorted_items: unknown[] | Record<string, unknown>;
+    unsorted_items: OrderItem[];
     state_ids: number[] | null;
     capabilities: { typeName: string; tracksSteelDetails: boolean; warehouseDocsKey: string | null } | null;
     summary_items: Store[];

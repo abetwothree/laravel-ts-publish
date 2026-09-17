@@ -440,6 +440,30 @@ describe('typeNameOccursIn', function () {
             ->and($s->typeNameOccursIn('StatusType', 'CrmStatusType'))->toBeFalse()
             ->and($s->typeNameOccursIn('StatusType', 'StatusTypeExtra'))->toBeFalse();
     });
+
+    test('typeNameOccursIn() ignores a name spelled only inside a string literal', function () {
+        $s = $this->service;
+        expect($s->typeNameOccursIn('User', "'User' | 'Admin'"))->toBeFalse()
+            ->and($s->typeNameOccursIn('User', '{ "User": string }'))->toBeFalse()
+            ->and($s->typeNameOccursIn('User', "'it\\'s User'"))->toBeFalse()
+            ->and($s->typeNameOccursIn('User', "Pick<User, 'id' | 'name'>"))->toBeTrue()
+            ->and($s->typeNameOccursIn('User', "'User' | User"))->toBeTrue();
+    });
+});
+
+describe('isUnknownOnly', function () {
+    test('only a type whose non-null arms are all unknown is unknown-only', function (string $type, bool $expected) {
+        expect($this->service->isUnknownOnly($type))->toBe($expected);
+    })->with([
+        'bare unknown' => ['unknown', true],
+        'unknown with a null arm' => ['unknown | null', true],
+        'null before unknown' => ['null | unknown', true],
+        'a real type' => ['string', false],
+        'a real type with a null arm' => ['User | null', false],
+        'unknown beside a real arm' => ['unknown | string', false],
+        'an unknown inside a shape' => ['{ a: unknown }', false],
+        'an unknown element type' => ['unknown[]', false],
+    ]);
 });
 
 describe('isVagueTsType', function () {

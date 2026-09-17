@@ -5,10 +5,14 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsInstanceofGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\Closure as ClosureExpr;
 use ReflectionClass;
 use ReflectionNamedType;
 use ReflectionProperty;
@@ -16,11 +20,14 @@ use ReflectionProperty;
 /**
  * Public entry point: `analyze()` — a class and a method in, properties and imports out.
  *
- * It and `AnalysisResult` are the engine's whole public surface. The other three methods here are
+ * It and `AnalysisResult` are the engine's whole public surface. The other four methods here are
  * `@internal` like the rest of `src/Ast`: each traffics in a DTO whose shape tracks inference.
+ *
+ * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  */
 final class AstEngine
 {
+    use CollectsInstanceofGuards;
     use CollectsLocalVarBindings;
 
     /** @var array<string, true> class@method@modelClass keys currently on the call stack — cycle guard. */
@@ -39,18 +46,23 @@ final class AstEngine
      *
      * @param  class-string  $class
      * @param  class-string<Model>|null  $modelClass  Backing model for `$this->prop` resolution; null to skip.
+     * @param  bool  $carriesImports  false when the caller keeps only the flattened types, never the FQCN channels
      *
      * @internal
      */
-    public function analyzeMethod(string $class, string $method = 'toArray', ?string $modelClass = null): MethodAnalysis
-    {
+    public function analyzeMethod(
+        string $class,
+        string $method = 'toArray',
+        ?string $modelClass = null,
+        bool $carriesImports = true,
+    ): MethodAnalysis {
         $reflection = new ReflectionClass($class);
 
         if ($modelClass === null && is_a($class, JsonResource::class, true)) {
             $modelClass = resolve(ModelClassResolver::class)->resolve($reflection);
         }
 
-        $key = $class.'@'.$method.'@'.($modelClass ?? '');
+        $key = $class.'@'.$method.'@'.($modelClass ?? '').($carriesImports ? '' : '@importless');
 
         if (isset($this->resultCache[$key])) {
             return clone $this->resultCache[$key];
@@ -70,7 +82,7 @@ final class AstEngine
         $this->analyzing[$key] = true;
 
         try {
-            $analysis = new ResourceAstAnalyzer($reflection, $modelClass, $method)->analyze();
+            $analysis = new ResourceAstAnalyzer($reflection, $modelClass, $method, carriesImports: $carriesImports)->analyze();
         } finally {
             unset($this->analyzing[$key]);
         }
@@ -149,8 +161,43 @@ final class AstEngine
         }
 
         $this->collectLocalVarBindings($context->method->stmts ?? [], $scope);
+        $this->collectInstanceofGuards($context->method->stmts ?? [], $scope);
 
         return $scope;
+    }
+
+    /**
+     * Resolve one closure (an accessor getter, or a method body wrapped as one) against a model subject.
+     *
+     * @param  class-string<Model>  $modelClass
+     * @param  bool  $carriesImports  false when an analysis that carries no import reads the accessor
+     * @return ValueExpressionResult
+     *
+     * @internal
+     */
+    public function analyzeModelClosure(
+        string $modelClass,
+        ClosureExpr|ArrowFunction $closure,
+        MethodContext $context,
+        bool $carriesImports = true,
+    ): array {
+        $scope = $this->bindingsFor($context);
+
+        // A trait-declared accessor still reads `$this` as the model that uses the trait.
+        $scope->subjectReflection = self::genericReflection($modelClass);
+        $scope->modelClass = $modelClass;
+        $scope->carriesImports = $carriesImports;
+
+        $analyzer = new ResourceAstAnalyzer(
+            $scope->subjectReflection,
+            $modelClass,
+            $context->method->name->toString(),
+            ResourceExpressionHandlers::forModelClosures(),
+            $scope,
+            $context,
+        );
+
+        return $analyzer->resolve($closure);
     }
 
     /**
@@ -185,6 +232,17 @@ final class AstEngine
         }
 
         return $analysis;
+    }
+
+    /**
+     * A reflection typed as the invariant `ReflectionClass<object>` the scope's own property declares.
+     *
+     * @param  class-string  $className
+     * @return ReflectionClass<object>
+     */
+    private static function genericReflection(string $className): ReflectionClass
+    {
+        return new ReflectionClass($className);
     }
 
     /**

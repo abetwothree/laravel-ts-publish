@@ -23,7 +23,10 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use JsonSerializable;
 use PhpParser\Node;
+use PhpParser\Node\Name;
+use PhpParser\Node\Stmt\Class_;
 use PhpParser\Node\Stmt\GroupUse;
+use PhpParser\Node\Stmt\TraitUse;
 use PhpParser\Node\Stmt\Use_;
 use PhpParser\NodeFinder;
 use ReflectionClass;
@@ -910,7 +913,10 @@ class LaravelTsPublish
             return $this->emptyTypeScriptInfo();
         }
 
-        return $this->resolveDocblockTypeStringAgainst($returnTypeString, $this->methodDeclaringFileClass($method));
+        return $this->resolveDocblockTypeStringAgainst(
+            $this->bindTraitTemplates($returnTypeString, $method),
+            $this->methodDeclaringFileClass($method),
+        );
     }
 
     /**
@@ -959,7 +965,112 @@ class LaravelTsPublish
      */
     protected function resolveDocblockTypeString(ReflectionMethod $method, string $typeString): array
     {
-        return $this->resolveDocblockTypeStringAgainst($typeString, $this->methodDeclaringFileClass($method));
+        return $this->resolveDocblockTypeStringAgainst(
+            $this->bindTraitTemplates($typeString, $method),
+            $this->methodDeclaringFileClass($method),
+        );
+    }
+
+    /**
+     * Replace a trait's @template names with the classes its consumer binds through `@use Trait<X>`.
+     */
+    protected function bindTraitTemplates(string $typeString, ReflectionMethod $method): string
+    {
+        $trait = $this->methodDeclaringFileClass($method);
+
+        if (! $trait->isTrait()) {
+            return $typeString;
+        }
+
+        $templates = $this->traitTemplateNames($trait);
+        $arguments = $templates === [] ? [] : $this->traitUseArguments($method->getDeclaringClass(), $trait);
+
+        foreach ($templates as $index => $name) {
+            if (! isset($arguments[$index])) {
+                continue;
+            }
+
+            $typeString = (string) preg_replace('/(?<![\w\\\\$])'.preg_quote($name, '/').'(?![\w\\\\])/', '\\'.$arguments[$index], $typeString);
+        }
+
+        return $typeString;
+    }
+
+    /**
+     * The trait's @template names, in declaration order.
+     *
+     * @param  ReflectionClass<object>  $trait
+     * @return list<string>
+     */
+    protected function traitTemplateNames(ReflectionClass $trait): array
+    {
+        preg_match_all('/@(?:phpstan-|psalm-)?template(?:-covariant|-contravariant)?\s+(\w+)/', (string) $trait->getDocComment(), $m);
+
+        return $m[1];
+    }
+
+    /**
+     * FQCNs a consumer (or an ancestor) binds to a trait's templates via `@use Trait<A, B>`.
+     *
+     * Scoped to the matching `TraitUse` statement's own doc comment — a prose mention of `@use Trait<X>`
+     * anywhere else in the file (e.g. a class docblock) must never be mistaken for the real binding.
+     *
+     * @param  ReflectionClass<object>  $consumer
+     * @param  ReflectionClass<object>  $trait
+     * @return list<string>
+     */
+    protected function traitUseArguments(ReflectionClass $consumer, ReflectionClass $trait): array
+    {
+        $finder = new NodeFinder;
+
+        for ($class = $consumer; $class !== false; $class = $class->getParentClass()) {
+            $fileName = $class->getFileName();
+
+            if ($fileName === false) {
+                continue;
+            }
+
+            $stmts = resolve(AstParser::class)->parseFile($fileName);
+
+            $classNode = $finder->findFirst($stmts, fn (Node $node): bool => $node instanceof Class_
+                && $node->namespacedName?->toString() === $class->getName());
+
+            if (! $classNode instanceof Class_) {
+                continue;
+            }
+
+            $useMap = $this->parseFileUseStatements($class);
+            $namespace = $class->getNamespaceName();
+
+            foreach ($finder->findInstanceOf($classNode->stmts, TraitUse::class) as $traitUse) {
+                $traitNames = array_map(fn (Name $name): string => ltrim($name->toString(), '\\'), $traitUse->traits);
+
+                if (! in_array($trait->getName(), $traitNames, true)) {
+                    continue;
+                }
+
+                $doc = $traitUse->getDocComment();
+
+                if ($doc === null
+                    || ! preg_match_all('/@(?:phpstan-|psalm-)?use\s+([\w\\\\]+)\s*<(.+?)>\s*(?:\*\/|\n)/', $doc->getText(), $matches, PREG_SET_ORDER)
+                ) {
+                    continue;
+                }
+
+                foreach ($matches as [, $name, $args]) {
+                    if (ltrim($this->resolveDocblockTypeName($name, $useMap, $namespace), '\\') !== $trait->getName()) {
+                        continue;
+                    }
+
+                    return array_map(
+                        fn (string $arg): string => ltrim($this->resolveDocblockTypeName(trim($arg), $useMap, $namespace), '\\'),
+                        $this->splitAtTopLevelCommas($args),
+                    );
+                }
+            }
+        }
+
+        return [];
     }
 
     /**
@@ -974,10 +1085,23 @@ class LaravelTsPublish
      */
     public function resolveDocblockTypePartOrAlias(string $part, array $useMap, string $namespace, ReflectionClass $contextClass): array
     {
-        $alias = $this->resolvePhpstanTypeAlias($part, $contextClass);
+        $trimmed = trim($part);
+
+        // A nullable alias (`?FeatureValue`) would otherwise be looked up verbatim and miss.
+        if (str_starts_with($trimmed, '?')) {
+            $inner = $this->resolveDocblockTypePartOrAlias(substr($trimmed, 1), $useMap, $namespace, $contextClass);
+
+            if (! str_contains($inner['type'], 'null')) {
+                $inner['type'] .= ' | null';
+            }
+
+            return $inner;
+        }
+
+        $alias = $this->resolvePhpstanTypeAlias($trimmed, $contextClass);
 
         if ($alias === null) {
-            return $this->resolveDocblockTypePart($part, $useMap, $namespace);
+            return $this->resolveDocblockTypePart($trimmed, $useMap, $namespace);
         }
 
         return $this->resolveDocblockPartToInfo(
@@ -1102,7 +1226,7 @@ class LaravelTsPublish
 
         $inner = $this->resolveDocblockContainerValue($valueTypeString, $useMap, $namespace);
 
-        if ($keyType === 'string') {
+        if ($keyType === 'string' || preg_match('/^[a-z-]+-string(?:<.+>)?$/', $keyType) === 1) {
             $inner['type'] = 'Record<string, '.$inner['type'].'>';
 
             return $inner;
@@ -1128,6 +1252,28 @@ class LaravelTsPublish
 
         if ($nested !== null) {
             return $nested;
+        }
+
+        $intersectionParts = $this->splitPhpDocIntersectionType($valueType);
+
+        if (count($intersectionParts) > 1) {
+            $infos = [];
+
+            foreach ($intersectionParts as $member) {
+                $member = trim($member);
+                $info = str_starts_with($member, 'object{')
+                    ? [...$this->emptyTypeScriptInfo(), 'type' => $this->resolveArrayShapeString('array{'.substr($member, 7), $useMap, $namespace) ?? 'unknown']
+                    : $this->resolveDocblockContainerValue($member, $useMap, $namespace);
+
+                // A & B is assignable to A, so dropping a member we cannot type only widens the result.
+                if ($info['type'] !== 'unknown') {
+                    $infos[] = $info;
+                }
+            }
+
+            if ($infos !== []) {
+                return count($infos) === 1 ? $infos[0] : $this->intersectTypeScriptInfos($infos);
+            }
         }
 
         if (str_starts_with(trim($valueType), 'array{')) {
@@ -1169,11 +1315,58 @@ class LaravelTsPublish
      * @return TypeScriptTypeInfo */
     protected function wrapAsArray(array $info): array
     {
-        $info['type'] = str_contains($info['type'], '|')
+        $info['type'] = str_contains($info['type'], '|') || str_contains($info['type'], '&')
             ? '('.$info['type'].')[]'
             : $info['type'].'[]';
 
         return $info;
+    }
+
+    /**
+     * Split a PHPDoc type at top-level `&`, ignoring any inside `<>`, `{}` or `()`.
+     *
+     * @return list<string>
+     */
+    protected function splitPhpDocIntersectionType(string $type): array
+    {
+        $parts = [];
+        $depth = 0;
+        $current = '';
+
+        foreach (str_split($type) as $char) {
+            $depth += match ($char) {
+                '<', '{', '(' => 1,
+                '>', '}', ')' => -1,
+                default => 0,
+            };
+
+            if ($char === '&' && $depth === 0) {
+                $parts[] = $current;
+                $current = '';
+
+                continue;
+            }
+
+            $current .= $char;
+        }
+
+        $parts[] = $current;
+
+        return array_values(array_filter(array_map(trim(...), $parts), fn (string $p): bool => $p !== ''));
+    }
+
+    /**
+     * Join resolved members as a TypeScript intersection, keeping every member's import channels.
+     *
+     * @param  list<TypeScriptTypeInfo>  $infos
+     * @return TypeScriptTypeInfo
+     */
+    protected function intersectTypeScriptInfos(array $infos): array
+    {
+        $merged = $this->mergeTypeScriptInfos($infos);
+        $merged['type'] = implode(' & ', array_map(fn (array $info): string => $info['type'], $infos));
+
+        return $merged;
     }
 
     /**
@@ -1509,7 +1702,7 @@ class LaravelTsPublish
      *
      * @return list<string>
      */
-    protected function splitAtTopLevelCommas(string $input): array
+    public function splitAtTopLevelCommas(string $input): array
     {
         $parts = [];
         $depth = 0;

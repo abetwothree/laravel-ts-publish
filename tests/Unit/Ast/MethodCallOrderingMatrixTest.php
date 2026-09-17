@@ -7,8 +7,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationFilterHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ToResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
 use PhpParser\Node\Arg;
@@ -27,6 +25,7 @@ use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\VariadicPlaceholder;
+use Workbench\App\Enums\Priority;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\User;
@@ -39,19 +38,21 @@ const METHOD_CALL_PINNED = [
     'ConditionalMethodHandler|FirstClassCallableHandler' => FirstClassCallableHandler::class,
     'FirstClassCallableHandler|ToResourceHandler' => FirstClassCallableHandler::class,
     'FirstClassCallableHandler|KnownFunctionCallHandler' => FirstClassCallableHandler::class,
-    'RelationCollectionChainHandler|ToResourceHandler' => ToResourceHandler::class,
-    'RelationCollectionChainHandler|RelationFilterHandler' => RelationFilterHandler::class,
 ];
 
 /**
  * Whether $handler alone answers $expr non-null, isolated from any partner — the measure of "the
  * corpus exercises this pair" a vacuous-pair check needs. A handler's own internal recursion into
  * $engine->resolve() for some unrelated sub-expression must not count as claiming $expr itself.
+ *
+ * The engine is given the very scope the handler receives, as production does. With two separate
+ * scopes a handler that seeds a binding and then recurses — VariableHandler's map() arm,
+ * CollectionPipelineHandler's — reads back an unseeded scope and can never claim anything.
  */
 function methodCallHandlerClaims(ExpressionHandler $handler, MethodCall $expr): bool
 {
-    $engine = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class, 'toArray', [$handler]);
     $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
+    $engine = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class, 'toArray', [$handler], $scope);
 
     return $handler->resolve($expr, $scope, $engine) !== null;
 }
@@ -70,6 +71,14 @@ function methodCallCorpus(): array
         new MethodCall(new PropertyFetch($this_, 'post'), 'toResource', []),
         new MethodCall(new PropertyFetch($this_, 'post'), 'only', [new Arg($arr(['id', 'title']))]),
         new MethodCall(new PropertyFetch($this_, 'post'), 'except', [new Arg($arr(['body']))]),
+        // The same filters through the $this->resource proxy, on the resource's own model and on a relation.
+        new MethodCall(new PropertyFetch($this_, 'resource'), 'only', [new Arg($arr(['id', 'content']))]),
+        new MethodCall(new PropertyFetch(new PropertyFetch($this_, 'resource'), 'post'), 'only', [new Arg($arr(['id', 'title']))]),
+        // Runtime key lists and a many-relation filtered by primary key, which only filter-aware handlers may answer.
+        new MethodCall(new PropertyFetch($this_, 'post'), 'only', [new Arg(new Variable('fields'))]),
+        new MethodCall(new PropertyFetch($this_, 'post'), 'except', [new Arg(new Variable('fields'))]),
+        new MethodCall(new PropertyFetch($this_, 'resource'), 'except', [new Arg(new Variable('fields'))]),
+        new MethodCall(new PropertyFetch($this_, 'replies'), 'only', [new Arg(new Array_([new ArrayItem(new Int_(1))]))]),
         new MethodCall(new MethodCall($this_, 'comments'), 'pluck', [new Arg(new String_('id'))]),
         new MethodCall(new Variable('request'), 'ip', []),
         new MethodCall(new Variable('request'), 'user', []),
@@ -84,6 +93,46 @@ function methodCallCorpus(): array
             'params' => [new Param(new Variable('user'), type: new Name(User::class))],
             'expr' => new PropertyFetch(new Variable('user'), 'name'),
         ]))]),
+        // ReceiverMethodResource's method calls, then the same receiver kinds on the corpus's Comment scope.
+        new MethodCall(new PropertyFetch($this_, 'priority'), 'label'),
+        new MethodCall(new PropertyFetch(new PropertyFetch($this_, 'resource'), 'priority'), 'label'),
+        new MethodCall(new MethodCall(new PropertyFetch(new PropertyFetch($this_, 'resource'), 'published_at'), 'setTimezone', [new Arg(new String_('UTC'))]), 'toDateString'),
+        new MethodCall(new MethodCall(new PropertyFetch($this_, 'published_at'), 'setTimezone', [new Arg(new String_('UTC'))]), 'toDateString'),
+        new MethodCall(new StaticCall(new Name(Priority::class), 'from', [new Arg(new Int_(1))]), 'label'),
+        new MethodCall(new MethodCall(new PropertyFetch($this_, 'flagged_at'), 'setTimezone', [new Arg(new String_('UTC'))]), 'toDateString'),
+        new MethodCall(new PropertyFetch($this_, 'flagged_at'), 'toDateString'),
+        new MethodCall(new PropertyFetch(new PropertyFetch($this_, 'resource'), 'post'), 'getMorphClass'),
+        new MethodCall(new PropertyFetch($this_, 'post'), 'fresh'),
+        // A bare call the resource forwards to its model, which only ReceiverMethodCallHandler answers.
+        new MethodCall($this_, 'getKey'),
+        // Collection pipelines: a trailing values()->all() on a relation root, the same shape on a
+        // collect() root, and concat() of the receiver's own relation.
+        new MethodCall(new MethodCall(new MethodCall(new PropertyFetch($this_, 'replies'), 'map', [
+            new Arg(new ArrowFunction([
+                'params' => [new Param(new Variable('reply'))],
+                'expr' => new PropertyFetch(new Variable('reply'), 'id'),
+            ])),
+        ]), 'values'), 'all'),
+        new MethodCall(new MethodCall(new MethodCall(new FuncCall(new Name('collect'), [
+            new Arg(new FuncCall(new Name('explode'), [new Arg(new String_(' ')), new Arg(new PropertyFetch($this_, 'content'))])),
+        ]), 'map', [
+            new Arg(new ArrowFunction([
+                'params' => [new Param(new Variable('word'))],
+                'expr' => new Array_([new ArrayItem(new Variable('word'), new String_('word'))]),
+            ])),
+        ]), 'values'), 'all'),
+        new MethodCall(new MethodCall(new PropertyFetch($this_, 'replies'), 'concat', [
+            new Arg(new PropertyFetch($this_, 'replies')),
+        ]), 'values'),
+        // A collect() root the pipeline handler can type with only its PARTNER in the profile: the
+        // argument needs RelationCollectionChainHandler, not the KnownFunctionCallHandler/ClosureHandler
+        // pair above, neither of which is a MethodCall claimant and so is in no pair at all.
+        new MethodCall(new FuncCall(new Name('collect'), [
+            new Arg(new MethodCall(new PropertyFetch($this_, 'replies'), 'pluck', [new Arg(new String_('content'))])),
+        ]), 'values'),
+        new MethodCall(new MethodCall(new FuncCall(new Name('collect'), [
+            new Arg(new MethodCall(new PropertyFetch($this_, 'replies'), 'pluck', [new Arg(new String_('content'))])),
+        ]), 'filter'), 'values'),
     ];
 }
 

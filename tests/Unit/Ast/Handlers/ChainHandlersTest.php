@@ -10,9 +10,11 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationCollectionChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ResourceRelationModel;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\MethodCall;
@@ -26,6 +28,8 @@ use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use Workbench\App\Enums\Role;
+use Workbench\App\Http\Resources\ClosureResourceRootResource;
+use Workbench\App\Http\Resources\CollectionPipelineResource;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\HelperCallResource;
 use Workbench\App\Http\Resources\MediaTypeResource;
@@ -34,33 +38,9 @@ use Workbench\App\Http\Resources\UnitEnumResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Kpi;
 use Workbench\App\Models\Order;
+use Workbench\App\Models\Post;
 use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
-
-/**
- * An engine that fails the test if a handler calls back into it, proving the handler resolved or
- * declined without recursing into a sub-expression.
- */
-function chainHandlersThrowingEngine(): ExpressionEngine
-{
-    return new class implements ExpressionEngine
-    {
-        public function resolve(Expr $expr): array
-        {
-            throw new RuntimeException('resolve() must not be called in this case');
-        }
-
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
-        {
-            throw new RuntimeException('spreadAnalysis() must not be called in this case');
-        }
-
-        public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
-        {
-            throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
-        }
-    };
-}
 
 /**
  * Resolves exactly the map closure to a canned body result, recording the scope bindings the chain
@@ -185,13 +165,13 @@ it('declines a plain method call it does not claim', function () {
     expect($result)->toBeNull();
 });
 
-it('degrades a nullsafe method chain with no resolvable return type to unknown', function () {
+it('declines a nullsafe method chain with no resolvable return type', function () {
     $expr = new NullsafeMethodCall(chainThisProp('user'), 'notAMethodAnywhere');
     $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
 
     $result = (new MethodChainHandler)->resolve($expr, $scope, chainHandlersThrowingEngine());
 
-    expect($result)->toBe(['type' => 'unknown', 'optional' => false]);
+    expect($result)->toBeNull();
 });
 
 it('resolves a relation collection chain to the element-typed array', function () {
@@ -243,6 +223,42 @@ it('resolves a take()->map()->values() chain through the engine, array-wrapping 
         ->and($scope->closureRelationModelClass)->toBeNull()
         ->and($scope->varModelBindings)->toBe([]);
 });
+
+// concat() is identity ONLY on exact type equality. Loosening the comparison to "both are arrays"
+// would publish Comment[] for a chain that really appends Tag[] — a different collection, not a
+// longer one — so the declining half is the half worth pinning.
+it('treats concat() as identity for the same collection type and declines a different one', function () {
+    $analyzer = new ResourceAstAnalyzer(new ReflectionClass(CollectionPipelineResource::class), Post::class);
+    $same = new MethodCall(chainThisProp('comments'), 'concat', [new Arg(chainThisProp('comments'))]);
+    $different = new MethodCall(chainThisProp('comments'), 'concat', [new Arg(chainThisProp('tags'))]);
+
+    expect($analyzer->resolve($same)['type'])->toBe('Comment[]')
+        ->and($analyzer->resolve($different)['type'])->toBe('unknown');
+});
+
+// Model::only() is declared `@return array<string, mixed>`, a vague object, and except() `@return array`, a list; a
+// many-relation filters models by primary key. Filter-aware code owns every spelling, so both reflectors decline them.
+it('declines only() and except() in both reflecting branches, whatever the receiver and key list', function (Expr $expr) {
+    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
+
+    expect((new RelationCollectionChainHandler)->resolve($expr, $scope, chainHandlersThrowingEngine()))->toBeNull();
+})->with([
+    '$this->resource->only([\'id\'])' => fn (): Expr => new MethodCall(chainThisProp('resource'), 'only', [new Arg(new Array_([new ArrayItem(new String_('id'))]))]),
+    '$this->resource->except($fields)' => fn (): Expr => new MethodCall(chainThisProp('resource'), 'except', [new Arg(new Variable('fields'))]),
+    '$this->post->except($fields)' => fn (): Expr => new MethodCall(chainThisProp('post'), 'except', [new Arg(new Variable('fields'))]),
+    '$this->replies->only([1, 2])' => fn (): Expr => new MethodCall(chainThisProp('replies'), 'only', [new Arg(new Array_([new ArrayItem(new Int_(1)), new ArrayItem(new Int_(2))]))]),
+    '$this->except($fields)' => fn (): Expr => new MethodCall(new Variable('this'), 'except', [new Arg(new Variable('fields'))]),
+]);
+
+it('declines only() and except() on a nullsafe relation chain', function (NullsafeMethodCall $expr) {
+    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
+
+    expect((new MethodChainHandler)->resolve($expr, $scope, chainHandlersThrowingEngine()))->toBeNull();
+})->with([
+    '$this->post?->except($fields)' => fn (): NullsafeMethodCall => new NullsafeMethodCall(chainThisProp('post'), 'except', [new Arg(new Variable('fields'))]),
+    '$this->resource->post?->only([\'id\'])' => fn (): NullsafeMethodCall => new NullsafeMethodCall(new PropertyFetch(chainThisProp('resource'), 'post'), 'only', [new Arg(new Array_([new ArrayItem(new String_('id'))]))]),
+    '$this->replies?->only($ids)' => fn (): NullsafeMethodCall => new NullsafeMethodCall(chainThisProp('replies'), 'only', [new Arg(new Variable('ids'))]),
+]);
 
 it('declines a method call rooted at a bare variable, not $this', function () {
     $expr = new MethodCall(new Variable('members'), 'take', [new Arg(new Int_(5))]);
@@ -300,6 +316,94 @@ it('reads take(limit: …) and map(callback: …) by name', function () {
     $result = (new RelationCollectionChainHandler)->resolve($chain, $scope, $engine);
 
     expect($result)->toBe(['type' => '{ id: number }[]', 'optional' => false]);
+});
+
+// Inside a whenLoaded closure the scope carries the relation's model, but `$this->resource` is always
+// the resource's own model — so these chains must walk Post, never the closure's Comment.
+test('$this->resource inside a whenLoaded closure roots at the resource model', function () {
+    $scope = new AnalysisScope(new ReflectionClass(ClosureResourceRootResource::class), Post::class);
+    $scope->closureRelationModelClass = Comment::class;
+    $resource = chainThisProp('resource');
+    $handler = new PropertyChainHandler;
+
+    $published = $handler->resolve(new PropertyFetch($resource, 'published_at'), $scope, chainHandlersThrowingEngine());
+    $authorName = $handler->resolve(new PropertyFetch(new PropertyFetch($resource, 'author'), 'name'), $scope, chainHandlersThrowingEngine());
+    $nullsafe = $handler->resolve(new NullsafePropertyFetch(new PropertyFetch($resource, 'author'), 'name'), $scope, chainHandlersThrowingEngine());
+
+    expect($published)->toBe(['type' => 'string | null', 'optional' => false])
+        ->and($authorName)->toBe(['type' => 'string', 'optional' => false])
+        ->and($nullsafe)->toBe(['type' => 'string | null', 'optional' => false]);
+});
+
+// Pins both `startIndex` uses in MethodChainHandler: the walk loop and the last-step relation branch.
+test('a nullsafe method chain on $this->resource roots at the resource model inside a closure', function () {
+    $scope = new AnalysisScope(new ReflectionClass(ClosureResourceRootResource::class), Post::class);
+    $scope->closureRelationModelClass = Comment::class;
+
+    $expr = new NullsafeMethodCall(new PropertyFetch(chainThisProp('resource'), 'author'), 'nameTitled');
+
+    $result = (new MethodChainHandler)->resolve($expr, $scope, chainHandlersThrowingEngine());
+
+    expect($result)->toBe(['type' => 'string | null', 'optional' => false]);
+});
+
+// The discriminating pin for the `resolve()` exclusion: both models declare `options`, and they resolve
+// differently — Post's docblock gives Record<string, string> | null, User's cast gives unknown[] | null.
+// Dropping the exclusion lets the closure arm answer with User's, which is wrong and less specific.
+test('$this->resource->options reads the resource model type, not the closure model type', function () {
+    $scope = new AnalysisScope(new ReflectionClass(ClosureResourceRootResource::class), Post::class);
+    $scope->closureRelationModelClass = User::class;
+
+    $result = (new PropertyChainHandler)->resolve(
+        new PropertyFetch(chainThisProp('resource'), 'options'),
+        $scope,
+        chainHandlersThrowingEngine(),
+    );
+
+    expect($result)->toBe(['type' => 'Record<string, string> | null', 'optional' => false]);
+});
+
+// Pins the walk loop under $rootedAtResource: after the shift a relation step still has to be walked.
+test('a 3-deep nullsafe method chain on $this->resource walks the resource model', function () {
+    $scope = new AnalysisScope(new ReflectionClass(ClosureResourceRootResource::class), Post::class);
+    $scope->closureRelationModelClass = Comment::class;
+
+    $expr = new NullsafeMethodCall(
+        new PropertyFetch(new PropertyFetch(chainThisProp('resource'), 'author'), 'profile'),
+        'getFormattedBioAttribute',
+    );
+
+    $result = (new MethodChainHandler)->resolve($expr, $scope, chainHandlersThrowingEngine());
+
+    expect($result)->toBe(['type' => 'string | null', 'optional' => false]);
+});
+
+// The documented exception: a model that really declares a `resource` relation keeps the old walk, so
+// `resource` is a relation step to traverse rather than the wrapper property to skip.
+test('a model with a real resource relation keeps the old relation walk', function () {
+    $scope = new AnalysisScope(new ReflectionClass(ClosureResourceRootResource::class), ResourceRelationModel::class);
+
+    $result = (new PropertyChainHandler)->resolve(
+        new PropertyFetch(chainThisProp('resource'), 'name'),
+        $scope,
+        chainHandlersThrowingEngine(),
+    );
+
+    expect($result)->toBe(['type' => 'string', 'optional' => false]);
+});
+
+// The published output must stay correct end to end, whichever handler ends up answering.
+test('the whenLoaded closure fixture publishes the resource model types', function () {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(ClosureResourceRootResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+    expect($props['published_inside']['type'])->toBe($props['published_outside']['type'])
+        ->and($props['published_inside']['type'])->not->toContain('unknown')
+        ->and($props['title_inside']['type'])->toBe('string')
+        ->and($props['class_inside']['type'])->toBe('string | null')
+        ->and($props['author_name_inside']['type'])->toBe($props['author_name_outside']['type'])
+        ->and($props['author_titled_inside']['type'])->toBe($props['author_titled_outside']['type'])
+        ->and($props['options_inside']['type'])->toBe('Record<string, string> | null')
+        ->and($props['profile_bio_inside']['type'])->toBe('string | null');
 });
 
 it('treats first(default: …) as non-terminal, the same as a positional default', function () {

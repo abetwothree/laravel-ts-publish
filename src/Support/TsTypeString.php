@@ -29,8 +29,9 @@ class TsTypeString
     public function shapeValueHasUnimportableToken(string $type, array $importableNames = []): bool
     {
         // The `?` of an optional key is not a token separator, so a key stripped without it survives as
-        // `name?` and reads as an unimportable value.
-        $withoutKeys = (string) preg_replace('/\b\w+\s*\??\s*:/', '', $type);
+        // `name?` and reads as an unimportable value. A quoted key (`"1"`, from an int or constant array
+        // key) is a key just the same, and nothing imports it.
+        $withoutKeys = (string) preg_replace('/(?:\b\w+|"[^"]*")\s*\??\s*:/', '', $type);
 
         $tokens = preg_split('/[<>{}()|,;\[\]\s]+/', $withoutKeys, -1, PREG_SPLIT_NO_EMPTY) ?: [];
 
@@ -217,14 +218,16 @@ class TsTypeString
     }
 
     /**
-     * Whether a TypeScript type name occurs as its own token, not inside a longer identifier.
+     * Whether a TypeScript type name occurs as its own token, not inside a longer identifier or a string literal.
      *
      * Only a leading `.` disqualifies: `foo.StatusType` is a property read, while `StatusType.foo`
-     * reads a member of the type and so still names it.
+     * reads a member of the type and so still names it. `'StatusType'` is a string, never the type.
      */
     public function typeNameOccursIn(string $typeName, string $haystack): bool
     {
-        return preg_match('/(?<![A-Za-z0-9_$.])'.preg_quote($typeName, '/').'(?![A-Za-z0-9_$])/', $haystack) === 1;
+        $unquoted = (string) preg_replace('/\'(?:[^\'\\\\]|\\\\.)*\'|"(?:[^"\\\\]|\\\\.)*"/', "''", $haystack);
+
+        return preg_match('/(?<![A-Za-z0-9_$.])'.preg_quote($typeName, '/').'(?![A-Za-z0-9_$])/', $unquoted) === 1;
     }
 
     /**
@@ -272,6 +275,16 @@ class TsTypeString
         }
 
         return $typeStr;
+    }
+
+    /**
+     * Whether a type is `unknown` once its `null` arms are removed, as a `static|null` docblock reflects.
+     *
+     * TypeScript already reads `unknown | null` as `unknown`, so a handler declining one loses nothing.
+     */
+    public function isUnknownOnly(string $type): bool
+    {
+        return array_values(array_diff($this->splitTopLevelUnion($type), ['null'])) === ['unknown'];
     }
 
     /**

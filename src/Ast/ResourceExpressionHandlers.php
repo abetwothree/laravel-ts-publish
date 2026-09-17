@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CastHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ClassConstantHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ClosureHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CoalesceHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CollectionPipelineHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConstFetchHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
@@ -22,6 +23,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MethodChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\NewResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverPropertyFetchHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationCollectionChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationFilterHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ScalarHandler;
@@ -53,12 +56,17 @@ final class ResourceExpressionHandlers
     }
 
     /**
-     * The class-agnostic profile: make() minus the three resource-only handlers
-     * (ConditionalMethodHandler, ToResourceHandler, RelationFilterHandler), same relative order.
+     * make() minus the three resource-only handlers (ConditionalMethodHandler, ToResourceHandler,
+     * RelationFilterHandler), same relative order.
+     *
+     * Named for what it drops, not for who may use it: the one production caller is
+     * ControllerExpressionHandlers::make(). A model's getter body runs forModelClosures(), and every other
+     * non-resource subject — a broadcast event, model metadata, any DTO reaching AstEngine::analyzeMethod() — runs
+     * the full resource profile instead.
      *
      * @return list<ExpressionHandler>
      */
-    public static function generic(): array
+    public static function withoutResourceHandlers(): array
     {
         return array_values(array_filter(
             self::handlers(),
@@ -69,7 +77,25 @@ final class ResourceExpressionHandlers
     }
 
     /**
-     * Construct all 24 handlers in registration order — the single source both profiles above filter.
+     * make() minus ConditionalMethodHandler and ToResourceHandler, same relative order: a model getter body's profile.
+     *
+     * AstEngine::analyzeModelClosure() is its one caller. A getter body reads the model's own relations, and only
+     * RelationFilterHandler types a to-many, map-proxy or multi-model accessor filter; ReceiverMethodCallHandler also
+     * types a single relation's.
+     *
+     * @return list<ExpressionHandler>
+     */
+    public static function forModelClosures(): array
+    {
+        return array_values(array_filter(
+            self::handlers(),
+            static fn (ExpressionHandler $handler): bool => ! $handler instanceof ConditionalMethodHandler
+                && ! $handler instanceof ToResourceHandler,
+        ));
+    }
+
+    /**
+     * Construct all 27 handlers in registration order — the single source both profiles above filter.
      *
      * @return list<ExpressionHandler>
      */
@@ -97,8 +123,11 @@ final class ResourceExpressionHandlers
             new MethodChainHandler,
             new PropertyChainHandler,
             new RelationCollectionChainHandler,
+            new CollectionPipelineHandler,
             new VariableHandler,
             new TernaryHandler,
+            new ReceiverPropertyFetchHandler,
+            new ReceiverMethodCallHandler,
             new KnownMethodRuleHandler,
         ];
     }

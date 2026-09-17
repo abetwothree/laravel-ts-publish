@@ -80,6 +80,9 @@ class ResourceTransformer extends CoreTransformer
     /** @var ImportMapType custom import path => list of type names */
     protected array $customImports = [];
 
+    /** @var ImportMapType custom imports the AST analysis carried, kept apart until overrides have replaced types */
+    protected array $analysisCustomImports = [];
+
     /** @var array<string, bool> property name => optional override */
     protected array $optionalOverrides = [];
 
@@ -157,6 +160,7 @@ class ResourceTransformer extends CoreTransformer
             ->runAstAnalysis()
             ->applyOverrides()
             ->pruneOverriddenEnumImports()
+            ->pruneOverriddenAnalysisImports()
             ->resolveMultiClassAccessorFqcns()
             ->resolveMultiEnumAccessorFqcns()
             ->resolveImportConflicts()
@@ -383,9 +387,7 @@ class ResourceTransformer extends CoreTransformer
             $this->multiEnumResourceProperties[$propName] = $fqcns;
         }
 
-        foreach ($analysis->customImports as $importPath => $types) {
-            $this->customImports[$importPath] = [...($this->customImports[$importPath] ?? []), ...$types];
-        }
+        $this->analysisCustomImports = $analysis->customImports;
 
         return $this;
     }
@@ -444,6 +446,34 @@ class ResourceTransformer extends CoreTransformer
         foreach ($this->enumFqcnMap as $fqcn => $typeName) {
             if (! TsTypeString::typeNameOccursIn($typeName, $rendered)) {
                 unset($this->enumFqcnMap[$fqcn]);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * Drops the model and #[TsType] imports the analysis carried for a name that neither a property type nor an extends
+     * clause still spells after #[TsCasts] overrides, which would otherwise be emitted as an unused import.
+     *
+     * @return $this
+     */
+    protected function pruneOverriddenAnalysisImports(): self
+    {
+        // An extends clause names a type as surely as a property does, and can rely on the same import.
+        $rendered = implode("\n", [...array_column($this->properties, 'type'), ...$this->tsExtends]);
+
+        foreach ($this->modelFqcnMap as $fqcn => $typeName) {
+            if (! TsTypeString::typeNameOccursIn($typeName, $rendered)) {
+                unset($this->modelFqcnMap[$fqcn]);
+            }
+        }
+
+        foreach ($this->analysisCustomImports as $importPath => $typeNames) {
+            foreach ($typeNames as $typeName) {
+                if (TsTypeString::typeNameOccursIn($typeName, $rendered)) {
+                    $this->customImports[$importPath][] = $typeName;
+                }
             }
         }
 
@@ -683,7 +713,7 @@ class ResourceTransformer extends CoreTransformer
 
     /**
      * Register both class FQCNs of accessors typed Attribute<ClassA|ClassB, never> so they can be aliased,
-     * and the #[TsType(import:)] paths of model attributes, which no analysis path carries into a resource.
+     * and the #[TsType(import:)] paths of the model attribute a property is named after, while its type uses them.
      */
     protected function resolveMultiClassAccessorFqcns(): self
     {

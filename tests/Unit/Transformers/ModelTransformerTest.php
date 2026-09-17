@@ -1441,11 +1441,11 @@ describe('Image model @return Attribute<> docblock accessor resolution', functio
             ->and($data->mutators['label_from_docblock']['type'])->toBe('string');
     });
 
-    test('accessor with no docblock resolves to unknown', function () {
+    test('accessor with no docblock types from its getter body, which returns only null', function () {
         $data = (new ModelTransformer(Image::class))->data();
 
         expect($data->mutators)->toHaveKey('no_docblock_accessor')
-            ->and($data->mutators['no_docblock_accessor']['type'])->toBe('unknown');
+            ->and($data->mutators['no_docblock_accessor']['type'])->toBe('null');
     });
 
     test('accessor with @return string docblock (not Attribute<>) resolves to string | null', function () {

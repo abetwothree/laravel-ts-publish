@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
-use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
@@ -15,12 +16,14 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\BinaryOp;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
@@ -39,6 +42,7 @@ use ReflectionMethod;
 final class ConditionalMethodHandler implements ExpressionHandler
 {
     use InspectsAstNodes;
+    use InspectsResourceCalls;
     use ResolvesEnumPropertyArgTypes;
     use ResolvesModelRelationTypes;
     use ResolvesRelatedModelTypes;
@@ -192,22 +196,26 @@ final class ConditionalMethodHandler implements ExpressionHandler
         }
 
         $previousBindings = $scope->closureParamExprBindings;
-        $this->bindClosureParamsFromCondition($condition->value, $valueArg->value, $scope);
 
-        $inner = $engine->resolve($valueArg->value);
+        try {
+            $this->bindClosureParamsFromCondition($condition->value, $valueArg->value, $scope);
 
-        $scope->closureParamExprBindings = $previousBindings;
+            $inner = $engine->resolve($valueArg->value);
+        } finally {
+            $scope->closureParamExprBindings = $previousBindings;
+        }
 
         return $this->applyConditionalDefault($inner, $args, $scope, $engine);
     }
 
     /**
-     * Analyze $this->whenHas('attribute') — the attribute name is the first arg string.
+     * Analyze $this->whenHas('attribute') — Laravel returns `value($value, $this->resource->{$attribute})`.
      *
-     * The value arg (2nd) is never evaluated for its own type: Laravel invokes it with the named
-     * attribute's own value, so the attribute is authoritative for type and array-ness. It IS
-     * checked for EnumResource::make()/::collection() shape, since that decides whether the enum
-     * channel is 'enumFqcn' (wrapped — gets the AsEnum rewrite) or 'directEnumFqcn' (read as-is).
+     * A resolvable value argument is therefore what the property carries, with a closure's first
+     * parameter bound to the named attribute. The attribute itself answers only when no value can:
+     * a skipped one, an EnumResource::make()/::collection() wrap — whose shape decides whether the
+     * enum channel is 'enumFqcn' (wrapped — gets the AsEnum rewrite) or 'directEnumFqcn' (read as-is)
+     * — or a value the engine cannot type.
      *
      * @return ValueExpressionResult
      */
@@ -226,24 +234,22 @@ final class ConditionalMethodHandler implements ExpressionHandler
             return $this->applyConditionalDefault(['type' => 'null', 'optional' => false], $args, $scope, $engine);
         }
 
-        $info = $this->resolveModelAttributeTypeInfo($attribute->value, $scope);
-        $result = ['type' => $info['type'], 'optional' => false];
+        $fromValue = $this->resolveValueArgument($args, new PropertyFetch(new Variable('this'), $attribute->value), $scope, $engine);
 
-        if ($info['enumFqcn'] !== null) {
-            $valueExpr = $args->named('value')?->value;
-            $wrapped = $valueExpr !== null && $this->isEnumResourceWrapCall($valueExpr);
-            $result[$wrapped ? 'enumFqcn' : 'directEnumFqcn'] = $info['enumFqcn'];
+        if ($fromValue !== null) {
+            return $this->applyConditionalDefault($fromValue, $args, $scope, $engine);
         }
 
-        return $this->applyConditionalDefault($result, $args, $scope, $engine);
+        return $this->applyConditionalDefault($this->analyzeAttributeRead($attribute->value, $args, $scope), $args, $scope, $engine);
     }
 
     /**
-     * Analyze $this->whenAppended('attribute', $value, $default) — types from the named attribute,
-     * the same way whenHas() does, since the appended accessor is what surfaces. Unlike whenHas()/
-     * whenLoaded(), Laravel's whenAppended() invokes a Closure value with no arguments at all, so
-     * only a non-first-class-callable EnumResource::make()/::collection() value is realistically
-     * reachable here — still checked for consistency, since it costs nothing.
+     * Analyze $this->whenAppended('attribute', $value, $default) — Laravel returns `value($value)`.
+     *
+     * A resolvable value types the arm here too, but nothing binds to a closure parameter: unlike
+     * whenHas()/whenExistsLoaded(), whenAppended() forwards no attribute into the call. The appended
+     * accessor answers for a skipped value, an EnumResource::make()/::collection() wrap, and any
+     * value the engine cannot type.
      *
      * @return ValueExpressionResult
      */
@@ -261,16 +267,33 @@ final class ConditionalMethodHandler implements ExpressionHandler
             return $this->applyConditionalDefault(['type' => 'null', 'optional' => false], $args, $scope, $engine);
         }
 
-        $info = $this->resolveModelAttributeTypeInfo($attribute->value, $scope);
-        $result = ['type' => $info['type'], 'optional' => false];
+        $fromValue = $this->resolveValueArgument($args, null, $scope, $engine);
 
-        if ($info['enumFqcn'] !== null) {
-            $valueExpr = $args->named('value')?->value;
-            $wrapped = $valueExpr !== null && $this->isEnumResourceWrapCall($valueExpr);
-            $result[$wrapped ? 'enumFqcn' : 'directEnumFqcn'] = $info['enumFqcn'];
+        if ($fromValue !== null) {
+            return $this->applyConditionalDefault($fromValue, $args, $scope, $engine);
         }
 
-        return $this->applyConditionalDefault($result, $args, $scope, $engine);
+        return $this->applyConditionalDefault($this->analyzeAttributeRead($attribute->value, $args, $scope), $args, $scope, $engine);
+    }
+
+    /**
+     * The attribute a whenHas()/whenAppended() call names, typed with every FQCN channel it carries.
+     *
+     * An EnumResource::make()/::collection() value wraps one enum, so that read puts only the first on `enumFqcn`.
+     *
+     * @return ValueExpressionResult
+     */
+    private function analyzeAttributeRead(string $attribute, CallArguments $args, AnalysisScope $scope): array
+    {
+        $info = $this->resolveModelAttributeTypeInfo($attribute, $scope);
+        $result = ['type' => $info['type'], 'optional' => false];
+        $valueExpr = $args->named('value')?->value;
+
+        if ($info['enumFqcn'] === null || $valueExpr === null || ! $this->isEnumResourceWrapCall($valueExpr)) {
+            return ValueResult::withAttributeChannels($result, $info);
+        }
+
+        return [...ValueResult::withAttributeChannels($result, [...$info, 'enumFqcns' => []]), 'enumFqcn' => $info['enumFqcn']];
     }
 
     /**
@@ -292,22 +315,34 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze $this->whenExistsLoaded('relation', $value, $default) — resolves to the relation's
-     * generated `{relation}_exists` flag.
+     * Analyze $this->whenExistsLoaded('relation', $value, $default) — Laravel returns
+     * `value($value, $this->resource->{$attribute})`, where $attribute is the relation name snaked and
+     * finished with `_exists`.
+     *
+     * A resolvable value types the arm, with a closure's first parameter bound to that flag; the
+     * generated `{relation}_exists` boolean answers when no value can.
      *
      * @return ValueExpressionResult
      */
     protected function analyzeWhenExistsLoaded(MethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): array
     {
         $args = $this->arguments($call, 'whenExistsLoaded');
+        $relationship = $args->named('relationship')?->value;
 
-        if (! $args->named('relationship')?->value instanceof String_) {
+        if (! $relationship instanceof String_) {
             return [...ValueResult::unknown(), 'optional' => true]; // @codeCoverageIgnore
         }
 
         // Unlike whenLoaded(), a skipped $value is not swapped for the identity closure: value(null, …) is null.
         if ($this->valueSkipped($args)) {
             return $this->applyConditionalDefault(['type' => 'null', 'optional' => false], $args, $scope, $engine);
+        }
+
+        $flag = new PropertyFetch(new Variable('this'), Str::finish(Str::snake($relationship->value), '_exists'));
+        $fromValue = $this->resolveValueArgument($args, $flag, $scope, $engine);
+
+        if ($fromValue !== null) {
+            return $this->applyConditionalDefault($fromValue, $args, $scope, $engine);
         }
 
         return $this->applyConditionalDefault(['type' => 'boolean', 'optional' => false], $args, $scope, $engine);
@@ -380,41 +415,57 @@ final class ConditionalMethodHandler implements ExpressionHandler
             $previousRelationModel = $scope->closureRelationModelClass;
             $previousVarModelBindings = $scope->varModelBindings;
             $previousVarCollectionBindings = $scope->varCollectionBindings;
-            $relationInfo = null;
-
-            if ($relationship instanceof String_) {
-                $relationInfo = $this->resolveModelRelationTypeInfo($relationship->value, $scope);
-
-                if ($relationInfo['modelFqcn'] !== null) {
-                    $scope->closureRelationModelClass = $relationInfo['modelFqcn'];
-                }
-            }
-
-            if ($relationInfo !== null
-                && $relationInfo['modelFqcn'] !== null
-                && ($valueExpr instanceof ClosureExpr || $valueExpr instanceof ArrowFunction)
-                && isset($valueExpr->params[0])
-                && $valueExpr->params[0]->var instanceof Variable
-                && is_string($valueExpr->params[0]->var->name)
-            ) {
-                $paramName = $valueExpr->params[0]->var->name;
-
-                if (str_ends_with($relationInfo['type'], '[]')) {
-                    $scope->varCollectionBindings[$paramName] = [
-                        'type' => $relationInfo['type'],
-                        'modelFqcn' => $relationInfo['modelFqcn'],
-                    ];
-                } else {
-                    $scope->varModelBindings[$paramName] = $relationInfo['modelFqcn'];
-                }
-            }
+            $previousVarClassBindings = $scope->varClassBindings;
 
             try {
+                $relationInfo = null;
+
+                if ($relationship instanceof String_) {
+                    $relationInfo = $this->resolveModelRelationTypeInfo($relationship->value, $scope);
+
+                    if ($relationInfo['modelFqcn'] !== null) {
+                        $scope->closureRelationModelClass = $relationInfo['modelFqcn'];
+                    }
+                }
+
+                if ($relationInfo !== null
+                    && $relationInfo['modelFqcn'] !== null
+                    && ($valueExpr instanceof ClosureExpr || $valueExpr instanceof ArrowFunction)
+                    && isset($valueExpr->params[0])
+                    && $valueExpr->params[0]->var instanceof Variable
+                    && is_string($valueExpr->params[0]->var->name)
+                ) {
+                    $paramName = $valueExpr->params[0]->var->name;
+
+                    if (str_ends_with($relationInfo['type'], '[]')) {
+                        $scope->varCollectionBindings[$paramName] = [
+                            'type' => $relationInfo['type'],
+                            'modelFqcn' => $relationInfo['modelFqcn'],
+                        ];
+                    } else {
+                        $scope->varModelBindings[$paramName] = $relationInfo['modelFqcn'];
+                    }
+                }
+
+                // A morphTo names no single model, so its param holds any one of the targets: bind them all
+                // and let each reader union them.
+                if ($relationInfo !== null
+                    && $relationInfo['modelFqcn'] === null
+                    && $relationInfo['morphFqcns'] !== []
+                    && ($valueExpr instanceof ClosureExpr || $valueExpr instanceof ArrowFunction)
+                    && isset($valueExpr->params[0])
+                    && $valueExpr->params[0]->var instanceof Variable
+                    && is_string($valueExpr->params[0]->var->name)
+                ) {
+                    $scope->varClassBindings[$valueExpr->params[0]->var->name] = $relationInfo['morphFqcns'];
+                }
+
                 $inner = $engine->resolve($valueExpr);
             } finally {
                 $scope->closureRelationModelClass = $previousRelationModel;
                 $scope->varModelBindings = $previousVarModelBindings;
                 $scope->varCollectionBindings = $previousVarCollectionBindings;
+                $scope->varClassBindings = $previousVarClassBindings;
             }
 
             return $this->applyConditionalDefault($inner, $args, $scope, $engine);
@@ -457,11 +508,14 @@ final class ConditionalMethodHandler implements ExpressionHandler
         }
 
         $previousBindings = $scope->closureParamExprBindings;
-        $this->bindClosureParamsFromCondition($valueArg->value, $callbackArg->value, $scope);
 
-        $inner = $engine->resolve($callbackArg->value);
+        try {
+            $this->bindClosureParamsFromCondition($valueArg->value, $callbackArg->value, $scope);
 
-        $scope->closureParamExprBindings = $previousBindings;
+            $inner = $engine->resolve($callbackArg->value);
+        } finally {
+            $scope->closureParamExprBindings = $previousBindings;
+        }
 
         // transform()'s default runs through the global transform() helper's $default($value) — one
         // argument — unlike the rest of the family's zero-argument value($default).
@@ -505,6 +559,43 @@ final class ConditionalMethodHandler implements ExpressionHandler
         }
 
         return ! $args->hasUnpack() && $args->passedCount() > $position;
+    }
+
+    /**
+     * The type Laravel's `value($value, ...$args)` produces, binding a closure's first parameter to $argument.
+     *
+     * Null means there is no usable value — none written, a literal null, an EnumResource wrap whose channel
+     * the caller decides, or a resolution the engine cannot type — so the caller keeps its own
+     * attribute-derived answer instead of publishing a fresh `unknown`.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function resolveValueArgument(CallArguments $args, ?Expr $argument, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $value = $args->named('value')?->value;
+
+        if ($value === null || $this->isNullConstFetch($value) || $this->isEnumResourceWrapCall($value)) {
+            return null;
+        }
+
+        $previousBindings = $scope->closureParamExprBindings;
+
+        try {
+            if ($argument !== null
+                && ($value instanceof ClosureExpr || $value instanceof ArrowFunction)
+                && isset($value->params[0])
+                && $value->params[0]->var instanceof Variable
+                && is_string($value->params[0]->var->name)
+            ) {
+                $scope->closureParamExprBindings[$value->params[0]->var->name] = $argument;
+            }
+
+            $inner = $engine->resolve($value);
+        } finally {
+            $scope->closureParamExprBindings = $previousBindings;
+        }
+
+        return $inner['type'] === 'unknown' ? null : $inner;
     }
 
     /**

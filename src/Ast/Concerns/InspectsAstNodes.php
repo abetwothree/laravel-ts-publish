@@ -2,25 +2,23 @@
 
 declare(strict_types=1);
 
-namespace AbeTwoThree\LaravelTsPublish\Analyzers\Concerns;
+namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
-use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
-use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
-use AbeTwoThree\LaravelTsPublish\EnumResource;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
-use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Do_;
@@ -32,72 +30,21 @@ use PhpParser\Node\Stmt\Switch_;
 use PhpParser\Node\Stmt\TryCatch;
 use PhpParser\Node\Stmt\While_;
 use ReflectionClass;
-use ReflectionMethod;
 
 /**
- * AST node inspection and predicate helpers for resource analysis.
+ * Node-shape questions about a parsed expression: what it is, what it names, what it returns.
+ *
+ * Every member here answers from the AST alone, with no notion of a resource, so the engine layer owns
+ * it. The resource semantics it was split from live in `Analyzers\Concerns\InspectsResourceCalls`, which
+ * requires its host to also use this trait.
+ *
+ * @internal
  */
 trait InspectsAstNodes
 {
-    /** @var list<string> */
-    protected array $conditionalMethods = [
-        'when', 'whenHas', 'whenNotNull', 'whenLoaded',
-        'whenCounted', 'whenAggregated', 'whenPivotLoaded', 'whenPivotLoadedAs',
-        'unless', 'whenAppended', 'whenExistsLoaded', 'transform', 'mergeUnless',
-    ];
-
     /**
-     * Check if a static call's payload argument is a conditional expression such as `$this->whenLoaded(...)`.
-     *
-     * @param  string  $className  the resolved receiver class, whose constructor names the payload parameter
+     * Whether an expression is `$this->{$methodName}(...)`, called directly on `$this`.
      */
-    protected function hasConditionalArgument(StaticCall $call, string $className): bool
-    {
-        $inner = $this->resourcePayloadArguments($call, $className)->at(0)?->value;
-
-        return $inner !== null && $this->isConditionalMethodCall($inner);
-    }
-
-    /**
-     * Check if a `new Resource(...)` call's payload argument is a conditional expression.
-     */
-    protected function hasConditionalNewArgument(New_ $expr, string $className): bool
-    {
-        $inner = $this->resourcePayloadArguments($expr, $className)->at(0)?->value;
-
-        return $inner !== null && $this->isConditionalMethodCall($inner);
-    }
-
-    /**
-     * A resource construction call's arguments mapped against the signature its payload lands in: `new X(...)`
-     * and `X::make(...)` both bind through X's constructor (make() spreads into `new static`), `X::collection(...)`
-     * through JsonResource::collection($resource).
-     */
-    protected function resourcePayloadArguments(StaticCall|New_ $call, string $className): CallArguments
-    {
-        if ($call instanceof StaticCall && $call->name instanceof Identifier && $call->name->toString() === 'collection') {
-            return CallArguments::for($call, new ReflectionMethod(JsonResource::class, 'collection'));
-        }
-
-        $constructor = class_exists($className) ? new ReflectionClass($className)->getConstructor() : null;
-
-        return CallArguments::for($call, $constructor ?? new ReflectionMethod(JsonResource::class, '__construct'));
-    }
-
-    /**
-     * Whether an expression is one of the `$this->when*()` family, whose result can be a MissingValue.
-     */
-    protected function isConditionalMethodCall(Expr $expr): bool
-    {
-        foreach ($this->conditionalMethods as $method) {
-            if ($this->isThisMethodCall($expr, $method)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     protected function isThisMethodCall(Expr $expr, string $methodName): bool
     {
         return $expr instanceof MethodCall
@@ -115,6 +62,9 @@ trait InspectsAstNodes
         return $call->var instanceof Variable && $call->var->name === 'this';
     }
 
+    /**
+     * Whether an expression is a `$this->prop` property fetch, whichever property it names.
+     */
     protected function isThisPropertyFetch(Expr $expr): bool
     {
         return $expr instanceof PropertyFetch
@@ -122,15 +72,68 @@ trait InspectsAstNodes
             && $expr->var->name === 'this';
     }
 
-    protected function resolveKeyName(Expr $key): ?string
+    /**
+     * Whether an expression is the `$this->resource` a JsonResource wraps its model in.
+     */
+    protected function isResourceFetch(Expr $expr): bool
+    {
+        return $expr instanceof PropertyFetch
+            && $expr->var instanceof Variable
+            && $expr->var->name === 'this'
+            && $expr->name instanceof Identifier
+            && $expr->name->toString() === 'resource';
+    }
+
+    /**
+     * The name an array key spells, or null when it is not a literal this can read.
+     *
+     * An int key is a real JSON object key: `[1 => 'Basic']` encodes as `{"1":"Basic"}`, not as a list.
+     *
+     * @param  ReflectionClass<object>  $subject  resolves `self`, `static` and `parent` in a constant key
+     */
+    protected function resolveKeyName(Expr $key, ReflectionClass $subject): ?string
     {
         if ($key instanceof String_) {
             return $key->value;
         }
 
+        if ($key instanceof Int_) {
+            return $this->publishableKeyName((string) $key->value, $subject);
+        }
+
+        if ($key instanceof ClassConstFetch && $key->class instanceof Name && $key->name instanceof Identifier) {
+            $parent = $subject->getParentClass();
+            $class = match ($key->class->toLowerString()) {
+                'self', 'static' => $subject->getName(),
+                'parent' => $parent === false ? null : $parent->getName(),
+                default => $key->class->toString(),
+            };
+            $constant = $class !== null ? $class.'::'.$key->name->toString() : null;
+            $value = $constant !== null && defined($constant) ? constant($constant) : null;
+
+            return is_int($value) || is_string($value) ? $this->publishableKeyName((string) $value, $subject) : null;
+        }
+
         return null;
     }
 
+    /**
+     * Drop a numeric key when the analyzed subject is a resource, and keep every other one.
+     *
+     * A published member name cannot be numeric: PHP stores a numeric string array key as an int, so it
+     * would arrive as an `int` in the transformer's `array<string, …>` property maps. The test is the
+     * subject, not the position, so a numeric key nested inside a resource is dropped as well.
+     *
+     * @param  ReflectionClass<object>  $subject
+     */
+    private function publishableKeyName(string $name, ReflectionClass $subject): ?string
+    {
+        return is_numeric($name) && $subject->isSubclassOf(JsonResource::class) ? null : $name;
+    }
+
+    /**
+     * The class name a static call is made on, or null when the class is an expression.
+     */
     protected function resolveStaticCallClassName(StaticCall $call): ?string
     {
         if ($call->class instanceof Name) {
@@ -138,89 +141,6 @@ trait InspectsAstNodes
         }
 
         return null; // @codeCoverageIgnore
-    }
-
-    protected function isEnumResourceClass(string $fqcn): bool
-    {
-        return $fqcn === EnumResource::class
-            || $fqcn === 'EnumResource'
-            || is_a($fqcn, EnumResource::class, true);
-    }
-
-    protected function isResourceClass(string $fqcn): bool
-    {
-        return class_exists($fqcn) && is_a($fqcn, JsonResource::class, true);
-    }
-
-    /**
-     * Whether a class is a resource this run will also emit a file for.
-     *
-     * A convention-guessed candidate must be one, or the import it produces points at no module.
-     *
-     * @phpstan-assert-if-true class-string<JsonResource> $fqcn
-     */
-    protected function isPublishedResourceClass(string $fqcn): bool
-    {
-        return $this->isResourceClass($fqcn) && PublishedResourceRegistry::isPublished($fqcn);
-    }
-
-    /**
-     * Resolve the resource class a ResourceCollection collects, from the #[Collects] attribute, the
-     * $collects property default, or the FooCollection → FooResource naming convention.
-     *
-     * Shared by both analyzers so their resolution order cannot drift apart.
-     *
-     * @param  class-string  $collectionFqcn
-     * @return class-string<JsonResource>|null
-     */
-    protected function resolveCollectedResourceClass(string $collectionFqcn): ?string
-    {
-        $reflection = new ReflectionClass($collectionFqcn);
-
-        $collectsAttribute = 'Illuminate\Http\Resources\Attributes\Collects';
-        if (class_exists($collectsAttribute)) {
-            // Priority 1: #[Collects] attribute (Laravel 13.0+)
-            $collectsAttrs = $reflection->getAttributes($collectsAttribute);
-
-            if ($collectsAttrs !== []) {
-                $collectsClass = $collectsAttrs[0]->newInstance()->class;
-
-                if (class_exists($collectsClass) && is_a($collectsClass, JsonResource::class, true)) {
-                    return $collectsClass;
-                }
-            }
-        }
-
-        // Priority 2: explicit $collects property default value
-        /** @var array<string, mixed> $defaults */
-        $defaults = $reflection->getDefaultProperties();
-        $collects = $defaults['collects'] ?? null;
-
-        if (is_string($collects) && class_exists($collects) && is_a($collects, JsonResource::class, true)) {
-            return $collects;
-        }
-
-        // Priority 3: naming convention — FooCollection → FooResource, gated on the published set
-        $className = $reflection->getShortName();
-        $namespace = $reflection->getNamespaceName();
-
-        if (str_ends_with($className, 'Collection')) {
-            $base = substr($className, 0, -10);
-
-            $candidate = $namespace.'\\'.$base.'Resource';
-
-            if ($this->isPublishedResourceClass($candidate)) {
-                return $candidate;
-            }
-
-            $candidate = $namespace.'\\'.$base;
-
-            if ($this->isPublishedResourceClass($candidate)) {
-                return $candidate;
-            }
-        }
-
-        return null;
     }
 
     /**

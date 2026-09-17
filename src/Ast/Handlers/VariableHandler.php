@@ -4,13 +4,15 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
-use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\AnalyzesPluckCalls;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesMapProxyElementModels;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
@@ -38,10 +40,12 @@ use ReflectionMethod;
 final class VariableHandler implements ExpressionHandler
 {
     use AnalyzesPluckCalls;
+    use FiltersAttributeKeys;
     use InspectsAstNodes;
     use ResolvesMapProxyElementModels;
     use ResolvesModelRelationTypes;
     use ResolvesRelatedModelTypes;
+    use SpellsKeyedCollections;
 
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
@@ -52,6 +56,27 @@ final class VariableHandler implements ExpressionHandler
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
+        // A trailing argument-less values()/all() takes its element type from the receiver chain, which
+        // is the only thing that knows it. The receiver carries one op FEWER, so values() must still
+        // drop the keyed arm it restores 0..n-1 over; all() hands that array back, keys and all.
+        if ($expr instanceof MethodCall
+            && $expr->var instanceof MethodCall
+            && $expr->name instanceof Identifier
+            && in_array($expr->name->toString(), ['values', 'all'], true)
+            && ! $expr->isFirstClassCallable()
+            && CallArguments::for($expr, new ReflectionMethod(EloquentCollection::class, $expr->name->toString()))->isEmpty()
+        ) {
+            $receiverResult = $engine->resolve($expr->var);
+
+            if ($receiverResult['type'] !== 'unknown') {
+                if ($expr->name->toString() === 'values') {
+                    $receiverResult['type'] = $this->withoutKeyedObjectArm($receiverResult['type']);
+                }
+
+                return $receiverResult;
+            }
+        }
+
         // $variable->property — resolve against the variable's own bound model (whenLoaded param,
         // chain map param, foreach value var), falling back to the ambient whenLoaded closure model.
         if ($expr instanceof PropertyFetch
@@ -98,12 +123,14 @@ final class VariableHandler implements ExpressionHandler
         }
 
         // $variable->method() — resolve against the variable's own bound model, falling back to the
-        // ambient whenLoaded closure model.
+        // ambient whenLoaded closure model. An only()/except() filter is skipped: the receiver rules own it, and
+        // reflecting it here reads Model::except()'s `@return array` as a list or filters a collection by key.
         if ($expr instanceof MethodCall
             && $expr->var instanceof Variable
             && is_string($expr->var->name)
             && $expr->var->name !== 'this'
             && $expr->name instanceof Identifier
+            && ! $this->callsAttributeFilter($expr)
         ) {
             /** @var class-string<Model>|null $boundModel */
             $boundModel = $scope->varModelBindings[$expr->var->name] ?? $scope->closureRelationModelClass;
@@ -138,6 +165,12 @@ final class VariableHandler implements ExpressionHandler
                 'optional' => false,
                 'modelFqcn' => $binding['modelFqcn'],
             ];
+        }
+
+        // Bare variable bound to an already-resolved value — a `collect(...)->map()` closure param,
+        // whose element type CollectionPipelineHandler resolved before descending into the body.
+        if ($expr instanceof Variable && is_string($expr->name) && isset($scope->varValueBindings[$expr->name])) {
+            return $scope->varValueBindings[$expr->name];
         }
 
         // Bare variable bound either to a closure parameter (ConditionalMethodHandler's
@@ -206,17 +239,20 @@ final class VariableHandler implements ExpressionHandler
 
         /** @var class-string<Model> $paramClass */
         $previousRelationModel = $scope->closureRelationModelClass;
-        $scope->closureRelationModelClass = $paramClass;
 
-        $returnExprs = $this->resolveClosureReturnExpressions($closureArg);
+        try {
+            $scope->closureRelationModelClass = $paramClass;
 
-        $bodyResult = match (count($returnExprs)) {
-            0 => null,
-            1 => $engine->resolve($returnExprs[0]),
-            default => ValueResult::analyzeClosureUnion($returnExprs, $engine),
-        };
+            $returnExprs = $this->resolveClosureReturnExpressions($closureArg);
 
-        $scope->closureRelationModelClass = $previousRelationModel;
+            $bodyResult = match (count($returnExprs)) {
+                0 => null,
+                1 => $engine->resolve($returnExprs[0]),
+                default => ValueResult::analyzeClosureUnion($returnExprs, $engine, $scope),
+            };
+        } finally {
+            $scope->closureRelationModelClass = $previousRelationModel;
+        }
 
         if ($bodyResult === null || $bodyResult['type'] === 'unknown') {
             return null;

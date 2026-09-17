@@ -5,17 +5,18 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ChecksPreserveKeys;
-use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AuthUserResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
+use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectMethodTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -42,8 +43,8 @@ use ReflectionNamedType;
  * The internal guard order below reproduces the pre-extraction chain exactly and is load-bearing —
  * several guards must precede others, as each inline comment explains.
  *
- * Not quite the unconditional `StaticCall` floor the ordering notes call it: the `$this::` arm declines
- * when nothing in scope declares the method, so anything appended behind it would see those.
+ * Not an unconditional `StaticCall` floor: the `$this::` arm declines when nothing in scope declares the
+ * method, and the last arm declines a class expression it cannot name, so a later claimant sees both.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -54,6 +55,7 @@ final class StaticCallHandler implements ExpressionHandler
     use BuildsInlineObjectTypes;
     use ChecksPreserveKeys;
     use InspectsAstNodes;
+    use InspectsResourceCalls;
     use InspectsResourceSubject;
     use ResolvesAuthHelperCalls;
     use ResolvesEnumPropertyArgTypes;
@@ -87,6 +89,21 @@ final class StaticCallHandler implements ExpressionHandler
             && $expr->var instanceof StaticCall
         ) {
             return $this->analyzeStaticCall($expr->var, $scope, $engine);
+        }
+
+        // new SomeResource(...)->resolve() — resolve() is Laravel's serializer, not the resource's own
+        // method, so strip it and keep the constructed receiver's type. Must precede the fluent arm
+        // below, which would otherwise see this shape first and decline a foreign resource's resolve().
+        if ($expr instanceof MethodCall
+            && $expr->name instanceof Identifier
+            && $expr->name->toString() === 'resolve'
+            && $expr->var instanceof New_
+        ) {
+            $receiver = $engine->resolve($expr->var);
+
+            if (isset($receiver['resourceFqcn'])) {
+                return $receiver;
+            }
         }
 
         // A fluent method chained onto a resource-resolving receiver — `new self($x)->foo()`,
@@ -152,9 +169,9 @@ final class StaticCallHandler implements ExpressionHandler
             }
         }
 
-        // EnumResource::make($this->prop) or SomeResource::make/collection()
+        // EnumResource::make($this->prop) or SomeResource::make/collection(); a `$expr::m()` it cannot name declines.
         if ($expr instanceof StaticCall) {
-            return $this->analyzeStaticCall($expr, $scope, $engine);
+            return $this->resolveStaticCallClassName($expr) === null ? null : $this->analyzeStaticCall($expr, $scope, $engine);
         }
 
         return null;
@@ -236,12 +253,10 @@ final class StaticCallHandler implements ExpressionHandler
             ];
         }
 
-        // Any other existing class — reflect the static method's return type. Accepted only when it
-        // cannot break generated imports; see ReflectedTypeAcceptor::accept().
+        // Any other existing class — its declared return type, else the shape its literal body spells.
+        // Accepted only when it cannot break generated imports; see MethodReturnTypeResolver::resolve().
         if (class_exists($className)) {
-            $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($className), $methodName);
-
-            return resolve(ReflectedTypeAcceptor::class)->accept($tsInfo) ?? $result;
+            return resolve(MethodReturnTypeResolver::class)->resolve($className, $methodName) ?? $result;
         }
 
         return $result;
@@ -401,7 +416,7 @@ final class StaticCallHandler implements ExpressionHandler
     /**
      * Analyze a `$this->resource::staticMethod()` call against the wrapped class, then the @mixin model.
      *
-     * Each reflection is accepted only when its tokens can be imported; see ReflectedTypeAcceptor::accept().
+     * Each answer is accepted only when its tokens can be imported; see MethodReturnTypeResolver::resolve().
      *
      * @return ValueExpressionResult
      */
@@ -412,8 +427,7 @@ final class StaticCallHandler implements ExpressionHandler
 
         if ($wrappedClass !== null && method_exists($wrappedClass, $methodName)) {
             /** @var class-string $wrappedClass */
-            $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($wrappedClass), $methodName);
-            $accepted = resolve(ReflectedTypeAcceptor::class)->accept($tsInfo);
+            $accepted = resolve(MethodReturnTypeResolver::class)->resolve($wrappedClass, $methodName);
 
             if ($accepted !== null) {
                 return $accepted;
@@ -423,8 +437,7 @@ final class StaticCallHandler implements ExpressionHandler
         if ($scope->modelClass !== null && method_exists($scope->modelClass, $methodName)) {
             /** @var class-string $modelClass */
             $modelClass = $scope->modelClass;
-            $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($modelClass), $methodName);
-            $accepted = resolve(ReflectedTypeAcceptor::class)->accept($tsInfo);
+            $accepted = resolve(MethodReturnTypeResolver::class)->resolve($modelClass, $methodName);
 
             if ($accepted !== null) {
                 return $accepted;

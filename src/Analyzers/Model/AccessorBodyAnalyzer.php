@@ -1,0 +1,151 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AbeTwoThree\LaravelTsPublish\Analyzers\Model;
+
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\ResultTypeInfoBridge;
+use AbeTwoThree\LaravelTsPublish\Concerns\NamesAccessorMethods;
+use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Model;
+use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\Closure as ClosureExpr;
+use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Identifier;
+use PhpParser\Node\Name;
+use PhpParser\Node\Stmt\ClassMethod;
+use ReflectionMethod;
+
+/**
+ * Types an accessor from what its getter body actually returns, once the signature and the
+ * `Attribute<>` docblock have both proven vague.
+ *
+ * Registered as a singleton so the cycle guard spans every call site, not one instance.
+ *
+ * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type TypeScriptTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
+ *
+ * @internal
+ */
+final class AccessorBodyAnalyzer
+{
+    use InspectsAstNodes;
+    use NamesAccessorMethods;
+
+    /**
+     * model@attribute bodies on the stack, so two accessors reading each other terminate. Keyed per import mode, so an
+     * analysis that keeps imports never stands in for one that carries none. It can still cut short the check with
+     * imports that an import-less read makes of a vague spelling.
+     *
+     * @var array<string, true>
+     */
+    private array $analyzing = [];
+
+    /**
+     * The TypeScript type a model accessor's getter body resolves to.
+     *
+     * @param  class-string<Model>  $modelFqcn
+     * @param  bool  $carriesImports  false when the reader carries no import, so the getter's filters name no token
+     * @return TypeScriptTypeInfo|null null when there is no readable body, a cycle, or nothing better than unknown
+     */
+    public function analyze(string $modelFqcn, string $attributeName, bool $carriesImports = true): ?array
+    {
+        $key = $modelFqcn.'@'.$attributeName.($carriesImports ? '' : '@importless');
+
+        if (isset($this->analyzing[$key])) {
+            return null;
+        }
+
+        $this->analyzing[$key] = true;
+
+        try {
+            $result = $this->resolveBody($modelFqcn, $attributeName, $carriesImports);
+        } finally {
+            unset($this->analyzing[$key]);
+        }
+
+        // `never[]` is what an empty `[]` literal resolves to — no element information at all, so a
+        // @property tag or a cast still knows the elements better than the body does.
+        if ($result === null || $result['type'] === 'unknown' || $result['type'] === 'never[]') {
+            return null;
+        }
+
+        return resolve(ResultTypeInfoBridge::class)->toTypeInfo($result);
+    }
+
+    /**
+     * The getter closure of a new-style accessor, or an old-style accessor's body wrapped as a closure.
+     *
+     * @param  class-string<Model>  $modelFqcn
+     * @return ValueExpressionResult|null
+     */
+    private function resolveBody(string $modelFqcn, string $attributeName, bool $carriesImports): ?array
+    {
+        $locator = resolve(MethodLocator::class);
+        $engine = resolve(AstEngine::class);
+        ['newStyle' => $newStyleName, 'oldStyle' => $oldStyleName] = $this->accessorMethodNames($attributeName);
+
+        $newStyle = $locator->locate($modelFqcn, $newStyleName);
+        $getter = $newStyle === null ? null : $this->getterClosure($newStyle->method);
+
+        if ($newStyle !== null && $getter !== null) {
+            return $engine->analyzeModelClosure($modelFqcn, $getter, $newStyle, $carriesImports);
+        }
+
+        // A new-style method whose getter is not a closure — or a same-named non-accessor, e.g. a relation —
+        // falls through. Eloquent would prefer the new-style getter, but an unreadable one types nothing, and
+        // the fallthrough is what lets `get{Name}Attribute()` still answer for a camel-named collision.
+        $oldStyle = $locator->locate($modelFqcn, $oldStyleName);
+
+        if ($oldStyle === null || $oldStyle->method->stmts === null) {
+            return null;
+        }
+
+        return $engine->analyzeModelClosure($modelFqcn, new ClosureExpr(['stmts' => $oldStyle->method->stmts]), $oldStyle, $carriesImports);
+    }
+
+    /**
+     * The `get` closure an accessor returns through Attribute::make(), Attribute::get(), or new Attribute().
+     *
+     * The first getter found wins; branches are not merged, and no fixture returns a different one per branch.
+     */
+    private function getterClosure(ClassMethod $method): ClosureExpr|ArrowFunction|null
+    {
+        foreach ($this->collectReturnExpressions($method->stmts ?? []) as $returned) {
+            $getter = $this->attributeCallArguments($returned)?->named('get')?->value;
+
+            if ($getter instanceof ClosureExpr || $getter instanceof ArrowFunction) {
+                return $getter;
+            }
+        }
+
+        return null;
+    }
+
+    /** An `Attribute::make()`/`Attribute::get()` call or a `new Attribute()`, read against its own signature. */
+    private function attributeCallArguments(Expr $returned): ?CallArguments
+    {
+        if ($returned instanceof StaticCall
+            && $returned->class instanceof Name
+            && is_a($returned->class->toString(), Attribute::class, true)
+            && $returned->name instanceof Identifier
+            && in_array($returned->name->toString(), ['make', 'get'], true)) {
+            return CallArguments::for($returned, new ReflectionMethod(Attribute::class, $returned->name->toString()));
+        }
+
+        if ($returned instanceof New_
+            && $returned->class instanceof Name
+            && is_a($returned->class->toString(), Attribute::class, true)) {
+            return CallArguments::for($returned, new ReflectionMethod(Attribute::class, '__construct'));
+        }
+
+        return null;
+    }
+}

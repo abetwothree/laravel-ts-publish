@@ -3,6 +3,9 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastSettingsReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendsOverriddenReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\QuotedCastReadResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
 use Workbench\App\Enums\Priority;
@@ -15,6 +18,7 @@ use Workbench\App\Http\Resources\ApiPostResource;
 use Workbench\App\Http\Resources\BodylessOrderResource;
 use Workbench\App\Http\Resources\BodylessTeamResource;
 use Workbench\App\Http\Resources\BranchedInlineFqcnResource;
+use Workbench\App\Http\Resources\BulletinCastResource;
 use Workbench\App\Http\Resources\CategoryResource;
 use Workbench\App\Http\Resources\ChildInlineFqcnResource;
 use Workbench\App\Http\Resources\ChildSharedResource;
@@ -2301,9 +2305,9 @@ describe('ResourceTransformer with EnumCollectionResource — EnumResource::coll
             ->toBe('{ week_days: AsEnum<typeof WeekDays>[] | null }');
     });
 
-    // whenHas() never analyzes its value argument for a type, but IS checked for EnumResource
-    // shape, so the wrapped first-class-callable value still gets the AsEnum rewrite — this is
-    // the real reported bug pattern: $this->whenHas('kinds', EnumResource::collection(...)).
+    // whenHas() declines to type from an EnumResource-wrapped value, so the wrapped first-class-
+    // callable value still gets the AsEnum rewrite — this is the real reported bug pattern:
+    // $this->whenHas('kinds', EnumResource::collection(...)).
     test('first-class callable inside whenHas() rewrites to AsEnum<typeof WeekDays>[] | null', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(EnumCollectionResource::class))->data();
@@ -2526,14 +2530,14 @@ describe('ResourceTransformer with morphTo-backed resources', function () {
             ->and($allTypeImports)->toContain('Post', 'Product', 'User as WorkbenchUser', 'User as CrmUser');
     });
 
-    test('a get-having accessor with an unresolvable type survives model-delegated analysis as unknown', function () {
-        // no_docblock_accessor has a real getter (unlike search_index's write-only case), just
-        // nothing to read a type from. ModelTransformer::transformMutators() keeps such a mutator
-        // as 'unknown' rather than omitting it, and buildModelDelegatedAnalysis() must agree.
+    test('a get-having accessor with no annotation survives model-delegated analysis typed by its body', function () {
+        // no_docblock_accessor has a real getter (unlike search_index's write-only case) and no
+        // annotation to read, so its body types it: `fn () => null`. ModelTransformer::transformMutators()
+        // keeps such a mutator rather than omitting it, and buildModelDelegatedAnalysis() must agree.
         $data = (new ResourceTransformer(ImageDelegatedResource::class))->data();
 
         expect($data->properties)->toHaveKey('no_docblock_accessor')
-            ->and($data->properties['no_docblock_accessor']['type'])->toBe('unknown');
+            ->and($data->properties['no_docblock_accessor']['type'])->toBe('null');
     });
 
     // A widened container names its element in both arms; aliasing only the first left the second bare.
@@ -2688,5 +2692,39 @@ describe('ResourceTransformer with SameBasenameModelTrioResource', function () {
             ->toBe('{ c: WorkbenchUser | null } | CrmUser | null')
             ->and($data->properties['control_arms']['type'])
             ->toBe('CrmUser | { c: WorkbenchUser | null } | null');
+    });
+});
+
+describe('ResourceTransformer imports for a read a #[TsCasts] override replaces', function () {
+    test('drops a class only the overridden reads named and keeps one another read still names', function () {
+        $data = (new ResourceTransformer(BulletinCastResource::class))->data();
+
+        expect($data->properties['lists']['type'])->toBe('{ id: number; content: string }[][]')
+            ->and($data->properties['lead_pick']['type'])->toBe('{ id: number; name: string } | null')
+            ->and($data->properties['owner_list']['type'])->toBe('User[]')
+            ->and($data->typeImports)->toBe(['../../models' => ['User']]);
+    });
+
+    test('drops the #[TsType] import an overridden $this->accessor read carried', function () {
+        $data = (new ResourceTransformer(CastSettingsReadResource::class))->data();
+
+        expect($data->properties['settings']['type'])->toBe('Record<string, unknown> | null')
+            ->and($data->typeImports)->toBe([]);
+    });
+
+    test('keeps a class an extends clause still names after its read is overridden', function () {
+        $data = (new ResourceTransformer(ExtendsOverriddenReadResource::class))->data();
+
+        expect($data->tsExtends)->toBe(['Pick<User, "id">'])
+            ->and($data->properties['app']['type'])->toBe('number')
+            ->and(array_merge(...array_values($data->typeImports)))->toBe(['User']);
+    });
+
+    test('drops an import an override spells only inside a string literal', function () {
+        $data = (new ResourceTransformer(QuotedCastReadResource::class))->data();
+
+        expect($data->properties['app']['type'])->toBe("'User' | 'Admin'")
+            ->and($data->properties['settings']['type'])->toBe("'MenuSettingsType' | null")
+            ->and($data->typeImports)->toBe([]);
     });
 });

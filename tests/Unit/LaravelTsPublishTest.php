@@ -6,6 +6,8 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\GenericChildrenDecoyConsumer;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TraitTemplateDecoyConsumer;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Casts\AsCollection;
@@ -27,8 +29,11 @@ use Illuminate\Support\Collection;
 use Workbench\App\Casts\MenuSettings;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
+use Workbench\App\Models\Comment;
+use Workbench\App\Models\DocblockGenericsFixture;
 use Workbench\App\Models\Order;
 use Workbench\App\Models\OrderItem;
+use Workbench\App\Models\TaskAssignment;
 use Workbench\App\Models\User;
 use Workbench\App\ValueObjects\ArrayableData;
 use Workbench\App\ValueObjects\CapabilitiesDto;
@@ -504,6 +509,10 @@ describe('Arrayable DTO shape inference', function () {
         expect($this->service->shapeValueHasUnimportableToken('{ assignedLater?: string; promoted: string }'))->toBeFalse()
             ->and($this->service->shapeValueHasUnimportableToken('{ a ?: string }'))->toBeFalse()
             ->and($this->service->shapeValueHasUnimportableToken('{ nested: { deep?: number } }'))->toBeFalse()
+            // An int or class-constant array key emits quoted, and a quoted key is still a key. Its value
+            // is still a value, so widening the key rule must not start excusing the type beside it.
+            ->and($this->service->shapeValueHasUnimportableToken('{ "1": string; "2": string }'))->toBeFalse()
+            ->and($this->service->shapeValueHasUnimportableToken('{ "1": User }'))->toBeTrue()
             ->and($this->service->shapeValueHasUnimportableToken('{ owner?: User }'))->toBeTrue();
     });
 });
@@ -1220,6 +1229,79 @@ describe('phpstan type aliases', function () {
         );
 
         expect($alias)->toBeNull();
+    });
+});
+
+describe('resolveDocblockTypePartOrAlias() with a nullable alias', function () {
+    test('resolves ?Alias to the alias type plus null', function () {
+        $context = new ReflectionClass(DocblockGenericsFixture::class);
+
+        $info = $this->service->resolveDocblockTypePartOrAlias('?FlagValue', [], $context->getNamespaceName(), $context);
+
+        expect($info['type'])->toBe('boolean | number | string | null');
+    });
+
+    test('leaves a non-alias nullable name unchanged', function () {
+        $context = new ReflectionClass(DocblockGenericsFixture::class);
+
+        expect($this->service->resolveDocblockTypePartOrAlias('?int', [], '', $context)['type'])->toBe('number | null');
+    });
+});
+
+describe('resolveGenericContainerType() with an intersection value', function () {
+    test('resolves Collection<int, X&object{...}> to a parenthesized intersection array', function () {
+        $info = $this->service->resolveGenericContainerType(
+            'Collection<int, User&object{pivot: TaskAssignment}>',
+            ['Collection' => Collection::class, 'User' => User::class, 'TaskAssignment' => TaskAssignment::class],
+            'Workbench\\App\\Models',
+        );
+
+        expect($info['type'])->toBe('(User & { pivot: unknown })[]')
+            ->and($info['classFqcns'])->toBe([User::class]);
+    });
+
+    test('drops an unresolvable intersection member rather than the whole value', function () {
+        $info = $this->service->resolveGenericContainerType('list<User&NoSuchThing>', ['User' => User::class], '');
+
+        expect($info['type'])->toBe('User[]');
+    });
+});
+
+describe('resolveGenericContainerType() key refinements', function () {
+    test('treats every string refinement as a string key', function (string $key) {
+        expect($this->service->resolveGenericContainerType("array<{$key}, bool>", [], '')['type'])
+            ->toBe('Record<string, boolean>');
+    })->with(['non-empty-string', 'class-string', 'class-string<Model>', 'literal-string', 'lowercase-string', 'numeric-string']);
+
+    test('keeps int refinements as a list', function () {
+        expect($this->service->resolveGenericContainerType('array<positive-int, string>', [], '')['type'])->toBe('string[]');
+    });
+});
+
+describe('trait @template binding', function () {
+    test('binds a trait template from the consumer @use tag', function () {
+        $method = new ReflectionMethod(DocblockGenericsFixture::class, 'childItems');
+
+        expect($this->service->attributeDocblockReturnTypes($method)['type'])->toBe('Comment[]')
+            ->and($this->service->attributeDocblockReturnTypes($method)['classFqcns'])->toBe([Comment::class]);
+    });
+
+    test('a prose @use mention elsewhere in the file does not bind the trait template', function () {
+        // The class docblock above the `use` statement mentions `@use AggregatesChildren<SomeOtherModel>`
+        // in prose; only the real tag on the `use AggregatesChildren;` statement itself may bind.
+        $method = new ReflectionMethod(TraitTemplateDecoyConsumer::class, 'childItems');
+
+        expect($this->service->attributeDocblockReturnTypes($method)['type'])->toBe('Comment[]')
+            ->and($this->service->attributeDocblockReturnTypes($method)['classFqcns'])->toBe([Comment::class]);
+    });
+
+    test('binds a trait template reached through docblockReturnTypes() via methodOrDocblockReturnTypes()', function () {
+        $result = $this->service->methodOrDocblockReturnTypes(
+            new ReflectionClass(GenericChildrenDecoyConsumer::class), 'children',
+        );
+
+        expect($result['type'])->toBe('Comment[]')
+            ->and($result['classFqcns'])->toBe([Comment::class]);
     });
 });
 
