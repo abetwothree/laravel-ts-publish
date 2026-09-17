@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendedCustomImportResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclinedTopLevelSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeArrayMergeChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeSpreadChildResource;
@@ -39,6 +40,12 @@ use Workbench\App\Http\Resources\BareMethodReturnResource;
 use Workbench\App\Http\Resources\BodylessTeamResource;
 use Workbench\App\Http\Resources\BooleanExprResource;
 use Workbench\App\Http\Resources\BranchedInlineFqcnResource;
+use Workbench\App\Http\Resources\BulletinArchiveResource;
+use Workbench\App\Http\Resources\BulletinBoardResource;
+use Workbench\App\Http\Resources\BulletinFeedResource;
+use Workbench\App\Http\Resources\BulletinLoadedResource;
+use Workbench\App\Http\Resources\BulletinResource;
+use Workbench\App\Http\Resources\BulletinWrappedResource;
 use Workbench\App\Http\Resources\CaseSpreadResource;
 use Workbench\App\Http\Resources\CategoryResource;
 use Workbench\App\Http\Resources\ChildSharedResource;
@@ -2414,6 +2421,59 @@ describe('ResourceAstAnalyzer with CommentRelationFiltersResource (relation filt
             ->and($accessor['type'])->toBe($expected)
             ->and($accessor['classFqcns'])->toBe([User::class, Comment::class])
             ->and($result->typeImports)->toBe(['./workbench/app/models' => ['Comment', 'User']]);
+    });
+});
+
+describe('ResourceAstAnalyzer reading an accessor whose type names a class', function () {
+    // Each key names a class only through the accessor it reads, and no key shares an accessor's name, so the only
+    // import a key can get is the one its read carries.
+    test('each read carries the class the accessor names into the resource imports', function (string $resource, array $types, array $imports) {
+        $result = resolve(AstEngine::class)->analyze($resource);
+        $props = collect($result->properties)->mapWithKeys(fn (array $prop) => [$prop['name'] => $prop['type']])->all();
+
+        expect(array_intersect_key($props, $types))->toBe($types)
+            ->and($result->typeImports)->toBe(['./workbench/app/models' => $imports]);
+    })->with([
+        'a typed closure parameter and a nullsafe relation chain' => [BulletinBoardResource::class, [
+            'lists' => 'Comment[][]',
+            'lead_pick' => "Pick<User, 'id' | 'name'> | null",
+        ], ['Comment', 'User']],
+        'a relation chain and an untyped closure parameter over a docblock accessor' => [BulletinFeedResource::class, [
+            'lead_list' => 'Comment[]',
+            'owner_list' => 'User[]',
+        ], ['Comment', 'User']],
+        'pluck() and a shape a closure parameter builds' => [BulletinArchiveResource::class, [
+            'plucked' => 'Comment[][]',
+            'rows' => "({ author: Pick<User, 'id' | 'name'> })[]",
+            'own_picks' => "(Pick<Bulletin, 'id' | 'title'>)[]",
+        ], ['Bulletin', 'Comment', 'User']],
+        'a relation chain, a closure parameter and pluck() inside whenLoaded()' => [BulletinLoadedResource::class, [
+            'lead_list' => 'Comment[]',
+            'lead_owner' => 'User',
+            'own_picks' => "(Pick<Bulletin, 'id' | 'title'>)[]",
+        ], ['Bulletin', 'Comment', 'User']],
+        'the resource\'s own model through $this->resource, whenAppended() and whenHas()' => [BulletinResource::class, [
+            'list' => 'Comment[]',
+            'picked' => "Pick<User, 'id' | 'name'>",
+            'own' => "Pick<Bulletin, 'id' | 'title'>",
+        ], ['Bulletin', 'Comment', 'User']],
+        'a $resource property its docblock types' => [BulletinWrappedResource::class, [
+            'list' => 'Comment[]',
+            'owned_by' => 'User',
+        ], ['Comment', 'User']],
+    ]);
+
+    test('whenAppended() carries the #[TsType] import of the accessor it reads', function () {
+        $result = resolve(AstEngine::class)->analyze(AppendedCustomImportResource::class);
+
+        expect(collect($result->properties)->firstWhere('name', 'settings')['type'] ?? null)->toBe('MenuSettingsType | null')
+            ->and($result->typeImports)->toBe(['@js/types/settings' => ['MenuSettingsType']]);
+    });
+
+    test('a model method body making the same reads publishes them without a class', function () {
+        $props = collect(resolve(AstEngine::class)->analyze(BulletinBoardResource::class)->properties)->keyBy('name');
+
+        expect($props['summary']['type'])->toBe('{ comment_lists: unknown[][]; lead_author: { id: number; name: string } | null; id: number }');
     });
 });
 

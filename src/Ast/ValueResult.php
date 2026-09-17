@@ -17,6 +17,12 @@ use ReflectionClass;
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypesImportMap from Datable
  *
+ * @phpstan-type AttributeChannels = array{
+ *      enumFqcns: list<class-string>,
+ *      classFqcns: list<class-string>,
+ *      customImports?: TypesImportMap
+ * }
+ *
  * @internal
  */
 final class ValueResult
@@ -77,6 +83,37 @@ final class ValueResult
         }
 
         return true;
+    }
+
+    /**
+     * Carry a model attribute's FQCN channels onto the result that reads it, so every class, enum and `#[TsType]` name
+     * the attribute's type spells keeps its import wherever the read is published.
+     *
+     * One FQCN of a kind rides its single-entry channel and several ride the embedded one, as `$this->attr` reads do.
+     *
+     * @param  ValueExpressionResult  $result
+     * @param  AttributeChannels  $attribute
+     * @return ValueExpressionResult
+     */
+    public static function withAttributeChannels(array $result, array $attribute): array
+    {
+        if (count($attribute['enumFqcns']) > 1) {
+            $result['embeddedEnumFqcns'] = $attribute['enumFqcns'];
+        } elseif ($attribute['enumFqcns'] !== []) {
+            $result['directEnumFqcn'] = $attribute['enumFqcns'][0];
+        }
+
+        if (count($attribute['classFqcns']) > 1) {
+            $result['embeddedModelFqcns'] = $attribute['classFqcns'];
+        } elseif ($attribute['classFqcns'] !== []) {
+            $result['modelFqcn'] = $attribute['classFqcns'][0];
+        }
+
+        if (($attribute['customImports'] ?? []) !== []) {
+            $result['customImports'] = $attribute['customImports'];
+        }
+
+        return $result;
     }
 
     /**

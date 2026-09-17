@@ -7,6 +7,9 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilteringAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UntypedFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
+use Workbench\App\Models\BulletinArchive;
+use Workbench\App\Models\BulletinBoard;
+use Workbench\App\Models\BulletinFeed;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Release;
 use Workbench\App\Models\User;
@@ -67,7 +70,7 @@ describe('AccessorBodyAnalyzer for a getter a method body reads without imports'
         'doc_keyed' => ['Comment[]', [Comment::class]],
         'doc_int_mixed' => ['Comment[]', [Comment::class]],
         'doc_record_or_list' => ['Comment[]', [Comment::class]],
-        'doc_nested_records' => ['Comment[][]', []],
+        'doc_nested_records' => ['Comment[][]', [Comment::class]],
         'signed_tag_rows' => ['Comment[]', [Comment::class]],
         'legacy_tag_rows' => ['Comment[]', [Comment::class]],
         'loose_picks' => ["{ v: Pick<UntypedFilterOverrideModel, 'id' | 'title'>; id: number }", [UntypedFilterOverrideModel::class]],
@@ -127,4 +130,33 @@ describe('AccessorBodyAnalyzer for a getter a method body reads without imports'
         expect($getterFirst ? $first : $second)->toBe("{ v: Pick<User, 'id'>; report: $report }")
             ->and($getterFirst ? $second : $first)->toBe($report);
     })->with(['getter first' => true, 'method first' => false]);
+});
+
+describe('AccessorBodyAnalyzer for a getter reading another model\'s accessor', function () {
+    // Each read names a class only through the accessor it reads, so the file imports it only if the read carries it.
+    test('the read carries the class the accessor names, and the model file imports it', function (string $model, string $attribute, string $type, array $classFqcns) {
+        $resolved = resolve(ModelAttributeResolver::class)->resolveAttribute($model, $attribute);
+        $data = (new ModelTransformer($model))->data();
+
+        expect($resolved['type'])->toBe($type)
+            ->and($resolved['classFqcns'])->toBe($classFqcns)
+            ->and($data->mutators[$attribute]['type'])->toBe($type)
+            ->and($data->typeImports['.'] ?? [])->toContain(...array_map(class_basename(...), $classFqcns));
+    })->with([
+        'a typed closure parameter' => [BulletinBoard::class, 'comment_lists', 'Comment[][]', [Comment::class]],
+        'a nullsafe relation chain' => [BulletinBoard::class, 'lead_author', "Pick<User, 'id' | 'name'> | null", [User::class]],
+        'a relation chain' => [BulletinFeed::class, 'lead_comments', 'Comment[]', [Comment::class]],
+        'an untyped closure parameter over a docblock accessor' => [BulletinFeed::class, 'owners', 'User[]', [User::class]],
+        'pluck()' => [BulletinArchive::class, 'comment_lists', 'Comment[][]', [Comment::class]],
+        'a shape a closure parameter builds' => [BulletinArchive::class, 'author_rows', "({ author: Pick<User, 'id' | 'name'> })[]", [User::class]],
+    ]);
+
+    test('a method body making the same reads still publishes them without a class', function () {
+        $resolved = resolve(MethodReturnTypeResolver::class)->resolve(BulletinBoard::class, 'summary');
+
+        expect($resolved)->toBe([
+            'type' => '{ comment_lists: unknown[][]; lead_author: { id: number; name: string } | null; id: number }',
+            'optional' => false,
+        ]);
+    });
 });

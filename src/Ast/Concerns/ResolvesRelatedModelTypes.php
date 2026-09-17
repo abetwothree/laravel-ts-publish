@@ -44,16 +44,7 @@ trait ResolvesRelatedModelTypes
             return ValueResult::unknown();
         }
 
-        $info = ['type' => $tsInfo['type'], 'optional' => false];
-
-        /** @var class-string|null $enumFqcn */
-        $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
-
-        if ($enumFqcn !== null) {
-            $info['directEnumFqcn'] = $enumFqcn;
-        }
-
-        return $info;
+        return ValueResult::withAttributeChannels(['type' => $tsInfo['type'], 'optional' => false], $tsInfo);
     }
 
     /**

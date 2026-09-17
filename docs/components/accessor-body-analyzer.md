@@ -73,6 +73,35 @@ models. A single relation's filter, and one on an accessor returning a `Support\
 to-many members: `replies` publishes `Comment[]`, `kept_replies` `Comment[] | null` and `reply_previews`
 `{ id: number; content: string }[]`. Its `Pick<User, 'id' | 'name'>` would survive without the handler.
 
+## A getter that reads another model's accessor
+
+A getter that reads another model's accessor spells that accessor's type inside its own, so it needs the same imports.
+`ModelAttributeResolver::resolveAttribute()` returns them as `classFqcns`, `enumFqcns` and `customImports`, and the
+read hands all three to its engine result through `ValueResult::withAttributeChannels()`. One FQCN of a kind rides the
+single-entry channel (`modelFqcn`, `directEnumFqcn`) and several ride the embedded one, as a `$this->accessor` read's do.
+`ResultTypeInfoBridge` carries them into the getter's `TypeScriptTypeInfo`, and the model file imports each class.
+
+The workbench `Bulletin` model holds one accessor of each kind: a to-many relation's filter
+(`comment_list: Comment[]`), a single relation's filter (`author_pick: Pick<User, 'id' | 'name'>`), a filter on the
+model itself (`own_pick`) and an `Attribute<User, never>` docblock (`owner`). Three models read them, each in a file
+whose only other import is `Bulletin`:
+
+| Model | Getter | Read | Published |
+| --- | --- | --- | --- |
+| `BulletinBoard` | `comment_lists` | a typed closure parameter, `$this->bulletins->map(fn (Bulletin $bulletin) => $bulletin->comment_list)` | `Comment[][]` |
+| `BulletinBoard` | `lead_author` | a nullsafe relation chain, `$this->lead?->author_pick` | `Pick<User, 'id' \| 'name'> \| null` |
+| `BulletinFeed` | `lead_comments` | a relation chain, `$this->lead->comment_list` | `Comment[]` |
+| `BulletinFeed` | `owners` | an untyped closure parameter over the docblock accessor | `User[]` |
+| `BulletinArchive` | `comment_lists` | `$this->bulletins->pluck('comment_list')` | `Comment[][]` |
+| `BulletinArchive` | `author_rows` | a shape a closure parameter builds, `['author' => $bulletin->author_pick]` | `({ author: Pick<User, 'id' \| 'name'> })[]` |
+
+Each file imports `Bulletin, Comment, User`. A read that dropped the channels would leave `Bulletin` the only import
+beside the same types: `User` would not compile, and `Comment` would compile against the DOM's `Comment` node, which is
+why the token gate also type-checks each tree without the DOM lib (see
+[type-inference gates](../testing/type-inference-gates.md)). A method body makes these reads without imports, as the
+next section describes, so what it publishes names no class: `BulletinBoard::summary()` publishes
+`{ comment_lists: unknown[][]; lead_author: { id: number; name: string } | null; id: number }`.
+
 ## A reader that carries no import
 
 The model file publishes the getter's analysis with its FQCN channels, so a filter there publishes `Pick<User, …>` or
@@ -83,7 +112,8 @@ So when such a scope reads the accessor, `analyze()` takes `carriesImports: fals
 would written in the method body itself: the inline shape, where a member naming a token is `unknown`,
 `Record<string, unknown>` for a runtime key list, and `unknown[]` for a to-many relation.
 
-`Concerns\ResolvesAccessorType::resolveAccessorBodyType()` keeps the waterfall step the model file took. A spelling
+`Concerns\ResolvesAccessorType::resolveAccessorBodyType()` then chooses between the getter body and the annotation, and
+the reader does not always take the step the model file took. A spelling
 without imports can be vague where the published one is not: a getter returning `$this->comments->only([1, 2])`
 publishes `Comment[]`, and `unknown[]` without imports. The fallback is the annotation the waterfall returns when the
 body step declines: the closure signature unless it is `unknown`, else the `Attribute<>` docblock, or an old-style

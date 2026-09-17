@@ -211,17 +211,7 @@ final class PropertyChainHandler implements ExpressionHandler
             ? $tsInfo['type'].' | null'
             : $tsInfo['type'];
 
-        /** @var ValueExpressionResult $result */
-        $result = ['type' => $type, 'optional' => false];
-
-        /** @var class-string|null $enumFqcn */
-        $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
-
-        if ($enumFqcn !== null) {
-            $result['directEnumFqcn'] = $enumFqcn;
-        }
-
-        return $result;
+        return ValueResult::withAttributeChannels(['type' => $type, 'optional' => false], $tsInfo);
     }
 
     /**
@@ -303,13 +293,7 @@ final class PropertyChainHandler implements ExpressionHandler
         $info = $this->resolveModelAttributeTypeInfo($innerProp, $scope);
 
         if ($info['type'] !== 'unknown') {
-            $result = ['type' => $info['type'], 'optional' => false];
-
-            if ($info['enumFqcn'] !== null) {
-                $result['directEnumFqcn'] = $info['enumFqcn']; // @codeCoverageIgnore
-            }
-
-            return $result;
+            return ValueResult::withAttributeChannels(['type' => $info['type'], 'optional' => false], $info);
         }
 
         return $result; // @codeCoverageIgnore

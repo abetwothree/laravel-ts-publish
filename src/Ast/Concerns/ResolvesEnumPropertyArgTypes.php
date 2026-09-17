@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use PhpParser\Node\Expr;
@@ -26,6 +27,15 @@ use PhpParser\Node\Name;
  * Requires the host to also `use Ast\Concerns\InspectsAstNodes` (for `isThisPropertyFetch()`).
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type TypesImportMap from Datable
+ *
+ * @phpstan-type AttributeTypeInfo = array{
+ *      type: string,
+ *      enumFqcn: class-string|null,
+ *      enumFqcns: list<class-string>,
+ *      classFqcns: list<class-string>,
+ *      customImports: TypesImportMap
+ * }
  *
  * @internal
  */
@@ -146,17 +156,17 @@ trait ResolvesEnumPropertyArgTypes
     }
 
     /**
-     * Resolve the TypeScript type, optional enum FQCN, and any class FQCNs for a model attribute.
+     * Resolve the TypeScript type, optional enum FQCN, class FQCNs and `#[TsType]` imports for a model attribute.
      *
      * Bypasses ResolvesModelTypes's cached-property gate, which this per-call handler never
      * populates — calls the ModelAttributeResolver singleton directly instead; it caches per FQCN.
      *
-     * @return array{type: string, enumFqcn: class-string|null, enumFqcns: list<class-string>, classFqcns: list<class-string>}
+     * @return AttributeTypeInfo
      */
     protected function resolveModelAttributeTypeInfo(string $attributeName, AnalysisScope $scope): array
     {
         if ($scope->modelClass === null) {
-            return ['type' => 'unknown', 'enumFqcn' => null, 'enumFqcns' => [], 'classFqcns' => []];
+            return ['type' => 'unknown', 'enumFqcn' => null, 'enumFqcns' => [], 'classFqcns' => [], 'customImports' => []];
         }
 
         $tsInfo = resolve(ModelAttributeResolver::class)->resolveAttribute($scope->modelClass, $attributeName, $scope->carriesImports);
@@ -169,6 +179,7 @@ trait ResolvesEnumPropertyArgTypes
             'enumFqcn' => $enumFqcn,
             'enumFqcns' => $tsInfo['enumFqcns'],
             'classFqcns' => $tsInfo['classFqcns'],
+            'customImports' => $tsInfo['customImports'],
         ];
     }
 }

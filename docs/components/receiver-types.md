@@ -385,6 +385,13 @@ fallback drops anyway. When the accessor's type comes from its getter body,
 written in the method body, and the method keeps its shape. The model file and every resource still publish the getter's own analysis, with its
 `Pick<User, …>` and `Comment[]`; see
 [accessor-body-analyzer § A reader that carries no import](accessor-body-analyzer.md#a-reader-that-carries-no-import).
+Those answers name a class, so the read that publishes one hands on the attribute's `classFqcns`, `enumFqcns` and
+`customImports` through `ValueResult::withAttributeChannels()`, and its file imports the class. That covers a relation
+chain, with or without `?->` and rooted at `$this->resource` or not, a `$resource` property a docblock types, a closure
+parameter in `map()` or `whenLoaded()`, typed or not, `pluck()`, and the attribute `whenHas()` or `whenAppended()` reads
+when it has no value to type. A local variable holding a model and a key `only()` selects already carried them. The
+`Bulletin` resources pin each read beside a `Comment` token and a `User` one; see
+[accessor-body-analyzer § A getter that reads another model's accessor](accessor-body-analyzer.md#a-getter-that-reads-another-models-accessor).
 `Comment::picksSummary()` reads the `relation_picks` accessor, and `CommentRelationFiltersResource` publishes its
 `picks` as the same object `relationSummary()` publishes. `FilteringAccessorModel` pins each getter kind and read
 position in `MethodReturnTypeResolverTest`.

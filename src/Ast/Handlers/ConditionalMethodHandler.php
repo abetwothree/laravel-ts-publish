@@ -241,7 +241,8 @@ final class ConditionalMethodHandler implements ExpressionHandler
         }
 
         $info = $this->resolveModelAttributeTypeInfo($attribute->value, $scope);
-        $result = ['type' => $info['type'], 'optional' => false];
+        // The EnumResource wrap below picks the enum's channel; the attribute supplies its class and #[TsType] ones.
+        $result = ValueResult::withAttributeChannels(['type' => $info['type'], 'optional' => false], [...$info, 'enumFqcns' => []]);
 
         if ($info['enumFqcn'] !== null) {
             $valueExpr = $args->named('value')?->value;
@@ -283,7 +284,8 @@ final class ConditionalMethodHandler implements ExpressionHandler
         }
 
         $info = $this->resolveModelAttributeTypeInfo($attribute->value, $scope);
-        $result = ['type' => $info['type'], 'optional' => false];
+        // The EnumResource wrap below picks the enum's channel; the attribute supplies its class and #[TsType] ones.
+        $result = ValueResult::withAttributeChannels(['type' => $info['type'], 'optional' => false], [...$info, 'enumFqcns' => []]);
 
         if ($info['enumFqcn'] !== null) {
             $valueExpr = $args->named('value')?->value;

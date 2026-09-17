@@ -230,6 +230,151 @@ declare global {
             last_login_at: string | null;
             last_login_ip: string | null;
         }
+        /**
+         * Accessors whose types name a class, read by other models and resources through a closure parameter, a relation
+         * chain or pluck(). `Comment` shares its name with a DOM global, so a missing import still compiles against the DOM.
+         */
+        export interface Bulletin {
+            // Columns
+            id: number;
+            title: string;
+            content: string;
+            user_id: number;
+            status: boolean;
+            published_at: string | null;
+            metadata: string | null;
+            rating: number | null;
+            category: string;
+            options: string | null;
+            deleted_at: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            category_id: number | null;
+            visibility: string | null;
+            priority: number | null;
+            word_count: number | null;
+            reading_time_minutes: number | null;
+            featured_image_url: string | null;
+            is_pinned: boolean;
+            // Mutators
+            /** A to-many relation's filter: a list of `Comment`. */
+            comment_list: Comment[];
+            /** A single relation's filter: a `Pick<User, …>`. */
+            author_pick: Pick<User, 'id' | 'name'>;
+            /** A filter on the model itself: a `Pick<Bulletin, …>`. */
+            own_pick: Pick<Bulletin, 'id' | 'title'>;
+            owner: User;
+            // Relations
+            comments: Comment[];
+            comments_count: number;
+            comments_exists: boolean;
+            author: User;
+            author_count: number;
+            author_exists: boolean;
+        }
+        /** Reads Bulletin's accessors through pluck() and inside a shape a closure parameter builds. */
+        export interface BulletinArchive {
+            // Columns
+            id: number;
+            title: string;
+            content: string;
+            user_id: number;
+            status: boolean;
+            published_at: string | null;
+            metadata: string | null;
+            rating: number | null;
+            category: string;
+            options: string | null;
+            deleted_at: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            category_id: number | null;
+            visibility: string | null;
+            priority: number | null;
+            word_count: number | null;
+            reading_time_minutes: number | null;
+            featured_image_url: string | null;
+            is_pinned: boolean;
+            // Mutators
+            comment_lists: Comment[][];
+            author_rows: ({ author: Pick<User, 'id' | 'name'> })[];
+            // Relations
+            bulletins: Bulletin[];
+            bulletins_count: number;
+            bulletins_exists: boolean;
+        }
+        /**
+         * Reads Bulletin's accessors through a typed closure parameter and a nullsafe relation chain; each names its own class,
+         * so the file imports `Comment` and `User` only if both reads carry the accessor's class.
+         */
+        export interface BulletinBoard {
+            // Columns
+            id: number;
+            title: string;
+            content: string;
+            user_id: number;
+            status: boolean;
+            published_at: string | null;
+            metadata: string | null;
+            rating: number | null;
+            category: string;
+            options: string | null;
+            deleted_at: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            category_id: number | null;
+            visibility: string | null;
+            priority: number | null;
+            word_count: number | null;
+            reading_time_minutes: number | null;
+            featured_image_url: string | null;
+            is_pinned: boolean;
+            // Mutators
+            comment_lists: Comment[][];
+            lead_author: Pick<User, 'id' | 'name'> | null;
+            // Relations
+            bulletins: Bulletin[];
+            bulletins_count: number;
+            bulletins_exists: boolean;
+            lead: Bulletin;
+            lead_count: number;
+            lead_exists: boolean;
+        }
+        /** Reads Bulletin's accessors through a relation chain and an untyped closure parameter. */
+        export interface BulletinFeed {
+            // Columns
+            id: number;
+            title: string;
+            content: string;
+            user_id: number;
+            status: boolean;
+            published_at: string | null;
+            metadata: string | null;
+            rating: number | null;
+            category: string;
+            options: string | null;
+            deleted_at: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            category_id: number | null;
+            visibility: string | null;
+            priority: number | null;
+            word_count: number | null;
+            reading_time_minutes: number | null;
+            featured_image_url: string | null;
+            is_pinned: boolean;
+            // Mutators
+            lead_comments: Comment[];
+            /** Bulletin's owner is typed by its `Attribute<User, never>` docblock. */
+            owners: User[];
+            // Relations
+            bulletins: Bulletin[];
+            bulletins_count: number;
+            bulletins_exists: boolean;
+            lead: Bulletin;
+            lead_count: number;
+            lead_exists: boolean;
+        }
         export interface Category {
             // Columns
             id: number;
@@ -2098,6 +2243,48 @@ declare global {
          */
         export interface BranchedInlineFqcnResource {
             regional_hub_contacts: { primaryContact: crm.models.User | null; manager: app.models.User | null } | { manager: app.models.User | null; secondaryContact: crm.models.User | null; primaryContact: crm.models.User | null } | null;
+        }
+        /** Reads Bulletin's accessors through pluck() and inside a shape a closure parameter builds. */
+        export interface BulletinArchiveResource {
+            id: number;
+            plucked: app.models.Comment[][];
+            rows: ({ author: Pick<app.models.User, 'id' | 'name'> })[];
+            own_picks: (Pick<app.models.Bulletin, 'id' | 'title'>)[];
+        }
+        /**
+         * Reads Bulletin's accessors through a typed closure parameter and a nullsafe relation chain, beside a model method
+         * body that reads them without imports. Keys differ from BulletinBoard's own accessors, so no name lookup imports them.
+         */
+        export interface BulletinBoardResource {
+            id: number;
+            lists: app.models.Comment[][];
+            lead_pick: Pick<app.models.User, 'id' | 'name'> | null;
+            summary: { comment_lists: unknown[][]; lead_author: { id: number; name: string } | null; id: number };
+        }
+        /** Reads Bulletin's accessors through a relation chain and an untyped closure parameter. */
+        export interface BulletinFeedResource {
+            id: number;
+            lead_list: app.models.Comment[];
+            owner_list: app.models.User[];
+        }
+        /** Reads Bulletin's accessors inside whenLoaded() closures: a relation chain, a closure parameter and pluck(). */
+        export interface BulletinLoadedResource {
+            id: number;
+            lead_list?: app.models.Comment[];
+            lead_owner?: app.models.User;
+            own_picks?: (Pick<app.models.Bulletin, 'id' | 'title'>)[];
+        }
+        /** Reads its own model's accessors through `$this->resource`, whenAppended() and whenHas(), under keys no accessor shares. */
+        export interface BulletinResource {
+            id: number;
+            list: app.models.Comment[];
+            picked?: Pick<app.models.User, 'id' | 'name'>;
+            own?: Pick<app.models.Bulletin, 'id' | 'title'>;
+        }
+        /** Reads its model's accessors through a `$resource` property its docblock types, under keys no accessor shares. */
+        export interface BulletinWrappedResource {
+            list: app.models.Comment[];
+            owned_by: app.models.User;
         }
         /**
          * A spread whose call-site casing differs from the declared method. PHP method calls are
