@@ -4744,6 +4744,139 @@
                 }
             ]
         },
+        "Workbench\\App\\Models\\BulletinDigest": {
+            "name": "BulletinDigest",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "title",
+                    "type": "string"
+                },
+                {
+                    "name": "content",
+                    "type": "string"
+                },
+                {
+                    "name": "user_id",
+                    "type": "number"
+                },
+                {
+                    "name": "status",
+                    "type": "boolean"
+                },
+                {
+                    "name": "published_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "metadata",
+                    "type": "string | null"
+                },
+                {
+                    "name": "rating",
+                    "type": "number | null"
+                },
+                {
+                    "name": "category",
+                    "type": "string"
+                },
+                {
+                    "name": "options",
+                    "type": "string | null"
+                },
+                {
+                    "name": "deleted_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "category_id",
+                    "type": "number | null"
+                },
+                {
+                    "name": "visibility",
+                    "type": "string | null"
+                },
+                {
+                    "name": "priority",
+                    "type": "number | null"
+                },
+                {
+                    "name": "word_count",
+                    "type": "number | null"
+                },
+                {
+                    "name": "reading_time_minutes",
+                    "type": "number | null"
+                },
+                {
+                    "name": "featured_image_url",
+                    "type": "string | null"
+                },
+                {
+                    "name": "is_pinned",
+                    "type": "boolean"
+                },
+                {
+                    "name": "comment_list",
+                    "type": "Comment[]"
+                },
+                {
+                    "name": "author_pick",
+                    "type": "Pick<User, 'id' | 'name'>"
+                },
+                {
+                    "name": "own_pick",
+                    "type": "Pick<BulletinDigest, 'id' | 'title'>"
+                },
+                {
+                    "name": "comments",
+                    "type": "Comment[]"
+                },
+                {
+                    "name": "author",
+                    "type": "User"
+                },
+                {
+                    "name": "ownership",
+                    "type": "BulletinOwnership"
+                },
+                {
+                    "name": "comments_count",
+                    "type": "number"
+                },
+                {
+                    "name": "author_count",
+                    "type": "number"
+                },
+                {
+                    "name": "ownership_count",
+                    "type": "number"
+                },
+                {
+                    "name": "comments_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "author_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "ownership_exists",
+                    "type": "boolean"
+                }
+            ]
+        },
         "Workbench\\App\\Models\\BulletinFeed": {
             "name": "BulletinFeed",
             "properties": [
@@ -4857,6 +4990,119 @@
                 },
                 {
                     "name": "lead_exists",
+                    "type": "boolean"
+                }
+            ]
+        },
+        "Workbench\\App\\Models\\BulletinOwnership": {
+            "name": "BulletinOwnership",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "title",
+                    "type": "string"
+                },
+                {
+                    "name": "content",
+                    "type": "string"
+                },
+                {
+                    "name": "user_id",
+                    "type": "number"
+                },
+                {
+                    "name": "status",
+                    "type": "boolean"
+                },
+                {
+                    "name": "published_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "metadata",
+                    "type": "string | null"
+                },
+                {
+                    "name": "rating",
+                    "type": "number | null"
+                },
+                {
+                    "name": "category",
+                    "type": "string"
+                },
+                {
+                    "name": "options",
+                    "type": "string | null"
+                },
+                {
+                    "name": "deleted_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "category_id",
+                    "type": "number | null"
+                },
+                {
+                    "name": "visibility",
+                    "type": "string | null"
+                },
+                {
+                    "name": "priority",
+                    "type": "number | null"
+                },
+                {
+                    "name": "word_count",
+                    "type": "number | null"
+                },
+                {
+                    "name": "reading_time_minutes",
+                    "type": "number | null"
+                },
+                {
+                    "name": "featured_image_url",
+                    "type": "string | null"
+                },
+                {
+                    "name": "is_pinned",
+                    "type": "boolean"
+                },
+                {
+                    "name": "owner",
+                    "type": "User"
+                },
+                {
+                    "name": "author",
+                    "type": "User"
+                },
+                {
+                    "name": "digest",
+                    "type": "BulletinDigest"
+                },
+                {
+                    "name": "author_count",
+                    "type": "number"
+                },
+                {
+                    "name": "digest_count",
+                    "type": "number"
+                },
+                {
+                    "name": "author_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "digest_exists",
                     "type": "boolean"
                 }
             ]
@@ -9626,6 +9872,151 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\BulletinCastResource": {
+            "name": "BulletinCastResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "lists",
+                    "type": "{ id: number; content: string }[][]",
+                    "optional": false
+                },
+                {
+                    "name": "lead_pick",
+                    "type": "{ id: number; name: string } | null",
+                    "optional": false
+                },
+                {
+                    "name": "owner_list",
+                    "type": "User[]",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\BulletinDigestSpreadResource": {
+            "name": "BulletinDigestSpreadResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "title",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "content",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "user_id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "status",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "published_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "metadata",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "rating",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "category",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "options",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "deleted_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "category_id",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "visibility",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "priority",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "word_count",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "reading_time_minutes",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "featured_image_url",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "is_pinned",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "comment_list",
+                    "type": "Comment[]",
+                    "optional": false
+                },
+                {
+                    "name": "author_pick",
+                    "type": "Pick<User, 'id' | 'name'>",
+                    "optional": false
+                },
+                {
+                    "name": "own_pick",
+                    "type": "Pick<BulletinDigest, 'id' | 'title'>",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\BulletinFeedResource": {
             "name": "BulletinFeedResource",
             "properties": [
@@ -9668,6 +10059,116 @@
                     "name": "own_picks",
                     "type": "(Pick<Bulletin, 'id' | 'title'>)[]",
                     "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\BulletinOwnershipSpreadResource": {
+            "name": "BulletinOwnershipSpreadResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "title",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "content",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "user_id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "status",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "published_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "metadata",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "rating",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "category",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "options",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "deleted_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "category_id",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "visibility",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "priority",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "word_count",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "reading_time_minutes",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "featured_image_url",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "is_pinned",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "owner",
+                    "type": "User",
+                    "optional": false
                 }
             ]
         },
@@ -16279,6 +16780,21 @@
                 {
                     "name": "probe_mixed",
                     "type": "{ id: number } | Pick<ModelsUser, 'id' | 'phone'> | null",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\WarehouseSettingsResource": {
+            "name": "WarehouseSettingsResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "settings",
+                    "type": "MenuSettingsType | null",
                     "optional": false
                 }
             ]

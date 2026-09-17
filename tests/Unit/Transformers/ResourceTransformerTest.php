@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastSettingsReadResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
 use Workbench\App\Enums\Priority;
@@ -15,6 +16,7 @@ use Workbench\App\Http\Resources\ApiPostResource;
 use Workbench\App\Http\Resources\BodylessOrderResource;
 use Workbench\App\Http\Resources\BodylessTeamResource;
 use Workbench\App\Http\Resources\BranchedInlineFqcnResource;
+use Workbench\App\Http\Resources\BulletinCastResource;
 use Workbench\App\Http\Resources\CategoryResource;
 use Workbench\App\Http\Resources\ChildInlineFqcnResource;
 use Workbench\App\Http\Resources\ChildSharedResource;
@@ -2688,5 +2690,23 @@ describe('ResourceTransformer with SameBasenameModelTrioResource', function () {
             ->toBe('{ c: WorkbenchUser | null } | CrmUser | null')
             ->and($data->properties['control_arms']['type'])
             ->toBe('CrmUser | { c: WorkbenchUser | null } | null');
+    });
+});
+
+describe('ResourceTransformer imports for a read a #[TsCasts] override replaces', function () {
+    test('drops a class only the overridden reads named and keeps one another read still names', function () {
+        $data = (new ResourceTransformer(BulletinCastResource::class))->data();
+
+        expect($data->properties['lists']['type'])->toBe('{ id: number; content: string }[][]')
+            ->and($data->properties['lead_pick']['type'])->toBe('{ id: number; name: string } | null')
+            ->and($data->properties['owner_list']['type'])->toBe('User[]')
+            ->and($data->typeImports)->toBe(['../../models' => ['User']]);
+    });
+
+    test('drops the #[TsType] import an overridden $this->accessor read carried', function () {
+        $data = (new ResourceTransformer(CastSettingsReadResource::class))->data();
+
+        expect($data->properties['settings']['type'])->toBe('Record<string, unknown> | null')
+            ->and($data->typeImports)->toBe([]);
     });
 });

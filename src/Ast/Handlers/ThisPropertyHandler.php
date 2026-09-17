@@ -121,28 +121,7 @@ final class ThisPropertyHandler implements ExpressionHandler
         $info = $this->resolveModelAttributeTypeInfo($propName, $scope);
 
         if ($info['type'] !== 'unknown') {
-            $result = [
-                ...$result,
-                'type' => $info['type'],
-            ];
-
-            // An accessor typed Attribute<StatusA|StatusB, never> spells both names; only the first
-            // reaches directEnumFqcn, so the rest travel per-occurrence the way classFqcns do below.
-            if (count($info['enumFqcns']) > 1) {
-                $result['embeddedEnumFqcns'] = $info['enumFqcns'];
-            } elseif ($info['enumFqcn'] !== null) {
-                $result['directEnumFqcn'] = $info['enumFqcn'];
-            }
-
-            // A single-FQCN accessor needs no per-occurrence disambiguation; only a genuine union
-            // needs its FQCNs threaded out here for aliasPropertyType() to consume per occurrence.
-            if (count($info['classFqcns']) > 1) {
-                $result['embeddedModelFqcns'] = $info['classFqcns'];
-            } elseif (count($info['classFqcns']) === 1) {
-                $result['modelFqcn'] = $info['classFqcns'][0];
-            }
-
-            return $result;
+            return ValueResult::withAttributeChannels([...$result, 'type' => $info['type']], $info);
         }
 
         $relationInfo = $this->resolveModelRelationTypeInfo($propName, $scope);

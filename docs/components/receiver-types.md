@@ -386,12 +386,20 @@ written in the method body, and the method keeps its shape. The model file and e
 `Pick<User, …>` and `Comment[]`; see
 [accessor-body-analyzer § A reader that carries no import](accessor-body-analyzer.md#a-reader-that-carries-no-import).
 Those answers name a class, so the read that publishes one hands on the attribute's `classFqcns`, `enumFqcns` and
-`customImports` through `ValueResult::withAttributeChannels()`, and its file imports the class. That covers a relation
-chain, with or without `?->` and rooted at `$this->resource` or not, a `$resource` property a docblock types, a closure
-parameter in `map()` or `whenLoaded()`, typed or not, `pluck()`, and the attribute `whenHas()` or `whenAppended()` reads
-when it has no value to type. A local variable holding a model and a key `only()` selects already carried them. The
-`Bulletin` resources pin each read beside a `Comment` token and a `User` one; see
+`customImports` through `ValueResult::withAttributeChannels()`, and its file imports the class. That covers
+`$this->accessor` and its camelCase alias, a relation chain, with or without `?->` and rooted at `$this->resource` or
+not, a `$resource` property a docblock types, a closure parameter in `map()` or `whenLoaded()`, typed or not, `pluck()`,
+the attribute `whenHas()` or `whenAppended()` reads when it has no value to type, and every column and appended
+accessor that `ResourceAstAnalyzer::analyzeModelSpreadArm()` flattens when a resource spreads a model's `toArray()`
+among its top-level keys, unless the model's `#[TsCasts]` overrides that name. A local variable holding a model and a key
+`only()` selects already carried them. The `Bulletin` resources pin each read beside a `Comment` or `User` token, and
+`WarehouseSettingsResource` pins `$this->menu_config` under a key of its own, whose `MenuSettingsType` only the
+accessor's `#[TsType]` import supplies; see
 [accessor-body-analyzer § A getter that reads another model's accessor](accessor-body-analyzer.md#a-getter-that-reads-another-models-accessor).
+A resource `#[TsCasts]` override can replace the type such a read published. `ResourceTransformer::pruneOverriddenAnalysisImports()`
+then drops each model and `#[TsType]` import the analysis carried that no property type still spells, so none is
+emitted unused: `BulletinCastResource` overrides a `Comment` read and a `User` read and keeps only `User`, which its
+unoverridden `owner_list` still names.
 `Comment::picksSummary()` reads the `relation_picks` accessor, and `CommentRelationFiltersResource` publishes its
 `picks` as the same object `relationSummary()` publishes. `FilteringAccessorModel` pins each getter kind and read
 position in `MethodReturnTypeResolverTest`.

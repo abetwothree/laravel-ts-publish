@@ -42,8 +42,10 @@ use Workbench\App\Http\Resources\BooleanExprResource;
 use Workbench\App\Http\Resources\BranchedInlineFqcnResource;
 use Workbench\App\Http\Resources\BulletinArchiveResource;
 use Workbench\App\Http\Resources\BulletinBoardResource;
+use Workbench\App\Http\Resources\BulletinDigestSpreadResource;
 use Workbench\App\Http\Resources\BulletinFeedResource;
 use Workbench\App\Http\Resources\BulletinLoadedResource;
+use Workbench\App\Http\Resources\BulletinOwnershipSpreadResource;
 use Workbench\App\Http\Resources\BulletinResource;
 use Workbench\App\Http\Resources\BulletinWrappedResource;
 use Workbench\App\Http\Resources\CaseSpreadResource;
@@ -155,6 +157,7 @@ use Workbench\App\Http\Resources\UserOnlyHiddenResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Http\Resources\VarReturnSpreadResource;
 use Workbench\App\Http\Resources\WarehouseResource;
+use Workbench\App\Http\Resources\WarehouseSettingsResource;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Admin\Store as AdminStoreModel;
 use Workbench\App\Models\Category;
@@ -2461,7 +2464,22 @@ describe('ResourceAstAnalyzer reading an accessor whose type names a class', fun
             'list' => 'Comment[]',
             'owned_by' => 'User',
         ], ['Comment', 'User']],
+        'a spread model\'s appended filters' => [BulletinDigestSpreadResource::class, [
+            'comment_list' => 'Comment[]',
+            'author_pick' => "Pick<User, 'id' | 'name'>",
+            'own_pick' => "Pick<BulletinDigest, 'id' | 'title'>",
+        ], ['BulletinDigest', 'Comment', 'User']],
+        'a spread model\'s appended docblock accessor' => [BulletinOwnershipSpreadResource::class, [
+            'owner' => 'User',
+        ], ['User']],
     ]);
+
+    test('$this->accessor under a key no accessor shares carries its #[TsType] import', function () {
+        $result = resolve(AstEngine::class)->analyze(WarehouseSettingsResource::class);
+
+        expect(collect($result->properties)->firstWhere('name', 'settings')['type'] ?? null)->toBe('MenuSettingsType | null')
+            ->and($result->typeImports)->toBe(['@js/types/settings' => ['MenuSettingsType']]);
+    });
 
     test('whenAppended() carries the #[TsType] import of the accessor it reads', function () {
         $result = resolve(AstEngine::class)->analyze(AppendedCustomImportResource::class);

@@ -513,8 +513,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Flatten a spread model's toArray() into one property per published column, typed the same
-     * way ThisPropertyHandler types a `$this->column` access, honoring that model's own #[TsCasts]
+     * Flatten a spread model's toArray() into one property per published column and appended accessor, typed with
+     * the channels ThisPropertyHandler carries for a `$this->column` access, honoring that model's own #[TsCasts]
      * overrides — the same refinement the canonical model interface a bare-model arm references gets.
      *
      * @param  class-string<Model>  $modelFqcn
@@ -534,16 +534,14 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         foreach ($names as $column) {
             $override = $tsCasts['overrides'][$column] ?? null;
-            $customImports = [];
+            $optional = $tsCasts['optionalOverrides'][$column] ?? false;
 
             if ($override !== null) {
-                $type = $override;
-                $enumFqcn = null;
-
+                $customImports = [];
                 $importPath = $tsCasts['importPaths'][$column] ?? null;
 
                 if ($importPath !== null) {
-                    $importable = TsTypeString::extractImportableTypes($type);
+                    $importable = TsTypeString::extractImportableTypes($override);
 
                     // A type with no importable token (e.g. `Record<string, unknown>`) must not
                     // materialise an empty list under its path.
@@ -551,25 +549,25 @@ class ResourceAstAnalyzer implements ExpressionEngine
                         $customImports[$importPath] = $importable;
                     }
                 }
-            } else {
-                $tsInfo = $resolver->resolveAttribute($modelFqcn, $column, $this->scope->carriesImports);
 
-                // Mirrors ModelTransformer::resolveMutatorType()'s own omit check: no getter, no
-                // docblock generic, no backing column — nothing to publish for this name.
-                if ($tsInfo['omit'] ?? false) {
-                    continue;
-                }
+                $analysis->addProperty($column, [
+                    'type' => $override,
+                    'optional' => $optional,
+                    ...($customImports !== [] ? ['customImports' => $customImports] : []),
+                ]);
 
-                $type = $tsInfo['type'];
-                $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
+                continue;
             }
 
-            $analysis->addProperty($column, [
-                'type' => $type,
-                'optional' => $tsCasts['optionalOverrides'][$column] ?? false,
-                ...($enumFqcn !== null ? ['directEnumFqcn' => $enumFqcn] : []),
-                ...($customImports !== [] ? ['customImports' => $customImports] : []),
-            ]);
+            $tsInfo = $resolver->resolveAttribute($modelFqcn, $column, $this->scope->carriesImports);
+
+            // Mirrors ModelTransformer::resolveMutatorType()'s own omit check: no getter, no
+            // docblock generic, no backing column — nothing to publish for this name.
+            if ($tsInfo['omit'] ?? false) {
+                continue;
+            }
+
+            $analysis->addProperty($column, ValueResult::withAttributeChannels(['type' => $tsInfo['type'], 'optional' => $optional], $tsInfo));
         }
 
         return $analysis;

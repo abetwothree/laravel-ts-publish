@@ -340,6 +340,47 @@ declare global {
             lead_count: number;
             lead_exists: boolean;
         }
+        /**
+         * Appends accessors whose types name a class, so a resource that spreads this model's toArray() publishes them:
+         * a list of `Comment`, a `Pick<User, …>` and a `Pick<BulletinDigest, …>`.
+         */
+        export interface BulletinDigest {
+            // Columns
+            id: number;
+            title: string;
+            content: string;
+            user_id: number;
+            status: boolean;
+            published_at: string | null;
+            metadata: string | null;
+            rating: number | null;
+            category: string;
+            options: string | null;
+            deleted_at: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            category_id: number | null;
+            visibility: string | null;
+            priority: number | null;
+            word_count: number | null;
+            reading_time_minutes: number | null;
+            featured_image_url: string | null;
+            is_pinned: boolean;
+            // Mutators
+            comment_list: Comment[];
+            author_pick: Pick<User, 'id' | 'name'>;
+            own_pick: Pick<BulletinDigest, 'id' | 'title'>;
+            // Relations
+            comments: Comment[];
+            comments_count: number;
+            comments_exists: boolean;
+            author: User;
+            author_count: number;
+            author_exists: boolean;
+            ownership: BulletinOwnership;
+            ownership_count: number;
+            ownership_exists: boolean;
+        }
         /** Reads Bulletin's accessors through a relation chain and an untyped closure parameter. */
         export interface BulletinFeed {
             // Columns
@@ -374,6 +415,39 @@ declare global {
             lead: Bulletin;
             lead_count: number;
             lead_exists: boolean;
+        }
+        /** Appends an accessor its `Attribute<User, never>` docblock types, for a resource that spreads this model's toArray(). */
+        export interface BulletinOwnership {
+            // Columns
+            id: number;
+            title: string;
+            content: string;
+            user_id: number;
+            status: boolean;
+            published_at: string | null;
+            metadata: string | null;
+            rating: number | null;
+            category: string;
+            options: string | null;
+            deleted_at: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            category_id: number | null;
+            visibility: string | null;
+            priority: number | null;
+            word_count: number | null;
+            reading_time_minutes: number | null;
+            featured_image_url: string | null;
+            is_pinned: boolean;
+            // Mutators
+            owner: User;
+            // Relations
+            author: User;
+            author_count: number;
+            author_exists: boolean;
+            digest: BulletinDigest;
+            digest_count: number;
+            digest_exists: boolean;
         }
         export interface Category {
             // Columns
@@ -2261,6 +2335,45 @@ declare global {
             lead_pick: Pick<app.models.User, 'id' | 'name'> | null;
             summary: { comment_lists: unknown[][]; lead_author: { id: number; name: string } | null; id: number };
         }
+        /**
+         * Overrides two reads of Bulletin's accessors, so neither `Comment` nor the `User` of `lead_pick` survives in their
+         * types. `owner_list` still names `User`, so only `Comment` has nothing left to import.
+         */
+        export interface BulletinCastResource {
+            id: number;
+            lists: { id: number; content: string }[][];
+            lead_pick: { id: number; name: string } | null;
+            owner_list: app.models.User[];
+        }
+        /**
+         * Spreads a related BulletinDigest's toArray(), whose appended accessors name `Comment`, `User` and `BulletinDigest`.
+         * BulletinOwnership declares none of those accessors, so no name lookup imports them.
+         */
+        export interface BulletinDigestSpreadResource {
+            id: number;
+            title: string;
+            content: string;
+            user_id: number;
+            status: boolean;
+            published_at: string | null;
+            metadata: string | null;
+            rating: number | null;
+            category: string;
+            options: string | null;
+            deleted_at: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            category_id: number | null;
+            visibility: string | null;
+            priority: number | null;
+            word_count: number | null;
+            reading_time_minutes: number | null;
+            featured_image_url: string | null;
+            is_pinned: boolean;
+            comment_list: app.models.Comment[];
+            author_pick: Pick<app.models.User, 'id' | 'name'>;
+            own_pick: Pick<app.models.BulletinDigest, 'id' | 'title'>;
+        }
         /** Reads Bulletin's accessors through a relation chain and an untyped closure parameter. */
         export interface BulletinFeedResource {
             id: number;
@@ -2273,6 +2386,33 @@ declare global {
             lead_list?: app.models.Comment[];
             lead_owner?: app.models.User;
             own_picks?: (Pick<app.models.Bulletin, 'id' | 'title'>)[];
+        }
+        /**
+         * Spreads a related BulletinOwnership's toArray(), whose appended `owner` accessor names `User`.
+         * BulletinDigest declares no `owner` accessor, so no name lookup imports it.
+         */
+        export interface BulletinOwnershipSpreadResource {
+            id: number;
+            title: string;
+            content: string;
+            user_id: number;
+            status: boolean;
+            published_at: string | null;
+            metadata: string | null;
+            rating: number | null;
+            category: string;
+            options: string | null;
+            deleted_at: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            category_id: number | null;
+            visibility: string | null;
+            priority: number | null;
+            word_count: number | null;
+            reading_time_minutes: number | null;
+            featured_image_url: string | null;
+            is_pinned: boolean;
+            owner: app.models.User;
         }
         /** Reads its own model's accessors through `$this->resource`, whenAppended() and whenHas(), under keys no accessor shares. */
         export interface BulletinResource {
@@ -4368,6 +4508,11 @@ declare global {
             probe_nested: { first: crm.models.User | app.models.User | null; second: app.models.User | null };
             crm_contact_partial: { status: crm.enums.StatusType; images: app.models.Image[] } | null;
             probe_mixed: { id: number } | Pick<app.models.User, 'id' | 'phone'> | null;
+        }
+        /** Reads the `menu_config` accessor, typed by a `#[TsType(import:)]` class, under a key no accessor shares. */
+        export interface WarehouseSettingsResource {
+            id: number;
+            settings: MenuSettingsType | null;
         }
         /**
          * Exercises whenHas()/whenAppended()/whenExistsLoaded() typing from the value Laravel actually
