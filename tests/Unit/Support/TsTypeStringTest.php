@@ -440,6 +440,15 @@ describe('typeNameOccursIn', function () {
             ->and($s->typeNameOccursIn('StatusType', 'CrmStatusType'))->toBeFalse()
             ->and($s->typeNameOccursIn('StatusType', 'StatusTypeExtra'))->toBeFalse();
     });
+
+    test('typeNameOccursIn() ignores a name spelled only inside a string literal', function () {
+        $s = $this->service;
+        expect($s->typeNameOccursIn('User', "'User' | 'Admin'"))->toBeFalse()
+            ->and($s->typeNameOccursIn('User', '{ "User": string }'))->toBeFalse()
+            ->and($s->typeNameOccursIn('User', "'it\\'s User'"))->toBeFalse()
+            ->and($s->typeNameOccursIn('User', "Pick<User, 'id' | 'name'>"))->toBeTrue()
+            ->and($s->typeNameOccursIn('User', "'User' | User"))->toBeTrue();
+    });
 });
 
 describe('isUnknownOnly', function () {

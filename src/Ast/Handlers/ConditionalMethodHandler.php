@@ -240,17 +240,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
             return $this->applyConditionalDefault($fromValue, $args, $scope, $engine);
         }
 
-        $info = $this->resolveModelAttributeTypeInfo($attribute->value, $scope);
-        // The EnumResource wrap below picks the enum's channel; the attribute supplies its class and #[TsType] ones.
-        $result = ValueResult::withAttributeChannels(['type' => $info['type'], 'optional' => false], [...$info, 'enumFqcns' => []]);
-
-        if ($info['enumFqcn'] !== null) {
-            $valueExpr = $args->named('value')?->value;
-            $wrapped = $valueExpr !== null && $this->isEnumResourceWrapCall($valueExpr);
-            $result[$wrapped ? 'enumFqcn' : 'directEnumFqcn'] = $info['enumFqcn'];
-        }
-
-        return $this->applyConditionalDefault($result, $args, $scope, $engine);
+        return $this->applyConditionalDefault($this->analyzeAttributeRead($attribute->value, $args, $scope), $args, $scope, $engine);
     }
 
     /**
@@ -283,17 +273,27 @@ final class ConditionalMethodHandler implements ExpressionHandler
             return $this->applyConditionalDefault($fromValue, $args, $scope, $engine);
         }
 
-        $info = $this->resolveModelAttributeTypeInfo($attribute->value, $scope);
-        // The EnumResource wrap below picks the enum's channel; the attribute supplies its class and #[TsType] ones.
-        $result = ValueResult::withAttributeChannels(['type' => $info['type'], 'optional' => false], [...$info, 'enumFqcns' => []]);
+        return $this->applyConditionalDefault($this->analyzeAttributeRead($attribute->value, $args, $scope), $args, $scope, $engine);
+    }
 
-        if ($info['enumFqcn'] !== null) {
-            $valueExpr = $args->named('value')?->value;
-            $wrapped = $valueExpr !== null && $this->isEnumResourceWrapCall($valueExpr);
-            $result[$wrapped ? 'enumFqcn' : 'directEnumFqcn'] = $info['enumFqcn'];
+    /**
+     * The attribute a whenHas()/whenAppended() call names, typed with every FQCN channel it carries.
+     *
+     * An EnumResource::make()/::collection() value wraps one enum, so that read puts only the first on `enumFqcn`.
+     *
+     * @return ValueExpressionResult
+     */
+    private function analyzeAttributeRead(string $attribute, CallArguments $args, AnalysisScope $scope): array
+    {
+        $info = $this->resolveModelAttributeTypeInfo($attribute, $scope);
+        $result = ['type' => $info['type'], 'optional' => false];
+        $valueExpr = $args->named('value')?->value;
+
+        if ($info['enumFqcn'] === null || $valueExpr === null || ! $this->isEnumResourceWrapCall($valueExpr)) {
+            return ValueResult::withAttributeChannels($result, $info);
         }
 
-        return $this->applyConditionalDefault($result, $args, $scope, $engine);
+        return [...ValueResult::withAttributeChannels($result, [...$info, 'enumFqcns' => []]), 'enumFqcn' => $info['enumFqcn']];
     }
 
     /**

@@ -227,7 +227,8 @@ name is added to a stub. Any other name only the DOM-less program reports is a l
 load.
 
 The count has no baseline argument of its own. `BASELINE_COUNT`, the first argument, arms it, and any non-zero reading
-fails: every DOM name the package means to write is already in `DOM_GLOBALS`, so no other one is legitimate. The
+fails: every DOM name the package means to write is already in `DOM_GLOBALS`, so no other one is legitimate. A failure
+still lets the two TS2307 sub-gates print their `PASS`/`FAIL` lines before the tree fails. The
 other three counts, their arguments and their baselines mean what they meant before it existed.
 
 ### The app-side stubs
@@ -589,6 +590,10 @@ When changing `unknown-regression-gate.py` itself, also run its
 - **A leaked token named like a name in `DOM_GLOBALS`.** The DOM-global count skips `File` wherever it appears, so a
   class named `File` emitted without its import compiles against the DOM's `File` and passes every count. No workbench
   class has that name.
+
+- **A leaked token named like an ES-lib global.** `Error`, `Map`, `Date`, `Promise` and the rest are declared by the
+  ES lib, which both programs load, so a class of that name emitted without its import binds to the global in both and
+  no count sees it.
 
 - **TS2307 (`Cannot find module`) is counted, in two separate counts, not the main one.**
   `unimportable-token-gate.sh`'s main count greps only

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastSettingsReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendsOverriddenReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\QuotedCastReadResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
 use Workbench\App\Enums\Priority;
@@ -2707,6 +2709,22 @@ describe('ResourceTransformer imports for a read a #[TsCasts] override replaces'
         $data = (new ResourceTransformer(CastSettingsReadResource::class))->data();
 
         expect($data->properties['settings']['type'])->toBe('Record<string, unknown> | null')
+            ->and($data->typeImports)->toBe([]);
+    });
+
+    test('keeps a class an extends clause still names after its read is overridden', function () {
+        $data = (new ResourceTransformer(ExtendsOverriddenReadResource::class))->data();
+
+        expect($data->tsExtends)->toBe(['Pick<User, "id">'])
+            ->and($data->properties['app']['type'])->toBe('number')
+            ->and(array_merge(...array_values($data->typeImports)))->toBe(['User']);
+    });
+
+    test('drops an import an override spells only inside a string literal', function () {
+        $data = (new ResourceTransformer(QuotedCastReadResource::class))->data();
+
+        expect($data->properties['app']['type'])->toBe("'User' | 'Admin'")
+            ->and($data->properties['settings']['type'])->toBe("'MenuSettingsType' | null")
             ->and($data->typeImports)->toBe([]);
     });
 });

@@ -16784,6 +16784,36 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\WarehouseReviewAppendedResource": {
+            "name": "WarehouseReviewAppendedResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "review_level",
+                    "type": "StatusType | PriorityType | null",
+                    "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\WarehouseReviewHasResource": {
+            "name": "WarehouseReviewHasResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "review_level",
+                    "type": "StatusType | PriorityType | null",
+                    "optional": true
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\WarehouseSettingsResource": {
             "name": "WarehouseSettingsResource",
             "properties": [

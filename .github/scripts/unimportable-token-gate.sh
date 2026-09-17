@@ -14,11 +14,9 @@
 # TS6196 is an import the generated file never uses - the trace a dropped extends
 # clause or an overridden cast leaves behind.
 #
-# A leaked token that shares a DOM global's name (`Comment`, `Node`, `Event`) raises
-# none of those: tsconfig loads the DOM lib, so it binds to the DOM type and compiles.
-# A second program per tree runs without the DOM lib, and a name that fails only
-# there is counted on its own line, apart from the names this package writes on
-# purpose without an import (DOM_GLOBALS below). The first argument arms it too.
+# A leaked token named like a DOM global (`Comment`) binds to the DOM type and raises none of those, so a second
+# program per tree runs without the DOM lib and counts, on its own line, each name only it cannot find, minus
+# DOM_GLOBALS. The first argument arms that count too.
 #
 # The unknown-regression gate cannot catch either shape: a leaked or colliding
 # token is a NEW property with a plausible-looking type, not an existing
@@ -203,13 +201,16 @@ gate_one() {
     fi
     echo "PASS - no new unimportable or colliding tokens (baseline $baseline)"
 
-    # No baseline of its own: DOM_GLOBALS already holds every DOM name this package means to write.
+    # No baseline of its own: DOM_GLOBALS already holds every DOM name this package means to write. A failure here
+    # still lets the TS2307 sub-gates report below before the tree fails.
+    local dom_failed=0
     if [ "$dom_count" -gt 0 ]; then
       echo "FAIL - $dom_count token(s) named like a DOM global were emitted without their import, so they compile against the DOM's own type"
       printf '%s\n' "$dom_errs"
-      return 1
+      dom_failed=1
+    else
+      echo "PASS - no token named like a DOM global emitted without its import"
     fi
-    echo "PASS - no token named like a DOM global emitted without its import"
 
     if [ "$have_relative_baseline" -eq 1 ]; then
       if [ "$rel_count" -gt "$relative_baseline" ]; then
@@ -227,6 +228,10 @@ gate_one() {
         fi
         echo "PASS - no new bare-specifier TS2307s (baseline $bare_baseline)"
       fi
+    fi
+
+    if [ "$dom_failed" -eq 1 ]; then
+      return 1
     fi
   fi
 

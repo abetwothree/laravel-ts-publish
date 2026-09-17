@@ -4509,6 +4509,16 @@ declare global {
             crm_contact_partial: { status: crm.enums.StatusType; images: app.models.Image[] } | null;
             probe_mixed: { id: number } | Pick<app.models.User, 'id' | 'phone'> | null;
         }
+        /** Reads the two-enum `review_priority` accessor through a value-less whenAppended(), under a key no accessor shares. */
+        export interface WarehouseReviewAppendedResource {
+            id: number;
+            review_level?: app.enums.StatusType | app.enums.PriorityType | null;
+        }
+        /** Reads the two-enum `review_priority` accessor through a value-less whenHas(), under a key no accessor shares. */
+        export interface WarehouseReviewHasResource {
+            id: number;
+            review_level?: app.enums.StatusType | app.enums.PriorityType | null;
+        }
         /** Reads the `menu_config` accessor, typed by a `#[TsType(import:)]` class, under a key no accessor shares. */
         export interface WarehouseSettingsResource {
             id: number;

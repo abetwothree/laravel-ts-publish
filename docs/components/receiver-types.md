@@ -391,15 +391,23 @@ Those answers name a class, so the read that publishes one hands on the attribut
 not, a `$resource` property a docblock types, a closure parameter in `map()` or `whenLoaded()`, typed or not, `pluck()`,
 the attribute `whenHas()` or `whenAppended()` reads when it has no value to type, and every column and appended
 accessor that `ResourceAstAnalyzer::analyzeModelSpreadArm()` flattens when a resource spreads a model's `toArray()`
-among its top-level keys, unless the model's `#[TsCasts]` overrides that name. A local variable holding a model and a key
-`only()` selects already carried them. The `Bulletin` resources pin each read beside a `Comment` or `User` token, and
-`WarehouseSettingsResource` pins `$this->menu_config` under a key of its own, whose `MenuSettingsType` only the
-accessor's `#[TsType]` import supplies; see
+among its top-level keys, unless the model's `#[TsCasts]` overrides that name. A local variable holding a model already
+carried them. A key the resource's own `only()` or `except()` selects keeps only part of them:
+`FiltersModelAttributes::filterAnalysisByKeys()` rebuilds the analysis from its properties and the name-keyed
+`directEnumFqcns` and `modelFqcns`, so a multi-class attribute's FQCNs, every enum after the first and every
+`#[TsType]` import are gone there. `ResourceTransformer::resolveMultiClassAccessorFqcns()` and
+`resolveMultiEnumAccessorFqcns()` import the classes and enums back by name, because each key that filter keeps is an
+attribute's own name, and the first of them restores a `#[TsType]` import too, but only for a key that kept no single
+model FQCN. The `Bulletin` resources pin each read beside a `Comment` or `User` token, `WarehouseSettingsResource` pins
+`$this->menu_config` under a key of its own, whose `MenuSettingsType` only the accessor's `#[TsType]` import supplies,
+and `WarehouseReviewHasResource` and `WarehouseReviewAppendedResource` pin both enums of `review_priority`; see
 [accessor-body-analyzer § A getter that reads another model's accessor](accessor-body-analyzer.md#a-getter-that-reads-another-models-accessor).
 A resource `#[TsCasts]` override can replace the type such a read published. `ResourceTransformer::pruneOverriddenAnalysisImports()`
-then drops each model and `#[TsType]` import the analysis carried that no property type still spells, so none is
-emitted unused: `BulletinCastResource` overrides a `Comment` read and a `User` read and keeps only `User`, which its
-unoverridden `owner_list` still names.
+then drops each model and `#[TsType]` import the analysis carried whose name neither a property type nor an extends
+clause still spells outside a string literal: `BulletinCastResource` overrides a `Comment` read and a `User` read and
+keeps only `User`, which its unoverridden `owner_list` still names. The test reads class basenames before aliasing, so
+two models that share a basename both stay imported while either is still spelled, and overriding the only read of one
+of them leaves its aliased import unused. That leftover predates the prune; it is the same at `7a55703d`.
 `Comment::picksSummary()` reads the `relation_picks` accessor, and `CommentRelationFiltersResource` publishes its
 `picks` as the same object `relationSummary()` publishes. `FilteringAccessorModel` pins each getter kind and read
 position in `MethodReturnTypeResolverTest`.

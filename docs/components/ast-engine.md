@@ -566,8 +566,12 @@ makes the three fields agree with each other:
    `AnalysisImports::asEnumWrappedOnlyFqcns()`'s wrapped-only GC, and
    `ResourceTransformer::pruneOverriddenEnumImports()`'s override GC. An enum the wrap replaced and
    an enum a `#[TsCasts]` override displaced are both simply unspelled, so neither is imported. The
-   transformer applies the same test to the model and `#[TsType]` imports its analysis carried, in
-   `ResourceTransformer::pruneOverriddenAnalysisImports()`.
+   transformer runs the same predicate over the model and `#[TsType]` imports its analysis carried, in
+   `ResourceTransformer::pruneOverriddenAnalysisImports()`, with two differences. It tests each model's
+   class basename before `resolveImportConflicts()` aliases it, where `pruneUnspelledImports()` tests each
+   import's local name against the aliased types, so of two models sharing a basename neither is dropped
+   while either is spelled, and one can stay imported unused under its alias. It also searches the
+   resource's extends clauses, which an analysis never has.
 
 `$fromNamespacePath` is the generated file's own namespace path, so relative import paths resolve from
 where the file will live; `''` means the output root.

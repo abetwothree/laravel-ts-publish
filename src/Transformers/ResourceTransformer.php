@@ -453,14 +453,15 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * Drops the model and #[TsType] imports the analysis carried for a name no property still spells after #[TsCasts]
-     * overrides, which would otherwise be emitted as an unused import.
+     * Drops the model and #[TsType] imports the analysis carried for a name that neither a property type nor an extends
+     * clause still spells after #[TsCasts] overrides, which would otherwise be emitted as an unused import.
      *
      * @return $this
      */
     protected function pruneOverriddenAnalysisImports(): self
     {
-        $rendered = implode("\n", array_column($this->properties, 'type'));
+        // An extends clause names a type as surely as a property does, and can rely on the same import.
+        $rendered = implode("\n", [...array_column($this->properties, 'type'), ...$this->tsExtends]);
 
         foreach ($this->modelFqcnMap as $fqcn => $typeName) {
             if (! TsTypeString::typeNameOccursIn($typeName, $rendered)) {

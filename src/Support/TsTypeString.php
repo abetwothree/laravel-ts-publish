@@ -218,14 +218,16 @@ class TsTypeString
     }
 
     /**
-     * Whether a TypeScript type name occurs as its own token, not inside a longer identifier.
+     * Whether a TypeScript type name occurs as its own token, not inside a longer identifier or a string literal.
      *
      * Only a leading `.` disqualifies: `foo.StatusType` is a property read, while `StatusType.foo`
-     * reads a member of the type and so still names it.
+     * reads a member of the type and so still names it. `'StatusType'` is a string, never the type.
      */
     public function typeNameOccursIn(string $typeName, string $haystack): bool
     {
-        return preg_match('/(?<![A-Za-z0-9_$.])'.preg_quote($typeName, '/').'(?![A-Za-z0-9_$])/', $haystack) === 1;
+        $unquoted = (string) preg_replace('/\'(?:[^\'\\\\]|\\\\.)*\'|"(?:[^"\\\\]|\\\\.)*"/', "''", $haystack);
+
+        return preg_match('/(?<![A-Za-z0-9_$.])'.preg_quote($typeName, '/').'(?![A-Za-z0-9_$])/', $unquoted) === 1;
     }
 
     /**

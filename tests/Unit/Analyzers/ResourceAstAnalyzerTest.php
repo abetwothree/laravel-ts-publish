@@ -157,6 +157,8 @@ use Workbench\App\Http\Resources\UserOnlyHiddenResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Http\Resources\VarReturnSpreadResource;
 use Workbench\App\Http\Resources\WarehouseResource;
+use Workbench\App\Http\Resources\WarehouseReviewAppendedResource;
+use Workbench\App\Http\Resources\WarehouseReviewHasResource;
 use Workbench\App\Http\Resources\WarehouseSettingsResource;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Admin\Store as AdminStoreModel;
@@ -2472,6 +2474,16 @@ describe('ResourceAstAnalyzer reading an accessor whose type names a class', fun
         'a spread model\'s appended docblock accessor' => [BulletinOwnershipSpreadResource::class, [
             'owner' => 'User',
         ], ['User']],
+    ]);
+
+    test('a value-less whenHas() or whenAppended() carries every enum the accessor names', function (string $resource) {
+        $result = resolve(AstEngine::class)->analyze($resource);
+
+        expect(collect($result->properties)->firstWhere('name', 'review_level')['type'] ?? null)->toBe('StatusType | PriorityType | null')
+            ->and($result->typeImports)->toBe(['./workbench/app/enums' => ['PriorityType', 'StatusType']]);
+    })->with([
+        'whenHas()' => [WarehouseReviewHasResource::class],
+        'whenAppended()' => [WarehouseReviewAppendedResource::class],
     ]);
 
     test('$this->accessor under a key no accessor shares carries its #[TsType] import', function () {
