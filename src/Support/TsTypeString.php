@@ -218,16 +218,23 @@ class TsTypeString
     }
 
     /**
-     * Whether a TypeScript type name occurs as its own token, not inside a longer identifier or a string literal.
+     * Whether a TypeScript type name occurs as its own token, not inside a longer identifier or a literal's text.
      *
      * Only a leading `.` disqualifies: `foo.StatusType` is a property read, while `StatusType.foo`
-     * reads a member of the type and so still names it. `'StatusType'` is a string, never the type.
+     * reads a member of the type and so still names it. `'StatusType'` is a string, never the type, and so is the
+     * text of a template literal; its `${…}` placeholders are types and still count. Each line is read on its own.
      */
     public function typeNameOccursIn(string $typeName, string $haystack): bool
     {
-        $unquoted = (string) preg_replace('/\'(?:[^\'\\\\]|\\\\.)*\'|"(?:[^"\\\\]|\\\\.)*"/', "''", $haystack);
+        $pattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($typeName, '/').'(?![A-Za-z0-9_$])/';
 
-        return preg_match('/(?<![A-Za-z0-9_$.])'.preg_quote($typeName, '/').'(?![A-Za-z0-9_$])/', $unquoted) === 1;
+        foreach (explode("\n", $haystack) as $line) {
+            if (preg_match($pattern, $this->typePositions($line)) === 1) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -296,5 +303,103 @@ class TsTypeString
     public function isVagueTsType(string $type): bool
     {
         return $type === 'object' || (str_contains($type, 'unknown') && ! str_contains($type, '{'));
+    }
+
+    /**
+     * One line of a type with its literals' text removed: a quoted string becomes `''`, and a template literal keeps
+     * only its `${…}` placeholders. A literal that never closes stays as written, so its quote hides nothing after it.
+     */
+    private function typePositions(string $line): string
+    {
+        $kept = '';
+        $length = strlen($line);
+
+        for ($offset = 0; $offset < $length;) {
+            $literal = $this->readLiteral($line, $offset);
+
+            if ($literal === null) {
+                $kept .= $line[$offset++];
+
+                continue;
+            }
+
+            [$offset, $positions] = $literal;
+            $kept .= $positions;
+        }
+
+        return $kept;
+    }
+
+    /**
+     * The quoted string or template literal opening at $offset, as its end offset and the type positions it keeps.
+     *
+     * @return array{int, string}|null null when no literal opens there, or it never closes on this line
+     */
+    private function readLiteral(string $line, int $offset): ?array
+    {
+        $quote = $line[$offset];
+
+        if (! in_array($quote, ["'", '"', '`'], true)) {
+            return null;
+        }
+
+        $placeholders = '';
+        $length = strlen($line);
+
+        for ($i = $offset + 1; $i < $length; $i++) {
+            if ($line[$i] === '\\') {
+                $i++;
+
+                continue;
+            }
+
+            if ($line[$i] === $quote) {
+                return [$i + 1, $quote === '`' ? ' '.$placeholders.' ' : "''"];
+            }
+
+            if ($quote === '`' && $line[$i] === '$' && ($line[$i + 1] ?? '') === '{') {
+                $end = $this->placeholderEnd($line, $i + 2);
+
+                if ($end === null) {
+                    return null;
+                }
+
+                $placeholders .= ' '.$this->typePositions(substr($line, $i + 2, $end - $i - 2)).' ';
+                $i = $end;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The offset of the `}` that closes a template placeholder whose type starts at $offset, or null when none does.
+     */
+    private function placeholderEnd(string $line, int $offset): ?int
+    {
+        $depth = 0;
+        $length = strlen($line);
+
+        for ($i = $offset; $i < $length; $i++) {
+            $literal = $this->readLiteral($line, $i);
+
+            if ($literal !== null) {
+                $i = $literal[0] - 1;
+
+                continue;
+            }
+
+            if ($line[$i] === '{') {
+                $depth++;
+            } elseif ($line[$i] === '}') {
+                if ($depth === 0) {
+                    return $i;
+                }
+
+                $depth--;
+            }
+        }
+
+        return null;
     }
 }

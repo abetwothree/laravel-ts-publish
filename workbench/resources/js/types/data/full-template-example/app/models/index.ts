@@ -49,6 +49,7 @@ export * from './release';
 export * from './review';
 export * from './service-desk';
 export * from './slug-post';
+export * from './stockroom';
 export * from './strict-composite-comment';
 export * from './strict-task-assignment';
 export * from './subscribed-team';

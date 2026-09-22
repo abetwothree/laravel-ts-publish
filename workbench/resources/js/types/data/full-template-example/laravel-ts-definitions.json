@@ -7596,6 +7596,83 @@
                 }
             ]
         },
+        "Workbench\\App\\Models\\Stockroom": {
+            "name": "Stockroom",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "name",
+                    "type": "string"
+                },
+                {
+                    "name": "phone",
+                    "type": "string | null"
+                },
+                {
+                    "name": "coordinate_data",
+                    "type": "string | null"
+                },
+                {
+                    "name": "status",
+                    "type": "string | null"
+                },
+                {
+                    "name": "color",
+                    "type": "number | null"
+                },
+                {
+                    "name": "priority",
+                    "type": "number | null"
+                },
+                {
+                    "name": "manager_id",
+                    "type": "number | null"
+                },
+                {
+                    "name": "primary_contact_id",
+                    "type": "number | null"
+                },
+                {
+                    "name": "secondary_contact_id",
+                    "type": "number | null"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "menu_config",
+                    "type": "MenuSettingsType | null"
+                },
+                {
+                    "name": "contact",
+                    "type": "User | MenuSettingsType | null"
+                },
+                {
+                    "name": "layout",
+                    "type": "{ manager: User | null; settings: MenuSettingsType | null }"
+                },
+                {
+                    "name": "manager",
+                    "type": "User | null"
+                },
+                {
+                    "name": "manager_count",
+                    "type": "number"
+                },
+                {
+                    "name": "manager_exists",
+                    "type": "boolean"
+                }
+            ]
+        },
         "Workbench\\App\\Models\\StrictCompositeComment": {
             "name": "StrictCompositeComment",
             "properties": [
@@ -15870,6 +15947,216 @@
                 {
                     "name": "summaries",
                     "type": "{ key: string; label: string }[]",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\StockroomExceptResource": {
+            "name": "StockroomExceptResource",
+            "properties": [
+                {
+                    "name": "name",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "phone",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "coordinate_data",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "status",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "color",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "priority",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "manager_id",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "primary_contact_id",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "secondary_contact_id",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "contact",
+                    "type": "User | MenuSettingsType | null",
+                    "optional": false
+                },
+                {
+                    "name": "layout",
+                    "type": "{ manager: User | null; settings: MenuSettingsType | null }",
+                    "optional": false
+                },
+                {
+                    "name": "manager",
+                    "type": "User | null",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\StockroomOnlyResource": {
+            "name": "StockroomOnlyResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "contact",
+                    "type": "User | MenuSettingsType | null",
+                    "optional": false
+                },
+                {
+                    "name": "layout",
+                    "type": "{ manager: User | null; settings: MenuSettingsType | null }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\StockroomPickResource": {
+            "name": "StockroomPickResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "contact",
+                    "type": "User | MenuSettingsType | null",
+                    "optional": false
+                },
+                {
+                    "name": "layout",
+                    "type": "{ manager: User | null; settings: MenuSettingsType | null }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\StockroomSpreadResource": {
+            "name": "StockroomSpreadResource",
+            "properties": [
+                {
+                    "name": "contact",
+                    "type": "User | MenuSettingsType | null",
+                    "optional": false
+                },
+                {
+                    "name": "layout",
+                    "type": "{ manager: User | null; settings: MenuSettingsType | null }",
+                    "optional": false
+                },
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\StockroomTrimResource": {
+            "name": "StockroomTrimResource",
+            "properties": [
+                {
+                    "name": "name",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "phone",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "coordinate_data",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "status",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "color",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "priority",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "manager_id",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "primary_contact_id",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "secondary_contact_id",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "contact",
+                    "type": "User | MenuSettingsType | null",
+                    "optional": false
+                },
+                {
+                    "name": "layout",
+                    "type": "{ manager: User | null; settings: MenuSettingsType | null }",
+                    "optional": false
+                },
+                {
+                    "name": "manager",
+                    "type": "User | null",
                     "optional": false
                 }
             ]

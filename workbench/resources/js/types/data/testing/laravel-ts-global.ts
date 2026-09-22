@@ -1309,6 +1309,33 @@ declare global {
             featured_image_url: string | null;
             is_pinned: boolean;
         }
+        /**
+         * Accessors that each name one model and a `#[TsType(import:)]` class, for resources that filter this model with
+         * only() and except().
+         */
+        export interface Stockroom {
+            // Columns
+            id: number;
+            name: string;
+            phone: string | null;
+            coordinate_data: string | null;
+            status: string | null;
+            color: number | null;
+            priority: number | null;
+            manager_id: number | null;
+            primary_contact_id: number | null;
+            secondary_contact_id: number | null;
+            created_at: string | null;
+            updated_at: string | null;
+            // Mutators
+            menu_config: MenuSettingsType | null;
+            contact: User | MenuSettingsType | null;
+            layout: { manager: User | null; settings: MenuSettingsType | null };
+            // Relations
+            manager: User | null;
+            manager_count: number;
+            manager_exists: boolean;
+        }
         export interface StrictCompositeComment {
             // Columns
             id: number;
@@ -4208,6 +4235,58 @@ declare global {
             widget_config_coalesce: WidgetConfigType;
             autocomplete: { value: number; label: string };
             summaries: { key: string; label: string }[];
+        }
+        /** Filters itself through `$this->except()`, dropping the one accessor that names only the `#[TsType]` class. */
+        export interface StockroomExceptResource {
+            name: string;
+            phone: string | null;
+            coordinate_data: string | null;
+            status: string | null;
+            color: number | null;
+            priority: number | null;
+            manager_id: number | null;
+            primary_contact_id: number | null;
+            secondary_contact_id: number | null;
+            created_at: string | null;
+            updated_at: string | null;
+            contact: workbench.app.models.User | MenuSettingsType | null;
+            layout: { manager: workbench.app.models.User | null; settings: MenuSettingsType | null };
+            manager: workbench.app.models.User | null;
+        }
+        /** Filters itself through `$this->only()`, keeping two accessors that each name a model and a `#[TsType]` class. */
+        export interface StockroomOnlyResource {
+            id: number;
+            contact: workbench.app.models.User | MenuSettingsType | null;
+            layout: { manager: workbench.app.models.User | null; settings: MenuSettingsType | null };
+        }
+        /** Filters its model through `$this->resource->only()`, keeping two accessors that each name a model and a `#[TsType]` class. */
+        export interface StockroomPickResource {
+            id: number;
+            contact: workbench.app.models.User | MenuSettingsType | null;
+            layout: { manager: workbench.app.models.User | null; settings: MenuSettingsType | null };
+        }
+        /** Spreads `$this->only()` over two accessors that each name a model and a `#[TsType]` class. */
+        export interface StockroomSpreadResource {
+            contact: workbench.app.models.User | MenuSettingsType | null;
+            layout: { manager: workbench.app.models.User | null; settings: MenuSettingsType | null };
+            id: number;
+        }
+        /** Filters its model through `$this->resource->except()`, dropping the one accessor that names only the `#[TsType]` class. */
+        export interface StockroomTrimResource {
+            name: string;
+            phone: string | null;
+            coordinate_data: string | null;
+            status: string | null;
+            color: number | null;
+            priority: number | null;
+            manager_id: number | null;
+            primary_contact_id: number | null;
+            secondary_contact_id: number | null;
+            created_at: string | null;
+            updated_at: string | null;
+            contact: workbench.app.models.User | MenuSettingsType | null;
+            layout: { manager: workbench.app.models.User | null; settings: MenuSettingsType | null };
+            manager: workbench.app.models.User | null;
         }
         /**
          * The guessed {Supplier}Collection class — must be tried before the bare SupplierResource

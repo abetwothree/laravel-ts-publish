@@ -5,7 +5,9 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastSettingsReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendsOverriddenReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LongerNameCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\QuotedCastReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TemplateCastReadResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
 use Workbench\App\Enums\Priority;
@@ -53,6 +55,11 @@ use Workbench\App\Http\Resources\RelationChainResource;
 use Workbench\App\Http\Resources\ResourceWrappedEnumResource;
 use Workbench\App\Http\Resources\SameBasenameModelTrioResource;
 use Workbench\App\Http\Resources\ServiceDeskResource;
+use Workbench\App\Http\Resources\StockroomExceptResource;
+use Workbench\App\Http\Resources\StockroomOnlyResource;
+use Workbench\App\Http\Resources\StockroomPickResource;
+use Workbench\App\Http\Resources\StockroomSpreadResource;
+use Workbench\App\Http\Resources\StockroomTrimResource;
 use Workbench\App\Http\Resources\TeamStatusAuditResource;
 use Workbench\App\Http\Resources\TernaryResource;
 use Workbench\App\Http\Resources\ToArrayCastsResource;
@@ -2720,6 +2727,22 @@ describe('ResourceTransformer imports for a read a #[TsCasts] override replaces'
             ->and(array_merge(...array_values($data->typeImports)))->toBe(['User']);
     });
 
+    test('keeps every import a later property needs after a template literal holding a quote', function () {
+        $data = (new ResourceTransformer(TemplateCastReadResource::class))->data();
+        $names = array_merge(...array_values($data->typeImports));
+        sort($names);
+
+        expect($data->properties['label']['type'])->toBe("`\${string}'s label`")
+            ->and($names)->toBe(['MenuSettingsType', 'StatusType', 'User']);
+    });
+
+    test('adds no #[TsType] import for a type that spells only a longer name containing it', function () {
+        $data = (new ResourceTransformer(LongerNameCastResource::class))->data();
+
+        expect($data->properties['menu_config']['type'])->toBe('MenuSettingsTypeV2 | null')
+            ->and($data->typeImports)->toBe([]);
+    });
+
     test('drops an import an override spells only inside a string literal', function () {
         $data = (new ResourceTransformer(QuotedCastReadResource::class))->data();
 
@@ -2727,4 +2750,21 @@ describe('ResourceTransformer imports for a read a #[TsCasts] override replaces'
             ->and($data->properties['settings']['type'])->toBe("'MenuSettingsType' | null")
             ->and($data->typeImports)->toBe([]);
     });
+});
+
+describe('ResourceTransformer imports after an only() or except() filter', function () {
+    // Each accessor names one model and a #[TsType] class; the filter keeps the model's channel and drops the import.
+    test('keeps the #[TsType] import of an accessor that also names a model', function (string $resource) {
+        $data = (new ResourceTransformer($resource))->data();
+
+        expect($data->properties['contact']['type'])->toBe('User | MenuSettingsType | null')
+            ->and($data->properties['layout']['type'])->toBe('{ manager: User | null; settings: MenuSettingsType | null }')
+            ->and($data->typeImports['@js/types/settings'] ?? null)->toBe(['MenuSettingsType']);
+    })->with([
+        '$this->resource->only()' => [StockroomPickResource::class],
+        '$this->resource->except()' => [StockroomTrimResource::class],
+        '$this->only()' => [StockroomOnlyResource::class],
+        'a spread of $this->only()' => [StockroomSpreadResource::class],
+        '$this->except()' => [StockroomExceptResource::class],
+    ]);
 });

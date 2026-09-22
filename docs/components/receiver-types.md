@@ -397,14 +397,18 @@ carried them. A key the resource's own `only()` or `except()` selects keeps only
 `directEnumFqcns` and `modelFqcns`, so a multi-class attribute's FQCNs, every enum after the first and every
 `#[TsType]` import are gone there. `ResourceTransformer::resolveMultiClassAccessorFqcns()` and
 `resolveMultiEnumAccessorFqcns()` import the classes and enums back by name, because each key that filter keeps is an
-attribute's own name, and the first of them restores a `#[TsType]` import too, but only for a key that kept no single
-model FQCN. The `Bulletin` resources pin each read beside a `Comment` or `User` token, `WarehouseSettingsResource` pins
-`$this->menu_config` under a key of its own, whose `MenuSettingsType` only the accessor's `#[TsType]` import supplies,
-and `WarehouseReviewHasResource` and `WarehouseReviewAppendedResource` pin both enums of `review_priority`; see
+attribute's own name. The first of them also restores each such key's `#[TsType]` import, before it skips a key whose
+model FQCN the filter kept, and only when the key's type still spells the name. The `Stockroom` resources pin that for
+an attribute naming one model and a `#[TsType]` class, through `$this->resource->only()`, `$this->resource->except()`,
+`$this->only()`, a spread of it and `$this->except()`. The `Bulletin` resources pin each read beside a `Comment` or
+`User` token, `WarehouseSettingsResource` pins `$this->menu_config` under a key of its own, whose `MenuSettingsType`
+only the accessor's `#[TsType]` import supplies, and `WarehouseReviewHasResource` and `WarehouseReviewAppendedResource`
+pin both enums of `review_priority`; see
 [accessor-body-analyzer § A getter that reads another model's accessor](accessor-body-analyzer.md#a-getter-that-reads-another-models-accessor).
 A resource `#[TsCasts]` override can replace the type such a read published. `ResourceTransformer::pruneOverriddenAnalysisImports()`
 then drops each model and `#[TsType]` import the analysis carried whose name neither a property type nor an extends
-clause still spells outside a string literal: `BulletinCastResource` overrides a `Comment` read and a `User` read and
+clause still spells outside the text of a string or template literal, where a template literal's `${…}` placeholders
+still count as types: `BulletinCastResource` overrides a `Comment` read and a `User` read and
 keeps only `User`, which its unoverridden `owner_list` still names. The test reads class basenames before aliasing, so
 two models that share a basename both stay imported while either is still spelled, and overriding the only read of one
 of them leaves its aliased import unused. That leftover predates the prune; it is the same at `7a55703d`.

@@ -449,6 +449,25 @@ describe('typeNameOccursIn', function () {
             ->and($s->typeNameOccursIn('User', "Pick<User, 'id' | 'name'>"))->toBeTrue()
             ->and($s->typeNameOccursIn('User', "'User' | User"))->toBeTrue();
     });
+
+    test('typeNameOccursIn() reads a template literal\'s placeholders and skips its text', function (string $haystack, string $name, bool $found) {
+        expect($this->service->typeNameOccursIn($name, $haystack))->toBe($found);
+    })->with([
+        'an apostrophe, then a model' => ["`\${string}'s label`\nPick<User, 'id' | 'name'> | null", 'User', true],
+        'an apostrophe, then an enum' => ["`\${string}'s label`\nStatusType | null\nPick<User, 'id'> | null", 'StatusType', true],
+        'an apostrophe, then a #[TsType] class' => ["`\${string}'s label`\nMenuSettingsType | null", 'MenuSettingsType', true],
+        'feet and inches' => ["`\${number}'\${number}\"`\nPick<User, 'id' | 'name'> | null", 'User', true],
+        'an inch mark, then a quoted key' => ["`\${number}\"`\n{ \"a-b\": User | null }\n{ \"c-d\": number }", 'User', true],
+        'an escaped single quote' => ["'it\\'s' | 'b'\nUser", 'User', true],
+        'an escaped double quote' => ["\"say \\\"hi\\\"\" | \"b\"\nUser", 'User', true],
+        'no quote at all' => ["`\${string}-label`\nUser", 'User', true],
+        'a placeholder names the type' => ['`${Priority}-label`', 'Priority', true],
+        'a quoted literal inside a placeholder' => ["`\${'User' | 'Admin'}-label`", 'User', false],
+        'the literal text names it' => ['`User-${string}`', 'User', false],
+        'a template literal that never closes' => ["`\${string}'s label\nUser", 'User', true],
+        'a template literal that never closes on its own line' => ["`\${string}'s label\nUser | `x`", 'User', true],
+        'a literal that never closes, before the name on its line' => ["`\${string}'s label | User", 'User', true],
+    ]);
 });
 
 describe('isUnknownOnly', function () {

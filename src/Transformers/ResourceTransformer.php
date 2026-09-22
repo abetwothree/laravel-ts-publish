@@ -725,15 +725,17 @@ class ResourceTransformer extends CoreTransformer
         $modelClass = $this->modelClass;
 
         foreach (array_keys($this->properties) as $propName) {
+            $tsInfo = $resolver->resolveAttribute($modelClass, $propName);
+
+            // An only()/except() filter keeps a key's single model FQCN but drops its #[TsType] imports, so they are
+            // registered before the skip below.
+            $this->registerModelAttributeCustomImports($propName, $tsInfo['customImports']);
+
             // Skip when inline analysis already owns this property's FQCNs — letting both maps populate here
             // would double the merged queue and break its prefix alignment with real occurrences.
             if (isset($this->propertyModelFqcns[$propName]) || isset($this->propertyInlineModelFqcns[$propName])) {
                 continue;
             }
-
-            $tsInfo = $resolver->resolveAttribute($modelClass, $propName);
-
-            $this->registerModelAttributeCustomImports($propName, $tsInfo['customImports']);
 
             if ($tsInfo['classFqcns'] === []) {
                 continue;
@@ -763,7 +765,7 @@ class ResourceTransformer extends CoreTransformer
     {
         foreach ($imports as $path => $names) {
             foreach ($names as $name) {
-                if (str_contains($this->properties[$propName]['type'] ?? '', $name)) {
+                if (TsTypeString::typeNameOccursIn($name, $this->properties[$propName]['type'] ?? '')) {
                     $this->customImports[$path][] = $name;
                 }
             }

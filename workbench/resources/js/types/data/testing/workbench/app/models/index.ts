@@ -100,6 +100,8 @@ export * from './service-desk';
 export * from './service-desk_meta';
 export * from './slug-post';
 export * from './slug-post_meta';
+export * from './stockroom';
+export * from './stockroom_meta';
 export * from './strict-composite-comment';
 export * from './strict-composite-comment_meta';
 export * from './strict-task-assignment';
