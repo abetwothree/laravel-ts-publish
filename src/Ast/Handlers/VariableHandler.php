@@ -198,7 +198,7 @@ final class VariableHandler implements ExpressionHandler
 
     /**
      * Analyze `$variable->map(fn (TypedClass $item) => [...])` using the closure's typed first param
-     * as the element model, wrapping the body result as `elementType[]`.
+     * as the element model, bound to that param for the body, wrapping the body result as `elementType[]`.
      *
      * Returns null when there's no typed Model parameter, deferring to the generic method handler.
      *
@@ -239,9 +239,15 @@ final class VariableHandler implements ExpressionHandler
 
         /** @var class-string<Model> $paramClass */
         $previousRelationModel = $scope->closureRelationModelClass;
+        $previousVarModelBindings = $scope->varModelBindings;
 
         try {
             $scope->closureRelationModelClass = $paramClass;
+
+            // ReceiverClassResolver reads a parameter from varModelBindings only, so a chain from it needs this entry.
+            if ($firstParam->var instanceof Variable && is_string($firstParam->var->name)) {
+                $scope->varModelBindings[$firstParam->var->name] = $paramClass;
+            }
 
             $returnExprs = $this->resolveClosureReturnExpressions($closureArg);
 
@@ -252,6 +258,7 @@ final class VariableHandler implements ExpressionHandler
             };
         } finally {
             $scope->closureRelationModelClass = $previousRelationModel;
+            $scope->varModelBindings = $previousVarModelBindings;
         }
 
         if ($bodyResult === null || $bodyResult['type'] === 'unknown') {

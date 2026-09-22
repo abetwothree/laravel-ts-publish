@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ExpressionDispatcher;
@@ -30,9 +31,11 @@ use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\HelperCallResource;
+use Workbench\App\Http\Resources\PostCommentAuthorsResource;
 use Workbench\App\Http\Resources\TeamSubscriberResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Order;
+use Workbench\App\Models\Post;
 use Workbench\App\Models\SubscribedTeam;
 use Workbench\App\Models\User;
 
@@ -337,6 +340,54 @@ it('reads $variable->map(callback: …) by name', function () {
     $engine = new VariableHandlersLoopEngine([new VariableHandler], $scope);
 
     expect((new VariableHandler)->resolve($expr, $scope, $engine))->toBe(['type' => 'string[]', 'optional' => false]);
+});
+
+// ReceiverClassResolver reads varModelBindings, not closureRelationModelClass, so a chain from the parameter needs it.
+it('resolves a nullsafe chain from a typed map-closure parameter', function () {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(PostCommentAuthorsResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+    expect($props['authors']['type'])->toBe('({ id: number; who: string | null; who_or: string | null })[]');
+});
+
+it('resolves a nullsafe chain from an untyped map-closure parameter its receiver names the element of', function () {
+    $scope = new AnalysisScope(new ReflectionClass(PostCommentAuthorsResource::class), Post::class);
+    $scope->closureRelationModelClass = Comment::class;
+    $scope->varCollectionBindings['comments'] = ['type' => 'Comment[]', 'modelFqcn' => Comment::class];
+    $expr = new AstParser()->parseSource('<?php $comments->map(fn ($comment) => $comment->user?->name);')[0]->expr;
+    $engine = new ResourceAstAnalyzer(new ReflectionClass(PostCommentAuthorsResource::class), Post::class, 'toArray', null, $scope);
+
+    expect((new VariableHandler)->resolve($expr, $scope, $engine))->toBe(['type' => '(string | null)[]', 'optional' => false]);
+});
+
+it('binds the map-closure parameter over an outer binding of the same name, only while the body resolves', function () {
+    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
+    $scope->varModelBindings['comment'] = User::class;
+    $closure = new ArrowFunction([
+        'params' => [new Param(new Variable('comment'), type: new Name(Comment::class))],
+        'expr' => new Variable('comment'),
+    ]);
+    $expr = new MethodCall(new Variable('rows'), 'map', [new Arg($closure)]);
+    $engine = new VariableHandlersLoopEngine([new VariableHandler], $scope);
+
+    expect((new VariableHandler)->resolve($expr, $scope, $engine))
+        ->toBe(['type' => 'Comment[]', 'optional' => false, 'modelFqcn' => Comment::class])
+        ->and($scope->varModelBindings)->toBe(['comment' => User::class])
+        ->and($scope->closureRelationModelClass)->toBeNull();
+});
+
+it('restores the map-closure bindings when the body throws', function () {
+    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
+    $scope->varModelBindings['comment'] = User::class;
+    $closure = new ArrowFunction([
+        'params' => [new Param(new Variable('comment'), type: new Name(Comment::class))],
+        'expr' => new PropertyFetch(new Variable('comment'), 'id'),
+    ]);
+    $expr = new MethodCall(new Variable('rows'), 'map', [new Arg($closure)]);
+
+    expect(fn () => (new VariableHandler)->resolve($expr, $scope, variableHandlersThrowingEngine()))
+        ->toThrow(RuntimeException::class)
+        ->and($scope->varModelBindings)->toBe(['comment' => User::class])
+        ->and($scope->closureRelationModelClass)->toBeNull();
 });
 
 it('narrows the forwarding target from the subject even when modelClass is null', function () {

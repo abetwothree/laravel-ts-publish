@@ -1055,11 +1055,10 @@ collects the arms via `collectInlineArraySpreadArms()` and builds each one with
   checks `$varModelBindings` first, then returns `null` for a `$var` bound only in
   `$varCollectionBindings` — a to-many `whenLoaded` param holding the whole collection, not one
   model — else falls back to `$closureRelationModelClass`.
-  Every `->map()` closure element actually resolves through that fallback, typed or not:
-  `VariableHandler::analyzeVariableMapCall()` sets only `$closureRelationModelClass` for the element and never
-  populates `$varModelBindings` (`members_model_spread` pins the fallback path, not the explicit-
-  binding one). `$this->toArray()` is excluded by name: it is the resource's own method and
-  `InlineArrayHandler::isKnownArraySpreadShape()` already flattens it.
+  A `->map()` closure's own parameter takes the first branch: `RelationCollectionChainHandler` and
+  `VariableHandler::analyzeVariableMapCall()` both bind it in `$varModelBindings`, typed or not
+  (`members_model_spread` pins the variable-receiver one). `$this->toArray()` is excluded by name: it is the
+  resource's own method and `InlineArrayHandler::isKnownArraySpreadShape()` already flattens it.
 - **A collection arm** — the `null` `spreadModelToArrayFqcn()` returns for a `$varCollectionBindings`
   name is a *decline*, not a drop: `InlineArrayHandler::spreadCollectionToArrayFqcn()` picks the same expression up and
   resolves it to the binding's element model. It emits `Record<number, {Model}>`.

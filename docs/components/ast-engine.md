@@ -188,7 +188,7 @@ itself reaches the same instance as `$this->scope`.
 | `closureRelationModelClass` | `class-string<Model>\|null` | Related model set while analyzing a `whenLoaded` closure, so `$variable->prop`/`->method()` inside it resolve. |
 | `closureParamExprBindings` | `array<string, Expr>` | Closure parameter names bound to the `$this->prop` expression found in the surrounding `when()` condition, so `EnumResource::make($status)` resolves like `EnumResource::make($this->status)`. |
 | `varClassBindings` | `array<string, non-empty-list<class-string>>` | Variables an `instanceof` guard or ternary has proven to hold a class. Read **first** in `ReceiverClassResolver::fromVariable()`. What that ordering actually buys today is precedence over the `closureParamExprBindings ?? localVarBindings` fallback, since a guarded variable is normally bound by a plain local assignment; sitting above `varModelBindings` is the same concern for a narrowed closure param or loop variable, and is motivating rather than currently proven. Scoped: `ClosureHandler` and `TernaryHandler` save and restore it around the body they narrow for. See [Narrowing](#narrowing). |
-| `varModelBindings` | `array<string, class-string<Model>>` | Closure params / loop vars bound to a model class (`whenLoaded` params, relation-chain `map()` params, `foreach` over a many-relation), so `$var`, `$var->prop`, `$var->method()` resolve against that model. Scoped: writers save and restore around the body. Also seeded, via `AstEngine::bindingsFor()`, from every `Model`-typed parameter of the located method — a route-bound `Post $post`, a metadata provider's `Model $model` — bound to the parameter's **declared** type. |
+| `varModelBindings` | `array<string, class-string<Model>>` | Closure params / loop vars bound to a model class (`whenLoaded` params, `map()` params on a relation chain or a variable, `foreach` over a many-relation), so `$var`, `$var->prop`, `$var->method()` resolve against that model. Scoped: writers save and restore around the body. Also seeded, via `AstEngine::bindingsFor()`, from every `Model`-typed parameter of the located method — a route-bound `Post $post`, a metadata provider's `Model $model` — bound to the parameter's **declared** type. |
 | `varCollectionBindings` | `array<string, array{type: string, modelFqcn: class-string<Model>}>` | Closure params bound to a whole relation collection rather than one element — a to-many `whenLoaded` param. Read for a bare return of the param, and as the element-model fallback for an untyped `->map()` closure param. |
 | `varValueBindings` | `array<string, ValueExpressionResult>` | Closure params bound to an already-resolved *value* rather than to a class — a `collect(...)->map()` param, whose element type the pipeline read off the `collect()` argument before descending. A bare read of the param resolves straight to it, checked after `varModelBindings` and `varCollectionBindings`, which name a model instead. Scoped: `CollectionPipelineHandler` saves and restores around the map body. |
 | `localVarBindings` | `array<string, Expr>` | Top-level `$var = expr;` bindings for the method last analyzed, so a bare `Variable` value expression resolves through its bound expression instead of degrading to `unknown`. Only variables written exactly once are recorded; `analyzeThisMethodSpread()` saves and restores this per method. |
@@ -215,7 +215,7 @@ Every writer hand-rolls this; there is no helper. The current set:
 | `TernaryHandler::narrowedArmResult()` | `varClassBindings` for a narrowed variable; `modelClass` + `forwardsUndeclaredMembersTo` for a narrowed `$this->resource` |
 | `RelationCollectionChainHandler` | `closureRelationModelClass` around `pluck()`; that plus `varModelBindings` around a `map()` closure |
 | `CollectionPipelineHandler::resolveMapBody()` | `varValueBindings` around a `collect(...)->map()` closure |
-| `VariableHandler::analyzeVariableMapCall()` | `closureRelationModelClass` around a `$var->map()` closure |
+| `VariableHandler::analyzeVariableMapCall()` | `closureRelationModelClass` plus `varModelBindings` around a `$var->map()` closure |
 | `VariableHandler`, `ReceiverClassResolver::fromVariable()` | the `resolvingLocalVars` re-entrancy guard |
 
 **The rule: every mutation must sit inside the `try` whose `finally` restores it.** Reviews during the
@@ -240,7 +240,7 @@ inside the `try`. Prefer restoring the whole map over unsetting the single key y
 
 ### How `varModelBindings` gets populated, and how scoping holds
 
-`varModelBindings` is populated from three sources, each scoped to the body it binds:
+`varModelBindings` is populated from four sources, each scoped to the body it binds:
 
 - **`whenLoaded('relation', fn ($x) => ...)`** (`ConditionalMethodHandler::analyzeWhenLoaded()`) —
   when `relation` resolves to a *single*-model relation, `$x` is bound to that model for the closure
@@ -252,14 +252,19 @@ inside the `try`. Prefer restoring the whole map over unsetting the single key y
 - **A relation-chain `map()`** (`$this->{manyRelation}->take(5)->map(fn ($m) => ...)`, handled in
   `RelationCollectionChainHandler`) — `$m` is bound to the relation's element model for the map
   closure's body.
+- **A variable-receiver `map()`** (`$rows->map(fn (Comment $c) => ...)`, handled in
+  `VariableHandler::analyzeVariableMapCall()`) — `$c` is bound to its type hint's model or, untyped, to the
+  element model of the receiver's to-many `whenLoaded` binding. `ReceiverClassResolver::fromVariable()` reads
+  `varModelBindings`, never `closureRelationModelClass`, so without this entry a chain such as `$c->user?->name`
+  would find no receiver. `PostCommentAuthorsResource` pins it.
 - **A top-level `foreach ($this->{manyRelation} as $item) { ... }`** (`ResourceAstAnalyzer::
   bindForeachLoopVariables()`) — `$item` is bound to the relation's element model for the rest of the
   method's analysis (mirrors `localVarBindings`' method-wide scope, restored around a
   `...$this->method()` spread the same way).
 
-The two closure writers follow the save/restore discipline described above: snapshot the map (or the
+The three closure writers follow the save/restore discipline described above: snapshot the map (or the
 one key being overwritten), mutate it for the nested body's analysis, then restore the snapshot. The
-third writer does not — `bindForeachLoopVariables()` assigns `varModelBindings[$stmt->valueVar->name]`
+`foreach` writer does not — `bindForeachLoopVariables()` assigns `varModelBindings[$stmt->valueVar->name]`
 outright, with no snapshot and no restore, because its binding is method-wide by design. The shadowing
 guarantee survives that exception: a closure parameter that shadows an outer variable of the same name
 still resolves against its **own** binding and can never leak into, or be leaked into by, the outer
@@ -273,7 +278,7 @@ a `map(fn ($member) => $member)` closure param share a name, and each site resol
 saves `$scope->localVarBindings`, unsets any entry whose name matches one of the closure's own
 parameters, analyzes the body, and restores the snapshot in a `finally`. Without that suppression, a
 closure parameter shadowing an outer local, inside a construct with no scoped binding of its own (none
-of the three `varModelBindings` sources above — e.g. `when()`'s condition isn't a `$this->prop` test),
+of the `varModelBindings` sources above — e.g. `when()`'s condition isn't a `$this->prop` test),
 would resolve through the outer `localVarBindings` entry when analyzing the closure body, turning an
 honest `unknown` into a confidently wrong type. `ShadowedClosureParamResource` in the workbench pins
 this: its `$slug = $this->slug;` followed by a `when()` call whose closure param is also named `$slug`,

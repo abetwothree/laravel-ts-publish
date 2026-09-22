@@ -190,6 +190,7 @@
     "app\/Http\/Resources\/PermissionsSpreadResource.php",
     "app\/Http\/Resources\/PostAttachmentFilterResource.php",
     "app\/Http\/Resources\/PostCollection.php",
+    "app\/Http\/Resources\/PostCommentAuthorsResource.php",
     "app\/Http\/Resources\/PostEnumTrioResource.php",
     "app\/Http\/Resources\/PostFlatCollection.php",
     "app\/Http\/Resources\/PostResource.php",

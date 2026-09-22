@@ -3622,6 +3622,14 @@ declare global {
         export interface PostCollection {
             data: PostResource[];
         }
+        /**
+         * A map closure over a relation held in an untyped local, whose parameter names its model. A one-step read and a
+         * nullsafe chain from that parameter must both resolve against it, with and without an Elvis default.
+         */
+        export interface PostCommentAuthorsResource {
+            id: number;
+            authors: ({ id: number; who: string | null; who_or: string | null })[];
+        }
         /** Three enum members, two of them the same enum: the import queue must carry three entries, not two. */
         export interface PostEnumTrioResource {
             id: number;

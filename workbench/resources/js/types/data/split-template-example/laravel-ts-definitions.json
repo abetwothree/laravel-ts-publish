@@ -13825,6 +13825,21 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\PostCommentAuthorsResource": {
+            "name": "PostCommentAuthorsResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "authors",
+                    "type": "({ id: number; who: string | null; who_or: string | null })[]",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\PostEnumTrioResource": {
             "name": "PostEnumTrioResource",
             "properties": [
