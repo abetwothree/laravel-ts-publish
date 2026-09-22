@@ -18,8 +18,11 @@ class TsTypeString
         'null', 'undefined', 'object', 'unknown', 'any', 'never', 'void',
     ];
 
-    /** A character TypeScript reads as part of an identifier: Unicode ID_Continue, `$`, ZWNJ and ZWJ. */
-    protected const string IDENTIFIER_CHARACTER = '[\p{ID_Continue}$\x{200C}\x{200D}]';
+    /**
+     * A character TypeScript reads as part of an identifier: Unicode ID_Continue, `$`, ZWNJ and ZWJ, plus U+30FB and
+     * U+FF65, which joined ID_Continue in Unicode 15.1 and so are missing from an older PCRE2's tables.
+     */
+    protected const string IDENTIFIER_CHARACTER = '[\p{ID_Continue}$\x{200C}\x{200D}\x{30FB}\x{FF65}]';
 
     /**
      * The same set for a PCRE2 before 10.40, which lacks `\p{ID_Continue}`: its categories and Other_ID code points,
@@ -243,8 +246,10 @@ class TsTypeString
         $pattern = '/(?<!'.$class.')(?<!'.$class.'\.)'.preg_quote($typeName, '/').'(?!'.$class.')/u';
 
         foreach ($types as $type) {
-            // A haystack PCRE cannot read (invalid UTF-8) keeps the name rather than drops its import.
-            if (preg_match($pattern, $this->decodeIdentifierEscapes($type)) !== 0) {
+            $decoded = $this->decodeIdentifierEscapes($type);
+
+            // A type PCRE cannot decode or read (invalid UTF-8) keeps the name rather than drops its import.
+            if ($decoded === null || preg_match($pattern, $decoded) !== 0) {
                 return true;
             }
         }
@@ -332,26 +337,24 @@ class TsTypeString
     }
 
     /**
-     * Spell each `\uXXXX` or `\u{X…}` escape of an identifier character as that character, as TypeScript reads it.
+     * Spell each `\uXXXX` or `\u{X…}` escape as the character it names, as TypeScript reads one in a name; null when
+     * PCRE cannot run the pattern.
      */
-    protected function decodeIdentifierEscapes(string $type): string
+    protected function decodeIdentifierEscapes(string $type): ?string
     {
         if (! str_contains($type, '\\u')) {
             return $type;
         }
 
         $pattern = '/\\\\u(?:\{([0-9A-Fa-f]+)\}|([0-9A-Fa-f]{4}))/';
-        $class = $this->identifierCharacter();
 
-        return preg_replace_callback($pattern, static function (array $match) use ($class): string {
+        return preg_replace_callback($pattern, static function (array $match): string {
             $codePoint = hexdec($match[1] !== '' ? $match[1] : $match[2]);
             $char = is_int($codePoint) && $codePoint <= 0x10FFFF ? mb_chr($codePoint, 'UTF-8') : false;
 
-            // An escape of any other character stays as written, since TypeScript then reads `u002E…` as the name;
-            // a membership test PCRE cannot run decodes it, which is the keep direction.
-            return $char !== false && preg_match('/^'.$class.'$/u', $char) !== 0
-                ? $char
-                : $match[0];
-        }, $type) ?? $type;
+            // Every escape is decoded whatever this PCRE2's tables hold: one left as written runs its digits into the
+            // next name. An escape of no code point (a surrogate, past U+10FFFF) stays; TypeScript rejects it anyway.
+            return $char === false ? $match[0] : $char;
+        }, $type);
     }
 }

@@ -9,7 +9,7 @@ beforeEach(function () {
 });
 
 /**
- * A TsTypeString on a PCRE2 without `\p{ID_Continue}`, as before 10.40, exposing its patterns and escape decoder.
+ * A TsTypeString on a PCRE2 without `\p{ID_Continue}`, as before 10.40, exposing the pattern its probe settles on.
  */
 function olderPcreTsTypeString(): TsTypeString
 {
@@ -34,32 +34,46 @@ function olderPcreTsTypeString(): TsTypeString
         {
             return self::IDENTIFIER_CHARACTER_FALLBACK;
         }
-
-        /**
-         * Exposes the escape decoder.
-         */
-        public function decode(string $type): string
-        {
-            return $this->decodeIdentifierEscapes($type);
-        }
     };
 }
 
 /**
- * A TsTypeString whose identifier-character pattern PCRE cannot compile at all, exposing its escape decoder.
+ * A TsTypeString on a PCRE2 whose tables hold only ASCII identifier characters, as older tables lack newer ones.
+ */
+function asciiTablesTsTypeString(): TsTypeString
+{
+    return new class extends TsTypeString
+    {
+        protected const string IDENTIFIER_CHARACTER = '[A-Za-z0-9_$\x{200C}\x{200D}]';
+
+        protected static ?string $identifierCharacter = null;
+    };
+}
+
+/**
+ * A TsTypeString whose identifier-character pattern PCRE cannot compile at all.
  */
 function uncompilableTsTypeString(): TsTypeString
 {
     return new class extends TsTypeString
     {
         protected static ?string $identifierCharacter = '[\p{ID_Continue_Missing}]';
+    };
+}
 
+/**
+ * A TsTypeString whose escape decoder fails, as it does when PCRE cannot run its pattern.
+ */
+function undecodableTsTypeString(): TsTypeString
+{
+    return new class extends TsTypeString
+    {
         /**
-         * Exposes the escape decoder.
+         * Fails as the decoder does when PCRE cannot run its pattern.
          */
-        public function decode(string $type): string
+        protected function decodeIdentifierEscapes(string $type): ?string
         {
-            return $this->decodeIdentifierEscapes($type);
+            return null;
         }
     };
 }
@@ -665,8 +679,9 @@ describe('typeNameOccursIn', function () {
         'an escaped #[TsType] name' => [chr(92).'u004DenuSettingsType', 'MenuSettingsType', true],
         'an escape after an escaped backslash' => [chr(92).chr(92).'u0055ser', 'User', true],
         'an escape inside a string literal' => ["'".chr(92)."u0055ser'", 'User', true],
-        'an escape of a dot, which TypeScript reads as the name u002EUser' => [chr(92).'u002EUser', 'u002EUser', true],
-        'an escape of a dot is not the name' => [chr(92).'u002EUser', 'User', false],
+        'an escape of a dot, decoded like any other character' => [chr(92).'u002EUser', 'User', true],
+        'an escape of a space, decoded like any other character' => [chr(92).'u0020User', 'User', true],
+        'the name TypeScript reads after an escaped dot, invalid syntax' => [chr(92).'u002EUser', 'u002EUser', false],
         'an escape past the last code point' => [chr(92).'u{110000}User', 'User', true],
         'a lone surrogate escape' => [chr(92).'uD800User', 'uD800User', true],
         'an escape that joins the name to a longer identifier' => [chr(92).'u0041User', 'User', false],
@@ -717,13 +732,36 @@ describe('typeNameOccursIn', function () {
         expect($chosen)->toBe(@preg_match('/'.$preferred.'/u', '') !== false ? $preferred : $fallback);
     });
 
-    test('typeNameOccursIn() falls back, quietly and once, on a PCRE2 without `\p{ID_Continue}`', function () {
+    test('typeNameOccursIn() falls back quietly on a PCRE2 without `\p{ID_Continue}`', function () {
         $older = olderPcreTsTypeString();
 
         // Laravel's error handler rethrows a warning, so an unsilenced probe would fail here rather than fall back.
         expect($older->chosen())->toBe($older->fallback())
-            ->and($older->chosen())->toBe($older->chosen())
             ->and($older->typeNameOccursIn('User', 'User | null'))->toBeTrue();
+    });
+
+    test('typeNameOccursIn() probes its PCRE2 once, across calls and instances', function () {
+        $older = olderPcreTsTypeString();
+        (new ReflectionProperty($older, 'identifierCharacter'))->setValue(null, null);
+        // Each probe of the missing property raises one silenced warning, which a handler still sees.
+        $probes = 0;
+        set_error_handler(static function () use (&$probes): bool {
+            $probes++;
+
+            return true;
+        });
+
+        try {
+            foreach ([$older, olderPcreTsTypeString(), olderPcreTsTypeString()] as $instance) {
+                $instance->typeNameOccursIn('User', 'User | null');
+                $instance->typeNameOccursIn('Post', chr(92).'u0050ost');
+            }
+        } finally {
+            restore_error_handler();
+        }
+
+        expect($probes)->toBe(1)
+            ->and($older->chosen())->toBe($older->fallback());
     });
 
     test('the stand-in pattern holds just the identifier characters', function (int $codePoint, bool $inside) {
@@ -780,25 +818,42 @@ describe('typeNameOccursIn', function () {
         'an escape of a katakana voiced sound mark at the start' => [chr(92).'u309BUser', "\u{309b}User", true],
         'an escape of a katakana middle dot in the middle' => ['User'.chr(92).'u{30FB}Kind', "User\u{30fb}Kind", true],
         'an escape of a halfwidth katakana middle dot at the end' => ['User'.chr(92).'uFF65', "User\u{ff65}", true],
-        'an escape of a dot, which TypeScript reads as the name u002EUser' => [chr(92).'u002EUser', 'u002EUser', true],
-        'an escape of a dot is not the name' => [chr(92).'u002EUser', 'User', false],
+        'an escape of a dot, decoded like any other character' => [chr(92).'u002EUser', 'User', true],
+        'an escape of a space, decoded like any other character' => [chr(92).'u0020User', 'User', true],
+        'the name TypeScript reads after an escaped dot, invalid syntax' => [chr(92).'u002EUser', 'u002EUser', false],
     ]);
 
-    test('typeNameOccursIn() keeps the name, and decodes an escape, when PCRE cannot run its pattern', function () {
-        $broken = uncompilableTsTypeString();
-        // Each call raises a compile warning, which Laravel's error handler would rethrow.
+    test('typeNameOccursIn() decodes every escape on any tables', function (string $haystack, string $name) {
+        expect(asciiTablesTsTypeString()->typeNameOccursIn($name, $haystack))->toBeTrue()
+            ->and(olderPcreTsTypeString()->typeNameOccursIn($name, $haystack))->toBeTrue()
+            ->and($this->service->typeNameOccursIn($name, $haystack))->toBeTrue();
+    })->with([
+        'a katakana middle dot inside the name' => ['Us'.chr(92).'u{30FB}er | null', "Us\u{30fb}er"],
+        'a halfwidth katakana middle dot ending the name' => ['User'.chr(92).'uFF65 | null', "User\u{ff65}"],
+        'a CJK Extension I ideograph inside the name' => ['Us'.chr(92).'u{2EBF0}er | null', "Us\u{2ebf0}er"],
+        'a space before the name' => [chr(92).'u0020User', 'User'],
+    ]);
+
+    test('typeNameOccursIn() joins U+30FB and U+FF65 to a name on any PCRE2', function (string $haystack) {
+        expect($this->service->typeNameOccursIn('User', $haystack))->toBeFalse()
+            ->and(olderPcreTsTypeString()->typeNameOccursIn('User', $haystack))->toBeFalse();
+    })->with([
+        'a katakana middle dot' => ["User\u{30fb}Kind"],
+        'a halfwidth katakana middle dot' => ["User\u{ff65}"],
+    ]);
+
+    test('typeNameOccursIn() keeps the name when PCRE cannot run its pattern or its escape decoder', function () {
+        // An uncompilable pattern raises a warning on each call, which Laravel's error handler would rethrow.
         set_error_handler(static fn (): bool => true);
 
         try {
-            $kept = $broken->typeNameOccursIn('User', 'string');
-            $decoded = $broken->decode(chr(92).'u0055ser');
+            $unmatched = uncompilableTsTypeString()->typeNameOccursIn('User', 'string');
         } finally {
             restore_error_handler();
         }
 
-        expect($kept)->toBeTrue()
-            ->and($decoded)->toBe('User')
-            ->and(olderPcreTsTypeString()->decode(chr(92).'u002EUser'))->toBe(chr(92).'u002EUser');
+        expect($unmatched)->toBeTrue()
+            ->and(undecodableTsTypeString()->typeNameOccursIn('User', chr(92).'u0055ser'))->toBeTrue();
     });
 
     test('typeNameOccursIn() reads a deeply nested template literal in one pass', function () {
