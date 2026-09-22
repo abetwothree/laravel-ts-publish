@@ -516,6 +516,16 @@ expect something vague rather than a shape, and do not rely on the exact token.
 The spread form is the supported one, and it is typed: `[...$user->toArray(), 'flag' => true]` publishes
 `Omit<User, 'flag'> & { flag: boolean }`. Reach for that, or name the keys you want explicitly.
 
+### A model spread inside a `collect()->map()` closure names the wrong model, or none
+
+`collect($this->comments)->map(fn (Comment $c) => [...$c->toArray(), 'flag' => true])` binds `$c` to the
+pipeline's element *type*, which carries no model. `InlineArrayHandler::spreadModelToArrayFqcn()` then falls back to
+`AnalysisScope::$closureRelationModelClass`, the model an enclosing `whenLoaded()` closure or relation `map()` set.
+At the top level there is none, so the spread's columns are dropped and only `{ flag: boolean }` publishes. Inside
+`whenLoaded('author', …)` the fallback is `User`, so the element publishes as `Omit<User, 'flag'> & …` although
+it is a `Comment`. It is right only when the enclosing model happens to be the element's. A relation chain,
+`$this->comments->map(fn ($c) => [...$c->toArray(), 'flag' => true])`, binds the model and types the spread.
+
 ## Deliberate non-goals
 
 Absent on purpose. Do not "fix" these without raising it first.

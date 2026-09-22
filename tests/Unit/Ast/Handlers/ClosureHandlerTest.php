@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ClosureHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use Illuminate\Http\Request;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
@@ -16,6 +17,7 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Param;
 use PhpParser\Node\Stmt\Return_;
+use Workbench\App\Models\User;
 
 /**
  * A throwaway scope for tests that never inspect its own subject/model.
@@ -102,6 +104,35 @@ final class ClosureHandlerScopeSpyEngine implements ExpressionEngine
         $this->shadowedNameWasAbsent = ! array_key_exists($this->shadowedName, $this->scope->localVarBindings);
 
         return $this->result;
+    }
+
+    public function spreadAnalysis(string $methodName): ?MethodAnalysis
+    {
+        throw new RuntimeException('spreadAnalysis() must not be called in this case');
+    }
+
+    public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
+    {
+        throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
+    }
+}
+
+/**
+ * An engine that captures every name-keyed binding table at the moment the body resolves.
+ */
+final class ClosureHandlerNameTablesSpyEngine implements ExpressionEngine
+{
+    /** @var array<string, array<array-key, mixed>> */
+    public array $seen = [];
+
+    public function __construct(private AnalysisScope $scope) {}
+
+    /** @return array<string, mixed> */
+    public function resolve(Expr $expr): array
+    {
+        $this->seen = $this->scope->nameBindings();
+
+        return ['type' => 'string', 'optional' => false];
     }
 
     public function spreadAnalysis(string $methodName): ?MethodAnalysis
@@ -230,6 +261,30 @@ it('restores the suppressed binding in a finally even when body resolution throw
 
     expect($scope->localVarBindings)->toBe(['slug' => $outerBoundExpr])
         ->and($scope->varClassBindings)->toBe(['slug' => [stdClass::class]]);
+});
+
+// Restoring only the two tables the handler once wrote would leave a nested release in force for every later key.
+it('releases an unclaimed parameter from every name-keyed table, then restores every table', function () {
+    $scope = closureHandlerTestScope();
+    $outer = new Variable('outerSource');
+
+    foreach (['slug', 'kept'] as $name) {
+        $scope->closureParamExprBindings[$name] = $outer;
+        $scope->varClassBindings[$name] = [stdClass::class];
+        $scope->varModelBindings[$name] = User::class;
+        $scope->varCollectionBindings[$name] = ['type' => 'User[]', 'modelFqcn' => User::class];
+        $scope->varValueBindings[$name] = ['type' => 'string', 'optional' => false];
+        $scope->localVarBindings[$name] = $outer;
+        $scope->requestVarNames[$name] = Request::class;
+    }
+
+    $before = $scope->nameBindings();
+    $engine = new ClosureHandlerNameTablesSpyEngine($scope);
+
+    (new ClosureHandler)->resolve(new ArrowFunction(['params' => [new Param(new Variable('slug'))], 'expr' => new Variable('slug')]), $scope, $engine);
+
+    expect(array_map(array_keys(...), array_diff_key($engine->seen, ['claimedClosures' => true])))->each->toBe(['kept'])
+        ->and($scope->nameBindings())->toBe($before);
 });
 
 it('declines a non-closure, non-arrow-function expression without calling the engine', function () {

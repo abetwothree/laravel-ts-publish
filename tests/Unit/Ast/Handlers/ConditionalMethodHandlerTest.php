@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
@@ -25,6 +26,7 @@ use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use Workbench\App\Http\Resources\ArtistResource;
 use Workbench\App\Http\Resources\ConditionalDefaultsResource;
+use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\ReviewResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Http\Resources\VenueResource;
@@ -45,6 +47,21 @@ use Workbench\App\Models\VenueReview;
 function conditionalMethodHandlerScope(): AnalysisScope
 {
     return new AnalysisScope(new ReflectionClass(ConditionalDefaultsResource::class));
+}
+
+/**
+ * Resolve one expression through the full resource profile over a Post, with `$author` bound as a plain local.
+ *
+ * @return array<string, mixed>
+ */
+function conditionalMethodHandlerResolveOnPost(string $php): array
+{
+    $parse = fn (string $source): Expr => new AstParser()->parseSource('<?php '.$source.';')[0]->expr;
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $scope->localVarBindings['local'] = $parse('$this->author');
+
+    return new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class, 'toArray', null, $scope)
+        ->resolve($parse($php));
 }
 
 /**
@@ -562,3 +579,38 @@ test('a morph union closure param binds every target and toResource unions their
         ->and($props['reviewable_name']['type'])->toBe('string')
         ->and(array_keys($analysis->nestedResources))->toContain(ArtistResource::class, VenueResource::class);
 });
+
+// transform() calls $callback($value): the parameter holds the value, so it takes whatever that value is bound to.
+it('binds a transform() callback parameter to the value its call passes', function (string $php, string $type) {
+    expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe($type);
+})->with([
+    'a to-one whenLoaded variable, chain' => [
+        '$this->whenLoaded("author", fn ($author) => $this->transform($author, fn ($author) => $author->profile?->bio))',
+        'string | null',
+    ],
+    'a to-one whenLoaded variable, bare' => ['$this->whenLoaded("author", fn ($author) => $this->transform($author, fn ($author) => $author))', 'User'],
+    'a relation-chain map variable' => [
+        '$this->comments->map(fn ($c) => $this->transform($c, fn ($c) => ["id" => $c->id, "who" => $c->user?->name]))',
+        '({ id: number; who: string | null })[]',
+    ],
+    'a to-many whenLoaded variable' => [
+        '$this->whenLoaded("comments", fn ($comments) => $this->transform($comments, fn ($comments) => $comments))',
+        'Comment[]',
+    ],
+    'a variable under another parameter name' => [
+        '$this->whenLoaded("author", fn ($author) => $this->transform($author, fn ($a) => $a->profile?->bio))',
+        'string | null',
+    ],
+    'a plain local' => ['$this->transform($local, fn ($local) => $local->email)', 'string'],
+    'a model read through the resource' => ['$this->transform($this->resource->author, fn ($a) => $a->email)', 'string'],
+    'a comparison, which passes a boolean' => ['$this->transform($this->title !== null, fn ($b) => $b)', 'boolean'],
+    'a variadic callback, which collects a list' => ['$this->transform($this->title, fn (...$t) => $t)', 'unknown'],
+]);
+
+// Without the claim, ClosureHandler releases the name the value argument just bound, and the key loses its type.
+it('binds a value closure parameter to the attribute whenHas() and whenExistsLoaded() pass', function (string $php, string $type) {
+    expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe($type);
+})->with([
+    'whenHas()' => ['$this->whenHas("title", fn ($t) => ["t" => $t])', '{ t: string }'],
+    'whenExistsLoaded()' => ['$this->whenExistsLoaded("comments", fn ($e) => ["e" => $e])', '{ e: boolean }'],
+]);

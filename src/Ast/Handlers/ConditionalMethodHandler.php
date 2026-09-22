@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
@@ -36,6 +37,7 @@ use ReflectionMethod;
  * `whenAppended`, `whenExistsLoaded`, and `transform` — every one of them a `$this->` call.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type NameBindingsSnapshot from AnalysisScope
  *
  * @internal
  */
@@ -508,8 +510,14 @@ final class ConditionalMethodHandler implements ExpressionHandler
         $previousNameBindings = $scope->nameBindings();
 
         try {
+            // transform() calls $callback($value), so the value is typed before the claim releases a name it may share.
+            $value = $valueArg->value;
+            $resolvedValue = $this->isThisPropertyFetch($value) || $value instanceof Variable
+                ? null
+                : $engine->resolve($value);
+
             $scope->claimParameters($callbackArg->value);
-            $this->bindClosureParamsFromCondition($valueArg->value, $callbackArg->value, $scope);
+            $this->bindPassedValue($callbackArg->value, $value, $resolvedValue, $previousNameBindings, $scope);
 
             $inner = $engine->resolve($callbackArg->value);
         } finally {
@@ -635,6 +643,65 @@ final class ConditionalMethodHandler implements ExpressionHandler
         if ($firstParam->var instanceof Variable && is_string($firstParam->var->name)) {
             $scope->closureParamExprBindings[$firstParam->var->name] = $thisPropExpr;
         }
+    }
+
+    /**
+     * Bind a callback's first parameter to the value its call passes: a `$this->prop` read, every binding the passed
+     * variable held before the claim, or the value's own resolved type.
+     *
+     * @param  ValueExpressionResult|null  $resolvedValue
+     * @param  NameBindingsSnapshot  $outer
+     */
+    private function bindPassedValue(Expr $callback, Expr $value, ?array $resolvedValue, array $outer, AnalysisScope $scope): void
+    {
+        if (! $callback instanceof ArrowFunction && ! $callback instanceof ClosureExpr) {
+            return;
+        }
+
+        $firstParam = $callback->params[0] ?? null;
+
+        // A variadic parameter collects the value into a list, so it never holds the value itself.
+        if ($firstParam === null
+            || $firstParam->variadic
+            || ! $firstParam->var instanceof Variable
+            || ! is_string($firstParam->var->name)
+        ) {
+            return;
+        }
+
+        $name = $firstParam->var->name;
+
+        if ($this->isThisPropertyFetch($value)) {
+            $scope->closureParamExprBindings[$name] = $value;
+
+            return;
+        }
+
+        if ($value instanceof Variable) {
+            if (is_string($value->name)) {
+                $scope->copyBindings($value->name, $name, $outer);
+            }
+
+            return;
+        }
+
+        if ($resolvedValue === null || $resolvedValue['type'] === 'unknown') {
+            return;
+        }
+
+        // The callback runs only for a filled value, so a nullable model read binds as the model itself.
+        $model = $resolvedValue['modelFqcn'] ?? null;
+
+        if ($model !== null
+            && is_a($model, Model::class, true)
+            && ValueResult::stripNullArm($resolvedValue['type']) === class_basename($model)
+        ) {
+            $scope->varModelBindings[$name] = $model;
+
+            return;
+        }
+
+        $scope->varValueBindings[$name] = $resolvedValue;
     }
 
     /**

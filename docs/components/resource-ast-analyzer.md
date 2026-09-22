@@ -790,8 +790,9 @@ match, so the chain would describe one element rather than the value the call re
 them, and what deliberately stays unbound are documented at
 [AstEngine § AnalysisScope](ast-engine.md#analysisscope), which now owns this content.
 `AnalysisScope` is a standalone class shared by every AST consumer, not specific to this analyzer.
-`ClosureParamShadowResource` and `ShadowedClosureParamResource` (workbench fixtures) pin the
-shadowing guarantees described there; both are exercised through this analyzer today.
+`ClosureParamShadowResource` and `ShadowedClosureParamResource` (workbench fixtures) check the shadowing
+guarantees described there end to end, through this analyzer. The tests that pin each mechanism on its own are
+listed in [AstEngine § A closure parameter owns its name](ast-engine.md#a-closure-parameter-owns-its-name).
 
 `collectWrittenVariableNames()` used to count every closure/arrow-function *parameter* as a write to
 the enclosing name pool, so a top-level `$member =
@@ -1108,9 +1109,12 @@ collects the arms via `collectInlineArraySpreadArms()` and builds each one with
   `VariableHandler::analyzeVariableMapCall()` binds it to its type hint's model or, untyped, to the element model
   of the receiver's to-many `whenLoaded` binding. Each sets `$closureRelationModelClass` to the same class, so the
   fallback would give the same arm. `CollectionPipelineHandler` binds a `collect(...)->map()` parameter only in
-  `$varValueBindings` and releases its name from the other tables, so a spread of it reaches the fallback: the
-  model an enclosing `whenLoaded` closure or map set, if any, else no model arm. `$this->toArray()` is excluded
-  by name: it is the resource's own method and `InlineArrayHandler::isKnownArraySpreadShape()` already flattens it.
+  `$varValueBindings` and releases its name from the other tables, so a spread of it reaches the fallback, and
+  that fallback is wrong there: it names the model an enclosing `whenLoaded` closure or map set, which is the
+  element's model only by coincidence, and at the top level it names none, dropping the spread's columns.
+  [Known gaps](../known-gaps.md#a-model-spread-inside-a-collect-map-closure-names-the-wrong-model-or-none) records
+  it. `$this->toArray()` is excluded by name: it is the resource's own method and
+  `InlineArrayHandler::isKnownArraySpreadShape()` already flattens it.
 - **A collection arm** — the `null` `spreadModelToArrayFqcn()` returns for a `$varCollectionBindings`
   name is a *decline*, not a drop: `InlineArrayHandler::spreadCollectionToArrayFqcn()` picks the same expression up and
   resolves it to the binding's element model. It emits `Record<number, {Model}>`.
@@ -1572,9 +1576,9 @@ stays ungated on purpose — an explicitly named resource is a declaration, not 
 `ConditionalMethodHandler::analyzeWhenLoaded()` binds a closure parameter to the relation's model, but a
 `morphTo` names no single model: `ModelAttributeResolver::resolveRelation()` answers `modelFqcn: null` and
 fills `morphFqcns` with every parent instead. Such a parameter binds into `AnalysisScope::$varClassBindings`
-— the narrowing map, which holds a *list* of classes — carrying all the targets at once. That fourth map is
-saved and restored beside the other three in the same `finally`, so the binding cannot leak into the next
-key of the same `toArray()`.
+— the narrowing map, which holds a *list* of classes — carrying all the targets at once. It is saved and
+restored with every other name-keyed table, through `AnalysisScope::nameBindings()`, in the same `finally`, so the
+binding cannot leak into the next key of the same `toArray()`.
 
 `ToResourceHandler::resolveToResourceReceiverModels()` then answers the receiver's whole model list: the
 existing single-model bindings first, then `ReceiverClassResolver::resolve()`'s `ReceiverType::models()`.

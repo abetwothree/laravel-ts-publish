@@ -154,8 +154,8 @@ final class AnalysisScope
     public array $requestVarNames = [];
 
     /**
-     * Closures, by spl_object_id(), whose parameters a writer has released and bound, so ClosureHandler keeps those
-     * bindings instead of releasing the names again. Captured and restored with the name-keyed tables.
+     * Closures, by spl_object_id(), whose parameters a writer has claimed — released, then bound to whatever the call
+     * passes, if anything — so ClosureHandler leaves those names alone. Captured and restored with the name tables.
      *
      * @var array<int, true>
      */
@@ -180,7 +180,8 @@ final class AnalysisScope
     }
 
     /**
-     * Capture every name-keyed binding table, for a closure-parameter writer to restore after the body.
+     * Capture every name-keyed binding table — each map from a variable name to what it is bound to — for a writer
+     * to restore after the body.
      *
      * @return NameBindingsSnapshot
      */
@@ -237,6 +238,42 @@ final class AnalysisScope
 
         if (! isset($this->claimedClosures[spl_object_id($closure)])) {
             $this->releaseParameterNames($closure);
+        }
+    }
+
+    /**
+     * Bind a claimed parameter to every entry the variable its call passes held in a nameBindings() capture.
+     *
+     * @param  NameBindingsSnapshot  $snapshot
+     */
+    public function copyBindings(string $from, string $to, array $snapshot): void
+    {
+        if (isset($snapshot['closureParamExprBindings'][$from])) {
+            $this->closureParamExprBindings[$to] = $snapshot['closureParamExprBindings'][$from];
+        }
+
+        if (isset($snapshot['varClassBindings'][$from])) {
+            $this->varClassBindings[$to] = $snapshot['varClassBindings'][$from];
+        }
+
+        if (isset($snapshot['varModelBindings'][$from])) {
+            $this->varModelBindings[$to] = $snapshot['varModelBindings'][$from];
+        }
+
+        if (isset($snapshot['varCollectionBindings'][$from])) {
+            $this->varCollectionBindings[$to] = $snapshot['varCollectionBindings'][$from];
+        }
+
+        if (isset($snapshot['varValueBindings'][$from])) {
+            $this->varValueBindings[$to] = $snapshot['varValueBindings'][$from];
+        }
+
+        if (isset($snapshot['localVarBindings'][$from])) {
+            $this->localVarBindings[$to] = $snapshot['localVarBindings'][$from];
+        }
+
+        if (isset($snapshot['requestVarNames'][$from])) {
+            $this->requestVarNames[$to] = $snapshot['requestVarNames'][$from];
         }
     }
 
