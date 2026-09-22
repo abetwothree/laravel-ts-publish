@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendedCustomImportRes
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclinedTopLevelSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\IndexSignatureConflictResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeArrayMergeChildResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeParameterShadowResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeSpreadChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ModelArmAppendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NamedMergeResource;
@@ -6376,4 +6377,14 @@ test('mergeReturnBranches() unions the body values beside the types, and keeps t
 
     expect($filled->properties[0])->toMatchArray(['type' => 'string | undefined | number', 'bodyType' => 'unknown | undefined | number'])
         ->and($plain->properties[0])->not->toHaveKey('bodyType');
+});
+
+// merge()/mergeWhen() call their closure with no argument, so a parameter holds its default, never the outer local.
+test('a merge closure parameter owns its name and holds its default', function () {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(MergeParameterShadowResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+    expect($props['outer_title']['type'])->toBe('string')
+        ->and($props['merged_shadow']['type'])->toBe('null')
+        ->and($props['merged_default']['type'])->toBe('number')
+        ->and($props['merged_loop']['type'])->toBe('null');
 });

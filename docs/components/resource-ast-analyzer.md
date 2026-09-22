@@ -1501,8 +1501,9 @@ standing rather than trading a real type for a fresh `unknown`.
 `WhenHasValueResource::$title_unresolvable` — `whenHas('title', fn ($title) => json_decode($title))`,
 whose body is `mixed` and so resolves to `unknown` — is pinned as `string`, the column's own type.
 
-The *default* argument is analyzed and unioned in by `applyConditionalDefault()` either way: it is a plain
-eagerly-evaluated argument, not a closure needing a binding.
+The *default* argument is analyzed and unioned in by `applyConditionalDefault()` either way. A default closure is
+called with no argument, so its parameters bind only as a parameter the call passes nothing does: an optional one to
+its default's type, per [AstEngine § A closure parameter owns its name](ast-engine.md#a-closure-parameter-owns-its-name).
 
 ### `whenExistsLoaded()` resolves to the generated `{relation}_exists` flag — and must agree with `ModelTransformer`
 
@@ -1535,16 +1536,16 @@ absent `$value` is different again — Laravel's one-argument branch returns the
 
 `transform($value, $callback, $default)` (`vendor/laravel/framework/.../Support/helpers.php`) calls
 `$callback($value)` when `$value` is filled and returns that result — the callback's return type, not
-`$value`'s own type, is what the property carries. `ConditionalMethodHandler::analyzeTransform()` mirrors `analyzeWhen()`'s
-value-argument handling but analyzes `$args[1]` (the callback) instead of `$args[0]`, binding the
-callback's first parameter to `$args[0]`'s `$this->prop` expression via `bindClosureParamsFromCondition()`
-the same way `analyzeWhen()` binds a value closure to its condition, then hands the result to
-`applyConditionalDefault()` with index 2, exactly like `analyzeWhen()` does — except for
-`defaultArgCount: 1`: the same `transform()` helper invokes an unfilled default as `$default($value)`,
-one argument, not the `value($default)`/zero-argument call every other handler's default receives (see
+`$value`'s own type, is what the property carries. `ConditionalMethodHandler::analyzeTransform()` analyzes `$args[1]`
+(the callback), binding its first parameter to `$args[0]`, the value the call passes it, as
+[AstEngine § A closure parameter owns its name](ast-engine.md#a-closure-parameter-owns-its-name) lists. It then hands
+the result to `applyConditionalDefault()` with index 2 and `defaultArgCount: 1`: the same `transform()` helper invokes
+an unfilled default as `$default($value)`, one argument, not the `value($default)`/zero-argument call every other
+handler's default receives (see
 [above](#a-default-closure-requiring-more-parameters-than-laravel-supplies-is-unreachable-and-never-analyzed)).
-A one-parameter closure default is therefore reachable here and unions in, where the same shape would be
-excluded as unreachable anywhere else in the family.
+A one-parameter closure default is therefore reachable here and unions in, where the same shape would be excluded as
+unreachable anywhere else in the family. That parameter holds the blank value itself, so it binds to the value's full
+type, `null` arm included: `transform($this->rating, fn ($r) => 'x', fn ($r) => $r)` publishes `string | number | null`.
 
 ## `#[Collects]` resolution is Laravel-version-guarded
 

@@ -2,12 +2,18 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use Illuminate\Http\Request;
 use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Name;
 use PhpParser\Node\Param;
+use PhpParser\Node\Scalar\Int_;
+use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\TeamSubscriberResource;
+use Workbench\App\Models\Post;
 use Workbench\App\Models\SubscribedTeam;
 use Workbench\App\Models\User;
 
@@ -109,4 +115,41 @@ it('releases an unclaimed closure parameter and leaves a claimed closure paramet
 
     expect(analysisScopeBoundNames($unclaimed))->each->toBe(['key', 'kept'])
         ->and($claimed->varModelBindings)->toBe(['key' => User::class, 'kept' => User::class, 'item' => User::class]);
+});
+
+it('copies every entry a variable held in a capture onto a parameter, in every name-keyed table', function () {
+    $captured = analysisScopeWithEveryTableBound()->nameBindings();
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+
+    $scope->copyBindings('item', 'param', $captured);
+
+    expect(array_map(array_keys(...), array_diff_key($scope->nameBindings(), ['claimedClosures' => true])))->each->toBe(['param'])
+        ->and($scope->closureParamExprBindings['param'])->toBe($captured['closureParamExprBindings']['item'])
+        ->and($scope->varClassBindings['param'])->toBe([User::class])
+        ->and($scope->varModelBindings['param'])->toBe(User::class)
+        ->and($scope->varCollectionBindings['param'])->toBe(['type' => 'User[]', 'modelFqcn' => User::class])
+        ->and($scope->varValueBindings['param'])->toBe(['type' => 'string', 'optional' => false])
+        ->and($scope->localVarBindings['param'])->toBe($captured['localVarBindings']['item'])
+        ->and($scope->requestVarNames['param'])->toBe(Request::class);
+});
+
+it('binds each parameter a call passes nothing to what it holds: a default, or an empty list', function () {
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $engine = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class, 'toArray', null, $scope);
+    $closure = new ArrowFunction([
+        'params' => [
+            new Param(new Variable('passed'), default: new Int_(1)),
+            new Param(new Variable('required')),
+            new Param(new Variable('none'), default: new ConstFetch(new Name('null'))),
+            new Param(new Variable('rest'), variadic: true),
+        ],
+        'expr' => new Variable('passed'),
+    ]);
+
+    $scope->bindUnpassedParameters($closure, 1, $engine);
+
+    expect($scope->varValueBindings)->toBe([
+        'none' => ['type' => 'null', 'optional' => false],
+        'rest' => ['type' => 'never[]', 'optional' => false],
+    ]);
 });

@@ -683,6 +683,24 @@ class ResourceAstAnalyzer implements ExpressionEngine
             return (new ThisPropertyHandler)->extractPropertiesFromArray($expr, $this, $this->scope->subjectReflection, $optional);
         }
 
+        // merge()/mergeWhen() call their closure with no argument: each parameter owns its name and holds its default.
+        $previousNameBindings = $this->scope->nameBindings();
+
+        try {
+            $this->scope->claimParameters($expr);
+            $this->scope->bindUnpassedParameters($expr, 0, $this);
+
+            return $this->resolveClosureArraysToProperties($expr, $optional);
+        } finally {
+            $this->scope->restoreNameBindings($previousNameBindings);
+        }
+    }
+
+    /**
+     * Merge the properties of every non-empty array a merge closure returns, skipping a guard clause's `return []`.
+     */
+    private function resolveClosureArraysToProperties(Expr $expr, bool $optional): ResourceAnalysis
+    {
         $returnExprs = $this->resolveClosureReturnExpressions($expr);
 
         // Filter to non-empty Array_ expressions (skip guard clause `return []`)

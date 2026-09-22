@@ -50,7 +50,7 @@ function conditionalMethodHandlerScope(): AnalysisScope
 }
 
 /**
- * Resolve one expression through the full resource profile over a Post, with `$author` bound as a plain local.
+ * Resolve one expression through the full resource profile over a Post, with `$local` bound as a plain local.
  *
  * @return array<string, mixed>
  */
@@ -604,7 +604,6 @@ it('binds a transform() callback parameter to the value its call passes', functi
     'a plain local' => ['$this->transform($local, fn ($local) => $local->email)', 'string'],
     'a model read through the resource' => ['$this->transform($this->resource->author, fn ($a) => $a->email)', 'string'],
     'a comparison, which passes a boolean' => ['$this->transform($this->title !== null, fn ($b) => $b)', 'boolean'],
-    'a variadic callback, which collects a list' => ['$this->transform($this->title, fn (...$t) => $t)', 'unknown'],
 ]);
 
 // Without the claim, ClosureHandler releases the name the value argument just bound, and the key loses its type.
@@ -613,4 +612,51 @@ it('binds a value closure parameter to the attribute whenHas() and whenExistsLoa
 })->with([
     'whenHas()' => ['$this->whenHas("title", fn ($t) => ["t" => $t])', '{ t: string }'],
     'whenExistsLoaded()' => ['$this->whenExistsLoaded("comments", fn ($e) => ["e" => $e])', '{ e: boolean }'],
+]);
+
+// Each writer binds a parameter to what Laravel calls its closure with: a variadic one collects its arguments into a
+// list, and an optional one the call passes nothing holds its default.
+it('binds each conditional closure parameter to what Laravel passes it', function (string $php, string $type) {
+    expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe($type);
+})->with([
+    'whenLoaded() to-one, variadic' => ['$this->whenLoaded("author", fn (...$a) => $a)', 'User[]'],
+    'whenLoaded() to-many, variadic' => ['$this->whenLoaded("comments", fn (...$c) => $c)', 'Comment[][]'],
+    'when(), variadic' => ['$this->when($this->title, fn (...$t) => $t)', 'never[]'],
+    'whenHas(), variadic' => ['$this->whenHas("title", fn (...$t) => $t)', 'string[]'],
+    'whenExistsLoaded(), variadic' => ['$this->whenExistsLoaded("comments", fn (...$e) => $e)', 'boolean[]'],
+    'transform(), variadic' => ['$this->transform($this->title, fn (...$t) => $t)', 'string[]'],
+    'when(), optional null' => ['$this->when($this->title, fn ($t = null) => $t)', 'null'],
+    'when(), optional int' => ['$this->when($this->title, fn ($t = 5) => $t)', 'number'],
+    'when() on a null test, optional null' => ['$this->when($this->rating !== null, fn ($r = null) => $r)', 'null'],
+    'unless(), optional null' => ['$this->unless($this->title, fn ($t = null) => $t)', 'null'],
+    'when() on an enum, optional null' => ['$this->when($this->status, fn ($s = null) => $s)', 'null'],
+    'when(), required, whose call throws' => ['$this->when($this->title, fn ($t) => $t)', 'string'],
+    'whenAppended(), optional int' => ['$this->whenAppended("excerpt", fn ($e = 5) => $e)', 'number'],
+    'whenLoaded() default, optional null' => ['$this->whenLoaded("author", fn ($a) => $a->email, fn ($local = null) => $local)', 'string | null'],
+    'when() default, optional null' => ['$this->when($this->title, 1, fn ($local = null) => $local)', 'number | null'],
+    'transform() default, passed the blank value' => ['$this->transform($this->rating, fn ($r) => "x", fn ($r) => $r)', 'string | number | null'],
+    'whenCounted() closure, passed the count' => ['$this->whenCounted("comments", fn ($n) => ["n" => $n])', '{ n: number }'],
+    'whenCounted() closure, comparing the count' => ['$this->whenCounted("comments", fn ($n) => $n > 3)', 'boolean'],
+    'whenCounted() closure, ignoring the count' => ['$this->whenCounted("comments", fn ($n) => "x")', 'string'],
+    'whenAggregated() closure, ignoring the aggregate' => ['$this->whenAggregated("comments", "id", "max", fn ($m) => "x")', 'string'],
+    'whenAggregated() closure, returning the untyped aggregate' => ['$this->whenAggregated("comments", "id", "max", fn ($m) => $m)', 'number'],
+]);
+
+// The value is typed before the claim frees the name it shares, or `$local->profile` would read an unbound `$local`.
+it('types transform()\'s value before its claim releases a name the value reads', function () {
+    expect(conditionalMethodHandlerResolveOnPost('$this->transform($local->profile, fn ($local) => $local->bio)')['type'])
+        ->toBe('string | null');
+});
+
+// The callback runs only for a filled value, so a nullable model binds without its null arm.
+it('binds transform()\'s callback to a nullable model read without its null arm', function () {
+    expect(conditionalMethodHandlerResolveOnPost('$this->transform($this->resource->author, fn ($a) => $a)')['type'])->toBe('User');
+});
+
+// A parameter holding its default or a list must not reach a receiver chain through a value the call does not pass.
+it('keeps an optional or variadic parameter off the property its writer would bind a required one to', function (string $php, string $type) {
+    expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe($type);
+})->with([
+    'when(), optional' => ['$this->when($this->author, fn ($a = null) => ["email" => $a?->email])', '{ email: unknown }'],
+    'whenHas(), variadic' => ['$this->whenHas("author", fn (...$a) => ["email" => $a?->email])', '{ email: unknown }'],
 ]);

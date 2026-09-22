@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
@@ -154,8 +155,8 @@ final class AnalysisScope
     public array $requestVarNames = [];
 
     /**
-     * Closures, by spl_object_id(), whose parameters a writer has claimed — released, then bound to whatever the call
-     * passes, if anything — so ClosureHandler leaves those names alone. Captured and restored with the name tables.
+     * Closures, by spl_object_id(), whose parameters a writer has claimed — released, then bound to what the call
+     * passes or what they hold without it — so ClosureHandler leaves them alone. Restored with the name tables.
      *
      * @var array<int, true>
      */
@@ -238,6 +239,33 @@ final class AnalysisScope
 
         if (! isset($this->claimedClosures[spl_object_id($closure)])) {
             $this->releaseParameterNames($closure);
+        }
+    }
+
+    /**
+     * Bind each parameter a call leaves without an argument, past the first $passedCount, to what it holds at runtime:
+     * a variadic one an empty list, an optional one its default. A required one binds nothing, since the call throws.
+     */
+    public function bindUnpassedParameters(Expr $closure, int $passedCount, ExpressionEngine $engine): void
+    {
+        if (! $closure instanceof ArrowFunction && ! $closure instanceof Closure) {
+            return;
+        }
+
+        foreach ($closure->params as $index => $param) {
+            if ($index < $passedCount || ! $param->var instanceof Variable || ! is_string($param->var->name)) {
+                continue;
+            }
+
+            $held = match (true) {
+                $param->variadic => ['type' => 'never[]', 'optional' => false],
+                $param->default !== null => $engine->resolve($param->default),
+                default => null,
+            };
+
+            if ($held !== null && $held['type'] !== 'unknown') {
+                $this->varValueBindings[$param->var->name] = $held;
+            }
         }
     }
 

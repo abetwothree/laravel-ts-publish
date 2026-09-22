@@ -190,17 +190,18 @@ Seven of its fields are **name-keyed tables**, each mapping a variable name to w
 | `modelClass` | `class-string<Model>\|null` | The subject's resolved backing model, if any. Constructor argument. **Scoped, not fixed:** `TernaryHandler` narrows it to the guarded class while an `instanceof` true arm resolves, then restores it — see [Narrowing](#narrowing) rule 3. That mutation happens *below* `AstEngine`'s `class@method@modelClass` result-cache key, so the key does not describe the value a nested resolution actually ran under. |
 | `instanceOfWrappedClass` | `class-string\|null` | Wrapped class from an `instanceof` guard in `toArray()`; fallback when `resolveClassOnProperty()` returns `null`. |
 | `forwardsUndeclaredMembersTo` | `class-string\|null` | The class an undeclared `$this->member` read or call forwards to — a `JsonResource` proxies both to `$this->resource`. Derived in the constructor from the subject, so every scope carries it without its builder having to remember; `ResourceAstAnalyzer` re-derives it once an `instanceof` guard supplies a backing the constructor lacked. `ReceiverClassResolver` reads this instead of testing for `JsonResource` itself. Scoped: `TernaryHandler` narrows and restores it alongside `modelClass`. |
+| `carriesImports` | `bool` | False while a reader that carries no import analyzes a body: `MethodReturnTypeResolver`'s body fallback, which flattens a shape into a type string with no FQCN channel, and an accessor getter read without imports through `AstEngine::analyzeModelClosure()`. Filter code reads it to publish the most specific answer that names no token. Seeded by `ResourceAstAnalyzer`'s constructor; a supplied scope keeps its own. |
 | `closureRelationModelClass` | `class-string<Model>\|null` | Related model set while analyzing a `whenLoaded` closure, so `$variable->prop`/`->method()` inside it resolve. |
 | `closureParamExprBindings` | `array<string, Expr>` | Closure parameter names bound to an expression: the `$this->prop` in a surrounding `when()` condition, so `EnumResource::make($status)` resolves like `EnumResource::make($this->status)`; the `$this->prop` passed to `transform()`; and the attribute read `whenHas()` or `whenExistsLoaded()` passes. |
 | `varClassBindings` | `array<string, non-empty-list<class-string>>` | Variables an `instanceof` guard or ternary has proven to hold a class. Read **first** in `ReceiverClassResolver::fromVariable()`. What that ordering actually buys today is precedence over the `closureParamExprBindings ?? localVarBindings` fallback, since a guarded variable is normally bound by a plain local assignment; sitting above `varModelBindings` is the same concern for a narrowed closure param or loop variable, and is motivating rather than currently proven. Scoped: `ClosureHandler` and `TernaryHandler` save and restore it around the body they narrow for. See [Narrowing](#narrowing). |
-| `varModelBindings` | `array<string, class-string<Model>>` | Closure params / loop vars bound to a model class (`whenLoaded` params, `map()` params on a relation chain or a variable, `foreach` over a many-relation), so `$var`, `$var->prop`, `$var->method()` resolve against that model. Scoped: writers save and restore around the body. Also seeded, via `AstEngine::bindingsFor()`, from every `Model`-typed parameter of the located method — a route-bound `Post $post`, a metadata provider's `Model $model` — bound to the parameter's **declared** type. |
+| `varModelBindings` | `array<string, class-string<Model>>` | Closure params / loop vars bound to a model class (`whenLoaded` params, `map()` params on a relation chain or a variable, a `transform()` callback param passed a model, `foreach` over a many-relation), so `$var`, `$var->prop`, `$var->method()` resolve against that model. Scoped: writers save and restore around the body. Also seeded, via `AstEngine::bindingsFor()`, from every `Model`-typed parameter of the located method — a route-bound `Post $post`, a metadata provider's `Model $model` — bound to the parameter's **declared** type. |
 | `varCollectionBindings` | `array<string, array{type: string, modelFqcn: class-string<Model>}>` | Closure params bound to a whole relation collection rather than one element — a to-many `whenLoaded` param. Read for a bare return of the param, and as the element-model fallback for an untyped `->map()` closure param. |
-| `varValueBindings` | `array<string, ValueExpressionResult>` | Closure params bound to an already-resolved *value* rather than to a class — a `collect(...)->map()` param, whose element type the pipeline read off the `collect()` argument before descending. A bare read of the param resolves straight to it, checked after `varModelBindings` and `varCollectionBindings`, which name a model instead; the writer first releases the param's name from those tables, so an outer binding of it cannot win. Scoped: `CollectionPipelineHandler` saves and restores around the map body. |
+| `varValueBindings` | `array<string, ValueExpressionResult>` | Closure params bound to an already-resolved *value* rather than to a class — a `collect(...)->map()` param, whose element type the pipeline read off the `collect()` argument before descending; a `transform()` callback param passed a value that is not a model; a variadic param, bound to the list its one argument collects into; a `whenCounted()` value closure's param, bound to `number`; and a param the call passes nothing, bound by `AnalysisScope::bindUnpassedParameters()` to its default's type or, variadic, to `never[]`. A bare read of the param resolves straight to it, checked after `varModelBindings` and `varCollectionBindings`, which name a model instead; the writer first releases the param's name from those tables, so an outer binding of it cannot win. Scoped: `CollectionPipelineHandler` saves and restores around the map body. |
 | `localVarBindings` | `array<string, Expr>` | Top-level `$var = expr;` bindings for the method last analyzed, so a bare `Variable` value expression resolves through its bound expression instead of degrading to `unknown`. Only variables written exactly once are recorded; `analyzeThisMethodSpread()` saves and restores this per method. |
 | `resolvingLocalVars` | `array<string, true>` | Re-entrancy guard: variable names currently mid-resolution, so a self- or mutually-referential binding (`$a = $b; $b = $a;`) resolves as `unknown` instead of recursing forever. |
 | `visitedSpreadMethods` | `array<string, true>` | Spread methods currently on the analysis stack, so a method that spreads itself — directly or through a cycle — degrades to an empty analysis instead of recursing until memory runs out. |
 | `requestVarNames` | `array<string, class-string<Request>>` | Variable names holding an `Illuminate\Http\Request`, mapped to the bound class, so `KnownMethodRuleHandler`'s reflected Request rule (`url()`, `ip()`, `integer()`, …) fires on `$request->ip()` and stays off an unrelated receiver sharing a method name; the bound class is what `validated()` is resolved against, reading the `FormRequest` subclass's own `rules()`. `user()` is answered ahead of reflection, from the configured auth model. Seeded in `AstEngine::bindingsFor()` from a located method's `Request`-typed parameters, and in `ResourceAstAnalyzer::resolveRequestVarNames()` for a directly-constructed resource analysis — **except for a `JsonResource` subject**, whose `toArray(Request $request)` would otherwise start typing request calls and move committed resource output. |
-| `claimedClosures` | `array<int, true>` | Closures, keyed by `spl_object_id()`, whose parameters a writer has claimed: released from every name-keyed table, then bound to whatever the call passes, if anything. `ClosureHandler` leaves a claimed closure's names alone. Captured and restored with the name-keyed tables, so a mark never outlives the writer that set it. |
+| `claimedClosures` | `array<int, true>` | Closures, keyed by `spl_object_id()`, whose parameters a writer has claimed: released from every name-keyed table, then bound to what the call passes, or to what a parameter the call passes nothing holds. `ClosureHandler` leaves a claimed closure's names alone. Captured and restored with the name-keyed tables, so a mark never outlives the writer that set it. |
 
 **Snapshot/restore, not immutable copies.** `AnalysisScope` is one mutable object shared for the whole
 `analyze()` call, not a value threaded through with `mergeWith()`-style copying. A writer that needs a
@@ -259,45 +260,54 @@ Every writer that binds a closure parameter therefore calls `AnalysisScope::clai
 drops every parameter name of the closure from every name-keyed table and marks the closure claimed; the writer then
 seeds its own binding, and `restoreNameBindings()` puts every table and the mark back in the `finally`.
 `ClosureHandler` calls `releaseUnclaimedParameters()`, which makes the same drop for a closure no writer claimed, such
-as a conditional's default closure, and leaves a claimed closure's bindings in place.
+as a `whenNotNull()` value closure or a closure written as a plain value, and leaves a claimed closure's bindings in
+place. A conditional's default closure is claimed, by `ConditionalMethodHandler::resolveConditionalDefault()`.
 
 **The corollary: a writer that claims a parameter binds it to what the call passes.** The claim frees the name, so
 the writer reads the passed value first, before the claim can release a name the value shares, then binds the
 parameter to it:
 
-| Writer | What Laravel passes the closure | What the parameter is bound to |
+| Writer | What Laravel passes the closure | What the first parameter is bound to |
 | --- | --- | --- |
-| The three map writers | `($value, $key)` | the first parameter to the element; the key stays unbound |
+| The three map writers | `($value, $key)` | the element; the key stays unbound |
 | `whenLoaded()` | the loaded relation | its model, its collection, or its `morphTo` targets |
 | `whenHas()`, `whenExistsLoaded()` | `$this->resource->{$attribute}`, the `{relation}_exists` flag | that property read |
+| `whenCounted()` | the count | `number` |
+| `whenAggregated()` | the aggregate, whose type depends on its column | nothing |
 | `transform()`'s callback | the value | a `$this->prop` value's read; every binding a passed variable held before the claim; otherwise the value's resolved type, a nullable model read as the model, since the callback runs only for a filled value |
-| `transform()`'s default | the value, only when it is blank | nothing: a blank value is never the value's own type |
-| `whenAppended()`, and every other conditional default | nothing: `value($value)`, `value($default)` | nothing |
-| `when()`, `unless()` | nothing: `value($value)` | **the condition's `$this->prop`** |
+| `transform()`'s default | the value, only when it is blank | the value's full type, `null` arm included |
+| `when()`, `unless()`, `whenAppended()`, `merge()`, `mergeWhen()`, `mergeUnless()` and every other conditional default | nothing: `value($value)`, `value($default)` | nothing, beyond what an optional or variadic parameter holds (below) |
 
-`when()` is the one writer that binds what the call does not pass: Laravel calls its value closure with no
-argument, so a required parameter there throws at runtime. The binding predates this rule and the workbench pins
-it (`ConditionalParamPrimitiveResource`, `ConditionalParamEnumResource`); dropping it would make those keys less
-specific, so it stays.
+**A parameter the call passes nothing holds its default,** and a variadic one holds an empty list:
+`AnalysisScope::bindUnpassedParameters()` binds each parameter past the passed arguments to its default's type, or to
+`never[]`, and leaves one whose default it cannot type unbound. So `when($this->title, fn ($t = null) => $t)` publishes
+`null`, which is what Laravel returns.
 
-A variadic first parameter is never bound: `map()` passes `($value, $key)` and `transform()` passes `($value)`, so it
-collects a list and holds no one element. All three map writers skip it and analyze no body for it, and
-`transform()` leaves it unbound.
+**A variadic parameter collects its arguments into a list.** Where the call passes one argument, the writer binds a
+variadic first parameter to that argument's type as a list: `whenLoaded('author', fn (...$a) => $a)` is `User[]`,
+and `whenHas('title', fn (...$t) => $t)` is `string[]`. The three map writers are the exception: `map()` passes
+`($value, $key)`, two values of different types, so they skip a variadic first parameter and analyze no body for it.
 
-**Known exceptions.** A closure read outside `ClosureHandler` and claimed by no writer releases nothing:
-`ResourceAstAnalyzer::resolveArrayOrClosureToProperties()` reads the return arrays of a `merge()`, `mergeWhen()` or
-`mergeUnless()` closure directly, so an outer binding of one of its parameter names still reaches the body. Laravel
-passes such a closure nothing, so a parameter there cannot hold a value anyway. `VariableHandler::analyzeVariableMapCall()`
-also reads its closure's body directly, but it claims the closure first.
+**One writer still binds what the call does not pass.** `when()` and `unless()` bind a *required* first parameter
+to the condition's `$this->prop`, although Laravel calls their value closure with no argument. That call throws
+`ArgumentCountError`, so no successful response carries the key; the binding predates this rule and the workbench
+pins it (`ConditionalParamPrimitiveResource`, `ConditionalParamEnumResource`), so it stays. An optional or variadic
+parameter there holds what the rules above say.
+
+**Known exceptions.** None remain among the conditional writers. `ResourceAstAnalyzer::resolveArrayOrClosureToProperties()`
+reads a `merge()`, `mergeWhen()` or `mergeUnless()` closure's return arrays directly rather than through
+`ClosureHandler`, and `VariableHandler::analyzeVariableMapCall()` reads its closure's body directly too, but both
+claim the closure first.
 
 **Which tests pin each path.** Removing `ClosureHandler`'s release fails `ClosureHandlerTest`'s
 `suppresses a closure param that shadows a populated localVarBindings entry, then restores it` and
-`releases an unclaimed parameter from every name-keyed table, then restores every table`, and
-`VariableAndTernaryHandlersTest`'s `transform() default closure` case. Restoring only the two tables the handler once
-wrote fails the second of those. Removing a writer's claim fails that writer's own cases: `when()`'s, for example,
-fails `ConditionalParamEnumResource`'s `when() param` tests and the `when() on a property` case, and
+`releases an unclaimed parameter from every name-keyed table, then restores every table`. Restoring only the two
+tables the handler once wrote fails the second of those. Removing a writer's claim fails that writer's own cases:
+`when()`'s fails `ConditionalParamEnumResource`'s `when() param` tests and the `when() on a property` case;
 `resolveValueArgument()`'s fails `ConditionalMethodHandlerTest`'s `binds a value closure parameter to the attribute
-whenHas() and whenExistsLoaded() pass`.
+whenHas() and whenExistsLoaded() pass`; `resolveConditionalDefault()`'s fails its `… default, optional null` and
+`transform() default, passed the blank value` cases; and a merge closure's fails `ResourceAstAnalyzerTest`'s
+`a merge closure parameter owns its name and holds its default`.
 
 ### How `varModelBindings` gets populated, and how scoping holds
 
@@ -345,7 +355,8 @@ see to it, both described in [A closure parameter owns its name](#a-closure-para
   is a `$this->prop` test.
 - **`ClosureHandler`'s release.** `ClosureHandler::resolve()`, the generic closure and arrow-function handler,
   saves every name-keyed table, releases the parameter names of a closure no writer claimed, analyzes the body,
-  and restores every table in a `finally`. A conditional's default closure is protected this way.
+  and restores every table in a `finally`. A `whenNotNull()` value closure, or a closure written as a plain value,
+  is protected this way.
 
 `ShadowedClosureParamResource` in the workbench checks the end result: after `$slug = $this->slug;`, a `when()`
 closure whose parameter is also `$slug`, under a condition that is not a `$this->prop` test, must resolve to
