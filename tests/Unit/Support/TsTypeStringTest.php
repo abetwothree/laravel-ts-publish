@@ -8,6 +8,62 @@ beforeEach(function () {
     $this->service = new TsTypeString;
 });
 
+/**
+ * A TsTypeString on a PCRE2 without `\p{ID_Continue}`, as before 10.40, exposing its patterns and escape decoder.
+ */
+function olderPcreTsTypeString(): TsTypeString
+{
+    return new class extends TsTypeString
+    {
+        protected const string IDENTIFIER_CHARACTER = '[\p{ID_Continue_Missing}$\x{200C}\x{200D}]';
+
+        protected static ?string $identifierCharacter = null;
+
+        /**
+         * The identifier-character pattern its probe settled on.
+         */
+        public function chosen(): string
+        {
+            return $this->identifierCharacter();
+        }
+
+        /**
+         * The stand-in pattern a PCRE2 without `\p{ID_Continue}` gets.
+         */
+        public function fallback(): string
+        {
+            return self::IDENTIFIER_CHARACTER_FALLBACK;
+        }
+
+        /**
+         * Exposes the escape decoder.
+         */
+        public function decode(string $type): string
+        {
+            return $this->decodeIdentifierEscapes($type);
+        }
+    };
+}
+
+/**
+ * A TsTypeString whose identifier-character pattern PCRE cannot compile at all, exposing its escape decoder.
+ */
+function uncompilableTsTypeString(): TsTypeString
+{
+    return new class extends TsTypeString
+    {
+        protected static ?string $identifierCharacter = '[\p{ID_Continue_Missing}]';
+
+        /**
+         * Exposes the escape decoder.
+         */
+        public function decode(string $type): string
+        {
+            return $this->decodeIdentifierEscapes($type);
+        }
+    };
+}
+
 describe('aliasPropertyType', function () {
     $nameMap = [
         'App\\Models\\User' => 'User',
@@ -635,6 +691,114 @@ describe('typeNameOccursIn', function () {
             ->and($s->typeNameOccursIn('User', "`a\nx` | User | `y`"))->toBeTrue()
             ->and($s->typeNameOccursIn('User', 'string', 'number'))->toBeFalse()
             ->and($s->typeNameOccursIn('User'))->toBeFalse();
+    });
+
+    test('typeNameOccursIn() keeps a name PCRE cannot read, whether or not the haystack spells it', function () {
+        // Invalid UTF-8 fails the match without a warning; the name is kept, since a dropped import breaks the file.
+        expect($this->service->typeNameOccursIn('User', "\xFF\xFE garbage"))->toBeTrue()
+            ->and($this->service->typeNameOccursIn('User', "\xFF\xFE User"))->toBeTrue();
+    });
+
+    test('typeNameOccursIn() keeps `\p{ID_Continue}` wherever the PCRE2 compiles it', function () {
+        $probe = new class extends TsTypeString
+        {
+            /**
+             * The pattern the probe settled on, the one it prefers and its stand-in.
+             *
+             * @return array{0: string, 1: string, 2: string}
+             */
+            public function patterns(): array
+            {
+                return [$this->identifierCharacter(), self::IDENTIFIER_CHARACTER, self::IDENTIFIER_CHARACTER_FALLBACK];
+            }
+        };
+        [$chosen, $preferred, $fallback] = $probe->patterns();
+
+        expect($chosen)->toBe(@preg_match('/'.$preferred.'/u', '') !== false ? $preferred : $fallback);
+    });
+
+    test('typeNameOccursIn() falls back, quietly and once, on a PCRE2 without `\p{ID_Continue}`', function () {
+        $older = olderPcreTsTypeString();
+
+        // Laravel's error handler rethrows a warning, so an unsilenced probe would fail here rather than fall back.
+        expect($older->chosen())->toBe($older->fallback())
+            ->and($older->chosen())->toBe($older->chosen())
+            ->and($older->typeNameOccursIn('User', 'User | null'))->toBeTrue();
+    });
+
+    test('the stand-in pattern holds just the identifier characters', function (int $codePoint, bool $inside) {
+        $char = (string) mb_chr($codePoint, 'UTF-8');
+
+        expect(preg_match('/^'.olderPcreTsTypeString()->fallback().'$/u', $char))->toBe($inside ? 1 : 0);
+    })->with([
+        'U+2118 script capital P' => [0x2118, true],
+        'U+212E estimated sign' => [0x212E, true],
+        'U+309B katakana voiced sound mark' => [0x309B, true],
+        'U+309C katakana semi-voiced sound mark' => [0x309C, true],
+        'U+1885 Mongolian letter Ali Gali baluda' => [0x1885, true],
+        'U+1886 Mongolian letter Ali Gali three baluda' => [0x1886, true],
+        'U+00B7 middle dot' => [0xB7, true],
+        'U+0387 Greek ano teleia' => [0x387, true],
+        'U+1369 Ethiopic digit one' => [0x1369, true],
+        'U+1371 Ethiopic digit nine' => [0x1371, true],
+        'U+19DA New Tai Lue tham digit one' => [0x19DA, true],
+        'U+30FB katakana middle dot' => [0x30FB, true],
+        'U+FF65 halfwidth katakana middle dot' => [0xFF65, true],
+        'a letter' => [0x61, true],
+        'a digit' => [0x31, true],
+        'an underscore' => [0x5F, true],
+        'a dollar sign' => [0x24, true],
+        'a zero-width non-joiner' => [0x200C, true],
+        'a zero-width joiner' => [0x200D, true],
+        'U+2E2F vertical tilde, a letter that is pattern syntax' => [0x2E2F, false],
+        'a dot' => [0x2E, false],
+        'a space' => [0x20, false],
+        'a line separator' => [0x2028, false],
+    ]);
+
+    test('the stand-in pattern answers the same', function (string $haystack, string $name, bool $found) {
+        expect(olderPcreTsTypeString()->typeNameOccursIn($name, $haystack))->toBe($found)
+            ->and($this->service->typeNameOccursIn($name, $haystack))->toBe($found);
+    })->with([
+        'a bare name' => ['User | null', 'User', true],
+        'a variadic tuple element' => ['[string, ...User[]]', 'User', true],
+        'a name inside a string literal' => ["'User' | 'Admin'", 'User', true],
+        'a member of a namespace' => ['Models.User', 'User', false],
+        'a member of an imported module' => ["import('x').User", 'User', true],
+        'a longer identifier' => ['CrmUser', 'User', false],
+        'a name after a digit inside a longer identifier' => ['a1User', 'User', false],
+        'a name after a non-ASCII letter' => ["\u{e9}User", 'User', false],
+        'a name before a middle dot' => ["User\u{b7}", 'User', false],
+        'a name after a script capital P' => ["\u{2118}User", 'User', false],
+        'a name before a vertical tilde, which is no identifier character' => ["User\u{2e2f}", 'User', true],
+        'a name right after a numeric literal' => ['1User', 'User', false],
+        'a four-digit escape' => [chr(92).'u0055ser', 'User', true],
+        'an escape of a script capital P at the start' => [chr(92).'u2118User', "\u{2118}User", true],
+        'an escape of an estimated sign in the middle' => ['Us'.chr(92).'u{212E}er', "Us\u{212e}er", true],
+        'an escape of a middle dot at the end' => ['User'.chr(92).'u00B7 | null', "User\u{b7}", true],
+        'an escape of an Ethiopic digit one at the end' => ['User'.chr(92).'u{1369}', "User\u{1369}", true],
+        'an escape of a katakana voiced sound mark at the start' => [chr(92).'u309BUser', "\u{309b}User", true],
+        'an escape of a katakana middle dot in the middle' => ['User'.chr(92).'u{30FB}Kind', "User\u{30fb}Kind", true],
+        'an escape of a halfwidth katakana middle dot at the end' => ['User'.chr(92).'uFF65', "User\u{ff65}", true],
+        'an escape of a dot, which TypeScript reads as the name u002EUser' => [chr(92).'u002EUser', 'u002EUser', true],
+        'an escape of a dot is not the name' => [chr(92).'u002EUser', 'User', false],
+    ]);
+
+    test('typeNameOccursIn() keeps the name, and decodes an escape, when PCRE cannot run its pattern', function () {
+        $broken = uncompilableTsTypeString();
+        // Each call raises a compile warning, which Laravel's error handler would rethrow.
+        set_error_handler(static fn (): bool => true);
+
+        try {
+            $kept = $broken->typeNameOccursIn('User', 'string');
+            $decoded = $broken->decode(chr(92).'u0055ser');
+        } finally {
+            restore_error_handler();
+        }
+
+        expect($kept)->toBeTrue()
+            ->and($decoded)->toBe('User')
+            ->and(olderPcreTsTypeString()->decode(chr(92).'u002EUser'))->toBe(chr(92).'u002EUser');
     });
 
     test('typeNameOccursIn() reads a deeply nested template literal in one pass', function () {

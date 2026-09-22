@@ -397,7 +397,7 @@ a model, enum or `#[TsType]` name. That is a plain token match: it counts the na
 inside a quoted string, a template literal's text or a comment as much as outside. So
 `#[TsCasts(['app' => "'User' | 'Admin'"])]` over a read that carried the `User` import keeps
 `import type { User }`, unused. The file is valid; TypeScript reports the import only under `noUnusedLocals`,
-as TS6196 for the name, or as TS6192 when every name on that import line is unused.
+as TS6196 for each unused name, or as one TS6192 when the line holds two or more names and none is used.
 
 This is deliberate. Reading a type as TypeScript lexes it, to leave a name inside a literal out, hid names
 TypeScript reads as references (a string continued by a backslash-newline, a `//` comment ended by CR or

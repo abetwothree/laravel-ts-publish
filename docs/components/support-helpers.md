@@ -61,8 +61,9 @@ Structural questions about a TypeScript type string, and rewrites of one: `extra
 `shapeValueHasUnimportableToken()`, `aliasPropertyType()`, `qualifyGlobalType()`,
 `splitTopLevelUnion()`, `hoistNull()`, `typeNameOccursIn()`, `substituteEnumType()`,
 `rewriteAsEnumToType()`, `isUnknownOnly()`, `isVagueTsType()`, plus the public `TS_PRIMITIVES` list
-several of them filter against. No state. Its only outward dependency is
-`TsTypeShape::splitTopLevel()`, which `splitTopLevelUnion()` wraps.
+several of them filter against. No state, except a static note of which identifier-character pattern
+`typeNameOccursIn()` uses, probed once per process because a PCRE2 before 10.40 has no `\p{ID_Continue}`.
+Its only outward dependency is `TsTypeShape::splitTopLevel()`, which `splitTopLevelUnion()` wraps.
 
 `isUnknownOnly()` is the one home for "this answer is `unknown` once its `null` arms are removed" —
 the test `MethodChainHandler` and `PropertyChainHandler` both decline on. It has no delegation on
@@ -85,7 +86,7 @@ PHP names in, TypeScript names and import paths out: `resourceTypeName()`, `name
 `keyCase()`, plus the `protected importSortGroup()` that classifies a path into `sortImportPaths()`'s
 three groups — an implementation detail with no delegation and no facade surface.
 
-It holds the only state of the three: `$resourceTypeNames`, a per-instance FQCN → published interface
+It holds the only per-instance state of the three: `$resourceTypeNames`, an FQCN → published interface
 name cache that `resourceTypeName()` fills, since resolving a name means reading a `#[TsResource]`
 attribute off the class. That cache is the entire reason the container binding below is not pure
 decoration.

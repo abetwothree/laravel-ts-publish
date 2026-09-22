@@ -19,7 +19,17 @@ class TsTypeString
     ];
 
     /** A character TypeScript reads as part of an identifier: Unicode ID_Continue, `$`, ZWNJ and ZWJ. */
-    private const string IDENTIFIER_CHARACTER = '[\p{ID_Continue}$\x{200C}\x{200D}]';
+    protected const string IDENTIFIER_CHARACTER = '[\p{ID_Continue}$\x{200C}\x{200D}]';
+
+    /**
+     * The same set for a PCRE2 before 10.40, which lacks `\p{ID_Continue}`: its categories and Other_ID code points,
+     * less U+2E2F, the one letter Unicode makes pattern syntax and so never an identifier character.
+     */
+    protected const string IDENTIFIER_CHARACTER_FALLBACK = '(?:(?!\x{2E2F})[\p{L}\p{Nl}\p{Mn}\p{Mc}\p{Nd}\p{Pc}$'
+        .'\x{200C}\x{200D}\x{B7}\x{387}\x{1369}-\x{1371}\x{19DA}\x{2118}\x{212E}\x{309B}\x{309C}\x{30FB}\x{FF65}])';
+
+    /** The identifier-character pattern this process's PCRE2 compiles, decided on first use. */
+    protected static ?string $identifierCharacter = null;
 
     /**
      * Whether a resolved shape value contains an identifier that would need an import to be valid.
@@ -229,8 +239,8 @@ class TsTypeString
     {
         // An identifier character on either side joins the name, and a `.` after one is a member access. `[...User]`
         // still counts, as does `import('x').User`; a name right after a numeric literal (`1User`) is missed.
-        $pattern = '/(?<!'.self::IDENTIFIER_CHARACTER.')(?<!'.self::IDENTIFIER_CHARACTER.'\.)'
-            .preg_quote($typeName, '/').'(?!'.self::IDENTIFIER_CHARACTER.')/u';
+        $class = $this->identifierCharacter();
+        $pattern = '/(?<!'.$class.')(?<!'.$class.'\.)'.preg_quote($typeName, '/').'(?!'.$class.')/u';
 
         foreach ($types as $type) {
             // A haystack PCRE cannot read (invalid UTF-8) keeps the name rather than drops its import.
@@ -311,22 +321,35 @@ class TsTypeString
     }
 
     /**
+     * The identifier-character pattern this PCRE2 compiles: `\p{ID_Continue}` from 10.40 on, its stand-in before.
+     */
+    protected function identifierCharacter(): string
+    {
+        // Probed once per process, silenced so an older PCRE2 falls back instead of its warning failing the command.
+        return static::$identifierCharacter ??= @preg_match('/'.static::IDENTIFIER_CHARACTER.'/u', '') !== false
+            ? static::IDENTIFIER_CHARACTER
+            : static::IDENTIFIER_CHARACTER_FALLBACK;
+    }
+
+    /**
      * Spell each `\uXXXX` or `\u{X…}` escape of an identifier character as that character, as TypeScript reads it.
      */
-    private function decodeIdentifierEscapes(string $type): string
+    protected function decodeIdentifierEscapes(string $type): string
     {
         if (! str_contains($type, '\\u')) {
             return $type;
         }
 
         $pattern = '/\\\\u(?:\{([0-9A-Fa-f]+)\}|([0-9A-Fa-f]{4}))/';
+        $class = $this->identifierCharacter();
 
-        return preg_replace_callback($pattern, static function (array $match): string {
+        return preg_replace_callback($pattern, static function (array $match) use ($class): string {
             $codePoint = hexdec($match[1] !== '' ? $match[1] : $match[2]);
             $char = is_int($codePoint) && $codePoint <= 0x10FFFF ? mb_chr($codePoint, 'UTF-8') : false;
 
-            // An escape of any other character stays as written: TypeScript then reads `u002E…` as the name.
-            return $char !== false && preg_match('/^'.self::IDENTIFIER_CHARACTER.'$/u', $char) === 1
+            // An escape of any other character stays as written, since TypeScript then reads `u002E…` as the name;
+            // a membership test PCRE cannot run decodes it, which is the keep direction.
+            return $char !== false && preg_match('/^'.$class.'$/u', $char) !== 0
                 ? $char
                 : $match[0];
         }, $type) ?? $type;
