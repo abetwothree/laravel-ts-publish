@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use ReflectionMethod;
@@ -12,12 +13,16 @@ use ReflectionMethod;
  * Types what a method's body could not, from that same method's own `@return` docblock.
  *
  * The body always wins: this only fills a property the AST left `unknown`, so a stale docblock can
- * never overwrite a type the analyzer actually resolved.
+ * never overwrite a type the analyzer actually resolved. An index signature the AST left
+ * `unknown | undefined` counts as unfilled too, and keeps its `| undefined` once filled.
  *
  * @internal
  */
 final class ReturnShapeRefiner
 {
+    /** What ResourceAstAnalyzer::collectVariableArrayAssignments() records for an interpolated key it cannot type. */
+    private const UNTYPED_INDEX_SIGNATURE = 'unknown | undefined';
+
     /**
      * Fill every `unknown` property from the method's own `@return array{...}` shape (or
      * `array<string, V>` value type), and mark a key the shape declares `key?:` optional.
@@ -31,10 +36,16 @@ final class ReturnShapeRefiner
         foreach ($analysis->properties as &$property) {
             $name = $property['name'];
             $docType = $shape[$name] ?? $shape[$name.'?'] ?? $valueType;
+            $rawType = $rawShape[$name] ?? $rawShape[$name.'?'] ?? null;
 
             if ($property['type'] === 'unknown') {
-                $property['type'] = $this->resolvedType($docType, $rawShape[$name] ?? $rawShape[$name.'?'] ?? null)
-                    ?? $property['type'];
+                $property['type'] = $this->resolvedType($docType, $rawType) ?? $property['type'];
+            } elseif ($property['type'] === self::UNTYPED_INDEX_SIGNATURE
+                && ResourceAstAnalyzer::isIndexSignatureKey($name)) {
+                $resolved = $this->resolvedType($docType, $rawType);
+
+                // A key matching the pattern may still be absent at runtime, so the value keeps its `| undefined`.
+                $property['type'] = $resolved === null ? $property['type'] : $resolved.' | undefined';
             }
 
             $property['optional'] = $property['optional'] || isset($shape[$name.'?']);

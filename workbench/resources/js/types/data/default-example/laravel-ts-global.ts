@@ -3600,6 +3600,7 @@ declare global {
             primary_label: string;
             [key: `${string}_label`]: string | undefined;
             [key: `${string}_region`]: string | undefined;
+            [key: `${string}_tag`]: string | undefined;
             id: number;
         }
         /**

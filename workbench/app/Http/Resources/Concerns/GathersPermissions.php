@@ -71,6 +71,22 @@ trait GathersPermissions
         return $data;
     }
 
+    /**
+     * An interpolated key whose value only the docblock types.
+     *
+     * @return array<string, string>
+     */
+    public function gatherOpaqueTags(): array
+    {
+        $data = [];
+
+        foreach (['east', 'west'] as $name) {
+            $data["{$name}_tag"] = $this->opaque();
+        }
+
+        return $data;
+    }
+
     /** Deliberately untyped so only the docblocks above can type what it returns. */
     protected function opaque()
     {

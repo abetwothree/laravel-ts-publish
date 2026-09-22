@@ -60,6 +60,24 @@ test('an array<string, V> return fills every unknown property with V', function 
         ->and($props['b']['type'])->toBe('boolean');
 });
 
+test('an array<string, V> return fills an untyped index signature with V, keeping its | undefined', function () {
+    $props = collect(refinedAnalysis([
+        ['name' => '[key: `${string}_tag`]', 'type' => 'unknown | undefined'],
+        ['name' => 'named', 'type' => 'unknown | undefined'],
+    ], 'record')->properties)->keyBy('name');
+
+    expect($props['[key: `${string}_tag`]'])->toMatchArray(['type' => 'string | undefined', 'optional' => false])
+        ->and($props['named']['type'])->toBe('unknown | undefined');
+});
+
+test('an index signature with any other value, or under an array{...} shape, is left alone', function () {
+    $merged = collect(refinedAnalysis([['name' => '[key: `${string}_tag`]', 'type' => 'string | undefined | unknown']], 'record')->properties)->keyBy('name');
+    $shaped = collect(refinedAnalysis([['name' => '[key: `${string}_tag`]', 'type' => 'unknown | undefined']], 'shaped')->properties)->keyBy('name');
+
+    expect($merged['[key: `${string}_tag`]']['type'])->toBe('string | undefined | unknown')
+        ->and($shaped['[key: `${string}_tag`]'])->toMatchArray(['type' => 'unknown | undefined', 'optional' => false]);
+});
+
 test('a method with no return docblock leaves every property alone', function () {
     $props = collect(refinedAnalysis([['name' => 'a', 'type' => 'unknown']], 'undocumented')->properties)->keyBy('name');
 

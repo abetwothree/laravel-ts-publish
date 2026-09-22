@@ -6246,3 +6246,9 @@ test('a concatenated key becomes a template-literal index signature', function (
 
     expect($props['[key: `${string}_region`]'])->toMatchArray(['type' => 'string | undefined', 'optional' => false]);
 });
+
+test('an interpolated key the body cannot type takes its value type from the method @return', function () {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(PermissionsSpreadResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+    expect($props['[key: `${string}_tag`]'])->toMatchArray(['type' => 'string | undefined', 'optional' => false]);
+});

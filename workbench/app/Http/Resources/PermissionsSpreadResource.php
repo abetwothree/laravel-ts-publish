@@ -21,6 +21,6 @@ final class PermissionsSpreadResource extends JsonResource
 
     public function toArray(Request $request): array
     {
-        return [...$this->gatherPermissions(), ...$this->gatherLabels(), ...$this->gatherChannelLabels(), ...$this->gatherRegionLabels(), 'id' => $this->id];
+        return [...$this->gatherPermissions(), ...$this->gatherLabels(), ...$this->gatherChannelLabels(), ...$this->gatherRegionLabels(), ...$this->gatherOpaqueTags(), 'id' => $this->id];
     }
 }

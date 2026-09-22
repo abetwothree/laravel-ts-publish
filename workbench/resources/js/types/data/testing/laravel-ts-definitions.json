@@ -13779,6 +13779,11 @@
                     "optional": false
                 },
                 {
+                    "name": "[key: `${string}_tag`]",
+                    "type": "string | undefined",
+                    "optional": false
+                },
+                {
                     "name": "id",
                     "type": "number",
                     "optional": false

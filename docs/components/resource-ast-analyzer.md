@@ -957,7 +957,9 @@ body always wins:** the refiner only ever writes a property the AST left `unknow
 docblock can never overwrite a resolved type — `TraitSpreadCoverageResource::id` stays the model's
 `number` even though its trait's shape says `string`. It reads two sources: a `@return array{…}`
 shape per key, and a `@return array<string, V>` value type applied to every unknown key. A key the
-shape writes `key?:` also marks the property optional.
+shape writes `key?:` also marks the property optional. An interpolated key's index signature, which
+the AST records as `unknown | undefined`, counts as unknown too — see "A value the body cannot type falls
+back to the method's `@return`" below.
 
 Two values are declined rather than published. A shape value that resolves to a token needing an
 import the shape cannot carry (`TsTypeString::shapeValueHasUnimportableToken()`) is skipped, because
@@ -1020,6 +1022,23 @@ consumer case above is real.
 `` `[^`]*` `` alternative alongside `string`/`number`, so the new key shape prints unquoted in a type
 position exactly like the existing `[key: number]`/`[key: string]`/`` `template` `` signatures, and
 still merges correctly across spread branches.
+
+### A value the body cannot type falls back to the method's `@return`
+
+An interpolated key's value takes the method's own `@return array<string, V>` value type when the
+body cannot type it, the same fallback a named key gets. `collectVariableArrayAssignments()` appends
+the `| undefined` as it records the key, so the refiner sees `unknown | undefined`, not `unknown`.
+`ReturnShapeRefiner::refine()` therefore treats exactly that type as unfilled for a name
+`ResourceAstAnalyzer::isIndexSignatureKey()` accepts, and re-appends `| undefined` to what it
+resolves. `GathersPermissions::gatherOpaqueTags()` pins it: `$data["{$name}_tag"] = $this->opaque()`
+publishes ``[key: `${string}_tag`]: string | undefined``, while the literal-typed `_label` and
+`_region` keys keep the type their body gives them.
+
+The match is deliberately that narrow. A named key typed `unknown | undefined` is left alone, and so
+is an index signature whose value is any other type, including a multi-branch union such as
+`string | undefined | unknown`; the refiner fills nothing it did not fill before apart from this
+one shape. A `@return array{…}` shape names only literal keys, so only the `array<string, V>` form
+ever reaches an index signature.
 
 ## Inline-array spreads become intersection arms
 

@@ -194,6 +194,17 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
+     * Whether a property name is a generated `[key: number]`/`[key: string]`/template-literal index
+     * signature — those can never carry `?:`, unlike a merely-missing-in-some-branch named property.
+     *
+     * Public because ReturnShapeRefiner fills an index signature's value by the same test.
+     */
+    public static function isIndexSignatureKey(string $name): bool
+    {
+        return (bool) preg_match('/^\[[a-zA-Z_$][a-zA-Z0-9_$]*: (?:string|number|`[^`]*`)\]$/', $name);
+    }
+
+    /**
      * Analyze the subject's $this->methodName body and return the resulting property/type analysis.
      */
     public function analyze(): ResourceAnalysis
@@ -1212,15 +1223,6 @@ class ResourceAstAnalyzer implements ExpressionEngine
             flatTypeAlias: $flatTypeAlias,
             flatTypeAliasFqcn: $flatTypeAliasFqcn,
         );
-    }
-
-    /**
-     * Whether a property name is a generated `[key: number]`/`[key: string]`/template-literal index
-     * signature — those can never carry `?:`, unlike a merely-missing-in-some-branch named property.
-     */
-    private static function isIndexSignatureKey(string $name): bool
-    {
-        return (bool) preg_match('/^\[[a-zA-Z_$][a-zA-Z0-9_$]*: (?:string|number|`[^`]*`)\]$/', $name);
     }
 
     /**
