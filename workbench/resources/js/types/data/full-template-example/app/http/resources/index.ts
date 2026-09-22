@@ -86,6 +86,7 @@ export * from './mutual-spread-a-resource';
 export * from './mutual-spread-b-resource';
 export * from './mutually-recursive-spread-resource';
 export * from './named-args-conditional-resource';
+export * from './narrowed-imageable-resource';
 export * from './narrowed-parent-resource';
 export * from './nested-resource-spread-resource';
 export * from './non-array-return-resource';

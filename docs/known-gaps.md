@@ -409,7 +409,7 @@ PCRE2's Unicode tables know them, as its boundaries.
 **What to do about it.** Spell the literal without the imported name, or override the read with a type that
 uses the import.
 
-### `instanceof` narrowing depends on the spelling, in three different ways
+### `instanceof` narrowing depends on the spelling, in four different ways
 
 There is one rule per spelling, not one rule overall. Check which spelling you wrote before assuming a
 value is `unknown`:
@@ -427,6 +427,11 @@ value is `unknown`:
   `$x` to `C` while `A` resolves in `$x instanceof C ? A : B`, which is sound because the binding cannot
   outlive the arm. `NarrowedParentResource`'s `$record instanceof Post ? $record->title : null` — where
   `$record` holds a `morphTo` union — publishes `record_title: string | null`, not `unknown`.
+- **A positive ternary whose true arm is the tested expression narrows only what is read through it.**
+  After `$v = $this->imageable instanceof Post ? $this->imageable : null;`, `$v?->getKey()` reflects on `Post`
+  alone. The ternary's own value, and a bare `$v`, still publish the whole `morphTo` union, because
+  `TernaryHandler` narrows a value only for a single test on a variable or `$this->resource`.
+  `NarrowedImageableResource` is the fixture.
 
 So the statement form and the ternary form of the *same* positive test disagree. That is the distinction
 to check first, and the one an earlier draft of this entry got wrong.

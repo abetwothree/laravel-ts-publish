@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsInstanceofChains;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -41,6 +42,8 @@ use ReflectionUnionType;
  */
 final class ReceiverClassResolver
 {
+    use ReadsInstanceofChains;
+
     /**
      * Resolve the classes an expression holds, or null when any part of it cannot be named.
      */
@@ -53,7 +56,7 @@ final class ReceiverClassResolver
             $expr instanceof StaticCall => $this->resolveStaticClass($expr, $scope),
             $expr instanceof New_ => $expr->class instanceof Name ? $this->namedClass($expr->class, $scope) : null,
             $expr instanceof FuncCall => $this->fromFunctionCall($expr),
-            $expr instanceof Ternary => $this->fromArms([$expr->if ?? $expr->cond, $expr->else], $scope, $expr->if === null),
+            $expr instanceof Ternary => $this->fromArms([$expr->if ?? $expr->cond, $expr->else], $scope, $expr->if === null, $this->testedClasses($expr)),
             $expr instanceof Coalesce => $this->fromArms([$expr->left, $expr->right], $scope, true),
             default => null,
         };
@@ -358,8 +361,9 @@ final class ReceiverClassResolver
      *
      * @param  list<Expr>  $arms
      * @param  bool  $firstArmFallsBack  a `??` or `?:` replaces a null first arm, so its short circuit never escapes
+     * @param  non-empty-list<class-string>|null  $firstArmTested  what a ternary's condition tests its true arm for
      */
-    private function fromArms(array $arms, AnalysisScope $scope, bool $firstArmFallsBack): ?ReceiverType
+    private function fromArms(array $arms, AnalysisScope $scope, bool $firstArmFallsBack, ?array $firstArmTested = null): ?ReceiverType
     {
         $types = [];
         $shortCircuits = false;
@@ -369,7 +373,9 @@ final class ReceiverClassResolver
                 continue;
             }
 
-            $type = $this->resolve($arm, $scope);
+            $type = $index === 0 && $firstArmTested !== null
+                ? $this->narrowed($this->resolve($arm, $scope), $firstArmTested)
+                : $this->resolve($arm, $scope);
 
             if ($type === null) {
                 return null;
@@ -380,6 +386,116 @@ final class ReceiverClassResolver
         }
 
         return $this->merge($types, $shortCircuits);
+    }
+
+    /**
+     * The classes a ternary's `instanceof` test, or `||` chain of them, tests its own true arm for.
+     *
+     * The arm runs when any operand holds, so every operand must test the arm's own read path; `&&`, a negation or
+     * another subject proves nothing about it here.
+     *
+     * @return non-empty-list<class-string>|null
+     */
+    private function testedClasses(Ternary $ternary): ?array
+    {
+        if ($ternary->if === null) {
+            return null;
+        }
+
+        $classes = [];
+
+        foreach ($this->orOperands($ternary->cond) as $operand) {
+            $test = $this->instanceofTest($operand);
+
+            if ($test === null || ! $this->isSameReadPath($test[0], $ternary->if)) {
+                return null;
+            }
+
+            $classes[] = $test[1];
+        }
+
+        return array_values(array_unique($classes));
+    }
+
+    /**
+     * Whether two expressions spell the same variable or property read.
+     *
+     * A method call is never the same read: a second call may return another value than the one the test saw.
+     */
+    private function isSameReadPath(Expr $left, Expr $right): bool
+    {
+        if ($left instanceof Variable && $right instanceof Variable) {
+            return is_string($left->name) && $left->name === $right->name;
+        }
+
+        if (! ($left instanceof PropertyFetch && $right instanceof PropertyFetch)
+            && ! ($left instanceof NullsafePropertyFetch && $right instanceof NullsafePropertyFetch)
+        ) {
+            return false;
+        }
+
+        return $left->name instanceof Identifier
+            && $right->name instanceof Identifier
+            && $left->name->toString() === $right->name->toString()
+            && $this->isSameReadPath($left->var, $right->var);
+    }
+
+    /**
+     * A true arm under its `instanceof` test: narrowed class by class, or the tested classes if it resolves to none.
+     *
+     * Only the classes change: the value is the one the arm resolved, so its short circuit and models still hold.
+     *
+     * @param  non-empty-list<class-string>  $tested
+     */
+    private function narrowed(?ReceiverType $arm, array $tested): ReceiverType
+    {
+        if ($arm === null) {
+            return new ReceiverType($tested);
+        }
+
+        $classes = [];
+
+        foreach ($arm->classes as $class) {
+            $classes = [...$classes, ...$this->narrowedClass($class, $tested)];
+        }
+
+        // No class it resolves to can pass the test, so the arm never runs and any answer holds: keep the one it had.
+        return $classes === []
+            ? $arm
+            : new ReceiverType(array_values(array_unique($classes)), $arm->shortCircuits, $arm->elementModel, $arm->relatedModel);
+    }
+
+    /**
+     * What one class a true arm resolves to becomes under its test: itself when it passes, else the tested subclasses.
+     *
+     * A supertype test never widens it. It is dropped only when it and a tested class are both classes unrelated by
+     * inheritance, which no object can be at once; an interface on either side could share an instance, so it stays.
+     *
+     * @param  class-string  $class
+     * @param  non-empty-list<class-string>  $tested
+     * @return list<class-string>
+     */
+    private function narrowedClass(string $class, array $tested): array
+    {
+        $subclasses = [];
+
+        foreach ($tested as $test) {
+            if (is_a($class, $test, true)) {
+                return [$class];
+            }
+
+            if (is_a($test, $class, true)) {
+                $subclasses[] = $test;
+
+                continue;
+            }
+
+            if (interface_exists($class) || interface_exists($test)) {
+                return [$class];
+            }
+        }
+
+        return $subclasses;
     }
 
     /**

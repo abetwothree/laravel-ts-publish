@@ -7,12 +7,9 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
-use PhpParser\Node\Expr\BinaryOp\BooleanOr;
 use PhpParser\Node\Expr\BooleanNot;
-use PhpParser\Node\Expr\Instanceof_;
 use PhpParser\Node\Expr\Throw_;
 use PhpParser\Node\Expr\Variable;
-use PhpParser\Node\Name;
 use PhpParser\Node\Stmt\Expression as ExpressionStmt;
 use PhpParser\Node\Stmt\If_;
 use PhpParser\Node\Stmt\Return_;
@@ -26,6 +23,8 @@ use PhpParser\NodeFinder;
  */
 trait CollectsInstanceofGuards
 {
+    use ReadsInstanceofChains;
+
     /**
      * Bind variables an early-exit `if (! $x instanceof C)` guard proves to be a C for the rest of the body.
      *
@@ -84,20 +83,16 @@ trait CollectsInstanceofGuards
      */
     private function negatedInstanceofs(Expr $cond): array
     {
-        if ($cond instanceof BooleanOr) {
-            return [...$this->negatedInstanceofs($cond->left), ...$this->negatedInstanceofs($cond->right)];
+        $negated = [];
+
+        foreach ($this->orOperands($cond) as $operand) {
+            $test = $operand instanceof BooleanNot ? $this->instanceofTest($operand->expr) : null;
+
+            if ($test !== null && $test[0] instanceof Variable && is_string($test[0]->name)) {
+                $negated[] = [$test[0]->name, $test[1]];
+            }
         }
 
-        if ($cond instanceof BooleanNot
-            && $cond->expr instanceof Instanceof_
-            && $cond->expr->expr instanceof Variable
-            && is_string($cond->expr->expr->name)
-            && $cond->expr->class instanceof Name
-            && (class_exists($cond->expr->class->toString()) || interface_exists($cond->expr->class->toString()))
-        ) {
-            return [[$cond->expr->expr->name, $cond->expr->class->toString()]];
-        }
-
-        return [];
+        return $negated;
     }
 }

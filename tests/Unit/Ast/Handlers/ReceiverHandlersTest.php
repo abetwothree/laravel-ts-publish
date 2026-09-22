@@ -51,6 +51,7 @@ use Workbench\App\Enums\Priority;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\ImageResource;
 use Workbench\App\Http\Resources\ModelWrappedPropResource;
+use Workbench\App\Http\Resources\NarrowedImageableResource;
 use Workbench\App\Http\Resources\NarrowedParentResource;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\PostStatsResource;
@@ -61,9 +62,11 @@ use Workbench\App\Models\Attachment;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\Product;
 use Workbench\App\Models\Release;
 use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
+use Workbench\Crm\Models\User as CrmUser;
 
 /** Parse one expression statement written with fully-qualified names. */
 function receiverHandlerExpr(string $php): Expr
@@ -749,6 +752,19 @@ describe('narrowing', function () {
 
         expect($props['subscriber_name']['type'])->toBe('string | null');
     });
+
+    test('an instanceof ternary on a $this->prop narrows the receiver a local variable binds through it', function (string $key, string $type) {
+        resolve(ModelAttributeResolver::class)->buildMorphTargetMap([Image::class, Post::class, Product::class, User::class, CrmUser::class]);
+
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(NarrowedImageableResource::class), Image::class)->analyze()->properties)->keyBy('name');
+
+        expect($props[$key]['type'])->toBe($type);
+    })->with([
+        'an || chain' => ['either_id', 'number | null'],
+        'a single test' => ['single_id', 'number | null'],
+        'the un-narrowed control' => ['open_id', 'number | string | null'],
+        'a variable ternary over the narrowed binding' => ['either_title', 'string | null'],
+    ]);
 
     test('a guard whose body reads the variable leaves it un-narrowed, while a clean guard still narrows after it', function () {
         $props = collect(new ResourceAstAnalyzer(new ReflectionClass(NarrowingGuardBodyResource::class), Post::class)->analyze()->properties)->keyBy('name');

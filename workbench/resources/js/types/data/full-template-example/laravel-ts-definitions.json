@@ -13066,6 +13066,31 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\NarrowedImageableResource": {
+            "name": "NarrowedImageableResource",
+            "properties": [
+                {
+                    "name": "either_id",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "single_id",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "open_id",
+                    "type": "number | string | null",
+                    "optional": false
+                },
+                {
+                    "name": "either_title",
+                    "type": "string | null",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\NarrowedParentResource": {
             "name": "NarrowedParentResource",
             "properties": [

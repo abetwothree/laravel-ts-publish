@@ -324,6 +324,12 @@ restored in a `finally`:
    the narrowed model. `TeamSubscriberResource` pins it: `$this->resource->subscriber` is a relation only
    the `SubscribedTeam` subclass declares.
 
+One more rule writes no binding. `ReceiverClassResolver` narrows a ternary's true arm to the classes that
+the arm's own `instanceof` test, or `||` chain of tests, names. So a receiver read later through a variable
+bound to that ternary is narrowed too, which rule 2 cannot do. Rule 1 and this rule read the `||` chain through
+the same `ReadsInstanceofChains` grammar. See
+[Receiver types § A ternary's `instanceof` condition](receiver-types.md#a-ternarys-instanceof-condition).
+
 **The single-write requirement.** Rule 1 binds only a variable written exactly once in the body, reusing
 `CollectsLocalVarBindings::collectWrittenVariableNames()`. A flat statement list cannot tell which write
 is live at a given guard, so a reassigned variable stays unnarrowed rather than taking a
