@@ -190,7 +190,7 @@ itself reaches the same instance as `$this->scope`.
 | `varClassBindings` | `array<string, non-empty-list<class-string>>` | Variables an `instanceof` guard or ternary has proven to hold a class. Read **first** in `ReceiverClassResolver::fromVariable()`. What that ordering actually buys today is precedence over the `closureParamExprBindings ?? localVarBindings` fallback, since a guarded variable is normally bound by a plain local assignment; sitting above `varModelBindings` is the same concern for a narrowed closure param or loop variable, and is motivating rather than currently proven. Scoped: `ClosureHandler` and `TernaryHandler` save and restore it around the body they narrow for. See [Narrowing](#narrowing). |
 | `varModelBindings` | `array<string, class-string<Model>>` | Closure params / loop vars bound to a model class (`whenLoaded` params, `map()` params on a relation chain or a variable, `foreach` over a many-relation), so `$var`, `$var->prop`, `$var->method()` resolve against that model. Scoped: writers save and restore around the body. Also seeded, via `AstEngine::bindingsFor()`, from every `Model`-typed parameter of the located method — a route-bound `Post $post`, a metadata provider's `Model $model` — bound to the parameter's **declared** type. |
 | `varCollectionBindings` | `array<string, array{type: string, modelFqcn: class-string<Model>}>` | Closure params bound to a whole relation collection rather than one element — a to-many `whenLoaded` param. Read for a bare return of the param, and as the element-model fallback for an untyped `->map()` closure param. |
-| `varValueBindings` | `array<string, ValueExpressionResult>` | Closure params bound to an already-resolved *value* rather than to a class — a `collect(...)->map()` param, whose element type the pipeline read off the `collect()` argument before descending. A bare read of the param resolves straight to it, checked after `varModelBindings` and `varCollectionBindings`, which name a model instead. Scoped: `CollectionPipelineHandler` saves and restores around the map body. |
+| `varValueBindings` | `array<string, ValueExpressionResult>` | Closure params bound to an already-resolved *value* rather than to a class — a `collect(...)->map()` param, whose element type the pipeline read off the `collect()` argument before descending. A bare read of the param resolves straight to it, checked after `varModelBindings` and `varCollectionBindings`, which name a model instead; the writer first releases the param's name from those tables, so an outer binding of it cannot win. Scoped: `CollectionPipelineHandler` saves and restores around the map body. |
 | `localVarBindings` | `array<string, Expr>` | Top-level `$var = expr;` bindings for the method last analyzed, so a bare `Variable` value expression resolves through its bound expression instead of degrading to `unknown`. Only variables written exactly once are recorded; `analyzeThisMethodSpread()` saves and restores this per method. |
 | `resolvingLocalVars` | `array<string, true>` | Re-entrancy guard: variable names currently mid-resolution, so a self- or mutually-referential binding (`$a = $b; $b = $a;`) resolves as `unknown` instead of recursing forever. |
 | `visitedSpreadMethods` | `array<string, true>` | Spread methods currently on the analysis stack, so a method that spreads itself — directly or through a cycle — degrades to an empty analysis instead of recursing until memory runs out. |
@@ -205,7 +205,8 @@ restore discipline and is why the field inventory above calls out scoping per fi
 
 ### Writing a scope binding
 
-Every writer hand-rolls this; there is no helper. The current set:
+Most writers hand-roll this. The three map writers share `AnalysisScope::nameBindings()`, `restoreNameBindings()`
+and `releaseParameters()`, for the reason [below](#a-map-closures-parameter-owns-its-name). The current set:
 
 | Writer | Fields it scopes |
 | --- | --- |
@@ -213,9 +214,9 @@ Every writer hand-rolls this; there is no helper. The current set:
 | `ClosureHandler::resolve()` | `localVarBindings`, `varClassBindings` |
 | `ConditionalMethodHandler` | `closureRelationModelClass`, `varModelBindings`, `varCollectionBindings`, `varClassBindings` around a `whenLoaded` closure; `closureParamExprBindings` at its three binding sites — the `when()`/`unless()` condition, `transform()`'s callback, and `resolveValueArgument()`'s value closure |
 | `TernaryHandler::narrowedArmResult()` | `varClassBindings` for a narrowed variable; `modelClass` + `forwardsUndeclaredMembersTo` for a narrowed `$this->resource` |
-| `RelationCollectionChainHandler` | `closureRelationModelClass` around `pluck()`; that plus `varModelBindings` around a `map()` closure |
-| `CollectionPipelineHandler::resolveMapBody()` | `varValueBindings` around a `collect(...)->map()` closure |
-| `VariableHandler::analyzeVariableMapCall()` | `closureRelationModelClass` plus `varModelBindings` around a `$var->map()` closure |
+| `RelationCollectionChainHandler` | `closureRelationModelClass` around `pluck()`; that plus every name-keyed table around a `map()` closure, whose parameter it binds in `varModelBindings` |
+| `CollectionPipelineHandler::resolveMapBody()` | every name-keyed table around a `collect(...)->map()` closure, whose parameter it binds in `varValueBindings` |
+| `VariableHandler::analyzeVariableMapCall()` | `closureRelationModelClass` plus every name-keyed table around a `$var->map()` closure, whose parameter it binds in `varModelBindings` |
 | `VariableHandler`, `ReceiverClassResolver::fromVariable()` | the `resolvingLocalVars` re-entrancy guard |
 
 **The rule: every mutation must sit inside the `try` whose `finally` restores it.** Reviews during the
@@ -238,6 +239,18 @@ runs. Read that as the exception that proves the line to hold — the moment see
 reflect, or call back into the engine on anything whose loading is not already guaranteed, it belongs
 inside the `try`. Prefer restoring the whole map over unsetting the single key you believe you wrote.
 
+#### A map closure's parameter owns its name
+
+The readers rank the name-keyed tables differently. For a bare variable, `VariableHandler` reads
+`varModelBindings`, then `varCollectionBindings`, then `varValueBindings`; `ReceiverClassResolver::fromVariable()`
+reads `varClassBindings` first and never reads `varValueBindings`. So an outer binding of the parameter's name, left
+in any table, outranks the parameter's own binding for some reader: a `collect(...)->map(fn ($c) => …)` nested in a
+`map(fn (Comment $c) => …)` would read its string element as a `Comment`. Each map writer therefore calls
+`AnalysisScope::releaseParameters()` inside its `try`, which drops every parameter name of the closure from every
+name-keyed table, then seeds its own binding, and `restoreNameBindings()` puts every table back in the `finally`.
+A variadic first parameter is never bound: `map()` passes `($value, $key)`, so it collects both and holds no one
+element. All three map writers skip it and analyze no body for it.
+
 ### How `varModelBindings` gets populated, and how scoping holds
 
 `varModelBindings` is populated from four sources, each scoped to the body it binds:
@@ -246,9 +259,10 @@ inside the `try`. Prefer restoring the whole map over unsetting the single key y
   when `relation` resolves to a *single*-model relation, `$x` is bound to that model for the closure
   body. A to-many relation's closure param is deliberately **not** bound this way: the param holds the
   whole collection, not one element, so binding it to the element model would resolve a bare `$x` to a
-  wrong-but-plausible singular type (e.g. `OrderItem` instead of `OrderItem[]`) —
-  `$x->pluck(...)`/`$x->map(...)` already resolve via `AnalysisScope::$closureRelationModelClass`,
-  unaffected by this guard.
+  wrong-but-plausible singular type (e.g. `OrderItem` instead of `OrderItem[]`). Neither `$x->pluck(...)`
+  nor `$x->map(...)` needs that binding: the first resolves through `AnalysisScope::$closureRelationModelClass`,
+  and the second binds its own parameter to its type hint's model or, untyped, to the element model the
+  `varCollectionBindings` entry names (the variable-receiver `map()` below).
 - **A relation-chain `map()`** (`$this->{manyRelation}->take(5)->map(fn ($m) => ...)`, handled in
   `RelationCollectionChainHandler`) — `$m` is bound to the relation's element model for the map
   closure's body.

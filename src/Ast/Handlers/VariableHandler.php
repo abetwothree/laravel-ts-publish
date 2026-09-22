@@ -78,7 +78,7 @@ final class VariableHandler implements ExpressionHandler
         }
 
         // $variable->property — resolve against the variable's own bound model (whenLoaded param,
-        // chain map param, foreach value var), falling back to the ambient whenLoaded closure model.
+        // map param, foreach value var), falling back to the ambient whenLoaded closure model.
         if ($expr instanceof PropertyFetch
             && $expr->var instanceof Variable
             && is_string($expr->var->name)
@@ -93,8 +93,8 @@ final class VariableHandler implements ExpressionHandler
             }
         }
 
-        // `$variable->map(fn (TypedClass $item) => [...])` — no closureRelationModelClass is required
-        // here, since the element type comes from the closure's own type hint.
+        // `$variable->map(fn (Item $item) => [...])` — no ambient closureRelationModelClass is required: the element
+        // model comes from the param's type hint, or from the receiver's own to-many whenLoaded binding.
         if ($expr instanceof MethodCall
             && $expr->var instanceof Variable
             && is_string($expr->var->name)
@@ -140,7 +140,7 @@ final class VariableHandler implements ExpressionHandler
             }
         }
 
-        // Bare variable bound to a model class (whenLoaded param, chain map param, foreach value var) —
+        // Bare variable bound to a model class (whenLoaded param, map param, foreach value var) —
         // resolves to the model's own type. Checked before closure-param/local-var expression bindings,
         // which resolve through a *different* expression rather than naming a model directly.
         if ($expr instanceof Variable && is_string($expr->name) && isset($scope->varModelBindings[$expr->name])) {
@@ -197,10 +197,10 @@ final class VariableHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze `$variable->map(fn (TypedClass $item) => [...])` using the closure's typed first param
-     * as the element model, bound to that param for the body, wrapping the body result as `elementType[]`.
+     * Analyze `$variable->map(fn (Item $item) => [...])` with the first param bound to its element model — the type
+     * hint, else the receiver's to-many whenLoaded element — and wrap the body result as `elementType[]`.
      *
-     * Returns null when there's no typed Model parameter, deferring to the generic method handler.
+     * Returns null when neither names a model, or the first param is variadic, deferring to the generic method handler.
      *
      * @return ValueExpressionResult|null
      */
@@ -226,6 +226,11 @@ final class VariableHandler implements ExpressionHandler
 
         $firstParam = $params[0];
 
+        // map() passes ($value, $key), so a variadic first param collects both and never holds one element.
+        if ($firstParam->variadic) {
+            return null;
+        }
+
         // A named class type hint (already FQCN-resolved by NameResolver) wins when present — it's
         // the more specific signal. Otherwise fall back to the receiver's own relation binding, the
         // same one ConditionalMethodHandler::analyzeWhenLoaded() already populated for a to-many param.
@@ -239,12 +244,13 @@ final class VariableHandler implements ExpressionHandler
 
         /** @var class-string<Model> $paramClass */
         $previousRelationModel = $scope->closureRelationModelClass;
-        $previousVarModelBindings = $scope->varModelBindings;
+        $previousNameBindings = $scope->nameBindings();
 
         try {
             $scope->closureRelationModelClass = $paramClass;
+            $scope->releaseParameters($closureArg);
 
-            // ReceiverClassResolver reads a parameter from varModelBindings only, so a chain from it needs this entry.
+            // ReceiverClassResolver reads a parameter from varModelBindings, never closureRelationModelClass.
             if ($firstParam->var instanceof Variable && is_string($firstParam->var->name)) {
                 $scope->varModelBindings[$firstParam->var->name] = $paramClass;
             }
@@ -258,7 +264,7 @@ final class VariableHandler implements ExpressionHandler
             };
         } finally {
             $scope->closureRelationModelClass = $previousRelationModel;
-            $scope->varModelBindings = $previousVarModelBindings;
+            $scope->restoreNameBindings($previousNameBindings);
         }
 
         if ($bodyResult === null || $bodyResult['type'] === 'unknown') {

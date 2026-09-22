@@ -13837,6 +13837,11 @@
                     "name": "authors",
                     "type": "({ id: number; who: string | null; who_or: string | null })[]",
                     "optional": false
+                },
+                {
+                    "name": "loaded",
+                    "type": "({ who: string | null })[]",
+                    "optional": true
                 }
             ]
         },

@@ -174,9 +174,17 @@ final class CollectionPipelineHandler implements ExpressionHandler
             return null;
         }
 
-        $previousVarValueBindings = $scope->varValueBindings;
+        // map() passes ($value, $key), so a variadic first param collects both and never holds one element.
+        if ($mapArg->params !== [] && $mapArg->params[0]->variadic) {
+            return null;
+        }
+
+        $previousNameBindings = $scope->nameBindings();
 
         try {
+            // A model or collection binding outranks varValueBindings for a bare read, so the name is freed first.
+            $scope->releaseParameters($mapArg);
+
             if ($mapArg->params !== []
                 && $mapArg->params[0]->var instanceof Variable
                 && is_string($mapArg->params[0]->var->name)
@@ -186,7 +194,7 @@ final class CollectionPipelineHandler implements ExpressionHandler
 
             return $engine->resolve($mapArg);
         } finally {
-            $scope->varValueBindings = $previousVarValueBindings;
+            $scope->restoreNameBindings($previousNameBindings);
         }
     }
 }

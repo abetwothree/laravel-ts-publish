@@ -9,6 +9,9 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\Closure;
+use PhpParser\Node\Expr\Variable;
 use ReflectionClass;
 
 /**
@@ -25,6 +28,15 @@ use ReflectionClass;
  * @phpstan-type VarValueBindingsMap array<string, ValueExpressionResult>
  * @phpstan-type LocalVarBindingsMap array<string, Expr>
  * @phpstan-type RequestVarNamesMap array<string, class-string<Request>>
+ * @phpstan-type NameBindingsSnapshot array{
+ *      closureParamExprBindings: ClosureParamExprBindingsMap,
+ *      varClassBindings: VarClassBindingsMap,
+ *      varModelBindings: VarModelBindingsMap,
+ *      varCollectionBindings: VarCollectionBindingsMap,
+ *      varValueBindings: VarValueBindingsMap,
+ *      localVarBindings: LocalVarBindingsMap,
+ *      requestVarNames: RequestVarNamesMap
+ * }
  *
  * @internal
  */
@@ -80,8 +92,8 @@ final class AnalysisScope
     public array $varClassBindings = [];
 
     /**
-     * Closure params / loop vars bound to a model class (whenLoaded params, relation-chain
-     * map params, foreach over a many-relation), so `$var`, `$var->prop`, `$var->method()`
+     * Closure params / loop vars bound to a model class (whenLoaded params, map params on a relation
+     * chain or a variable, foreach over a many-relation), so `$var`, `$var->prop`, `$var->method()`
      * resolve against that model. Scoped: writers save and restore around the body.
      *
      * @var VarModelBindingsMap
@@ -156,5 +168,66 @@ final class AnalysisScope
         $this->forwardsUndeclaredMembersTo = $modelClass !== null && $subjectReflection->isSubclassOf(JsonResource::class)
             ? $modelClass
             : null;
+    }
+
+    /**
+     * Capture every name-keyed binding table, for a closure-parameter writer to restore after the body.
+     *
+     * @return NameBindingsSnapshot
+     */
+    public function nameBindings(): array
+    {
+        return [
+            'closureParamExprBindings' => $this->closureParamExprBindings,
+            'varClassBindings' => $this->varClassBindings,
+            'varModelBindings' => $this->varModelBindings,
+            'varCollectionBindings' => $this->varCollectionBindings,
+            'varValueBindings' => $this->varValueBindings,
+            'localVarBindings' => $this->localVarBindings,
+            'requestVarNames' => $this->requestVarNames,
+        ];
+    }
+
+    /**
+     * Restore every name-keyed binding table from a nameBindings() capture.
+     *
+     * @param  NameBindingsSnapshot  $snapshot
+     */
+    public function restoreNameBindings(array $snapshot): void
+    {
+        $this->closureParamExprBindings = $snapshot['closureParamExprBindings'];
+        $this->varClassBindings = $snapshot['varClassBindings'];
+        $this->varModelBindings = $snapshot['varModelBindings'];
+        $this->varCollectionBindings = $snapshot['varCollectionBindings'];
+        $this->varValueBindings = $snapshot['varValueBindings'];
+        $this->localVarBindings = $snapshot['localVarBindings'];
+        $this->requestVarNames = $snapshot['requestVarNames'];
+    }
+
+    /**
+     * Drop every parameter name of a closure from every name-keyed binding table, before a writer binds its own.
+     *
+     * Each reader ranks the tables differently, so an outer binding of the name left in any one of them would outrank
+     * the parameter's own binding for some reader: a closure parameter owns its name inside its closure.
+     */
+    public function releaseParameters(ArrowFunction|Closure $closure): void
+    {
+        foreach ($closure->params as $param) {
+            if (! $param->var instanceof Variable || ! is_string($param->var->name)) {
+                continue;
+            }
+
+            $name = $param->var->name;
+
+            unset(
+                $this->closureParamExprBindings[$name],
+                $this->varClassBindings[$name],
+                $this->varModelBindings[$name],
+                $this->varCollectionBindings[$name],
+                $this->varValueBindings[$name],
+                $this->localVarBindings[$name],
+                $this->requestVarNames[$name],
+            );
+        }
     }
 }

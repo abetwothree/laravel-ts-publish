@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\TernaryHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\VariableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -34,6 +35,7 @@ use Workbench\App\Http\Resources\HelperCallResource;
 use Workbench\App\Http\Resources\PostCommentAuthorsResource;
 use Workbench\App\Http\Resources\TeamSubscriberResource;
 use Workbench\App\Models\Comment;
+use Workbench\App\Models\Image;
 use Workbench\App\Models\Order;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\SubscribedTeam;
@@ -61,6 +63,22 @@ function variableHandlersThrowingEngine(): ExpressionEngine
             throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
         }
     };
+}
+
+/**
+ * Resolve one expression through the full resource profile, with `$rows` bound to the subject's own comments.
+ *
+ * @param  class-string<Model>  $model
+ * @return array<string, mixed>
+ */
+function variableHandlersResolveOn(string $php, string $model = Post::class, ?AnalysisScope $scope = null): array
+{
+    $parse = fn (string $source): Expr => new AstParser()->parseSource('<?php '.$source.';')[0]->expr;
+    $scope ??= new AnalysisScope(new ReflectionClass(PostCommentAuthorsResource::class), $model);
+    $scope->localVarBindings['rows'] = $parse('$this->resource->getRelation("comments")');
+
+    return new ResourceAstAnalyzer(new ReflectionClass(PostCommentAuthorsResource::class), $model, 'toArray', null, $scope)
+        ->resolve($parse($php));
 }
 
 /**
@@ -346,7 +364,9 @@ it('reads $variable->map(callback: …) by name', function () {
 it('resolves a nullsafe chain from a typed map-closure parameter', function () {
     $props = collect(new ResourceAstAnalyzer(new ReflectionClass(PostCommentAuthorsResource::class), Post::class)->analyze()->properties)->keyBy('name');
 
-    expect($props['authors']['type'])->toBe('({ id: number; who: string | null; who_or: string | null })[]');
+    expect($props['authors']['type'])->toBe('({ id: number; who: string | null; who_or: string | null })[]')
+        ->and($props['loaded']['type'])->toBe('({ who: string | null })[]')
+        ->and($props['loaded']['optional'])->toBeTrue();
 });
 
 it('resolves a nullsafe chain from an untyped map-closure parameter its receiver names the element of', function () {
@@ -389,6 +409,56 @@ it('restores the map-closure bindings when the body throws', function () {
         ->and($scope->varModelBindings)->toBe(['comment' => User::class])
         ->and($scope->closureRelationModelClass)->toBeNull();
 });
+
+// A nested writer's parameter must beat an outer binding of its name in every table, whichever table each one uses.
+it('lets a map-closure parameter own its name over an outer binding of the same name', function (string $php, string $model, string $type) {
+    expect(variableHandlersResolveOn($php, $model)['type'])->toBe($type);
+})->with([
+    'collect() map in a typed variable-receiver map' => [
+        '$rows->map(fn (\Workbench\App\Models\Comment $c) => collect(explode(" ", $c->content))->map(fn ($c) => ["word" => $c])->values()->all())->all()',
+        Post::class,
+        '{ word: string }[][]',
+    ],
+    'collect() map in an untyped whenLoaded map' => [
+        '$this->whenLoaded("comments", fn ($comments) => $comments->map(fn ($c) => collect(explode(" ", $c->content))->map(fn ($c) => ["word" => $c])->values()->all()))',
+        Post::class,
+        '{ word: string }[][]',
+    ],
+    'collect() map in a relation-chain map' => [
+        '$this->comments->map(fn ($c) => collect(explode(" ", $c->content))->map(fn ($c) => ["word" => $c])->values()->all())',
+        Post::class,
+        '{ word: string }[][]',
+    ],
+    'collect() map in a to-one whenLoaded closure' => [
+        '$this->whenLoaded("author", fn ($c) => collect(explode(" ", $c->name))->map(fn ($c) => ["word" => $c])->values()->all())',
+        Post::class,
+        '{ word: string }[]',
+    ],
+    'typed variable-receiver map under a morphTo whenLoaded parameter' => [
+        '$this->whenLoaded("reviewable", fn ($c) => $rows->map(fn (\Workbench\App\Models\Comment $c) => $c->user?->name)->all())',
+        Image::class,
+        '(string | null)[]',
+    ],
+]);
+
+it('releases a map-closure parameter from an outer class narrowing of the same name', function () {
+    $scope = new AnalysisScope(new ReflectionClass(PostCommentAuthorsResource::class), Post::class);
+    $scope->varClassBindings['c'] = [User::class];
+
+    expect(variableHandlersResolveOn('$rows->map(fn (\Workbench\App\Models\Comment $c) => $c->user?->name)', Post::class, $scope)['type'])
+        ->toBe('(string | null)[]')
+        ->and($scope->varClassBindings)->toBe(['c' => [User::class]]);
+});
+
+// Collection::map() passes ($value, $key), so a variadic first parameter holds both and is never one element model.
+it('binds no element model to a variadic map-closure parameter', function (string $php, string $type) {
+    expect(variableHandlersResolveOn($php)['type'])->toBe($type);
+})->with([
+    'untyped, whenLoaded receiver' => ['$this->whenLoaded("comments", fn ($comments) => $comments->map(fn (...$c) => $c))', 'unknown'],
+    'typed, variable receiver' => ['$rows->map(fn (\Workbench\App\Models\Comment ...$c) => $c)->all()', 'unknown'],
+    'relation-chain receiver' => ['$this->comments->map(fn (...$c) => $c)', 'unknown'],
+    'collect() receiver' => ['collect(explode(" ", $this->title))->map(fn (...$w) => $w)->all()', 'unknown'],
+]);
 
 it('narrows the forwarding target from the subject even when modelClass is null', function () {
     // resolveInstanceOfType() searches only If_ nodes, so a ternary-only `$this->resource instanceof X`

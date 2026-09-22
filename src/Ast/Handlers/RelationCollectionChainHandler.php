@@ -273,22 +273,29 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             return null;
         }
 
-        $previousContext = $scope->closureRelationModelClass;
-        $previousVarModelBindings = $scope->varModelBindings;
-        $scope->closureRelationModelClass = $elementModel;
-
-        if ($mapArg->params !== []
-            && $mapArg->params[0]->var instanceof Variable
-            && is_string($mapArg->params[0]->var->name)
-        ) {
-            $scope->varModelBindings[$mapArg->params[0]->var->name] = $elementModel;
+        // map() passes ($value, $key), so a variadic first param collects both and never holds one element.
+        if ($mapArg->params !== [] && $mapArg->params[0]->variadic) {
+            return null;
         }
 
+        $previousContext = $scope->closureRelationModelClass;
+        $previousNameBindings = $scope->nameBindings();
+
         try {
+            $scope->closureRelationModelClass = $elementModel;
+            $scope->releaseParameters($mapArg);
+
+            if ($mapArg->params !== []
+                && $mapArg->params[0]->var instanceof Variable
+                && is_string($mapArg->params[0]->var->name)
+            ) {
+                $scope->varModelBindings[$mapArg->params[0]->var->name] = $elementModel;
+            }
+
             $bodyResult = $engine->resolve($mapArg);
         } finally {
             $scope->closureRelationModelClass = $previousContext;
-            $scope->varModelBindings = $previousVarModelBindings;
+            $scope->restoreNameBindings($previousNameBindings);
         }
 
         if ($bodyResult['type'] === 'unknown') {

@@ -1081,10 +1081,14 @@ collects the arms via `collectInlineArraySpreadArms()` and builds each one with
   checks `$varModelBindings` first, then returns `null` for a `$var` bound only in
   `$varCollectionBindings` — a to-many `whenLoaded` param holding the whole collection, not one
   model — else falls back to `$closureRelationModelClass`.
-  A `->map()` closure's own parameter takes the first branch: `RelationCollectionChainHandler` and
-  `VariableHandler::analyzeVariableMapCall()` both bind it in `$varModelBindings`, typed or not
-  (`members_model_spread` pins the variable-receiver one). `$this->toArray()` is excluded by name: it is the
-  resource's own method and `InlineArrayHandler::isKnownArraySpreadShape()` already flattens it.
+  Two of the three map writers bind a map closure's parameter in `$varModelBindings`, so a spread of it takes
+  the first branch. `RelationCollectionChainHandler` binds it to the relation's element model, typed or not.
+  `VariableHandler::analyzeVariableMapCall()` binds it to its type hint's model or, untyped, to the element model
+  of the receiver's to-many `whenLoaded` binding. Each sets `$closureRelationModelClass` to the same class, so the
+  fallback would give the same arm. `CollectionPipelineHandler` binds a `collect(...)->map()` parameter only in
+  `$varValueBindings` and releases its name from the other tables, so a spread of it reaches the fallback: the
+  model an enclosing `whenLoaded` closure or map set, if any, else no model arm. `$this->toArray()` is excluded
+  by name: it is the resource's own method and `InlineArrayHandler::isKnownArraySpreadShape()` already flattens it.
 - **A collection arm** — the `null` `spreadModelToArrayFqcn()` returns for a `$varCollectionBindings`
   name is a *decline*, not a drop: `InlineArrayHandler::spreadCollectionToArrayFqcn()` picks the same expression up and
   resolves it to the binding's element model. It emits `Record<number, {Model}>`.
