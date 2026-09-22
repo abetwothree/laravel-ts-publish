@@ -40,8 +40,12 @@ final class ReturnShapeRefiner
             } elseif ($property['type'] === $untypedSignature && JsEmitter::isIndexSignatureKey($name)) {
                 $resolved = $this->resolvedType($docType, $rawType);
 
-                // A key matching the pattern may still be absent at runtime, so the value keeps its `| undefined`.
-                $property['type'] = $resolved === null ? $property['type'] : TsTypeString::orUndefined($resolved);
+                // A key matching the pattern may still be absent at runtime, so the value keeps its `| undefined`;
+                // the body's own value is kept for IndexSignatureReconciler to put back where the fill would conflict.
+                if ($resolved !== null) {
+                    $property['bodyType'] = $property['type'];
+                    $property['type'] = TsTypeString::orUndefined($resolved);
+                }
             }
 
             $property['optional'] = $property['optional'] || isset($shape[$name.'?']);

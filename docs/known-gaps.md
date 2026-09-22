@@ -476,16 +476,23 @@ that limit differently, and the difference decides where you go looking for the 
 Declare the property with an import-aware `#[TsCasts]` when you need the token, or give the method a native
 return type that names the class directly.
 
-### An index signature beside an untyped or class-typed key with its pattern can fail TS2411
+### An index signature its body types, or one a class-level `#[TsCasts]` crosses, can fail to compile
 
-An interpolated key publishes a template-literal index signature, and its value is widened to cover every
-named key and every other signature its pattern matches (see
-[resource-ast-analyzer § Same-pattern keys union into the signature](./components/resource-ast-analyzer.md#same-pattern-keys-union-into-the-signature)).
-That union declines when one of those keys is `unknown`, because `unknown` would swallow the typed arms, or
-names a resource, model or enum the transformer rewrites under that key's own name. The signature then keeps its
-own value: ``[key: `${string}_tag`]: string | undefined`` beside `main_tag: PostResource` fails TS2411, and a
-second same-pattern signature still replaces the first. Type the untyped key, or rename the key out of the
-pattern.
+A docblock fill or a same-pattern union of an interpolated key's index signature is kept only where it
+cannot conflict with another key (see
+[resource-ast-analyzer § Index signatures are reconciled with the keys beside them](./components/resource-ast-analyzer.md#index-signatures-are-reconciled-with-the-keys-beside-them)).
+Two cases still publish an interface `tsc` rejects:
+
+- **The body typed the signature, and a key beside it cannot join.** When a same-pattern named key is
+  `unknown`, names a class, or carries an FQCN channel, or another signature's pattern may overlap, the
+  body's own value stands: ``[key: `${string}_tag`]: string | undefined`` beside
+  `main_tag: PostResource` fails TS2411, two overlapping patterns with different values fail TS2413, and
+  a second same-pattern signature still replaces the first. Type the untyped key, or rename it out of
+  the pattern.
+- **A resource or model `#[TsCasts]` retypes a key the pattern matches.** `ResourceTransformer` applies
+  those overrides after the analysis is reconciled, so a docblock-filled signature is not revisited and
+  fails TS2411 when the cast type is not in its value. A `#[TsCasts]` on `toArray()` or on the spread
+  method is reconciled, so put the cast there.
 
 ### `Model::toArray()` on a receiver declines, deliberately
 

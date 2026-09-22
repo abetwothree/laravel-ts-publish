@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendedCustomImportResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclinedTopLevelSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\IndexSignatureConflictResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeArrayMergeChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeSpreadChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ModelArmAppendsResource;
@@ -6287,4 +6288,53 @@ test('a same-pattern key that names a resource, or that nothing types, leaves th
         ->and($props['main_tag']['type'])->toBe('PostResource')
         ->and($props['[key: `${string}_note`]']['type'])->toBe('string | undefined')
         ->and($props['main_note']['type'])->toBe('unknown');
+});
+
+describe('IndexSignatureConflictResource — a docblock-filled signature never conflicts with the keys beside it', function () {
+    beforeEach(function () {
+        $this->shape = fn (string $method) => collect(
+            new ResourceAstAnalyzer(new ReflectionClass(IndexSignatureConflictResource::class), Post::class, $method)->analyze()->properties,
+        )->keyBy('name');
+    });
+
+    test('a key a later literal replaces takes no part in the union', function () {
+        $props = ($this->shape)('staleOverride');
+
+        expect($props['[key: `${string}_tag`]']['type'])->toBe('string | undefined')
+            ->and($props['main_tag']['type'])->toBe('string');
+    });
+
+    test('a fill goes back to the body type beside a key the union declines', function (string $method, string $named) {
+        $props = ($this->shape)($method);
+
+        expect($props['[key: `${string}_tag`]']['type'])->toBe('unknown | undefined')
+            ->and($props['main_tag']['type'])->toBe($named);
+    })->with([
+        'a key nothing types' => ['declinedKey', 'unknown'],
+        'a resource-typed key' => ['declinedResourceKey', 'PostResource'],
+    ]);
+
+    test('fills go back to the body type where another pattern may overlap', function () {
+        $props = ($this->shape)('overlappingPatterns');
+
+        expect($props['[key: `${string}_tag`]']['type'])->toBe('unknown | undefined')
+            ->and($props['[key: `${string}_a_tag`]']['type'])->toBe('unknown | undefined');
+    });
+
+    test('a fill made after the merge still unions with the keys beside it', function (string $method) {
+        $props = ($this->shape)($method);
+
+        expect($props['[key: `${string}_tag`]']['type'])->toBe('string | number | undefined')
+            ->and($props['price_tag']['type'])->toBe('number');
+    })->with([
+        'the analyzed method\'s own @return' => ['docblockAfterMerge'],
+        'a spread method\'s own @return' => ['directSpread'],
+    ]);
+
+    test('a named key the method\'s own #[TsCasts] retypes joins the union with its cast type', function () {
+        $props = ($this->shape)('castNamedKey');
+
+        expect($props['[key: `${string}_tag`]']['type'])->toBe('string | number | undefined')
+            ->and($props['main_tag']['type'])->toBe('number');
+    });
 });

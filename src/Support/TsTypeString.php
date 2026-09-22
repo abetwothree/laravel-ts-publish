@@ -233,10 +233,13 @@ class TsTypeString
         return implode(' | ', $members);
     }
 
-    /** The type with a top-level `undefined` arm, appended unless it already carries one. */
+    /**
+     * The type with an `undefined` arm appended, unless its text already names `undefined` anywhere: the test every
+     * published index signature was built with, so a value that carries one only nested keeps its published type.
+     */
     public function orUndefined(string $type): string
     {
-        return in_array('undefined', $this->splitTopLevelUnion($type), true) ? $type : $type.' | undefined';
+        return str_contains($type, 'undefined') ? $type : $type.' | undefined';
     }
 
     /**

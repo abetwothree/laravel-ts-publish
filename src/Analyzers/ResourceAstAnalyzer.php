@@ -23,6 +23,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ExpressionDispatcher;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ThisPropertyHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
@@ -242,8 +243,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 $ownMethod = $this->scope->subjectReflection->getMethod($this->methodName);
 
                 resolve(ReturnShapeRefiner::class)->refine($branchAnalysis, $ownMethod);
-                $this->unionSamePatternKeys($branchAnalysis);
                 $this->applyTsCastsFromMethod($ownMethod, $branchAnalysis);
+                resolve(IndexSignatureReconciler::class)->reconcile($branchAnalysis);
             }
 
             return $branchAnalysis;
@@ -469,7 +470,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $analysis->addProperty($keyName, $result);
         }
 
-        $this->unionSamePatternKeys($analysis);
+        resolve(IndexSignatureReconciler::class)->reconcile($analysis);
 
         return $analysis;
     }
@@ -794,10 +795,10 @@ class ResourceAstAnalyzer implements ExpressionEngine
         }
 
         resolve(ReturnShapeRefiner::class)->refine($analysis, $method);
-
-        // The refiner can fill a signature after the merge already unioned it, so union once more.
-        $this->unionSamePatternKeys($analysis);
         $this->applyTsCastsFromMethod($method, $analysis);
+
+        // The refiner and #[TsCasts] can each change a key after the merge above reconciled it.
+        resolve(IndexSignatureReconciler::class)->reconcile($analysis);
 
         return $analysis;
     }
@@ -855,6 +856,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 foreach ($analysis->properties as &$prop) {
                     if ($prop['name'] === $property) {
                         $prop['type'] = $type;
+                        unset($prop['bodyType']);
 
                         if ($optional !== null) {
                             $prop['optional'] = $optional;
@@ -1147,7 +1149,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
     {
         $branchCount = count($analyses);
 
-        /** @var array<string, list<array{type: string, optional: bool, description: string}>> */
+        /** @var array<string, list<array{type: string, optional: bool, description: string, bodyType?: string}>> */
         $propertyMap = [];
 
         // Only the channels collapse onto merge(): a property name several branches set has to be
@@ -1168,12 +1170,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $flatTypeAliasFqcn ??= $analysis->flatTypeAliasFqcn;
         }
 
-        /** @var list<array{name: string, type: string, optional: bool, description: string}> */
+        /** @var list<array{name: string, type: string, optional: bool, description: string, bodyType?: string}> */
         $properties = [];
 
         foreach ($propertyMap as $name => $entries) {
-            $types = array_values(array_unique(array_column($entries, 'type')));
-            $type = count($types) === 1 ? $types[0] : $this->unionBranchTypes($types);
+            $type = $this->branchUnion(array_column($entries, 'type'));
+            $bodyType = $this->branchUnion(array_map(fn (array $e): string => $e['bodyType'] ?? $e['type'], $entries));
 
             $presentInAll = count($entries) === $branchCount;
             $anyOptional = (bool) array_filter($entries, fn (array $e) => $e['optional']);
@@ -1197,6 +1199,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 'type' => $type,
                 'optional' => $optional,
                 'description' => $description,
+                ...($bodyType === $type ? [] : ['bodyType' => $bodyType]),
             ];
         }
 
@@ -1215,6 +1218,18 @@ class ResourceAstAnalyzer implements ExpressionEngine
             flatTypeAlias: $flatTypeAlias,
             flatTypeAliasFqcn: $flatTypeAliasFqcn,
         );
+    }
+
+    /**
+     * One property's branch types as one type: the type itself when every branch agrees.
+     *
+     * @param  list<string>  $types
+     */
+    private function branchUnion(array $types): string
+    {
+        $unique = array_values(array_unique($types));
+
+        return count($unique) === 1 ? $unique[0] : $this->unionBranchTypes($unique);
     }
 
     /**
@@ -1321,121 +1336,5 @@ class ResourceAstAnalyzer implements ExpressionEngine
         }
 
         return null;
-    }
-
-    /**
-     * Union each template-literal index signature with the same-pattern keys beside it: a named key it matches
-     * must be assignable to it (TS2411), and a second signature with its pattern holds other runtime keys, so
-     * letting the later one replace the earlier would drop the earlier keys' type. Named keys keep their own type.
-     */
-    private function unionSamePatternKeys(MethodAnalysis $analysis): void
-    {
-        $dropped = [];
-
-        foreach ($analysis->properties as $index => $signature) {
-            $pattern = isset($dropped[$index]) ? null : $this->templateSignaturePattern($signature['name']);
-
-            if ($pattern === null) {
-                continue;
-            }
-
-            $names = [$signature['name']];
-            $types = [$signature['type']];
-            $duplicates = [];
-
-            foreach ($analysis->properties as $other => $property) {
-                $isDuplicate = $other !== $index && $property['name'] === $signature['name'];
-
-                if ($isDuplicate || ($other !== $index && $this->namedKeyMatches($property['name'], $pattern))) {
-                    $names[] = $property['name'];
-                    $types[] = $property['type'];
-                }
-
-                if ($isDuplicate) {
-                    $duplicates[] = $other;
-                }
-            }
-
-            $arms = count($types) > 1 ? $this->portableUnionArms($analysis, $names, $types) : null;
-
-            if ($arms === null) {
-                continue;
-            }
-
-            $analysis->properties[$index]['type'] = TsTypeString::orUndefined(TsTypeString::hoistNull($arms));
-
-            foreach ($duplicates as $duplicate) {
-                $dropped[$duplicate] = true;
-            }
-        }
-
-        $analysis->properties = array_values(array_diff_key($analysis->properties, $dropped));
-    }
-
-    /**
-     * The regex a named key matches when a template-literal index signature covers it, or null for any other key.
-     */
-    private function templateSignaturePattern(string $name): ?string
-    {
-        if (! JsEmitter::isIndexSignatureKey($name) || preg_match('/`(.*)`\]$/s', $name, $template) !== 1) {
-            return null;
-        }
-
-        // interpolatedKeyName() writes a literal `${` as `\${`, so only an unescaped one is a `${string}` placeholder.
-        $literals = preg_split('/(?<!\\\\)\$\{string\}/', $template[1]);
-
-        if ($literals === false) {
-            return null; // @codeCoverageIgnore
-        }
-
-        $escaped = array_map(
-            fn (string $literal): string => preg_quote(str_replace('\\${', '${', $literal), '/'),
-            $literals,
-        );
-
-        return '/^'.implode('.*', $escaped).'$/s';
-    }
-
-    /** Whether a named (non-signature) key matches a template-literal index signature's pattern. */
-    private function namedKeyMatches(string $name, string $pattern): bool
-    {
-        return ! JsEmitter::isIndexSignatureKey($name) && preg_match($pattern, $name) === 1;
-    }
-
-    /**
-     * Every arm of the given types except `undefined`, or null to leave the keys as they are: an `unknown` arm
-     * would swallow the typed ones, and a key carrying an FQCN channel has its tokens rewritten under its own name.
-     *
-     * @param  list<string>  $names
-     * @param  list<string>  $types
-     * @return list<string>|null
-     */
-    private function portableUnionArms(MethodAnalysis $analysis, array $names, array $types): ?array
-    {
-        foreach ($names as $name) {
-            if (isset($analysis->enumResources[$name]) || isset($analysis->nestedResources[$name])
-                || isset($analysis->directEnumFqcns[$name]) || isset($analysis->modelFqcns[$name])
-                || isset($analysis->inlineEnumFqcns[$name]) || isset($analysis->inlineModelFqcns[$name])
-                || isset($analysis->multiEnumResourceFqcns[$name]) || isset($analysis->inlineEnumResourceFqcns[$name])
-                || isset($analysis->enumResourceArmShapes[$name])) {
-                return null;
-            }
-        }
-
-        $arms = [];
-
-        foreach ($types as $type) {
-            foreach (TsTypeString::splitTopLevelUnion($type) as $arm) {
-                if ($arm === 'unknown') {
-                    return null;
-                }
-
-                if ($arm !== 'undefined') {
-                    $arms[] = $arm;
-                }
-            }
-        }
-
-        return $arms;
     }
 }
