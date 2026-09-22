@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeSpreadChildResourc
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ModelArmAppendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NamedMergeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NestedMethodModelSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SamePatternDeclinedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UnreadableReturnResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Illuminate\Notifications\DatabaseNotification;
@@ -134,6 +135,7 @@ use Workbench\App\Http\Resources\RegistrarResource;
 use Workbench\App\Http\Resources\RelationChainResource;
 use Workbench\App\Http\Resources\ReleaseColumnsResource;
 use Workbench\App\Http\Resources\ResourceWrappedEnumResource;
+use Workbench\App\Http\Resources\SamePatternKeysResource;
 use Workbench\App\Http\Resources\ShadowedClosureParamResource;
 use Workbench\App\Http\Resources\SpreadJsonBaseResource;
 use Workbench\App\Http\Resources\SpreadWithClosureResource;
@@ -6251,4 +6253,38 @@ test('an interpolated key the body cannot type takes its value type from the met
     $props = collect(new ResourceAstAnalyzer(new ReflectionClass(PermissionsSpreadResource::class), Post::class)->analyze()->properties)->keyBy('name');
 
     expect($props['[key: `${string}_tag`]'])->toMatchArray(['type' => 'string | undefined', 'optional' => false]);
+});
+
+describe('SamePatternKeysResource — an index signature covers every same-pattern key a spread merges beside it', function () {
+    beforeEach(function () {
+        $this->properties = new ResourceAstAnalyzer(new ReflectionClass(SamePatternKeysResource::class), Post::class)->analyze()->properties;
+        $this->props = collect($this->properties)->keyBy('name');
+    });
+
+    test('a docblock-filled signature takes in a named key it matches, which keeps its own type', function () {
+        expect($this->props['[key: `${string}_tag`]'])->toMatchArray(['type' => 'string | number | undefined', 'optional' => false])
+            ->and($this->props['price_tag'])->toMatchArray(['type' => 'number', 'optional' => false]);
+    });
+
+    test('a body-typed signature takes in a named key it matches', function () {
+        expect($this->props['[key: `${string}_note`]'])->toMatchArray(['type' => 'string | number | undefined', 'optional' => false])
+            ->and($this->props['count_note'])->toMatchArray(['type' => 'number', 'optional' => false]);
+    });
+
+    test('two signatures with one pattern become one, whose value unions both', function (string $name) {
+        expect(collect($this->properties)->where('name', $name))->toHaveCount(1)
+            ->and($this->props[$name])->toMatchArray(['type' => 'string | number | undefined', 'optional' => false]);
+    })->with([
+        'one filled from its docblock' => ['[key: `${string}_code`]'],
+        'both typed by their bodies' => ['[key: `${string}_mark`]'],
+    ]);
+});
+
+test('a same-pattern key that names a resource, or that nothing types, leaves the signature as it was', function () {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(SamePatternDeclinedResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+    expect($props['[key: `${string}_tag`]']['type'])->toBe('string | undefined')
+        ->and($props['main_tag']['type'])->toBe('PostResource')
+        ->and($props['[key: `${string}_note`]']['type'])->toBe('string | undefined')
+        ->and($props['main_note']['type'])->toBe('unknown');
 });

@@ -33,6 +33,7 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesClassNames;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
@@ -194,17 +195,6 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Whether a property name is a generated `[key: number]`/`[key: string]`/template-literal index
-     * signature — those can never carry `?:`, unlike a merely-missing-in-some-branch named property.
-     *
-     * Public because ReturnShapeRefiner fills an index signature's value by the same test.
-     */
-    public static function isIndexSignatureKey(string $name): bool
-    {
-        return (bool) preg_match('/^\[[a-zA-Z_$][a-zA-Z0-9_$]*: (?:string|number|`[^`]*`)\]$/', $name);
-    }
-
-    /**
      * Analyze the subject's $this->methodName body and return the resulting property/type analysis.
      */
     public function analyze(): ResourceAnalysis
@@ -252,6 +242,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 $ownMethod = $this->scope->subjectReflection->getMethod($this->methodName);
 
                 resolve(ReturnShapeRefiner::class)->refine($branchAnalysis, $ownMethod);
+                $this->unionSamePatternKeys($branchAnalysis);
                 $this->applyTsCastsFromMethod($ownMethod, $branchAnalysis);
             }
 
@@ -477,6 +468,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
             $analysis->addProperty($keyName, $result);
         }
+
+        $this->unionSamePatternKeys($analysis);
 
         return $analysis;
     }
@@ -802,6 +795,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         resolve(ReturnShapeRefiner::class)->refine($analysis, $method);
 
+        // The refiner can fill a signature after the merge already unioned it, so union once more.
+        $this->unionSamePatternKeys($analysis);
         $this->applyTsCastsFromMethod($method, $analysis);
 
         return $analysis;
@@ -961,14 +956,11 @@ class ResourceAstAnalyzer implements ExpressionEngine
                     ? $stmt->expr->var->dim->value
                     : $this->interpolatedKeyName($stmt->expr->var->dim)) !== null) {
                 $result = $this->analyzeValueExpression($stmt->expr->expr);
-                $isIndexSignature = self::isIndexSignatureKey($keyName);
+                $isIndexSignature = JsEmitter::isIndexSignatureKey($keyName);
                 $optional = $isConditional || $result['optional'];
 
                 if ($isIndexSignature) {
-                    if (! str_contains($result['type'], 'undefined')) {
-                        $result['type'] .= ' | undefined';
-                    }
-
+                    $result['type'] = TsTypeString::orUndefined($result['type']);
                     $result['optional'] = false;
                     $optional = false;
                 }
@@ -1051,7 +1043,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         foreach ($parts as $part) {
             if ($part instanceof InterpolatedStringPart || $part instanceof String_) {
-                // isIndexSignatureKey()'s backtick alternative has no escape clause, so an escaped
+                // JsEmitter::isIndexSignatureKey()'s backtick alternative has no escape clause, so an escaped
                 // backtick could never be read back; decline rather than publish an unmatchable name.
                 if (str_contains($part->value, '`')) {
                     return null;
@@ -1187,7 +1179,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $anyOptional = (bool) array_filter($entries, fn (array $e) => $e['optional']);
             // An index signature (e.g. `[key: number]`) can never carry `?:` — it's a syntax
             // error — regardless of whether every branch produced it.
-            $optional = ! self::isIndexSignatureKey($name) && (! $presentInAll || $anyOptional);
+            $optional = ! JsEmitter::isIndexSignatureKey($name) && (! $presentInAll || $anyOptional);
 
             // Use the first non-empty description found
             $description = '';
@@ -1329,5 +1321,121 @@ class ResourceAstAnalyzer implements ExpressionEngine
         }
 
         return null;
+    }
+
+    /**
+     * Union each template-literal index signature with the same-pattern keys beside it: a named key it matches
+     * must be assignable to it (TS2411), and a second signature with its pattern holds other runtime keys, so
+     * letting the later one replace the earlier would drop the earlier keys' type. Named keys keep their own type.
+     */
+    private function unionSamePatternKeys(MethodAnalysis $analysis): void
+    {
+        $dropped = [];
+
+        foreach ($analysis->properties as $index => $signature) {
+            $pattern = isset($dropped[$index]) ? null : $this->templateSignaturePattern($signature['name']);
+
+            if ($pattern === null) {
+                continue;
+            }
+
+            $names = [$signature['name']];
+            $types = [$signature['type']];
+            $duplicates = [];
+
+            foreach ($analysis->properties as $other => $property) {
+                $isDuplicate = $other !== $index && $property['name'] === $signature['name'];
+
+                if ($isDuplicate || ($other !== $index && $this->namedKeyMatches($property['name'], $pattern))) {
+                    $names[] = $property['name'];
+                    $types[] = $property['type'];
+                }
+
+                if ($isDuplicate) {
+                    $duplicates[] = $other;
+                }
+            }
+
+            $arms = count($types) > 1 ? $this->portableUnionArms($analysis, $names, $types) : null;
+
+            if ($arms === null) {
+                continue;
+            }
+
+            $analysis->properties[$index]['type'] = TsTypeString::orUndefined(TsTypeString::hoistNull($arms));
+
+            foreach ($duplicates as $duplicate) {
+                $dropped[$duplicate] = true;
+            }
+        }
+
+        $analysis->properties = array_values(array_diff_key($analysis->properties, $dropped));
+    }
+
+    /**
+     * The regex a named key matches when a template-literal index signature covers it, or null for any other key.
+     */
+    private function templateSignaturePattern(string $name): ?string
+    {
+        if (! JsEmitter::isIndexSignatureKey($name) || preg_match('/`(.*)`\]$/s', $name, $template) !== 1) {
+            return null;
+        }
+
+        // interpolatedKeyName() writes a literal `${` as `\${`, so only an unescaped one is a `${string}` placeholder.
+        $literals = preg_split('/(?<!\\\\)\$\{string\}/', $template[1]);
+
+        if ($literals === false) {
+            return null; // @codeCoverageIgnore
+        }
+
+        $escaped = array_map(
+            fn (string $literal): string => preg_quote(str_replace('\\${', '${', $literal), '/'),
+            $literals,
+        );
+
+        return '/^'.implode('.*', $escaped).'$/s';
+    }
+
+    /** Whether a named (non-signature) key matches a template-literal index signature's pattern. */
+    private function namedKeyMatches(string $name, string $pattern): bool
+    {
+        return ! JsEmitter::isIndexSignatureKey($name) && preg_match($pattern, $name) === 1;
+    }
+
+    /**
+     * Every arm of the given types except `undefined`, or null to leave the keys as they are: an `unknown` arm
+     * would swallow the typed ones, and a key carrying an FQCN channel has its tokens rewritten under its own name.
+     *
+     * @param  list<string>  $names
+     * @param  list<string>  $types
+     * @return list<string>|null
+     */
+    private function portableUnionArms(MethodAnalysis $analysis, array $names, array $types): ?array
+    {
+        foreach ($names as $name) {
+            if (isset($analysis->enumResources[$name]) || isset($analysis->nestedResources[$name])
+                || isset($analysis->directEnumFqcns[$name]) || isset($analysis->modelFqcns[$name])
+                || isset($analysis->inlineEnumFqcns[$name]) || isset($analysis->inlineModelFqcns[$name])
+                || isset($analysis->multiEnumResourceFqcns[$name]) || isset($analysis->inlineEnumResourceFqcns[$name])
+                || isset($analysis->enumResourceArmShapes[$name])) {
+                return null;
+            }
+        }
+
+        $arms = [];
+
+        foreach ($types as $type) {
+            foreach (TsTypeString::splitTopLevelUnion($type) as $arm) {
+                if ($arm === 'unknown') {
+                    return null;
+                }
+
+                if ($arm !== 'undefined') {
+                    $arms[] = $arm;
+                }
+            }
+        }
+
+        return $arms;
     }
 }

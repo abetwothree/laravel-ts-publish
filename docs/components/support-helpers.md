@@ -45,8 +45,8 @@ the second one is a helper.
 
 ### `JsEmitter`
 
-PHP values and docblock text in, JavaScript source out: `validJsObjectKey()`, `safeJsIdentifier()`,
-`toJsLiteral()`, `enumScalar()`, `routeArgsToJs()`, `sanitizeJsDoc()`, `formatJsDoc()`,
+PHP values and docblock text in, JavaScript source out: `validJsObjectKey()`, `isIndexSignatureKey()`,
+`safeJsIdentifier()`, `toJsLiteral()`, `enumScalar()`, `routeArgsToJs()`, `sanitizeJsDoc()`, `formatJsDoc()`,
 `parseDocBlockDescription()`, plus the private `RESERVED_JS_IDENTIFIERS` list `safeJsIdentifier()`
 reads. No state, no dependencies, no config.
 
@@ -55,11 +55,15 @@ reads. No state, no dependencies, no config.
 leave the default alone. See [the arbiter](#the-arbiter-is-the-generated-tree) for what happened when a
 delegation dropped it.
 
+`isIndexSignatureKey()` is the one home for "this key is a generated index signature, not a property
+name": `validJsObjectKey()` asks it, and so do `ResourceAstAnalyzer` and `ReturnShapeRefiner`, so the
+regex has one spelling. Like `isUnknownOnly()` below, it has no delegation on `LaravelTsPublish`.
+
 ### `TsTypeString`
 
 Structural questions about a TypeScript type string, and rewrites of one: `extractImportableTypes()`,
 `shapeValueHasUnimportableToken()`, `aliasPropertyType()`, `qualifyGlobalType()`,
-`splitTopLevelUnion()`, `hoistNull()`, `typeNameOccursIn()`, `substituteEnumType()`,
+`splitTopLevelUnion()`, `hoistNull()`, `orUndefined()`, `typeNameOccursIn()`, `substituteEnumType()`,
 `rewriteAsEnumToType()`, `isUnknownOnly()`, `isVagueTsType()`, plus the public `TS_PRIMITIVES` list
 several of them filter against. No state, except a static note of which identifier-character pattern
 `typeNameOccursIn()` uses, probed once per process because a PCRE2 before 10.40 has no `\p{ID_Continue}`.
@@ -68,7 +72,7 @@ Its only outward dependency is `TsTypeShape::splitTopLevel()`, which `splitTopLe
 `isUnknownOnly()` is the one home for "this answer is `unknown` once its `null` arms are removed" —
 the test `MethodChainHandler` and `PropertyChainHandler` both decline on. It has no delegation on
 `LaravelTsPublish`, because that surface is the frozen pre-extraction one, not a place new helpers
-join.
+join. `orUndefined()`, the one spelling of an index signature's ` | undefined` suffix, has none either.
 
 **The retained type engine calls into it, and that direction is one-way.** Six sites across five engine
 methods — `toTsType()`, `arrayableShapeType()`, `publicPropertyShapeType()`,

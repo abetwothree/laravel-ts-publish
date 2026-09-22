@@ -233,6 +233,12 @@ class TsTypeString
         return implode(' | ', $members);
     }
 
+    /** The type with a top-level `undefined` arm, appended unless it already carries one. */
+    public function orUndefined(string $type): string
+    {
+        return in_array('undefined', $this->splitTopLevelUnion($type), true) ? $type : $type.' | undefined';
+    }
+
     /**
      * Whether a type name occurs as its own token in any of the given types, wherever it stands: a name inside a
      * string, template or comment counts too, since a kept import is unused at worst while a hidden one breaks the

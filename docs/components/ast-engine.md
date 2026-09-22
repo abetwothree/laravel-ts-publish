@@ -686,8 +686,8 @@ publishes whatever its own return shape declares, and a key the shape writes `ke
 optional. `DocblockShapedEvent` pins it: `broadcastWith()` returns one value from an untyped private
 helper, and `published_at` publishes `string | null` from the docblock rather than `unknown`. An
 event whose `broadcastWith()` carries no shape is unaffected — the refiner only ever fills a property
-the body left `unknown`, so `TeamMessageSent`'s reflected `teamId`/`content` keep the types their
-bodies already resolved.
+the body left untyped (`unknown`, or an interpolated key's `unknown | undefined`), so `TeamMessageSent`'s
+reflected `teamId`/`content` keep the types their bodies already resolved.
 
 `InertiaPageAnalyzer` is the other shape a consumer can take: instead of one method's return shape it
 resolves *expressions* — every `Inertia::render()` props argument in a controller action — through the

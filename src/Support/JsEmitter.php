@@ -35,12 +35,21 @@ class JsEmitter
     public function validJsObjectKey(string $key, bool $allowIndexSignature = false): string
     {
         if (preg_match('/^[a-zA-Z_$][a-zA-Z0-9_$]*$/', $key)
-            || ($allowIndexSignature && preg_match('/^\[[a-zA-Z_$][a-zA-Z0-9_$]*: (?:string|number|`[^`]*`)\]$/', $key))) {
+            || ($allowIndexSignature && $this->isIndexSignatureKey($key))) {
             return $key;
         }
 
         // json_encode produces a properly escaped double-quoted string valid in JS/TS
         return (string) json_encode($key);
+    }
+
+    /**
+     * Whether a key is a generated `[key: number]`/`[key: string]`/template-literal index signature rather than a
+     * property name: it prints unquoted in a type position and can never carry `?:`.
+     */
+    public function isIndexSignatureKey(string $key): bool
+    {
+        return preg_match('/^\[[a-zA-Z_$][a-zA-Z0-9_$]*: (?:string|number|`[^`]*`)\]$/', $key) === 1;
     }
 
     /**

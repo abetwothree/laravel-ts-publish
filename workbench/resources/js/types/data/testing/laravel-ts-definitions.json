@@ -15101,6 +15101,46 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\SamePatternKeysResource": {
+            "name": "SamePatternKeysResource",
+            "properties": [
+                {
+                    "name": "[key: `${string}_tag`]",
+                    "type": "string | number | undefined",
+                    "optional": false
+                },
+                {
+                    "name": "price_tag",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "[key: `${string}_note`]",
+                    "type": "string | number | undefined",
+                    "optional": false
+                },
+                {
+                    "name": "count_note",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "[key: `${string}_code`]",
+                    "type": "string | number | undefined",
+                    "optional": false
+                },
+                {
+                    "name": "[key: `${string}_mark`]",
+                    "type": "string | number | undefined",
+                    "optional": false
+                },
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\SelfSpreadResource": {
             "name": "SelfSpreadResource",
             "properties": [

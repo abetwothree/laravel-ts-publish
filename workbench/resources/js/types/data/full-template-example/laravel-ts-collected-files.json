@@ -219,6 +219,7 @@
     "app\/Http\/Resources\/ReviewResource.php",
     "app\/Http\/Resources\/RoutableResource.php",
     "app\/Http\/Resources\/SameBasenameModelTrioResource.php",
+    "app\/Http\/Resources\/SamePatternKeysResource.php",
     "app\/Http\/Resources\/SelfSpreadResource.php",
     "app\/Http\/Resources\/ServiceDeskResource.php",
     "app\/Http\/Resources\/ServiceReturnResource.php",

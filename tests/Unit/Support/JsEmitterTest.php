@@ -35,6 +35,20 @@ describe('validJsObjectKey', function () {
     });
 });
 
+describe('isIndexSignatureKey', function () {
+    test('only a generated index signature is one', function (string $key, bool $expected) {
+        expect($this->service->isIndexSignatureKey($key))->toBe($expected);
+    })->with([
+        'number key' => ['[key: number]', true],
+        'string key' => ['[key: string]', true],
+        'template literal' => ['[key: `${string}_tag`]', true],
+        'a property name' => ['price_tag', false],
+        'a bracketed name that is not a signature' => ['[weird]', false],
+        'a symbol key type' => ['[key: symbol]', false],
+        'a backtick inside the template' => ['[key: `a`b`]', false],
+    ]);
+});
+
 describe('safeJsIdentifier', function () {
     test('appends suffix to reserved keywords', function () {
         expect($this->service->safeJsIdentifier('delete', 'Method'))->toBe('deleteMethod')

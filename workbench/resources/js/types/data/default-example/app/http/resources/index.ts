@@ -134,6 +134,7 @@ export * from './resource-wrapped-enum-resource';
 export * from './review-resource';
 export * from './routable-resource';
 export * from './same-basename-model-trio-resource';
+export * from './same-pattern-keys-resource';
 export * from './self-spread-resource';
 export * from './service-desk-resource';
 export * from './service-return-resource';

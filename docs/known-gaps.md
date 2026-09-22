@@ -476,6 +476,17 @@ that limit differently, and the difference decides where you go looking for the 
 Declare the property with an import-aware `#[TsCasts]` when you need the token, or give the method a native
 return type that names the class directly.
 
+### An index signature beside an untyped or class-typed key with its pattern can fail TS2411
+
+An interpolated key publishes a template-literal index signature, and its value is widened to cover every
+named key and every other signature its pattern matches (see
+[resource-ast-analyzer § Same-pattern keys union into the signature](./components/resource-ast-analyzer.md#same-pattern-keys-union-into-the-signature)).
+That union declines when one of those keys is `unknown`, because `unknown` would swallow the typed arms, or
+names a resource, model or enum the transformer rewrites under that key's own name. The signature then keeps its
+own value: ``[key: `${string}_tag`]: string | undefined`` beside `main_tag: PostResource` fails TS2411, and a
+second same-pattern signature still replaces the first. Type the untyped key, or rename the key out of the
+pattern.
+
 ### `Model::toArray()` on a receiver declines, deliberately
 
 `ReceiverMethodReturnResolver::resolveOn()` answers nothing for `toArray()` on an Eloquent model receiver,

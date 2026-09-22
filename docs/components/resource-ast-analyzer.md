@@ -957,9 +957,9 @@ body always wins:** the refiner only ever writes a property the AST left `unknow
 docblock can never overwrite a resolved type — `TraitSpreadCoverageResource::id` stays the model's
 `number` even though its trait's shape says `string`. It reads two sources: a `@return array{…}`
 shape per key, and a `@return array<string, V>` value type applied to every unknown key. A key the
-shape writes `key?:` also marks the property optional. An interpolated key's index signature, which
-the AST records as `unknown | undefined`, counts as unknown too — see "A value the body cannot type falls
-back to the method's `@return`" below.
+shape writes `key?:` also marks the property optional. An interpolated key whose value the body could
+not type, which the AST records as `unknown | undefined`, counts as unknown too — see "A value the body
+cannot type falls back to the method's `@return`" below.
 
 Two values are declined rather than published. A shape value that resolves to a token needing an
 import the shape cannot carry (`TsTypeString::shapeValueHasUnimportableToken()`) is skipped, because
@@ -987,15 +987,15 @@ through `interpolatedKeyName()`, which reads an `InterpolatedString`'s parts (v5
 `Encapsed` is now the deprecated shim that extends it, not the other way round) or a `Concat`'s two
 operands, and requires **both** a literal segment and a dynamic one — a purely dynamic dim
 (`$data[$name]`) or a purely literal one is left to the existing handling. A literal segment
-containing a backtick declines the whole key (returns `null`): `isIndexSignatureKey()`'s backtick
-alternative has no escape clause, so an escaped backtick could not be read back, and there is no
+containing a backtick declines the whole key (returns `null`): `JsEmitter::isIndexSignatureKey()`'s
+backtick alternative has no escape clause, so an escaped backtick could not be read back, and there is no
 fixture that needs it. Otherwise it publishes a template-literal index signature, e.g.
 ``[key: `${string}_label`]``, with `${` in any literal segment escaped so the pattern stays valid
 TypeScript syntax without being misread as an actual interpolation.
 
 Such a key always publishes `optional = false` with its value type widened to include `| undefined`,
 never `key?:` on the signature itself. `[key: T]?:` is a TypeScript syntax error regardless of how
-the analyzer produced the name (`isIndexSignatureKey()`'s existing `mergeReturnBranches()` guard
+the analyzer produced the name (`mergeReturnBranches()`'s `JsEmitter::isIndexSignatureKey()` guard
 already establishes this) — that alone rules out `key?:`. Whether the `| undefined` on the *value*
 side is doing anything measurable depends on the consumer's own `tsconfig`, which is why it stays
 regardless:
@@ -1018,19 +1018,20 @@ workbench trees here compile clean with or without the `| undefined` — do not 
 the `| undefined` is redundant everywhere; it is redundant only under this flag combination, and the
 consumer case above is real.
 
-`validJsObjectKey()` and `isIndexSignatureKey()` both widen their index-signature regex with a
-`` `[^`]*` `` alternative alongside `string`/`number`, so the new key shape prints unquoted in a type
-position exactly like the existing `[key: number]`/`[key: string]`/`` `template` `` signatures, and
-still merges correctly across spread branches.
+`JsEmitter::isIndexSignatureKey()` is the one test for a signature name: `validJsObjectKey()`, the
+collector, `mergeReturnBranches()`, `ReturnShapeRefiner` and the same-pattern union below all ask it. Its
+regex carries a `` `[^`]*` `` alternative alongside `string`/`number`, so the new key shape prints unquoted
+in a type position exactly like the existing `[key: number]`/`[key: string]` signatures, and still merges
+correctly across spread branches. The `| undefined` itself is spelled once, by `TsTypeString::orUndefined()`.
 
 ### A value the body cannot type falls back to the method's `@return`
 
 An interpolated key's value takes the method's own `@return array<string, V>` value type when the
 body cannot type it, the same fallback a named key gets. `collectVariableArrayAssignments()` appends
-the `| undefined` as it records the key, so the refiner sees `unknown | undefined`, not `unknown`.
-`ReturnShapeRefiner::refine()` therefore treats exactly that type as unfilled for a name
-`ResourceAstAnalyzer::isIndexSignatureKey()` accepts, and re-appends `| undefined` to what it
-resolves. `GathersPermissions::gatherOpaqueTags()` pins it: `$data["{$name}_tag"] = $this->opaque()`
+the `| undefined` as it records the key, so a key whose value the body could not type reaches the refiner
+as `unknown | undefined`, not `unknown`. `ReturnShapeRefiner::refine()` therefore treats exactly that
+type as unfilled for a name `JsEmitter::isIndexSignatureKey()` accepts, and re-appends `| undefined` to
+what it resolves. `GathersPermissions::gatherOpaqueTags()` pins it: `$data["{$name}_tag"] = $this->opaque()`
 publishes ``[key: `${string}_tag`]: string | undefined``, while the literal-typed `_label` and
 `_region` keys keep the type their body gives them.
 
@@ -1039,6 +1040,31 @@ is an index signature whose value is any other type, including a multi-branch un
 `string | undefined | unknown`; the refiner fills nothing it did not fill before apart from this
 one shape. A `@return array{…}` shape names only literal keys, so only the `array<string, V>` form
 ever reaches an index signature.
+
+### Same-pattern keys union into the signature
+
+Every key a signature's pattern matches must be assignable to its value: `tsc` reports TS2411 for
+``[key: `${string}_tag`]: string | undefined`` beside `price_tag: number`, with or without
+`exactOptionalPropertyTypes`. Two signatures with one pattern stand for different runtime keys, so
+letting the later replace the earlier, as a name-keyed merge does, drops the earlier keys' type.
+`unionSamePatternKeys()` therefore unions a template-literal signature's value with every named key its
+pattern matches and every other signature with its pattern, keeps the `| undefined`, and collapses the
+signatures into the first one's position. Named keys keep their own type. `templateSignaturePattern()`
+reads the pattern back from the name: each unescaped `${string}` matches any run of characters, so
+`_tag` itself falls under ``${string}_tag``, exactly as TypeScript reads it.
+
+It runs where keys are merged, at the end of `analyzeReturnArray()`, and again after each
+`ReturnShapeRefiner::refine()`, because the refiner can fill a signature after the merge settled it. It
+runs before `applyTsCastsFromMethod()`, so a `#[TsCasts]` override still has the last word.
+`SamePatternKeysResource` pins all four shapes, each signature ending `string | number | undefined`:
+a docblock-filled `_tag` beside `price_tag: number`, a body-typed `_note` beside `count_note: number`,
+two `_code` signatures (one filled from `@return array<string, int>`) and two body-typed `_mark` ones.
+
+It declines, leaving every key as it was, when a contributing type has an `unknown` arm or a contributing
+key carries an FQCN channel. The first would swallow the typed arms into `unknown`, which no change here may
+publish. The second is a token the transformer rewrites under its own key's name, with an alias or an
+`AsEnum<>`, so a copy in the signature would miss the rewrite. `SamePatternDeclinedResource` pins both
+declines, one with a named `PostResource` key and one with a named key nothing types.
 
 ## Inline-array spreads become intersection arms
 

@@ -867,6 +867,19 @@ describe('typeNameOccursIn', function () {
     });
 });
 
+describe('orUndefined', function () {
+    test('appends a top-level undefined arm only when the type lacks one', function (string $type, string $expected) {
+        expect($this->service->orUndefined($type))->toBe($expected);
+    })->with([
+        'a bare type' => ['string', 'string | undefined'],
+        'a nullable type' => ['string | null', 'string | null | undefined'],
+        'already carrying it' => ['string | undefined', 'string | undefined'],
+        'carrying it first' => ['undefined | string', 'undefined | string'],
+        'only inside a shape' => ['{ a: string | undefined }', '{ a: string | undefined } | undefined'],
+        'only inside a name' => ['UndefinedThing', 'UndefinedThing | undefined'],
+    ]);
+});
+
 describe('isUnknownOnly', function () {
     test('only a type whose non-null arms are all unknown is unknown-only', function (string $type, bool $expected) {
         expect($this->service->isUnknownOnly($type))->toBe($expected);

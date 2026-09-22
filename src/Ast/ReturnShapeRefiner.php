@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
-use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use ReflectionMethod;
@@ -12,26 +12,23 @@ use ReflectionMethod;
 /**
  * Types what a method's body could not, from that same method's own `@return` docblock.
  *
- * The body always wins: this only fills a property the AST left `unknown`, so a stale docblock can
- * never overwrite a type the analyzer actually resolved. An index signature the AST left
- * `unknown | undefined` counts as unfilled too, and keeps its `| undefined` once filled.
+ * Only an untyped property is filled, so a stale docblock can never overwrite a type the body resolved.
  *
  * @internal
  */
 final class ReturnShapeRefiner
 {
-    /** What ResourceAstAnalyzer::collectVariableArrayAssignments() records for an interpolated key it cannot type. */
-    private const UNTYPED_INDEX_SIGNATURE = 'unknown | undefined';
-
     /**
-     * Fill every `unknown` property from the method's own `@return array{...}` shape (or
-     * `array<string, V>` value type), and mark a key the shape declares `key?:` optional.
+     * Fill every property the body left untyped from the method's own `@return array{...}` shape (or
+     * `array<string, V>` value type), and mark a key the shape declares `key?:` optional. Untyped means `unknown`,
+     * or `unknown | undefined` on an interpolated key's index signature, which keeps its `| undefined` once filled.
      */
     public function refine(MethodAnalysis $analysis, ReflectionMethod $method): void
     {
         $shape = LaravelTsPublish::parseDocblockReturnArrayShape($method);
         $rawShape = $shape === [] ? [] : $this->rawShapeTypes($method);
         $valueType = $shape === [] ? $this->recordValueType($method) : null;
+        $untypedSignature = TsTypeString::orUndefined('unknown');
 
         foreach ($analysis->properties as &$property) {
             $name = $property['name'];
@@ -40,12 +37,11 @@ final class ReturnShapeRefiner
 
             if ($property['type'] === 'unknown') {
                 $property['type'] = $this->resolvedType($docType, $rawType) ?? $property['type'];
-            } elseif ($property['type'] === self::UNTYPED_INDEX_SIGNATURE
-                && ResourceAstAnalyzer::isIndexSignatureKey($name)) {
+            } elseif ($property['type'] === $untypedSignature && JsEmitter::isIndexSignatureKey($name)) {
                 $resolved = $this->resolvedType($docType, $rawType);
 
                 // A key matching the pattern may still be absent at runtime, so the value keeps its `| undefined`.
-                $property['type'] = $resolved === null ? $property['type'] : $resolved.' | undefined';
+                $property['type'] = $resolved === null ? $property['type'] : TsTypeString::orUndefined($resolved);
             }
 
             $property['optional'] = $property['optional'] || isset($shape[$name.'?']);
