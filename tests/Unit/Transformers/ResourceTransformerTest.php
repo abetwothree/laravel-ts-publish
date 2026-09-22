@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ContinuationCastResourc
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\EscapedNameCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendsEnumCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendsOverriddenReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendsTsTypeOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LineTerminatorCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LongerNameCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MultilineQuoteCastResource;
@@ -2850,4 +2851,12 @@ describe('ResourceTransformer imports after an only() or except() filter', funct
         'a spread of $this->only()' => [StockroomSpreadResource::class],
         '$this->except()' => [StockroomExceptResource::class],
     ]);
+
+    test('keeps the #[TsType] import an extends clause still names after an only() read is overridden', function () {
+        $data = (new ResourceTransformer(ExtendsTsTypeOnlyResource::class))->data();
+
+        expect($data->tsExtends)->toBe(['Partial<Record<"s", MenuSettingsType>>'])
+            ->and($data->properties['menu_config']['type'])->toBe('string')
+            ->and($data->typeImports['@js/types/settings'] ?? null)->toBe(['MenuSettingsType']);
+    });
 });

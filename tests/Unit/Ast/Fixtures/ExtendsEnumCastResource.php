@@ -19,7 +19,11 @@ use Workbench\App\Models\Warehouse;
 #[TsCasts(['state' => 'string'])]
 final class ExtendsEnumCastResource extends JsonResource
 {
-    /** @return array<string, mixed> */
+    /**
+     * Reads the enum attribute the override above retypes.
+     *
+     * @return array<string, mixed>
+     */
     public function toArray(Request $request): array
     {
         return [

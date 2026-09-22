@@ -407,23 +407,31 @@ pin both enums of `review_priority`; see
 [accessor-body-analyzer § A getter that reads another model's accessor](accessor-body-analyzer.md#a-getter-that-reads-another-models-accessor).
 A resource `#[TsCasts]` override can replace the type such a read published. `ResourceTransformer::pruneOverriddenAnalysisImports()`
 then drops each model and `#[TsType]` import the analysis carried whose name no property type or extends clause spells
-any more, and `pruneOverriddenEnumImports()` does the same for each enum. Both ask `TsTypeString::typeNameOccursIn()`,
-a plain token match over each type: the name counts wherever its token stands, inside a string, a template literal or a
-comment as much as outside, because an import kept for a name only a literal spells is unused at worst, while a name a
-lexer hid from the prune dropped an import the generated file needed. That cost is accepted: an override that spells an
-imported class's name inside a quoted string, template text or comment keeps that import unused, which TypeScript
-reports (TS6196) only in a project compiling with `noUnusedLocals`; see
+any more, `pruneOverriddenEnumImports()` does the same for each enum, and `registerModelAttributeCustomImports()` keeps
+a filtered key's `#[TsType]` import on the same test. All three ask `TsTypeString::typeNameOccursIn()`, a plain token
+match over each type: the name counts wherever its token stands, inside a string, a template literal or a comment as
+much as outside, because an import kept for a name only a literal spells is unused at worst, while a name a lexer hid
+from the prune dropped an import the generated file needed. That cost is accepted: an override that spells an imported
+class's name inside a quoted string, template text or comment keeps that import unused, which TypeScript reports only
+in a project compiling with `noUnusedLocals`, as TS6196 for the name, or as TS6192 when every name on that import line
+is unused; see
 [known-gaps](../known-gaps.md#a-tscasts-value-that-spells-an-imported-name-inside-a-string-template-or-comment-keeps-the-import).
-The token's boundaries are the ones TypeScript reads: `foo.User` is a member access and `CrmUser` a longer identifier,
-neither the type, while `[string, ...User[]]` references it and so does `\u{55}ser`, whose identifier escape is decoded
-first. `BulletinCastResource` overrides a `Comment` read and a `User` read and keeps only `User`, which its
-unoverridden `owner_list` still names. `ResourceTransformerTest` pins, over a model, an enum and a `#[TsType]` read
-each, a name after a line continuation, after a `//` comment ended by CR, U+2028 or U+2029, in a variadic tuple
-element, through an identifier escape, after a multi-line template literal or a block comment holding a quote, across
-two values TypeScript lexes as one, in an extends clause alone, and inside a string literal alone. The prune reads
-class basenames before aliasing, so two models that share a basename both stay imported while either is still spelled,
-and overriding the only read of one of them leaves its aliased import unused. That leftover predates the prune; it is
-the same at `7a55703d`.
+The token's boundaries are a keep-biased reading of TypeScript's: a character TypeScript reads as part of an identifier
+(Unicode ID_Continue, `$`, ZWNJ or ZWJ) on either side of the name joins it, so `CrmUser`, `a1User` and `User\u{e9}` are
+longer names and `foo.User`, `a1.User` and `Api.V2.User` member accesses, none of them the type, while
+`[string, ...User[]]` references it and so does `\u{55}ser`, whose identifier escape is decoded first, as is the escape
+of any identifier character, U+00B7 or U+2118 included. Two departures remain: `import('x').User` counts, since only
+an identifier character before the dot marks a member access, and a name right after a numeric literal (`1User`,
+`0xUser`) is missed, which TypeScript rejects as syntax either way. `BulletinCastResource` overrides a `Comment` read
+and a `User` read and keeps only `User`, which its unoverridden `owner_list` still names. `ResourceTransformerTest`
+pins, over a model, an enum and a `#[TsType]` read each, a name after a line continuation, after a `//` comment ended
+by CR, U+2028 or U+2029, in a variadic tuple element, through an identifier escape, after a multi-line template
+literal or a block comment holding a quote, and across two values TypeScript lexes as one; a name an extends clause
+alone spells, over a model read, an enum read and a `#[TsType]` read selected through `$this->only()`; and a name a
+string literal alone spells, over a model read and a `#[TsType]` read. The prune reads class basenames before
+aliasing, so two models that share a basename both stay imported while either is still spelled, and overriding the
+only read of one of them leaves its aliased import unused. That leftover predates the prune; it is the same at
+`7a55703d`.
 `Comment::picksSummary()` reads the `relation_picks` accessor, and `CommentRelationFiltersResource` publishes its
 `picks` as the same object `relationSummary()` publishes. `FilteringAccessorModel` pins each getter kind and read
 position in `MethodReturnTypeResolverTest`.

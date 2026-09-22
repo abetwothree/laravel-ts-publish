@@ -23,7 +23,11 @@ use Workbench\App\Models\Warehouse;
 ])]
 final class SplitTemplateCastResource extends JsonResource
 {
-    /** @return array<string, mixed> */
+    /**
+     * Reads an id and the model, enum and `#[TsType]` attributes the overrides above retype.
+     *
+     * @return array<string, mixed>
+     */
     public function toArray(Request $request): array
     {
         return [

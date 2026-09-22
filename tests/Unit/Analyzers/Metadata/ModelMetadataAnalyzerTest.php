@@ -137,10 +137,18 @@ function metadataAnalyzerInferring(array $types): ModelMetadataAnalyzer
 {
     return new class($types) extends ModelMetadataAnalyzer
     {
-        /** @param  array<string, string>  $types */
+        /**
+         * Holds the types to report as inferred.
+         *
+         * @param  array<string, string>  $types
+         */
         public function __construct(private readonly array $types) {}
 
-        /** @return array<string, string> */
+        /**
+         * Returns the given types in place of body inference.
+         *
+         * @return array<string, string>
+         */
         protected function inferTypes(MethodAnalysis $analysis, array $payloadKeys): array
         {
             return $this->types;

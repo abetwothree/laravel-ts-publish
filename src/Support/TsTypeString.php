@@ -18,6 +18,9 @@ class TsTypeString
         'null', 'undefined', 'object', 'unknown', 'any', 'never', 'void',
     ];
 
+    /** A character TypeScript reads as part of an identifier: Unicode ID_Continue, `$`, ZWNJ and ZWJ. */
+    private const string IDENTIFIER_CHARACTER = '[\p{ID_Continue}$\x{200C}\x{200D}]';
+
     /**
      * Whether a resolved shape value contains an identifier that would need an import to be valid.
      *
@@ -218,18 +221,20 @@ class TsTypeString
     }
 
     /**
-     * Whether a type name occurs as its own token in any of the given types, wherever it stands: a name inside a string,
-     * template or comment counts too, since an extra import is harmless where a hidden one breaks the generated file.
-     * `foo.StatusType` is a member access, not the type; `...StatusType[]` is; `\u0055ser` is decoded and names `User`.
+     * Whether a type name occurs as its own token in any of the given types, wherever it stands: a name inside a
+     * string, template or comment counts too, since a kept import is unused at worst while a hidden one breaks the
+     * generated file. `foo.StatusType` is a member access and `CrmStatusType` a longer name; `...StatusType[]` counts.
      */
     public function typeNameOccursIn(string $typeName, string ...$types): bool
     {
-        // Only a letter, `_` or `$` before the name joins it to a longer identifier, and only a `.` after one of those
-        // is a member access: TypeScript reads `1User` as a number then the name, and `[...User]` as a spread of it.
-        $pattern = '/(?<![A-Za-z_$])(?<![A-Za-z_$]\.)'.preg_quote($typeName, '/').'(?![A-Za-z0-9_$])/';
+        // An identifier character on either side joins the name, and a `.` after one is a member access. `[...User]`
+        // still counts, as does `import('x').User`; a name right after a numeric literal (`1User`) is missed.
+        $pattern = '/(?<!'.self::IDENTIFIER_CHARACTER.')(?<!'.self::IDENTIFIER_CHARACTER.'\.)'
+            .preg_quote($typeName, '/').'(?!'.self::IDENTIFIER_CHARACTER.')/u';
 
         foreach ($types as $type) {
-            if (preg_match($pattern, $this->decodeIdentifierEscapes($type)) === 1) {
+            // A haystack PCRE cannot read (invalid UTF-8) keeps the name rather than drops its import.
+            if (preg_match($pattern, $this->decodeIdentifierEscapes($type)) !== 0) {
                 return true;
             }
         }
@@ -306,7 +311,7 @@ class TsTypeString
     }
 
     /**
-     * Spell every `\uXXXX` and `\u{X…}` escape that TypeScript reads as an identifier character as that character.
+     * Spell each `\uXXXX` or `\u{X…}` escape of an identifier character as that character, as TypeScript reads it.
      */
     private function decodeIdentifierEscapes(string $type): string
     {
@@ -314,12 +319,14 @@ class TsTypeString
             return $type;
         }
 
-        return preg_replace_callback('/\\\\u(?:\{([0-9A-Fa-f]+)\}|([0-9A-Fa-f]{4}))/', static function (array $match): string {
+        $pattern = '/\\\\u(?:\{([0-9A-Fa-f]+)\}|([0-9A-Fa-f]{4}))/';
+
+        return preg_replace_callback($pattern, static function (array $match): string {
             $codePoint = hexdec($match[1] !== '' ? $match[1] : $match[2]);
             $char = is_int($codePoint) && $codePoint <= 0x10FFFF ? mb_chr($codePoint, 'UTF-8') : false;
 
-            // An escape TypeScript cannot read as part of a name stays as written: it then reads `u002E…` as the name.
-            return $char !== false && preg_match('/^[\p{L}\p{Nl}\p{Mn}\p{Mc}\p{Nd}\p{Pc}$\x{200C}\x{200D}]$/u', $char) === 1
+            // An escape of any other character stays as written: TypeScript then reads `u002E…` as the name.
+            return $char !== false && preg_match('/^'.self::IDENTIFIER_CHARACTER.'$/u', $char) === 1
                 ? $char
                 : $match[0];
         }, $type) ?? $type;

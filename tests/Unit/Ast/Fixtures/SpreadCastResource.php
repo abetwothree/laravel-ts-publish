@@ -21,7 +21,11 @@ use Workbench\App\Models\Warehouse;
 ])]
 final class SpreadCastResource extends JsonResource
 {
-    /** @return array<string, mixed> */
+    /**
+     * Reads the model, enum and `#[TsType]` attributes the overrides above retype.
+     *
+     * @return array<string, mixed>
+     */
     public function toArray(Request $request): array
     {
         return [

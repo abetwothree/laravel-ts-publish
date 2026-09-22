@@ -566,7 +566,7 @@ makes the three fields agree with each other:
    token match: a name counts wherever its token stands, inside a string, a template literal or a comment as
    much as outside, so a name only a literal spells keeps its import unused rather than a hidden one dropping
    an import the file needs (the accepted cost, in
-   [Receiver types](./receiver-types.md#a-getter-that-reads-another-models-accessor)). One rule replaces
+   [Receiver types](./receiver-types.md#the-body-fallback-carries-no-fqcn-channel)). One rule replaces
    two special cases: `AnalysisImports::asEnumWrappedOnlyFqcns()`'s wrapped-only GC, and
    `ResourceTransformer::pruneOverriddenEnumImports()`'s override GC. An enum the wrap replaced and
    an enum a `#[TsCasts]` override displaced are both simply unspelled, so neither is imported. The

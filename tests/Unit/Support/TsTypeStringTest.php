@@ -468,18 +468,22 @@ describe('typeNameOccursIn', function () {
         'a spread inside braces' => ['{...User}', true],
         'a labeled rest element' => ['[a: string, ...rest: User[]]', true],
         'a spread with a space' => ['[string, ... User[]]', true],
-        // TypeScript reads `1User` as a number then the name; a digit inside a longer identifier is not a boundary
-        // this match knows, so `a1User` then costs at most an unused import.
-        'a name right after a numeric literal' => ['1User', true],
-        'a name after a digit inside a longer identifier' => ['a1User', true],
-        'a name after a numeric literal and a dot' => ['1.User', true],
-        // Nor is a non-ASCII identifier character, for the same reason.
-        'a name after a non-ASCII letter' => ["\u{e9}User", true],
-        'a name before a non-ASCII letter' => ["User\u{e9}", true],
+        'a name after a digit inside a longer identifier' => ['a1User', false],
+        'a name after a non-ASCII letter' => ["\u{e9}User", false],
+        'a name before a non-ASCII letter' => ["User\u{e9}", false],
+        'a name before a middle dot, an Other_ID_Continue character' => ["User\u{b7}", false],
+        'a name after a script capital P, an Other_ID_Start character' => ["\u{2118}User", false],
+        'a name before a zero-width non-joiner' => ["User\u{200c}", false],
+        // A numeric literal is not modelled, so a name right after one is missed; TypeScript rejects that syntax too.
+        'a name right after a numeric literal' => ['1User', false],
+        'a name after a numeric literal and a dot' => ['1.User', false],
         'a member of a namespace' => ['Models.User', false],
         'a member of a nested namespace' => ['App.Models.User', false],
+        'a member of a namespace ending in a digit' => ['Models2.User', false],
+        'a member of a namespace named by a non-ASCII letter' => ["\u{e9}.User", false],
         'a member of an imported module' => ["import('x').User", true],
         'a member of the type' => ['User.Inner', true],
+        'a name after a closing bracket and a dot' => ['].User', true],
         'a dollar-prefixed identifier' => ['$User', false],
         'an underscore-prefixed identifier' => ['_User', false],
         'a dollar-suffixed identifier' => ['User$', false],
@@ -515,8 +519,7 @@ describe('typeNameOccursIn', function () {
         'a literal that never closes, before the name on its line' => ["`\${string}'s label | User", 'User', true],
     ]);
 
-    // The reviewer's 30 lexing cases. Every name TypeScript reads is counted; the five it reads as text count as well,
-    // which is the accepted cost.
+    // Every name TypeScript reads is counted; the five it reads as text count as well, which is the accepted cost.
     test('typeNameOccursIn() counts a name whatever literal or comment surrounds it', function (string $haystack, string $name, bool $found) {
         expect($this->service->typeNameOccursIn($name, $haystack))->toBe($found);
     })->with([
@@ -571,8 +574,8 @@ describe('typeNameOccursIn', function () {
         'a quote in a template literal spanning lines, the name in its text' => ["`it's\nUser` | 'x'", true],
     ]);
 
-    // Re-review 3's drop-direction shapes: TypeScript reads each name, and a lexer that paired quotes, ended `//` comments
-    // or bounded tokens differently hid it, so the prune dropped an import the file needed.
+    // TypeScript reads each of these names; a lexer that paired quotes or ended `//` comments differently, or a
+    // boundary that rejected `...`, hid it, and the prune then dropped an import the generated file needed.
     test('typeNameOccursIn() counts a name after a line continuation, an odd line terminator or a spread', function (string $haystack, string $name) {
         expect($this->service->typeNameOccursIn($name, $haystack))->toBeTrue();
     })->with([
@@ -612,6 +615,15 @@ describe('typeNameOccursIn', function () {
         'a lone surrogate escape' => [chr(92).'uD800User', 'uD800User', true],
         'an escape that joins the name to a longer identifier' => [chr(92).'u0041User', 'User', false],
         'an escape that joins the name to a longer identifier, as TypeScript reads it' => [chr(92).'u0041User', 'AUser', true],
+        // Other_ID_Start and Other_ID_Continue characters are identifier characters too, outside every letter class.
+        'an escape of a script capital P at the start' => [chr(92).'u2118User', "\u{2118}User", true],
+        'an escape of an estimated sign in the middle' => ['Us'.chr(92).'u{212E}er', "Us\u{212e}er", true],
+        'an escape of a middle dot at the end' => ['User'.chr(92).'u00B7 | null', "User\u{b7}", true],
+        'an escape of an Ethiopic digit one at the end' => ['User'.chr(92).'u{1369}', "User\u{1369}", true],
+        'an escape of a katakana voiced sound mark at the start' => [chr(92).'u309BUser', "\u{309b}User", true],
+        'an escape of a katakana middle dot in the middle' => ['User'.chr(92).'u{30FB}Kind', "User\u{30fb}Kind", true],
+        'an escape of a halfwidth katakana middle dot at the end' => ['User'.chr(92).'uFF65', "User\u{ff65}", true],
+        'an escape of a middle dot is not the bare name' => ['User'.chr(92).'u00B7', 'User', false],
     ]);
 
     test('typeNameOccursIn() reads every type it is given, and none is no match', function () {

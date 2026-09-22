@@ -755,7 +755,8 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * Import a model attribute's #[TsType(import:)] names, but only those the emitted property still uses.
+     * Import a model attribute's #[TsType(import:)] names, but only those the emitted property or an extends clause
+     * still uses.
      *
      * A resource may override the model's type, and an unused import is a tsc error under noUnusedLocals.
      *
@@ -765,7 +766,9 @@ class ResourceTransformer extends CoreTransformer
     {
         foreach ($imports as $path => $names) {
             foreach ($names as $name) {
-                if (TsTypeString::typeNameOccursIn($name, $this->properties[$propName]['type'] ?? '')) {
+                $type = $this->properties[$propName]['type'] ?? '';
+
+                if (TsTypeString::typeNameOccursIn($name, $type, ...$this->tsExtends)) {
                     $this->customImports[$path][] = $name;
                 }
             }
