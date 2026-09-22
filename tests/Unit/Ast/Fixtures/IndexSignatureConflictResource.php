@@ -11,10 +11,10 @@ use Workbench\App\Http\Resources\PostResource;
 /** One shape per method, each putting a docblock-filled index signature beside a key it could conflict with. */
 final class IndexSignatureConflictResource extends JsonResource
 {
-    /** A later literal replaces the resource-typed `main_tag`, so only the literal is published. */
+    /** A later number replaces the resource-typed `main_tag`, so only the number is published. */
     public function staleOverride(): array
     {
-        return [...$this->literalTags(), ...$this->resourceTag(), 'main_tag' => 'x'];
+        return [...$this->literalTags(), ...$this->resourceTag(), 'main_tag' => 5];
     }
 
     /** A filled `_tag` signature beside a `_tag` key nothing types. */
@@ -56,6 +56,26 @@ final class IndexSignatureConflictResource extends JsonResource
     public function castNamedKey(): array
     {
         return [...$this->docTags(), 'main_tag' => 'x'];
+    }
+
+    /** A named `_tag` key cast to a union of string literals, which needs no import. */
+    #[TsCasts(['main_tag' => "'x' | 'y'"])]
+    public function literalNamedKey(): array
+    {
+        return [...$this->docTags(), 'main_tag' => 'x'];
+    }
+
+    /** A cast on the filled signature makes its type the app's own, beside a cast key that cannot join the union. */
+    #[TsCasts(['[key: `${string}_tag`]' => 'string | number', 'main_tag' => 'Money'])]
+    public function castSignature(): array
+    {
+        return [...$this->docTags()];
+    }
+
+    /** An `array_merge()` of literals reaches only the array analysis, with no refine after it. */
+    public function mergedShape(): array
+    {
+        return array_merge([...$this->docTags()], ['price_tag' => 5]);
     }
 
     /** Body-typed `_tag` keys. */

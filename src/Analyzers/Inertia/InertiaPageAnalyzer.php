@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\CallMatcher;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\ControllerExpressionHandlers;
+use AbeTwoThree\LaravelTsPublish\Ast\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\InertiaRenderLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodContext;
@@ -223,7 +224,16 @@ class InertiaPageAnalyzer
             $literals,
         );
 
-        return count($analyses) === 1 ? $analyses[0] : $analyzer->mergeReturnBranches($analyses);
+        if (count($analyses) === 1) {
+            return $analyses[0];
+        }
+
+        // Each literal was reconciled alone, so a key from one arm is still unchecked against the other's signature.
+        $merged = $analyzer->mergeReturnBranches($analyses);
+
+        resolve(IndexSignatureReconciler::class)->reconcile($merged);
+
+        return $merged;
     }
 
     /**
@@ -343,6 +353,9 @@ class InertiaPageAnalyzer
 
         foreach ($branches as $analyses) {
             $analysis = count($analyses) === 1 ? $analyses[0] : $analyzer->mergeReturnBranches($analyses);
+
+            // Every render call was reconciled alone, and the controller's own casts are laid over the props below.
+            resolve(IndexSignatureReconciler::class)->reconcile($analysis, $overrides);
 
             $this->forgetOverriddenChannels($analysis, $overrides);
 

@@ -5,6 +5,8 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastTagSignatureBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendedTagSignatureBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
 use Workbench\App\Events\ComputedNameEvent;
 use Workbench\App\Events\DeclaredPropsEvent;
@@ -529,4 +531,19 @@ test('an uninitialized typed public property on an event is optional, a promoted
         'id' => false,     // promoted
         'note' => false,   // promoted, nullable
     ]);
+});
+
+describe('a docblock-filled index signature in a broadcastWith() payload', function () {
+    test('an extends clause puts the fill back, since its keys are unseen', function () {
+        $transformer = app(BroadcastEventTransformer::class, ['findable' => ExtendedTagSignatureBroadcastEvent::class]);
+
+        expect($transformer->properties['[key: `${string}_tag`]']['type'])->toBe('unknown | undefined');
+    });
+
+    test('a key the event\'s #[TsCasts] retypes joins the union with its cast type', function () {
+        $transformer = app(BroadcastEventTransformer::class, ['findable' => CastTagSignatureBroadcastEvent::class]);
+
+        expect($transformer->properties['[key: `${string}_tag`]']['type'])->toBe('string | number | undefined')
+            ->and($transformer->properties['main_tag']['type'])->toBe('number');
+    });
 });

@@ -481,23 +481,23 @@ that limit differently, and the difference decides where you go looking for the 
 Declare the property with an import-aware `#[TsCasts]` when you need the token, or give the method a native
 return type that names the class directly.
 
-### An index signature its body types, or one a class-level `#[TsCasts]` crosses, can fail to compile
+### An index signature its body types can fail to compile beside a key it cannot take in
 
-A docblock fill or a same-pattern union of an interpolated key's index signature is kept only where it
-cannot conflict with another key (see
-[resource-ast-analyzer § Index signatures are reconciled with the keys beside them](./components/resource-ast-analyzer.md#index-signatures-are-reconciled-with-the-keys-beside-them)).
-Two cases still publish an interface `tsc` rejects:
+A docblock fill or same-pattern union of an interpolated key's index signature is kept only where it cannot
+conflict with another published key (see
+[resource-ast-analyzer § Index signatures are reconciled with the keys beside them](./components/resource-ast-analyzer.md#index-signatures-are-reconciled-with-the-keys-beside-them)),
+and on an interface with an extends clause it goes back to `unknown | undefined`. A signature whose own body
+typed it keeps that type, so `tsc` still rejects the interface when:
 
-- **The body typed the signature, and a key beside it cannot join.** When a same-pattern named key is
-  `unknown`, names a class, or carries an FQCN channel, or another signature's pattern may overlap, the
-  body's own value stands: ``[key: `${string}_tag`]: string | undefined`` beside
-  `main_tag: PostResource` fails TS2411, two overlapping patterns with different values fail TS2413, and
-  a second same-pattern signature still replaces the first. Type the untyped key, or rename it out of
-  the pattern.
-- **A resource or model `#[TsCasts]` retypes a key the pattern matches.** `ResourceTransformer` applies
-  those overrides after the analysis is reconciled, so a docblock-filled signature is not revisited and
-  fails TS2411 when the cast type is not in its value. A `#[TsCasts]` on `toArray()` or on the spread
-  method is reconciled, so put the cast there.
+- a key its pattern matches cannot join the union, because it is `unknown`, names a class or carries an FQCN
+  channel: ``[key: `${string}_tag`]: string | undefined`` beside `main_tag: PostResource` fails TS2411;
+- its pattern is contained in another signature's, and its value is not one the other accepts:
+  ``[key: `${string}_a_tag`]: number | undefined`` beside ``[key: `${string}_tag`]: string | undefined``
+  fails TS2413;
+- an interface the extends clause names has a matching key its value does not accept (TS2411).
+
+Where the union is declined, a second same-pattern signature still replaces the first. Type the key, or
+rename it out of the pattern.
 
 ### `Model::toArray()` on a receiver declines, deliberately
 

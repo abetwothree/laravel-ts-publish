@@ -4,14 +4,17 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastSettingsReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassCastTagSignatureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CommentQuoteCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ContinuationCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\EscapedNameCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendedTagSignatureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendsEnumCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendsOverriddenReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendsTsTypeOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LineTerminatorCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LongerNameCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ModelCastDataSignatureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MultilineQuoteCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MultilineTemplateCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\QuotedCastReadResource;
@@ -2858,5 +2861,27 @@ describe('ResourceTransformer imports after an only() or except() filter', funct
         expect($data->tsExtends)->toBe(['Partial<Record<"s", MenuSettingsType>>'])
             ->and($data->properties['menu_config']['type'])->toBe('string')
             ->and($data->typeImports['@js/types/settings'] ?? null)->toBe(['MenuSettingsType']);
+    });
+});
+
+describe('a docblock-filled index signature beside keys only the publisher adds', function () {
+    test('an extends clause puts the fill back, since its keys are unseen', function () {
+        $properties = (new ResourceTransformer(ExtendedTagSignatureResource::class))->data()->properties;
+
+        expect($properties['[key: `${string}_tag`]']['type'])->toBe('unknown | undefined');
+    });
+
+    test('a key a class-level #[TsCasts] adds joins the union', function () {
+        $properties = (new ResourceTransformer(ClassCastTagSignatureResource::class))->data()->properties;
+
+        expect($properties['[key: `${string}_tag`]']['type'])->toBe('string | number | undefined')
+            ->and($properties['extra_tag']['type'])->toBe('number');
+    });
+
+    test('a key the model\'s #[TsCasts] retypes joins the union with its cast type', function () {
+        $properties = (new ResourceTransformer(ModelCastDataSignatureResource::class))->data()->properties;
+
+        expect($properties['[key: `${string}data`]']['type'])
+            ->toBe('string | Record<string, {title: string, content: string}> | undefined');
     });
 });

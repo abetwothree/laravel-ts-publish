@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ModelClassResolver;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
@@ -295,6 +296,10 @@ class ResourceTransformer extends CoreTransformer
         $analyzer = new ResourceAstAnalyzer($this->reflectionResource, $this->modelClass);
         $analysis = $analyzer->analyze();
 
+        // applyOverrides() lays the casts over the analysis, and an extends clause adds keys no analysis sees.
+        resolve(IndexSignatureReconciler::class)
+            ->reconcile($analysis, $this->castKeys($analysis), $this->tsExtends !== []);
+
         // ResourceCollection subclasses with $wrap = null emit an alias, not an interface.
         if ($analysis->flatTypeAlias !== null) {
             $this->typeAlias = $analysis->flatTypeAlias;
@@ -390,6 +395,26 @@ class ResourceTransformer extends CoreTransformer
         $this->analysisCustomImports = $analysis->customImports;
 
         return $this;
+    }
+
+    /**
+     * The keys applyOverrides() will publish over the analysis: every resource #[TsCasts] key, and each model one the
+     * analysis already has and the resource does not cast itself.
+     *
+     * @return array<string, string>
+     */
+    protected function castKeys(MethodAnalysis $analysis): array
+    {
+        $names = array_column($analysis->properties, 'name');
+        $keys = $this->tsTypeOverrides;
+
+        foreach ($this->modelTsCastsOverrides as $property => $type) {
+            if (! isset($keys[$property]) && in_array($property, $names, true)) {
+                $keys[$property] = $type;
+            }
+        }
+
+        return $keys;
     }
 
     /**

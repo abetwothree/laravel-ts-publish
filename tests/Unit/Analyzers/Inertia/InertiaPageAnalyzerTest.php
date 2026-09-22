@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaServiceTab
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithDelegatedProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithSpreadProps;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTagSignatureBranches;
 use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
 use Workbench\App\Http\Controllers\InertiaPaginationsController;
 use Workbench\App\Http\Controllers\InertiaPreserveKeysController;
@@ -455,4 +456,24 @@ test('analyze() applies the #[TsCasts] override on a sibling of a table action',
 
 test('analyze() returns null for a non-Inertia action on a table-bearing controller', function () {
     expect(pageData(InertiaServiceTableController::class.'@store'))->toBeNull();
+});
+
+describe('a docblock-filled index signature in page props merged from several branches', function () {
+    test('keys from another render call join the union', function () {
+        expect(pageData(ControllerWithTagSignatureBranches::class.'@show')['pageType'])->toBe(
+            'Inertia.SharedData & { [key: `${string}_tag`]: string | number | undefined, id: number, price_tag?: number }',
+        );
+    });
+
+    test('a resource-typed key from the other ternary arm puts the fill back', function () {
+        expect(pageData(ControllerWithTagSignatureBranches::class.'@ternary')['pageType'])->toBe(
+            'Inertia.SharedData & { [key: `${string}_tag`]: unknown | undefined, price_tag?: PostResource }',
+        );
+    });
+
+    test('a key the controller method\'s #[TsCasts] adds joins the union', function () {
+        expect(pageData(ControllerWithTagSignatureBranches::class.'@cast')['pageType'])->toBe(
+            'Inertia.SharedData & { [key: `${string}_tag`]: string | boolean | undefined, extra_tag: boolean }',
+        );
+    });
 });

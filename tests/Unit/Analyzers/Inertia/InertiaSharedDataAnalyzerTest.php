@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMultiEnumTernary;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithOptionalDocblockKey;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithoutShareMethod;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithTagSignatureCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithTsCastsAndDocblock;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithUnsharedOptionalKey;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithWrappedAndBareEnum;
@@ -354,4 +355,9 @@ test('an EnumResource on a framework-owned key is skipped rather than fataling',
     expect($result)->not->toBeNull()
         ->and($result['sharedPageProps'])->toBe('{ ok: string }')
         ->and($result['valueImports'])->toBe([]);
+});
+
+test('a key the middleware\'s #[TsCasts] adds joins a docblock-filled signature\'s union', function () {
+    expect(analyzeSharedDataFor(MiddlewareWithTagSignatureCast::class)['sharedPageProps'])
+        ->toBe('{ [key: `${string}_tag`]: string | number | undefined, extra_tag: number }');
 });

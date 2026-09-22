@@ -1045,49 +1045,66 @@ entry's `bodyType`, because a fill that would conflict with another key is put b
 
 ### Index signatures are reconciled with the keys beside them
 
-TypeScript checks a signature against every named key its pattern covers (TS2411) and against every
-signature whose pattern its own contains (TS2413), with or without `exactOptionalPropertyTypes`: beside
-``[key: `${string}_tag`]: string | undefined``, `price_tag: number` fails, and so does
-``[key: `${string}_a_tag`]: number | undefined``. A value the body did not give a signature, a docblock
-fill or a union with other keys, is therefore kept only where no such check can fail.
-`IndexSignatureReconciler::reconcile()` decides that per template-literal signature. It runs at the end of
-`analyzeReturnArray()`, where spreads, `merge()` and literal keys meet, and again in `analyze()` and
-`analyzeThisMethodSpread()` after `ReturnShapeRefiner::refine()` and `applyTsCastsFromMethod()`, because
-the refiner and a method's own `#[TsCasts]` each change keys after the merge.
+TypeScript checks a signature against every named key its pattern covers (TS2411), and a signature whose
+pattern is contained in another's against that other's value (TS2413), with or without
+`exactOptionalPropertyTypes`: beside ``[key: `${string}_tag`]: string | undefined``, `price_tag: number`
+fails, and so does ``[key: `${string}_a_tag`]: number | undefined``. A value the body did not give a
+signature, a docblock fill or a union with other keys, is therefore kept only where no such check can fail.
+`IndexSignatureReconciler::reconcile()` decides that per template-literal signature, wherever the keys
+beside it are all known:
 
-It reads the keys the transformer will publish. For a named key that is only the last entry of its
-name, since a later literal or spread replaces an earlier one. Every entry of a signature's name counts,
-since each stands for other runtime keys. The pattern is read back from the name: an unescaped
-`${string}` matches any run of characters, empty included, so `_tag` itself falls under
-``${string}_tag`` exactly as TypeScript reads it, and an escaped `\${` is literal text.
+- **In the analyzer:** at the end of `analyzeReturnArray()`, where spreads, `merge()` and literal keys
+  meet, and in `analyze()` and `analyzeThisMethodSpread()` after `ReturnShapeRefiner::refine()` and
+  `applyTsCastsFromMethod()`, because the refiner and a method's own `#[TsCasts]` change keys after the merge.
+- **In each publisher, over the keys it adds.** `ResourceTransformer::runAstAnalysis()` passes the keys
+  `applyOverrides()` will lay over the analysis (`castKeys()`: every resource `#[TsCasts]` key, and each
+  model one the analysis has and the resource does not cast), and whether the interface has an extends
+  clause. `BroadcastEventTransformer::transformProperties()` passes its cast keys and extends clause the
+  same way. `InertiaPageAnalyzer` reconciles the merged result of a ternary's props literals in
+  `analyzeProps()`, and of one component's render calls in `buildPageData()`, the second with the controller
+  method's casts. `InertiaSharedDataAnalyzer::buildResult()` passes its `#[TsCasts]` and docblock overrides.
+  A cast key's type replaces the analysis's own, and its FQCN channels are dropped with it.
 
-- **Union.** When the signature's entries and the named keys its pattern matches can all join, the
-  entries fold into the first, valued with every arm and the `| undefined`, and the named keys keep
-  their own type. `SamePatternKeysResource` pins four such signatures, each ending
-  `string | number | undefined`: a docblock-filled `_tag` beside `price_tag: number`, a body-typed
-  `_note` beside `count_note: number`, two `_code` signatures (one filled from
-  `@return array<string, int>`) and two body-typed `_mark` ones.
-- **Put back.** A key cannot join when its type has a top-level `unknown` arm, names a class
-  (`TsTypeString::shapeValueHasUnimportableToken()`), or carries an FQCN channel
-  (`MethodAnalysis::hasFqcnChannel()`): `unknown` would swallow the typed arms, and a class token is
-  imported and rewritten, with an alias or an `AsEnum<>`, under its own key's name. A signature also
-  conflicts when another signature in the shape may cover a key it covers. Two template patterns are
-  proven disjoint only when their leading literal texts, or their trailing ones, cannot both hold for
-  one key, and `[key: number]` or `[key: string]` beside a template counts as overlapping. On any of
-  these, every entry whose value came from a fill or a union goes back to its `bodyType`, and nothing
-  is unioned, so the shape publishes what a name-keyed publish of its body values gives. A signature
-  whose own body typed it is never changed here.
+It reads the keys that will be published. For a named key that is only the last entry of its name, since a
+later literal or spread replaces an earlier one, with a cast key's type in place of the analysis's. Every
+entry of a signature's name counts, since each stands for other runtime keys. The pattern is read back from
+the name: an unescaped `${string}` matches any run of characters, empty included, so `_tag` itself falls
+under ``${string}_tag`` exactly as TypeScript reads it, and an escaped `\${` is literal text.
+
+- **Union.** When the signature's entries and the keys its pattern matches can all join, the entries fold
+  into the first, valued with every arm and the `| undefined`, and the named keys keep their own type.
+  `SamePatternKeysResource` pins four such signatures, each ending `string | number | undefined`: a
+  docblock-filled `_tag` beside `price_tag: number`, a body-typed `_note` beside `count_note: number`, two
+  `_code` signatures (one filled from `@return array<string, int>`) and two body-typed `_mark` ones.
+- **Put back.** A key cannot join when its type has a top-level `unknown` arm, when it holds a token
+  `TsTypeString::shapeValueHasUnimportableToken()` rejects other than a string or number literal (a class
+  name, a global name, a template literal type), or when a key that is not a cast key carries an FQCN channel
+  (`MethodAnalysis::hasFqcnChannel()`), the signature's own name included. `unknown` would swallow the typed
+  arms, and a class token is imported and rewritten, with an alias or an `AsEnum<>`, under its own key's
+  name. A signature also conflicts when another signature in the shape may cover a key it covers: two
+  template patterns are proven disjoint only when their leading literal texts, or their trailing ones,
+  cannot both hold for one key, and `[key: number]` or `[key: string]` beside a template counts as
+  overlapping. And when the published interface has an extends clause, whose keys no analysis sees, every
+  signature conflicts. On any of these, every entry whose value came from a fill or a union goes back to
+  its `bodyType`, and nothing is unioned, so the shape publishes what a name-keyed publish of its body
+  values gives. An entry the body typed, and never unioned, is left as it is. A signature with no other
+  entry, no matching key and no overlapping pattern is never put back, whatever its type.
 
 `bodyType` is how a later conflict still finds the body value. The refiner sets it to
 `unknown | undefined` when it fills, a union sets it to the last entry's body value, `mergeReturnBranches()`
 unions it across branches as it unions the type, and a method's `#[TsCasts]` retype clears it, since that
-type is the app's own. `IndexSignatureConflictResource`, a test-only fixture, pins the conflicts: a key a
-later literal replaces takes no part, a fill beside an untyped or resource-typed key and two filled
-overlapping patterns go back to `unknown | undefined`, and a fill made after the merge, by the analyzed
-method's own `@return`, a spread method's own `@return` or a method `#[TsCasts]` retype, still unions.
-`SamePatternDeclinedResource` pins the body-typed side: its signatures keep `string | undefined` beside
-keys that cannot join. A resource or model `#[TsCasts]` is applied by `ResourceTransformer` after all of
-this, so it is not reconciled; `docs/known-gaps.md` records the limit.
+type is the app's own. `IndexSignatureConflictResource`, a test-only fixture, pins the conflicts:
+- a key replaced by a later number joins with the number, not with the resource it replaced;
+- a fill beside an untyped or resource-typed key, and two filled overlapping patterns, go back to
+  `unknown | undefined`;
+- a fill made after the merge, by the analyzed method's own `@return`, a spread method's own `@return`, a
+  method `#[TsCasts]` retype or an `array_merge()` of literals, still unions;
+- a key cast to string literals joins, and a signature the method casts itself is never put back.
+
+`SamePatternDeclinedResource` pins the body-typed side: its signatures keep `string | undefined` beside keys
+that cannot join. The publisher sites are pinned by their own test-only fixtures: the resource, model and
+event casts and extends clauses in `ResourceTransformerTest` and `BroadcastEventTransformerTest`, and the page
+branches and middleware casts in the Inertia analyzer tests.
 
 ## Inline-array spreads become intersection arms
 

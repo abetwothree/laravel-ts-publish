@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisImports;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ReturnLiteralReader;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
@@ -199,6 +200,13 @@ class BroadcastEventTransformer extends CoreTransformer
     protected function transformProperties(): self
     {
         $analysis = $this->runAnalysis();
+
+        // resolveProperties() lays each cast over its key, and an extends clause adds keys no analysis sees.
+        resolve(IndexSignatureReconciler::class)->reconcile(
+            $analysis,
+            array_intersect_key($this->tsTypeOverrides, array_flip(array_column($analysis->properties, 'name'))),
+            $this->tsExtends !== [],
+        );
 
         // A #[TsCasts] override replaces the property's type outright, so the type it displaced
         // must not keep an import alive.

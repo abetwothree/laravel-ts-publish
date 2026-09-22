@@ -76,6 +76,8 @@ use ReflectionNamedType;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type RequestVarNamesMap from AnalysisScope
+ * @phpstan-import-type AnalyzedProperty from MethodAnalysis
+ * @phpstan-import-type AnalyzedPropertyList from MethodAnalysis
  *
  * @internal
  */
@@ -1149,7 +1151,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
     {
         $branchCount = count($analyses);
 
-        /** @var array<string, list<array{type: string, optional: bool, description: string, bodyType?: string}>> */
+        /** @var array<string, list<AnalyzedProperty>> */
         $propertyMap = [];
 
         // Only the channels collapse onto merge(): a property name several branches set has to be
@@ -1170,7 +1172,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $flatTypeAliasFqcn ??= $analysis->flatTypeAliasFqcn;
         }
 
-        /** @var list<array{name: string, type: string, optional: bool, description: string, bodyType?: string}> */
+        /** @var AnalyzedPropertyList */
         $properties = [];
 
         foreach ($propertyMap as $name => $entries) {

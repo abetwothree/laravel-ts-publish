@@ -6300,8 +6300,8 @@ describe('IndexSignatureConflictResource — a docblock-filled signature never c
     test('a key a later literal replaces takes no part in the union', function () {
         $props = ($this->shape)('staleOverride');
 
-        expect($props['[key: `${string}_tag`]']['type'])->toBe('string | undefined')
-            ->and($props['main_tag']['type'])->toBe('string');
+        expect($props['[key: `${string}_tag`]']['type'])->toBe('string | number | undefined')
+            ->and($props['main_tag']['type'])->toBe('number');
     });
 
     test('a fill goes back to the body type beside a key the union declines', function (string $method, string $named) {
@@ -6337,4 +6337,43 @@ describe('IndexSignatureConflictResource — a docblock-filled signature never c
         expect($props['[key: `${string}_tag`]']['type'])->toBe('string | number | undefined')
             ->and($props['main_tag']['type'])->toBe('number');
     });
+
+    test('a key typed by string literals joins the union, since a literal needs no import', function () {
+        $props = ($this->shape)('literalNamedKey');
+
+        expect($props['[key: `${string}_tag`]']['type'])->toBe("string | 'x' | 'y' | undefined");
+    });
+
+    test('a signature the method\'s own #[TsCasts] types is never put back', function () {
+        $props = ($this->shape)('castSignature');
+
+        expect($props['[key: `${string}_tag`]']['type'])->toBe('string | number')
+            ->and($props['main_tag']['type'])->toBe('Money');
+    });
+
+    test('keys an array_merge() of literals puts beside a filled signature still union with it', function () {
+        $props = ($this->shape)('mergedShape');
+
+        expect($props['[key: `${string}_tag`]']['type'])->toBe('string | number | undefined');
+    });
+});
+
+test('mergeReturnBranches() unions the body values beside the types, and keeps them only where they differ', function () {
+    $branch = fn (string $type, ?string $bodyType = null): ResourceAnalysis => new ResourceAnalysis(properties: [[
+        'name' => '[key: `${string}_tag`]',
+        'type' => $type,
+        'optional' => false,
+        'description' => '',
+        ...($bodyType === null ? [] : ['bodyType' => $bodyType]),
+    ]]);
+    $analyzer = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class);
+
+    $filled = $analyzer->mergeReturnBranches([
+        $branch('string | undefined', 'unknown | undefined'),
+        $branch('number | undefined'),
+    ]);
+    $plain = $analyzer->mergeReturnBranches([$branch('string | undefined'), $branch('number | undefined')]);
+
+    expect($filled->properties[0])->toMatchArray(['type' => 'string | undefined | number', 'bodyType' => 'unknown | undefined | number'])
+        ->and($plain->properties[0])->not->toHaveKey('bodyType');
 });

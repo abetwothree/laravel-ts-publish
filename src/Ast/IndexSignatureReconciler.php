@@ -18,10 +18,15 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 final class IndexSignatureReconciler
 {
     /**
-     * Union each signature with the same-pattern keys beside it, or, where one of them cannot join the union or
-     * another signature's pattern may overlap its own, put back the value its body alone gives it.
+     * Union each signature with the same-pattern keys beside it, or, where one of them cannot join the union, another
+     * signature's pattern may overlap its own, or the published type inherits keys no analysis sees, put back the
+     * value its body alone gives it.
+     *
+     * @param  array<string, string>  $castKeys  keys a publisher's own `#[TsCasts]` lays over the analysis, by type:
+     *                                           each replaces the analysis's type and drops its channels
+     * @param  bool  $inheritsUnseenKeys  the published type also extends an interface whose keys no analysis sees
      */
-    public function reconcile(MethodAnalysis $analysis): void
+    public function reconcile(MethodAnalysis $analysis, array $castKeys = [], bool $inheritsUnseenKeys = false): void
     {
         $signatures = [];
         $published = [];
@@ -35,15 +40,31 @@ final class IndexSignatureReconciler
             }
         }
 
+        $segments = [];
+
+        foreach (array_keys($signatures) as $name) {
+            $parsed = $this->literalSegments($name);
+
+            if ($parsed !== null) {
+                $segments[$name] = $parsed;
+            }
+        }
+
+        $published = array_replace($published, $castKeys);
         $dropped = [];
 
         foreach ($signatures as $name => $indexes) {
-            $pattern = $this->keyPattern($name);
-
-            if ($pattern === null) {
+            if (! isset($segments[$name])) {
                 continue;
             }
 
+            if ($inheritsUnseenKeys) {
+                $this->restoreBodyTypes($analysis, $indexes);
+
+                continue;
+            }
+
+            $pattern = $this->keyPattern($segments[$name]);
             $keys = [$name];
             $types = [];
 
@@ -58,13 +79,17 @@ final class IndexSignatureReconciler
                 }
             }
 
-            $arms = $this->overlapsAnother($name, array_keys($signatures))
-                ? null
-                : $this->unionArms($analysis, $keys, $types);
+            $overlaps = $this->overlapsAnother($name, $segments[$name], array_keys($signatures), $segments);
+
+            if (! $overlaps && count($types) === 1) {
+                continue;
+            }
+
+            $arms = $overlaps ? null : $this->unionArms($analysis, $keys, $types, $castKeys);
 
             if ($arms === null) {
                 $this->restoreBodyTypes($analysis, $indexes);
-            } elseif (count($types) > 1) {
+            } else {
                 $dropped += $this->union($analysis, $indexes, $arms);
             }
         }
@@ -101,18 +126,19 @@ final class IndexSignatureReconciler
     }
 
     /**
-     * Every arm of the given types except `undefined`, or null when one of them cannot join: an `unknown` arm
-     * swallows the rest, and a class token or FQCN channel is imported and rewritten under its own key's name,
-     * so a copy in the signature would miss both.
+     * Every arm of the given types except `undefined`, or null when one of them cannot join: a top-level `unknown`
+     * arm swallows the rest, and a token other than a primitive, `Record`, `Date` or a literal, or an FQCN channel,
+     * is imported and rewritten under its own key's name, so a copy in the signature would miss both.
      *
      * @param  list<string>  $keys  the signature's name and the named keys its pattern matches
      * @param  list<string>  $types  the signature's entries' types and those keys' types
+     * @param  array<string, string>  $castKeys  keys whose published type is a cast, so their channels are dropped
      * @return list<string>|null
      */
-    private function unionArms(MethodAnalysis $analysis, array $keys, array $types): ?array
+    private function unionArms(MethodAnalysis $analysis, array $keys, array $types, array $castKeys): ?array
     {
         foreach ($keys as $key) {
-            if ($analysis->hasFqcnChannel($key)) {
+            if (! isset($castKeys[$key]) && $analysis->hasFqcnChannel($key)) {
                 return null;
             }
         }
@@ -120,7 +146,7 @@ final class IndexSignatureReconciler
         $arms = [];
 
         foreach ($types as $type) {
-            if (TsTypeString::shapeValueHasUnimportableToken($type)) {
+            if (TsTypeString::shapeValueHasUnimportableToken($this->literalsAsPrimitives($type))) {
                 return null;
             }
 
@@ -136,6 +162,14 @@ final class IndexSignatureReconciler
         }
 
         return $arms;
+    }
+
+    /** The type with each string and number literal read as its primitive: a literal needs no import. */
+    private function literalsAsPrimitives(string $type): string
+    {
+        $type = (string) preg_replace('/\'(?:[^\'\\\\]|\\\\.)*\'|"(?:[^"\\\\]|\\\\.)*"/', 'string', $type);
+
+        return (string) preg_replace('/(?<![\w$.])-?\d+(?:\.\d+)?(?![\w$.])/', 'number', $type);
     }
 
     /**
@@ -157,20 +191,14 @@ final class IndexSignatureReconciler
      * Whether another signature in the shape may cover a key this one covers. Only two template patterns whose
      * leading or trailing literal text cannot both hold for one key are proven disjoint.
      *
-     * @param  list<string>  $names
+     * @param  non-empty-list<string>  $own
+     * @param  list<string>  $names  every signature name in the shape
+     * @param  array<string, non-empty-list<string>>  $segments  each template-literal signature's literal segments
      */
-    private function overlapsAnother(string $name, array $names): bool
+    private function overlapsAnother(string $name, array $own, array $names, array $segments): bool
     {
-        $own = $this->literalSegments($name);
-
         foreach ($names as $other) {
-            if ($other === $name) {
-                continue;
-            }
-
-            $theirs = $this->literalSegments($other);
-
-            if ($own === null || $theirs === null || ! $this->disjoint($own, $theirs)) {
+            if ($other !== $name && (! isset($segments[$other]) || ! $this->disjoint($own, $segments[$other]))) {
                 return true;
             }
         }
@@ -192,15 +220,13 @@ final class IndexSignatureReconciler
             || ! (str_ends_with($tailA, $tailB) || str_ends_with($tailB, $tailA));
     }
 
-    /** The regex a named key matches when this template-literal signature covers it, or null for any other key. */
-    private function keyPattern(string $name): ?string
+    /**
+     * The regex a named key matches when a template-literal signature with these literal segments covers it.
+     *
+     * @param  non-empty-list<string>  $segments
+     */
+    private function keyPattern(array $segments): string
     {
-        $segments = $this->literalSegments($name);
-
-        if ($segments === null) {
-            return null;
-        }
-
         $quoted = array_map(fn (string $segment): string => preg_quote($segment, '/'), $segments);
 
         return '/^'.implode('.*', $quoted).'$/s';
