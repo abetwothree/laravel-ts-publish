@@ -183,7 +183,7 @@ final class CollectionPipelineHandler implements ExpressionHandler
 
         try {
             // A model or collection binding outranks varValueBindings for a bare read, so the name is freed first.
-            $scope->releaseParameters($mapArg);
+            $scope->claimParameters($mapArg);
 
             if ($mapArg->params !== []
                 && $mapArg->params[0]->var instanceof Variable

@@ -49,7 +49,9 @@ it('derives no forwarding target without both a proxying subject and a backing m
         ->and($resourceWithoutModel->forwardsUndeclaredMembersTo)->toBeNull();
 });
 
-it('releases every closure parameter from every name-keyed binding table, and restores them from a capture', function () {
+/** A scope with `item`, `key` and `kept` bound in every name-keyed binding table. */
+function analysisScopeWithEveryTableBound(): AnalysisScope
+{
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
     $expr = new Variable('outer');
 
@@ -63,16 +65,48 @@ it('releases every closure parameter from every name-keyed binding table, and re
         $scope->requestVarNames[$name] = Request::class;
     }
 
-    $captured = $scope->nameBindings();
+    return $scope;
+}
 
-    $scope->releaseParameters(new ArrowFunction([
+/**
+ * The names each binding table holds, leaving out the claimed-closure marks.
+ *
+ * @return array<string, list<array-key>>
+ */
+function analysisScopeBoundNames(AnalysisScope $scope): array
+{
+    return array_map(array_keys(...), array_diff_key($scope->nameBindings(), ['claimedClosures' => true]));
+}
+
+it('claims every closure parameter out of every name-keyed binding table, and restores them from a capture', function () {
+    $scope = analysisScopeWithEveryTableBound();
+    $captured = $scope->nameBindings();
+    $closure = new ArrowFunction([
         'params' => [new Param(new Variable('item')), new Param(new Variable('key'))],
         'expr' => new Variable('item'),
-    ]));
+    ]);
 
-    expect(array_map(array_keys(...), $scope->nameBindings()))->each->toBe(['kept']);
+    $scope->claimParameters($closure);
+
+    expect(analysisScopeBoundNames($scope))->each->toBe(['kept'])
+        ->and($scope->claimedClosures)->toBe([spl_object_id($closure) => true]);
 
     $scope->restoreNameBindings($captured);
 
-    expect($scope->nameBindings())->toBe($captured);
+    expect($scope->nameBindings())->toBe($captured)
+        ->and($scope->claimedClosures)->toBe([]);
+});
+
+it('releases an unclaimed closure parameter and leaves a claimed closure parameter bound', function () {
+    $unclaimed = analysisScopeWithEveryTableBound();
+    $claimed = analysisScopeWithEveryTableBound();
+    $closure = new ArrowFunction(['params' => [new Param(new Variable('item'))], 'expr' => new Variable('item')]);
+
+    $unclaimed->releaseUnclaimedParameters($closure);
+    $claimed->claimParameters($closure);
+    $claimed->varModelBindings['item'] = User::class;
+    $claimed->releaseUnclaimedParameters($closure);
+
+    expect(analysisScopeBoundNames($unclaimed))->each->toBe(['key', 'kept'])
+        ->and($claimed->varModelBindings)->toBe(['key' => User::class, 'kept' => User::class, 'item' => User::class]);
 });

@@ -205,14 +205,15 @@ restore discipline and is why the field inventory above calls out scoping per fi
 
 ### Writing a scope binding
 
-Most writers hand-roll this. The three map writers share `AnalysisScope::nameBindings()`, `restoreNameBindings()`
-and `releaseParameters()`, for the reason [below](#a-map-closures-parameter-owns-its-name). The current set:
+Most writers hand-roll this. Every writer that binds a closure parameter, and `ClosureHandler`, share
+`AnalysisScope::nameBindings()` and `restoreNameBindings()`, and free the parameter names through `claimParameters()`
+or `releaseUnclaimedParameters()`, for the reason [below](#a-closure-parameter-owns-its-name). The current set:
 
 | Writer | Fields it scopes |
 | --- | --- |
 | `ResourceAstAnalyzer::analyzeThisMethodSpread()` | `localVarBindings`, `resolvingLocalVars`, `varModelBindings`, `varClassBindings`, `requestVarNames`, and the `visitedSpreadMethods` entry |
-| `ClosureHandler::resolve()` | `localVarBindings`, `varClassBindings` |
-| `ConditionalMethodHandler` | `closureRelationModelClass`, `varModelBindings`, `varCollectionBindings`, `varClassBindings` around a `whenLoaded` closure; `closureParamExprBindings` at its three binding sites — the `when()`/`unless()` condition, `transform()`'s callback, and `resolveValueArgument()`'s value closure |
+| `ClosureHandler::resolve()` | every name-keyed table, releasing the parameter names of a closure no writer claimed |
+| `ConditionalMethodHandler` | `closureRelationModelClass` and every name-keyed table around a `whenLoaded` closure; every name-keyed table at its three `closureParamExprBindings` sites — the `when()`/`unless()` condition, `transform()`'s callback, and `resolveValueArgument()`'s value closure — claiming the closure's parameters at each |
 | `TernaryHandler::narrowedArmResult()` | `varClassBindings` for a narrowed variable; `modelClass` + `forwardsUndeclaredMembersTo` for a narrowed `$this->resource` |
 | `RelationCollectionChainHandler` | `closureRelationModelClass` around `pluck()`; that plus every name-keyed table around a `map()` closure, whose parameter it binds in `varModelBindings` |
 | `CollectionPipelineHandler::resolveMapBody()` | every name-keyed table around a `collect(...)->map()` closure, whose parameter it binds in `varValueBindings` |
@@ -239,17 +240,23 @@ runs. Read that as the exception that proves the line to hold — the moment see
 reflect, or call back into the engine on anything whose loading is not already guaranteed, it belongs
 inside the `try`. Prefer restoring the whole map over unsetting the single key you believe you wrote.
 
-#### A map closure's parameter owns its name
+#### A closure parameter owns its name
 
 The readers rank the name-keyed tables differently. For a bare variable, `VariableHandler` reads
 `varModelBindings`, then `varCollectionBindings`, then `varValueBindings`; `ReceiverClassResolver::fromVariable()`
-reads `varClassBindings` first and never reads `varValueBindings`. So an outer binding of the parameter's name, left
-in any table, outranks the parameter's own binding for some reader: a `collect(...)->map(fn ($c) => …)` nested in a
-`map(fn (Comment $c) => …)` would read its string element as a `Comment`. Each map writer therefore calls
-`AnalysisScope::releaseParameters()` inside its `try`, which drops every parameter name of the closure from every
-name-keyed table, then seeds its own binding, and `restoreNameBindings()` puts every table back in the `finally`.
-A variadic first parameter is never bound: `map()` passes `($value, $key)`, so it collects both and holds no one
-element. All three map writers skip it and analyze no body for it.
+reads `varClassBindings` first and never reads `varValueBindings`. So an outer binding of a closure parameter's name,
+left in any table, outranks the parameter's own binding for some reader: nested in a `map(fn (Comment $c) => …)`, a
+`collect(...)->map(fn ($c) => …)` would read its string element as a `Comment`, and so would
+`$this->transform($this->title, fn ($c) => $c)`.
+
+Every writer that binds a closure parameter therefore calls `AnalysisScope::claimParameters()` inside its `try`. It
+drops every parameter name of the closure from every name-keyed table and marks the closure claimed; the writer then
+seeds its own binding, and `restoreNameBindings()` puts every table and the mark back in the `finally`.
+`ClosureHandler` calls `releaseUnclaimedParameters()`, which makes the same drop for a closure no writer claimed, such
+as a conditional's default closure, and leaves a claimed closure's bindings in place.
+
+A variadic first `map()` parameter is never bound: `map()` passes `($value, $key)`, so it collects both and holds no
+one element. All three map writers skip it and analyze no body for it.
 
 ### How `varModelBindings` gets populated, and how scoping holds
 
@@ -289,8 +296,9 @@ a `map(fn ($member) => $member)` closure param share a name, and each site resol
 ### `localVarBindings` and closure descent
 
 `ClosureHandler::resolve()` — the generic closure/arrow-function handler every dispatch reaches —
-saves `$scope->localVarBindings`, unsets any entry whose name matches one of the closure's own
-parameters, analyzes the body, and restores the snapshot in a `finally`. Without that suppression, a
+saves every name-keyed table, releases the closure's own parameter names from all of them unless a writer
+claimed the closure (see [A closure parameter owns its name](#a-closure-parameter-owns-its-name)), analyzes
+the body, and restores the snapshot in a `finally`. Without that suppression, a
 closure parameter shadowing an outer local, inside a construct with no scoped binding of its own (none
 of the `varModelBindings` sources above — e.g. `when()`'s condition isn't a `$this->prop` test),
 would resolve through the outer `localVarBindings` entry when analyzing the closure body, turning an

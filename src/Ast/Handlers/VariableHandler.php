@@ -248,7 +248,7 @@ final class VariableHandler implements ExpressionHandler
 
         try {
             $scope->closureRelationModelClass = $paramClass;
-            $scope->releaseParameters($closureArg);
+            $scope->claimParameters($closureArg);
 
             // ReceiverClassResolver reads a parameter from varModelBindings, never closureRelationModelClass.
             if ($firstParam->var instanceof Variable && is_string($firstParam->var->name)) {

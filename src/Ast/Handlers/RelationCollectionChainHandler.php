@@ -283,7 +283,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
 
         try {
             $scope->closureRelationModelClass = $elementModel;
-            $scope->releaseParameters($mapArg);
+            $scope->claimParameters($mapArg);
 
             if ($mapArg->params !== []
                 && $mapArg->params[0]->var instanceof Variable

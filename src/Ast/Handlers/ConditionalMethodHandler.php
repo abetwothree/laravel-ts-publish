@@ -195,14 +195,15 @@ final class ConditionalMethodHandler implements ExpressionHandler
             return [...ValueResult::unknown(), 'optional' => true]; // @codeCoverageIgnore
         }
 
-        $previousBindings = $scope->closureParamExprBindings;
+        $previousNameBindings = $scope->nameBindings();
 
         try {
+            $scope->claimParameters($valueArg->value);
             $this->bindClosureParamsFromCondition($condition->value, $valueArg->value, $scope);
 
             $inner = $engine->resolve($valueArg->value);
         } finally {
-            $scope->closureParamExprBindings = $previousBindings;
+            $scope->restoreNameBindings($previousNameBindings);
         }
 
         return $this->applyConditionalDefault($inner, $args, $scope, $engine);
@@ -413,11 +414,10 @@ final class ConditionalMethodHandler implements ExpressionHandler
         if ($valueExpr !== null) {
             // Resolve the related model so accesses on local variables inside the closure can be typed.
             $previousRelationModel = $scope->closureRelationModelClass;
-            $previousVarModelBindings = $scope->varModelBindings;
-            $previousVarCollectionBindings = $scope->varCollectionBindings;
-            $previousVarClassBindings = $scope->varClassBindings;
+            $previousNameBindings = $scope->nameBindings();
 
             try {
+                $scope->claimParameters($valueExpr);
                 $relationInfo = null;
 
                 if ($relationship instanceof String_) {
@@ -463,9 +463,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
                 $inner = $engine->resolve($valueExpr);
             } finally {
                 $scope->closureRelationModelClass = $previousRelationModel;
-                $scope->varModelBindings = $previousVarModelBindings;
-                $scope->varCollectionBindings = $previousVarCollectionBindings;
-                $scope->varClassBindings = $previousVarClassBindings;
+                $scope->restoreNameBindings($previousNameBindings);
             }
 
             return $this->applyConditionalDefault($inner, $args, $scope, $engine);
@@ -507,14 +505,15 @@ final class ConditionalMethodHandler implements ExpressionHandler
             return [...ValueResult::unknown(), 'optional' => true]; // @codeCoverageIgnore
         }
 
-        $previousBindings = $scope->closureParamExprBindings;
+        $previousNameBindings = $scope->nameBindings();
 
         try {
+            $scope->claimParameters($callbackArg->value);
             $this->bindClosureParamsFromCondition($valueArg->value, $callbackArg->value, $scope);
 
             $inner = $engine->resolve($callbackArg->value);
         } finally {
-            $scope->closureParamExprBindings = $previousBindings;
+            $scope->restoreNameBindings($previousNameBindings);
         }
 
         // transform()'s default runs through the global transform() helper's $default($value) — one
@@ -578,9 +577,11 @@ final class ConditionalMethodHandler implements ExpressionHandler
             return null;
         }
 
-        $previousBindings = $scope->closureParamExprBindings;
+        $previousNameBindings = $scope->nameBindings();
 
         try {
+            $scope->claimParameters($value);
+
             if ($argument !== null
                 && ($value instanceof ClosureExpr || $value instanceof ArrowFunction)
                 && isset($value->params[0])
@@ -592,7 +593,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
             $inner = $engine->resolve($value);
         } finally {
-            $scope->closureParamExprBindings = $previousBindings;
+            $scope->restoreNameBindings($previousNameBindings);
         }
 
         return $inner['type'] === 'unknown' ? null : $inner;

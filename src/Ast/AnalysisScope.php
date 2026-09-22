@@ -35,7 +35,8 @@ use ReflectionClass;
  *      varCollectionBindings: VarCollectionBindingsMap,
  *      varValueBindings: VarValueBindingsMap,
  *      localVarBindings: LocalVarBindingsMap,
- *      requestVarNames: RequestVarNamesMap
+ *      requestVarNames: RequestVarNamesMap,
+ *      claimedClosures: array<int, true>
  * }
  *
  * @internal
@@ -153,6 +154,14 @@ final class AnalysisScope
     public array $requestVarNames = [];
 
     /**
+     * Closures, by spl_object_id(), whose parameters a writer has released and bound, so ClosureHandler keeps those
+     * bindings instead of releasing the names again. Captured and restored with the name-keyed tables.
+     *
+     * @var array<int, true>
+     */
+    public array $claimedClosures = [];
+
+    /**
      * @param  ReflectionClass<object>  $subjectReflection  the resource (or other AST subject) under analysis
      * @param  class-string<Model>|null  $modelClass  its resolved backing model, if any. Scoped rather than
      *                                                fixed: TernaryHandler narrows it for an `instanceof`
@@ -185,6 +194,7 @@ final class AnalysisScope
             'varValueBindings' => $this->varValueBindings,
             'localVarBindings' => $this->localVarBindings,
             'requestVarNames' => $this->requestVarNames,
+            'claimedClosures' => $this->claimedClosures,
         ];
     }
 
@@ -202,15 +212,41 @@ final class AnalysisScope
         $this->varValueBindings = $snapshot['varValueBindings'];
         $this->localVarBindings = $snapshot['localVarBindings'];
         $this->requestVarNames = $snapshot['requestVarNames'];
+        $this->claimedClosures = $snapshot['claimedClosures'];
     }
 
     /**
-     * Drop every parameter name of a closure from every name-keyed binding table, before a writer binds its own.
+     * Release a closure's parameter names before a writer binds them, marked so ClosureHandler keeps those bindings.
+     */
+    public function claimParameters(Expr $closure): void
+    {
+        if ($closure instanceof ArrowFunction || $closure instanceof Closure) {
+            $this->releaseParameterNames($closure);
+            $this->claimedClosures[spl_object_id($closure)] = true;
+        }
+    }
+
+    /**
+     * Release the parameter names of a closure no writer claimed, as ClosureHandler does before analyzing its body.
+     */
+    public function releaseUnclaimedParameters(Expr $closure): void
+    {
+        if (! $closure instanceof ArrowFunction && ! $closure instanceof Closure) {
+            return;
+        }
+
+        if (! isset($this->claimedClosures[spl_object_id($closure)])) {
+            $this->releaseParameterNames($closure);
+        }
+    }
+
+    /**
+     * Drop every parameter name of a closure from every name-keyed binding table.
      *
      * Each reader ranks the tables differently, so an outer binding of the name left in any one of them would outrank
      * the parameter's own binding for some reader: a closure parameter owns its name inside its closure.
      */
-    public function releaseParameters(ArrowFunction|Closure $closure): void
+    private function releaseParameterNames(ArrowFunction|Closure $closure): void
     {
         foreach ($closure->params as $param) {
             if (! $param->var instanceof Variable || ! is_string($param->var->name)) {

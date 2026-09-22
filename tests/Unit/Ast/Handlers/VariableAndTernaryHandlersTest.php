@@ -441,6 +441,24 @@ it('lets a map-closure parameter own its name over an outer binding of the same 
     ],
 ]);
 
+// The map parameter's own model binding must not leak into a nested closure that reuses the name, whoever binds it.
+it('lets a nested closure parameter own its name over an outer map parameter of the same name', function (string $php, string $type) {
+    expect(variableHandlersResolveOn($php)['type'])->toBe($type);
+})->with([
+    'to-many whenLoaded' => [
+        '$rows->map(fn (\Workbench\App\Models\Comment $c) => $this->whenLoaded("comments", fn ($c) => $c))->all()',
+        'Comment[][]',
+    ],
+    'transform() callback' => ['$rows->map(fn (\Workbench\App\Models\Comment $c) => $this->transform($this->title, fn ($c) => $c))->all()', 'string[]'],
+    'when() on a property' => ['$rows->map(fn (\Workbench\App\Models\Comment $c) => $this->when($this->title, fn ($c) => $c))->all()', 'string[]'],
+    'whenHas() value closure' => ['$rows->map(fn (\Workbench\App\Models\Comment $c) => $this->whenHas("title", fn ($c) => $c))->all()', 'string[]'],
+    'when() binding nothing' => ['$rows->map(fn (\Workbench\App\Models\Comment $c) => $this->when(true, fn ($c) => $c))->all()', 'unknown'],
+    'transform() default closure' => [
+        '$rows->map(fn (\Workbench\App\Models\Comment $c) => $this->transform($this->title, fn ($t) => $t, fn ($c) => $c))->all()',
+        'string[]',
+    ],
+]);
+
 it('releases a map-closure parameter from an outer class narrowing of the same name', function () {
     $scope = new AnalysisScope(new ReflectionClass(PostCommentAuthorsResource::class), Post::class);
     $scope->varClassBindings['c'] = [User::class];

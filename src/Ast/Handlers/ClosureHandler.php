@@ -16,7 +16,6 @@ use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
-use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\NullableType;
@@ -54,19 +53,11 @@ final class ClosureHandler implements ExpressionHandler
         $closureReturns = $this->resolveClosureReturnExpressions($expr);
 
         if ($closureReturns !== []) {
-            // A param merely shadows a same-named outer local for this body — it must not resolve
-            // through the outer binding just because no scoped binding (e.g. whenLoaded) claimed it.
-            $previousLocalVarBindings = $scope->localVarBindings;
-            $previousVarClassBindings = $scope->varClassBindings;
+            $previousNameBindings = $scope->nameBindings();
 
             try {
-                if ($expr instanceof ArrowFunction || $expr instanceof ClosureExpr) {
-                    foreach ($expr->params as $param) {
-                        if ($param->var instanceof Variable && is_string($param->var->name)) {
-                            unset($scope->localVarBindings[$param->var->name]);
-                        }
-                    }
-                }
+                // A param shadows a same-named outer binding in every table, unless a writer claimed and bound it.
+                $scope->releaseUnclaimedParameters($expr);
 
                 if ($expr instanceof ClosureExpr) {
                     // A body-local shadows the outer one of the same name however often it is written, so
@@ -95,8 +86,7 @@ final class ClosureHandler implements ExpressionHandler
 
                 return $bodyResult;
             } finally {
-                $scope->localVarBindings = $previousLocalVarBindings;
-                $scope->varClassBindings = $previousVarClassBindings;
+                $scope->restoreNameBindings($previousNameBindings);
             }
         }
 
