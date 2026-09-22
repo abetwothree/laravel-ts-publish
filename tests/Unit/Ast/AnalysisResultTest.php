@@ -97,6 +97,20 @@ describe('AstEngine::analyze()', function () {
             ->toBe(['../../enums' => ['StatusType']]);
     });
 
+    test('keeps an import two property types name once TypeScript lexes them as one', function () {
+        // `label` opens a template literal that `state` closes, so emitted together the enum name is a reference.
+        $analysis = new MethodAnalysis(
+            properties: [
+                ['name' => 'label', 'type' => '`a', 'optional' => false, 'description' => ''],
+                ['name' => 'state', 'type' => 'x` | StatusType | `y`', 'optional' => false, 'description' => ''],
+            ],
+            directEnumFqcns: ['state' => Status::class],
+        );
+
+        expect(new AnalysisComposer()->compose($analysis, 'workbench/app/http/resources')->typeImports)
+            ->toBe(['../../enums' => ['StatusType']]);
+    });
+
     test('imports nothing a property type no longer names', function () {
         // ToArrayCastsResource's method-level #[TsCasts] retypes `role` as a plain string, but the
         // enum FQCN stays on the analysis — importing RoleType would be a dead import.

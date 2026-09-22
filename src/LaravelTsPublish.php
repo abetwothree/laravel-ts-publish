@@ -2035,11 +2035,13 @@ class LaravelTsPublish
     }
 
     /**
+     * Whether a type name occurs as its own token in any of the given types, a string, template or comment included.
+     *
      * {@see TsTypeString::typeNameOccursIn()}
      */
-    public function typeNameOccursIn(string $typeName, string $haystack): bool
+    public function typeNameOccursIn(string $typeName, string ...$types): bool
     {
-        return TsTypeString::typeNameOccursIn($typeName, $haystack);
+        return TsTypeString::typeNameOccursIn($typeName, ...$types);
     }
 
     /**

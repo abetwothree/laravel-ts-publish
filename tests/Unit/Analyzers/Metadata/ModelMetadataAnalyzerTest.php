@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Metadata\ModelMetadataAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Metadata\ModelMetadataAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Metadata\Contracts\ModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Metadata\DefaultModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AstUnimportableModelMetadataProvider;
@@ -125,6 +126,40 @@ test('a displaced key named after a loadable class still drops its import', func
     expect($analysis->types)->toBe(['state' => 'StatusType', 'error' => 'string'])
         ->and($analysis->sources)->toBe(['state' => 'inferred', 'error' => 'docblock'])
         ->and($analysis->typeImports)->toBe(['../../crm/enums' => ['StatusType']]);
+});
+
+/**
+ * An analyzer whose inferred types are given, so the still-spelled import filter can be driven directly.
+ *
+ * @param  array<string, string>  $types
+ */
+function metadataAnalyzerInferring(array $types): ModelMetadataAnalyzer
+{
+    return new class($types) extends ModelMetadataAnalyzer
+    {
+        /** @param  array<string, string>  $types */
+        public function __construct(private readonly array $types) {}
+
+        /** @return array<string, string> */
+        protected function inferTypes(MethodAnalysis $analysis, array $payloadKeys): array
+        {
+            return $this->types;
+        }
+    };
+}
+
+test('the still-spelled filter keeps an inferred import one type names and drops one no type names', function () {
+    // `count` holds an unclosed template literal that `role` closes; the name is read wherever it stands.
+    $kept = metadataAnalyzerInferring(['count' => "`\${string}'s label", 'role' => 'RoleType | `x`'])
+        ->analyze(AstUnimportableModelMetadataProvider::class, ['count', 'role'], 'workbench/app/models');
+    $dropped = metadataAnalyzerInferring(['role' => 'string'])
+        ->analyze(AstUnimportableModelMetadataProvider::class, ['role'], 'workbench/app/models');
+
+    expect($kept->types)->toBe(['count' => "`\${string}'s label", 'role' => 'RoleType | `x`'])
+        ->and($kept->typeImports)->toBe(['../enums' => ['RoleType']])
+        ->and($dropped->types)->toBe(['role' => 'string'])
+        ->and($dropped->sources)->toBe(['role' => 'inferred'])
+        ->and($dropped->typeImports)->toBe([]);
 });
 
 test('a union of direct enums keeps both imports, which the engine keys by FQCN', function () {

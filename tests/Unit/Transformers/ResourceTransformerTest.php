@@ -5,11 +5,17 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastSettingsReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CommentQuoteCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ContinuationCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\EscapedNameCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendsEnumCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendsOverriddenReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LineTerminatorCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LongerNameCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MultilineQuoteCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MultilineTemplateCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\QuotedCastReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SplitTemplateCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SpreadCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TemplateCastReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UnclosedTemplateCastResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
@@ -2747,12 +2753,16 @@ describe('ResourceTransformer imports for a read a #[TsCasts] override replaces'
             ->and($data->typeImports)->toBe([]);
     });
 
-    test('drops an import an override spells only inside a string literal', function () {
+    // The token match's accepted cost: a name inside a string literal keeps its import, unused, where a lexer that hid
+    // the name from the prune dropped imports the generated file needed.
+    test('keeps an import an override spells only inside a string literal', function () {
         $data = (new ResourceTransformer(QuotedCastReadResource::class))->data();
+        $names = array_merge(...array_values($data->typeImports));
+        sort($names);
 
         expect($data->properties['app']['type'])->toBe("'User' | 'Admin'")
             ->and($data->properties['settings']['type'])->toBe("'MenuSettingsType' | null")
-            ->and($data->typeImports)->toBe([]);
+            ->and($names)->toBe(['MenuSettingsType', 'User']);
     });
 
     test('keeps the import a type names after a multi-line template literal or a comment holding a quote', function (string $resource, string $key, string $type, string $name) {
@@ -2782,6 +2792,46 @@ describe('ResourceTransformer imports for a read a #[TsCasts] override replaces'
             ->and($data->properties['app']['type'])->toBe('User | `x`')
             ->and($data->properties['state']['type'])->toBe('StatusType | `x`')
             ->and($names)->toBe(['StatusType', 'User']);
+    });
+
+    test('keeps the import a type names after a line continuation, an odd line terminator, a spread or an identifier escape', function (string $resource, string $key, string $type, string $name) {
+        $data = (new ResourceTransformer($resource))->data();
+
+        expect($data->properties[$key]['type'])->toBe($type)
+            ->and(array_merge(...array_values($data->typeImports)))->toContain($name);
+    })->with([
+        'a line continuation, over a model' => [ContinuationCastResource::class, 'app', "'a\\\nb' | 'x' | User | 'y'", 'User'],
+        'a line continuation in double quotes, over an enum' => [ContinuationCastResource::class, 'state', "\"a\\\nb\" | \"x\" | StatusType | \"y\"", 'StatusType'],
+        'a line continuation in an object key, over a #[TsType] class' => [ContinuationCastResource::class, 'settings', "{ 'a\\\nb': 'x'; c: MenuSettingsType; d: 'y' }", 'MenuSettingsType'],
+        'a line comment ended by CR, over a model' => [LineTerminatorCastResource::class, 'app', "// c\r`a\nb` | User | `x`", 'User'],
+        'a line comment ended by U+2028, over an enum' => [LineTerminatorCastResource::class, 'state', "// c\u{2028}`a\nb` | StatusType | `x`", 'StatusType'],
+        'a line comment ended by U+2029, over a #[TsType] class' => [LineTerminatorCastResource::class, 'settings', "// c\u{2029}`a\nb` | MenuSettingsType | `x`", 'MenuSettingsType'],
+        'a variadic tuple element, over a model' => [SpreadCastResource::class, 'app', '[string, ...User[]]', 'User'],
+        'a variadic tuple head, over an enum' => [SpreadCastResource::class, 'state', '[...StatusType[], string]', 'StatusType'],
+        'a readonly variadic tuple, over a #[TsType] class' => [SpreadCastResource::class, 'settings', 'readonly [...MenuSettingsType[]]', 'MenuSettingsType'],
+        'an identifier escape, over a model' => [EscapedNameCastResource::class, 'app', chr(92).'u{55}ser | null', 'User'],
+        'an identifier escape, over an enum' => [EscapedNameCastResource::class, 'state', chr(92).'u{53}tatusType', 'StatusType'],
+        'an identifier escape inside the name, over a #[TsType] class' => [EscapedNameCastResource::class, 'settings', 'Menu'.chr(92).'u{53}ettingsType | null', 'MenuSettingsType'],
+    ]);
+
+    test('keeps every import two property types name once TypeScript lexes them as one', function () {
+        $data = (new ResourceTransformer(SplitTemplateCastResource::class))->data();
+        $names = array_merge(...array_values($data->typeImports));
+        sort($names);
+
+        expect($data->properties['label']['type'])->toBe('`a')
+            ->and($data->properties['app']['type'])->toBe('x` | User | `y`')
+            ->and($data->properties['state']['type'])->toBe('x` | StatusType | `y`')
+            ->and($data->properties['settings']['type'])->toBe('x` | MenuSettingsType | `y`')
+            ->and($names)->toBe(['MenuSettingsType', 'StatusType', 'User']);
+    });
+
+    test('keeps an enum an extends clause still names after its read is overridden', function () {
+        $data = (new ResourceTransformer(ExtendsEnumCastResource::class))->data();
+
+        expect($data->tsExtends)->toBe(['Partial<Record<StatusType, unknown>>'])
+            ->and($data->properties['state']['type'])->toBe('string')
+            ->and(array_merge(...array_values($data->typeImports)))->toBe(['StatusType']);
     });
 });
 

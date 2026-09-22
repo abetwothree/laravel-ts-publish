@@ -139,8 +139,6 @@ class ModelMetadataAnalyzer
         $imports = [];
 
         foreach (new AnalysisImports()->build($analysis, $namespacePath)['typeImports'] as $path => $names) {
-            // No fixture reaches this filter with a name the inferred keys never spell, so its drop
-            // direction is unexercised — a green suite is not coverage for it.
             $used = array_values(array_filter(
                 $names,
                 static fn (string $name): bool => TsTypeString::typeNameOccursIn($name, ...$spelled),

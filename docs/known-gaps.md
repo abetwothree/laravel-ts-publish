@@ -390,6 +390,23 @@ property with an import-aware `#[TsCasts]`. The real fix is to carry these FQCNs
 channel so the alias pass reaches them, which is cross-cutting rather than local: `InlineArrayHandler`
 builds the identical FQCN-keyed shape for inline arrays.
 
+### A `#[TsCasts]` value that spells an imported name inside a string, template or comment keeps the import
+
+The import prunes ask `TsTypeString::typeNameOccursIn()` whether a property type or extends clause still spells
+a model, enum or `#[TsType]` name. That is a plain token match: it counts the name wherever its token stands,
+inside a quoted string, a template literal's text or a comment as much as outside. So
+`#[TsCasts(['app' => "'User' | 'Admin'"])]` over a read that carried the `User` import keeps
+`import type { User }`, unused. The file is valid; TypeScript reports the import only as TS6196, and only
+under `noUnusedLocals`.
+
+This is deliberate. A lexer that blanked literals and comments hid, on every review, some name TypeScript
+reads as a reference (a backslash-newline continuation inside a string, a `//` comment ended by CR or
+U+2028, a variadic `...Name` element, an identifier escape), and each hidden name dropped an import the
+generated file needed, which is TS2304 for every consumer. An unused import is the cheaper failure.
+
+**What to do about it.** Spell the literal without the imported name, or override the read with a type
+that uses the import. Any narrower match has to clear the Task 36 oracle-fuzz corpus at zero hidden names.
+
 ### `instanceof` narrowing depends on the spelling, in three different ways
 
 There is one rule per spelling, not one rule overall. Check which spelling you wrote before assuming a

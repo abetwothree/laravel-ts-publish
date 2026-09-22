@@ -218,22 +218,18 @@ class TsTypeString
     }
 
     /**
-     * Whether a TypeScript type name occurs as its own token in any of the given types, outside a literal's text.
-     *
-     * Only a leading `.` disqualifies: `foo.StatusType` is a property read, while `StatusType.foo`
-     * reads a member of the type and so still names it. Each type is read whole, in one pass, as TypeScript lexes it:
-     * `'StatusType'` is a string, never the type, and so is the text of a template literal, which may span lines; its
-     * `${…}` placeholders are types and still count. A comment's text counts too, but no quote or backtick inside it
-     * opens a literal. Where the reading is unsure, the name counts: a `'` or `"` with no partner later on its line
-     * opens no string, and everything from the opening of a template, placeholder or block comment that never closes is
-     * read as written.
+     * Whether a type name occurs as its own token in any of the given types, wherever it stands: a name inside a string,
+     * template or comment counts too, since an extra import is harmless where a hidden one breaks the generated file.
+     * `foo.StatusType` is a member access, not the type; `...StatusType[]` is; `\u0055ser` is decoded and names `User`.
      */
     public function typeNameOccursIn(string $typeName, string ...$types): bool
     {
-        $pattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($typeName, '/').'(?![A-Za-z0-9_$])/';
+        // Only a letter, `_` or `$` before the name joins it to a longer identifier, and only a `.` after one of those
+        // is a member access: TypeScript reads `1User` as a number then the name, and `[...User]` as a spread of it.
+        $pattern = '/(?<![A-Za-z_$])(?<![A-Za-z_$]\.)'.preg_quote($typeName, '/').'(?![A-Za-z0-9_$])/';
 
         foreach ($types as $type) {
-            if (str_contains($type, $typeName) && preg_match($pattern, $this->typePositions($type)) === 1) {
+            if (preg_match($pattern, $this->decodeIdentifierEscapes($type)) === 1) {
                 return true;
             }
         }
@@ -310,142 +306,22 @@ class TsTypeString
     }
 
     /**
-     * A type with its literals' text removed, read in one pass: a quoted string becomes `''`, a template literal keeps
-     * only its `${…}` placeholders, and a comment stays as written. From the opening of the outermost template,
-     * placeholder or block comment that never closes, the rest of the type stays as written.
+     * Spell every `\uXXXX` and `\u{X…}` escape that TypeScript reads as an identifier character as that character.
      */
-    private function typePositions(string $type): string
+    private function decodeIdentifierEscapes(string $type): string
     {
-        $kept = '';
-        /** @var list<array{kind: 'template'|'placeholder'|'comment', offset: int, kept: int, depth: int}> $open */
-        $open = [];
-        // The offset up to which a quote of each kind is known to have no partner on its line.
-        $unpairedBefore = ["'" => -1, '"' => -1];
-        $length = strlen($type);
-
-        for ($offset = 0; $offset < $length;) {
-            $char = $type[$offset];
-            $pair = substr($type, $offset, 2);
-            $top = array_key_last($open);
-            $kind = $top === null ? 'code' : $open[$top]['kind'];
-
-            if ($kind === 'template') {
-                if ($char === '`') {
-                    array_pop($open);
-                    $kept .= ' ';
-                } elseif ($pair === '${') {
-                    $open[] = ['kind' => 'placeholder', 'offset' => $offset, 'kept' => strlen($kept), 'depth' => 0];
-                    $kept .= ' ';
-                    $offset++;
-                } elseif ($char === '\\') {
-                    $offset++;
-                }
-
-                $offset++;
-
-                continue;
-            }
-
-            if ($kind === 'comment') {
-                if ($pair === '*/') {
-                    array_pop($open);
-                    $kept .= $pair;
-                    $offset += 2;
-
-                    continue;
-                }
-
-                $kept .= $char;
-                $offset++;
-
-                continue;
-            }
-
-            if ($pair === '//') {
-                $lineEnd = strpos($type, "\n", $offset);
-                $lineEnd = $lineEnd === false ? $length : $lineEnd;
-                $kept .= substr($type, $offset, $lineEnd - $offset);
-                $offset = $lineEnd;
-
-                continue;
-            }
-
-            if ($char === '`') {
-                $open[] = ['kind' => 'template', 'offset' => $offset, 'kept' => strlen($kept), 'depth' => 0];
-                $kept .= ' ';
-                $offset++;
-
-                continue;
-            }
-
-            if ($pair === '/*') {
-                $open[] = ['kind' => 'comment', 'offset' => $offset, 'kept' => strlen($kept), 'depth' => 0];
-                $kept .= $pair;
-                $offset += 2;
-
-                continue;
-            }
-
-            if (($char === "'" || $char === '"') && $offset > $unpairedBefore[$char]) {
-                $end = $this->quotedStringEnd($type, $offset);
-
-                if (($type[$end] ?? '') === $char) {
-                    $kept .= "''";
-                    $offset = $end + 1;
-
-                    continue;
-                }
-
-                // No later quote of this kind on the line has a partner either: its search would end at the same place.
-                $unpairedBefore[$char] = $end;
-            }
-
-            if ($top !== null && $kind === 'placeholder' && ($char === '{' || $char === '}')) {
-                if ($char === '}' && $open[$top]['depth'] === 0) {
-                    array_pop($open);
-                    $kept .= ' ';
-                    $offset++;
-
-                    continue;
-                }
-
-                $open[$top]['depth'] += $char === '{' ? 1 : -1;
-            }
-
-            $kept .= $char;
-            $offset++;
+        if (! str_contains($type, '\\u')) {
+            return $type;
         }
 
-        if ($open === []) {
-            return $kept;
-        }
+        return preg_replace_callback('/\\\\u(?:\{([0-9A-Fa-f]+)\}|([0-9A-Fa-f]{4}))/', static function (array $match): string {
+            $codePoint = hexdec($match[1] !== '' ? $match[1] : $match[2]);
+            $char = is_int($codePoint) && $codePoint <= 0x10FFFF ? mb_chr($codePoint, 'UTF-8') : false;
 
-        return substr($kept, 0, $open[0]['kept']).substr($type, $open[0]['offset']);
-    }
-
-    /**
-     * Where the search for the partner of the quote at $offset ends: the partner's offset, or the offset of the line's
-     * end (a newline, escaped or not, or the end of the type) when the quote has none on its line.
-     */
-    private function quotedStringEnd(string $type, int $offset): int
-    {
-        $quote = $type[$offset];
-        $length = strlen($type);
-
-        for ($i = $offset + 1; $i < $length; $i++) {
-            if ($type[$i] === $quote || $type[$i] === "\n") {
-                return $i;
-            }
-
-            if ($type[$i] === '\\') {
-                if (($type[$i + 1] ?? '') === "\n") {
-                    return $i + 1;
-                }
-
-                $i++;
-            }
-        }
-
-        return $length;
+            // An escape TypeScript cannot read as part of a name stays as written: it then reads `u002E…` as the name.
+            return $char !== false && preg_match('/^[\p{L}\p{Nl}\p{Mn}\p{Mc}\p{Nd}\p{Pc}$\x{200C}\x{200D}]$/u', $char) === 1
+                ? $char
+                : $match[0];
+        }, $type) ?? $type;
     }
 }

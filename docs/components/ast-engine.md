@@ -562,16 +562,20 @@ makes the three fields agree with each other:
    ternary whose arms are synthesized from `enumResourceArmShapes`, and the multi-enum ternary
    replaced branch by branch. Gated on `ts-publish.enums.use_tolki_package`; with it off the bare
    enum type name is already the right answer and its type import survives.
-4. **Import exactly the tokens the rewritten types spell.** One rule replaces two special cases:
-   `AnalysisImports::asEnumWrappedOnlyFqcns()`'s wrapped-only GC, and
+4. **Import every name the rewritten types spell as a token.** `TsTypeString::typeNameOccursIn()` is a plain
+   token match: a name counts wherever its token stands, inside a string, a template literal or a comment as
+   much as outside, so a name only a literal spells keeps its import unused rather than a hidden one dropping
+   an import the file needs (the accepted cost, in
+   [Receiver types](./receiver-types.md#a-getter-that-reads-another-models-accessor)). One rule replaces
+   two special cases: `AnalysisImports::asEnumWrappedOnlyFqcns()`'s wrapped-only GC, and
    `ResourceTransformer::pruneOverriddenEnumImports()`'s override GC. An enum the wrap replaced and
    an enum a `#[TsCasts]` override displaced are both simply unspelled, so neither is imported. The
    transformer runs the same predicate over the model and `#[TsType]` imports its analysis carried, in
    `ResourceTransformer::pruneOverriddenAnalysisImports()`, with two differences. It tests each model's
    class basename before `resolveImportConflicts()` aliases it, where `pruneUnspelledImports()` tests each
    import's local name against the aliased types, so of two models sharing a basename neither is dropped
-   while either is spelled, and one can stay imported unused under its alias. It also searches the
-   resource's extends clauses, which an analysis never has.
+   while either is spelled, and one can stay imported unused under its alias. Both transformer prunes also
+   search the resource's extends clauses, which an analysis never has.
 
 `$fromNamespacePath` is the generated file's own namespace path, so relative import paths resolve from
 where the file will live; `''` means the output root.

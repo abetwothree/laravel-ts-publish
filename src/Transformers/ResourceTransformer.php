@@ -435,13 +435,13 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * Drops enum-map entries whose bare type no longer appears in any property after #[TsCasts] overrides.
+     * Drops enum-map entries whose bare type no property or extends clause names any more after #[TsCasts] overrides.
      *
      * @return $this
      */
     protected function pruneOverriddenEnumImports(): self
     {
-        $types = array_column($this->properties, 'type');
+        $types = [...array_column($this->properties, 'type'), ...$this->tsExtends];
 
         foreach ($this->enumFqcnMap as $fqcn => $typeName) {
             if (! TsTypeString::typeNameOccursIn($typeName, ...$types)) {
