@@ -54,7 +54,7 @@ rules. The class docblock points here.
 | `resolve(X::class)`, `app(X::class)` | `X` |
 | `now()`, `today()` | `Illuminate\Support\Carbon` |
 | `collect(...)` | `Illuminate\Support\Collection` |
-| A ternary, `?:`, or `??` | The union of the non-`null` arms. Any unresolved non-`null` arm makes the whole answer `null`. A ternary's `instanceof` condition on its own true arm narrows that arm; see [A ternary's `instanceof` condition](#a-ternarys-instanceof-condition). |
+| A ternary, `?:`, or `??` | The union of the non-`null` arms. Any unresolved non-`null` arm makes the whole answer `null`, with one exception. A ternary's `instanceof` condition on its own true arm narrows that arm, and an unresolved true arm then holds the tested classes; see [A ternary's `instanceof` condition](#a-ternarys-instanceof-condition). |
 
 `$this->prop` and `$this->resource->prop` share one code path. A `JsonResource` forwards what it does not
 declare to its model through `__get()` and `__call()`, so the two spellings are the same read at runtime.
@@ -123,9 +123,10 @@ so the first arm's flag never reaches the result.
 
 ### A ternary's `instanceof` condition
 
-`ReceiverClassResolver::fromArms()` reads a ternary's condition when it is an `instanceof` test, or an `||` chain of
-them, and every operand tests the true arm's own read path. The true arm runs only when some operand holds, so it holds
-one of the tested classes. `NarrowedImageableResource` pins the rule. `Image::imageable` is a `morphTo` over int-keyed
+`ReceiverClassResolver::testedClasses()` reads a ternary's condition when it is an `instanceof` test, or an `||` chain
+of them, and every operand tests the true arm's own read path. `fromArms()` then narrows the true arm through
+`narrowed()`. The true arm runs only when some operand holds, so its value is an instance of one of the tested classes.
+`NarrowedImageableResource` pins the rule. `Image::imageable` is a `morphTo` over int-keyed
 and string-keyed models, and its `$either` is bound through
 `$this->imageable instanceof Post || $this->imageable instanceof User ? $this->imageable : null`. So
 `$either?->getKey()` publishes `either_id: number | null`, while `$this->imageable?->getKey()` publishes
@@ -136,14 +137,18 @@ The same read path means the same variable, or the same chain of property reads,
 second call may return a different value from the one the test saw. `ReadsInstanceofChains` splits the `||` chain.
 The early-exit guard pass in `CollectsInstanceofGuards` uses the same grammar.
 
-The tests narrow each class `R` the arm resolves to, one class at a time:
+The tests narrow each class `R` the arm resolves to, one class at a time. The first row that matches decides,
+whatever order the tests are written in:
 
 | `R` against the tested classes `T` | The arm holds |
 | --- | --- |
-| `R` is a `T` or a subclass of one | `R` |
-| Some `T` is a subclass of `R`, as when `R` is a morph bound such as `Model` | Those `T` |
-| `R` and every `T` are classes unrelated by inheritance | Nothing, because no object is both |
-| Otherwise, when an interface is on either side | `R`. A subclass of `R` may implement the interface, and no single class names that intersection. |
+| 1. `R` is a `T`, or a subtype of one | `R` |
+| 2. Some `T` is neither a subtype nor a supertype of `R`, and `R` or that `T` is an interface | `R`. A subtype of `R` may pass that test without being any other `T`, and no single class names that intersection. |
+| 3. Some `T` is a subtype of `R`, as when `R` is a morph bound such as `Model` | Those `T` |
+| 4. Otherwise: every `T` is a class unrelated to `R` by inheritance, and `R` is not an interface | Nothing, because no object is both |
+
+So `Model` tested against `Post || Authenticatable` stays `Model`, in either order: a `User` passes the interface
+test without being a `Post`.
 
 A test never widens a class the arm already names, so `$this->author instanceof Model ? $this->author : null`
 still holds `User`. When no class survives, the arm can never run, and it keeps what it resolved to. When the arm
@@ -156,11 +161,15 @@ These stay un-narrowed:
   against a `$this->x` arm.
 - `&&`, a negation, or an `||` operand that is not an `instanceof` test on the arm.
 - The false arm. `$x instanceof C ? null : $x` does not remove `C`.
-- `?:` and `??`, which have no condition to read.
+- `?:`, whose true arm is the condition itself, and `??`, which has no condition.
 
-This rule covers receiver resolution only. The ternary's own value comes from `TernaryHandler`, which narrows a single
-test on a variable or on `$this->resource`. So `'owner' => $this->imageable instanceof Post ? $this->imageable : null`
-still publishes the whole morph union. See [AST engine § Narrowing](ast-engine.md#narrowing).
+This rule covers receiver resolution only: a ternary's own value is never narrowed, whatever its subject's spelling.
+The value comes from `TernaryHandler`, which narrows only reads made inside the true arm. For a variable subject it
+writes `varClassBindings`, which only `ReceiverClassResolver::fromVariable()` reads, so `$x->prop` in the arm narrows
+while a bare `$x` does not. For `$this->resource` it narrows `modelClass`, which `$this->prop` reads resolve against.
+So `$r instanceof Post ? $r : null` and `$this->imageable instanceof Post ? $this->imageable : null` both publish the
+whole morph union as values, and so does a bare variable bound to either. See
+[AST engine § Narrowing](ast-engine.md#narrowing).
 
 ## Attribute classes and morphTo bounds
 

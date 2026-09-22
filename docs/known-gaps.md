@@ -429,9 +429,9 @@ value is `unknown`:
   `$record` holds a `morphTo` union — publishes `record_title: string | null`, not `unknown`.
 - **A positive ternary whose true arm is the tested expression narrows only what is read through it.**
   After `$v = $this->imageable instanceof Post ? $this->imageable : null;`, `$v?->getKey()` reflects on `Post`
-  alone. The ternary's own value, and a bare `$v`, still publish the whole `morphTo` union, because
-  `TernaryHandler` narrows a value only for a single test on a variable or `$this->resource`.
-  `NarrowedImageableResource` is the fixture.
+  alone. The ternary's own value, and a bare `$v`, still publish the whole `morphTo` union, and so does
+  `$r instanceof Post ? $r : null` on a local variable. `TernaryHandler` narrows only reads made inside the true
+  arm, never the arm's bare subject. `NarrowedImageableResource` is the fixture.
 
 So the statement form and the ternary form of the *same* positive test disagree. That is the distinction
 to check first, and the one an earlier draft of this entry got wrong.

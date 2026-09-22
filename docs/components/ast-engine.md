@@ -369,10 +369,12 @@ restored in a `finally`:
    the narrowed model. `TeamSubscriberResource` pins it: `$this->resource->subscriber` is a relation only
    the `SubscribedTeam` subclass declares.
 
-One more rule writes no binding. `ReceiverClassResolver` narrows a ternary's true arm to the classes that
-the arm's own `instanceof` test, or `||` chain of tests, names. So a receiver read later through a variable
-bound to that ternary is narrowed too, which rule 2 cannot do. Rule 1 and this rule read the `||` chain through
-the same `ReadsInstanceofChains` grammar. See
+One more rule writes no binding. `ReceiverClassResolver::testedClasses()` reads a ternary's `instanceof`
+test, or `||` chain of tests, when every operand tests the true arm's own read path. `narrowed()` then checks
+each class the arm resolves to against those tests, keeping it, replacing it with the tested subclasses, or
+dropping it, and never widening it. So a receiver read later through a variable bound to that ternary is
+narrowed too, which rule 2 cannot do. Rule 1 and this rule read the `||` chain through the same
+`ReadsInstanceofChains` grammar. See
 [Receiver types § A ternary's `instanceof` condition](receiver-types.md#a-ternarys-instanceof-condition).
 
 **The single-write requirement.** Rule 1 binds only a variable written exactly once in the body, reusing

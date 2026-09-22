@@ -276,6 +276,26 @@ describe('ReceiverClassResolver instanceof ternary narrowing', function () {
             ->toBe([User::class]);
     });
 
+    test('a subclass test beside an interface test keeps the class, in either order, since a subclass may pass the interface', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $unmappedImage = new AnalysisScope(new ReflectionClass(ReceiverProbeResource::class), Image::class);
+
+        expect($resolver->resolve(receiverExpr('$this->imageable instanceof \Workbench\App\Models\Post || $this->imageable instanceof \Illuminate\Contracts\Auth\Authenticatable ? $this->imageable : null'), $unmappedImage)?->classes)
+            ->toBe([Model::class])
+            ->and($resolver->resolve(receiverExpr('$this->imageable instanceof \Illuminate\Contracts\Auth\Authenticatable || $this->imageable instanceof \Workbench\App\Models\Post ? $this->imageable : null'), $unmappedImage)?->classes)
+            ->toBe([Model::class]);
+    });
+
+    test('a narrowed true arm keeps the related model the value it resolved carries', function () {
+        $scope = postScope();
+        $scope->localVarBindings['relation'] = receiverExpr('$this->comments()');
+        $narrowed = resolve(ReceiverClassResolver::class)
+            ->resolve(receiverExpr('$relation instanceof \Illuminate\Database\Eloquent\Relations\Relation ? $relation : null'), $scope);
+
+        expect($narrowed?->classes)->toBe([HasMany::class])
+            ->and($narrowed?->relatedModel)->toBe(Comment::class);
+    });
+
     test('a narrowed true arm keeps its short circuit, which stands in for the null arm a read on it can still reach', function () {
         $narrowed = resolve(ReceiverClassResolver::class)
             ->resolve(receiverExpr('$this->author?->profile instanceof \Workbench\App\Models\Profile ? $this->author?->profile : null'), postScope());
@@ -284,23 +304,29 @@ describe('ReceiverClassResolver instanceof ternary narrowing', function () {
             ->and($narrowed?->shortCircuits)->toBeTrue();
     });
 
-    test('a different subject, &&, a negation, a non-instanceof operand or a false-arm read stays un-narrowed', function (string $php) {
+    test('each limit the rule states leaves the true arm un-narrowed', function (string $php) {
         expect(resolve(ReceiverClassResolver::class)->resolve(receiverExpr($php), narrowedImageableScope())?->classes)
             ->toBe([Post::class, Product::class, User::class, CrmUser::class]);
     })->with([
         'different subject' => '$record instanceof \Workbench\App\Models\Post ? $this->imageable : null',
         'different property' => '$this->reviewable instanceof \Workbench\App\Models\User ? $this->imageable : null',
+        'an || operand on another subject' => '$this->imageable instanceof \Workbench\App\Models\Post || $this->reviewable instanceof \Workbench\App\Models\User ? $this->imageable : null',
         'and' => '$this->imageable instanceof \Workbench\App\Models\Post && $flag ? $this->imageable : null',
+        '&& of two tests on the arm' => '$this->imageable instanceof \Workbench\App\Models\Post && $this->imageable instanceof \Workbench\App\Models\User ? $this->imageable : null',
         'negation' => '! $this->imageable instanceof \Workbench\App\Models\Post ? $this->imageable : null',
         'non-instanceof operand' => '$this->imageable instanceof \Workbench\App\Models\Post || $flag ? $this->imageable : null',
         'unloadable class' => '$this->imageable instanceof \NoSuch\Klass ? $this->imageable : null',
+        'an unloadable class in an || chain' => '$this->imageable instanceof \Workbench\App\Models\Post || $this->imageable instanceof \NoSuch\Klass ? $this->imageable : null',
         'false-arm read' => '$this->imageable instanceof \Workbench\App\Models\Post ? null : $this->imageable',
         'same value, other spelling' => '$this->resource->imageable instanceof \Workbench\App\Models\Post ? $this->imageable : null',
+        '?-> in the test, -> in the arm' => '$this->resource?->imageable instanceof \Workbench\App\Models\Post ? $this->resource->imageable : null',
     ]);
 
     test('a method call subject is not narrowed, since a second call need not return the same value', function () {
-        expect(resolve(ReceiverClassResolver::class)->resolve(receiverExpr('$this->author() instanceof \Illuminate\Database\Eloquent\Relations\Relation ? $this->author() : null'), postScope())?->classes)
-            ->toBe([BelongsTo::class]);
+        $scope = new AnalysisScope(new ReflectionClass(ReceiverReturnsProbe::class));
+
+        expect(resolve(ReceiverClassResolver::class)->resolve(receiverExpr('$this->classUnion() instanceof \Workbench\App\Models\Post ? $this->classUnion() : null'), $scope)?->classes)
+            ->toBe([UrlService::class, Post::class]);
     });
 });
 

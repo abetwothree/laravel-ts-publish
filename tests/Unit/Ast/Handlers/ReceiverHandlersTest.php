@@ -801,6 +801,15 @@ describe('narrowing', function () {
             ->toBe(['a' => [Post::class]]);
     });
 
+    test('a guard binds only negated tests on a variable, through every || operand and never through &&', function (string $body, array $bindings) {
+        expect(narrowingBindings($body))->toBe($bindings);
+    })->with([
+        'a positive test whose body reads nothing' => ['$a = $this->author; if ($a instanceof \Workbench\App\Models\Post) { return null; }', []],
+        'an && of negated tests' => ['$a = $this->author; $b = $this->author; if (! $a instanceof \Workbench\App\Models\Post && ! $b instanceof \Workbench\App\Models\User) { return null; }', []],
+        'every negated || operand' => ['$a = $this->author; $b = $this->author; if (! $a instanceof \Workbench\App\Models\Post || ! $b instanceof \Workbench\App\Models\User) { return null; }', ['a' => [Post::class], 'b' => [User::class]]],
+        'a property subject' => ['if (! $this->author instanceof \Workbench\App\Models\User) { return null; }', []],
+    ]);
+
     test('an elseif, an else, or a positive instanceof test binds nothing', function () {
         expect(narrowingBindings('$a = $this->author; if (! $a instanceof \Workbench\App\Models\Post) { return null; } elseif ($a) { return null; }'))
             ->toBe([])

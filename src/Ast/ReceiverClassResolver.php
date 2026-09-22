@@ -391,8 +391,8 @@ final class ReceiverClassResolver
     /**
      * The classes a ternary's `instanceof` test, or `||` chain of them, tests its own true arm for.
      *
-     * The arm runs when any operand holds, so every operand must test the arm's own read path; `&&`, a negation or
-     * another subject proves nothing about it here.
+     * The arm runs when any operand holds, so every operand must test the arm's own read path. A negation proves
+     * nothing about the arm; `&&` would prove its `instanceof` operands, but only an `||` chain is read.
      *
      * @return non-empty-list<class-string>|null
      */
@@ -466,10 +466,11 @@ final class ReceiverClassResolver
     }
 
     /**
-     * What one class a true arm resolves to becomes under its test: itself when it passes, else the tested subclasses.
+     * What one class a true arm resolves to becomes under its tests: itself, the tested subclasses, or nothing.
      *
-     * A supertype test never widens it. It is dropped only when it and a tested class are both classes unrelated by
-     * inheritance, which no object can be at once; an interface on either side could share an instance, so it stays.
+     * It stays when it passes a test, or when a test unrelated to it has an interface on either side: a subclass of
+     * it may pass that test, and no single class names the pair. Otherwise the tested subclasses replace it; with none
+     * it is dropped, since every test then names a class unrelated to it by inheritance and no object is both.
      *
      * @param  class-string  $class
      * @param  non-empty-list<class-string>  $tested
