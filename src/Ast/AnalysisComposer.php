@@ -360,12 +360,12 @@ final class AnalysisComposer
      */
     private function pruneUnspelledImports(array $imports): array
     {
-        $rendered = implode("\n", array_column($this->properties, 'type'));
+        $types = array_column($this->properties, 'type');
 
         foreach ($imports as $path => $names) {
             $kept = array_values(array_filter(
                 $names,
-                fn (string $name): bool => TsTypeString::typeNameOccursIn($this->localName($name), $rendered),
+                fn (string $name): bool => TsTypeString::typeNameOccursIn($this->localName($name), ...$types),
             ));
 
             if ($kept === []) {

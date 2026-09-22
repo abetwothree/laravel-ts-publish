@@ -441,10 +441,10 @@ class ResourceTransformer extends CoreTransformer
      */
     protected function pruneOverriddenEnumImports(): self
     {
-        $rendered = implode("\n", array_column($this->properties, 'type'));
+        $types = array_column($this->properties, 'type');
 
         foreach ($this->enumFqcnMap as $fqcn => $typeName) {
-            if (! TsTypeString::typeNameOccursIn($typeName, $rendered)) {
+            if (! TsTypeString::typeNameOccursIn($typeName, ...$types)) {
                 unset($this->enumFqcnMap[$fqcn]);
             }
         }
@@ -461,17 +461,17 @@ class ResourceTransformer extends CoreTransformer
     protected function pruneOverriddenAnalysisImports(): self
     {
         // An extends clause names a type as surely as a property does, and can rely on the same import.
-        $rendered = implode("\n", [...array_column($this->properties, 'type'), ...$this->tsExtends]);
+        $types = [...array_column($this->properties, 'type'), ...$this->tsExtends];
 
         foreach ($this->modelFqcnMap as $fqcn => $typeName) {
-            if (! TsTypeString::typeNameOccursIn($typeName, $rendered)) {
+            if (! TsTypeString::typeNameOccursIn($typeName, ...$types)) {
                 unset($this->modelFqcnMap[$fqcn]);
             }
         }
 
         foreach ($this->analysisCustomImports as $importPath => $typeNames) {
             foreach ($typeNames as $typeName) {
-                if (TsTypeString::typeNameOccursIn($typeName, $rendered)) {
+                if (TsTypeString::typeNameOccursIn($typeName, ...$types)) {
                     $this->customImports[$importPath][] = $typeName;
                 }
             }

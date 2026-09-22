@@ -465,9 +465,77 @@ describe('typeNameOccursIn', function () {
         'a quoted literal inside a placeholder' => ["`\${'User' | 'Admin'}-label`", 'User', false],
         'the literal text names it' => ['`User-${string}`', 'User', false],
         'a template literal that never closes' => ["`\${string}'s label\nUser", 'User', true],
-        'a template literal that never closes on its own line' => ["`\${string}'s label\nUser | `x`", 'User', true],
         'a literal that never closes, before the name on its line' => ["`\${string}'s label | User", 'User', true],
     ]);
+
+    test('typeNameOccursIn() reads a whole type as TypeScript lexes it', function (string $haystack, string $name, bool $found) {
+        expect($this->service->typeNameOccursIn($name, $haystack))->toBe($found);
+    })->with([
+        'nested template, name in inner placeholder' => ['`${`a${User}`}`', 'User', true],
+        'nested template, then name' => ['`${`a${string}`}` | User', 'User', true],
+        'nested template text names it' => ['`${`User ${string}`}`', 'User', false],
+        'quote inside placeholder, then name in it' => ["`\${'x' | User}`", 'User', true],
+        'brace inside a string in a placeholder' => ['`${"}"}` | User', 'User', true],
+        'backtick literal inside placeholder' => ['`${`}`}` | User', 'User', true],
+        '${ inside single-quoted string, then name' => ["'\${' | User", 'User', true],
+        '${ inside double-quoted string, then name' => ['"${" | User', 'User', true],
+        'name inside ${…} of a single-quoted string' => ["'\${User}'", 'User', false],
+        'unterminated single quote before name' => ["'abc | User", 'User', true],
+        'unterminated template before name' => ['`abc | User', 'User', true],
+        'unterminated placeholder' => ['`${User', 'User', true],
+        'apostrophe in template then name' => ["`\${string}'s` | User", 'User', true],
+        'escaped quote in single' => ["'it\\'s' | User", 'User', true],
+        'escaped quote in double' => ['"a\\"b" | User', 'User', true],
+        'escaped backtick in template' => ['`a\\`b` | User', 'User', true],
+        'escaped placeholder is text' => ['`\\${User}`', 'User', false],
+        'backtick inside quoted string' => ["'`' | User", 'User', true],
+        'empty placeholder' => ['`${}` | User', 'User', true],
+        'object braces inside placeholder' => ['`${ {a: User}["a"] }`', 'User', true],
+        'a name after object braces inside a placeholder' => ['`${ {a: string}["a"] | User }`', 'User', true],
+        'multi-line: next properties on own lines' => ["`\${string}'s`\nUser", 'User', true],
+        'multi-line template, closing line then name then template' => ["`line one\nline two` | User | `x`", 'User', true],
+        'multi-line template, closing line then name then quote' => ["`line one\nit's` | User | 'x'", 'User', true],
+        'multi-line template, closing line then name' => ["`one\ntwo` | User", 'User', true],
+        'multi-line template, name in its text' => ["`User\nline`", 'User', false],
+        'multi-line template, placeholder on middle line' => ["`a\n\${User}\nb`", 'User', true],
+        'multi-line template, quote on opening line' => ["`it's\nx` | User", 'User', true],
+        'comment with apostrophe then name then quote' => ["/* it's */ User | 'x'", 'User', true],
+        'name as JSON-quoted key' => ['{ "User": string }', 'User', false],
+        'name after JSON-quoted key' => ['{ "a-b": User }', 'User', true],
+    ]);
+
+    test('typeNameOccursIn() counts a name wherever the reading of a comment or an unclosed literal is unsure', function (string $haystack, bool $found) {
+        expect($this->service->typeNameOccursIn('User', $haystack))->toBe($found);
+    })->with([
+        'a name inside a block comment' => ['/* User */ string', true],
+        'a name inside a line comment' => ["string // User\n| null", true],
+        'a quote inside a line comment' => ["// it's\nUser | 'x'", true],
+        'a backtick inside a block comment' => ['/* ` */ User | `x`', true],
+        'a block comment that never closes' => ["/* it's 'x' | User", true],
+        'a quote whose partner is on the next line' => ["'a\nUser | b'", true],
+        'an escaped newline inside a quoted string' => ["'a\\\nUser'", true],
+        'a quoted string inside a template literal that never closes' => ["`abc 'User'", true],
+        'a quoted string inside a placeholder that never closes' => ["`a \${ 'User' `b", true],
+        'a placeholder spanning lines' => ["`a\${\nUser\n}b`", true],
+        'a line comment inside a placeholder' => ["`\${ // }\nUser }`", true],
+        'a quote in a template literal spanning lines, the name in its text' => ["`it's\nUser` | 'x'", false],
+    ]);
+
+    test('typeNameOccursIn() reads each type it is given on its own', function () {
+        $s = $this->service;
+        expect($s->typeNameOccursIn('User', "`\${string}'s label", 'User | `x`'))->toBeTrue()
+            ->and($s->typeNameOccursIn('User', "`\${string}'s label\nUser | `x`"))->toBeFalse()
+            ->and($s->typeNameOccursIn('User'))->toBeFalse();
+    });
+
+    test('typeNameOccursIn() reads a deeply nested template literal in one pass', function () {
+        $depth = 2000;
+        $textOnly = str_repeat('`${', $depth).'string'.str_repeat('}User`', $depth);
+
+        expect($this->service->typeNameOccursIn('User', str_repeat('`${', $depth).'User'.str_repeat('}`', $depth)))->toBeTrue()
+            ->and($this->service->typeNameOccursIn('User', $textOnly))->toBeFalse()
+            ->and($this->service->typeNameOccursIn('User', $textOnly.' | User'))->toBeTrue();
+    });
 });
 
 describe('isUnknownOnly', function () {

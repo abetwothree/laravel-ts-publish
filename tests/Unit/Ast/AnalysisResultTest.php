@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisResult;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use Workbench\App\Enums\Role;
+use Workbench\App\Enums\Status;
 use Workbench\App\Events\PayloadDiffersEvent;
 use Workbench\App\Http\Resources\ApiPostResource;
 use Workbench\App\Http\Resources\CommentResource;
@@ -81,6 +82,19 @@ describe('AstEngine::analyze()', function () {
         );
 
         expect(new AnalysisComposer()->compose($analysis, 'workbench/app/http/resources')->valueImports)->toBe([]);
+    });
+
+    test('reads each property type on its own, so a template literal one never closes hides no later name', function () {
+        $analysis = new MethodAnalysis(
+            properties: [
+                ['name' => 'label', 'type' => "`\${string}'s label", 'optional' => false, 'description' => ''],
+                ['name' => 'state', 'type' => 'StatusType | `x`', 'optional' => false, 'description' => ''],
+            ],
+            directEnumFqcns: ['state' => Status::class],
+        );
+
+        expect(new AnalysisComposer()->compose($analysis, 'workbench/app/http/resources')->typeImports)
+            ->toBe(['../../enums' => ['StatusType']]);
     });
 
     test('imports nothing a property type no longer names', function () {

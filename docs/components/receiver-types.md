@@ -407,11 +407,16 @@ pin both enums of `review_priority`; see
 [accessor-body-analyzer § A getter that reads another model's accessor](accessor-body-analyzer.md#a-getter-that-reads-another-models-accessor).
 A resource `#[TsCasts]` override can replace the type such a read published. `ResourceTransformer::pruneOverriddenAnalysisImports()`
 then drops each model and `#[TsType]` import the analysis carried whose name neither a property type nor an extends
-clause still spells outside the text of a string or template literal, where a template literal's `${…}` placeholders
-still count as types: `BulletinCastResource` overrides a `Comment` read and a `User` read and
-keeps only `User`, which its unoverridden `owner_list` still names. The test reads class basenames before aliasing, so
-two models that share a basename both stay imported while either is still spelled, and overriding the only read of one
-of them leaves its aliased import unused. That leftover predates the prune; it is the same at `7a55703d`.
+clause still spells. It reads each of those types whole, as TypeScript lexes it: a name in the text of a string or of
+a template literal, even one spanning lines, does not count, while a name in a template literal's `${…}` placeholders
+or in a comment does. Where the reading is unsure, the name counts, so the prune keeps an import rather than drop one:
+a quote with no partner on its line opens no string, and a template literal or block comment that never closes hides
+nothing after its opening. `BulletinCastResource` overrides a `Comment` read and a `User` read and keeps only `User`,
+which its unoverridden `owner_list` still names, and `ResourceTransformerTest` pins a template literal spanning lines
+and a block comment holding a quote over a model, an enum and a `#[TsType]` read. The prune reads class basenames
+before aliasing, so two models that share a basename both stay imported while either is still spelled, and overriding
+the only read of one of them leaves its aliased import unused. That leftover predates the prune; it is the same at
+`7a55703d`.
 `Comment::picksSummary()` reads the `relation_picks` accessor, and `CommentRelationFiltersResource` publishes its
 `picks` as the same object `relationSummary()` publishes. `FilteringAccessorModel` pins each getter kind and read
 position in `MethodReturnTypeResolverTest`.

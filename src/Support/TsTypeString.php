@@ -218,18 +218,22 @@ class TsTypeString
     }
 
     /**
-     * Whether a TypeScript type name occurs as its own token, not inside a longer identifier or a literal's text.
+     * Whether a TypeScript type name occurs as its own token in any of the given types, outside a literal's text.
      *
      * Only a leading `.` disqualifies: `foo.StatusType` is a property read, while `StatusType.foo`
-     * reads a member of the type and so still names it. `'StatusType'` is a string, never the type, and so is the
-     * text of a template literal; its `${…}` placeholders are types and still count. Each line is read on its own.
+     * reads a member of the type and so still names it. Each type is read whole, in one pass, as TypeScript lexes it:
+     * `'StatusType'` is a string, never the type, and so is the text of a template literal, which may span lines; its
+     * `${…}` placeholders are types and still count. A comment's text counts too, but no quote or backtick inside it
+     * opens a literal. Where the reading is unsure, the name counts: a `'` or `"` with no partner later on its line
+     * opens no string, and everything from the opening of a template, placeholder or block comment that never closes is
+     * read as written.
      */
-    public function typeNameOccursIn(string $typeName, string $haystack): bool
+    public function typeNameOccursIn(string $typeName, string ...$types): bool
     {
         $pattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($typeName, '/').'(?![A-Za-z0-9_$])/';
 
-        foreach (explode("\n", $haystack) as $line) {
-            if (preg_match($pattern, $this->typePositions($line)) === 1) {
+        foreach ($types as $type) {
+            if (str_contains($type, $typeName) && preg_match($pattern, $this->typePositions($type)) === 1) {
                 return true;
             }
         }
@@ -306,100 +310,142 @@ class TsTypeString
     }
 
     /**
-     * One line of a type with its literals' text removed: a quoted string becomes `''`, and a template literal keeps
-     * only its `${…}` placeholders. A literal that never closes stays as written, so its quote hides nothing after it.
+     * A type with its literals' text removed, read in one pass: a quoted string becomes `''`, a template literal keeps
+     * only its `${…}` placeholders, and a comment stays as written. From the opening of the outermost template,
+     * placeholder or block comment that never closes, the rest of the type stays as written.
      */
-    private function typePositions(string $line): string
+    private function typePositions(string $type): string
     {
         $kept = '';
-        $length = strlen($line);
+        /** @var list<array{kind: 'template'|'placeholder'|'comment', offset: int, kept: int, depth: int}> $open */
+        $open = [];
+        // The offset up to which a quote of each kind is known to have no partner on its line.
+        $unpairedBefore = ["'" => -1, '"' => -1];
+        $length = strlen($type);
 
         for ($offset = 0; $offset < $length;) {
-            $literal = $this->readLiteral($line, $offset);
+            $char = $type[$offset];
+            $pair = substr($type, $offset, 2);
+            $top = array_key_last($open);
+            $kind = $top === null ? 'code' : $open[$top]['kind'];
 
-            if ($literal === null) {
-                $kept .= $line[$offset++];
+            if ($kind === 'template') {
+                if ($char === '`') {
+                    array_pop($open);
+                    $kept .= ' ';
+                } elseif ($pair === '${') {
+                    $open[] = ['kind' => 'placeholder', 'offset' => $offset, 'kept' => strlen($kept), 'depth' => 0];
+                    $kept .= ' ';
+                    $offset++;
+                } elseif ($char === '\\') {
+                    $offset++;
+                }
+
+                $offset++;
 
                 continue;
             }
 
-            [$offset, $positions] = $literal;
-            $kept .= $positions;
+            if ($kind === 'comment') {
+                if ($pair === '*/') {
+                    array_pop($open);
+                    $kept .= $pair;
+                    $offset += 2;
+
+                    continue;
+                }
+
+                $kept .= $char;
+                $offset++;
+
+                continue;
+            }
+
+            if ($pair === '//') {
+                $lineEnd = strpos($type, "\n", $offset);
+                $lineEnd = $lineEnd === false ? $length : $lineEnd;
+                $kept .= substr($type, $offset, $lineEnd - $offset);
+                $offset = $lineEnd;
+
+                continue;
+            }
+
+            if ($char === '`') {
+                $open[] = ['kind' => 'template', 'offset' => $offset, 'kept' => strlen($kept), 'depth' => 0];
+                $kept .= ' ';
+                $offset++;
+
+                continue;
+            }
+
+            if ($pair === '/*') {
+                $open[] = ['kind' => 'comment', 'offset' => $offset, 'kept' => strlen($kept), 'depth' => 0];
+                $kept .= $pair;
+                $offset += 2;
+
+                continue;
+            }
+
+            if (($char === "'" || $char === '"') && $offset > $unpairedBefore[$char]) {
+                $end = $this->quotedStringEnd($type, $offset);
+
+                if (($type[$end] ?? '') === $char) {
+                    $kept .= "''";
+                    $offset = $end + 1;
+
+                    continue;
+                }
+
+                // No later quote of this kind on the line has a partner either: its search would end at the same place.
+                $unpairedBefore[$char] = $end;
+            }
+
+            if ($top !== null && $kind === 'placeholder' && ($char === '{' || $char === '}')) {
+                if ($char === '}' && $open[$top]['depth'] === 0) {
+                    array_pop($open);
+                    $kept .= ' ';
+                    $offset++;
+
+                    continue;
+                }
+
+                $open[$top]['depth'] += $char === '{' ? 1 : -1;
+            }
+
+            $kept .= $char;
+            $offset++;
         }
 
-        return $kept;
+        if ($open === []) {
+            return $kept;
+        }
+
+        return substr($kept, 0, $open[0]['kept']).substr($type, $open[0]['offset']);
     }
 
     /**
-     * The quoted string or template literal opening at $offset, as its end offset and the type positions it keeps.
-     *
-     * @return array{int, string}|null null when no literal opens there, or it never closes on this line
+     * Where the search for the partner of the quote at $offset ends: the partner's offset, or the offset of the line's
+     * end (a newline, escaped or not, or the end of the type) when the quote has none on its line.
      */
-    private function readLiteral(string $line, int $offset): ?array
+    private function quotedStringEnd(string $type, int $offset): int
     {
-        $quote = $line[$offset];
-
-        if (! in_array($quote, ["'", '"', '`'], true)) {
-            return null;
-        }
-
-        $placeholders = '';
-        $length = strlen($line);
+        $quote = $type[$offset];
+        $length = strlen($type);
 
         for ($i = $offset + 1; $i < $length; $i++) {
-            if ($line[$i] === '\\') {
+            if ($type[$i] === $quote || $type[$i] === "\n") {
+                return $i;
+            }
+
+            if ($type[$i] === '\\') {
+                if (($type[$i + 1] ?? '') === "\n") {
+                    return $i + 1;
+                }
+
                 $i++;
-
-                continue;
-            }
-
-            if ($line[$i] === $quote) {
-                return [$i + 1, $quote === '`' ? ' '.$placeholders.' ' : "''"];
-            }
-
-            if ($quote === '`' && $line[$i] === '$' && ($line[$i + 1] ?? '') === '{') {
-                $end = $this->placeholderEnd($line, $i + 2);
-
-                if ($end === null) {
-                    return null;
-                }
-
-                $placeholders .= ' '.$this->typePositions(substr($line, $i + 2, $end - $i - 2)).' ';
-                $i = $end;
             }
         }
 
-        return null;
-    }
-
-    /**
-     * The offset of the `}` that closes a template placeholder whose type starts at $offset, or null when none does.
-     */
-    private function placeholderEnd(string $line, int $offset): ?int
-    {
-        $depth = 0;
-        $length = strlen($line);
-
-        for ($i = $offset; $i < $length; $i++) {
-            $literal = $this->readLiteral($line, $i);
-
-            if ($literal !== null) {
-                $i = $literal[0] - 1;
-
-                continue;
-            }
-
-            if ($line[$i] === '{') {
-                $depth++;
-            } elseif ($line[$i] === '}') {
-                if ($depth === 0) {
-                    return $i;
-                }
-
-                $depth--;
-            }
-        }
-
-        return null;
+        return $length;
     }
 }

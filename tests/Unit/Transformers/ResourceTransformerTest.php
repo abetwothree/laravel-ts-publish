@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastSettingsReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CommentQuoteCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendsOverriddenReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LongerNameCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MultilineQuoteCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MultilineTemplateCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\QuotedCastReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TemplateCastReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UnclosedTemplateCastResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
 use Workbench\App\Enums\Priority;
@@ -2749,6 +2753,35 @@ describe('ResourceTransformer imports for a read a #[TsCasts] override replaces'
         expect($data->properties['app']['type'])->toBe("'User' | 'Admin'")
             ->and($data->properties['settings']['type'])->toBe("'MenuSettingsType' | null")
             ->and($data->typeImports)->toBe([]);
+    });
+
+    test('keeps the import a type names after a multi-line template literal or a comment holding a quote', function (string $resource, string $key, string $type, string $name) {
+        $data = (new ResourceTransformer($resource))->data();
+
+        expect($data->properties[$key]['type'])->toBe($type)
+            ->and(array_merge(...array_values($data->typeImports)))->toContain($name);
+    })->with([
+        'a template literal spanning lines, over a model' => [MultilineTemplateCastResource::class, 'app', "`line one\nline two` | User | `x`", 'User'],
+        'a template literal spanning lines, over an enum' => [MultilineTemplateCastResource::class, 'state', "`a\nb` | StatusType | `x`", 'StatusType'],
+        'a template literal spanning lines, over a #[TsType] class' => [MultilineTemplateCastResource::class, 'settings', "`a\nb` | MenuSettingsType | `x`", 'MenuSettingsType'],
+        'a quote closing a multi-line template literal, over a model' => [MultilineQuoteCastResource::class, 'app', "`line one\nit's` | User | 'x'", 'User'],
+        'a quote closing a multi-line template literal, over an enum' => [MultilineQuoteCastResource::class, 'state', "`a\nit's` | StatusType | 'x'", 'StatusType'],
+        'a quote closing a multi-line template literal, over a #[TsType] class' => [MultilineQuoteCastResource::class, 'settings', "`a\nit's` | MenuSettingsType | 'x'", 'MenuSettingsType'],
+        'a block comment holding a quote, over a model' => [CommentQuoteCastResource::class, 'app', "/* it's */ User | 'x'", 'User'],
+        'a block comment holding a quote, over an enum' => [CommentQuoteCastResource::class, 'state', "/* it's */ StatusType | 'x'", 'StatusType'],
+        'a block comment holding a quote, over a #[TsType] class' => [CommentQuoteCastResource::class, 'settings', "/* it's */ MenuSettingsType | 'x'", 'MenuSettingsType'],
+    ]);
+
+    test('reads each property type on its own, so a template literal one never closes hides no later name', function () {
+        $data = (new ResourceTransformer(UnclosedTemplateCastResource::class))->data();
+
+        $names = array_merge(...array_values($data->typeImports));
+        sort($names);
+
+        expect($data->properties['label']['type'])->toBe("`\${string}'s label")
+            ->and($data->properties['app']['type'])->toBe('User | `x`')
+            ->and($data->properties['state']['type'])->toBe('StatusType | `x`')
+            ->and($names)->toBe(['StatusType', 'User']);
     });
 });
 
