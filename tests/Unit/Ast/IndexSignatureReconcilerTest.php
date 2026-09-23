@@ -166,6 +166,19 @@ test('string and number literal types join the union', function () {
     expect($types[TAG_SIGNATURE])->toBe("string | 'x' | 'y' | 1 | -2.5 | undefined");
 });
 
+test('a union keeps its undefined arm when another arm names undefined only inside it', function (string $named, string $expected) {
+    $types = reconciledTypes(reconciled([[TAG_SIGNATURE, 'string | undefined', UNTYPED_SIGNATURE_VALUE], ['main_tag', $named]]));
+
+    expect($types[TAG_SIGNATURE])->toBe($expected);
+})->with([
+    'a string literal' => ["'undefined' | 'defined'", "string | 'undefined' | 'defined' | undefined"],
+    'a Record value' => ['Record<string, number | undefined>', 'string | Record<string, number | undefined> | undefined'],
+    'a nested signature' => [
+        '{ "[key: `${string}_tag`]": string | undefined }',
+        'string | { "[key: `${string}_tag`]": string | undefined } | undefined',
+    ],
+]);
+
 test('a lone fill is never put back, whatever its type', function () {
     $analysis = reconciled([[TAG_SIGNATURE, 'Carbon | undefined', UNTYPED_SIGNATURE_VALUE]]);
 

@@ -38,6 +38,26 @@ class ControllerWithTagSignatureBranches
         return Inertia::render('Tags/Cast', [...$this->tags()]);
     }
 
+    /** The method's cast retypes the resource-typed `_tag` key of the other ternary arm. */
+    #[TsCasts(['price_tag' => 'number'])]
+    public function ternaryCast(): Response
+    {
+        return Inertia::render('Tags/TernaryCast', request()->has('a')
+            ? [...$this->tags()]
+            : ['price_tag' => new PostResource(Post::query()->firstOrFail())]);
+    }
+
+    /** The method's cast names `undefined` only inside a string literal, beside another render's optional key. */
+    #[TsCasts(['state_tag' => "'undefined'"])]
+    public function undefinedLiteral(): Response
+    {
+        if (request()->has('a')) {
+            return Inertia::render('Tags/UndefinedLiteral', [...$this->tags()]);
+        }
+
+        return Inertia::render('Tags/UndefinedLiteral', ['price_tag' => 5]);
+    }
+
     /**
      * `_tag` keys only the docblock types.
      *

@@ -8,8 +8,8 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 
-/** The event's `#[TsCasts]` retypes `main_tag`, a key the docblock-filled `_tag` signature covers. */
-#[TsCasts(['main_tag' => 'number'])]
+/** Its `#[TsCasts]` retypes `main_tag`, a key the filled `_tag` signature covers, and casts a key the payload lacks. */
+#[TsCasts(['main_tag' => 'number', 'absent_tag' => 'Money'])]
 final class CastTagSignatureBroadcastEvent implements ShouldBroadcast
 {
     public mixed $source = null;

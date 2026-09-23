@@ -6357,6 +6357,15 @@ describe('IndexSignatureConflictResource — a docblock-filled signature never c
 
         expect($props['[key: `${string}_tag`]']['type'])->toBe('string | number | undefined');
     });
+
+    test('the union keeps its undefined arm beside a key whose shape names undefined only inside it', function () {
+        $props = ($this->shape)('nestedBranches');
+
+        expect($props['[key: `${string}_tag`]']['type'])
+            ->toBe('string | { "[key: `${string}_tag`]": string | undefined } | number | undefined')
+            ->and($props['box_tag']['optional'])->toBeTrue()
+            ->and($props['price_tag']['optional'])->toBeTrue();
+    });
 });
 
 test('mergeReturnBranches() unions the body values beside the types, and keeps them only where they differ', function () {

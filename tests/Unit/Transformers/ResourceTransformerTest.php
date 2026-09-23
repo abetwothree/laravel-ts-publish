@@ -18,10 +18,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ModelCastDataSignatureR
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MultilineQuoteCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MultilineTemplateCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\QuotedCastReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ResourceCastOverModelCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SplitTemplateCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SpreadCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TemplateCastReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UnclosedTemplateCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UndefinedTextCastTagSignatureResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
 use Workbench\App\Enums\Priority;
@@ -1007,6 +1009,13 @@ describe('ResourceTransformer TsCasts waterfall from model', function () {
 
         // Model and resource declare the same #[TsCasts] value, so this pins precedence, not the result.
         expect($data->properties['metadata']['type'])->toBe('Record<string, unknown>');
+    });
+
+    test('a resource #[TsCasts] on a key the model also casts wins, and the model cast\'s import stays out', function () {
+        $data = (new ResourceTransformer(ResourceCastOverModelCastResource::class))->data();
+
+        expect($data->properties['metadata']['type'])->toBe('string')
+            ->and($data->typeImports)->not->toHaveKey('@js/types/product');
     });
 
     test('ProductResource inherits model TsCasts inline type for dimensions', function () {
@@ -2883,5 +2892,13 @@ describe('a docblock-filled index signature beside keys only the publisher adds'
 
         expect($properties['[key: `${string}data`]']['type'])
             ->toBe('string | Record<string, {title: string, content: string}> | undefined');
+    });
+
+    test('the union keeps its undefined arm beside casts that name undefined only in a literal or a Record', function () {
+        $properties = (new ResourceTransformer(UndefinedTextCastTagSignatureResource::class))->data()->properties;
+
+        expect($properties['[key: `${string}_tag`]']['type'])
+            ->toBe("string | number | 'undefined' | 'defined' | Record<string, number | undefined> | undefined")
+            ->and($properties['price_tag']['optional'])->toBeTrue();
     });
 });

@@ -476,4 +476,17 @@ describe('a docblock-filled index signature in page props merged from several br
             'Inertia.SharedData & { [key: `${string}_tag`]: string | boolean | undefined, extra_tag: boolean }',
         );
     });
+
+    test('a ternary arm\'s key the controller method\'s #[TsCasts] retypes joins with its cast type', function () {
+        expect(pageData(ControllerWithTagSignatureBranches::class.'@ternaryCast')['pageType'])->toBe(
+            'Inertia.SharedData & { [key: `${string}_tag`]: string | number | undefined, price_tag: number }',
+        );
+    });
+
+    test('the union keeps its undefined arm beside a cast that names undefined only in a literal', function () {
+        expect(pageData(ControllerWithTagSignatureBranches::class.'@undefinedLiteral')['pageType'])->toBe(
+            'Inertia.SharedData & { [key: `${string}_tag`]: string | number | \'undefined\' | undefined, '
+            .'price_tag?: number, state_tag: \'undefined\' }',
+        );
+    });
 });

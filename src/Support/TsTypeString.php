@@ -234,12 +234,12 @@ class TsTypeString
     }
 
     /**
-     * The type with an `undefined` arm appended, unless its text already names `undefined` anywhere: the test every
-     * published index signature was built with, so a value that carries one only nested keeps its published type.
+     * The type with an `undefined` arm appended, unless it already has one at the top level: an `undefined` inside a
+     * shape, a `Record` or a string literal does not admit an absent key.
      */
     public function orUndefined(string $type): string
     {
-        return str_contains($type, 'undefined') ? $type : $type.' | undefined';
+        return in_array('undefined', $this->splitTopLevelUnion($type), true) ? $type : $type.' | undefined';
     }
 
     /**

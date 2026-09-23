@@ -868,14 +868,16 @@ describe('typeNameOccursIn', function () {
 });
 
 describe('orUndefined', function () {
-    test('appends an undefined arm only when the text names none', function (string $type, string $expected) {
+    test('appends an undefined arm only when the type has no top-level one', function (string $type, string $expected) {
         expect($this->service->orUndefined($type))->toBe($expected);
     })->with([
         'a bare type' => ['string', 'string | undefined'],
         'a nullable type' => ['string | null', 'string | null | undefined'],
         'already carrying it' => ['string | undefined', 'string | undefined'],
         'carrying it first' => ['undefined | string', 'undefined | string'],
-        'naming it only inside a shape' => ['{ a: string | undefined }', '{ a: string | undefined }'],
+        'naming it only inside a shape' => ['{ a: string | undefined }', '{ a: string | undefined } | undefined'],
+        'naming it only inside a Record' => ['Record<string, number | undefined>', 'Record<string, number | undefined> | undefined'],
+        'naming it only in a string literal' => ["'undefined'", "'undefined' | undefined"],
         'a name that differs by case' => ['UndefinedThing', 'UndefinedThing | undefined'],
     ]);
 });

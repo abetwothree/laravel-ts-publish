@@ -779,8 +779,9 @@ reflected `teamId`/`content` keep the types their bodies already resolved.
 resolves *expressions* — every `Inertia::render()` props argument in a controller action — through the
 [controller profile](#controller-profile) over a scope built by `AstEngine::bindingsFor()`, merging
 same-component branches with `mergeReturnBranches()` so a key present in only one branch becomes
-optional, then reconciling the merged index signatures with `IndexSignatureReconciler`. It reaches for `AstEngine::analyzeMethod()` directly only when the props are delegated whole
-to a collaborator (`Inertia::render('X', $this->service->build())`).
+optional, then reconciling each component's index signatures with `IndexSignatureReconciler`, counting
+the keys the controller method's `#[TsCasts]` adds. It reaches for `AstEngine::analyzeMethod()` directly
+only when the props are delegated whole to a collaborator (`Inertia::render('X', $this->service->build())`).
 
 `ModelMetadataAnalyzer` (`src/Analyzers/Metadata/`) is the second `bindingsFor()` caller and the third
 shape: it locates a metadata provider's `provide()` on its **declaring** class, seeds the scope so the

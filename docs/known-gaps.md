@@ -485,16 +485,27 @@ return type that names the class directly.
 
 A docblock fill or same-pattern union of an interpolated key's index signature is kept only where it cannot
 conflict with another published key (see
-[resource-ast-analyzer § Index signatures are reconciled with the keys beside them](./components/resource-ast-analyzer.md#index-signatures-are-reconciled-with-the-keys-beside-them)),
-and on an interface with an extends clause it goes back to `unknown | undefined`. A signature whose own body
-typed it keeps that type, so `tsc` still rejects the interface when:
+[resource-ast-analyzer § Index signatures are reconciled with the keys beside them](./components/resource-ast-analyzer.md#index-signatures-are-reconciled-with-the-keys-beside-them)).
+Where it could, each entry goes back to the value its body gives it, `unknown | undefined` where only the
+docblock typed it, so a union publishes its last same-pattern entry's body value. An interface with an
+extends clause puts back every signature this way, since the package cannot see the keys it inherits. That
+includes a `ts_extends.resources` or `ts_extends.broadcast_events` config entry, which gives the clause to
+every resource or event. A value the body typed stands, so the interface can still fail `tsc` when:
 
-- a key its pattern matches cannot join the union, because it is `unknown`, names a class or carries an FQCN
-  channel: ``[key: `${string}_tag`]: string | undefined`` beside `main_tag: PostResource` fails TS2411;
+- the signature, or a key its pattern matches, cannot join the union: its type has a top-level `unknown`
+  arm, it holds a token `TsTypeString::shapeValueHasUnimportableToken()` rejects other than a string or
+  number literal (a class name, a global name such as `Blob`, a template literal type), or it is not a cast
+  key and carries an FQCN channel. ``[key: `${string}_tag`]: string | undefined`` beside
+  `main_tag: PostResource` fails TS2411;
+- another signature's pattern may overlap its own, which declines the union even for a key that could
+  join: ``[key: `${string}_tag`]: string | undefined`` beside ``[key: `a${string}`]: boolean | undefined``
+  and `price_tag: number` fails TS2411;
 - its pattern is contained in another signature's, and its value is not one the other accepts:
   ``[key: `${string}_a_tag`]: number | undefined`` beside ``[key: `${string}_tag`]: string | undefined``
   fails TS2413;
-- an interface the extends clause names has a matching key its value does not accept (TS2411).
+- the interface has an extends clause, so no key joins: ``[key: `${string}_note`]: string | undefined``
+  beside the resource's own `count_note: number` fails TS2411, as does a key of the extended interface its
+  value does not accept.
 
 Where the union is declined, a second same-pattern signature still replaces the first. Type the key, or
 rename it out of the pattern.

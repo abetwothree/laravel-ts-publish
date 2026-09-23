@@ -540,10 +540,11 @@ describe('a docblock-filled index signature in a broadcastWith() payload', funct
         expect($transformer->properties['[key: `${string}_tag`]']['type'])->toBe('unknown | undefined');
     });
 
-    test('a key the event\'s #[TsCasts] retypes joins the union with its cast type', function () {
+    test('a key the event\'s #[TsCasts] retypes joins the union, and a cast on a key the payload lacks does not', function () {
         $transformer = app(BroadcastEventTransformer::class, ['findable' => CastTagSignatureBroadcastEvent::class]);
 
         expect($transformer->properties['[key: `${string}_tag`]']['type'])->toBe('string | number | undefined')
-            ->and($transformer->properties['main_tag']['type'])->toBe('number');
+            ->and($transformer->properties['main_tag']['type'])->toBe('number')
+            ->and($transformer->properties)->not->toHaveKey('absent_tag');
     });
 });

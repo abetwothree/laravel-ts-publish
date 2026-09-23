@@ -1024,7 +1024,9 @@ consumer case above is real.
 collector, `mergeReturnBranches()`, `ReturnShapeRefiner` and `IndexSignatureReconciler` all ask it. Its
 regex carries a `` `[^`]*` `` alternative alongside `string`/`number`, so the new key shape prints unquoted
 in a type position exactly like the existing `[key: number]`/`[key: string]` signatures, and still merges
-correctly across spread branches. The `| undefined` itself is spelled once, by `TsTypeString::orUndefined()`.
+correctly across spread branches. The `| undefined` itself is spelled once, by `TsTypeString::orUndefined()`,
+which adds it unless the value already has a top-level `undefined` arm: one inside a shape, a `Record` or a
+string literal does not admit an absent key.
 
 ### A value the body cannot type falls back to the method's `@return`
 
@@ -1057,13 +1059,20 @@ beside it are all known:
   meet, and in `analyze()` and `analyzeThisMethodSpread()` after `ReturnShapeRefiner::refine()` and
   `applyTsCastsFromMethod()`, because the refiner and a method's own `#[TsCasts]` change keys after the merge.
 - **In each publisher, over the keys it adds.** `ResourceTransformer::runAstAnalysis()` passes the keys
-  `applyOverrides()` will lay over the analysis (`castKeys()`: every resource `#[TsCasts]` key, and each
-  model one the analysis has and the resource does not cast), and whether the interface has an extends
-  clause. `BroadcastEventTransformer::transformProperties()` passes its cast keys and extends clause the
-  same way. `InertiaPageAnalyzer` reconciles the merged result of a ternary's props literals in
-  `analyzeProps()`, and of one component's render calls in `buildPageData()`, the second with the controller
-  method's casts. `InertiaSharedDataAnalyzer::buildResult()` passes its `#[TsCasts]` and docblock overrides.
-  A cast key's type replaces the analysis's own, and its FQCN channels are dropped with it.
+  `applyOverrides()` will lay over the analysis (`castKeys()`: every resource `#[TsCasts]` key, whether the
+  analysis has it or not, and each model one `modelCastsOver()` picks, the rule `applyOverrides()` applies
+  too: a key the analysis has and the resource does not cast), and whether the interface has an extends
+  clause. `BroadcastEventTransformer::transformProperties()` passes its extends clause, but only the casts
+  on keys the analysis has, since `resolveProperties()` retypes no other key.
+  `InertiaPageAnalyzer::buildPageData()` passes the controller method's casts for each component, whether
+  its props come from one render call or from several merged, a ternary's props literals included.
+  `InertiaSharedDataAnalyzer::buildResult()` passes its `#[TsCasts]` and docblock overrides. An extends
+  clause counts whether it comes from `#[TsExtends]` or from a `ts_extends.resources` or
+  `ts_extends.broadcast_events` config entry, which gives the clause to every resource or event. The
+  reconcile reads a passed key's type in place of the analysis's own and skips its FQCN-channel check.
+  `BroadcastEventTransformer`, `InertiaPageAnalyzer` and `InertiaSharedDataAnalyzer` drop that key's
+  channels too; `ResourceTransformer` keeps them, so its enum rewrite can still act on a cast
+  `EnumResource` key after the reconcile has read the cast.
 
 It reads the keys that will be published. For a named key that is only the last entry of its name, since a
 later literal or spread replaces an earlier one, with a cast key's type in place of the analysis's. Every
@@ -1088,7 +1097,8 @@ under ``${string}_tag`` exactly as TypeScript reads it, and an escaped `\${` is 
   signature conflicts. On any of these, every entry whose value came from a fill or a union goes back to
   its `bodyType`, and nothing is unioned, so the shape publishes what a name-keyed publish of its body
   values gives. An entry the body typed, and never unioned, is left as it is. A signature with no other
-  entry, no matching key and no overlapping pattern is never put back, whatever its type.
+  entry, no matching key and no overlapping pattern is never put back, whatever its type, unless the
+  interface has an extends clause.
 
 `bodyType` is how a later conflict still finds the body value. The refiner sets it to
 `unknown | undefined` when it fills, a union sets it to the last entry's body value, `mergeReturnBranches()`
@@ -1097,9 +1107,11 @@ type is the app's own. `IndexSignatureConflictResource`, a test-only fixture, pi
 - a key replaced by a later number joins with the number, not with the resource it replaced;
 - a fill beside an untyped or resource-typed key, and two filled overlapping patterns, go back to
   `unknown | undefined`;
-- a fill made after the merge, by the analyzed method's own `@return`, a spread method's own `@return`, a
-  method `#[TsCasts]` retype or an `array_merge()` of literals, still unions;
-- a key cast to string literals joins, and a signature the method casts itself is never put back.
+- a fill made after the merge, by the analyzed method's own `@return` or a spread method's own `@return`,
+  still unions, as does a fill beside a key a method `#[TsCasts]` retypes after the merge, or beside the keys
+  an `array_merge()` of literals adds;
+- a key cast to string literals joins, and a signature the method casts itself is never put back;
+- a union keeps its `| undefined` beside a key whose shape names `undefined` only inside it.
 
 `SamePatternDeclinedResource` pins the body-typed side: its signatures keep `string | undefined` beside keys
 that cannot join. The publisher sites are pinned by their own test-only fixtures: the resource, model and

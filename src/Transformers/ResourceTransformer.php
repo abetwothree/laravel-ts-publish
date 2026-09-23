@@ -398,23 +398,29 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * The keys applyOverrides() will publish over the analysis: every resource #[TsCasts] key, and each model one the
-     * analysis already has and the resource does not cast itself.
+     * The keys applyOverrides() will publish over the analysis: every resource #[TsCasts] key, and each model one
+     * modelCastsOver() lays over the analysis's keys.
      *
      * @return array<string, string>
      */
     protected function castKeys(MethodAnalysis $analysis): array
     {
-        $names = array_column($analysis->properties, 'name');
-        $keys = $this->tsTypeOverrides;
+        return $this->tsTypeOverrides + $this->modelCastsOver(array_flip(array_column($analysis->properties, 'name')));
+    }
 
-        foreach ($this->modelTsCastsOverrides as $property => $type) {
-            if (! isset($keys[$property]) && in_array($property, $names, true)) {
-                $keys[$property] = $type;
-            }
-        }
-
-        return $keys;
+    /**
+     * The model #[TsCasts] types that apply to the given keys: each one the model casts and the resource does not.
+     *
+     * @param  array<array-key, mixed>  $keys  the analysis's keys, as array keys
+     * @return array<string, string>
+     */
+    protected function modelCastsOver(array $keys): array
+    {
+        return array_filter(
+            $this->modelTsCastsOverrides,
+            fn (int|string $property): bool => isset($keys[$property]) && ! isset($this->tsTypeOverrides[$property]),
+            ARRAY_FILTER_USE_KEY,
+        );
     }
 
     /**
@@ -422,19 +428,17 @@ class ResourceTransformer extends CoreTransformer
      */
     protected function applyOverrides(): self
     {
-        foreach ($this->modelTsCastsOverrides as $property => $type) {
-            if (isset($this->properties[$property]) && ! isset($this->tsTypeOverrides[$property])) {
-                $this->properties[$property]['type'] = $type;
+        foreach ($this->modelCastsOver($this->properties) as $property => $type) {
+            $this->properties[$property] = [...$this->properties[$property], 'type' => $type];
 
-                if (isset($this->modelTsCastsImportPaths[$property])) {
-                    foreach (TsTypeString::extractImportableTypes($type) as $importName) {
-                        $this->customImports[$this->modelTsCastsImportPaths[$property]][] = $importName;
-                    }
+            if (isset($this->modelTsCastsImportPaths[$property])) {
+                foreach (TsTypeString::extractImportableTypes($type) as $importName) {
+                    $this->customImports[$this->modelTsCastsImportPaths[$property]][] = $importName;
                 }
+            }
 
-                if (isset($this->modelTsCastsOptionalOverrides[$property])) {
-                    $this->properties[$property]['optional'] = $this->modelTsCastsOptionalOverrides[$property];
-                }
+            if (isset($this->modelTsCastsOptionalOverrides[$property])) {
+                $this->properties[$property]['optional'] = $this->modelTsCastsOptionalOverrides[$property];
             }
         }
 

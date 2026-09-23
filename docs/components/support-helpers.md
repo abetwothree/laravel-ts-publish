@@ -57,7 +57,8 @@ delegation dropped it.
 
 `isIndexSignatureKey()` is the one home for "this key is a generated index signature, not a property
 name": `validJsObjectKey()` asks it, and so do `ResourceAstAnalyzer`, `ReturnShapeRefiner` and
-`IndexSignatureReconciler`, so the regex has one spelling. Like `isUnknownOnly()` below, it has no delegation on `LaravelTsPublish`.
+`IndexSignatureReconciler`, so the regex has one spelling. Like `isUnknownOnly()` below, it has no
+delegation on `LaravelTsPublish`.
 
 ### `TsTypeString`
 

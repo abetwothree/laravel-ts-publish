@@ -78,6 +78,16 @@ final class IndexSignatureConflictResource extends JsonResource
         return array_merge([...$this->docTags()], ['price_tag' => 5]);
     }
 
+    /** One branch nests the filled keys under `box_tag`, whose shape prints `undefined`; the other has `price_tag`. */
+    public function nestedBranches(): array
+    {
+        if ($this->resource->exists) {
+            return [...$this->docTags(), 'box_tag' => [...$this->docTags()]];
+        }
+
+        return ['price_tag' => 5];
+    }
+
     /** Body-typed `_tag` keys. */
     public function literalTags(): array
     {
