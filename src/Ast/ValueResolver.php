@@ -8,8 +8,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
-use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use BackedEnum;
+use DateTimeInterface;
+use JsonSerializable;
 use PhpParser\BuilderFactory;
 use PhpParser\ConstExprEvaluationException;
 use PhpParser\ConstExprEvaluator;
@@ -21,7 +22,16 @@ use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\MagicConst;
+use PhpParser\Node\Scalar\MagicConst\Class_;
+use PhpParser\Node\Scalar\MagicConst\Dir;
+use PhpParser\Node\Scalar\MagicConst\File;
+use PhpParser\Node\Scalar\MagicConst\Function_;
+use PhpParser\Node\Scalar\MagicConst\Line;
+use PhpParser\Node\Scalar\MagicConst\Method;
+use PhpParser\Node\Scalar\MagicConst\Namespace_;
 use ReflectionClass;
+use ReflectionMethod;
+use ReflectionNamedType;
 use Throwable;
 use UnitEnum;
 
@@ -111,13 +121,10 @@ final class ValueResolver
     }
 
     /**
-     * Evaluate a constant expression, such as a parameter default, as PHP does. A class constant or enum case it names
-     * is read through reflection, with self, static and parent read against the subject; a global constant as it is
-     * defined where the types are published; `__LINE__` as its line and `__CLASS__` as the subject; and `__FUNCTION__`
-     * or `__METHOD__` as the `{closure}` a default's closure is named.
+     * Evaluate a constant expression, such as a parameter default, as PHP does, reading every constant, magic constant
+     * and enum property it names the way evaluateFallback() describes.
      *
-     * @throws ConstExprEvaluationException when it reads anything else, such as `new` or a variable, or its evaluation
-     *                                      errors, as `1 / 0` or a constant whose initializer fails does
+     * @throws ConstExprEvaluationException for a value it cannot know, such as `new`, a variable or a failed evaluation
      */
     public function evaluateConstantExpression(Expr $expr, AnalysisScope $scope): mixed
     {
@@ -144,24 +151,18 @@ final class ValueResolver
     }
 
     /**
-     * Type `new X(...)` as `string` when the package publishes X as `string` and json_encode() writes X as one, such as
-     * a Carbon date; null for any other class.
+     * Type `new X(...)` as `string` when json_encode() writes X as a string, such as a Carbon date, whatever TS name
+     * the package publishes X under; null for any other class.
      *
      * @return ValueExpressionResult|null
      */
     public function resolveStringSerializedNew(New_ $new): ?array
     {
-        if (! $new->class instanceof Name) {
-            return null;
-        }
+        $class = $new->class instanceof Name ? $new->class->toString() : null;
 
-        $class = $new->class->toString();
-
-        return class_exists($class)
-            && LaravelTsPublish::toTsType($class)['type'] === 'string'
-            && ! StringSerialization::isFalseString($class)
-                ? ['type' => 'string', 'optional' => false]
-                : null;
+        return $class !== null && class_exists($class) && $this->serializesAsString($class)
+            ? ['type' => 'string', 'optional' => false]
+            : null;
     }
 
     /**
@@ -397,8 +398,8 @@ final class ValueResolver
     }
 
     /**
-     * ConstExprEvaluator's fallback: the value of a node it cannot evaluate itself, as evaluateConstantExpression()
-     * describes.
+     * ConstExprEvaluator's fallback: a class constant or enum case through reflection, a global constant as defined
+     * where the types are published, a magic constant, or an enum case's `->name` or `->value`.
      *
      * @throws ConstExprEvaluationException for any other node
      */
@@ -462,17 +463,21 @@ final class ValueResolver
     }
 
     /**
-     * The value of a magic constant whose type is known before runtime.
-     *
-     * @throws ConstExprEvaluationException for any other magic constant
+     * The value of a magic constant, each known before runtime: its line; the subject's class, file, directory or
+     * namespace; `{closure}` for a closure's function or method name; and otherwise, as `__TRAIT__`, a string.
      */
     private function evaluateMagicConstant(MagicConst $expr, AnalysisScope $scope): int|string
     {
+        $file = (string) $scope->subjectReflection->getFileName();
+
         return match (true) {
-            $expr instanceof MagicConst\Line => $expr->getStartLine(),
-            $expr instanceof MagicConst\Class_ => $scope->subjectReflection->getName(),
-            $expr instanceof MagicConst\Function_, $expr instanceof MagicConst\Method => '{closure}',
-            default => throw new ConstExprEvaluationException("{$expr->getName()} cannot be evaluated"),
+            $expr instanceof Line => $expr->getStartLine(),
+            $expr instanceof Class_ => $scope->subjectReflection->getName(),
+            $expr instanceof File => $file,
+            $expr instanceof Dir => dirname($file),
+            $expr instanceof Namespace_ => $scope->subjectReflection->getNamespaceName(),
+            $expr instanceof Function_, $expr instanceof Method => '{closure}',
+            default => '',
         };
     }
 
@@ -491,6 +496,23 @@ final class ValueResolver
             $case instanceof BackedEnum && $property === 'value' => $case->value,
             default => throw new ConstExprEvaluationException("Property {$property} of an enum case cannot be read"),
         };
+    }
+
+    /**
+     * Whether json_encode() writes an instance as a string: its jsonSerialize() declares `string`, or it is a date that
+     * keeps Carbon's own jsonSerialize(), the ISO string, where StringSerialization::isFalseString() passes any date.
+     */
+    private function serializesAsString(string $class): bool
+    {
+        if (! is_a($class, JsonSerializable::class, true)) {
+            return false;
+        }
+
+        $method = new ReflectionMethod($class, 'jsonSerialize');
+        $type = $method->getReturnType();
+
+        return ($type instanceof ReflectionNamedType && $type->getName() === 'string')
+            || (is_a($class, DateTimeInterface::class, true) && str_starts_with($method->getDeclaringClass()->getName(), 'Carbon\\'));
     }
 
     /**

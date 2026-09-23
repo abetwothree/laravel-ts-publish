@@ -15,6 +15,7 @@ use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Closure;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\Variable;
@@ -102,10 +103,9 @@ final class AnalysisScope
     public array $varClassBindings = [];
 
     /**
-     * Names bound to a model class, so `$var`, `$var->prop`, `$var->method()` resolve against that model: to-one
-     * whenLoaded params, map params on a relation chain or a variable, a transform() param passed a model or the entry
-     * a passed variable held, each scoped to its closure's body; and, method-wide, foreach over a many-relation and
-     * AstEngine::bindingsFor()'s `Model`-typed parameters.
+     * Names bound to a model class, so `$var`, `$var->prop`, `$var->method()` resolve against it: a to-one whenLoaded,
+     * map or transform() closure param, scoped to its closure's body, and, method-wide, a foreach variable over a
+     * many-relation or a `Model`-typed parameter AstEngine::bindingsFor() seeds.
      *
      * @var VarModelBindingsMap
      */
@@ -334,9 +334,12 @@ final class AnalysisScope
                 return $stringDefault;
             }
 
-            // Only the engine reads `new`, but it types a list literal as a record, and a default that reads a variable
-            // is no constant expression PHP compiles.
+            // Only the engine reads `new`, but it types a list literal as a record and a closure by its return, though
+            // json_encode() writes a Closure as `{}`; a default that reads a variable is no constant expression at all.
             $unreadable = new NodeFinder()->findFirst($default, fn (Node $node): bool => $node instanceof Variable
+                || $node instanceof Closure
+                || $node instanceof ArrowFunction
+                || ($node instanceof CallLike && $node->isFirstClassCallable())
                 || ($node instanceof Array_ && ! $this->isRecordLiteral($node)));
 
             return $unreadable === null ? $engine->resolve($default) : null;

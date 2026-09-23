@@ -685,6 +685,9 @@ it('binds a parameter default to the value it evaluates to', function (string $p
     'when(), a numeric key the evaluator cannot read' => ['$this->when($this->title, fn ($t = ["1.5" => new Foo]) => $t)', 'unknown'],
     'when(), a default that reads another parameter' => ['$this->when($this->title, fn ($a = null, $b = $a) => $b)', 'unknown'],
     'when(), a list whose evaluation errors' => ['$this->when($this->title, fn ($t = [1 / 0]) => $t)', 'unknown'],
+    'when(), a closure, which json_encode() writes as {}' => ['$this->when($this->title, fn ($t = static function () { return 1; }) => $t)', 'unknown'],
+    'when(), a first-class callable' => ['$this->when($this->title, fn ($t = strlen(...)) => $t)', 'unknown'],
+    'when(), a cast' => ['$this->when($this->title, fn ($t = (int) "5") => $t)', 'number'],
 ]);
 
 // A resource's removeMissingValues() re-indexes an array whose keys all pass is_numeric() into a list, at any depth, so
@@ -711,6 +714,12 @@ it('binds a default of a global or magic constant, an enum case property or a Ca
     'an enum case ->value' => ['\\Workbench\\App\\Enums\\Status::Published->value', 'number'],
     '__CLASS__' => ['__CLASS__', 'string'],
     '__FUNCTION__' => ['__FUNCTION__', 'string'],
+    '__METHOD__' => ['__METHOD__', 'string'],
+    '__DIR__' => ['__DIR__', 'string'],
+    '__FILE__' => ['__FILE__', 'string'],
+    '__NAMESPACE__' => ['__NAMESPACE__', 'string'],
+    '__TRAIT__' => ['__TRAIT__', 'string'],
+    '__PROPERTY__' => ['__PROPERTY__', 'string'],
     '__LINE__' => ['__LINE__', 'number'],
     'PHP_EOL' => ['PHP_EOL', 'string'],
     'a global constant in a list' => ['[PHP_INT_SIZE]', 'number[]'],
@@ -724,6 +733,18 @@ it('restores the outer binding after a conditional default binds its parameter',
 
     expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe('{ a: number | null; b: string }');
 });
+
+// timestamps_as_date publishes a Carbon attribute as Date, but the value a default holds reaches JSON as an ISO string.
+it('binds a Carbon new default as string under timestamps_as_date', function (string $class) {
+    config()->set('ts-publish.timestamps_as_date', true);
+
+    expect(conditionalMethodHandlerResolveOnPost('$this->when($this->title, fn ($t = new '.$class.'("2020-01-01")) => $t)')['type'])
+        ->toBe('string');
+})->with([
+    'Illuminate\\Support\\Carbon' => ['\\Illuminate\\Support\\Carbon'],
+    'Carbon\\Carbon' => ['\\Carbon\\Carbon'],
+    'Carbon\\CarbonImmutable' => ['\\Carbon\\CarbonImmutable'],
+]);
 
 // whenLoaded() returns null for a relation loaded as null before it calls the closure, and a list type would omit it.
 it('leaves a morphTo whenLoaded() variadic parameter unbound', function (string $resource, string $model) {

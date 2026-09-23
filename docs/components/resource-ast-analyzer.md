@@ -427,8 +427,8 @@ that needs an engine result expressed in the model layer's own currency.
 | `customImports` | unioned (not replaced) into the resolved info's own `customImports` |
 
 It reads only those five of the twelve channels `ValueExpressionResult` declares — the same five
-`ReflectedTypeAcceptor` writes. Widening it to the other channels is a behaviour change with its own
-audit, recorded in the plan's follow-ups ledger rather than done here.
+`ReflectedTypeAcceptor` writes. Widening it to the other channels is a behaviour change that would need its
+own audit, so it is not done here.
 
 ### `directEnumFqcn` carries two entry kinds
 

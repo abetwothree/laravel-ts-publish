@@ -11,7 +11,14 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ScalarHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ArrayJsonCarbon;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ArrayJsonDate;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\StringJsonArrayable;
+use Carbon\Carbon as CarbonCarbon;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\HtmlString;
+use Illuminate\Support\Stringable;
 use PhpParser\ConstExprEvaluationException;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -264,6 +271,13 @@ it('evaluates a constant expression as PHP does, reading class constants and enu
     'a global constant' => ['[PHP_INT_SIZE, PHP_EOL]', [PHP_INT_SIZE, PHP_EOL]],
     'an enum case ->name and ->value' => ['[\\'.Status::class.'::Published->name, \\'.Status::class.'::Published->value]', ['Published', 1]],
     'the magic constants' => ['[__LINE__, __CLASS__, __FUNCTION__, __METHOD__]', [1, ClassConstantResource::class, '{closure}', '{closure}']],
+    'the path, namespace, trait and property magic constants' => ['[__DIR__, __FILE__, __NAMESPACE__, __TRAIT__, __PROPERTY__]', [
+        dirname((string) new ReflectionClass(ClassConstantResource::class)->getFileName()),
+        (string) new ReflectionClass(ClassConstantResource::class)->getFileName(),
+        'Workbench\\App\\Http\\Resources',
+        '',
+        '',
+    ]],
 ]);
 
 it('throws for what a constant expression reads that the evaluator cannot', function (string $php) {
@@ -275,7 +289,6 @@ it('throws for what a constant expression reads that the evaluator cannot', func
     'a division by zero' => ['1 / 0'],
     'a constant whose initializer throws' => ['\\'.ChannelDefaults::class.'::BROKEN'],
     'a property of an enum case other than name or value' => ['\\'.Status::class.'::Draft->label'],
-    '__DIR__' => ['__DIR__'],
     'a variable' => ['$other'],
     'a missing class constant' => ['self::MISSING'],
 ]);
@@ -302,4 +315,20 @@ it('types a new default as string only when the class publishes and encodes as o
     'a DateTime, published as string but written by json_encode() as an object' => [DateTime::class, null],
     'a model' => [User::class, null],
     'a class that is not a string' => [stdClass::class, null],
+    'a __toString() class json_encode() writes as an object' => [HtmlString::class, null],
+    'a Stringable, which json_encode() writes as a string' => [Stringable::class, 'string'],
+    'a DateTime whose jsonSerialize() returns an array' => [ArrayJsonDate::class, null],
+    'a Carbon date whose jsonSerialize() override returns an array' => [ArrayJsonCarbon::class, null],
+    'an Arrayable whose jsonSerialize() returns a string, which json_encode() prefers' => [StringJsonArrayable::class, 'string'],
+]);
+
+// timestamps_as_date publishes a Carbon attribute as Date, but json_encode() still writes a Carbon value as a string.
+it('types a Carbon new default as string under timestamps_as_date', function (string $class) {
+    config()->set('ts-publish.timestamps_as_date', true);
+
+    expect(new ValueResolver()->resolveStringSerializedNew(new New_(new Name($class)))['type'] ?? null)->toBe('string');
+})->with([
+    'Illuminate\\Support\\Carbon' => [Carbon::class],
+    'Carbon\\Carbon' => [CarbonCarbon::class],
+    'Carbon\\CarbonImmutable' => [CarbonImmutable::class],
 ]);

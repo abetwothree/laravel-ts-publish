@@ -12,9 +12,9 @@ deferred the work. Two kinds of entry earn a place here:
 Nothing here is a regression. These are limits that were understood and accepted.
 
 **What does not belong here.** Internal refactor debt, test-suite quality notes, release chores, and
-anything whose real audience is "whoever picks that work back up" — those live with the plan that deferred
-them, under its Follow-Ups Ledger, which is where that work is actually re-read from. Filing them here
-buries them. If you decline something a reviewer raised, ask which of the two bullets above it satisfies;
+anything whose real audience is "whoever picks that work back up" — those belong in the follow-ups ledger of
+the plan that deferred them, and anything meant for a future plan also in a `next-plan` GitHub issue, as
+AGENTS.md says. Filing them here buries them. If you decline something a reviewer raised, ask which of the two bullets above it satisfies;
 if neither, it does not go in this file.
 
 ## Types the generator will not give you

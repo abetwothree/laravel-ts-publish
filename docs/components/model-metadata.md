@@ -145,8 +145,7 @@ that column — and PHPStan already rejects that read on a `Model`-typed paramet
 guard. What a shared provider actually reads are method calls the declared-type binding already types. The
 change would buy no simplification, put a schema lookup back into the type pass, and make identical provider
 bodies infer differently per companion. The engine plumbing (`AnalysisScope::$varModelBindings`) accepts a
-concrete class already, so this stays a one-line change if a provider author ever asks for it; the reasoning
-is recorded in the plan's follow-ups ledger, not here.
+concrete class already, so this stays a one-line change if a provider author ever asks for it.
 
 Also deliberately not done: the controller handler profile (`InertiaResourcePropHandler` / `ModelFinderHandler`
 have no meaning in a provider and would move inference for existing providers), and class-level `#[TsCasts]`
@@ -325,7 +324,7 @@ Two consequences worth knowing before changing this:
   instead. Hashing the normalized payload means lifting `normalizeMetadataValue()` out of the transformer into
   something the generator can call.
 
-Both are recorded as deferred, with their reasoning, in the plan's follow-ups ledger.
+Both limits are deliberate.
 
 Manifest entries are keyed `GeneratorFQCN::ModelFQCN` before `GenerationManifest::entryKey()` hashes them, which
 is what keeps one model's interface entry and its metadata entry apart.

@@ -131,13 +131,9 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
-     * Fold a conditional method's explicit default into its value arm's result.
-     *
-     * An explicit default always makes the property required, since Laravel then always emits the key.
-     * The default's type unions in when it resolves; otherwise the value arm's own type stands alone.
-     * $defaultArgCount is how many arguments Laravel invokes the default with — 0 for the value($default)
-     * family, 1 for transform()'s $default($value) — and is forwarded to closureRequiresArguments().
-     * $passedToDefault is that one argument, for transform(), so the default's parameter is bound to it.
+     * Fold an explicit default into the value arm: it makes the key required and unions in when it resolves. It is
+     * invoked with $defaultArgCount arguments, 0 for value($default) and 1 for transform()'s $default($value), whose
+     * one argument is $passedToDefault.
      *
      * @param  ValueExpressionResult  $value
      * @param  PassedValue|null  $passedToDefault
@@ -358,13 +354,9 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze $this->whenCounted()/whenAggregated() — Laravel returns `value($value, $aggregate)`, swapping a null
-     * $value for the identity closure, so a missing or null value publishes the aggregate itself.
-     *
-     * A value closure's parameter binds to `number` for a count, which is always an integer, and to nothing for any
-     * other aggregate, whose type depends on its column, function and driver. The closure's own result types the key
-     * when it resolves; otherwise the key publishes `number`, the package's convention for an aggregate, although a
-     * driver can return a numeric or date string for one that is not a count.
+     * Analyze $this->whenCounted()/whenAggregated() — a missing or null value publishes the aggregate as `number` by
+     * convention, though a driver can return a non-count one as a numeric or date string. A value closure's param
+     * binds to `number` for a count, always an integer, and to nothing otherwise; the closure's result types the key.
      *
      * @return ValueExpressionResult
      */
@@ -428,12 +420,9 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze $this->whenLoaded('relation') or $this->whenLoaded('relation', value, default).
-     *
-     * A single-model relation's closure param binds to the model; a to-many relation's binds to the
-     * collection type instead, since the param holds the whole collection rather than one element, and a morphTo's to
-     * its targets. A variadic param binds to the list the relation collects into, except a morphTo's, which binds
-     * nothing: its key then stays `unknown`, which admits the null whenLoaded() returns for a relation loaded as null.
+     * Analyze $this->whenLoaded('relation', value, default): a closure param binds to the relation's model, its whole
+     * collection or its morphTo targets, and a variadic one to the list the relation collects into, except a
+     * morphTo's, which binds nothing, so its key stays `unknown` and admits the null a relation loaded as null returns.
      *
      * @return ValueExpressionResult
      */
@@ -640,15 +629,9 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
-     * The type Laravel's `value($value, ...$args)` produces, binding a closure's first parameter to $argument.
-     *
-     * $argument is what Laravel passes the closure: an expression to read, a value already typed (`unknown` when
-     * the call passes one this handler cannot type), or null when it passes nothing. Every parameter left without an
-     * argument takes its default's type.
-     *
-     * Null means there is no usable value — none written, a literal null, an EnumResource wrap whose channel
-     * the caller decides, or a resolution the engine cannot type — so the caller keeps its own
-     * attribute-derived answer instead of publishing a fresh `unknown`.
+     * The type `value($value, ...$args)` produces, binding a closure's first parameter to $argument (an expression, a
+     * typed value, or null for none) and the rest to their defaults; null when there is no usable value, such as none
+     * written, a literal null, an EnumResource wrap or an untyped result, so the caller keeps its attribute answer.
      *
      * @param  Expr|ValueExpressionResult|null  $argument
      * @return ValueExpressionResult|null
@@ -707,11 +690,9 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
-     * Bind a closure's first parameter to the `$this->propName` expression found in a `when()` condition,
-     * so `EnumResource::make($status)` resolves as if it were `EnumResource::make($this->status)`.
-     *
-     * when() passes its value closure nothing, so this binds only a required parameter, whose call would throw: an
-     * optional one holds its default, and a variadic one an empty list.
+     * Bind a required first parameter to the `$this->prop` a `when()` condition tests, so `EnumResource::make($status)`
+     * resolves like `EnumResource::make($this->status)`. when() passes the closure nothing, so that call throws; an
+     * optional parameter holds its default and a variadic one an empty list, so neither is bound here.
      */
     private function bindClosureParamsFromCondition(Expr $condition, Expr $valueExpr, AnalysisScope $scope): void
     {

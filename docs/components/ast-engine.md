@@ -290,17 +290,20 @@ driver and column cast.
 default evaluates to, or to `never[]`. A default is a constant expression, so
 `ValueResolver::evaluateConstantExpression()` evaluates it as PHP does. It reads a class constant or enum case through
 reflection, a global constant as it is defined where the types are published, an enum case's `->name` or `->value`,
-`__LINE__` and `__CLASS__`, and `__FUNCTION__` or `__METHOD__` as a string. `ValueResolver::resolveConstantValue()`
+and every magic constant, `__LINE__` as a number and the rest as strings. `ValueResolver::resolveConstantValue()`
 then types the value as a class constant's value is typed: a list literal is a list, `fn ($t = [1, 2])` holding
 `number[]`. An array whose keys all pass `is_numeric()` but which is not a list binds nothing: a resource's
 `removeMissingValues()` re-indexes it into a list at any depth, so `['1.5' => 'x']` reaches JSON as `["x"]`.
 
 A default the evaluator cannot read, and one whose evaluation errors, such as `1 / 0`, falls back in two steps:
-- **A `new` of a class the package publishes as `string` and `json_encode()` writes as one,** such as a Carbon date,
-  types as `string`.
-- **Anything else is the engine's to type,** with two exceptions that bind nothing: an array literal not keyed wholly
-  by string literals that fail `is_numeric()`, which the engine would type as a record, and a variable, which no
-  constant expression may read.
+- **A `new` of a class `json_encode()` writes as a string** types as `string`, whatever name the package publishes
+  the class under. That is a class whose `jsonSerialize()` declares `string`, or a date that keeps Carbon's own
+  `jsonSerialize()`, the ISO string: `timestamps_as_date` publishes a Carbon attribute as `Date`, but the value a
+  default holds reaches JSON as that string. `DateTime`, and a date that overrides `jsonSerialize()`, are not one.
+- **Anything else is the engine's to type,** with three exceptions that bind nothing: an array literal not keyed
+  wholly by string literals that fail `is_numeric()`, which the engine would type as a record; a closure or
+  first-class callable, which the engine types by what it returns though `json_encode()` writes a `Closure` as `{}`;
+  and a variable, which no constant expression may read.
 
 A default whose value cannot be typed leaves its parameter unbound. So `when($this->title, fn ($t = null) => $t)`
 publishes `null`, which is what Laravel returns. Every writer that claims a conditional or merge closure calls
