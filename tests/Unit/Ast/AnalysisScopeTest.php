@@ -65,6 +65,7 @@ function analysisScopeWithEveryTableBound(): AnalysisScope
     foreach (['item', 'key', 'kept'] as $name) {
         $scope->closureParamExprBindings[$name] = $expr;
         $scope->varClassBindings[$name] = [User::class];
+        $scope->varGuardBindings[$name] = ['classes' => [User::class], 'after' => 0];
         $scope->varModelBindings[$name] = User::class;
         $scope->varCollectionBindings[$name] = ['type' => 'User[]', 'modelFqcn' => User::class];
         $scope->varValueBindings[$name] = ['type' => 'string', 'optional' => false];
@@ -127,6 +128,7 @@ it('copies every entry a variable held in a capture onto a parameter, in every n
     expect(array_map(array_keys(...), array_diff_key($scope->nameBindings(), ['claimedClosures' => true])))->each->toBe(['param'])
         ->and($scope->closureParamExprBindings['param'])->toBe($captured['closureParamExprBindings']['item'])
         ->and($scope->varClassBindings['param'])->toBe([User::class])
+        ->and($scope->varGuardBindings['param'])->toBe(['classes' => [User::class], 'after' => 0])
         ->and($scope->varModelBindings['param'])->toBe(User::class)
         ->and($scope->varCollectionBindings['param'])->toBe(['type' => 'User[]', 'modelFqcn' => User::class])
         ->and($scope->varValueBindings['param'])->toBe(['type' => 'string', 'optional' => false])

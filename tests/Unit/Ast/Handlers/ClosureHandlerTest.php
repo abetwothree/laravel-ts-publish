@@ -271,6 +271,7 @@ it('releases an unclaimed parameter from every name-keyed table, then restores e
     foreach (['slug', 'kept'] as $name) {
         $scope->closureParamExprBindings[$name] = $outer;
         $scope->varClassBindings[$name] = [stdClass::class];
+        $scope->varGuardBindings[$name] = ['classes' => [stdClass::class], 'after' => 0];
         $scope->varModelBindings[$name] = User::class;
         $scope->varCollectionBindings[$name] = ['type' => 'User[]', 'modelFqcn' => User::class];
         $scope->varValueBindings[$name] = ['type' => 'string', 'optional' => false];

@@ -15,9 +15,11 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Enumerable;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
@@ -56,24 +58,22 @@ final class VariableHandler implements ExpressionHandler
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        // A trailing argument-less values()/all() takes its element type from the receiver chain, which
-        // is the only thing that knows it. The receiver carries one op FEWER, so values() must still
-        // drop the keyed arm it restores 0..n-1 over; all() hands that array back, keys and all.
+        // A trailing argument-less values()/all() on a collection takes its element type from the receiver chain, which
+        // is the only thing that knows it: all() hands the array back, keys and all, and values() re-indexes it into a
+        // list. On any other class the method is its own, so the receiver's type says nothing about what it returns.
         if ($expr instanceof MethodCall
             && $expr->var instanceof MethodCall
             && $expr->name instanceof Identifier
             && in_array($expr->name->toString(), ['values', 'all'], true)
             && ! $expr->isFirstClassCallable()
             && CallArguments::for($expr, new ReflectionMethod(EloquentCollection::class, $expr->name->toString()))->isEmpty()
+            && $this->holdsOnlyCollections($expr->var, $scope)
         ) {
             $receiverResult = $engine->resolve($expr->var);
+            $type = $expr->name->toString() === 'values' ? $this->valuesList($receiverResult['type']) : $receiverResult['type'];
 
-            if ($receiverResult['type'] !== 'unknown') {
-                if ($expr->name->toString() === 'values') {
-                    $receiverResult['type'] = $this->withoutKeyedObjectArm($receiverResult['type']);
-                }
-
-                return $receiverResult;
+            if ($type !== null && $type !== 'unknown') {
+                return [...$receiverResult, 'type' => $type];
             }
         }
 
@@ -285,5 +285,16 @@ final class VariableHandler implements ExpressionHandler
     private function mapArguments(MethodCall $call): CallArguments
     {
         return CallArguments::for($call, new ReflectionMethod(EloquentCollection::class, 'map'));
+    }
+
+    /**
+     * Whether every class an expression holds is an Illuminate collection, whose values() and all() the engine knows.
+     */
+    private function holdsOnlyCollections(Expr $expr, AnalysisScope $scope): bool
+    {
+        $receiver = resolve(ReceiverClassResolver::class)->resolve($expr, $scope);
+
+        return $receiver !== null
+            && array_all($receiver->classes, fn (string $class): bool => is_a($class, Enumerable::class, true));
     }
 }

@@ -147,6 +147,18 @@ describe('ReceiverClassResolver::resolve()', function () {
         expect($receiver?->classes)->toBe([Comment::class]);
     });
 
+    // getRelation() returns what is loaded under the name and throws otherwise, so it holds what the relation does.
+    test('getRelation() on a model holds the relation loaded under that name', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $comments = $resolver->resolve(receiverExpr('$this->resource->getRelation("comments")'), postScope());
+
+        expect($comments?->classes)->toBe([EloquentCollection::class])
+            ->and($comments?->elementModel)->toBe(Comment::class)
+            ->and($resolver->resolve(receiverExpr('$this->resource->getRelation("author")'), postScope())?->classes)->toBe([User::class])
+            ->and($resolver->resolve(receiverExpr('$this->resource->getRelation("title")'), postScope()))->toBeNull()
+            ->and($resolver->resolve(receiverExpr('$this->resource->getRelation($name)'), postScope()))->toBeNull();
+    });
+
     test('a relation method on a nested model receiver keeps its native relation class', function () {
         expect(resolve(ReceiverClassResolver::class)->resolve(receiverExpr('$this->author->posts()'), postScope())?->classes)
             ->toBe([HasMany::class]);

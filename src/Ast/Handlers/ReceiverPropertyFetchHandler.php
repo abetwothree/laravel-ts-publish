@@ -123,14 +123,22 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
     }
 
     /**
-     * One non-model class's declared property, by the rules that type a method's return on the same receiver.
+     * One non-model class's public instance property, by the rules that type a method's return on the same receiver.
      *
      * @param  class-string  $class
      * @return ValueExpressionResult|null
      */
     private function reflectedProperty(string $class, string $name): ?array
     {
-        $result = resolve(SubjectPropertyTypeResolver::class)->resolve(new ReflectionClass($class), $name);
+        $reflection = new ReflectionClass($class);
+        $property = $reflection->hasProperty($name) ? $reflection->getProperty($name) : null;
+
+        // An outside read of a non-public or static property goes to __get(), never to the declaration.
+        if ($property === null || ! $property->isPublic() || $property->isStatic()) {
+            return null;
+        }
+
+        $result = resolve(SubjectPropertyTypeResolver::class)->resolve($reflection, $name);
 
         if ($result === null || ! ValueResult::namesOnlyPublishedModels($result)) {
             return null;

@@ -434,8 +434,9 @@ it('lets a map-closure parameter own its name over an outer binding of the same 
         Post::class,
         '{ word: string }[]',
     ],
+    // Image has no `comments` relation, so what `$rows` holds is unknown and a trailing all() could not keep its type.
     'typed variable-receiver map under a morphTo whenLoaded parameter' => [
-        '$this->whenLoaded("reviewable", fn ($c) => $rows->map(fn (\Workbench\App\Models\Comment $c) => $c->user?->name)->all())',
+        '$this->whenLoaded("reviewable", fn ($c) => $rows->map(fn (\Workbench\App\Models\Comment $c) => $c->user?->name))',
         Image::class,
         '(string | null)[]',
     ],

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsInstanceofChains;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
@@ -28,6 +29,7 @@ use PhpParser\Node\Expr\Ternary;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\String_;
 use ReflectionClass;
 use ReflectionMethod;
 use ReflectionNamedType;
@@ -42,6 +44,7 @@ use ReflectionUnionType;
  */
 final class ReceiverClassResolver
 {
+    use InspectsAstNodes;
     use ReadsInstanceofChains;
 
     /**
@@ -130,6 +133,39 @@ final class ReceiverClassResolver
     }
 
     /**
+     * The classes a method's own `return` statements name, read from its body without running it: the class each
+     * returned object holds, or the class a returned `X::class` spells; null when any return names none.
+     *
+     * For a method that answers with an object or its class name alike, such as `Castable::castUsing()`.
+     *
+     * @return non-empty-list<class-string>|null
+     */
+    public function bodyReturnClasses(string $class, string $method): ?array
+    {
+        $context = resolve(MethodLocator::class)->locate($class, $method);
+
+        if ($context === null) {
+            return null;
+        }
+
+        $scope = resolve(AstEngine::class)->bindingsFor($context);
+        $classes = [];
+
+        foreach ($this->collectReturnExpressions($context->method->stmts ?? []) as $returned) {
+            $className = $this->classNameFetch($returned);
+            $held = $className === null ? $this->resolve($returned, $scope) : $this->namedClass($className, $scope);
+
+            if ($held === null) {
+                return null;
+            }
+
+            $classes = [...$classes, ...$held->classes];
+        }
+
+        return $classes === [] ? null : array_values(array_unique($classes));
+    }
+
+    /**
      * The class a bare `$this->m()` runs on when the subject does not declare `m`: its proxy target.
      *
      * `JsonResource::__call()` forwards an undeclared method to `$this->resource`, so the call is
@@ -194,6 +230,13 @@ final class ReceiverClassResolver
         // through; varModelBindings is the same concern for a narrowed closure param or loop variable.
         if (isset($scope->varClassBindings[$name])) {
             return new ReceiverType($scope->varClassBindings[$name]);
+        }
+
+        $guard = $scope->varGuardBindings[$name] ?? null;
+
+        // A guard proves its class only for a read past it: an earlier return still holds whatever the variable does.
+        if ($guard !== null && $variable->getStartFilePos() > $guard['after']) {
+            return new ReceiverType($guard['classes']);
         }
 
         if (isset($scope->varModelBindings[$name])) {
@@ -309,6 +352,12 @@ final class ReceiverClassResolver
 
         if ($method === 'getRelated' && $receiver->relatedModel !== null) {
             return ReceiverType::of($receiver->relatedModel, $shortCircuits);
+        }
+
+        $loaded = $method === 'getRelation' ? $this->loadedRelation($call, $receiver, $shortCircuits) : null;
+
+        if ($loaded !== null) {
+            return $loaded;
         }
 
         $authModel = $method === 'user' && $this->holdsOnlyRequests($receiver) ? resolve(AuthUserResolver::class)->model() : null;
@@ -506,13 +555,45 @@ final class ReceiverClassResolver
      */
     private function modelMember(string $model, string $name): ?ReceiverType
     {
-        $resolver = resolve(ModelAttributeResolver::class);
-        $attributeClass = $resolver->resolveAttributeClass($model, $name);
+        $attributeClass = resolve(ModelAttributeResolver::class)->resolveAttributeClass($model, $name);
 
-        if ($attributeClass !== null) {
-            return ReceiverType::of($attributeClass);
+        return $attributeClass === null ? $this->relationMember($model, $name) : ReceiverType::of($attributeClass);
+    }
+
+    /**
+     * What a model's `getRelation('name')` hands back: the relation loaded under that name on each model it may be
+     * called on, since it throws for a name that is not loaded.
+     */
+    private function loadedRelation(
+        MethodCall|NullsafeMethodCall $call,
+        ReceiverType $receiver,
+        bool $shortCircuits,
+    ): ?ReceiverType {
+        $name = ($call->getArgs()[0] ?? null)?->value;
+
+        if (! $name instanceof String_) {
+            return null;
         }
 
+        return $this->merge(
+            array_map(
+                fn (string $class): ?ReceiverType => is_a($class, Model::class, true)
+                    ? $this->relationMember($class, $name->value)
+                    : null,
+                $receiver->classes,
+            ),
+            $shortCircuits,
+        );
+    }
+
+    /**
+     * What a model relation holds once loaded: its related model, a collection of them, or any of a morphTo's targets.
+     *
+     * @param  class-string<Model>  $model
+     */
+    private function relationMember(string $model, string $name): ?ReceiverType
+    {
+        $resolver = resolve(ModelAttributeResolver::class);
         $relation = $resolver->resolveRelation($model, $name);
 
         if ($relation['morphFqcns'] !== []) {
@@ -581,18 +662,22 @@ final class ReceiverClassResolver
     private function containerClass(FuncCall $call): ?ReceiverType
     {
         $abstract = ($call->getArgs()[0] ?? null)?->value;
+        $class = $abstract === null ? null : $this->classNameFetch($abstract)?->toString();
 
-        if (! $abstract instanceof ClassConstFetch
-            || ! $abstract->class instanceof Name
-            || ! $abstract->name instanceof Identifier
-            || $abstract->name->toLowerString() !== 'class'
-        ) {
-            return null;
-        }
+        return $class !== null && $this->isClassLike($class) ? ReceiverType::of($class) : null;
+    }
 
-        $class = $abstract->class->toString();
-
-        return $this->isClassLike($class) ? ReceiverType::of($class) : null;
+    /**
+     * The name an `X::class` fetch spells, or null for any other expression.
+     */
+    private function classNameFetch(Expr $expr): ?Name
+    {
+        return $expr instanceof ClassConstFetch
+            && $expr->class instanceof Name
+            && $expr->name instanceof Identifier
+            && $expr->name->toLowerString() === 'class'
+                ? $expr->class
+                : null;
     }
 
     /**

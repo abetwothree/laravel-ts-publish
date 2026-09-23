@@ -34,6 +34,7 @@ use ReflectionClass;
  *
  * @phpstan-type ClosureParamExprBindingsMap array<string, Expr>
  * @phpstan-type VarClassBindingsMap array<string, non-empty-list<class-string>>
+ * @phpstan-type VarGuardBindingsMap array<string, array{classes: non-empty-list<class-string>, after: int}>
  * @phpstan-type VarModelBindingsMap array<string, class-string<Model>>
  * @phpstan-type VarCollectionBindingsMap array<string, array{type: string, modelFqcn: class-string<Model>}>
  * @phpstan-type VarValueBindingsMap array<string, ValueExpressionResult>
@@ -42,6 +43,7 @@ use ReflectionClass;
  * @phpstan-type NameBindingsSnapshot array{
  *      closureParamExprBindings: ClosureParamExprBindingsMap,
  *      varClassBindings: VarClassBindingsMap,
+ *      varGuardBindings: VarGuardBindingsMap,
  *      varModelBindings: VarModelBindingsMap,
  *      varCollectionBindings: VarCollectionBindingsMap,
  *      varValueBindings: VarValueBindingsMap,
@@ -96,13 +98,22 @@ final class AnalysisScope
     public array $closureParamExprBindings = [];
 
     /**
-     * Variables an `instanceof` guard or ternary has proven to hold a class. Read before
-     * varModelBindings, since a narrowed variable is usually also bound to its parent model and that
-     * binding would otherwise win. Scoped: writers save and restore around the body.
+     * Variables known to hold one of some classes: a ternary's `instanceof` test proves one, and a morphTo
+     * `whenLoaded()` closure parameter holds any of its targets. Read before varModelBindings, since a narrowed
+     * variable is usually also bound to its parent model and that binding would otherwise win. Scoped: writers save
+     * and restore around the body.
      *
      * @var VarClassBindingsMap
      */
     public array $varClassBindings = [];
+
+    /**
+     * Variables an early-exit `instanceof` guard proves to hold a class, with the file offset the guard's `if` ends at:
+     * the proof holds only for a read past that offset. Read right after varClassBindings, and scoped like it.
+     *
+     * @var VarGuardBindingsMap
+     */
+    public array $varGuardBindings = [];
 
     /**
      * Names bound to a model class, so `$var`, `$var->prop`, `$var->method()` resolve against it: a to-one whenLoaded,
@@ -203,6 +214,7 @@ final class AnalysisScope
         return [
             'closureParamExprBindings' => $this->closureParamExprBindings,
             'varClassBindings' => $this->varClassBindings,
+            'varGuardBindings' => $this->varGuardBindings,
             'varModelBindings' => $this->varModelBindings,
             'varCollectionBindings' => $this->varCollectionBindings,
             'varValueBindings' => $this->varValueBindings,
@@ -221,6 +233,7 @@ final class AnalysisScope
     {
         $this->closureParamExprBindings = $snapshot['closureParamExprBindings'];
         $this->varClassBindings = $snapshot['varClassBindings'];
+        $this->varGuardBindings = $snapshot['varGuardBindings'];
         $this->varModelBindings = $snapshot['varModelBindings'];
         $this->varCollectionBindings = $snapshot['varCollectionBindings'];
         $this->varValueBindings = $snapshot['varValueBindings'];
@@ -295,6 +308,10 @@ final class AnalysisScope
 
         if (isset($snapshot['varClassBindings'][$from])) {
             $this->varClassBindings[$to] = $snapshot['varClassBindings'][$from];
+        }
+
+        if (isset($snapshot['varGuardBindings'][$from])) {
+            $this->varGuardBindings[$to] = $snapshot['varGuardBindings'][$from];
         }
 
         if (isset($snapshot['varModelBindings'][$from])) {
@@ -382,6 +399,7 @@ final class AnalysisScope
             unset(
                 $this->closureParamExprBindings[$name],
                 $this->varClassBindings[$name],
+                $this->varGuardBindings[$name],
                 $this->varModelBindings[$name],
                 $this->varCollectionBindings[$name],
                 $this->varValueBindings[$name],

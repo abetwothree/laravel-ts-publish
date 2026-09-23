@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish;
 
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesAccessorType;
 use AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo;
@@ -447,7 +448,7 @@ class ModelAttributeResolver
         }
 
         if (is_a($head, Castable::class, true)) {
-            return $this->castableValueClass($head, $cast);
+            return $this->castableValueClass($head);
         }
 
         if (is_a($head, CastsAttributes::class, true)) {
@@ -529,25 +530,39 @@ class ModelAttributeResolver
     }
 
     /**
-     * The class a `Castable` cast's value is: the native `get()` return of the caster `castUsing()` builds.
+     * The class a `Castable` cast's value is: the native `get()` return of the caster its `castUsing()` names.
      *
-     * Laravel's own `AsCollection`/`AsStringable` casters are anonymous classes with no `get()` return type, so they
-     * answer null rather than naming the Castable itself, which the value never is.
+     * Read, never called, since `castUsing()` is application code: its declared return first, then what its returns
+     * build or spell. Laravel's own `AsCollection`/`AsStringable` casters are anonymous classes, so they answer null
+     * rather than naming the Castable itself, which the value never is.
      *
      * @param  class-string<Castable>  $castable
      * @return class-string|null
      */
-    protected function castableValueClass(string $castable, string $cast): ?string
+    protected function castableValueClass(string $castable): ?string
     {
-        try {
-            $caster = $castable::castUsing(str_contains($cast, ':') ? explode(',', Str::after($cast, ':')) : []);
-        } catch (Throwable) {
-            return null;
-        }
+        $receivers = resolve(ReceiverClassResolver::class);
 
-        $casterClass = is_object($caster) ? $caster::class : $caster;
+        return $this->castersValueClass($receivers->returnClasses($castable, 'castUsing'))
+            ?? $this->castersValueClass($receivers->bodyReturnClasses($castable, 'castUsing'));
+    }
 
-        return is_a($casterClass, CastsAttributes::class, true) ? $this->methodReturnClass($casterClass, 'get') : null;
+    /**
+     * The one class every caster's native `get()` return names; null when one is no `CastsAttributes` or they differ.
+     *
+     * @param  list<class-string>|null  $casters
+     * @return class-string|null
+     */
+    protected function castersValueClass(?array $casters): ?string
+    {
+        $classes = array_unique(array_map(
+            fn (string $caster): ?string => is_a($caster, CastsAttributes::class, true)
+                ? $this->methodReturnClass($caster, 'get')
+                : null,
+            $casters ?? [],
+        ));
+
+        return count($classes) === 1 ? reset($classes) : null;
     }
 
     /**

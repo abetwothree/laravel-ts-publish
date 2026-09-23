@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsInstanceofGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
@@ -19,13 +20,17 @@ use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CountingCastable;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendingModelFilterOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastablePostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassTypedFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CollectionMemberModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DocblockFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilterOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\GuardOrderResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\HiddenFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ListTypedFilterOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MagicPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NarrowingGuardBodyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverIntegerKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverMethodProbe;
@@ -42,6 +47,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\VisibleFilterOverrideMo
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Fluent;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
@@ -121,6 +127,16 @@ describe('ReceiverMethodCallHandler through the resource analyzer', function () 
             'resource_author_fresh' => 'User | null',
             'resource_author_fresh_nullsafe' => 'User | null',
         ]);
+    });
+
+    test('a method read through a Castable-cast column types from its caster without running castUsing()', function () {
+        CountingCastable::$calls = 0;
+
+        $props = collect(resolve(AstEngine::class)->analyze(CastablePostResource::class)->properties)
+            ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+
+        expect($props->all())->toBe(['title_label' => 'string', 'options_label' => 'unknown'])
+            ->and(CountingCastable::$calls)->toBe(0);
     });
 
     test('getKey and modelKeys type from the receiver model key type', function () {
@@ -607,6 +623,19 @@ describe('ReceiverPropertyFetchHandler', function () {
         expect(LaravelTsPublish::propertyTypes(new ReflectionClass(ReceiverVarProbe::class), 'anyModel')['classFqcns'])->toBe([Model::class])
             ->and($handler->resolve(receiverHandlerExpr('$probe->anyModel'), $scope, chainHandlersThrowingEngine()))->toBeNull();
     });
+
+    // PHP sends an outside read of a non-public or static property to __get(), never to the declaration.
+    test('only a public instance property types a read from outside the class', function () {
+        $handler = new ReceiverPropertyFetchHandler;
+        $scope = receiverProbeScope();
+        $scope->localVarBindings['post'] = receiverHandlerExpr('new '.MagicPost::class);
+
+        expect($handler->resolve(receiverHandlerExpr('$post->title'), $scope, chainHandlersThrowingEngine())['type'] ?? null)->toBe('string')
+            ->and($handler->resolve(receiverHandlerExpr('$post->status'), $scope, chainHandlersThrowingEngine()))->toBeNull()
+            ->and($handler->resolve(receiverHandlerExpr('$post->data'), $scope, chainHandlersThrowingEngine()))->toBeNull()
+            ->and($handler->resolve(receiverHandlerExpr('$post->kind'), $scope, chainHandlersThrowingEngine()))->toBeNull()
+            ->and($handler->resolve(receiverHandlerExpr('(new '.Fluent::class.')->attributes'), $scope, chainHandlersThrowingEngine()))->toBeNull();
+    });
 });
 
 describe('a property the subject declares wins over the model', function () {
@@ -712,7 +741,7 @@ describe('PropertyChainHandler declines an unknown-only chain', function () {
 });
 
 /**
- * The varClassBindings collectInstanceofGuards() writes for one parsed method body.
+ * The classes of each guard binding collectInstanceofGuards() writes for one parsed method body.
  *
  * @return array<string, non-empty-list<class-string>>
  */
@@ -735,7 +764,7 @@ function narrowingBindings(string $body): array
 
     $host->run($stmts, $scope);
 
-    return $scope->varClassBindings;
+    return array_map(fn (array $guard): array => $guard['classes'], $scope->varGuardBindings);
 }
 
 describe('narrowing', function () {
@@ -787,9 +816,20 @@ describe('narrowing', function () {
         expect(narrowingBindings('$a = 1; $a = 2; if (! $a instanceof \Workbench\App\Models\Post) { return; }'))->toBe([]);
     });
 
-    test('a guard body that reads the guarded variable binds nothing', function () {
+    test('a guard body that reads the guarded variable still binds, for the statements after the guard', function () {
         expect(narrowingBindings('$a = $this->author; if (! $a instanceof \Workbench\App\Models\Post) { return $a->title; }'))
-            ->toBe([]);
+            ->toBe(['a' => [Post::class]]);
+    });
+
+    test('an early-exit guard narrows only the statements after it, in a method body and in a closure body', function () {
+        $props = collect(resolve(AstEngine::class)->analyze(GuardOrderResource::class)->properties)
+            ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+
+        expect($props->all())->toBe([
+            'early' => 'number | string',
+            'late' => 'number',
+            'deferred' => 'number | string | null',
+        ]);
     });
 
     test('a guard body that reads nothing binds, including through an || chain and a throw exit', function () {

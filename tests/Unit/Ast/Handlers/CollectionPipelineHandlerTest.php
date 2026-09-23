@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CollectionPipelineHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownFunctionCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\VariableHandler;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostValuesResource;
 use PhpParser\Node\Expr;
 use Workbench\App\Http\Resources\CollectionPipelineResource;
 use Workbench\App\Models\Post;
@@ -75,6 +77,21 @@ test('the all() peel keeps a keyed arm the receiver really carries', function ()
 
     expect(new VariableHandler()->resolve($expr, $scope, $engine)['type'])
         ->toBe('number[] | Record<string, number>');
+});
+
+// values() re-indexes a keyed collection into a list, and all() hands its array back; a class that is not a collection
+// answers both from its own signatures, whatever its public properties are.
+test('a trailing values() or all() keeps the receiver\'s type only on a collection', function () {
+    $props = collect(resolve(AstEngine::class)->analyze(PostValuesResource::class)->properties)
+        ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+
+    expect($props->all())->toBe([
+        'values' => 'number[]',
+        'all' => 'Record<string, number>',
+        'values_all' => 'number[]',
+        'settings_values' => '(string | number)[]',
+        'settings_all' => 'Record<string, string>',
+    ]);
 });
 
 test('a collect() root whose keys broke carries the keyed Record arm', function () {

@@ -13,7 +13,6 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Stmt\Expression as ExpressionStmt;
 use PhpParser\Node\Stmt\If_;
 use PhpParser\Node\Stmt\Return_;
-use PhpParser\NodeFinder;
 
 /**
  * The early-exit `instanceof` guard pass. Hosts must also use CollectsLocalVarBindings: its write
@@ -26,7 +25,10 @@ trait CollectsInstanceofGuards
     use ReadsInstanceofChains;
 
     /**
-     * Bind variables an early-exit `if (! $x instanceof C)` guard proves to be a C for the rest of the body.
+     * Bind variables an early-exit `if (! $x instanceof C)` guard proves to be a C, for the statements after it.
+     *
+     * The binding carries the offset the guard ends at, so a return placed before the guard, or the guard's own body,
+     * still reads the variable unnarrowed.
      *
      * @param  array<Node\Stmt>  $stmts
      */
@@ -40,28 +42,11 @@ trait CollectsInstanceofGuards
             }
 
             foreach ($this->negatedInstanceofs($stmt->cond) as [$name, $class]) {
-                if (($writeCounts[$name] ?? 0) <= 1 && ! $this->readsVariable($stmt->stmts, $name)) {
-                    $scope->varClassBindings[$name] = [$class];
+                if (($writeCounts[$name] ?? 0) <= 1) {
+                    $scope->varGuardBindings[$name] = ['classes' => [$class], 'after' => $stmt->getEndFilePos()];
                 }
             }
         }
-    }
-
-    /**
-     * Whether a guard body mentions the variable it guards — the one branch proving it is NOT that class.
-     *
-     * This binding is method-wide with no position tracking, so it would otherwise also be in force while
-     * the guard's own body is analyzed, and that body is live: `analyzeThisMethodSpread()` reads the first
-     * return, which for a guarded method is the guard's own.
-     *
-     * @param  array<Node\Stmt>  $stmts
-     */
-    private function readsVariable(array $stmts, string $name): bool
-    {
-        return new NodeFinder()->findFirst(
-            $stmts,
-            fn (Node $node): bool => $node instanceof Variable && $node->name === $name,
-        ) !== null;
     }
 
     /**

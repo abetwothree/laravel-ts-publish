@@ -4,13 +4,16 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
+use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 
 /**
- * Spell the object arm `json_encode()` emits for a collection whose keys are no longer 0..n-1.
+ * Spell the object arm `json_encode()` emits for a collection whose keys are no longer 0..n-1, and the list `values()`
+ * turns it back into.
  *
- * The single home for this: RelationCollectionChainHandler reaches it from a relation root,
- * CollectionPipelineHandler from a `collect()` root.
+ * The single home for both: RelationCollectionChainHandler adds the arm from a relation root, CollectionPipelineHandler
+ * from a `collect()` root, and VariableHandler reads a trailing `values()` through the list.
  *
  * @internal
  */
@@ -25,19 +28,29 @@ trait SpellsKeyedCollections
     }
 
     /**
-     * Undo keyedObjectArm(): `X[] | Record<string, X>` → `X[]`, leaving any other type untouched.
-     *
-     * Reverses only the exact string that method produces, so a union that genuinely carries a
-     * `Record` member of its own is never silently narrowed.
+     * The list `values()` re-indexes a collection of this type into, arm by arm: `Record<K, V>` → `V[]`, while `V[]`
+     * and a short-circuit `null` stay; null when any other arm leaves the element type unknown.
      */
-    protected function withoutKeyedObjectArm(string $type): string
+    protected function valuesList(string $type): ?string
     {
-        $members = TsTypeString::splitTopLevelUnion($type);
+        $lists = [];
 
-        if (count($members) !== 2 || ! str_ends_with($members[0], '[]')) {
-            return $type;
+        foreach (TsTypeString::splitTopLevelUnion($type) as $arm) {
+            $record = str_starts_with($arm, 'Record<') ? TsTypeShape::memberType($arm, '') : null;
+
+            $list = match (true) {
+                $arm === 'null', TsTypeShape::elementType($arm) !== null => $arm,
+                $record !== null => ValueResult::arrayWrapType($record),
+                default => null,
+            };
+
+            if ($list === null) {
+                return null;
+            }
+
+            $lists[] = $list;
         }
 
-        return $type === $this->keyedObjectArm($members[0]) ? $members[0] : $type;
+        return $lists === [] ? null : TsTypeString::hoistNull($lists);
     }
 }

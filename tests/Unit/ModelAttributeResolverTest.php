@@ -6,6 +6,8 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastablePost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CountingCastable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MissingTableModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\InvalidPivotClassParent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\InverseMorphToManyParent;
@@ -105,6 +107,22 @@ describe('resolveAttributeClass() edge cases', function () {
     test('a Castable cast is asked for its caster before its own CastsAttributes get()', function () {
         expect(resolve(ModelAttributeResolver::class)->resolveAttributeClass(ReceiverAttributeBaseModel::class, 'content'))
             ->toBe(Coordinate::class);
+    });
+
+    // castUsing() is application code with arbitrary side effects, so its caster is read from its declaration and
+    // its return statements; each Castable here names CoordinateCast a different way.
+    test('a Castable caster is read without ever calling castUsing()', function () {
+        CountingCastable::$calls = 0;
+        $resolver = resolve(ModelAttributeResolver::class);
+
+        expect($resolver->resolveAttributeClass(CastablePost::class, 'title'))->toBe(Coordinate::class)
+            ->and($resolver->resolveAttributeClass(CastablePost::class, 'content'))->toBe(Coordinate::class)
+            ->and($resolver->resolveAttributeClass(CastablePost::class, 'metadata'))->toBe(Coordinate::class)
+            ->and(CountingCastable::$calls)->toBe(0);
+    });
+
+    test('a caster only a call to castUsing() could name holds no class', function () {
+        expect(resolve(ModelAttributeResolver::class)->resolveAttributeClass(CastablePost::class, 'options'))->toBeNull();
     });
 
     test('a native getter type is authoritative even when the Attribute docblock names a class', function () {

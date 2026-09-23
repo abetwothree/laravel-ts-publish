@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConstantKeyFixture;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConstantKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilteringAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\InheritedFilterRelease;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostMetaService;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RecursiveVagueFixture;
 use Workbench\App\Http\Resources\ServiceReturnResource;
 use Workbench\App\Models\Post;
@@ -41,6 +42,25 @@ test('a numeric constant key is dropped when the analyzed subject is a resource'
     expect(resolve(MethodReturnTypeResolver::class)->resolve(ConstantKeyResource::class, 'shape'))
         ->toBe(['type' => '{ external: string }', 'optional' => false]);
 });
+
+// The body's shape stands in for the declaration's array arm only: every other arm it names stays, and a return the
+// shape does not describe hands the answer back to the declaration.
+test('a body fallback keeps the declaration\'s other arms, or declines for a return the shape does not describe', function (string $method, ?string $expected) {
+    expect(resolve(MethodReturnTypeResolver::class)->resolve(PostMetaService::class, $method)['type'] ?? null)
+        ->toBe($expected);
+})->with([
+    'a nullable array returning null early' => ['nullableMeta', '{ id: number } | null'],
+    'a nullable array never returning null' => ['declaredNullableMeta', '{ id: number } | null'],
+    'an array or false' => ['metaOrFalse', '{ id: number } | false'],
+    'an array or a string' => ['metaOrLabel', '{ id: number } | string'],
+    'no declaration, with a string return' => ['untypedMeta', null],
+    'no declaration, with a bare return' => ['bareReturnMeta', null],
+    'a mixed declaration, with a false return' => ['mixedMeta', null],
+    'an iterable, with an iterator return' => ['iterableMeta', 'unknown[]'],
+    'an array, with a return of another call' => ['delegatingMeta', 'unknown[]'],
+    'an array, with literals inside a try' => ['guardedMeta', 'unknown[]'],
+    'a generator' => ['generatedMeta', 'unknown[]'],
+]);
 
 test('a precise declaration is kept, and an absent method declines', function () {
     expect(resolve(MethodReturnTypeResolver::class)->resolve(PostStatsService::class, 'summary'))

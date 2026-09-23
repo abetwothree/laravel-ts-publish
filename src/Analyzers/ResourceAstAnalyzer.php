@@ -752,7 +752,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
     /**
      * Resolve and analyze a $this->method() spread; $topLevel carries the caller's own
      * flatten-eligibility down into the target's own return (see analyzeReturnArray()).
-     * $localVarBindings/$resolvingLocalVars/$varModelBindings/$varClassBindings save/clear/restore via `finally`.
+     * $localVarBindings/$resolvingLocalVars/$varModelBindings/$varClassBindings/$varGuardBindings
+     * save/clear/restore via `finally`.
      */
     protected function analyzeThisMethodSpread(string $methodName, bool $topLevel = true): ?ResourceAnalysis
     {
@@ -778,12 +779,14 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $previousResolvingLocalVars = $this->scope->resolvingLocalVars;
         $previousVarModelBindings = $this->scope->varModelBindings;
         $previousVarClassBindings = $this->scope->varClassBindings;
+        $previousVarGuardBindings = $this->scope->varGuardBindings;
         $previousRequestVarNames = $this->scope->requestVarNames;
         try {
             $this->scope->localVarBindings = [];
             $this->scope->resolvingLocalVars = [];
             $this->scope->varModelBindings = [];
             $this->scope->varClassBindings = [];
+            $this->scope->varGuardBindings = [];
             // The spread method has its own signature: the entry method's Request params say nothing
             // about which of ITS variables hold one. analyzeParentToArray() re-derives the same way.
             $this->scope->requestVarNames = $this->resolveRequestVarNames($methodName);
@@ -810,6 +813,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $this->scope->resolvingLocalVars = $previousResolvingLocalVars;
             $this->scope->varModelBindings = $previousVarModelBindings;
             $this->scope->varClassBindings = $previousVarClassBindings;
+            $this->scope->varGuardBindings = $previousVarGuardBindings;
             $this->scope->requestVarNames = $previousRequestVarNames;
             unset($this->scope->visitedSpreadMethods[$methodName]);
         }
