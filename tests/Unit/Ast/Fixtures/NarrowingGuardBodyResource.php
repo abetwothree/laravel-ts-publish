@@ -10,11 +10,9 @@ use RuntimeException;
 use Workbench\App\Models\Post;
 
 /**
- * Both halves of the guard-body rule, read through analyzeThisMethodSpread()'s branch sweep.
- *
- * `author` is a User, and User has no `title`, so a narrowing that reaches the wrong branch shows
- * as a `string` arm. dirtyRows() classifies both of its returns, so dirty_label drops the untypable
- * branch, as a ternary drops an untypable arm, and keeps the other branch's `number`.
+ * Both halves of the guard-body rule, read through analyzeThisMethodSpread()'s branch sweep. `author` is a User,
+ * which has no `title`, so a narrowing that reaches the guard's own branch shows as a `string` arm; dirty_label drops
+ * that untypable branch, as a ternary drops an untypable arm, and keeps the other branch's `number`.
  *
  * @mixin Post
  */
@@ -32,7 +30,7 @@ final class NarrowingGuardBodyResource extends JsonResource
     }
 
     /**
-     * The guard's own body reads $parent — the branch proving $parent is NOT a Post — so nothing binds.
+     * The guard's own body reads $parent, in the branch proving $parent is NOT a Post, so that read is not narrowed.
      *
      * @return array<string, mixed>
      */

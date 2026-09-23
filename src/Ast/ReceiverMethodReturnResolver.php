@@ -35,9 +35,8 @@ final class ReceiverMethodReturnResolver
     /**
      * Type a method on every class the receiver holds, unioning the answers.
      *
-     * @param  bool  $fromInside  a non-public method is reachable, as through `self::`, `static::` or `parent::`. For
-     *                            direct callers resolving the analyzed class's own body: dispatch never passes it today,
-     *                            because StaticCallHandler answers every call on a named class first.
+     * @param  bool  $fromInside  a non-public method is reachable, as through `self::`, `static::` or `parent::`; only
+     *                            a direct caller passes it: StaticCallHandler answers every named-class call first
      * @param  MethodCall|NullsafeMethodCall|StaticCall|null  $call  the call node, for a rule that reads its arguments
      * @return ValueExpressionResult|null null when any receiver class cannot type the method
      */
@@ -123,12 +122,9 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
-     * `only()`/`except()` on a receiver holding exactly one model class, typed as that model's own filtered members.
-     *
-     * Builds exactly what RelationFilterHandler builds for a relation to the same model, from the same helpers, so the
-     * two agree wherever both claim a call, including `Record<string, unknown>` for a key list that is not literal.
-     * A literal list naming nothing typed gets it too, where RelationFilterHandler declines and leaves the call here.
-     * A StaticCall carries no filter keys this can read, so it declines.
+     * `only()`/`except()` on a receiver holding one model class, built from RelationFilterHandler's helpers so the two
+     * agree wherever both claim a call. It also answers a literal list naming nothing typed, which that handler
+     * declines; a StaticCall carries no key list this can read, so it declines.
      *
      * @return ValueExpressionResult|null
      */
@@ -166,10 +162,8 @@ final class ReceiverMethodReturnResolver
 
     /**
      * An `only()`/`except()` answer where the scope imports nothing, such as an override declaring `: static`.
-     *
-     * The body fallback drops a whole shape naming a token. So a top-level arm that is a model, or a list of one, is
-     * spelled as the object that model serializes to; any other token, such as an enum or a nested model, leaves
-     * `unknown`.
+     * The body fallback drops a whole shape naming a token, so a top-level model arm, or a list of one, is spelled as
+     * the object it serializes to; any other token, such as an enum or a nested model, leaves `unknown`.
      *
      * @param  ValueExpressionResult  $result
      * @param  MethodCall|NullsafeMethodCall|StaticCall|null  $call  the call whose key list shapes a returned model
@@ -211,12 +205,9 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
-     * The object a model an override returns serializes to, as the call's literal keys select it from the attributes
-     * that model writes, its columns and appended accessors: those `only()` names, or all but those `except()` names.
-     *
-     * The value is the whole model, so any subset of what it writes is true of it. A `$hidden` attribute, one
-     * `$visible` leaves out, and an accessor not appended never reach JSON, so they are never named. A member whose
-     * type names a token is `unknown`. A runtime key list, or keys selecting nothing, leaves `Record<string, unknown>`.
+     * The object a model an override returns serializes to: the columns and appended accessors it writes, narrowed to
+     * the call's literal keys. What `$hidden`, `$visible` or a missing append keeps out never reaches JSON, so it is
+     * never named; a member naming a token is `unknown`, and runtime or empty keys leave `Record<string, unknown>`.
      *
      * @param  class-string<Model>  $model
      * @param  list<string>|null  $keys

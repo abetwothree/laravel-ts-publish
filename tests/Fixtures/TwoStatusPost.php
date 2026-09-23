@@ -17,16 +17,6 @@ class TwoStatusPost extends Model
     protected $table = 'posts';
 
     /**
-     * The status column's enum.
-     *
-     * @return array<string, string>
-     */
-    protected function casts(): array
-    {
-        return ['status' => Status::class];
-    }
-
-    /**
      * The CRM user sharing this post's author id, whose own status is the CRM enum.
      *
      * @return BelongsTo<CrmUser, $this>
@@ -34,6 +24,16 @@ class TwoStatusPost extends Model
     public function crmAuthor(): BelongsTo
     {
         return $this->belongsTo(CrmUser::class, 'user_id');
+    }
+
+    /**
+     * The status column's enum.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return ['status' => Status::class];
     }
 
     /** An untyped getter that may return either enum. */

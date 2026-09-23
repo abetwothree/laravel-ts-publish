@@ -109,11 +109,9 @@ trait ResolvesAccessorType
     }
 
     /**
-     * The getter body's type when it beats the vague annotations, or null to fall back to them.
-     *
-     * A reader that carries no import gets the getter analyzed without imports. That spelling can be vague where the
-     * published one is not, `unknown[]` for `Comment[]`. It then wins only over a fallback that is `unknown` or names a
-     * class the reader cannot import; any other fallback wins, as it does whenever the body is vague.
+     * The getter body's type when it beats the vague annotations, or null to fall back to them. Without imports the
+     * spelling can be vague where the published one is not (`unknown[]` for `Comment[]`); it then wins only over a
+     * fallback that is `unknown` or names a class the reader cannot import.
      *
      * @param  class-string<Model>  $modelFqcn
      * @param  TypeScriptTypeInfo  $fallbackReturn  what the waterfall yields when the body step declines

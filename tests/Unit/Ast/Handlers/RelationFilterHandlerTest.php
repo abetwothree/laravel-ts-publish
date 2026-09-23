@@ -56,16 +56,19 @@ function relationFilterStubEngine(array $result): ExpressionEngine
         /** @param  array{type: string, optional: bool}  $result */
         public function __construct(private array $result) {}
 
+        /** Answers every expression with the canned result. */
         public function resolve(Expr $expr): array
         {
             return $this->result;
         }
 
+        /** Fails the test: no method is spread in this case. */
         public function spreadAnalysis(string $methodName): ?MethodAnalysis
         {
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
+        /** Fails the test: no array is analyzed in this case. */
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
         {
             throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
@@ -201,7 +204,7 @@ it('resolves $this->resource->relation->only([...]) exactly as $this->relation->
     expect($result)->toBe(['type' => "Pick<Post, 'id' | 'title'>", 'optional' => false, 'modelFqcn' => Post::class]);
 });
 
-// Each of these used to be claimed as `unknown`, which kept the receiver rules and every later handler from answering.
+// Claiming these as `unknown` would keep the receiver rules and every later handler from answering.
 it('declines a filter it cannot type so a later handler gets its turn', function (Expr $receiver, array $keys) {
     $expr = new MethodCall(
         $receiver,
@@ -425,9 +428,9 @@ it('binds no map proxy element model from a single relation, under both spelling
     '$this->resource->author->map->only([\'id\'])',
 ]);
 
-// MethodReturnTypeResolver's body fallback flattens a method body into a type with no FQCN channel and drops the whole
-// shape once a value names a token, so there a filter publishes the most specific answer that names none: a member whose
-// type names a token, such as an enum or class cast column or a relation to a model, is `unknown`, and the rest keep theirs.
+// The body fallback flattens a method body into a type with no FQCN channel and drops a shape naming a token, so there
+// a filter publishes the most specific answer that names none: a member whose type names a token, such as an enum or
+// class cast column or a relation, is `unknown`, and the rest keep theirs.
 it('publishes a relation filter that names no token where the scope carries no import', function (string $model, string $php, array $expected) {
     $scope = new AnalysisScope(new ReflectionClass($model), $model);
     $scope->carriesImports = false;

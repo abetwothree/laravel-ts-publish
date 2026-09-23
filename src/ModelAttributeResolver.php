@@ -154,7 +154,12 @@ class ModelAttributeResolver
      * suffix fallbacks are a fixed number/boolean guess.
      *
      * @param  class-string  $modelFqcn
-     * @param  array{attributes: Collection<int, AttributeInfo>, relations: Collection<int, RelationInfo>, reflection: ReflectionClass<Model>, ...}  $ctx
+     * @param  array{
+     *     attributes: Collection<int, AttributeInfo>,
+     *     relations: Collection<int, RelationInfo>,
+     *     reflection: ReflectionClass<Model>,
+     *     ...
+     * }  $ctx
      * @return TypeScriptTypeInfo
      */
     protected function resolveAttributeFallbacks(string $modelFqcn, array $ctx, string $attributeName, bool $carriesImports): array
@@ -205,11 +210,9 @@ class ModelAttributeResolver
     }
 
     /**
-     * Refine an accessor's vague type from an `@property` tag.
-     *
-     * Without imports a vague answer can spell a precise published one, `unknown[]` for a getter's `Comment[]`. No tag
-     * refines that published type, so a tag naming a class may not turn the spelling into a token the reader cannot
-     * import. A token-free tag refines it as it refines any vague type.
+     * Refine an accessor's vague type from an `@property` tag. Without imports a vague spelling can stand for a
+     * precise published type (`unknown[]` for `Comment[]`) that no tag refines, so a tag naming a class leaves it
+     * alone; a token-free tag refines it as it refines any vague type.
      *
      * @param  array{instance: Model, reflection: ReflectionClass<Model>, ...}  $ctx
      * @param  TypeScriptTypeInfo  $accessorInfo
@@ -386,7 +389,7 @@ class ModelAttributeResolver
     }
 
     /**
-     * The PHP class an attribute's value is an instance of: its enum, date, or class cast, or its accessor's return class.
+     * The PHP class an attribute's value is an instance of: its enum, date or class cast, or its accessor's return.
      *
      * Only an attribute the model inspector lists answers; a name typed by an `@property` tag alone has no class.
      *
@@ -495,7 +498,7 @@ class ModelAttributeResolver
     }
 
     /**
-     * The one class an `Attribute<Get, Set>` docblock's Get argument names, ignoring a `null` arm and generic arguments.
+     * The one class an `Attribute<Get, Set>` docblock's Get argument names, ignoring a `null` arm and generic args.
      *
      * @return class-string|null
      */
@@ -531,11 +534,9 @@ class ModelAttributeResolver
     }
 
     /**
-     * The class a `Castable` cast's value is: the native `get()` return of the caster its `castUsing()` names.
-     *
-     * Read, never called, since `castUsing()` is application code: its declared return first, then what its returns
-     * build or spell. Laravel's own `AsCollection`/`AsStringable` casters are anonymous classes, so they answer null
-     * rather than naming the Castable itself, which the value never is.
+     * The class a `Castable` cast's value is: the native `get()` return of the caster its `castUsing()` names, read
+     * from its declared return, then its returns, and never called, since it is application code. Laravel's own
+     * casters are anonymous classes, so they answer null, never the Castable itself, which the value never is.
      *
      * @param  class-string<Castable>  $castable
      * @return class-string|null
@@ -854,11 +855,8 @@ class ModelAttributeResolver
     }
 
     /**
-     * The TypeScript spelling of a model's primary key type, or null when the model cannot be instantiated.
-     *
-     * Returns null rather than defaulting, because the callers disagree on the no-instance case: the
-     * receiver rules decline, while the auth and getKey rules fall back to `string`. Folding a default in
-     * here would make an uninstantiable model publish `string` where it currently declines.
+     * The TypeScript spelling of a model's primary key type, or null when the model cannot be instantiated. No default
+     * here: on no instance the receiver rules decline, while the auth and getKey rules fall back to `string`.
      *
      * @param  class-string  $modelFqcn
      */
@@ -1015,11 +1013,9 @@ class ModelAttributeResolver
     }
 
     /**
-     * Return the list of parent model FQCNs that morphTo the given child model under the given
-     * morph (relation) name — falling back to the legacy childFqcn-only bucket (every parent
-     * regardless of name) when no parent declared a relation under that specific name, then
-     * unioning in any parent that instead targets a *subclass* of the given child under the
-     * same morph name, since those rows still satisfy the base child's morphTo.
+     * The parent model FQCNs that morphTo the given child under the given morph name: that name's bucket, else the
+     * legacy childFqcn-only one, plus any parent targeting a subclass of the child under that name, since those rows
+     * still satisfy the base child's morphTo.
      *
      * @param  class-string  $childModelFqcn
      * @return list<class-string>

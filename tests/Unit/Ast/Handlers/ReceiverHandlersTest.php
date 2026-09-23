@@ -427,10 +427,9 @@ describe('ReceiverMethodCallHandler', function () {
         ]);
     });
 
-    // A returned model reaches JSON through toArray(), which writes its columns and its appended accessors, keeping
-    // only the names `$visible` lists, when it lists any, less those `$hidden` lists. So the literal keys select from
-    // those names, whatever `exclude_hidden` says, an accessor it does not append is never named, and a member whose
-    // type names a token is `unknown` there. A runtime key list, or keys selecting nothing, leave a record.
+    // A returned model reaches JSON through toArray(): its columns and appended accessors, kept to `$visible` when that
+    // lists any, less `$hidden`, whatever `exclude_hidden` says. The literal keys select from those names, a member
+    // naming a token is `unknown`, and a runtime key list, or keys selecting nothing, leave a record.
     test('spells a model an override returns as the attributes it serializes, narrowed to the literal keys, where the scope carries no import', function (string $model, string $php, string $type) {
         $engine = new ResourceAstAnalyzer(new ReflectionClass($model), $model, 'toArray', carriesImports: false);
 
@@ -454,8 +453,8 @@ describe('ReceiverMethodCallHandler', function () {
         'a complement selecting nothing' => [VisibleFilterOverrideModel::class, "\$this->except(['id', 'name', 'label'])", 'Record<string, unknown> | null'],
     ]);
 
-    // Only a top-level arm that is a model, or a list of one, is spelled from its columns: a model nested in a shape key
-    // is a leaf the reflected docblock already spells `unknown`.
+    // Only a top-level arm that is a model, or a list of one, is spelled from its columns: a model nested in a shape
+    // key is a leaf the reflected docblock already spells `unknown`.
     test('spells a list of models an override returns as a list of their columns where the scope carries no import', function (string $model, string $php, string $type) {
         $engine = new ResourceAstAnalyzer(new ReflectionClass($model), $model, 'toArray', carriesImports: false);
 
@@ -466,8 +465,8 @@ describe('ReceiverMethodCallHandler', function () {
         'a list of models whose columns name an enum' => [UserListFilterOverrideModel::class, "\$this->only(['id', 'role', 'password'])", '{ id: number; role: unknown }[]'],
     ]);
 
-    // Support\Collection::only()/except() keep the entries whose keys are listed, so the value is a keyed map whether the
-    // collection comes from a cast column, an accessor or a method, and whatever its elements are.
+    // Support\Collection::only()/except() keep the entries whose keys are listed, so the value is a keyed map
+    // whether the collection comes from a cast column, an accessor or a method, and whatever its elements are.
     test('types a filter on a Support\Collection member as Record<string, unknown>, in every scope', function (string $subject, ?array $profile, bool $carriesImports, string $php, string $type) {
         $engine = new ResourceAstAnalyzer(new ReflectionClass($subject), CollectionMemberModel::class, 'toArray', $profile, carriesImports: $carriesImports);
 
@@ -497,9 +496,9 @@ describe('ReceiverMethodCallHandler', function () {
         'getter body, a to-many relation' => [CollectionMemberModel::class, ResourceExpressionHandlers::forModelClosures(), true, '$this->comments->only([1])', 'Comment[]'],
     ]);
 
-    // Eloquent\Collection::only()/except() keep whole models by primary key and re-index them with array_values(), so an
-    // accessor holding one publishes a list of its models, as a many-relation does, whatever key type it declares. A cast
-    // building one holds decoded JSON, whose elements have no key to filter by.
+    // Eloquent\Collection::only()/except() keep whole models by primary key and re-index them, so an accessor holding
+    // one publishes a list of its models, as a many-relation does, whatever key type it declares. A cast building one
+    // holds decoded JSON, whose elements have no key to filter by.
     test('types a filter on an accessor holding an Eloquent\Collection as a list of its models, in every scope', function (string $subject, ?array $profile, bool $carriesImports, string $php, string $type) {
         $engine = new ResourceAstAnalyzer(new ReflectionClass($subject), CollectionMemberModel::class, 'toArray', $profile, carriesImports: $carriesImports);
 
@@ -663,9 +662,8 @@ describe('a property the subject declares wins over the model', function () {
     });
 });
 
-// The MethodCall/NullsafeMethodCall rows' inert claim, re-proven for its NEW reason: the receiver
-// handler used to DECLINE only()'s vague reflected return, and now answers it with the same Pick<>
-// RelationFilterHandler builds, so the pair still cannot change an answer by being reordered.
+// The MethodCall/NullsafeMethodCall rows' inert claim: both handlers answer a relation's only() with the same Pick<>,
+// so reordering the pair cannot change an answer.
 describe('RelationFilterHandler and ReceiverMethodCallHandler are inert against each other', function () {
     test('both claim $this->relation->only([...]) and answer it the same', function (string $php, array $expected) {
         $expr = receiverHandlerExpr($php);
@@ -698,7 +696,7 @@ describe('RelationFilterHandler and ReceiverMethodCallHandler are inert against 
     ]);
 
     // An accessor typed Collection<int, User> names a model, but its filter is the collection's, so both answer
-    // Record<string, unknown>. The receiver rules decline an Eloquent\Collection, which only RelationFilterHandler types.
+    // Record<string, unknown>. The receiver rules decline an Eloquent\Collection, which RelationFilterHandler types.
     test('agree on a filter on an accessor holding a collection of models', function (string $php, ?array $expected, ?array $receiverExpected) {
         $expr = receiverHandlerExpr($php);
         $scope = fn (): AnalysisScope => new AnalysisScope(new ReflectionClass(CommentResource::class), CollectionMemberModel::class);
@@ -798,7 +796,7 @@ describe('narrowing', function () {
     test('a guard whose body reads the variable leaves it un-narrowed, while a clean guard still narrows after it', function () {
         $props = collect(new ResourceAstAnalyzer(new ReflectionClass(NarrowingGuardBodyResource::class), Post::class)->analyze()->properties)->keyBy('name');
 
-        // dirty_label is read inside the branch proving $parent is NOT a Post; User has no `title`, so that branch drops.
+        // dirty_label is read inside the branch proving $parent is NOT a Post; User has no `title`, so it drops.
         expect($props['dirty_label']['type'])->toBe('number')
             ->and($props['clean_label']['type'])->toBe('string');
     });

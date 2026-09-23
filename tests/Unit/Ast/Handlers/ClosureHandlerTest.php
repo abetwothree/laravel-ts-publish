@@ -125,6 +125,7 @@ final class ClosureHandlerNameTablesSpyEngine implements ExpressionEngine
     /** @var array<string, array<array-key, mixed>> */
     public array $seen = [];
 
+    /** Watches the scope the handler under test mutates. */
     public function __construct(private AnalysisScope $scope) {}
 
     /** @return array<string, mixed> */
@@ -135,11 +136,13 @@ final class ClosureHandlerNameTablesSpyEngine implements ExpressionEngine
         return ['type' => 'string', 'optional' => false];
     }
 
+    /** Fails the test: no method is spread in this case. */
     public function spreadAnalysis(string $methodName): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
+    /** Fails the test: no array is analyzed in this case. */
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
     {
         throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
@@ -319,11 +322,13 @@ final class ClosureHandlerBindingsSpyEngine implements ExpressionEngine
         return $this->result;
     }
 
+    /** Fails the test: no method is spread in this case. */
     public function spreadAnalysis(string $methodName): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
+    /** Fails the test: no array is analyzed in this case. */
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
     {
         throw new RuntimeException('returnArrayAnalysis() must not be called in this case');

@@ -201,7 +201,7 @@ final class MethodReturnTypeResolver
      */
     private function ownReturns(array $stmts): ?array
     {
-        $visitor = new class extends NodeVisitorAbstract
+        $visitor = new /** @internal */ class extends NodeVisitorAbstract
         {
             /** @var list<array{Return_, bool}> */
             public array $returns = [];

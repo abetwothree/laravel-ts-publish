@@ -751,9 +751,12 @@ carrying arms that are unreachable for half its callers.
 
 `all` is identity on the *published* type: a `Collection<X>` and the `array<X>` behind it both render
 `X[]`, so `$this->comments->map(...)->values()->all()` publishes what the chain already had rather than
-decaying to `unknown`. `VariableHandler` peels a trailing argument-less `values()`/`all()` off any
+decaying to `unknown`. `VariableHandler` peels a trailing argument-less `values()`/`all()` off a
 method-call receiver for the same reason, which is what carries the element type through a pipeline
-rooted at a local variable.
+rooted at a local variable: `all()` keeps the receiver's type, and `values()` turns each `Record<string, X>`
+arm into `X[]`. It peels only a receiver that `ReceiverClassResolver` resolves to classes that are all
+`Illuminate\Support\Enumerable`. On any other class `values()` and `all()` are that class's own methods, so
+the peel declines and the receiver rules reflect them.
 
 ### `concat()` is identity only on exact type equality
 
@@ -1239,13 +1242,15 @@ keys are strings, so the two cannot collide, and `Omit<T, number>` on a string-k
 subtract nothing anyway.
 
 The shape that *would* collide is a numeric explicit sibling key — `[...$members->toArray(), 5 => 'x']`
-puts `5` in both halves. It is unreachable rather than unhandled: `resolveKeyName()` in
-`src/Ast/Concerns/InspectsAstNodes.php` returns a name only for a `String_` key, and
-`analyzeReturnArray()` skips every item whose key resolves to `null`, so a numeric key never becomes
-a property in the first place. `QuirkyResource` pins that independently — it writes `42 => $this->total`
-and `42 => 'number_keyed'`, and the generated `QuirkyResource` interface has no `42` member. So the
-collision cannot be constructed while numeric keys are dropped wholesale; a change that started
-emitting them would have to revisit this arm.
+puts `5` in both halves. In a resource it is unreachable rather than unhandled. `resolveKeyName()` in
+`src/Ast/Concerns/InspectsAstNodes.php` names a `String_` key, an `Int_` key, and a class-constant key
+(`self::`, `static::`, `parent::` or another class's constant) whose value is an int or a string, but
+`publishableKeyName()` drops a numeric name whenever the analyzed subject is a `JsonResource`, and
+`analyzeReturnArray()` skips every item whose key resolves to `null`. `QuirkyResource` pins that
+independently — it writes `42 => $this->total` and `42 => 'number_keyed'`, and the generated
+`QuirkyResource` interface has no `42` member. On any other subject a numeric key is kept, because an int
+key is a real JSON object key (`[1 => 'Basic']` encodes as `{"1":"Basic"}`). There the collision can be
+written, and this arm does not resolve it: the collection arm is still never `Omit<>`'d.
 
 For every other arm the subtraction is **unconditional**: an explicit key is Omitted whether or not
 the arm actually declares it. `Omit<T, K>` does not require `K extends keyof T`, so this is well-typed either way,

@@ -18,16 +18,19 @@ function chainHandlersThrowingEngine(): ExpressionEngine
 {
     return new class implements ExpressionEngine
     {
+        /** Fails the test: no sub-expression is resolved in this case. */
         public function resolve(Expr $expr): array
         {
             throw new RuntimeException('resolve() must not be called in this case');
         }
 
+        /** Fails the test: no method is spread in this case. */
         public function spreadAnalysis(string $methodName): ?MethodAnalysis
         {
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
+        /** Fails the test: no array is analyzed in this case. */
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
         {
             throw new RuntimeException('returnArrayAnalysis() must not be called in this case');

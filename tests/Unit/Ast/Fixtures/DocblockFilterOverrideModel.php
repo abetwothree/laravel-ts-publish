@@ -6,7 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 
 use Illuminate\Database\Eloquent\Model;
 
-/** A model whose only() override declares its return only as a docblock `array<string, mixed>`, too vague to publish. */
+/** A model whose only() override declares its return only in a docblock, `array<string, mixed>`, too vague to use. */
 final class DocblockFilterOverrideModel extends Model
 {
     protected $table = 'posts';

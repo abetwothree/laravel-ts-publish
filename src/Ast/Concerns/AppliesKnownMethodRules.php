@@ -14,12 +14,9 @@ use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Identifier;
 
 /**
- * Late-stage method-name rules fixed by Laravel convention, shared by the two chain handlers and
- * by KnownMethodRuleHandler, the dispatch floor. The sole implementation — the analyzer's own copy
- * went with its legacy chain.
- *
- * Requires the host to also use Ast\Concerns\InspectsAstNodes, InspectsResourceSubject and
- * ResolvesModelRelationTypes.
+ * Late-stage method-name rules fixed by Laravel convention, shared by the two chain handlers and by
+ * KnownMethodRuleHandler, the dispatch floor. Requires the host to also use Ast\Concerns\InspectsAstNodes,
+ * InspectsResourceSubject and ResolvesModelRelationTypes.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *

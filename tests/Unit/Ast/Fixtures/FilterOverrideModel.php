@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Workbench\App\Models\User;
 
-/** A model whose only() and except() overrides declare their own returns, reached as itself, a relation and a map proxy. */
+/** A model whose only() and except() overrides declare their returns, read as itself, a relation and a map proxy. */
 final class FilterOverrideModel extends Model
 {
     protected $table = 'posts';

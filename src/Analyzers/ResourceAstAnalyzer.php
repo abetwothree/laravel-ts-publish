@@ -750,10 +750,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Resolve and analyze a $this->method() spread; $topLevel carries the caller's own
-     * flatten-eligibility down into the target's own return (see analyzeReturnArray()).
-     * $localVarBindings/$resolvingLocalVars/$varModelBindings/$varClassBindings/$varGuardBindings
-     * save/clear/restore via `finally`.
+     * Resolve and analyze a $this->method() spread; $topLevel carries the caller's own flatten-eligibility down into
+     * the target's own return (see analyzeReturnArray()). Each binding table it clears is restored in a `finally`.
      */
     protected function analyzeThisMethodSpread(string $methodName, bool $topLevel = true): ?ResourceAnalysis
     {
@@ -1162,15 +1160,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Merge ResourceAnalysis objects from different return branches: a property missing from any
-     * branch becomes optional, every map channel unions per key — inlineModelFqcns per occurrence,
-     * the enum maps deduped — and flatTypeAlias/flatTypeAliasFqcn keep the first non-null branch value.
-     *
-     * Public because the page analyzer merges one component's several `Inertia::render()` calls by
-     * exactly these rules.
-     *
-     * A spread helper's branches drop a value they could not type, the rule a ternary's arms follow, since that path
-     * once published its first branch alone; elsewhere an `unknown` branch makes the key `unknown`.
+     * Merge ResourceAnalysis objects from different return branches: a property missing from any branch becomes
+     * optional, channels merge as MethodAnalysis::merge() does, and flatTypeAlias keeps the first non-null value.
+     * Public for the page analyzer's `Inertia::render()` merge; only a spread helper's branches drop an untyped value.
      *
      * @param  list<ResourceAnalysis>  $analyses
      */

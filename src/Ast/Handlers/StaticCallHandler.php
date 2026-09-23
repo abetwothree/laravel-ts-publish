@@ -36,15 +36,9 @@ use ReflectionMethod;
 use ReflectionNamedType;
 
 /**
- * Resource construction via static calls: `EnumResource::make()`/`::collection()`,
- * `SomeResource::make()`/`::collection()`, a fluent chain onto a resource-resolving receiver, and
- * the `$this::`/`$this->resource::`/`$this->relation::` static-call shapes.
- *
- * The internal guard order below reproduces the pre-extraction chain exactly and is load-bearing —
- * several guards must precede others, as each inline comment explains.
- *
- * Not an unconditional `StaticCall` floor: the `$this::` arm declines when nothing in scope declares the
- * method, and the last arm declines a class expression it cannot name, so a later claimant sees both.
+ * Resource construction via static calls: `EnumResource::make()`/`::collection()`, `SomeResource::make()`/
+ * `::collection()`, a chain onto a resource-resolving receiver, and the `$this::`-style shapes. Its guard order is
+ * load-bearing; it declines a `$this::` method nothing declares and a class expression it cannot name.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *

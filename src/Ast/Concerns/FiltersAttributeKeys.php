@@ -17,11 +17,8 @@ use ReflectionMethod;
 
 /**
  * The `only`/`except` filter vocabulary, the key list read off such a call's arguments, and whether a class runs
- * Model's, Support\Collection's or Eloquent\Collection's own filter.
- *
- * The single home for all three: the filter-aware code (FiltersModelAttributes, RelationFilterHandler and
- * ReceiverMethodReturnResolver) reads keys and overrides here, and the generic reflectors ask it which calls to
- * decline. Stateless — no host state is read.
+ * Model's, Support\Collection's or Eloquent\Collection's own filter. The one home for all three: filter-aware code
+ * reads keys and overrides here, and the generic reflectors ask it which calls to decline. It reads no host state.
  *
  * @internal
  */

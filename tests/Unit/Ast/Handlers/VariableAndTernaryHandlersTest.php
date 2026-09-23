@@ -124,6 +124,7 @@ final class TernaryArmRecordingEngine implements ExpressionEngine
     /** @var array<string, string|null> */
     public array $modelPerArm = [];
 
+    /** Watches the scope the ternary under test narrows. */
     public function __construct(private AnalysisScope $scope) {}
 
     /** @return array<string, mixed> */
@@ -137,11 +138,13 @@ final class TernaryArmRecordingEngine implements ExpressionEngine
         return ['type' => 'string', 'optional' => false];
     }
 
+    /** Fails the test: no method is spread in this case. */
     public function spreadAnalysis(string $methodName): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
+    /** Fails the test: no array is analyzed in this case. */
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
     {
         throw new RuntimeException('returnArrayAnalysis() must not be called in this case');

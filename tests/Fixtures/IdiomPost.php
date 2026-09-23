@@ -7,10 +7,16 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 
-/** A test-only model on the `posts` table whose untyped getters are everyday idioms with an arm the engine cannot type. */
+/** A model on the `posts` table whose untyped getters are everyday idioms with an arm the engine cannot type. */
 class IdiomPost extends Model
 {
     protected $table = 'posts';
+
+    /** An old-style getter with no return type. */
+    public function getLegacyPayloadAttribute()
+    {
+        return $this->metadata ? json_decode($this->metadata) : null;
+    }
 
     /** Laravel's documented second parameter, read with a null fallback. */
     protected function nickname(): Attribute
@@ -40,11 +46,5 @@ class IdiomPost extends Model
     protected function titleOrNull(): Attribute
     {
         return Attribute::get(fn () => $this->title ?? null);
-    }
-
-    /** An old-style getter with no return type. */
-    public function getLegacyPayloadAttribute()
-    {
-        return $this->metadata ? json_decode($this->metadata) : null;
     }
 }

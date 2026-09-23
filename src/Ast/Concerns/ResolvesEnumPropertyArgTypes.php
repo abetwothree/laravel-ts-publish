@@ -19,11 +19,8 @@ use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 
 /**
- * Resolve an enum type — or the model-attribute type backing one — from a property-fetch argument.
- * Shared by `EnumResource::make()`/`::collection()` and `new EnumResource(...)`, the two
- * resource-construction shapes that both hand a bare property-fetch expression to this same
- * resolution order.
- *
+ * Resolve an enum type — or the model-attribute type backing one — from a property-fetch argument, for both
+ * resource-construction shapes: `EnumResource::make()`/`::collection()` and `new EnumResource(...)`.
  * Requires the host to also `use Ast\Concerns\InspectsAstNodes` (for `isThisPropertyFetch()`).
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler

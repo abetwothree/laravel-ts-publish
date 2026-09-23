@@ -702,10 +702,9 @@ describe('write-only accessor waterfall', function () {
     });
 
     test('a set-only mutator whose docblock Get is never and has no backing column resolves to unknown, not never, and is omitted', function () {
-        // OutgoingNote::normalizedTag has no backing column: nothing can be read, so it must stay
-        // omitted from published output — degrading to 'unknown' rather than leaking the docblock's
-        // 'never'. resolveAttribute()'s 'unknown' alone doesn't distinguish omission from an ordinary
-        // unresolvable attribute, so isOmittedMutator() (reads the 'omit' flag directly) pins it too.
+        // OutgoingNote::normalizedTag has no backing column, so it stays omitted rather than leaking the docblock's
+        // 'never'; resolveAttribute()'s 'unknown' cannot tell omission from an unresolvable attribute, so
+        // isOmittedMutator(), which reads the 'omit' flag, pins it too.
         $resolver = resolve(ModelAttributeResolver::class);
         $info = $resolver->resolveAttribute(OutgoingNote::class, 'normalized_tag');
 
@@ -714,10 +713,8 @@ describe('write-only accessor waterfall', function () {
     });
 
     test('a set-only mutator whose docblock Get is a nullable never resolves to its real column type', function () {
-        // OutgoingNote::channel is documented `Attribute<?never, ?string>`. The nullable-prefix handling
-        // in resolveDocblockTypePartOrAlias() turns `?never` into the string 'never | null' before it
-        // reaches the set-only branch — that spelling must be caught the same as bare 'never', not
-        // published verbatim.
+        // OutgoingNote::channel is documented `Attribute<?never, ?string>`, and resolveDocblockTypePartOrAlias() turns
+        // `?never` into 'never | null' before the set-only branch, so that spelling must be caught as a bare 'never'.
         $info = resolve(ModelAttributeResolver::class)
             ->resolveAttribute(OutgoingNote::class, 'channel');
 

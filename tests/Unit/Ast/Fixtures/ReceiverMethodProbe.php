@@ -14,6 +14,12 @@ use Illuminate\Support\Stringable;
 /** Method declarations `ReceiverMethodReturnResolver` reads, one rule per method. */
 final class ReceiverMethodProbe extends JsonResource
 {
+    /** A request, which the receiver handler leaves to the request rule. */
+    public static function request(): Request
+    {
+        return new Request;
+    }
+
     /** Public, so any receiver may call it. */
     public function label(): string
     {
@@ -62,11 +68,5 @@ final class ReceiverMethodProbe extends JsonResource
     protected static function secret(): int
     {
         return 1;
-    }
-
-    /** A request, which the receiver handler leaves to the request rule. */
-    public static function request(): Request
-    {
-        return new Request;
     }
 }

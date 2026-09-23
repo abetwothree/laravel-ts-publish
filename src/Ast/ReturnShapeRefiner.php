@@ -19,12 +19,9 @@ use ReflectionMethod;
 final class ReturnShapeRefiner
 {
     /**
-     * Fill every property the body left untyped from the method's own `@return array{...}` shape (or
-     * `array<string, V>` value type), and mark a key the shape declares `key?:` optional. Untyped means `unknown`,
-     * or `unknown | undefined` on an interpolated key's index signature, which keeps its `| undefined` once filled.
-     *
-     * A bare name no class answers to is kept only for a spread helper, whose `@return` always published it; the
-     * analyzed method's own docblock is new to this path, and there the name may be a class its file never imported.
+     * Fill every property the body left untyped (`unknown`, or an index signature's `unknown | undefined`) from the
+     * method's own `@return array{...}` shape or `array<string, V>` value type, and mark a `key?:` key optional.
+     * Only a spread helper keeps a bare name no class answers to: the analyzed method's may be a class never imported.
      */
     public function refine(MethodAnalysis $analysis, ReflectionMethod $method, bool $keepsUnresolvedNames = true): void
     {

@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 /** An abstract model narrowing getKey() natively, which PHP's covariant returns hold every subclass to. */
 abstract class ReceiverKeyNarrowingModel extends Model
 {
+    /** Narrows the inherited key to an int, on an abstract model. */
     public function getKey(): int
     {
         return (int) parent::getKey();

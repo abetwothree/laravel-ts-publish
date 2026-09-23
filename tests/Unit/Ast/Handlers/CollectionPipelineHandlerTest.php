@@ -51,10 +51,8 @@ test('data_get declines a wildcard key', function () {
     expect(new KnownFunctionCallHandler()->resolve($expr, $scope, collectionPipelineEngine($scope)))->toBeNull();
 });
 
-// The inert half of the ordering inventory's MethodCall row for this pair. Both handlers really claim
-// a trailing `values()` on a collect() chain, and they must answer it identically: the peel resolves a
-// receiver carrying one op FEWER, so a `filter()` the peel never sees would otherwise leave a keyed
-// Record arm that cannot survive values(). Registration order must not decide this.
+// The inert half of the ordering inventory's MethodCall row: both handlers claim a trailing `values()` on a collect()
+// chain, and the peel reads a receiver one op shorter, so its keyed arm must become the list the pipeline gives.
 test('the values() peel and the pipeline handler agree on a filtered collect() chain', function () {
     $scope = collectionPipelineScope();
     $engine = collectionPipelineEngine($scope);

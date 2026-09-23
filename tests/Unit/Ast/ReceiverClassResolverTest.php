@@ -42,6 +42,7 @@ function receiverExpr(string $php): Expr
     return new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
 }
 
+/** A scope over a Post-backed resource. */
 function postScope(): AnalysisScope
 {
     return new AnalysisScope(new ReflectionClass(ReceiverProbeResource::class), Post::class);

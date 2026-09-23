@@ -56,13 +56,9 @@ final class ResourceExpressionHandlers
     }
 
     /**
-     * make() minus the three resource-only handlers (ConditionalMethodHandler, ToResourceHandler,
-     * RelationFilterHandler), same relative order.
-     *
-     * Named for what it drops, not for who may use it: the one production caller is
-     * ControllerExpressionHandlers::make(). A model's getter body runs forModelClosures(), and every other
-     * non-resource subject — a broadcast event, model metadata, any DTO reaching AstEngine::analyzeMethod() — runs
-     * the full resource profile instead.
+     * make() minus the three resource-only handlers (ConditionalMethodHandler, ToResourceHandler and
+     * RelationFilterHandler), in the same order. Named for what it drops: its one production caller is
+     * ControllerExpressionHandlers::make(), and every other non-resource subject but a getter body runs make().
      *
      * @return list<ExpressionHandler>
      */
@@ -77,11 +73,9 @@ final class ResourceExpressionHandlers
     }
 
     /**
-     * make() minus ConditionalMethodHandler and ToResourceHandler, same relative order: a model getter body's profile.
-     *
-     * AstEngine::analyzeModelClosure() is its one caller. A getter body reads the model's own relations, and only
-     * RelationFilterHandler types a to-many, map-proxy or multi-model accessor filter; ReceiverMethodCallHandler also
-     * types a single relation's.
+     * make() minus ConditionalMethodHandler and ToResourceHandler, same relative order: a model getter body's profile,
+     * for AstEngine::analyzeModelClosure(). RelationFilterHandler stays, as the only handler that types a to-many,
+     * map-proxy or multi-model accessor filter over the model's own relations.
      *
      * @return list<ExpressionHandler>
      */

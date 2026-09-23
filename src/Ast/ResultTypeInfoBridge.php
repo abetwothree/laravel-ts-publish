@@ -8,13 +8,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 
 /**
- * Carry a ValueExpressionResult's type and FQCN channels into a TypeScriptTypeInfo.
- *
- * The documented inverse of `ReflectedTypeAcceptor::accept()`: that class turns a reflected
- * TypeScriptTypeInfo into a ValueExpressionResult, this turns an engine result back into one. It
- * reads the same five channels ReflectedTypeAcceptor writes — `directEnumFqcn`, `modelFqcn`,
- * `embeddedEnumFqcns`, `embeddedModelFqcns` and `customImports` — not the other channels the
- * contract declares; see the Import dispatch rules table in docs/components/resource-ast-analyzer.md.
+ * Carry a ValueExpressionResult's type and FQCN channels into a TypeScriptTypeInfo: the inverse of
+ * `ReflectedTypeAcceptor::accept()`, reading only the five channels it writes, so no resource channel. See the Import
+ * dispatch rules table in docs/components/resource-ast-analyzer.md.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypeScriptTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
@@ -24,6 +20,8 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 final class ResultTypeInfoBridge
 {
     /**
+     * Convert one engine result into the model engine's type info, with the imports its class and enum channels name.
+     *
      * @param  ValueExpressionResult  $result
      * @return TypeScriptTypeInfo
      */

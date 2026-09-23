@@ -32,13 +32,8 @@ use ReflectionMethod;
 
 /**
  * `$this->relation->only([...])`/`->except([...])`, also read through `$this->resource`, and Laravel's `map`
- * HigherOrderCollectionProxy filter (`$var->map->only([...])`/`->except([...])`) — relation/collection filters.
- *
- * The relation arm declines what it cannot type, such as a single model whose filter override reflection types; a map
- * proxy's elements and a multi-model accessor's arm publish that override's return instead. Once the map-proxy arm
- * matches, it claims `unknown` for no element model, no literal keys, or keys naming nothing. A member holding a
- * Support\Collection publishes `Record<string, unknown>`, and an accessor holding an Eloquent\Collection a list of its
- * models. A scope that carries no import gets answers naming no token, a filtered member naming one being `unknown`.
+ * HigherOrderCollectionProxy filter (`$var->map->only([...])`). The relation arm declines what it cannot type, so a
+ * later handler answers; docs/components/resource-ast-analyzer.md § Attribute filters has each arm's rules.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypesImportMap from Datable
@@ -168,11 +163,8 @@ final class RelationFilterHandler implements ExpressionHandler
 
     /**
      * Analyze a filter on a member holding a collection, declining for a class whose filter is its own.
-     *
-     * Support\Collection's filter keeps the entries whose keys are listed. Eloquent\Collection's keeps whole models by
-     * primary key and re-indexes them, so an accessor holding one publishes a list of the models it names, else
-     * `unknown[]`, whatever key type the accessor declares. A cast building an Eloquent\Collection holds decoded JSON,
-     * whose elements have no key to filter by.
+     * Support\Collection's filter keeps the listed keys. Eloquent\Collection's keeps whole models by primary key, so an
+     * accessor holding one publishes a list of its models, else `unknown[]`; a cast building one has no key to match.
      *
      * @param  class-string  $collectionClass
      * @return ValueExpressionResult|null
@@ -320,10 +312,8 @@ final class RelationFilterHandler implements ExpressionHandler
 
     /**
      * The many-relation read a filter on it publishes, with `| null` through `?->`, or null when the read is untyped.
-     *
-     * `Eloquent\Collection::only()`/`except()` keep the models whose primary key is listed and return them whole, so
-     * any key list leaves exactly the relation's own read, import channels included. A scope that cannot import the
-     * element model keeps the list alone.
+     * `Eloquent\Collection::only()`/`except()` keep the listed models whole, so any key list leaves the relation's own
+     * read, channels included; a scope that cannot import the element model keeps the list alone.
      *
      * @return ValueExpressionResult|null
      */

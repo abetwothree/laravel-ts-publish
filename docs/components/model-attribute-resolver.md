@@ -40,9 +40,11 @@ and its filters name no token. The model transformer, resources and every other 
 the published accessor type does not change. Without imports, `refineAccessorType()` skips the `@property` refinement
 below when the tag names a class and the published type is not vague; a token-free tag refines as usual. See
 [accessor-body-analyzer § A reader that carries no import](accessor-body-analyzer.md#a-reader-that-carries-no-import).
-The resolver's one per-attribute cache, `$attributeClassCache`, needs no split: `resolveAttributeClass()` reads
-reflection only, never a getter body. `resolveAccessorModelFqcns()` takes no flag either, because the models a getter
-returns do not depend on how its filters are spelled.
+`$attributeClassCache` needs no split: `resolveAttributeClass()` reads reflection only, never a getter body. The
+accessor waterfall is memoized for the run in `AnalysisMemo`, per model, attribute and import mode
+(`accessor-type:model@attribute`, with `@importless` for a read that carries no import), so a mode never reuses the
+other's answer. `resolveAccessorModelFqcns()` takes no flag, because the models a getter returns do not depend on how
+its filters are spelled.
 
 ```php
 /** @return array{value: int, label: string} */

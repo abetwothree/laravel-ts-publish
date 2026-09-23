@@ -90,7 +90,10 @@ occurrences to it; a property a *second* map also registers carries that map's e
 real occurrence count, and the third clamp below is what keeps that surplus harmless.
 `resolveMultiClassAccessorFqcns()` guards the one specific overlap that is cheap to close at the
 source — a property `$propertyInlineModelFqcns` already covers is skipped rather than re-queued — but
-the general superset case remains the contract callers rely on, not an exception routed around it.
+the general superset case remains the contract callers rely on, not an exception routed around it. It
+also queues only the accessor classes whose pre-alias token the key's type still spells
+(`TsTypeString::typeNameOccursIn()`), and none when it spells none: a key named after an accessor may hold
+something else, and an unused import fails `tsc` (TS6196).
 
 The `array_unique` calls that remain in `ResourceTransformer` and `BroadcastEventTransformer` are on
 import-building paths — `enumPropertyFqcns()` and `buildTypeImports()` — where one entry per import
@@ -208,7 +211,8 @@ with `new ImportNameRegistry(['Models', 'Enums', 'Http', 'Resources', 'App'])`:
   is populated from `analysis->nestedResources` (`JsonResource` subclasses) and the
   `ResourceCollection` flat-alias branch (`analysis->flatTypeAliasFqcn`); `modelFqcnMap` from
   `analysis->modelFqcns` and the multi-class accessor branch in
-  `resolveMultiClassAccessorFqcns()` — all four sites restricted, by how the upstream analyzers
+  `resolveMultiClassAccessorFqcns()`, which registers only the classes the key's type still names — all four
+  sites restricted, by how the upstream analyzers
   build their `classFqcns`/`flatTypeAliasFqcn`, to `JsonResource` or Eloquent model classes
   respectively. This is a property of *where these maps are populated from*, not something PHP's
   type system enforces (a class extending both `Model` and `JsonResource` is technically

@@ -454,9 +454,9 @@ whose only guard is the positive `if ($this->resource instanceof MediaType)`, pu
 as `string` rather than `unknown`. Both keys still publish **optional**, because the method's other branch
 is a `return []` — that is the return-branch rule, not a narrowing failure.
 
-The negated `if` form binds only a variable the method writes once, and only when the guard's own body does
-not read it. A resource that already guards on `$this->resource` needs no `#[TsCasts]` for the properties
-that guard proves.
+The negated `if` form binds only a variable the method writes once, and only for the reads after the guard: a
+`return` placed before it, and the guard's own body, still read the variable unnarrowed. A resource that already
+guards on `$this->resource` needs no `#[TsCasts]` for the properties that guard proves.
 
 ### A shape whose values name a class loses those values, in one of two ways
 

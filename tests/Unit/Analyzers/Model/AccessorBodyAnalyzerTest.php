@@ -124,7 +124,7 @@ describe('AccessorBodyAnalyzer for a getter a method body reads without imports'
     });
 
     // The getter calls report(), whose body reads the getter back without imports: a guard shared by both modes would
-    // cut that read short while the getter's own analysis is on the stack, so the answer would depend on who asked first.
+    // cut that read short while the getter's own analysis runs, so the answer would depend on who asked first.
     test('a getter being analyzed with imports does not cut short its own read without them', function (bool $getterFirst) {
         $getter = fn () => resolve(ModelAttributeResolver::class)->resolveAttribute(FilteringAccessorModel::class, 'self_report')['type'];
         $method = fn () => resolve(MethodReturnTypeResolver::class)->resolve(FilteringAccessorModel::class, 'report')['type'] ?? null;
@@ -167,7 +167,7 @@ describe('AccessorBodyAnalyzer for a getter reading another model\'s accessor', 
 });
 
 describe('AccessorBodyAnalyzer declines a body type that names nothing it can publish', function () {
-    // Each getter's untypable arm was dropped, and the runtime value is that arm's: 'Hello', {a: 1}, a decrypted string.
+    // Each getter drops an untypable arm, and the runtime value is that arm's: 'Hello', {a: 1}, a decrypted string.
     test('a bare null left once the untypable arm is dropped is not a type', function (string $attribute) {
         expect(resolve(ModelAttributeResolver::class)->resolveAttribute(IdiomPost::class, $attribute)['type'])->toBe('unknown');
     })->with(['nickname', 'decoded_meta', 'secret_note', 'meta_title', 'legacy_payload']);

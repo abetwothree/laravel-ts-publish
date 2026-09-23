@@ -16,12 +16,9 @@ use ReflectionClass;
 use ReflectionMethod;
 
 /**
- * Resource semantics over a parsed call: the `$this->when*()` family, resource construction payloads,
- * and which classes count as resources.
- *
- * Every member here needs to know what a JsonResource is, which is why it stays on the analyzer side
- * rather than moving with the node-shape half. Requires the host to also use
- * `Ast\Concerns\InspectsAstNodes` (for `isThisMethodCall()`).
+ * Resource semantics over a parsed call: the `$this->when*()` family, resource construction payloads, and which
+ * classes count as resources. Every member needs to know what a JsonResource is, so it stays on the analyzer side.
+ * Requires the host to also use `Ast\Concerns\InspectsAstNodes` (for `isThisMethodCall()`).
  */
 trait InspectsResourceCalls
 {

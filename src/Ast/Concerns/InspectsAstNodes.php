@@ -32,11 +32,9 @@ use PhpParser\Node\Stmt\While_;
 use ReflectionClass;
 
 /**
- * Node-shape questions about a parsed expression: what it is, what it names, what it returns.
- *
- * Every member here answers from the AST alone, with no notion of a resource, so the engine layer owns
- * it. The resource semantics it was split from live in `Analyzers\Concerns\InspectsResourceCalls`, which
- * requires its host to also use this trait.
+ * Node-shape questions about a parsed expression: what it is, what it names, what it returns. The engine layer owns
+ * it; the resource semantics it was split from live in `Analyzers\Concerns\InspectsResourceCalls`, which requires its
+ * host to also use this trait.
  *
  * @internal
  */
@@ -118,10 +116,8 @@ trait InspectsAstNodes
     }
 
     /**
-     * Drop a numeric key when the analyzed subject is a resource, and keep every other one.
-     *
-     * A published member name cannot be numeric: PHP stores a numeric string array key as an int, so it
-     * would arrive as an `int` in the transformer's `array<string, …>` property maps. The test is the
+     * Drop a numeric key when the analyzed subject is a resource, and keep every other one: PHP stores a numeric
+     * string key as an int, which the transformer's `array<string, …>` property maps cannot hold. The test is the
      * subject, not the position, so a numeric key nested inside a resource is dropped as well.
      *
      * @param  ReflectionClass<object>  $subject

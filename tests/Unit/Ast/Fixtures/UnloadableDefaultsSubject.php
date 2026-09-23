@@ -6,7 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 
 use Missing\Extension;
 
-/** Untyped defaults naming a class constant and a global constant this process never loads, as an absent extension's. */
+/** Untyped defaults naming a class constant and a global constant that this process never loads. */
 final class UnloadableDefaultsSubject
 {
     public $mode = Extension::MODE;

@@ -18,6 +18,7 @@ final class InverseMorphToManyParent extends Model
 {
     protected $table = 'artists';
 
+    /** The inverse morph-to-many side, through the Labelable pivot. */
     public function labels(): MorphToMany
     {
         return $this->morphedByMany(Label::class, 'labelable')->using(Labelable::class);

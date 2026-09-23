@@ -8,10 +8,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * The resource a ResourceCollection subject collects.
- *
- * Kept apart from InspectsResourceSubject because this one needs InspectsResourceCalls, which two of
- * that trait's consumers do not use. Requires the host to also use
+ * The resource a ResourceCollection subject collects. Kept apart from InspectsResourceSubject because it needs
+ * InspectsResourceCalls, which two of that trait's consumers do not use. Requires the host to also use
  * Analyzers\Concerns\InspectsResourceCalls.
  *
  * @internal

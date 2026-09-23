@@ -64,11 +64,9 @@ final class AnalysisScope
     public ?string $instanceOfWrappedClass = null;
 
     /**
-     * The class an undeclared `$this->member` read or call forwards to — a JsonResource proxies both to
-     * `$this->resource` — or null when the subject forwards nothing. Derived from the subject in this
-     * class's own constructor, so every scope carries it however it was built; ResourceAstAnalyzer
-     * re-derives it once an instanceof guard supplies a backing the constructor lacked, and TernaryHandler
-     * narrows it alongside modelClass. ReceiverClassResolver reads it rather than testing for JsonResource.
+     * The class an undeclared `$this->member` read or call forwards to (a JsonResource proxies both to
+     * `$this->resource`), or null. Derived in the constructor so every scope carries it; ResourceAstAnalyzer re-derives
+     * it, TernaryHandler narrows it, and ReceiverClassResolver reads it rather than testing for JsonResource.
      *
      * @var class-string|null
      */
@@ -98,10 +96,9 @@ final class AnalysisScope
     public array $closureParamExprBindings = [];
 
     /**
-     * Variables known to hold one of some classes: a ternary's `instanceof` test proves one, and a morphTo
-     * `whenLoaded()` closure parameter holds any of its targets. Read before varModelBindings, since a narrowed
-     * variable is usually also bound to its parent model and that binding would otherwise win. Scoped: writers save
-     * and restore around the body.
+     * Variables a ternary's `instanceof` test, or a morphTo `whenLoaded()` parameter's targets, prove to hold one of
+     * some classes. Read before varModelBindings, which a narrowed variable usually also has and which would otherwise
+     * win. Scoped: writers save and restore around the body.
      *
      * @var VarClassBindingsMap
      */
@@ -187,10 +184,9 @@ final class AnalysisScope
 
     /**
      * @param  ReflectionClass<object>  $subjectReflection  the resource (or other AST subject) under analysis
-     * @param  class-string<Model>|null  $modelClass  its resolved backing model, if any. Scoped rather than
-     *                                                fixed: TernaryHandler narrows it for an `instanceof`
-     *                                                true arm and restores it after — a mutation below
-     *                                                AstEngine's class@method@modelClass cache key.
+     * @param  class-string<Model>|null  $modelClass  its resolved backing model, if any. Scoped, not fixed:
+     *                                                TernaryHandler narrows it for an `instanceof` true arm and
+     *                                                restores it, below AstEngine's `analysis:` memo key.
      */
     public function __construct(
         public ReflectionClass $subjectReflection,

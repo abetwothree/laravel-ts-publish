@@ -41,16 +41,19 @@ final class VisibleFilterOverrideModel extends Model
         return $this->belongsTo(self::class, 'id');
     }
 
+    /** An appended accessor that `$visible` lists. */
     protected function label(): Attribute
     {
         return Attribute::get(fn (): string => 'label');
     }
 
+    /** An appended accessor outside `$visible`. */
     protected function shade(): Attribute
     {
         return Attribute::get(fn (): string => 'shade');
     }
 
+    /** An appended accessor named like a column. */
     protected function name(): Attribute
     {
         return Attribute::get(fn (string $value): string => ucfirst($value));

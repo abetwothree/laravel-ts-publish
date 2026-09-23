@@ -64,8 +64,10 @@ export interface TaskAllResource extends TaskResource, TaskMutators, TaskRelatio
 - `{Model}Relations` has one entry per relation method plus `_count` and `_exists` (from `withCount` /
   `withExists`); names follow `models.relationship_case` (`snake` by default).
 - The `Resource` variants exist only when `enums.use_tolki_package` is on and the model has enum-typed members,
-  and which one you get depends on where the enum sits: an enum-typed **column or `$appends` entry** gives
-  `{Model}Resource`, an enum-typed **non-appended accessor** gives `{Model}MutatorsResource` instead (so a model
+  meaning a member typed as one enum or a list of one, optionally `| null` (a shape, or a union with other arms,
+  keeps its own type there), and which one you get depends on where the enum sits: an enum-typed **column or
+  `$appends` entry** gives `{Model}Resource`, an enum-typed **non-appended accessor** gives
+  `{Model}MutatorsResource` instead (so a model
   whose only enum member is a plain accessor has no `{Model}Resource` at all), and `{Model}AllResource` appears
   whenever either does; use them for a payload the backend already serialized through
   `EnumResource` (each enum member arrives as `{ name, value, backed, ...methods }`). For a plain model
@@ -205,7 +207,9 @@ protected function status(): Attribute { return Attribute::set(...); }   // stat
   A model method whose body is analyzed and reads such an accessor keeps its shape, with the filter spelled
   import-free: `{ id: number; title: string }`, where a column typed by an enum or class becomes `unknown`, and
   `unknown[]` for the relation. A body the generator cannot follow (keys built in a loop, two accessors reading
-  each other) still gives `unknown` or `unknown[]`: annotate it. An accessor that returns a different
+  each other) still gives `unknown` or `unknown[]`: annotate it. So does a body left as only `null` once an arm it
+  cannot type is dropped (`$attributes['nickname'] ?? null`, whose real value is that arm's), one naming two
+  same-named classes or enums under one name, and one returning a resource. An accessor that returns a different
   `Attribute::get()` from each `if` branch is typed from the first one found, not a merge of them.
 - A write-only `Attribute::set()` / `Attribute::make(set:)` publishes its `Get` generic when that is a specific
   type. With no generic, a vague one (`mixed`, `array`) or a `never` Get (`Attribute<never, string>`, the usual

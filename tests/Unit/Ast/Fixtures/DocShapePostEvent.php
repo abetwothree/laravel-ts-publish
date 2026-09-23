@@ -11,6 +11,7 @@ use Workbench\App\Models\Post;
 /** broadcastWith()'s own `@return` names `User` without importing it, so PHP resolves the name to no class. */
 final class DocShapePostEvent implements ShouldBroadcast
 {
+    /** Carries the post the payload reads. */
     public function __construct(public Post $post) {}
 
     /** The channel. */

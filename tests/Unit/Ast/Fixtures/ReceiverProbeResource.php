@@ -12,6 +12,7 @@ use Workbench\App\ValueObjects\PostStats;
 /** @mixin Post */
 final class ReceiverProbeResource extends JsonResource
 {
+    /** Wraps a post, with a stats object the resource declares itself. */
     public function __construct(Post $resource, private readonly ?PostStats $stats = null)
     {
         parent::__construct($resource);

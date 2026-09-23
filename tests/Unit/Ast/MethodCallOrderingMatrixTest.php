@@ -41,13 +41,9 @@ const METHOD_CALL_PINNED = [
 ];
 
 /**
- * Whether $handler alone answers $expr non-null, isolated from any partner — the measure of "the
- * corpus exercises this pair" a vacuous-pair check needs. A handler's own internal recursion into
- * $engine->resolve() for some unrelated sub-expression must not count as claiming $expr itself.
- *
- * The engine is given the very scope the handler receives, as production does. With two separate
- * scopes a handler that seeds a binding and then recurses — VariableHandler's map() arm,
- * CollectionPipelineHandler's — reads back an unseeded scope and can never claim anything.
+ * Whether $handler alone answers $expr non-null, isolated from any partner: its own recursion into $engine->resolve()
+ * for an unrelated sub-expression must not count as claiming $expr. The engine shares the handler's scope, as in
+ * production, or a handler that seeds a binding and then recurses could never claim anything.
  */
 function methodCallHandlerClaims(ExpressionHandler $handler, MethodCall $expr): bool
 {

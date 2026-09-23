@@ -16,16 +16,6 @@ class EnumShapePost extends Model
     protected $table = 'posts';
 
     /**
-     * The status column's enum.
-     *
-     * @return array<string, string>
-     */
-    protected function casts(): array
-    {
-        return ['status' => Status::class];
-    }
-
-    /**
      * The post's comments.
      *
      * @return HasMany<Comment, $this>
@@ -33,6 +23,16 @@ class EnumShapePost extends Model
     public function comments(): HasMany
     {
         return $this->hasMany(Comment::class, 'post_id');
+    }
+
+    /**
+     * The status column's enum.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return ['status' => Status::class];
     }
 
     /** A shape holding the enum. */

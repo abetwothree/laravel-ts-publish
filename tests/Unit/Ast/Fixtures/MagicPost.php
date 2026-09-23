@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 
-/** Answers an outside read of a name it does not expose through __get(), so only its public instance property is read. */
+/** Sends an outside read of a name it does not expose to __get(), so only its public instance property is read. */
 final class MagicPost
 {
     public static string $kind = 'post';

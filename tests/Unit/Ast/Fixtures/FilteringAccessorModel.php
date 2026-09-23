@@ -63,150 +63,6 @@ final class FilteringAccessorModel extends Model
         return $this->belongsTo(AppendingFilteringAccessorModel::class, 'user_id');
     }
 
-    /** @return Attribute<Comment|User|null, never> */
-    protected function counterpart(): Attribute
-    {
-        return Attribute::get(fn () => null);
-    }
-
-    /** Filters bare `$this` by a literal key list. */
-    protected function ownPicks(): Attribute
-    {
-        return Attribute::get(fn () => ['v' => $this->only(['id', 'title']), 'id' => $this->id]);
-    }
-
-    /** Filters bare `$this` by a runtime key list. */
-    protected function ownRuntime(): Attribute
-    {
-        return Attribute::get(fn () => ['v' => $this->only(request()->input('fields')), 'id' => $this->id]);
-    }
-
-    /** Returns a runtime-key filter directly, so the getter's whole answer is vague with imports too. */
-    protected function runtimeFields(): Attribute
-    {
-        return Attribute::get(fn () => $this->only(request()->input('fields')));
-    }
-
-    /** A vague signature and a vague body, so the `@property-read` tag types it. */
-    protected function taggedFields(): Attribute
-    {
-        return Attribute::get(fn (): array => array_values($this->only(request()->input('fields'))));
-    }
-
-    /** @return Attribute<list<array<string, mixed>>, never> */
-    protected function docRecords(): Attribute
-    {
-        return Attribute::get(fn () => $this->comments->only([1, 2]));
-    }
-
-    /** @return Attribute<list<array<string, mixed>>|null, never> */
-    protected function docRecordsNullsafe(): Attribute
-    {
-        return Attribute::get(fn () => $this->comments?->only([1, 2]));
-    }
-
-    /** @return Attribute<array<int, array<string, mixed>>, never> */
-    protected function docRecordsRuntime(): Attribute
-    {
-        return Attribute::get(fn () => $this->comments->except($this->filterKeys));
-    }
-
-    /** @return Attribute<array<string, mixed>, never> */
-    protected function docKeyed(): Attribute
-    {
-        return Attribute::get(fn () => $this->comments->only([1, 2]));
-    }
-
-    /** @return Attribute<int|mixed, never> */
-    protected function docIntMixed(): Attribute
-    {
-        return Attribute::get(fn () => $this->comments->only([1, 2]));
-    }
-
-    /** @return Attribute<array<string, mixed>|list<mixed>, never> */
-    protected function docRecordOrList(): Attribute
-    {
-        return Attribute::get(fn () => $this->comments->only([1, 2]));
-    }
-
-    /** @return Attribute<list<list<array<string, mixed>>>, never> */
-    protected function docNestedRecords(): Attribute
-    {
-        return Attribute::get(fn () => $this->twins->map(fn (FilteringAccessorModel $twin) => $twin->comment_list));
-    }
-
-    /** @return Attribute<array<int, Comment|mixed>, never> */
-    protected function docClassList(): Attribute
-    {
-        return Attribute::get(fn () => $this->comments->only([1, 2]));
-    }
-
-    /** A vague signature over a to-many filter, typed further by its `@property-read` tag. */
-    protected function signedTagRows(): Attribute
-    {
-        return Attribute::get(fn (): array => $this->comments->only([1, 2]));
-    }
-
-    /** Filters bare `$this` through `?->`. */
-    protected function ownNullsafe(): Attribute
-    {
-        return Attribute::get(fn () => ['v' => $this?->only(['id', 'content']), 'id' => $this->id]);
-    }
-
-    /** Filters a single relation, keeping an enum column. */
-    protected function authorPicks(): Attribute
-    {
-        return Attribute::get(fn () => ['v' => $this->author?->only(['id', 'role']), 'id' => $this->id]);
-    }
-
-    /** Filters a to-many relation. */
-    protected function commentPicks(): Attribute
-    {
-        return Attribute::get(fn () => ['v' => $this->comments->only([1, 2]), 'id' => $this->id]);
-    }
-
-    /** Returns a to-many relation's filter directly, so the getter's whole answer is the list. */
-    protected function commentList(): Attribute
-    {
-        return Attribute::get(fn () => $this->comments->only([1, 2]));
-    }
-
-    /** Filters a relation to a model whose overrides declare no return. */
-    protected function loosePicks(): Attribute
-    {
-        return Attribute::get(fn () => ['v' => $this->loose->only(['id', 'title']), 'id' => $this->id]);
-    }
-
-    /** Filters through an accessor typed as one of two models. */
-    protected function counterpartPicks(): Attribute
-    {
-        return Attribute::get(fn () => ['v' => $this->counterpart?->only(['id']), 'id' => $this->id]);
-    }
-
-    /** A literal shape with no filter. */
-    protected function literal(): Attribute
-    {
-        return Attribute::get(fn () => ['a' => 1, 'b' => $this->title]);
-    }
-
-    /** @return Attribute<User, never> */
-    protected function owner(): Attribute
-    {
-        return Attribute::get(fn () => $this->author);
-    }
-
-    /** Reads loop_b, which reads this accessor back. */
-    protected function loopA(): Attribute
-    {
-        return Attribute::get(fn () => ['v' => $this->loop_b, 'p' => $this->author->only(['id'])]);
-    }
-
-    /** Reads loop_a, which reads this accessor back. */
-    protected function loopB(): Attribute
-    {
-        return Attribute::get(fn () => ['v' => $this->loop_a, 'p' => $this->author->only(['id'])]);
-    }
-
     /**
      * An old-style accessor filtering a single relation.
      *
@@ -225,12 +81,6 @@ final class FilteringAccessorModel extends Model
     public function getLegacyTagRowsAttribute(): array
     {
         return $this->comments->only([1, 2]);
-    }
-
-    /** Calls a method whose body reads this accessor back. */
-    protected function selfReport(): Attribute
-    {
-        return Attribute::get(fn () => ['v' => $this->author->only(['id']), 'report' => $this->report()]);
     }
 
     /** @return array<string, mixed> */
@@ -431,5 +281,155 @@ final class FilteringAccessorModel extends Model
     public function readAsSpreadAppend(): array
     {
         return [...$this->appending->toArray(), 'x' => 1];
+    }
+
+    /** @return Attribute<Comment|User|null, never> */
+    protected function counterpart(): Attribute
+    {
+        return Attribute::get(fn () => null);
+    }
+
+    /** Filters bare `$this` by a literal key list. */
+    protected function ownPicks(): Attribute
+    {
+        return Attribute::get(fn () => ['v' => $this->only(['id', 'title']), 'id' => $this->id]);
+    }
+
+    /** Filters bare `$this` by a runtime key list. */
+    protected function ownRuntime(): Attribute
+    {
+        return Attribute::get(fn () => ['v' => $this->only(request()->input('fields')), 'id' => $this->id]);
+    }
+
+    /** Returns a runtime-key filter directly, so the getter's whole answer is vague with imports too. */
+    protected function runtimeFields(): Attribute
+    {
+        return Attribute::get(fn () => $this->only(request()->input('fields')));
+    }
+
+    /** A vague signature and a vague body, so the `@property-read` tag types it. */
+    protected function taggedFields(): Attribute
+    {
+        return Attribute::get(fn (): array => array_values($this->only(request()->input('fields'))));
+    }
+
+    /** @return Attribute<list<array<string, mixed>>, never> */
+    protected function docRecords(): Attribute
+    {
+        return Attribute::get(fn () => $this->comments->only([1, 2]));
+    }
+
+    /** @return Attribute<list<array<string, mixed>>|null, never> */
+    protected function docRecordsNullsafe(): Attribute
+    {
+        return Attribute::get(fn () => $this->comments?->only([1, 2]));
+    }
+
+    /** @return Attribute<array<int, array<string, mixed>>, never> */
+    protected function docRecordsRuntime(): Attribute
+    {
+        return Attribute::get(fn () => $this->comments->except($this->filterKeys));
+    }
+
+    /** @return Attribute<array<string, mixed>, never> */
+    protected function docKeyed(): Attribute
+    {
+        return Attribute::get(fn () => $this->comments->only([1, 2]));
+    }
+
+    /** @return Attribute<int|mixed, never> */
+    protected function docIntMixed(): Attribute
+    {
+        return Attribute::get(fn () => $this->comments->only([1, 2]));
+    }
+
+    /** @return Attribute<array<string, mixed>|list<mixed>, never> */
+    protected function docRecordOrList(): Attribute
+    {
+        return Attribute::get(fn () => $this->comments->only([1, 2]));
+    }
+
+    /** @return Attribute<list<list<array<string, mixed>>>, never> */
+    protected function docNestedRecords(): Attribute
+    {
+        return Attribute::get(fn () => $this->twins->map(fn (FilteringAccessorModel $twin) => $twin->comment_list));
+    }
+
+    /** @return Attribute<array<int, Comment|mixed>, never> */
+    protected function docClassList(): Attribute
+    {
+        return Attribute::get(fn () => $this->comments->only([1, 2]));
+    }
+
+    /** A vague signature over a to-many filter, typed further by its `@property-read` tag. */
+    protected function signedTagRows(): Attribute
+    {
+        return Attribute::get(fn (): array => $this->comments->only([1, 2]));
+    }
+
+    /** Filters bare `$this` through `?->`. */
+    protected function ownNullsafe(): Attribute
+    {
+        return Attribute::get(fn () => ['v' => $this?->only(['id', 'content']), 'id' => $this->id]);
+    }
+
+    /** Filters a single relation, keeping an enum column. */
+    protected function authorPicks(): Attribute
+    {
+        return Attribute::get(fn () => ['v' => $this->author?->only(['id', 'role']), 'id' => $this->id]);
+    }
+
+    /** Filters a to-many relation. */
+    protected function commentPicks(): Attribute
+    {
+        return Attribute::get(fn () => ['v' => $this->comments->only([1, 2]), 'id' => $this->id]);
+    }
+
+    /** Returns a to-many relation's filter directly, so the getter's whole answer is the list. */
+    protected function commentList(): Attribute
+    {
+        return Attribute::get(fn () => $this->comments->only([1, 2]));
+    }
+
+    /** Filters a relation to a model whose overrides declare no return. */
+    protected function loosePicks(): Attribute
+    {
+        return Attribute::get(fn () => ['v' => $this->loose->only(['id', 'title']), 'id' => $this->id]);
+    }
+
+    /** Filters through an accessor typed as one of two models. */
+    protected function counterpartPicks(): Attribute
+    {
+        return Attribute::get(fn () => ['v' => $this->counterpart?->only(['id']), 'id' => $this->id]);
+    }
+
+    /** A literal shape with no filter. */
+    protected function literal(): Attribute
+    {
+        return Attribute::get(fn () => ['a' => 1, 'b' => $this->title]);
+    }
+
+    /** @return Attribute<User, never> */
+    protected function owner(): Attribute
+    {
+        return Attribute::get(fn () => $this->author);
+    }
+
+    /** Reads loop_b, which reads this accessor back. */
+    protected function loopA(): Attribute
+    {
+        return Attribute::get(fn () => ['v' => $this->loop_b, 'p' => $this->author->only(['id'])]);
+    }
+
+    /** Reads loop_a, which reads this accessor back. */
+    protected function loopB(): Attribute
+    {
+        return Attribute::get(fn () => ['v' => $this->loop_a, 'p' => $this->author->only(['id'])]);
+    }
+
+    /** Calls a method whose body reads this accessor back. */
+    protected function selfReport(): Attribute
+    {
+        return Attribute::get(fn () => ['v' => $this->author->only(['id']), 'report' => $this->report()]);
     }
 }

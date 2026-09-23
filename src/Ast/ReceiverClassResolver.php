@@ -38,7 +38,9 @@ use ReflectionType;
 use ReflectionUnionType;
 
 /**
- * Answers which PHP class(es) an expression holds; the rules are in docs/components/receiver-types.md § Receiver resolution.
+ * Answers which PHP class(es) an expression holds.
+ *
+ * The rules are in docs/components/receiver-types.md § Receiver resolution.
  *
  * @internal
  */
@@ -95,7 +97,7 @@ final class ReceiverClassResolver
     }
 
     /**
-     * Resolve the class a static call is made on, not what it returns: `X::`, `self::`/`static::`/`parent::`, or `$expr::`.
+     * Resolve the class a static call is made on, not what it returns: `X::`, `self::`/`static::`/`parent::`, `$x::`.
      */
     public function resolveStaticReceiver(StaticCall $call, AnalysisScope $scope): ?ReceiverType
     {
@@ -105,7 +107,7 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The classes a method returns: its native class type, else its `@return` docblock; null when any arm is not a class.
+     * The classes a method returns: its native class type, else its `@return` docblock; null for any arm not a class.
      *
      * `static` and `$this` name the receiver class; `self` names the class that declares the method. Visibility is the
      * caller's concern.
@@ -166,11 +168,9 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The class a bare `$this->m()` runs on when the subject does not declare `m`: its proxy target.
-     *
-     * `JsonResource::__call()` forwards an undeclared method to `$this->resource`, so the call is
-     * `$this->resource->m()`. Which subjects forward, and to what, is policy the scope carries — reading it
-     * here keeps this resolver plain PHP semantics rather than one framework class's magic.
+     * The class a bare `$this->m()` runs on when the subject does not declare `m`: its proxy target, since
+     * `JsonResource::__call()` forwards it to `$this->resource`. The scope carries which subjects forward, so this
+     * resolver keeps to plain PHP semantics rather than one framework class's magic.
      */
     public function forwardedThisReceiver(string $method, AnalysisScope $scope): ?ReceiverType
     {
@@ -515,11 +515,8 @@ final class ReceiverClassResolver
     }
 
     /**
-     * What one class a true arm resolves to becomes under its tests: itself, the tested subclasses, or nothing.
-     *
-     * It stays when it passes a test, or when a test unrelated to it has an interface on either side: a subclass of
-     * it may pass that test, and no single class names the pair. Otherwise the tested subclasses replace it; with none
-     * it is dropped, since every test then names a class unrelated to it by inheritance and no object is both.
+     * What one class a true arm resolves to becomes under its tests: itself, the tested subclasses, or nothing. An
+     * interface on either side of a test keeps it, since a subclass may pass that test and no one class names the pair.
      *
      * @param  class-string  $class
      * @param  non-empty-list<class-string>  $tested
@@ -740,7 +737,7 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The classes a docblock union names, resolved against the declaring file's imports; null when any arm is not a class.
+     * The classes a docblock union names, resolved against the declaring file's imports; null for any arm not a class.
      *
      * @param  ReflectionClass<object>  $context
      * @return non-empty-list<class-string>|null

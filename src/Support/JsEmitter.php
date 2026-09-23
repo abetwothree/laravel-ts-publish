@@ -69,10 +69,7 @@ class JsEmitter
     /**
      * The published key each #[TsCasts] key retypes: a key it equals, else the one index signature it spells another
      * way a user can write that name, or null where that signature is cast under its exact name or an earlier key.
-     *
-     * The other ways read the name's escapes token by token: each `\\` as `\` (pasted into a single-quoted PHP
-     * string), each `\r` as a raw CR (the spelling before CRs were escaped, and a double-quoted string's), or both.
-     * A spelling two signatures share retypes neither.
+     * The other spellings and the tie rules are in docs/components/support-helpers.md § `JsEmitter`.
      *
      * @param  list<string>  $castKeys
      * @param  array<array-key, int|string>  $keys  the keys the casts are laid over

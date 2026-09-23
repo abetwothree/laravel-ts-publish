@@ -214,7 +214,7 @@ final class ToResourceHandler implements ExpressionHandler
     }
 
     /**
-     * Every model a toResource() receiver may hold: the existing single-model bindings first, then the receiver resolver.
+     * Every model a toResource() receiver may hold: the single-model bindings first, then the receiver resolver.
      *
      * @return list<class-string<Model>>
      */

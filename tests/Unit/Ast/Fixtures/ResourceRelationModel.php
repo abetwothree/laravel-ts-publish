@@ -16,6 +16,7 @@ final class ResourceRelationModel extends Model
 {
     protected $table = 'posts';
 
+    /** The relation named `resource` the class docblock describes. */
     public function resource(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');

@@ -12,14 +12,9 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * Type a filtered subset of a model's members: a `Pick<Model, …>` reference when every key is a
- * published column, else an inline object shape, and `Record<string, unknown>` when the keys arrive at runtime.
- * Where the scope cannot import, the shape is inline and a member whose type names a token is `unknown`.
- *
- * Two production callers. RelationFilterHandler types `$this->relation->only([...])` through it, and
- * ReceiverMethodReturnResolver types the same filters on any model receiver. ResolvesModelTypes still
- * composes this trait so the analyzer keeps inheriting the method: ResourceAstAnalyzerTest probes it
- * through two anonymous subclasses, which is the only coverage the except-branch column rule has.
+ * Type a filtered subset of a model's members: `Pick<Model, …>` when every key is a published column, else an inline
+ * shape (a member naming a token is `unknown` where the scope cannot import), and `Record<string, unknown>` for keys
+ * read at runtime. ResolvesModelTypes still composes it so ResourceAstAnalyzerTest can probe the except-branch rule.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypesImportMap from Datable
@@ -189,7 +184,7 @@ trait ResolvesFilteredRelationTypes
     }
 
     /**
-     * The `Record<string, unknown>` a model filter returns, for keys it cannot type, such as a key list read at runtime.
+     * The `Record<string, unknown>` a model filter returns for keys it cannot type, such as a runtime key list.
      *
      * @return ValueExpressionResult
      */

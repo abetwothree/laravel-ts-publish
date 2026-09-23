@@ -172,8 +172,8 @@ it('tries FirstClassCallableHandler before ConditionalMethodHandler for a first-
     expect($analyzer->resolve($expr))->toBe(['type' => 'unknown', 'optional' => false]);
 });
 
-// Formerly ordering pin #2: MethodChainHandler reflected only() on Post and degraded this Pick<> whenever it ran first.
-// It now declines every only()/except(), so the order of the two no longer decides the call, in either spelling.
+// MethodChainHandler declines every only()/except(), so the order of the two cannot decide this Pick<>, in either
+// spelling.
 it('answers $this->relation?->only([...]) with the Pick<> whichever of RelationFilterHandler and MethodChainHandler runs first', function (Expr $relation) {
     $expr = new NullsafeMethodCall(
         $relation,

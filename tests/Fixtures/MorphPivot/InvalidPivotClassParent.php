@@ -16,6 +16,7 @@ final class InvalidPivotClassParent extends Model
 {
     protected $table = 'venues';
 
+    /** A morph-to-many whose using() names a pivot class that is not a model. */
     public function labels(): MorphToMany
     {
         return $this->morphToMany(Label::class, 'labelable')->using(NotAModelPivot::class);

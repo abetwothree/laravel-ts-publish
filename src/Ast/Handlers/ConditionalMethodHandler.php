@@ -214,13 +214,9 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze $this->whenHas('attribute') — Laravel returns `value($value, $this->resource->{$attribute})`.
-     *
-     * A resolvable value argument is therefore what the property carries, with a closure's first
-     * parameter bound to the named attribute. The attribute itself answers only when no value can:
-     * a skipped one, an EnumResource::make()/::collection() wrap — whose shape decides whether the
-     * enum channel is 'enumFqcn' (wrapped — gets the AsEnum rewrite) or 'directEnumFqcn' (read as-is)
-     * — or a value the engine cannot type.
+     * Analyze $this->whenHas('attribute'): Laravel returns `value($value, $this->resource->{$attribute})`, so a
+     * resolvable value is what the property carries, with a closure's first parameter bound to the attribute. The
+     * attribute answers only for a skipped value, an EnumResource::make()/::collection() wrap, or an untypable value.
      *
      * @return ValueExpressionResult
      */
@@ -249,12 +245,9 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze $this->whenAppended('attribute', $value, $default) — Laravel returns `value($value)`.
-     *
-     * A resolvable value types the arm here too, but no attribute binds to a closure parameter: unlike
-     * whenHas()/whenExistsLoaded(), whenAppended() forwards none, so a parameter holds its default. The appended
-     * accessor answers for a skipped value, an EnumResource::make()/::collection() wrap, and any
-     * value the engine cannot type.
+     * Analyze $this->whenAppended('attribute', $value, $default): Laravel returns `value($value)`, so a resolvable
+     * value types the arm and a closure parameter holds its default. The appended accessor answers for a skipped value,
+     * an EnumResource::make()/::collection() wrap, and any value the engine cannot type.
      *
      * @return ValueExpressionResult
      */
@@ -320,12 +313,9 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze $this->whenExistsLoaded('relation', $value, $default) — Laravel returns
-     * `value($value, $this->resource->{$attribute})`, where $attribute is the relation name snaked and
-     * finished with `_exists`.
-     *
-     * A resolvable value types the arm, with a closure's first parameter bound to that flag; the
-     * generated `{relation}_exists` boolean answers when no value can.
+     * Analyze $this->whenExistsLoaded('relation', $value, $default): Laravel returns `value($value, $flag)`, where
+     * $flag is the snaked relation's `_exists` attribute, so a resolvable value types the arm with a closure's first
+     * parameter bound to that flag; the generated `{relation}_exists` boolean answers when no value can.
      *
      * @return ValueExpressionResult
      */

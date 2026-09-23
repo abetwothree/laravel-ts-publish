@@ -6225,8 +6225,7 @@ describe('ResourceAstAnalyzer with ImageDelegatedResource — the model-delegate
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Every return branch of a spread method counts, and the method's own @return shape
-// types what its body could not — PermissionsSpreadResource / DocblockShapedEvent
+// Every spread-method return branch counts, and its own @return shape types what the body could not
 // ─────────────────────────────────────────────────────────────────────────────
 
 test('spread methods merge every return branch and take unknown types from their own @return', function () {

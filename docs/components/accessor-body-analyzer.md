@@ -10,8 +10,9 @@ $this->minor])` publishes `{ major: number; minor: number }` rather than the `un
 signature resolves to on its own, and an accessor with no annotation at all stops publishing `unknown`
 when its body says something concrete.
 
-It is registered as a singleton, because its cycle guard has to span every call site rather than one
-instance.
+Its cycle guard and its memo for the run live in `AnalysisMemo`, a container singleton, keyed per model,
+attribute and import mode, so every call site shares them; see
+[AST engine § The run memo](ast-engine.md#the-run-memo-replays-what-it-recorded).
 
 ## When the body is read
 
@@ -158,17 +159,19 @@ pins the rule end to end.
 ## Cycles
 
 Two accessors that read each other would recurse forever: the body of `loop_a` reads `$this->loop_b`,
-which resolves through the model engine straight back into `loop_b`'s body. `analyze()` keys a guard by
-`model@attribute` for the duration of the call and returns `null` on re-entry, so the inner read
-degrades to `unknown` and the outer one terminates. `Release::loopA()`/`loopB()` pin it: both publish
-`unknown`.
+which resolves through the model engine straight back into `loop_b`'s body. `analyze()` enters an
+`AnalysisMemo` guard, `accessor-body:model@attribute`, for the duration of the call and returns `null` on
+re-entry, so the inner read degrades to `unknown` and the outer one terminates. `Release::loopA()`/`loopB()`
+pin it: both publish `unknown`. The same key memoizes the answer for the run, and a cut-short answer is never
+stored.
 
-This guard is deliberately separate from `AstEngine`'s own: `analyzeMethod()` guards and memoizes on
-`class@method@modelClass`, while `analyzeModelClosure()` uses neither — which is exactly why this
-class carries its own `model@attribute` guard on a shared singleton instead of leaning on the engine's.
+This key is deliberately separate from `AstEngine`'s own: `analyzeMethod()` guards and memoizes on
+`analysis:class@method@modelClass`, while `analyzeModelClosure()` uses neither — which is exactly why this
+class keys its own `accessor-body:model@attribute` guard instead of leaning on the engine's.
 The two keys are not interchangeable, so unifying them is not a tidy-up; it would break this guard.
 
-The guard is keyed per import mode as well, `model@attribute` and `model@attribute@importless`. A getter being
+The key carries the import mode as well, `accessor-body:model@attribute` and
+`accessor-body:model@attribute@importless`. A getter being
 analyzed with imports can call a method whose body reads the same accessor without them. A shared key cuts that read
 short whenever the getter's own analysis is on the stack, so the getter and the method each published a different
 type depending on which of them was read first. Each mode's key still terminates its own cycle:
@@ -183,8 +186,8 @@ The body is not a type checker, and three shapes it cannot read are deliberate:
   nothing about those keys is statically knowable, so it stays `unknown[]`.
 - **Untyped helpers.** A body delegating to a helper with no return type resolves to whatever the
   engine can make of that call, which is often nothing.
-- **Anything the handlers decline.** The body step inherits the engine's limits exactly; it adds no
-  rules of its own.
+- **Anything the handlers decline.** The body step inherits the engine's limits exactly; beyond the
+  declines above, it adds no rules of its own.
 
 This is why the annotation checklist still applies. A body that resolves to nothing publishes the same
 `unknown` it did before, and the cheapest fix remains an accurate `@return Attribute<Get, Set>` —

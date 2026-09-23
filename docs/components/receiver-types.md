@@ -38,11 +38,12 @@ rules. The class docblock points here.
 | `$this->resource->prop`, `$this->resource?->prop` | The model-member rules `$this->prop` uses on a model-backed subject. The subject-declared property rule never applies. |
 | `$this->prop`, where `SubjectPropertyTypeResolver::declaresOwnProperty()` holds — declared on the subject below any `Illuminate\` ancestor, non-static, and not a framework name it inherits — at any visibility | Its native class type, else its full `@var` type |
 | `$this->prop` on a model-backed subject | `ModelAttributeResolver::resolveAttributeClass()`, else the relation: its morph targets or `resolveMorphToBound()`, `[EloquentCollection]` with `elementModel` for to-many, or the related model |
-| `$var` | `varClassBindings` first — an `instanceof` narrowing outranks every other binding. The ordering that is load-bearing today is that it sits above the `closureParamExprBindings ?? localVarBindings` fallback, because a guarded variable is normally bound by a plain `$x = …;` assignment; sitting above `varModelBindings` is the same concern for a narrowed closure param or loop variable, and is motivating rather than currently proven. Then `varModelBindings`, then `varCollectionBindings` (a collection with `elementModel`), then `requestVarNames`, then `closureParamExprBindings` and `localVarBindings` resolved recursively under `resolvingLocalVars`. An unbound variable is `null`. See [AST engine § Narrowing](ast-engine.md#narrowing) for what writes `varClassBindings`. |
-| `<receiver>->prop`, `<receiver>?->prop` | For a model class, the attribute and relation rules above. For any other class, its declared **public** property's class. |
+| `$var` | `varClassBindings` first — a ternary's `instanceof` narrowing, or a `morphTo` `whenLoaded()` parameter's targets, outranks every other binding. Then `varGuardBindings`, an early-exit guard's class, but only for a read that starts past the guard's `if`. The ordering that is load-bearing today is that both sit above the `closureParamExprBindings ?? localVarBindings` fallback, because a narrowed variable is normally bound by a plain `$x = …;` assignment; sitting above `varModelBindings` is the same concern for a narrowed closure param or loop variable, and is motivating rather than currently proven. Then `varModelBindings`, then `varCollectionBindings` (a collection with `elementModel`), then `requestVarNames`, then `closureParamExprBindings` and `localVarBindings` resolved recursively under `resolvingLocalVars`. An unbound variable is `null`. See [AST engine § Narrowing](ast-engine.md#narrowing) for what writes `varClassBindings` and `varGuardBindings`. |
+| `<receiver>->prop`, `<receiver>?->prop` | For a model class, the attribute and relation rules above. For any other class, its declared **public**, non-static property's class. |
 | `$this->method()` | The subject's own method, at any visibility. When the subject is a `JsonResource` that does not declare it, the backing class's **public** method, on the class `forwardedThisReceiver()` names. |
 | `<receiver>->relationMethod()` on a model where `resolveRelation()` knows the name | `ReceiverType([<return class>], relatedModel: <related model>)`. A relation method with no declared return names `Relation`. |
 | `<relation receiver>->getRelated()` | `ReceiverType::of($receiver->relatedModel)` |
+| `<receiver>->getRelation('name')`, where the receiver holds only models and the name is a string literal | Each model's relation of that name as it holds once loaded: its morph targets or `resolveMorphToBound()`, `[EloquentCollection]` with `elementModel` for to-many, or the related model. `Model::getRelation()` returns `$this->relations[$name]` and errors for a name that is not loaded, so the value is always the loaded relation. |
 | `$request->user()`, where the receiver class is a `Request` | `AuthUserResolver::model()`, when that model is not `null` |
 | `<receiver>->method()`, `<receiver>?->method()` otherwise | `returnClasses()` for every receiver class, for a **public** method. Any `null` makes the whole answer `null`. |
 | `static::m()` | The subject, then `returnClasses()`, at any visibility |
@@ -89,9 +90,11 @@ the method runs on.
 ### Visibility
 
 A member counts at any visibility when it is read on `$this` or through `self::`, `static::`, or `parent::`.
-On any other receiver only a public member counts. `method_exists()` and `property_exists()` also match
-protected and private members, but PHP sends an outside read of one of those to `__call()` or `__get()`,
-never to the declaration. `Post::titleDisplay()` is protected, so `$this->titleDisplay()` on a `Post`
+On any other receiver only a public member counts, and only a non-static property. `method_exists()` and
+`property_exists()` also match protected, private and static members, but PHP sends an outside read of a
+protected or private one to `__call()` or `__get()`, and an instance read of a static property to `__get()`,
+never to the declaration. `ReceiverPropertyFetchHandler` applies the same rule when it types the property.
+`Post::titleDisplay()` is protected, so `$this->titleDisplay()` on a `Post`
 subject names `Attribute`, while `$post->titleDisplay()` and `$this->resource->titleDisplay()` decline.
 
 ### Return and property types
@@ -183,7 +186,7 @@ and attribute, including a `null` answer.
 | `date`, `datetime`, `custom_datetime` | `Illuminate\Support\Carbon`, because `Model::asDateTime()` returns it through the `Date` facade by default |
 | `immutable_date`, `immutable_datetime`, `immutable_custom_datetime` | `Carbon\CarbonImmutable` |
 | `timestamp` | None. `Model::asTimestamp()` returns an integer. |
-| A `Castable` class, checked first as `HasAttributes::resolveCasterClass()` does | The `get()` native return class of the caster that `castUsing()` returns |
+| A `Castable` class, checked first as `HasAttributes::resolveCasterClass()` does | The `get()` native return class of the caster that `castUsing()` names, read and never called, since it is application code: the classes its declared return names, native or `@return`, else those its own `return` statements build or spell (`new X(...)`, a local holding one, `X::class`, `self::class`, `static::class`). Every caster must be a `CastsAttributes` whose `get()` names the same one class; any other return, such as an anonymous class, gives none. |
 | A `CastsAttributes` class | Its `get()` native return class |
 | An enum | The enum |
 
@@ -206,7 +209,7 @@ The resolver returns `null` rather than a partial answer in these cases:
 - A bare `$this`, which no rule above names. `ReceiverMethodCallHandler` handles a bare `$this->m()` on a resource
   through `forwardedThisReceiver()`, not through `resolve()`.
 - A method or property whose type has a builtin arm, such as `: string`, `: array`, or `UrlService|string`.
-- A protected or private member read on a receiver other than `$this`.
+- A protected or private member, or a static property, read on a receiver other than `$this`.
 - `new self`, `new parent`, `self::m()`, or `parent::m()` when the subject has a user-land ancestor.
 - A docblock part with text after its generic arguments, such as `Collection<int, User>[]`.
 - A union where any arm cannot be resolved, such as `$this->author ?? $nobody`.
@@ -346,9 +349,17 @@ model and the receiver model are the same class, so the two answers agree.
    `@return` docblock when the signature is vague, through
    `LaravelTsPublish::methodOrDocblockReturnTypes()`.
 6. When that declaration is still vague — a bare `: array` reflects to `unknown[]` — the method body is
-   analyzed once and the shape its literal return spells is used instead. `PriceQuoteService::quote()`
-   declares only `: array`, and its body publishes
-   `{ unit: string; minimum: number; discounted: { unit: string } }`. Four rules bound it:
+   analyzed once and the shape its literal return spells stands in for the declaration's array arms.
+   `PriceQuoteService::quote()` declares only `: array`, and its body publishes
+   `{ unit: string; minimum: number; discounted: { unit: string } }`. These rules bound it:
+   - The shape replaces only the array arms (`X[]`, `Record<…>`). Every other declared arm is kept beside it,
+     `null` last, so `?array` gives `{…} | null` and `array|false` gives `{…} | false`. A declared arm that is
+     `unknown`, or that names a token the shape could not import, keeps the reflected declaration instead.
+   - The analysis must read every value the body returns. It reads every array literal that only `if` and loop
+     blocks enclose, when one of them has an item, else only the body's first `return`. Each other `return` must
+     be a `null`, boolean, string or number literal a declared arm covers. A bare `return;`, a generator, or any
+     other unread return keeps the declaration. An untyped, `mixed` or `iterable` declaration names no other
+     arm, so there every return must be one the analysis reads.
    - The body must spell at least one property; otherwise the vague declaration is kept unchanged. A method
      that returns another call rather than a literal therefore stays `unknown[]`.
    - The built inline type must name no token an import would have to bring in
@@ -356,8 +367,9 @@ model and the receiver model are the same class, so the two answers agree.
      token needing an import could never be emitted with one. See
      [Follow-ups](#the-body-fallback-carries-no-fqcn-channel).
    - A `class@method` already being analyzed returns nothing, so a method whose body calls itself
-     terminates instead of recursing. The resolver is a container singleton so that guard is shared by
-     every call site rather than per instance.
+     terminates instead of recursing. The guard is a `method-body:class@method` key in `AnalysisMemo`, a
+     container singleton, so every call site shares it, and `resolve()` memoizes its whole answer there per
+     `class@method` for the run; see [AST engine § The run memo](ast-engine.md#the-run-memo-replays-what-it-recorded).
    - The result is still subject to steps 7 and 8, exactly as a reflected one is.
 7. The type must not be vague. A vague type such as `unknown[]` would claim a list where an associative
    array, or a `keyBy()` collection, is a JSON object. An inline object type from step 6 is never vague.
@@ -566,7 +578,7 @@ How one class types the property:
 | Receiver class | Rule |
 | --- | --- |
 | A `Model` | `ModelAttributeResolver::resolveAttribute()` first, then `resolveRelation()` — attributes before relations, the order `Model::__get()` itself uses. A relation carries its `modelFqcn`, and a morph union its `morphFqcns`, so the emitted token keeps its import. |
-| Anything else | `SubjectPropertyTypeResolver::resolve()` — the `@var` docblock first, the native declared type second (accepted through `ReflectedTypeAcceptor`), an untyped property's literal default third. The same three steps, in the same order, as [AST engine § Subject mode](ast-engine.md#subject-mode). |
+| Anything else | A public, non-static property only; see [Visibility](#visibility). `SubjectPropertyTypeResolver::resolve()` — the `@var` docblock first, the native declared type second (accepted through `ReflectedTypeAcceptor`), an untyped property's literal default third, while no method the class runs writes the property. The same three steps, in the same order, as [AST engine § Subject mode](ast-engine.md#subject-mode). |
 
 A reflected property then faces the same two declines a method return does, for the same reasons given under
 [the order for one class](#the-order-for-one-class): the property must not hold a class

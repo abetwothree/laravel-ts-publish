@@ -75,7 +75,7 @@ final class StringSerialization
     }
 
     /**
-     * Every class name a method's native return type and `@return` docblock spell, with `self`/`static`/`$this` resolved.
+     * Every class name a method's native return and `@return` docblock spell, with `self`/`static`/`$this` resolved.
      *
      * @return list<string>
      */

@@ -133,9 +133,10 @@ declare module '@laravel/echo-vue' {            // -vue / -react / -svelte detec
   `?->toISOString()` and `?->toJSON()` are all `string | null`. When `broadcastWith()` returns an array literal,
   a key the body still cannot type (an untyped helper's result) takes its type from `broadcastWith()`'s own
   `@return array{...}` docblock, which fills only keys the body left `unknown`: it never adds a key or retypes one
-  the body typed, though a `key?:` in it still makes that key optional. When it returns a helper's result
-  (`return $this->payload();`), only the helper's own docblock is read, and when it returns a variable
-  (`$data = [...]; return $data;`) the payload publishes empty. To override a key outright, use
+  the body typed, though a `key?:` in it still makes that key optional. A string or number literal in it
+  (`'draft'|'live'`) publishes as that literal, and a class, enum or model name fills nothing. When it returns a
+  helper's result (`return $this->payload();`), only the helper's own docblock is read, and when it returns a
+  variable (`$data = [...]; return $data;`) the payload publishes empty. To override a key outright, use
   `#[TsCasts(['completed_at' => 'string | null'])]` on the event class.
 - A helper spread into the payload (`...$this->counts()`, or `return $this->counts();`) that writes
   `$data["{$name}_count"]` in a loop publishes a template-literal index signature,

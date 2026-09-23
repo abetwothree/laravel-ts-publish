@@ -17,7 +17,7 @@ final readonly class ReceiverType
      * @param  non-empty-list<class-string>  $classes  every class the value may be an instance of
      * @param  bool  $shortCircuits  a `?->` earlier in the chain can end the whole expression as null
      * @param  class-string<Model>|null  $elementModel  set when the receiver is an Eloquent collection of that model
-     * @param  class-string<Model>|null  $relatedModel  set when the receiver is a relation instance, e.g. `$post->comments()`
+     * @param  class-string<Model>|null  $relatedModel  set for a relation instance, such as `$post->comments()`
      */
     public function __construct(
         public array $classes,

@@ -11,6 +11,7 @@ final class ReceiverStringKeyOverrideModel extends Model
 {
     protected $table = 'posts';
 
+    /** Declares the key a string, overriding the inherited `mixed`. */
     public function getKey(): string
     {
         return (string) parent::getKey();

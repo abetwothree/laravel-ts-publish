@@ -10,10 +10,8 @@ use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 
 /**
  * Spell the object arm `json_encode()` emits for a collection whose keys are no longer 0..n-1, and the list `values()`
- * turns it back into.
- *
- * The single home for both: RelationCollectionChainHandler adds the arm from a relation root, CollectionPipelineHandler
- * from a `collect()` root, and VariableHandler reads a trailing `values()` through the list.
+ * turns it back into: RelationCollectionChainHandler and CollectionPipelineHandler add the arm, and VariableHandler
+ * reads a trailing `values()` through the list.
  *
  * @internal
  */

@@ -13,10 +13,9 @@ use Workbench\App\Enums\Role;
 use Workbench\App\Models\User;
 
 /**
- * A model whose only() and except() overrides return the model itself, which hides two columns and an appended
- * accessor, casts one column to an enum and one to a class, and appends one accessor typed as a string and one as an
- * enum. Its serialized object leaves the hidden names and the accessor it does not append out, and names a token in
- * the cast ones and the enum one.
+ * A model whose only() and except() overrides return the model itself, with two hidden columns, a hidden append, an
+ * enum and a class cast, and a string and an enum append. Its serialized object leaves out the hidden names and the
+ * accessor it does not append, and names a token in the cast ones and the enum one.
  */
 final class HiddenFilterOverrideModel extends Model
 {
@@ -58,21 +57,25 @@ final class HiddenFilterOverrideModel extends Model
         return Attribute::get(fn () => null);
     }
 
+    /** An appended accessor typed as a string. */
     protected function badge(): Attribute
     {
         return Attribute::get(fn (): string => 'badge');
     }
 
+    /** An appended accessor typed as an enum. */
     protected function rank(): Attribute
     {
         return Attribute::get(fn (): Role => Role::Admin);
     }
 
+    /** An appended accessor that `$hidden` hides. */
     protected function secret(): Attribute
     {
         return Attribute::get(fn (): string => 'secret');
     }
 
+    /** An accessor the model does not append. */
     protected function nick(): Attribute
     {
         return Attribute::get(fn (): string => 'nick');
