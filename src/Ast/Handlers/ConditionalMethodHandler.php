@@ -109,14 +109,12 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
         if ($this->isThisMethodCall($expr, 'whenCounted')) {
             /** @var MethodCall $expr */
-            return $this->analyzeWhenAggregate($expr, 'whenCounted', ['type' => 'number', 'optional' => false], $scope, $engine);
+            return $this->analyzeWhenAggregate($expr, 'whenCounted', $scope, $engine);
         }
 
-        // An aggregate's type depends on its column and function (a max() over a date is a string), so its
-        // value closure's parameter is passed a value this handler cannot type.
         if ($this->isThisMethodCall($expr, 'whenAggregated')) {
             /** @var MethodCall $expr */
-            return $this->analyzeWhenAggregate($expr, 'whenAggregated', ValueResult::unknown(), $scope, $engine);
+            return $this->analyzeWhenAggregate($expr, 'whenAggregated', $scope, $engine);
         }
 
         if ($this->isThisMethodCall($expr, 'whenPivotLoaded')) {
@@ -363,18 +361,26 @@ final class ConditionalMethodHandler implements ExpressionHandler
      * Analyze $this->whenCounted()/whenAggregated() — Laravel returns `value($value, $aggregate)`, swapping a null
      * $value for the identity closure, so a missing or null value publishes the aggregate itself.
      *
-     * A value closure is passed the aggregate: a count is a number, and a column aggregate is $aggregate, `unknown`
-     * when its type depends on the column. The closure's own result types the key when it resolves.
+     * A count is a number. Any other aggregate is the raw column value the driver returns, which is a number or a
+     * string: a max() over a date, or a sum() or avg() MySQL returns as a decimal. A value closure is passed the
+     * aggregate, and its own result types the key when it resolves; one the engine cannot type leaves the aggregate.
      *
-     * @param  ValueExpressionResult  $aggregate
      * @return ValueExpressionResult
      */
-    protected function analyzeWhenAggregate(MethodCall $call, string $method, array $aggregate, AnalysisScope $scope, ExpressionEngine $engine): array
+    protected function analyzeWhenAggregate(MethodCall $call, string $method, AnalysisScope $scope, ExpressionEngine $engine): array
     {
         $args = $this->arguments($call, $method);
-        $fromValue = $this->valueSkipped($args) ? null : $this->resolveValueArgument($args, $aggregate, $scope, $engine);
+        $function = $args->named('aggregate')?->value;
+        $aggregate = $method === 'whenCounted' || ($function instanceof String_ && $function->value === 'count')
+            ? ['type' => 'number', 'optional' => false]
+            : ['type' => 'number | string', 'optional' => false];
 
-        return $this->applyConditionalDefault($fromValue ?? ['type' => 'number', 'optional' => false], $args, $scope, $engine);
+        return $this->applyConditionalDefault(
+            $this->resolveValueArgument($args, $aggregate, $scope, $engine) ?? $aggregate,
+            $args,
+            $scope,
+            $engine,
+        );
     }
 
     /**
@@ -428,8 +434,8 @@ final class ConditionalMethodHandler implements ExpressionHandler
      * Analyze $this->whenLoaded('relation') or $this->whenLoaded('relation', value, default).
      *
      * A single-model relation's closure param binds to the model; a to-many relation's binds to the
-     * collection type instead, since the param holds the whole collection rather than one element. A variadic
-     * param binds to the list the relation collects into.
+     * collection type instead, since the param holds the whole collection rather than one element, and a morphTo's to
+     * its targets. A variadic param binds to the list the relation collects into.
      *
      * @return ValueExpressionResult
      */
@@ -463,6 +469,15 @@ final class ConditionalMethodHandler implements ExpressionHandler
                         'type' => $relationInfo['type'],
                         'optional' => false,
                         'modelFqcn' => $relationInfo['modelFqcn'],
+                    ], $scope, $engine);
+                }
+
+                // A morphTo's list holds whichever target loaded, never null: whenLoaded() skips the closure for null.
+                if ($relationInfo !== null && $relationInfo['modelFqcn'] === null && $relationInfo['morphFqcns'] !== []) {
+                    $this->bindVariadicList($valueExpr, [
+                        'type' => ValueResult::stripNullArm($relationInfo['type']),
+                        'optional' => false,
+                        'embeddedModelFqcns' => $relationInfo['morphFqcns'],
                     ], $scope, $engine);
                 }
 
@@ -638,9 +653,8 @@ final class ConditionalMethodHandler implements ExpressionHandler
     /**
      * The type Laravel's `value($value, ...$args)` produces, binding a closure's first parameter to $argument.
      *
-     * $argument is what Laravel passes the closure: an expression to read, a value already typed (`unknown` when
-     * the call passes one this handler cannot type), or null when it passes nothing. Every parameter left without an
-     * argument takes its default's type.
+     * $argument is what Laravel passes the closure: an expression to read, a value already typed, or null when it
+     * passes nothing. Every parameter left without an argument takes its default's type.
      *
      * Null means there is no usable value — none written, a literal null, an EnumResource wrap whose channel
      * the caller decides, or a resolution the engine cannot type — so the caller keeps its own
@@ -678,7 +692,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
                 if ($argument instanceof Expr) {
                     $scope->closureParamExprBindings[$name] = $argument;
-                } elseif ($argument['type'] !== 'unknown') {
+                } else {
                     $scope->varValueBindings[$name] = $argument;
                 }
             }

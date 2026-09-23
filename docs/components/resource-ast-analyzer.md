@@ -1282,20 +1282,21 @@ evaluates to `$x`.
 
 ### The default argument controls both `optional` and the union
 
-`ConditionalMethodHandler::hasExplicitDefaultArg(MethodCall $call, int $index)` decides whether argument 1 was passed at all — purely
-positionally, since Laravel distinguishes an omitted argument from an explicitly-passed `null` via
-`func_num_args()`, not via `$value === null`. A `ConstFetch(null)` at the default position
+`ConditionalMethodHandler::hasExplicitDefaultArg(CallArguments $args)` decides whether the `default` argument was
+passed at all — by argument count, since Laravel distinguishes an omitted argument from an explicitly-passed `null`
+via `func_num_args()`, not via `$value === null`. `default` counts as passed once the call's argument count exceeds its
+declared position, whether it was written there or by name. A `ConstFetch(null)` at the default position
 (`whenNotNull($x, null)`) counts as an explicit default: `func_num_args() === 2` there too, so the key
-survives at runtime as `null`, not as a missing key. Named or spread arguments make position meaningless,
-so both bail the helper out to `false` rather than guessing — it is reused as-is by later conditional-family
-handlers for the same reason.
+survives at runtime as `null`, not as a missing key. A spread makes the count unknowable, so it bails the helper out
+to `false` rather than guessing — the whole conditional family shares the helper for the same reason.
 
 When no explicit default is present, the property is `optional: true` and its type is just the (possibly
 null-stripped) value arm — matching every pre-existing single-argument fixture (`ProductResource`,
 `ImageResource`, `AddressResource`, …). When an explicit default *is* present, both the `optional` flag and
 the union are decided by the shared `ConditionalMethodHandler::applyConditionalDefault()` helper described
 [below](#every-handler-unions-the-default-arm-in-through-applyconditionaldefault), which `whenNotNull()` and
-`whenNull()` reach with `$index: 1`. The default's own type is analyzed independently via
+`whenNull()` reach with their mapped `CallArguments`, as every handler does. The default's own type is analyzed
+independently via
 `analyzeValueExpression()`, since PHP evaluates it eagerly as an argument regardless of which arm ultimately
 wins at runtime — unless the default is a closure requiring a parameter, none of which this pair ever
 supplies, in which case it is never analyzed at all; see below.
@@ -1312,8 +1313,8 @@ argument, not zero. A closure or arrow function passed as the default that decla
 parameters than its caller actually supplies therefore throws `ArgumentCountError` at runtime instead of
 producing a value — it can never contribute to the property's type.
 
-`ConditionalMethodHandler::applyConditionalDefault($value, $call, $index, $scope, $engine, $defaultArgCount = 0)`
-checks this before analyzing the default expression at all:
+`ConditionalMethodHandler::applyConditionalDefault($value, $args, $scope, $engine, $defaultArgCount = 0,
+$passedToDefault = null)` checks this before analyzing the default expression at all:
 `InspectsAstNodes::closureRequiresArguments(Expr $expr, int $providedArgs = 0)`
 returns `true` when `$expr` is a `Closure` or `ArrowFunction` whose count of parameters lacking both a
 default value and a variadic marker exceeds `$providedArgs`. Every handler leaves `$defaultArgCount` at its
@@ -1407,20 +1408,19 @@ emitted `optional`. The default sits at a **different argument index per method*
 | `whenAggregated` | `($relationship, $column, $aggregate, $value, $default)` | 4 |
 | `transform` | `($value, $callback, $default)` | 2 |
 
-Every handler passes its own `N` to `applyConditionalDefault()`, which asks
-`hasExplicitDefaultArg($call, N)` first. That check is purely positional: Laravel distinguishes an
-omitted argument from an explicitly-passed `null` via `func_num_args()`, not `=== null`, so a
-`ConstFetch(null)` at the default position still counts as a real default —
+Every handler maps its call against its own method's signature through `CallArguments`, so each reads `default` by
+name and `applyConditionalDefault()` needs no index; it asks `hasExplicitDefaultArg($args)` first. That check counts
+arguments: Laravel distinguishes an omitted argument from an explicitly-passed `null` via `func_num_args()`, not
+`=== null`, so a `ConstFetch(null)` at the default position still counts as a real default —
 `whenLoaded('user', fn ($user) => $user, null)` is required and typed `User | null`, not optional and typed
-`User` (see `loaded_with_default` in `ConditionalDefaultsResource`). A named or spread argument at the
-default position makes position meaningless, so the helper bails out to `false` — the property behaves as
-if no default were passed at all.
+`User` (see `loaded_with_default` in `ConditionalDefaultsResource`). A spread makes the count unknowable, so the
+helper bails out to `false` — the property behaves as if no default were passed at all.
 
 ### Every handler unions the default arm in, through `applyConditionalDefault()`
 
-`ConditionalMethodHandler::applyConditionalDefault($value, $call, $index, $scope, $engine)` is the single vehicle for the whole family: every
-handler builds its value arm, then hands it over with its own default index. It union-merges the two
-arms' `' | '` members, deduplicates them, and folds their import channels via `ValueResult::mergeUnion()`,
+`ConditionalMethodHandler::applyConditionalDefault($value, $args, $scope, $engine, …)` is the single vehicle for the
+whole family: every handler builds its value arm, then hands it over with its mapped `CallArguments`. It union-merges
+the two arms' `' | '` members, deduplicates them, and folds their import channels via `ValueResult::mergeUnion()`,
 re-asserting `optional` to `false` afterwards (`ValueResult::mergeUnion()` resets it). The merge is not
 cosmetic — a default like `Status::Draft` or `UserResource::make(...)` carries an import channel that
 only `ValueResult::mergeUnion()` preserves; concatenating type strings by hand would emit a type name with no
@@ -1460,9 +1460,9 @@ relation is not loaded. Note that `whenLoaded()`, `whenHas()` and `whenAppended(
 
 Before this task, both were handled by one `isThisMethodCall(...) || isThisMethodCall(...)` branch,
 because they shared identical output (`unknown`, always optional). Once `optional` depends on the
-default's argument index, that combined branch stops working: `whenPivotLoadedAs()` takes a leading
+default's argument position, that combined branch stops working: `whenPivotLoadedAs()` takes a leading
 `$accessor` argument that `whenPivotLoaded()` doesn't, so their default sits at index 3 vs. index 2.
-Each method needs its own branch reading its own index.
+Each method needs its own branch, mapping its call against its own signature.
 
 ## `unless()`/`mergeUnless()` delegate; `whenAppended()`, `whenExistsLoaded()`, and `transform()` are new handlers
 
@@ -1515,7 +1515,8 @@ whose body is `mixed` and so resolves to `unknown` — is pinned as `string`, th
 
 The *default* argument is analyzed and unioned in by `applyConditionalDefault()` either way. A default closure is
 called with no argument, so its parameters bind only as a parameter the call passes nothing does: an optional one to
-its default's type, per [AstEngine § A closure parameter owns its name](ast-engine.md#a-closure-parameter-owns-its-name).
+the value its default evaluates to, per
+[AstEngine § A closure parameter owns its name](ast-engine.md#a-closure-parameter-owns-its-name).
 
 ### `whenExistsLoaded()` resolves to the generated `{relation}_exists` flag — and must agree with `ModelTransformer`
 
@@ -1551,9 +1552,9 @@ absent `$value` is different again — Laravel's one-argument branch returns the
 `$value`'s own type, is what the property carries. `ConditionalMethodHandler::analyzeTransform()` analyzes `$args[1]`
 (the callback), binding its first parameter to `$args[0]`, the value the call passes it, as
 [AstEngine § A closure parameter owns its name](ast-engine.md#a-closure-parameter-owns-its-name) lists. It then hands
-the result to `applyConditionalDefault()` with index 2 and `defaultArgCount: 1`: the same `transform()` helper invokes
-an unfilled default as `$default($value)`, one argument, not the `value($default)`/zero-argument call every other
-handler's default receives (see
+the result to `applyConditionalDefault()` with `defaultArgCount: 1` and the value it passes: the same `transform()`
+helper invokes an unfilled default as `$default($value)`, one argument, not the `value($default)`/zero-argument call
+every other handler's default receives (see
 [above](#a-default-closure-requiring-more-parameters-than-laravel-supplies-is-unreachable-and-never-analyzed)).
 A one-parameter closure default is therefore reachable here and unions in, where the same shape would be excluded as
 unreachable anywhere else in the family. That parameter holds the blank value itself, so it binds to the value's full

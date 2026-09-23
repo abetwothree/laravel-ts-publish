@@ -18,7 +18,7 @@ export interface BodylessOrderResource
     currency: AsEnum<typeof Currency>;
     items?: OrderItem[];
     items_count?: number;
-    total_avg?: number;
+    total_avg?: number | string;
     paid_at?: string | null;
     shipped_at?: string | null;
     delivered_at?: string | null;

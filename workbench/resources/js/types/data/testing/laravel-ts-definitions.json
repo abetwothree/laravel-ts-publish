@@ -9759,7 +9759,7 @@
                 },
                 {
                     "name": "total_avg",
-                    "type": "number",
+                    "type": "number | string",
                     "optional": true
                 },
                 {
@@ -11238,7 +11238,7 @@
                 },
                 {
                     "name": "aggregated_no_default",
-                    "type": "number",
+                    "type": "number | string",
                     "optional": true
                 },
                 {
@@ -13695,7 +13695,7 @@
                 },
                 {
                     "name": "total_avg",
-                    "type": "number",
+                    "type": "number | string",
                     "optional": true
                 },
                 {
@@ -14237,17 +14237,17 @@
                 },
                 {
                     "name": "total_sold",
-                    "type": "number",
+                    "type": "number | string",
                     "optional": true
                 },
                 {
                     "name": "min_unit_price",
-                    "type": "number",
+                    "type": "number | string",
                     "optional": true
                 },
                 {
                     "name": "max_unit_price",
-                    "type": "number",
+                    "type": "number | string",
                     "optional": true
                 },
                 {

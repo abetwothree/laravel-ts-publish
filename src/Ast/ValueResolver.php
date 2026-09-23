@@ -9,6 +9,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use PhpParser\BuilderFactory;
+use PhpParser\ConstExprEvaluationException;
+use PhpParser\ConstExprEvaluator;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Identifier;
@@ -18,7 +20,8 @@ use Throwable;
 use UnitEnum;
 
 /**
- * Resolves `SomeClass::CONSTANT` value expressions and `SomeClass::class` arguments via reflection.
+ * Resolves `SomeClass::CONSTANT` value expressions and `SomeClass::class` arguments via reflection, and types
+ * any other constant expression, such as a parameter default, by evaluating it.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -69,23 +72,9 @@ final class ValueResolver
             return ['type' => 'string', 'optional' => false];
         }
 
-        $className = $expr->class->toString();
+        $className = $this->constantClassName($expr->class, $scope);
 
-        // Resolve self/static/parent so a constant declared on the resource (or its parent) is
-        // readable, matching how analyzeNewResource()/analyzeStaticCall() treat those keywords.
-        if ($className === 'self' || $className === 'static') {
-            $className = $scope->subjectReflection->getName();
-        } elseif ($className === 'parent') {
-            $parentReflection = $scope->subjectReflection->getParentClass();
-
-            if ($parentReflection === false) {
-                return null; // @codeCoverageIgnore — every JsonResource subclass has a parent
-            }
-
-            $className = $parentReflection->getName();
-        }
-
-        if (! class_exists($className) && ! interface_exists($className) && ! enum_exists($className)) {
+        if ($className === null || ! $this->classLikeExists($className)) {
             return null;
         }
 
@@ -113,6 +102,31 @@ final class ValueResolver
         }
 
         return $this->analyzeConstantValue($value, $engine);
+    }
+
+    /**
+     * Evaluate a constant expression, such as a parameter default, as PHP does: a class constant or enum case it names
+     * is read through reflection, with self, static and parent read against the subject.
+     *
+     * @throws ConstExprEvaluationException when it reads anything else, such as `new`, a global constant or a variable
+     */
+    public function evaluateConstantExpression(Expr $expr, AnalysisScope $scope): mixed
+    {
+        return new ConstExprEvaluator(fn (Expr $fetch): mixed => $this->evaluateClassConstFetch($fetch, $scope))
+            ->evaluateSilently($expr);
+    }
+
+    /**
+     * Type an evaluated constant value the way a class constant's value is typed, or null when it cannot be.
+     *
+     * An array whose keys are all ints yet which is not a list declines: a resource re-indexes it into a list, which
+     * the record it would type as does not describe.
+     *
+     * @return ValueExpressionResult|null
+     */
+    public function resolveConstantValue(mixed $value, ExpressionEngine $engine): ?array
+    {
+        return $this->holdsIntKeyedRecord($value) ? null : $this->analyzeConstantValue($value, $engine);
     }
 
     /**
@@ -311,5 +325,85 @@ final class ValueResolver
         }
 
         return $deepest;
+    }
+
+    /**
+     * The class a constant fetch names, or null for `parent` on a subject that has none.
+     */
+    private function constantClassName(Name $class, AnalysisScope $scope): ?string
+    {
+        $className = $class->toString();
+
+        // Resolve self/static/parent so a constant declared on the resource (or its parent) is
+        // readable, matching how analyzeNewResource()/analyzeStaticCall() treat those keywords.
+        if ($className === 'self' || $className === 'static') {
+            return $scope->subjectReflection->getName();
+        }
+
+        if ($className === 'parent') {
+            $parentReflection = $scope->subjectReflection->getParentClass();
+
+            return $parentReflection === false
+                ? null // @codeCoverageIgnore — every JsonResource subclass has a parent
+                : $parentReflection->getName();
+        }
+
+        return $className;
+    }
+
+    /**
+     * Whether a class, interface or enum of this name can be loaded.
+     *
+     * @phpstan-assert-if-true class-string $className
+     */
+    private function classLikeExists(string $className): bool
+    {
+        return class_exists($className) || interface_exists($className) || enum_exists($className);
+    }
+
+    /**
+     * ConstExprEvaluator's fallback: the value of the class constant or enum case a constant expression names, read
+     * through reflection since a default may name a constant only its own class can see.
+     *
+     * @throws ConstExprEvaluationException for any other node, or a constant that cannot be read
+     */
+    private function evaluateClassConstFetch(Expr $expr, AnalysisScope $scope): mixed
+    {
+        if (! $expr instanceof ClassConstFetch || ! $expr->class instanceof Name || ! $expr->name instanceof Identifier) {
+            throw new ConstExprEvaluationException("Expression of type {$expr->getType()} cannot be evaluated");
+        }
+
+        $className = $this->constantClassName($expr->class, $scope);
+        $constName = $expr->name->toString();
+
+        if ($className !== null && strtolower($constName) === 'class') {
+            return $className;
+        }
+
+        $constant = $className !== null && $this->classLikeExists($className)
+            ? new ReflectionClass($className)->getReflectionConstant($constName)
+            : false;
+
+        if ($constant === false) {
+            throw new ConstExprEvaluationException("Constant {$className}::{$constName} cannot be read");
+        }
+
+        return $constant->getValue();
+    }
+
+    /**
+     * Whether a value holds, at any depth, an array whose keys are all ints yet which is not a list.
+     */
+    private function holdsIntKeyedRecord(mixed $value): bool
+    {
+        if (! is_array($value)) {
+            return false;
+        }
+
+        if (! array_is_list($value) && array_all(array_keys($value), fn (int|string $key): bool => is_int($key))) {
+            return true;
+        }
+
+        return array_any($value, fn (mixed $item): bool => $this->holdsIntKeyedRecord($item));
     }
 }

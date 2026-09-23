@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\ExpressionDispatcher;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConstFetchHandler;
@@ -10,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ScalarHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use PhpParser\ConstExprEvaluationException;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ClassConstFetch;
@@ -83,6 +85,14 @@ function valueResolverLeafEngine(): ExpressionEngine
             throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
         }
     };
+}
+
+/**
+ * Parse one PHP expression, names resolved as the analyzer resolves them.
+ */
+function valueResolverParse(string $php): Expr
+{
+    return new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
 }
 
 /**
@@ -237,3 +247,35 @@ it('declines a plain (non-::class) constant fetch as a ::class argument', functi
 
     expect($resolver->resolveClassConstArgument($expr))->toBeNull();
 });
+
+// evaluateConstantExpression() and resolveConstantValue() — a parameter default, evaluated as PHP evaluates it
+
+it('evaluates a constant expression as PHP does, reading class constants and enum cases through the subject', function (string $php, mixed $value) {
+    expect(new ValueResolver()->evaluateConstantExpression(valueResolverParse($php), valueResolverTestScope()))->toBe($value);
+})->with([
+    'protected self:: and parent:: constants' => ['[self::SCHEMA_VERSION, parent::BASE_VERSION]', [2, 1]],
+    'self::class' => ['self::class', ClassConstantResource::class],
+    'an enum case, a spread and an operator' => ['[\\'.Status::class.'::Draft, ...[1 + 1]]', [Status::Draft, 2]],
+    'a constant holding an enum case' => ['self::DEFAULT_STATUS', Status::Draft],
+    'a ternary' => ['self::SCHEMA_VERSION > 1 ? [1] : "x"', [1]],
+]);
+
+it('throws for what a constant expression reads that the evaluator cannot', function (string $php) {
+    expect(fn () => new ValueResolver()->evaluateConstantExpression(valueResolverParse($php), valueResolverTestScope()))
+        ->toThrow(ConstExprEvaluationException::class);
+})->with([
+    'new' => ['new Foo'],
+    'a global constant' => ['[PHP_INT_SIZE]'],
+    'a variable' => ['$other'],
+    'a missing class constant' => ['self::MISSING'],
+]);
+
+it('types an evaluated value as a constant, declining an int-keyed record a resource re-indexes into a list', function (mixed $value, ?string $type) {
+    expect(new ValueResolver()->resolveConstantValue($value, valueResolverLeafEngine())['type'] ?? null)->toBe($type);
+})->with([
+    'a list' => [[1, 'a'], '(number | string)[]'],
+    'int keys that form a list' => [[0 => 'a', 1 => 'b'], 'string[]'],
+    'a record with an int key beside a string one' => [['a' => 1, 2], '{ a: number }'],
+    'int keys that do not form a list' => [[1 => 'a'], null],
+    'the same, nested in a record' => [['a' => [2 => 'x']], null],
+]);

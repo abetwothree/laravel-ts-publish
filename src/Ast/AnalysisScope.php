@@ -9,10 +9,16 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use PhpParser\ConstExprEvaluationException;
+use PhpParser\Node;
+use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Scalar\String_;
+use PhpParser\NodeFinder;
 use ReflectionClass;
 
 /**
@@ -77,8 +83,9 @@ final class AnalysisScope
     public ?string $closureRelationModelClass = null;
 
     /**
-     * Closure parameter names bound to the `$this->prop` expression found in the surrounding `when()`
-     * condition, so `EnumResource::make($status)` resolves like `EnumResource::make($this->status)`.
+     * Closure parameter names bound to an expression: a required `when()` parameter to its condition's `$this->prop`,
+     * so `EnumResource::make($status)` resolves like `EnumResource::make($this->status)`; a `transform()` callback's
+     * to the `$this->prop` it is passed; and a `whenHas()`/`whenExistsLoaded()` value closure's to the attribute read.
      *
      * @var ClosureParamExprBindingsMap
      */
@@ -95,8 +102,8 @@ final class AnalysisScope
 
     /**
      * Closure params / loop vars bound to a model class (whenLoaded params, map params on a relation
-     * chain or a variable, foreach over a many-relation), so `$var`, `$var->prop`, `$var->method()`
-     * resolve against that model. Scoped: writers save and restore around the body.
+     * chain or a variable, a transform() callback param passed a model, foreach over a many-relation), so `$var`,
+     * `$var->prop`, `$var->method()` resolve against that model. Scoped: writers save and restore around the body.
      *
      * @var VarModelBindingsMap
      */
@@ -112,9 +119,9 @@ final class AnalysisScope
     public array $varCollectionBindings = [];
 
     /**
-     * Closure params bound to an already-resolved value rather than to a class — a `collect(...)->map()`
-     * param, whose element type the pipeline resolved before descending into the body. Scoped: writers
-     * save and restore around the body.
+     * Closure params bound to an already-resolved value rather than to a class — a `collect(...)->map()` param, a
+     * `transform()` param passed a value, a variadic param's list, an aggregate, or the value of a default a call
+     * leaves in place. Scoped: writers save and restore around the body.
      *
      * @var VarValueBindingsMap
      */
@@ -156,7 +163,8 @@ final class AnalysisScope
 
     /**
      * Closures, by spl_object_id(), whose parameters a writer has claimed — released, then bound to what the call
-     * passes or what they hold without it — so ClosureHandler leaves them alone. Restored with the name tables.
+     * passes or what they hold without it, save a required when() parameter, bound to its condition's `$this->prop`
+     * though that call throws — so ClosureHandler leaves them alone. Restored with the name tables.
      *
      * @var array<int, true>
      */
@@ -244,7 +252,8 @@ final class AnalysisScope
 
     /**
      * Bind each parameter a call leaves without an argument, past the first $passedCount, to what it holds at runtime:
-     * a variadic one an empty list, an optional one its default. A required one binds nothing, since the call throws.
+     * a variadic one an empty list, an optional one the value its default evaluates to. A required one binds nothing,
+     * since the call throws, and neither does a default that cannot be typed.
      */
     public function bindUnpassedParameters(Expr $closure, int $passedCount, ExpressionEngine $engine): void
     {
@@ -259,7 +268,7 @@ final class AnalysisScope
 
             $held = match (true) {
                 $param->variadic => ['type' => 'never[]', 'optional' => false],
-                $param->default !== null => $engine->resolve($param->default),
+                $param->default !== null => $this->defaultValue($param->default, $engine),
                 default => null,
             };
 
@@ -303,6 +312,38 @@ final class AnalysisScope
         if (isset($snapshot['requestVarNames'][$from])) {
             $this->requestVarNames[$to] = $snapshot['requestVarNames'][$from];
         }
+    }
+
+    /**
+     * The type of the value a parameter default holds: its constant expression evaluated as PHP evaluates it.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function defaultValue(Expr $default, ExpressionEngine $engine): ?array
+    {
+        $resolver = new ValueResolver;
+
+        try {
+            $value = $resolver->evaluateConstantExpression($default, $this);
+        } catch (ConstExprEvaluationException) {
+            // Only the engine reads `new` or a global constant, but it types a list literal as a record, and a default
+            // that reads a variable is no constant expression PHP compiles.
+            $unreadable = new NodeFinder()->findFirst($default, fn (Node $node): bool => $node instanceof Variable
+                || ($node instanceof Array_ && ! $this->isRecordLiteral($node)));
+
+            return $unreadable === null ? $engine->resolve($default) : null;
+        }
+
+        return $resolver->resolveConstantValue($value, $engine);
+    }
+
+    /**
+     * Whether an array literal keys every item by a string PHP keeps as a string, not one it casts to an int key.
+     */
+    private function isRecordLiteral(Array_ $array): bool
+    {
+        return array_all($array->items, fn (ArrayItem $item): bool => $item->key instanceof String_
+            && (string) (int) $item->key->value !== $item->key->value);
     }
 
     /**

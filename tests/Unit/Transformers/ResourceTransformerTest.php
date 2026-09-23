@@ -704,10 +704,10 @@ describe('ResourceTransformer with OrderResource', function () {
         expect($data->properties['items_count']['optional'])->toBeTrue();
     });
 
-    test('transforms whenAggregated as optional number', function () {
+    test('transforms whenAggregated as optional, a number or the string a driver returns a decimal as', function () {
         $data = (new ResourceTransformer(OrderResource::class))->data();
 
-        expect($data->properties['total_avg']['type'])->toBe('number');
+        expect($data->properties['total_avg']['type'])->toBe('number | string');
         expect($data->properties['total_avg']['optional'])->toBeTrue();
     });
 
