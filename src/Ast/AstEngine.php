@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsInstanceofGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -98,8 +99,8 @@ final class AstEngine
     }
 
     /**
-     * Build the starting scope for a located method: its subject, the classes its parameters bind,
-     * and the single-write local variables its body assigns.
+     * Build the starting scope for a located method: its subject, the file its body lives in, the classes its
+     * parameters bind, and the local variables its body assigns.
      *
      * A route-bound `Post $post` and an injected `Request $request` are both parameter facts the
      * resource path never had, which is why they are seeded here rather than inside the analyzer.
@@ -112,6 +113,8 @@ final class AstEngine
         $methodName = $context->method->name->toString();
 
         if ($context->reflection->hasMethod($methodName)) {
+            $scope->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($context->reflection->getMethod($methodName));
+
             foreach ($context->reflection->getMethod($methodName)->getParameters() as $parameter) {
                 $type = $parameter->getType();
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\PropertyDocblockTypeReader;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Assign;
@@ -29,31 +30,35 @@ use PhpParser\NodeFinder;
 trait CollectsLocalVarBindings
 {
     /**
-     * Record top-level `$var = expr;` statements so values referencing those variables resolve.
+     * Record top-level `$var = expr;` statements so values referencing those variables resolve, and the type an inline
+     * `@var` on one declares.
      *
-     * Skips variables written more than once — this flat list can't tell which write is live at a
-     * given return branch, so binding one risks a wrong-but-plausible type instead of unknown.
+     * The expression binding skips variables written more than once — this flat list can't tell which write is live at
+     * a given return branch, so binding one risks a wrong-but-plausible type instead of unknown.
      *
      * @param  array<Node\Stmt>  $stmts
      */
     protected function collectLocalVarBindings(array $stmts, AnalysisScope $scope): void
     {
-        /** @var array<string, int> $writeCounts */
-        $writeCounts = [];
-
-        foreach ($this->collectWrittenVariableNames($stmts) as $name) {
-            $writeCounts[$name] = ($writeCounts[$name] ?? 0) + 1;
-        }
+        $writes = $this->collectVariableWrites($stmts);
+        $writeCounts = array_count_values(array_column($writes, 0));
 
         foreach ($stmts as $stmt) {
-            if ($stmt instanceof ExpressionStmt
-                && $stmt->expr instanceof Assign
-                && $stmt->expr->var instanceof Variable
-                && is_string($stmt->expr->var->name)
-                && ($writeCounts[$stmt->expr->var->name] ?? 0) === 1
+            if (! $stmt instanceof ExpressionStmt
+                || ! $stmt->expr instanceof Assign
+                || ! $stmt->expr->var instanceof Variable
+                || ! is_string($stmt->expr->var->name)
             ) {
-                $scope->localVarBindings[$stmt->expr->var->name] = $stmt->expr->expr;
+                continue;
             }
+
+            $name = $stmt->expr->var->name;
+
+            if (($writeCounts[$name] ?? 0) === 1) {
+                $scope->localVarBindings[$name] = $stmt->expr->expr;
+            }
+
+            $this->bindDeclaredType($stmt, $name, $stmts, $writes, $scope);
         }
     }
 
@@ -137,5 +142,78 @@ trait CollectsLocalVarBindings
         }
 
         return $writes;
+    }
+
+    /**
+     * The writes to a variable that can still land once the body reaches an offset: each that does not end before it.
+     *
+     * The one position-ordered rule both the early-exit guard pass and an inline `@var` read a variable's writes by.
+     *
+     * @param  list<array{string, Node}>  $writes
+     * @return list<Node>
+     */
+    protected function writesFrom(string $name, int $offset, array $writes): array
+    {
+        $from = [];
+
+        foreach ($writes as [$written, $node]) {
+            if ($written === $name && $node->getEndFilePos() >= $offset) {
+                $from[] = $node;
+            }
+        }
+
+        return $from;
+    }
+
+    /**
+     * Bind a variable to the type an inline `@var` on its assignment declares, for the reads after that statement and
+     * before the top-level statement holding the variable's next write.
+     *
+     * A top-level statement runs once, so a read in an earlier one never sees a later write; a loop holding both is one
+     * statement, which is why the span ends where the writing statement starts rather than at the write.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     * @param  list<array{string, Node}>  $writes
+     */
+    private function bindDeclaredType(
+        ExpressionStmt $assignment,
+        string $name,
+        array $stmts,
+        array $writes,
+        AnalysisScope $scope,
+    ): void {
+        $tag = resolve(PropertyDocblockTypeReader::class)->extractVarTag((string) $assignment->getDocComment()?->getText());
+
+        if ($tag === null || ($tag[1] !== null && $tag[1] !== $name)) {
+            return;
+        }
+
+        $before = null;
+
+        foreach ($this->writesFrom($name, $assignment->getStartFilePos(), $writes) as $write) {
+            if ($write === $assignment->expr) {
+                continue;
+            }
+
+            foreach ($stmts as $stmt) {
+                if ($stmt->getStartFilePos() <= $write->getStartFilePos() && $write->getEndFilePos() <= $stmt->getEndFilePos()) {
+                    $before = min($before ?? $stmt->getStartFilePos(), $stmt->getStartFilePos());
+
+                    break;
+                }
+            }
+        }
+
+        // A second write in the assigning statement itself may be the one its reads see.
+        if ($before !== null && $before <= $assignment->getStartFilePos()) {
+            return;
+        }
+
+        $scope->varDocBindings[$name][] = [
+            'type' => $tag[0],
+            'context' => $scope->declaringFileClass,
+            'after' => $assignment->getEndFilePos(),
+            'before' => $before,
+        ];
     }
 }

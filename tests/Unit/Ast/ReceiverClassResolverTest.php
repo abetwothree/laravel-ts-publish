@@ -26,11 +26,13 @@ use PhpParser\Node\Expr;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Http\Resources\FluentSelfResource;
 use Workbench\App\Http\Resources\NarrowedImageableResource;
+use Workbench\App\Http\Resources\TeamSubscriberResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Product;
 use Workbench\App\Models\Profile;
+use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
 use Workbench\App\Services\UrlService;
 use Workbench\App\ValueObjects\PostStats;
@@ -334,6 +336,45 @@ describe('ReceiverClassResolver instanceof ternary narrowing', function () {
         'same value, other spelling' => '$this->resource->imageable instanceof \Workbench\App\Models\Post ? $this->imageable : null',
         '?-> in the test, -> in the arm' => '$this->resource?->imageable instanceof \Workbench\App\Models\Post ? $this->resource->imageable : null',
     ]);
+
+    test('a member read through the tested $this->resource resolves with it narrowed, in the arm the test proves', function (string $php, ?array $classes) {
+        $scope = new AnalysisScope(new ReflectionClass(TeamSubscriberResource::class), Team::class);
+
+        expect(resolve(ReceiverClassResolver::class)->resolve(receiverExpr($php), $scope)?->classes)->toBe($classes);
+    })->with([
+        'the true arm of a test' => ['$this->resource instanceof \Workbench\App\Models\SubscribedTeam ? $this->resource->subscriber : null', [User::class]],
+        'the false arm of a negated test' => ['! $this->resource instanceof \Workbench\App\Models\SubscribedTeam ? null : $this->resource->subscriber', [User::class]],
+        'a nullsafe chain on the true arm' => ['$this->resource instanceof \Workbench\App\Models\SubscribedTeam ? $this->resource->subscriber?->profile : null', [Profile::class]],
+    ]);
+
+    test('a member read in the arm the test does not prove is not narrowed', function (string $php) {
+        $scope = new AnalysisScope(new ReflectionClass(TeamSubscriberResource::class), Team::class);
+        $proven = '$this->resource instanceof \Workbench\App\Models\SubscribedTeam ? $this->resource->subscriber : null';
+
+        expect(resolve(ReceiverClassResolver::class)->resolve(receiverExpr($php), $scope))->toBeNull()
+            ->and(resolve(ReceiverClassResolver::class)->resolve(receiverExpr($proven), $scope)?->classes)->toBe([User::class]);
+    })->with([
+        'the false arm of a test' => '$this->resource instanceof \Workbench\App\Models\SubscribedTeam ? null : $this->resource->subscriber',
+        'the true arm of a negated test' => '! $this->resource instanceof \Workbench\App\Models\SubscribedTeam ? $this->resource->subscriber : null',
+        'a test on another subject' => '$this->owner instanceof \Workbench\App\Models\User ? $this->resource->subscriber : null',
+    ]);
+
+    test('a member read through a tested variable narrows it, through an || chain and its negation, and never widens it', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $imageScope = narrowedImageableScope();
+        $imageScope->localVarBindings['record'] = receiverExpr('$this->imageable');
+        $either = $resolver->resolve(receiverExpr('$record instanceof \Workbench\App\Models\Post || $record instanceof \Workbench\App\Models\User ? $record->comments : null'), $imageScope);
+        $negated = $resolver->resolve(receiverExpr('! ($record instanceof \Workbench\App\Models\Post || $record instanceof \Workbench\App\Models\User) ? null : $record->comments'), $imageScope);
+        $postScope = postScope();
+        $postScope->localVarBindings['author'] = receiverExpr('$this->author');
+
+        expect($either?->classes)->toBe([EloquentCollection::class])
+            ->and($either?->elementModel)->toBe(Comment::class)
+            ->and($negated?->classes)->toBe([EloquentCollection::class])
+            ->and($resolver->resolve(receiverExpr('$record->comments'), $imageScope))->toBeNull()
+            ->and($resolver->resolve(receiverExpr('$author instanceof \Illuminate\Database\Eloquent\Model ? $author->profile : null'), $postScope)?->classes)
+            ->toBe([Profile::class]);
+    });
 
     test('a method call subject is not narrowed, since a second call need not return the same value', function () {
         $scope = new AnalysisScope(new ReflectionClass(ReceiverReturnsProbe::class));

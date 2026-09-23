@@ -5,18 +5,16 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\NarrowsInstanceofSubjects;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsInstanceofChains;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
-use PhpParser\Node\Expr\Instanceof_;
 use PhpParser\Node\Expr\Ternary;
-use PhpParser\Node\Expr\Variable;
-use PhpParser\Node\Name;
 
 /**
  * Ternary and Elvis expressions — both arms resolved through the engine and unioned.
@@ -27,7 +25,10 @@ use PhpParser\Node\Name;
  */
 final class TernaryHandler implements ExpressionHandler
 {
+    use CollectsLocalVarBindings;
     use InspectsAstNodes;
+    use NarrowsInstanceofSubjects;
+    use ReadsInstanceofChains;
 
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
@@ -49,91 +50,36 @@ final class TernaryHandler implements ExpressionHandler
      * Analyze a ternary or Elvis expression, unioning both branches.
      *
      * In Elvis (`$cond ?: $else`) the parser leaves `if` null, so the truthy value is `$cond` itself.
-     * An `instanceof` condition narrows its subject for the true arm only.
+     * An `instanceof` condition narrows its subject for the arm it proves only.
      *
      * @return ValueExpressionResult
      */
     private function analyzeTernary(Ternary $expr, AnalysisScope $scope, ExpressionEngine $engine): array
     {
-        $ifExpr = $expr->if ?? $expr->cond;
+        $arms = [$expr->if ?? $expr->cond, $expr->else];
+        $proof = $expr->if === null ? null : $this->instanceofProof($expr->cond);
+        $narrowed = null;
 
-        $narrowed = $expr->if !== null && $expr->cond instanceof Instanceof_
-            ? $this->narrowedArmResult($expr->cond, $ifExpr, $scope, $engine)
-            : null;
-
-        if ($narrowed === null) {
-            $result = ValueResult::analyzeClosureUnion([$ifExpr, $expr->else], $engine, $scope);
-        } else {
-            $elseResult = $engine->resolve($expr->else);
-
-            // This path resolves its arms itself, so it records its own drops: analyzeClosureUnion()
-            // never sees them.
-            if ($narrowed['type'] === 'unknown') {
-                DroppedUnionArms::record($ifExpr, $scope, 'ternary-narrowed');
-            }
-
-            if ($elseResult['type'] === 'unknown') {
-                DroppedUnionArms::record($expr->else, $scope, 'ternary-narrowed');
-            }
-
-            $result = ValueResult::unionResults([$narrowed, $elseResult]);
+        if ($proof !== null) {
+            $proven = $arms[$proof[2]];
+            $narrowed = $this->resolveNarrowed($proof[0], $proof[1], $proven, $scope, fn (): array => $engine->resolve($proven));
         }
 
-        return $this->recordMixedArmShapes($result, $ifExpr, $expr->else, $engine, $narrowed);
-    }
-
-    /**
-     * Resolve a ternary's true arm under what its `instanceof` condition proves, or null when it proves nothing.
-     *
-     * A variable subject narrows through varClassBindings; `$this->resource` narrows the scope's own
-     * model, which every `$this->prop` read on a resource resolves against.
-     *
-     * @return ValueExpressionResult|null
-     */
-    private function narrowedArmResult(Instanceof_ $cond, Expr $ifExpr, AnalysisScope $scope, ExpressionEngine $engine): ?array
-    {
-        if (! $cond->class instanceof Name) {
-            return null;
+        if ($proof === null || $narrowed === null) {
+            return $this->recordMixedArmShapes(ValueResult::analyzeClosureUnion($arms, $engine, $scope), $arms, $engine);
         }
 
-        $class = $cond->class->toString();
+        $other = $engine->resolve($arms[1 - $proof[2]]);
+        $results = $proof[2] === 0 ? [$narrowed, $other] : [$other, $narrowed];
 
-        if (! class_exists($class) && ! interface_exists($class)) {
-            return null;
-        }
-
-        if ($cond->expr instanceof Variable && is_string($cond->expr->name)) {
-            $previousVarClassBindings = $scope->varClassBindings;
-            $scope->varClassBindings[$cond->expr->name] = [$class];
-
-            try {
-                return $engine->resolve($ifExpr);
-            } finally {
-                $scope->varClassBindings = $previousVarClassBindings;
+        // This path resolves its arms itself, so it records its own drops: analyzeClosureUnion() never sees them.
+        foreach ($results as $index => $armResult) {
+            if ($armResult['type'] === 'unknown') {
+                DroppedUnionArms::record($arms[$index], $scope, 'ternary-narrowed');
             }
         }
 
-        if (! $this->isResourceFetch($cond->expr) || ! is_a($class, Model::class, true)) {
-            return null;
-        }
-
-        $previousModelClass = $scope->modelClass;
-        $previousForwardsTo = $scope->forwardsUndeclaredMembersTo;
-        $scope->modelClass = $class;
-
-        // Derived from the subject, never from the previous value: the live rule this replaced re-read
-        // `modelClass` after the assignment, so a proxying subject forwarded here whether or not it had
-        // been forwarding before — a ternary-only guard leaves instanceOfWrappedClass unseeded.
-        if ($scope->subjectReflection->isSubclassOf(JsonResource::class)) {
-            $scope->forwardsUndeclaredMembersTo = $class;
-        }
-
-        try {
-            return $engine->resolve($ifExpr);
-        } finally {
-            $scope->modelClass = $previousModelClass;
-            $scope->forwardsUndeclaredMembersTo = $previousForwardsTo;
-        }
+        return $this->recordMixedArmShapes(ValueResult::unionResults($results), $arms, $engine, $results);
     }
 
     /**
@@ -142,10 +88,11 @@ final class TernaryHandler implements ExpressionHandler
      * scalar one — re-resolving each arm here, while still distinct, is the only place that survives.
      *
      * @param  ValueExpressionResult  $result
-     * @param  ValueExpressionResult|null  $ifResult  the true arm already resolved under its narrowing, if any
+     * @param  array{Expr, Expr}  $arms
+     * @param  array{ValueExpressionResult, ValueExpressionResult}|null  $armResults  both arms, under any narrowing
      * @return ValueExpressionResult
      */
-    private function recordMixedArmShapes(array $result, Expr $ifExpr, Expr $elseExpr, ExpressionEngine $engine, ?array $ifResult = null): array
+    private function recordMixedArmShapes(array $result, array $arms, ExpressionEngine $engine, ?array $armResults = null): array
     {
         if (! isset($result['enumFqcn'], $result['directEnumFqcn']) || $result['enumFqcn'] !== $result['directEnumFqcn']) {
             return $result;
@@ -153,8 +100,7 @@ final class TernaryHandler implements ExpressionHandler
 
         // Reuse the narrowed resolution when there was one: resolving again here would drop the narrowing
         // and let two resolutions of the same arm disagree by construction.
-        $ifResult ??= $engine->resolve($ifExpr);
-        $elseResult = $engine->resolve($elseExpr);
+        [$ifResult, $elseResult] = $armResults ?? [$engine->resolve($arms[0]), $engine->resolve($arms[1])];
 
         $wrapResult = $this->unambiguousArm($ifResult, $elseResult, 'enumFqcn');
         $directResult = $this->unambiguousArm($ifResult, $elseResult, 'directEnumFqcn');

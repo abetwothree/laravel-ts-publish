@@ -275,6 +275,7 @@ it('releases an unclaimed parameter from every name-keyed table, then restores e
         $scope->closureParamExprBindings[$name] = $outer;
         $scope->varClassBindings[$name] = [stdClass::class];
         $scope->varGuardBindings[$name] = ['classes' => [stdClass::class], 'after' => 0];
+        $scope->varDocBindings[$name] = [['type' => 'User', 'context' => $scope->declaringFileClass, 'after' => 0, 'before' => null]];
         $scope->varModelBindings[$name] = User::class;
         $scope->varCollectionBindings[$name] = ['type' => 'User[]', 'modelFqcn' => User::class];
         $scope->varValueBindings[$name] = ['type' => 'string', 'optional' => false];
@@ -386,4 +387,23 @@ it('shadows an outer local with the closure body\'s own binding, and leaks nothi
     expect($single['u'] ?? null)->not->toBe($outerBoundExpr)
         ->and($twice)->toBe([])
         ->and($scope->localVarBindings)->toBe(['u' => $outerBoundExpr]);
+});
+
+it('drops an outer inline @var binding of a name the closure body writes, and binds the body\'s own annotated local', function () {
+    $scope = closureHandlerTestScope();
+    $outer = [['type' => 'User', 'context' => $scope->declaringFileClass, 'after' => 0, 'before' => null]];
+    $scope->varDocBindings = ['u' => $outer, 'kept' => $outer];
+    $before = $scope->nameBindings();
+    $engine = new ClosureHandlerNameTablesSpyEngine($scope);
+    $body = fn (string $php): ClosureExpr => new ClosureExpr(['stmts' => new AstParser()->parseSource('<?php '.$php)]);
+
+    (new ClosureHandler)->resolve($body('$u = $this->owner; return $u;'), $scope, $engine);
+    $rewritten = $engine->seen['varDocBindings'];
+
+    (new ClosureHandler)->resolve($body('/** @var \Workbench\App\Models\Post $u */ $u = $this->owner; return $u;'), $scope, $engine);
+    $annotated = $engine->seen['varDocBindings'];
+
+    expect(array_keys($rewritten))->toBe(['kept'])
+        ->and(array_column($annotated['u'] ?? [], 'type'))->toBe(['\Workbench\App\Models\Post'])
+        ->and($scope->nameBindings())->toBe($before);
 });

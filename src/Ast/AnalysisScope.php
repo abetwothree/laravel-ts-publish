@@ -35,6 +35,8 @@ use ReflectionClass;
  * @phpstan-type ClosureParamExprBindingsMap array<string, Expr>
  * @phpstan-type VarClassBindingsMap array<string, non-empty-list<class-string>>
  * @phpstan-type VarGuardBindingsMap array<string, array{classes: non-empty-list<class-string>, after: int}>
+ * @phpstan-type VarDocBinding array{type: string, context: ReflectionClass<object>, after: int, before: int|null}
+ * @phpstan-type VarDocBindingsMap array<string, non-empty-list<VarDocBinding>>
  * @phpstan-type VarModelBindingsMap array<string, class-string<Model>>
  * @phpstan-type VarCollectionBindingsMap array<string, array{type: string, modelFqcn: class-string<Model>}>
  * @phpstan-type VarValueBindingsMap array<string, ValueExpressionResult>
@@ -44,6 +46,7 @@ use ReflectionClass;
  *      closureParamExprBindings: ClosureParamExprBindingsMap,
  *      varClassBindings: VarClassBindingsMap,
  *      varGuardBindings: VarGuardBindingsMap,
+ *      varDocBindings: VarDocBindingsMap,
  *      varModelBindings: VarModelBindingsMap,
  *      varCollectionBindings: VarCollectionBindingsMap,
  *      varValueBindings: VarValueBindingsMap,
@@ -111,6 +114,15 @@ final class AnalysisScope
      * @var VarGuardBindingsMap
      */
     public array $varGuardBindings = [];
+
+    /**
+     * Variables an inline `@var` on their assignment declares a type for: the type as written, the class whose file
+     * resolves its names, and the reads it holds for, past the assignment and before the top-level statement that next
+     * writes the variable. Written by CollectsLocalVarBindings, and scoped like localVarBindings.
+     *
+     * @var VarDocBindingsMap
+     */
+    public array $varDocBindings = [];
 
     /**
      * Names bound to a model class, so `$var`, `$var->prop`, `$var->method()` resolve against it: a to-one whenLoaded,
@@ -183,6 +195,14 @@ final class AnalysisScope
     public array $claimedClosures = [];
 
     /**
+     * The class, or trait, whose file holds the body under analysis, so an inline `@var` in that body resolves its
+     * names against that file's imports. The subject, unless the body was located in another file.
+     *
+     * @var ReflectionClass<object>
+     */
+    public ReflectionClass $declaringFileClass;
+
+    /**
      * @param  ReflectionClass<object>  $subjectReflection  the resource (or other AST subject) under analysis
      * @param  class-string<Model>|null  $modelClass  its resolved backing model, if any. Scoped, not fixed:
      *                                                TernaryHandler narrows it for an `instanceof` true arm and
@@ -192,11 +212,35 @@ final class AnalysisScope
         public ReflectionClass $subjectReflection,
         public ?string $modelClass = null,
     ) {
+        $this->declaringFileClass = $subjectReflection;
+
         // The subject alone decides this, so every scope carries it without the builder having to remember;
         // ResourceAstAnalyzer re-derives it once an instanceof guard supplies a backing the constructor lacked.
         $this->forwardsUndeclaredMembersTo = $modelClass !== null && $subjectReflection->isSubclassOf(JsonResource::class)
             ? $modelClass
             : null;
+    }
+
+    /**
+     * The inline `@var` binding a read of a variable falls within, or null.
+     *
+     * @return VarDocBinding|null
+     */
+    public function declaredAt(Variable $variable): ?array
+    {
+        if (! is_string($variable->name)) {
+            return null;
+        }
+
+        $position = $variable->getStartFilePos();
+
+        foreach ($this->varDocBindings[$variable->name] ?? [] as $binding) {
+            if ($position > $binding['after'] && ($binding['before'] === null || $position < $binding['before'])) {
+                return $binding;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -211,6 +255,7 @@ final class AnalysisScope
             'closureParamExprBindings' => $this->closureParamExprBindings,
             'varClassBindings' => $this->varClassBindings,
             'varGuardBindings' => $this->varGuardBindings,
+            'varDocBindings' => $this->varDocBindings,
             'varModelBindings' => $this->varModelBindings,
             'varCollectionBindings' => $this->varCollectionBindings,
             'varValueBindings' => $this->varValueBindings,
@@ -230,6 +275,7 @@ final class AnalysisScope
         $this->closureParamExprBindings = $snapshot['closureParamExprBindings'];
         $this->varClassBindings = $snapshot['varClassBindings'];
         $this->varGuardBindings = $snapshot['varGuardBindings'];
+        $this->varDocBindings = $snapshot['varDocBindings'];
         $this->varModelBindings = $snapshot['varModelBindings'];
         $this->varCollectionBindings = $snapshot['varCollectionBindings'];
         $this->varValueBindings = $snapshot['varValueBindings'];
@@ -308,6 +354,10 @@ final class AnalysisScope
 
         if (isset($snapshot['varGuardBindings'][$from])) {
             $this->varGuardBindings[$to] = $snapshot['varGuardBindings'][$from];
+        }
+
+        if (isset($snapshot['varDocBindings'][$from])) {
+            $this->varDocBindings[$to] = $snapshot['varDocBindings'][$from];
         }
 
         if (isset($snapshot['varModelBindings'][$from])) {
@@ -396,6 +446,7 @@ final class AnalysisScope
                 $this->closureParamExprBindings[$name],
                 $this->varClassBindings[$name],
                 $this->varGuardBindings[$name],
+                $this->varDocBindings[$name],
                 $this->varModelBindings[$name],
                 $this->varCollectionBindings[$name],
                 $this->varValueBindings[$name],

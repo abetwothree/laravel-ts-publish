@@ -89,11 +89,7 @@ trait CollectsInstanceofGuards
      */
     private function writtenAfterTest(string $name, Expr $test, If_ $guard, array $writes): bool
     {
-        foreach ($writes as [$written, $node]) {
-            if ($written !== $name || $node->getEndFilePos() < $test->getStartFilePos()) {
-                continue;
-            }
-
+        foreach ($this->writesFrom($name, $test->getStartFilePos(), $writes) as $node) {
             if ($node->getStartFilePos() <= $guard->cond->getEndFilePos() || $node->getEndFilePos() > $guard->getEndFilePos()) {
                 return true;
             }

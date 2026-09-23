@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\NarrowsInstanceofSubjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsInstanceofChains;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
@@ -42,11 +44,15 @@ use ReflectionUnionType;
  *
  * The rules are in docs/components/receiver-types.md § Receiver resolution.
  *
+ * @phpstan-import-type InstanceofProof from ReadsInstanceofChains
+ *
  * @internal
  */
 final class ReceiverClassResolver
 {
+    use CollectsLocalVarBindings;
     use InspectsAstNodes;
+    use NarrowsInstanceofSubjects;
     use ReadsInstanceofChains;
 
     /**
@@ -61,7 +67,12 @@ final class ReceiverClassResolver
             $expr instanceof StaticCall => $this->resolveStaticClass($expr, $scope),
             $expr instanceof New_ => $expr->class instanceof Name ? $this->namedClass($expr->class, $scope) : null,
             $expr instanceof FuncCall => $this->fromFunctionCall($expr),
-            $expr instanceof Ternary => $this->fromArms([$expr->if ?? $expr->cond, $expr->else], $scope, $expr->if === null, $this->testedClasses($expr)),
+            $expr instanceof Ternary => $this->fromArms(
+                [$expr->if ?? $expr->cond, $expr->else],
+                $scope,
+                $expr->if === null,
+                $expr->if === null ? null : $this->instanceofProof($expr->cond),
+            ),
             $expr instanceof Coalesce => $this->fromArms([$expr->left, $expr->right], $scope, true),
             default => null,
         };
@@ -239,6 +250,18 @@ final class ReceiverClassResolver
             return new ReceiverType($guard['classes']);
         }
 
+        $declared = $scope->declaredAt($variable);
+        $declaredClasses = $declared === null ? null : $this->docblockClasses(
+            $declared['type'],
+            $declared['context'],
+            $scope->subjectReflection->getName(),
+            $declared['context']->getName(),
+        );
+
+        if ($declaredClasses !== null) {
+            return $this->declaredOver($declaredClasses, $this->fromBoundExpression($name, $scope));
+        }
+
         if (isset($scope->varModelBindings[$name])) {
             return ReceiverType::of($scope->varModelBindings[$name]);
         }
@@ -251,6 +274,14 @@ final class ReceiverClassResolver
             return ReceiverType::of($scope->requestVarNames[$name]);
         }
 
+        return $this->fromBoundExpression($name, $scope);
+    }
+
+    /**
+     * Resolve a variable through the expression a closure parameter or a local assignment binds it to.
+     */
+    private function fromBoundExpression(string $name, AnalysisScope $scope): ?ReceiverType
+    {
         $bound = $scope->closureParamExprBindings[$name] ?? $scope->localVarBindings[$name] ?? null;
 
         if ($bound === null || isset($scope->resolvingLocalVars[$name])) {
@@ -264,6 +295,22 @@ final class ReceiverClassResolver
         } finally {
             unset($scope->resolvingLocalVars[$name]);
         }
+    }
+
+    /**
+     * What a variable an inline `@var` declares holds: the declared classes, or what its assignment resolves to when
+     * every class of that is one of them, so the declaration never widens a reading it agrees with.
+     *
+     * @param  non-empty-list<class-string>  $declared
+     */
+    private function declaredOver(array $declared, ?ReceiverType $assigned): ReceiverType
+    {
+        $agrees = $assigned !== null && array_all(
+            $assigned->classes,
+            fn (string $class): bool => array_any($declared, fn (string $type): bool => is_a($class, $type, true)),
+        );
+
+        return $agrees ? $assigned : new ReceiverType($declared);
     }
 
     /**
@@ -410,9 +457,9 @@ final class ReceiverClassResolver
      *
      * @param  list<Expr>  $arms
      * @param  bool  $firstArmFallsBack  a `??` or `?:` replaces a null first arm, so its short circuit never escapes
-     * @param  non-empty-list<class-string>|null  $firstArmTested  what a ternary's condition tests its true arm for
+     * @param  InstanceofProof|null  $proof  what a ternary's `instanceof` condition proves about the arm that runs then
      */
-    private function fromArms(array $arms, AnalysisScope $scope, bool $firstArmFallsBack, ?array $firstArmTested = null): ?ReceiverType
+    private function fromArms(array $arms, AnalysisScope $scope, bool $firstArmFallsBack, ?array $proof = null): ?ReceiverType
     {
         $types = [];
         $shortCircuits = false;
@@ -422,8 +469,8 @@ final class ReceiverClassResolver
                 continue;
             }
 
-            $type = $index === 0 && $firstArmTested !== null
-                ? $this->narrowed($this->resolve($arm, $scope), $firstArmTested)
+            $type = $proof !== null && $index === $proof[2]
+                ? $this->provenArm($arm, $proof[0], $proof[1], $scope)
                 : $this->resolve($arm, $scope);
 
             if ($type === null) {
@@ -438,55 +485,46 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The classes a ternary's `instanceof` test, or `||` chain of them, tests its own true arm for.
+     * The arm an `instanceof` condition proves: its tested read narrowed class by class, or a member read through that
+     * subject resolved with the subject narrowed, as TernaryHandler resolves the same arm's value.
      *
-     * The arm runs when any operand holds, so every operand must test the arm's own read path. A negation proves
-     * nothing about the arm; `&&` would prove its `instanceof` operands, but only an `||` chain is read.
-     *
-     * @return non-empty-list<class-string>|null
+     * @param  non-empty-list<class-string>  $tested
      */
-    private function testedClasses(Ternary $ternary): ?array
+    private function provenArm(Expr $arm, Expr $subject, array $tested, AnalysisScope $scope): ?ReceiverType
     {
-        if ($ternary->if === null) {
-            return null;
+        if ($this->isSameReadPath($subject, $arm)) {
+            return $this->narrowed($this->resolve($arm, $scope), $tested);
         }
 
-        $classes = [];
-
-        foreach ($this->orOperands($ternary->cond) as $operand) {
-            $test = $this->instanceofTest($operand);
-
-            if ($test === null || ! $this->isSameReadPath($test[0], $ternary->if)) {
-                return null;
-            }
-
-            $classes[] = $test[1];
+        if (! $this->readsThrough($arm, $subject)) {
+            return $this->resolve($arm, $scope);
         }
 
-        return array_values(array_unique($classes));
+        // The subject keeps what narrowed() leaves of its own classes, so a supertype test never widens what it reads.
+        $held = $this->narrowed($this->resolve($subject, $scope), $tested)->classes;
+
+        return $this->resolveNarrowed($subject, $held, $arm, $scope, fn (): ?ReceiverType => $this->resolve($arm, $scope))
+            ?? $this->resolve($arm, $scope);
     }
 
     /**
-     * Whether two expressions spell the same variable or property read.
-     *
-     * A method call is never the same read: a second call may return another value than the one the test saw.
+     * Whether an expression reads a member through the subject: a property or method chain whose receiver is its read.
      */
-    private function isSameReadPath(Expr $left, Expr $right): bool
+    private function readsThrough(Expr $expr, Expr $subject): bool
     {
-        if ($left instanceof Variable && $right instanceof Variable) {
-            return is_string($left->name) && $left->name === $right->name;
-        }
-
-        if (! ($left instanceof PropertyFetch && $right instanceof PropertyFetch)
-            && ! ($left instanceof NullsafePropertyFetch && $right instanceof NullsafePropertyFetch)
+        while ($expr instanceof PropertyFetch
+            || $expr instanceof NullsafePropertyFetch
+            || $expr instanceof MethodCall
+            || $expr instanceof NullsafeMethodCall
         ) {
-            return false;
+            $expr = $expr->var;
+
+            if ($this->isSameReadPath($expr, $subject)) {
+                return true;
+            }
         }
 
-        return $left->name instanceof Identifier
-            && $right->name instanceof Identifier
-            && $left->name->toString() === $right->name->toString()
-            && $this->isSameReadPath($left->var, $right->var);
+        return false;
     }
 
     /**

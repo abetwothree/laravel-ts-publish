@@ -2489,6 +2489,22 @@ declare global {
             owned_by: app.models.User;
         }
         /**
+         * A resource over a value object rather than a model. The inline `@var` on each local names what it holds, for the
+         * reads after its assignment and before the variable is written again.
+         */
+        export interface CartTotalsResource {
+            subtotal: number;
+            chargeable: boolean;
+            count: number;
+            note: string | null;
+            totals: { subtotal: number; chargeable: boolean; count: number; hasExtras: boolean };
+            unnamed_count: number;
+            label: string;
+            count_before: number;
+            count_after: unknown;
+            missing_count: unknown;
+        }
+        /**
          * A spread whose call-site casing differs from the declared method. PHP method calls are
          * case-insensitive, so this is valid, runnable code the analyzer must still resolve.
          */
@@ -3689,6 +3705,15 @@ declare global {
          * not wrapped in a 'data' key. Uses #[Collects] to identify the singular resource.
          */
         export type PostFlatCollection = PostResource[];
+        /**
+         * A relation loaded under a name the model does not declare, so only the local's inline `@var` names the collection
+         * it holds.
+         */
+        export interface PostPinnedCommentsResource {
+            id: number;
+            pinned_count: number;
+            pinned: app.models.Comment[];
+        }
         export interface PostResource {
             morphValue: string;
             id: number;
@@ -4449,6 +4474,20 @@ declare global {
         export interface TeamStatusAuditResource {
             id: number;
             audit: { status: app.enums.StatusType[] | app.enums.StatusType[] };
+        }
+        /**
+         * A local assigned from an `instanceof` ternary whose proven arm reads a relation only the subclass declares keeps the
+         * narrowing for every read through it, as the same ternary written inline does. `$unproven` and `$negatedTrueArm`
+         * read that relation in the arm the test does not prove, so nothing narrows them.
+         */
+        export interface TeamSubscriberLocalResource {
+            subscriber_name: string | null;
+            subscriber_id: number | null;
+            inline_name: string | null;
+            negated_name: string | null;
+            via_local_email: string | null;
+            unproven_name: unknown;
+            negated_true_arm_name: unknown;
         }
         /**
          * A `$this->resource instanceof <Model>` ternary narrows the backing model for its true arm, so a

@@ -179,10 +179,10 @@ variables, `whenLoaded` relations, and recursive spreads resolve correctly as tr
 handler reaches it as the `$scope` parameter `ExpressionHandler::resolve()` receives; the analyzer
 itself reaches the same instance as `$this->scope`.
 
-Eight of its fields are **name-keyed tables**, each mapping a variable name to what that variable is bound to:
-`closureParamExprBindings`, `varClassBindings`, `varGuardBindings`, `varModelBindings`, `varCollectionBindings`,
-`varValueBindings`, `localVarBindings` and `requestVarNames`. `AnalysisScope::nameBindings()` captures exactly those
-eight, with `claimedClosures`, and `restoreNameBindings()` puts them back.
+Nine of its fields are **name-keyed tables**, each mapping a variable name to what that variable is bound to:
+`closureParamExprBindings`, `varClassBindings`, `varGuardBindings`, `varDocBindings`, `varModelBindings`,
+`varCollectionBindings`, `varValueBindings`, `localVarBindings` and `requestVarNames`. `AnalysisScope::nameBindings()`
+captures exactly those nine, with `claimedClosures`, and `restoreNameBindings()` puts them back.
 
 | Field | Type | Holds |
 | --- | --- | --- |
@@ -195,10 +195,12 @@ eight, with `claimedClosures`, and `restoreNameBindings()` puts them back.
 | `closureParamExprBindings` | `array<string, Expr>` | Closure parameter names bound to an expression: the `$this->prop` in a surrounding `when()` condition, for a required first parameter, so `EnumResource::make($status)` resolves like `EnumResource::make($this->status)`; the `$this->prop` passed to `transform()`; the attribute read `whenHas()` or `whenExistsLoaded()` passes; and, through `AnalysisScope::copyBindings()`, the entry a variable passed to `transform()` held. |
 | `varClassBindings` | `array<string, non-empty-list<class-string>>` | Variables a ternary's `instanceof` test has proven to hold a class, and a `morphTo` `whenLoaded()` closure parameter bound to every target. Read **first** in `ReceiverClassResolver::fromVariable()`. What that ordering actually buys today is precedence over the `closureParamExprBindings ?? localVarBindings` fallback, since a narrowed variable is normally bound by a plain local assignment; sitting above `varModelBindings` is the same concern for a narrowed closure param or loop variable, and is motivating rather than currently proven. Scoped: `ClosureHandler`, `TernaryHandler` and `ConditionalMethodHandler` save and restore it around the body they bind it for. See [Narrowing](#narrowing). |
 | `varGuardBindings` | `array<string, array{classes: non-empty-list<class-string>, after: int}>` | Variables an early-exit `instanceof` guard proves to hold a class, each with the file offset the guard's `if` ends at. `ReceiverClassResolver::fromVariable()` reads it right after `varClassBindings`, and only for a read that starts past that offset, so a `return` before the guard, or the guard's own body, still reads the variable unnarrowed. Written by `CollectsInstanceofGuards`. Scoped: every writer that captures the name-keyed tables restores it, and `analyzeThisMethodSpread()` clears it for a spread and restores it after. See [Narrowing](#narrowing). |
+| `varDocBindings` | `array<string, non-empty-list<array{type: string, context: ReflectionClass<object>, after: int, before: int\|null}>>` | Variables an inline `/** @var T $x */` (or name-less `/** @var T */`) on their top-level assignment declares, each span holding the type as written, the class whose file resolves its names, and the reads it covers: past the assigning statement and before the top-level statement holding the variable's next write. `AnalysisScope::declaredAt()` finds the span a read falls in. `ReceiverClassResolver::fromVariable()` reads it right after `varGuardBindings`, and `VariableHandler` first for a bare read. Written by `CollectsLocalVarBindings`; `ClosureHandler` drops the outer spans of a name its body writes, and `analyzeThisMethodSpread()` clears it for a spread. See [Declared locals](#declared-locals). |
 | `varModelBindings` | `array<string, class-string<Model>>` | Closure params / loop vars bound to a model class (to-one `whenLoaded` params, `map()` params on a relation chain or a variable, a `transform()` callback param passed a model, the entry a variable passed to `transform()` held, `foreach` over a many-relation), so `$var`, `$var->prop`, `$var->method()` resolve against that model. Scoped: every closure writer saves and restores it around the body; the `foreach` binding is method-wide. Also seeded, via `AstEngine::bindingsFor()`, from every `Model`-typed parameter of the located method — a route-bound `Post $post`, a metadata provider's `Model $model` — bound to the parameter's **declared** type. [How it gets populated](#how-varmodelbindings-gets-populated-and-how-scoping-holds) lists every writer. |
 | `varCollectionBindings` | `array<string, array{type: string, modelFqcn: class-string<Model>}>` | Closure params bound to a whole relation collection rather than one element — a to-many `whenLoaded` param. Read for a bare return of the param, and as the element-model fallback for an untyped `->map()` closure param. |
 | `varValueBindings` | `array<string, ValueExpressionResult>` | Closure params bound to an already-resolved *value* rather than to a class. Six writers: `CollectionPipelineHandler::resolveMapBody()`, for a `collect(...)->map()` param, whose element type the pipeline read off the `collect()` argument before descending; `ConditionalMethodHandler::bindPassedValue()`, for a `transform()` callback param passed a value that is not a model, and for `transform()`'s default param, passed the value with its `null` arm; `ConditionalMethodHandler::bindVariadicList()`, for a variadic param, bound to the list its one argument collects into; `ConditionalMethodHandler::resolveValueArgument()`, for a `whenCounted()` or `whenAggregated(…, 'count')` value closure's param, bound to `number`; `AnalysisScope::bindUnpassedParameters()`, for a param the call passes nothing, bound to the type of the value its default evaluates to or, variadic, to `never[]`; and `AnalysisScope::copyBindings()`, for the entry a variable passed to `transform()` held. A bare read of the param resolves straight to it, checked after `varModelBindings` and `varCollectionBindings`, which name a model instead; the writer first releases the param's name from those tables, so an outer binding of it cannot win. Scoped: every writer runs inside a claim that saves and restores every name-keyed table around the body. |
 | `localVarBindings` | `array<string, Expr>` | Top-level `$var = expr;` bindings for the method last analyzed, so a bare `Variable` value expression resolves through its bound expression instead of degrading to `unknown`. Only variables written exactly once are recorded; `analyzeThisMethodSpread()` saves and restores this per method. |
+| `declaringFileClass` | `ReflectionClass<object>` | The class, or trait, whose file holds the body under analysis, so an inline `@var` resolves against that file's imports. The subject, unless `AstEngine::bindingsFor()` or `analyzeThisMethodSpread()` located the body elsewhere; the latter restores it after. |
 | `resolvingLocalVars` | `array<string, true>` | Re-entrancy guard: variable names currently mid-resolution, so a self- or mutually-referential binding (`$a = $b; $b = $a;`) resolves as `unknown` instead of recursing forever. |
 | `visitedSpreadMethods` | `array<string, true>` | Spread methods currently on the analysis stack, so a method that spreads itself — directly or through a cycle — degrades to an empty analysis instead of recursing until memory runs out. |
 | `requestVarNames` | `array<string, class-string<Request>>` | Variable names holding an `Illuminate\Http\Request`, mapped to the bound class, so `KnownMethodRuleHandler`'s reflected Request rule (`url()`, `ip()`, `integer()`, …) fires on `$request->ip()` and stays off an unrelated receiver sharing a method name; the bound class is what `validated()` is resolved against, reading the `FormRequest` subclass's own `rules()`. `user()` is answered ahead of reflection, from the configured auth model. Seeded in `AstEngine::bindingsFor()` from a located method's `Request`-typed parameters, and in `ResourceAstAnalyzer::resolveRequestVarNames()` for a directly-constructed resource analysis — **except for a `JsonResource` subject**, whose `toArray(Request $request)` would otherwise start typing request calls and move committed resource output. |
@@ -219,11 +221,11 @@ or `releaseUnclaimedParameters()`, for the reason [below](#a-closure-parameter-o
 
 | Writer | Fields it scopes |
 | --- | --- |
-| `ResourceAstAnalyzer::analyzeThisMethodSpread()` | `localVarBindings`, `resolvingLocalVars`, `varModelBindings`, `varClassBindings`, `varGuardBindings`, `requestVarNames`, and the `visitedSpreadMethods` entry |
+| `ResourceAstAnalyzer::analyzeThisMethodSpread()` | `localVarBindings`, `resolvingLocalVars`, `varModelBindings`, `varClassBindings`, `varGuardBindings`, `varDocBindings`, `declaringFileClass`, `requestVarNames`, and the `visitedSpreadMethods` entry |
 | `ClosureHandler::resolve()` | every name-keyed table, releasing the parameter names of a closure no writer claimed |
 | `ConditionalMethodHandler` | `closureRelationModelClass` and every name-keyed table around a `whenLoaded` closure; every name-keyed table around a `when()`/`unless()` value closure, `transform()`'s callback, `resolveValueArgument()`'s value closure, and `resolveConditionalDefault()`'s default closure — claiming the closure's parameters at each, then binding them as the [corollary](#a-closure-parameter-owns-its-name) lists |
 | `ResourceAstAnalyzer::resolveArrayOrClosureToProperties()` | every name-keyed table around a `merge()`, `mergeWhen()` or `mergeUnless()` closure, claiming its parameters and binding each to what it holds, since the call passes nothing |
-| `TernaryHandler::narrowedArmResult()` | `varClassBindings` for a narrowed variable; `modelClass` + `forwardsUndeclaredMembersTo` for a narrowed `$this->resource` |
+| `NarrowsInstanceofSubjects::resolveNarrowed()`, for `TernaryHandler` and `ReceiverClassResolver` | `varClassBindings` for a narrowed variable; `modelClass` + `forwardsUndeclaredMembersTo` for a narrowed `$this->resource` |
 | `RelationCollectionChainHandler` | `closureRelationModelClass` around `pluck()`; that plus every name-keyed table around a `map()` closure, whose parameter it binds in `varModelBindings` |
 | `CollectionPipelineHandler::resolveMapBody()` | every name-keyed table around a `collect(...)->map()` closure, whose parameter it binds in `varValueBindings` |
 | `VariableHandler::analyzeVariableMapCall()` | `closureRelationModelClass` plus every name-keyed table around a `$var->map()` closure, whose parameter it binds in `varModelBindings` |
@@ -251,9 +253,9 @@ inside the `try`. Prefer restoring the whole map over unsetting the single key y
 
 #### A closure parameter owns its name
 
-The readers rank the name-keyed tables differently. For a bare variable, `VariableHandler` reads
-`varModelBindings`, then `varCollectionBindings`, then `varValueBindings`; `ReceiverClassResolver::fromVariable()`
-reads `varClassBindings` first, then `varGuardBindings`, and never reads `varValueBindings`. So an outer binding of a closure parameter's name,
+The readers rank the name-keyed tables differently. For a bare variable, `VariableHandler` reads `varDocBindings`,
+then `varModelBindings`, then `varCollectionBindings`, then `varValueBindings`; `ReceiverClassResolver::fromVariable()`
+reads `varClassBindings` first, then `varGuardBindings`, then `varDocBindings`, and never reads `varValueBindings`. So an outer binding of a closure parameter's name,
 left in any table, outranks the parameter's own binding for some reader: nested in a `map(fn (Comment $c) => …)`, a
 `collect(...)->map(fn ($c) => …)` would read its string element as a `Comment`, and so would
 `$this->transform($this->title, fn ($c) => $c)`.
@@ -412,8 +414,9 @@ tests that do are listed at the end of that section.
 ### Narrowing
 
 `CollectsInstanceofGuards` (`src/Ast/Concerns/`) and `TernaryHandler` together answer which class a
-variable holds *at one point in a body*. The guard pass writes `AnalysisScope::$varGuardBindings`, and
-`TernaryHandler` writes `$varClassBindings`. Three rules, each restored in a `finally`:
+variable holds *at one point in a body*. The guard pass writes `AnalysisScope::$varGuardBindings`, and a ternary
+writes `$varClassBindings` through `NarrowsInstanceofSubjects::resolveNarrowed()`. Three rules, each restored in a
+`finally`:
 
 1. **An early-exit guard.** A top-level `if` with no `elseif` and no `else`, whose body's last statement
    is a `return` or a `throw`, and whose condition is `! $x instanceof C` — or an `||` chain containing
@@ -422,18 +425,21 @@ variable holds *at one point in a body*. The guard pass writes `AnalysisScope::$
    `NarrowedParentResource` is the fixture: after
    `if (! $parent || ! $parent instanceof Post) { return null; }`, `$parent->title` types as `string`
    even though `attachable` is a `morphTo` holding a union.
-2. **A ternary's true arm.** `$x instanceof C ? A : B` binds `$x` to `C` while `A` resolves, and only `A`.
-3. **A ternary on `$this->resource`.** `$this->resource instanceof C ? A : B`, with `C` a `Model`, sets
-   `$scope->modelClass = C` while `A` resolves, so every `$this->prop` read in that arm resolves against
-   the narrowed model. `TeamSubscriberResource` pins it: `$this->resource->subscriber` is a relation only
-   the `SubscribedTeam` subclass declares.
+2. **A ternary's proven arm.** `$x instanceof C ? A : B`, or an `||` chain of such tests on `$x`, binds `$x` to the
+   tested classes while `A` resolves, and only `A`. A negated test, `! $x instanceof C ? A : B`, proves `B` instead.
+   An arm that writes `$x` is not narrowed, since a read after the write no longer holds what the test saw.
+3. **A ternary on `$this->resource`.** The same, with `C` one `Model`, sets `$scope->modelClass = C` while the proven
+   arm resolves, so every `$this->prop` read in that arm resolves against the narrowed model.
+   `TeamSubscriberResource` pins it: `$this->resource->subscriber` is a relation only the `SubscribedTeam` subclass
+   declares.
 
-One more rule writes no binding. `ReceiverClassResolver::testedClasses()` reads a ternary's `instanceof`
-test, or `||` chain of tests, when every operand tests the true arm's own read path. `narrowed()` then checks
-each class the arm resolves to against those tests, keeping it, replacing it with the tested subclasses, or
-dropping it, and never widening it. So a receiver read later through a variable bound to that ternary is
-narrowed too, which rule 2 cannot do. Rule 1 and this rule read the `||` chain through the same
-`ReadsInstanceofChains` grammar. See
+`ReadsInstanceofChains::instanceofProof()` reads which subject a condition tests, for which classes, and which arm
+that proves; rule 1 reads the `||` chain through the same grammar. `ReceiverClassResolver` reads the proof too, so a
+receiver read later through a variable bound to the ternary is narrowed, which rules 2 and 3 cannot do alone. When
+the proven arm is the tested read itself, `narrowed()` checks each class the arm resolves to against the tests,
+keeping it, replacing it with the tested subclasses, or dropping it, and never widening it. When the arm reads a
+member through the tested variable or `$this->resource`, it resolves under rule 2's or rule 3's binding, holding what
+`narrowed()` leaves of the subject's own classes. See
 [Receiver types § A ternary's `instanceof` condition](receiver-types.md#a-ternarys-instanceof-condition).
 
 **No write after the guard.** Rule 1 binds `$x` only when no write to it can land once the guard has tested
@@ -463,16 +469,40 @@ for everything that follows, is safe to bind from a flat walk.
 **Closure bodies bind their own locals.** `ClosureHandler` runs `collectLocalVarBindings()` and
 `collectInstanceofGuards()` over a `Closure`'s statements, so a body-local resolves inside the closure the
 way a top-level local does in `toArray()`. Every name the body writes is unset from the outer
-`localVarBindings` first, so a body-local shadows an outer one of the same name — including one written
-twice, which binds nothing and must not fall through to the outer binding instead. An `ArrowFunction` has
-a single expression and no statement list, so only the parameter suppression above applies to it.
+`localVarBindings` and `varDocBindings` first, so a body-local shadows an outer one of the same name — including
+one written twice, which binds nothing and must not fall through to the outer binding instead. An `ArrowFunction`
+has a single expression and no statement list, so only the parameter suppression above applies to it.
+
+### Declared locals
+
+`CollectsLocalVarBindings` also reads an inline `/** @var T $x */`, or a name-less `/** @var T */`, on a top-level
+`$x = …;` and writes a `varDocBindings` span. The span starts after that statement and ends where the next top-level
+statement holding a write to `$x` starts, through `writesFrom()`, the position-ordered rule the guard pass reads its
+writes by. A loop that writes `$x` ends the span where the loop starts, since a read earlier in its body can follow
+the write on the next pass. A tag naming another variable, or a second write inside the assigning statement, binds
+nothing. `T` resolves against the imports and namespace of `AnalysisScope::$declaringFileClass`, a trait's file for
+a trait's method.
+
+- **Receivers.** `ReceiverClassResolver::fromVariable()` names `T`'s classes, as it does a property's `@var`: a union
+  names each, `?T` and `|null` drop the null, and `Collection<int, X>` names the collection class. What the
+  assignment resolves to stands instead when every class of it is one of `T`'s, so `@var Model` never widens a
+  `User`. A `T` naming no loadable class, such as `int` or a missing class, leaves the receiver to the assignment.
+- **Values.** `VariableHandler` publishes `T` for a bare read, read as `PropertyDocblockTypeReader` reads a
+  property's `@var`, unless it is vague by `TsTypeString::isVagueTsType()` or names a model with no published file.
+  Then the assignment's own reading stands, as a vague declared return yields to the method body.
+- **Ambient models.** Inside a `whenLoaded()` closure, a declared local's `$x->prop` and `$x->m()` skip the
+  closure's relation model and resolve through the receiver path.
+
+`CartTotalsResource` and `PostPinnedCommentsResource` are the fixtures; the name resolution is pinned through a
+trait's file by `DeclaredTotalsTraitResource`, a test fixture.
 
 ### What deliberately stays unbound
 
 - **A reassigned local** (written more than once in the method) — `localVarBindings` already skips
   these; `varModelBindings` has no reassignment analog since it only ever binds closure params and
   loop variables, each written exactly once by construction. An early-exit guard still narrows one
-  reassigned only before it, as § Narrowing says.
+  reassigned only before it, as § Narrowing says, and an inline `@var` types one for the span its annotated
+  assignment covers, as § Declared locals says.
 - **First-class callables** (`->map(...)`, `->pluck(...)`) — there is no closure body to bind a
   param into, so these are rejected before any binding is attempted.
 - **A relation-chain `map()` whose argument isn't a `Closure`/`ArrowFunction`** (a string callable

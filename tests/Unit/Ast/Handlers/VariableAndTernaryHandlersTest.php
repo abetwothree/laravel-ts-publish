@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\TernaryHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\VariableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
@@ -32,6 +33,7 @@ use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\HelperCallResource;
+use Workbench\App\Http\Resources\NarrowedImageableResource;
 use Workbench\App\Http\Resources\PostCommentAuthorsResource;
 use Workbench\App\Http\Resources\TeamSubscriberResource;
 use Workbench\App\Http\Resources\UserFeaturedPostsResource;
@@ -39,8 +41,11 @@ use Workbench\App\Models\Comment;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Order;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\Product;
 use Workbench\App\Models\SubscribedTeam;
+use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
+use Workbench\Crm\Models\User as CrmUser;
 
 /**
  * An engine that fails the test if a handler calls back into it.
@@ -528,4 +533,34 @@ it('narrows the forwarding target from the subject even when modelClass is null'
         ->and($engine->forwardsPerArm['else'])->toBeNull()
         ->and($scope->forwardsUndeclaredMembersTo)->toBeNull()
         ->and($scope->modelClass)->toBeNull();
+});
+
+/**
+ * A scope over Image whose `$record` holds the `imageable` morphTo: Post, Product, User or CRM User.
+ */
+function ternaryRecordScope(): AnalysisScope
+{
+    resolve(ModelAttributeResolver::class)->buildMorphTargetMap([Image::class, Post::class, Product::class, User::class, CrmUser::class]);
+
+    $scope = new AnalysisScope(new ReflectionClass(NarrowedImageableResource::class), Image::class);
+    $scope->localVarBindings['record'] = new AstParser()->parseSource('<?php $this->imageable;')[0]->expr;
+
+    return $scope;
+}
+
+it('narrows the arm an instanceof condition proves: the false arm of a negated test, and an || chain on a variable', function () {
+    $teamScope = new AnalysisScope(new ReflectionClass(TeamSubscriberResource::class), Team::class);
+    $negated = '! $this->resource instanceof \Workbench\App\Models\SubscribedTeam ? null : $this->resource->subscriber?->name';
+    $either = '$record instanceof \Workbench\App\Models\Post || $record instanceof \Workbench\App\Models\User ? $record->comments : null';
+
+    expect(variableHandlersResolveOn($negated, Team::class, $teamScope)['type'])->toBe('string | null')
+        ->and(variableHandlersResolveOn($either, Image::class, ternaryRecordScope())['type'])->toBe('Comment[] | null');
+});
+
+it('does not narrow an arm that writes its subject, so a read after the write holds what the variable now does', function () {
+    $written = '$record instanceof \Workbench\App\Models\Post ? ["r" => $record = $this->author, "t" => $record->title] : null';
+    $unwritten = '$record instanceof \Workbench\App\Models\Post ? ["t" => $record->title] : null';
+
+    expect(variableHandlersResolveOn($written, Image::class, ternaryRecordScope())['type'])->toBe('{ r: unknown; t: unknown } | null')
+        ->and(variableHandlersResolveOn($unwritten, Image::class, ternaryRecordScope())['type'])->toBe('{ t: string } | null');
 });

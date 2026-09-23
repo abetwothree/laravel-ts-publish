@@ -10380,6 +10380,61 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\CartTotalsResource": {
+            "name": "CartTotalsResource",
+            "properties": [
+                {
+                    "name": "subtotal",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "chargeable",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "count",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "note",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "totals",
+                    "type": "{ subtotal: number; chargeable: boolean; count: number; hasExtras: boolean }",
+                    "optional": false
+                },
+                {
+                    "name": "unnamed_count",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "label",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "count_before",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "count_after",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "missing_count",
+                    "type": "unknown",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\CaseSpreadResource": {
             "name": "CaseSpreadResource",
             "properties": [
@@ -13985,6 +14040,26 @@
             "name": "PostFlatCollection",
             "typeAlias": "PostResource[]"
         },
+        "Workbench\\App\\Http\\Resources\\PostPinnedCommentsResource": {
+            "name": "PostPinnedCommentsResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "pinned_count",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "pinned",
+                    "type": "Comment[]",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\PostResource": {
             "name": "PostResource",
             "properties": [
@@ -16578,6 +16653,46 @@
                 {
                     "name": "audit",
                     "type": "{ status: AsEnum<typeof Status>[] | StatusType[] }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\TeamSubscriberLocalResource": {
+            "name": "TeamSubscriberLocalResource",
+            "properties": [
+                {
+                    "name": "subscriber_name",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "subscriber_id",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "inline_name",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "negated_name",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "via_local_email",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "unproven_name",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "negated_true_arm_name",
+                    "type": "unknown",
                     "optional": false
                 }
             ]

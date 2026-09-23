@@ -32,6 +32,8 @@ it('constructs with the given subject reflection and model class', function () {
         ->and($scope->varModelBindings)->toBe([])
         ->and($scope->varCollectionBindings)->toBe([])
         ->and($scope->localVarBindings)->toBe([])
+        ->and($scope->varDocBindings)->toBe([])
+        ->and($scope->declaringFileClass)->toBe($reflection)
         ->and($scope->resolvingLocalVars)->toBe([])
         ->and($scope->visitedSpreadMethods)->toBe([]);
 });
@@ -66,6 +68,7 @@ function analysisScopeWithEveryTableBound(): AnalysisScope
         $scope->closureParamExprBindings[$name] = $expr;
         $scope->varClassBindings[$name] = [User::class];
         $scope->varGuardBindings[$name] = ['classes' => [User::class], 'after' => 0];
+        $scope->varDocBindings[$name] = [['type' => 'User', 'context' => $scope->declaringFileClass, 'after' => 0, 'before' => null]];
         $scope->varModelBindings[$name] = User::class;
         $scope->varCollectionBindings[$name] = ['type' => 'User[]', 'modelFqcn' => User::class];
         $scope->varValueBindings[$name] = ['type' => 'string', 'optional' => false];
@@ -129,6 +132,7 @@ it('copies every entry a variable held in a capture onto a parameter, in every n
         ->and($scope->closureParamExprBindings['param'])->toBe($captured['closureParamExprBindings']['item'])
         ->and($scope->varClassBindings['param'])->toBe([User::class])
         ->and($scope->varGuardBindings['param'])->toBe(['classes' => [User::class], 'after' => 0])
+        ->and($scope->varDocBindings['param'])->toBe($captured['varDocBindings']['item'])
         ->and($scope->varModelBindings['param'])->toBe(User::class)
         ->and($scope->varCollectionBindings['param'])->toBe(['type' => 'User[]', 'modelFqcn' => User::class])
         ->and($scope->varValueBindings['param'])->toBe(['type' => 'string', 'optional' => false])

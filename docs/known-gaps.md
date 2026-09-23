@@ -443,9 +443,9 @@ value is `unknown`:
   `tests/Unit/Ast/Handlers/ReceiverHandlersTest.php`. The walk is flat, so a binding made for that body
   would still be in force *after* the `if`, where `$x` is exactly what the guard excluded. Only the
   early-exit shape narrows for everything that follows.
-- **A positive *ternary* on a local variable does bind, for its true arm only.** `TernaryHandler` binds
-  `$x` to `C` while `A` resolves in `$x instanceof C ? A : B`, which is sound because the binding cannot
-  outlive the arm. `NarrowedParentResource`'s `$record instanceof Post ? $record->title : null` — where
+- **A *ternary* on a local variable does bind, for the arm its test proves only.** `TernaryHandler` binds
+  `$x` to `C` while `A` resolves in `$x instanceof C ? A : B`, and while `B` resolves in
+  `! $x instanceof C ? A : B`, which is sound because the binding cannot outlive the arm. `NarrowedParentResource`'s `$record instanceof Post ? $record->title : null` — where
   `$record` holds a `morphTo` union — publishes `record_title: string | null`, not `unknown`.
 - **A positive ternary whose true arm is the tested expression narrows only what is read through it.**
   After `$v = $this->imageable instanceof Post ? $this->imageable : null;`, `$v?->getKey()` reflects on `Post`

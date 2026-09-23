@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CountingCastable;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendingModelFilterOverrideModel;
@@ -67,6 +68,7 @@ use Workbench\App\Http\Resources\PostStatsResource;
 use Workbench\App\Http\Resources\ReceiverMethodResource;
 use Workbench\App\Http\Resources\ReceiverPropertyResource;
 use Workbench\App\Http\Resources\RosterSlotResource;
+use Workbench\App\Http\Resources\TeamSubscriberLocalResource;
 use Workbench\App\Http\Resources\TeamSubscriberResource;
 use Workbench\App\Models\Attachment;
 use Workbench\App\Models\Comment;
@@ -790,6 +792,23 @@ describe('narrowing', function () {
         expect($props['parent']['type'])->toBe('{ title: string; class: string; morph: string } | null')
             ->and($props['parent']['optional'])->toBeTrue()
             ->and($props['record_title']['type'])->toBe('string | null');
+    });
+
+    test('a local assigned from an instanceof ternary keeps the narrowing of the arm the test proves', function () {
+        config()->set('ts-publish.output_to_files', false);
+
+        expect(resolve(ResourceGenerator::class, ['findable' => TeamSubscriberLocalResource::class])->content)->toContain(<<<'TS'
+            export interface TeamSubscriberLocalResource
+            {
+                subscriber_name: string | null;
+                subscriber_id: number | null;
+                inline_name: string | null;
+                negated_name: string | null;
+                via_local_email: string | null;
+                unproven_name: unknown;
+                negated_true_arm_name: unknown;
+            }
+            TS);
     });
 
     test('a $this->resource instanceof ternary narrows the model for its true arm', function () {

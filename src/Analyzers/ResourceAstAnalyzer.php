@@ -35,6 +35,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesClassNames;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
@@ -778,6 +779,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $previousVarModelBindings = $this->scope->varModelBindings;
         $previousVarClassBindings = $this->scope->varClassBindings;
         $previousVarGuardBindings = $this->scope->varGuardBindings;
+        $previousVarDocBindings = $this->scope->varDocBindings;
+        $previousDeclaringFileClass = $this->scope->declaringFileClass;
         $previousRequestVarNames = $this->scope->requestVarNames;
         try {
             $this->scope->localVarBindings = [];
@@ -785,6 +788,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $this->scope->varModelBindings = [];
             $this->scope->varClassBindings = [];
             $this->scope->varGuardBindings = [];
+            $this->scope->varDocBindings = [];
+            $this->scope->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($method);
             // The spread method has its own signature: the entry method's Request params say nothing
             // about which of ITS variables hold one. analyzeParentToArray() re-derives the same way.
             $this->scope->requestVarNames = $this->resolveRequestVarNames($methodName);
@@ -812,6 +817,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $this->scope->varModelBindings = $previousVarModelBindings;
             $this->scope->varClassBindings = $previousVarClassBindings;
             $this->scope->varGuardBindings = $previousVarGuardBindings;
+            $this->scope->varDocBindings = $previousVarDocBindings;
+            $this->scope->declaringFileClass = $previousDeclaringFileClass;
             $this->scope->requestVarNames = $previousRequestVarNames;
             unset($this->scope->visitedSpreadMethods[$methodName]);
         }

@@ -15,8 +15,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Enumerable;
@@ -32,8 +34,8 @@ use ReflectionMethod;
 
 /**
  * Expressions rooted at a bound variable rather than `$this` — `$item->name`, `$items->map(…)`,
- * `$items->pluck('x')`, `$item->method()`, and the bare variable itself resolved through the
- * scope's model, collection, closure-parameter and local-assignment binding maps.
+ * `$items->pluck('x')`, `$item->method()`, and the bare variable itself resolved through an inline `@var` on its
+ * assignment, then the scope's model, collection, closure-parameter and local-assignment binding maps.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -85,8 +87,7 @@ final class VariableHandler implements ExpressionHandler
             && $expr->var->name !== 'this'
             && $expr->name instanceof Identifier
         ) {
-            /** @var class-string<Model>|null $boundModel */
-            $boundModel = $scope->varModelBindings[$expr->var->name] ?? $scope->closureRelationModelClass;
+            $boundModel = $scope->varModelBindings[$expr->var->name] ?? $this->ambientModel($expr->var, $scope);
 
             if ($boundModel !== null) {
                 return $this->analyzeRelatedModelProperty($expr->name->toString(), $scope, $boundModel);
@@ -125,12 +126,17 @@ final class VariableHandler implements ExpressionHandler
             && $expr->name instanceof Identifier
             && ! $this->callsAttributeFilter($expr)
         ) {
-            /** @var class-string<Model>|null $boundModel */
-            $boundModel = $scope->varModelBindings[$expr->var->name] ?? $scope->closureRelationModelClass;
+            $boundModel = $scope->varModelBindings[$expr->var->name] ?? $this->ambientModel($expr->var, $scope);
 
             if ($boundModel !== null) {
                 return $this->analyzeRelatedModelMethodCall($expr->name->toString(), $scope, $boundModel);
             }
+        }
+
+        $declared = $expr instanceof Variable ? $this->declaredValue($expr, $scope) : null;
+
+        if ($declared !== null) {
+            return $declared;
         }
 
         // Bare variable bound to a model class (whenLoaded param, map param, foreach value var) —
@@ -187,6 +193,36 @@ final class VariableHandler implements ExpressionHandler
         }
 
         return null;
+    }
+
+    /**
+     * The type an inline `@var` on a variable's assignment declares for this read, when precise enough to publish.
+     *
+     * A vague declaration yields to the assignment's own reading, as a vague declared return yields to the method body.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function declaredValue(Variable $variable, AnalysisScope $scope): ?array
+    {
+        $declared = $scope->declaredAt($variable);
+        $value = $declared === null
+            ? null
+            : resolve(PropertyDocblockTypeReader::class)->readDeclared($declared['type'], $declared['context']);
+
+        return $value !== null && ! TsTypeString::isVagueTsType($value['type']) && ValueResult::namesOnlyPublishedModels($value)
+            ? $value
+            : null;
+    }
+
+    /**
+     * The model a whenLoaded closure's relation holds, as a guess at an unbound variable; none for one an inline `@var`
+     * declares, whose reads the receiver path types from that declaration.
+     *
+     * @return class-string<Model>|null
+     */
+    private function ambientModel(Variable $variable, AnalysisScope $scope): ?string
+    {
+        return $scope->declaredAt($variable) === null ? $scope->closureRelationModelClass : null;
     }
 
     /**

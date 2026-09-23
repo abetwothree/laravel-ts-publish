@@ -38,7 +38,7 @@ rules. The class docblock points here.
 | `$this->resource->prop`, `$this->resource?->prop` | The model-member rules `$this->prop` uses on a model-backed subject. The subject-declared property rule never applies. |
 | `$this->prop`, where `SubjectPropertyTypeResolver::declaresOwnProperty()` holds — declared on the subject below any `Illuminate\` ancestor, non-static, and not a framework name it inherits — at any visibility | Its native class type, else its full `@var` type |
 | `$this->prop` on a model-backed subject | `ModelAttributeResolver::resolveAttributeClass()`, else the relation: its morph targets or `resolveMorphToBound()`, `[EloquentCollection]` with `elementModel` for to-many, or the related model |
-| `$var` | `varClassBindings` first — a ternary's `instanceof` narrowing, or a `morphTo` `whenLoaded()` parameter's targets, outranks every other binding. Then `varGuardBindings`, an early-exit guard's class, but only for a read that starts past the guard's `if`. The ordering that is load-bearing today is that both sit above the `closureParamExprBindings ?? localVarBindings` fallback, because a narrowed variable is normally bound by a plain `$x = …;` assignment; sitting above `varModelBindings` is the same concern for a narrowed closure param or loop variable, and is motivating rather than currently proven. Then `varModelBindings`, then `varCollectionBindings` (a collection with `elementModel`), then `requestVarNames`, then `closureParamExprBindings` and `localVarBindings` resolved recursively under `resolvingLocalVars`. An unbound variable is `null`. See [AST engine § Narrowing](ast-engine.md#narrowing) for what writes `varClassBindings` and `varGuardBindings`. |
+| `$var` | `varClassBindings` first — a ternary's `instanceof` narrowing, or a `morphTo` `whenLoaded()` parameter's targets, outranks every other binding. Then `varGuardBindings`, an early-exit guard's class, but only for a read that starts past the guard's `if`. Then `varDocBindings`, the classes an inline `@var` on the variable's assignment names for the reads in its span, or what the assignment resolves to when every class of that is one of them; a type naming no loadable class falls through. The ordering that is load-bearing today is that both sit above the `closureParamExprBindings ?? localVarBindings` fallback, because a narrowed variable is normally bound by a plain `$x = …;` assignment; sitting above `varModelBindings` is the same concern for a narrowed closure param or loop variable, and is motivating rather than currently proven. Then `varModelBindings`, then `varCollectionBindings` (a collection with `elementModel`), then `requestVarNames`, then `closureParamExprBindings` and `localVarBindings` resolved recursively under `resolvingLocalVars`. An unbound variable is `null`. See [AST engine § Narrowing](ast-engine.md#narrowing) for what writes `varClassBindings` and `varGuardBindings`, and [§ Declared locals](ast-engine.md#declared-locals) for `varDocBindings`. |
 | `<receiver>->prop`, `<receiver>?->prop` | For a model class, the attribute and relation rules above. For any other class, its declared **public**, non-static property's class. |
 | `$this->method()` | The subject's own method, at any visibility. When the subject is a `JsonResource` that does not declare it, the backing class's **public** method, on the class `forwardedThisReceiver()` names. |
 | `<receiver>->relationMethod()` on a model where `resolveRelation()` knows the name | `ReceiverType([<return class>], relatedModel: <related model>)`. A relation method with no declared return names `Relation`. |
@@ -55,7 +55,7 @@ rules. The class docblock points here.
 | `resolve(X::class)`, `app(X::class)` | `X` |
 | `now()`, `today()` | `Illuminate\Support\Carbon` |
 | `collect(...)` | `Illuminate\Support\Collection` |
-| A ternary, `?:`, or `??` | The union of the non-`null` arms. Any unresolved non-`null` arm makes the whole answer `null`, with one exception. A ternary's `instanceof` condition on its own true arm narrows that arm, and an unresolved true arm then holds the tested classes; see [A ternary's `instanceof` condition](#a-ternarys-instanceof-condition). |
+| A ternary, `?:`, or `??` | The union of the non-`null` arms. Any unresolved non-`null` arm makes the whole answer `null`, with one exception. A ternary's `instanceof` condition narrows the arm it proves, and an unresolved proven arm that is the tested read then holds the tested classes; see [A ternary's `instanceof` condition](#a-ternarys-instanceof-condition). |
 
 `$this->prop` and `$this->resource->prop` share one code path. A `JsonResource` forwards what it does not
 declare to its model through `__get()` and `__call()`, so the two spellings are the same read at runtime.
@@ -126,14 +126,24 @@ so the first arm's flag never reaches the result.
 
 ### A ternary's `instanceof` condition
 
-`ReceiverClassResolver::testedClasses()` reads a ternary's condition when it is an `instanceof` test, or an `||` chain
-of them, and every operand tests the true arm's own read path. `fromArms()` then narrows the true arm through
-`narrowed()`. The true arm runs only when some operand holds, so its value is an instance of one of the tested classes.
+`ReadsInstanceofChains::instanceofProof()` reads a ternary's condition when it is an `instanceof` test, or an `||`
+chain of them, whose operands all test one read path. The true arm runs only when some operand holds, so it is the
+arm the test proves; for a negated test, `! $x instanceof C` or `! ($x instanceof A || $x instanceof B)`, the false
+arm is. When the proven arm is the tested read itself, `fromArms()` narrows it through `narrowed()`.
 `NarrowedImageableResource` pins the rule. `Image::imageable` is a `morphTo` over int-keyed
 and string-keyed models, and its `$either` is bound through
 `$this->imageable instanceof Post || $this->imageable instanceof User ? $this->imageable : null`. So
 `$either?->getKey()` publishes `either_id: number | null`, while `$this->imageable?->getKey()` publishes
 `open_id: number | string | null`.
+
+When the proven arm reads a member through the tested subject instead, as in
+`$this->resource instanceof SubscribedTeam ? $this->resource->subscriber : null`, and the subject is a variable or
+`$this->resource` tested for one model, `provenArm()` resolves the arm with the subject narrowed, through the
+binding `TernaryHandler` resolves the same arm's value under
+(`NarrowsInstanceofSubjects::resolveNarrowed()`). The subject holds what `narrowed()` leaves of its own classes, so a
+supertype test never widens what the arm reads. An arm that writes its subject is not narrowed.
+`TeamSubscriberLocalResource` pins it: a local bound to that ternary publishes `subscriber_name: string | null`, as
+the same ternary written inline does.
 
 The same read path means the same variable, or the same chain of property reads, such as `$this->a->b` or
 `$x?->y`, with the same names and the same `->` or `?->` at each step. A method call never qualifies, because a
@@ -162,12 +172,14 @@ These stay un-narrowed:
 
 - A condition on another subject, or on another spelling of the same value, such as `$this->resource->x` tested
   against a `$this->x` arm.
-- `&&`, a negation, or an `||` operand that is not an `instanceof` test on the arm.
-- The false arm. `$x instanceof C ? null : $x` does not remove `C`.
+- `&&`, a negation inside an `||` chain, or an `||` operand that is not an `instanceof` test on the arm.
+- The arm the test does not prove. `$x instanceof C ? null : $x` does not remove `C`, and neither does the true arm
+  of a negated test.
+- A member read through a `$this->prop` subject, or through `$this->resource` tested for more than one class.
 - `?:`, whose true arm is the condition itself, and `??`, which has no condition.
 
 This rule covers receiver resolution only: a ternary's own value is never narrowed, whatever its subject's spelling.
-The value comes from `TernaryHandler`, which narrows only reads made inside the true arm. For a variable subject it
+The value comes from `TernaryHandler`, which narrows only reads made inside the arm the test proves. For a variable subject it
 writes `varClassBindings`, which only `ReceiverClassResolver::fromVariable()` reads, so `$x->prop` in the arm narrows
 while a bare `$x` does not. For `$this->resource` it narrows `modelClass`, which `$this->prop` reads resolve against.
 So `$r instanceof Post ? $r : null` and `$this->imageable instanceof Post ? $this->imageable : null` both publish the
