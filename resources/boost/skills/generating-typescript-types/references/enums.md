@@ -71,16 +71,15 @@ When both of those config settings are true, you're more like to use the `#[TsEx
 
 Wire it into the rest of the backend the normal Laravel way. Every one of these is read by the generator:
 
-| Where                        | Write                                                           | Generated effect                                                                                                                                                                                  |
-| ---------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Model cast                   | `'priority' => TaskPriority::class` in `casts()`                | `priority: TaskPriorityType` on `Task`, `AsEnum<...>` on `TaskResource`                                                                                                                           |
-| Form request rule            | `'priority' => ['required', Rule::enum(TaskPriority::class)]`   | `priority: 'low' \| 'medium' \| 'high'` on the request interface                                                                                                                                  |
-| Migration                    | `$table->string('priority')->default('medium')`                 | column exists so the model interface includes it                                                                                                                                                  |
-| Route parameter              | `public function byPriority(TaskPriority $priority)`            | `_enumValues: ['low', 'medium', 'high']` on the route arg                                                                                                                                         |
-| API resource                 | `'priority' => EnumResource::make($this->priority)`             | `AsEnum<typeof TaskPriority>` (see [api-resources.md](api-resources.md))                                                                                                                          |
-| Inertia `share()`            | `'defaultPriority' => EnumResource::make(TaskPriority::Medium)` | `AsEnum<typeof TaskPriority>`; there only a case constant resolves, and `EnumResource::make()` around a read is `unknown`                                                                         |
-| Inertia `render()` page prop | `'priority' => $task->priority`                                 | `priority: TaskPriorityType` — page props get **no** `AsEnum` rewrite, even for `EnumResource::make(TaskPriority::High)`; `EnumResource::make($task->priority)` or a bare case there is `unknown` |
-| Broadcast event prop         | `public TaskPriority $priority`                                 | `priority: TaskPriorityType`                                                                                                                                                                      |
+| Where                           | Write                                                         | Generated effect                                                                                       |
+| ------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Model cast                      | `'priority' => TaskPriority::class` in `casts()`              | `priority: TaskPriorityType` on `Task`, `AsEnum<...>` on `TaskResource`                                |
+| Form request rule               | `'priority' => ['required', Rule::enum(TaskPriority::class)]` | `priority: 'low' \| 'medium' \| 'high'` on the request interface                                       |
+| Migration                       | `$table->string('priority')->default('medium')`               | column exists so the model interface includes it                                                       |
+| Route parameter                 | `public function byPriority(TaskPriority $priority)`          | `_enumValues: ['low', 'medium', 'high']` on the route arg                                              |
+| API resource, Inertia `share()` | `'priority' => EnumResource::make($this->priority)`           | `AsEnum<typeof TaskPriority>` (see [api-resources.md](api-resources.md))                               |
+| Inertia `render()` page prop    | `'priority' => $task->priority`                               | `priority: TaskPriorityType` — page props get **no** `AsEnum` rewrite, even for `EnumResource::make()` |
+| Broadcast event prop            | `public TaskPriority $priority`                               | `priority: TaskPriorityType`                                                                           |
 
 Then republish: `php artisan ts:publish --source="App\Enums\TaskPriority"` for the enum file, and a plain
 `php artisan ts:publish` once the model/request/controller edits are in (a `--source` run never rewrites
@@ -258,11 +257,10 @@ return new EnumResource(TaskPriority::High);
 // { "name": "High", "value": "high", "backed": true, "label": "High", "color": "bg-red-100 text-red-800", "options": [...] }
 ```
 
-Inside a `JsonResource::toArray()`, use `EnumResource::make($this->priority)`; in
-`HandleInertiaRequests::share()`, which has no model, pass a case (`EnumResource::make(TaskPriority::Medium)`),
-since a read there (`EnumResource::make($request->user()?->priority)`) is `unknown`. The generated property
-becomes `AsEnum<typeof TaskPriority>` with the enum imported, and you type the consuming side with
-`AsEnum<typeof TaskPriority>` or the model's `{Model}Resource` interface, never by hand.
+Inside a `JsonResource::toArray()`, or in `HandleInertiaRequests::share()`, use
+`EnumResource::make($this->priority)`; the generated property becomes `AsEnum<typeof TaskPriority>` with the
+enum imported, and you type the consuming side with `AsEnum<typeof TaskPriority>` or the model's
+`{Model}Resource` interface, never by hand.
 
 The rewrite does **not** reach an `Inertia::render()` props array: there, `EnumResource::make(TaskPriority::High)`
 publishes the bare `TaskPriorityType`. Send the case through a resource when the page needs the resolved

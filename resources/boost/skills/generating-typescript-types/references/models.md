@@ -64,10 +64,8 @@ export interface TaskAllResource extends TaskResource, TaskMutators, TaskRelatio
 - `{Model}Relations` has one entry per relation method plus `_count` and `_exists` (from `withCount` /
   `withExists`); names follow `models.relationship_case` (`snake` by default).
 - The `Resource` variants exist only when `enums.use_tolki_package` is on and the model has enum-typed members,
-  meaning a member typed as one enum or a list of one, optionally `| null` (a shape, or a union with other arms,
-  keeps its own type there), and which one you get depends on where the enum sits: an enum-typed **column or
-  `$appends` entry** gives `{Model}Resource`, an enum-typed **non-appended accessor** gives
-  `{Model}MutatorsResource` instead (so a model
+  and which one you get depends on where the enum sits: an enum-typed **column or `$appends` entry** gives
+  `{Model}Resource`, an enum-typed **non-appended accessor** gives `{Model}MutatorsResource` instead (so a model
   whose only enum member is a plain accessor has no `{Model}Resource` at all), and `{Model}AllResource` appears
   whenever either does; use them for a payload the backend already serialized through
   `EnumResource` (each enum member arrives as `{ name, value, backed, ...methods }`). For a plain model
@@ -102,24 +100,16 @@ type-only; importing them costs nothing at runtime.
 
 ## Column type waterfall
 
-For each column: `#[TsCasts]` override -> a same-named accessor's getter type -> the cast (`casts()` / `$casts`,
-including `#[TsType]` on a custom cast class) -> the raw DB column type. A same-named accessor or mutator takes
-the cast out of the waterfall even when it only sets (see [Accessors](#accessors-mutators)). Then a class-level
-`@property` docblock refines any result that is still vague.
+For each column: `#[TsCasts]` override -> the cast (`casts()` / `$casts`, including `#[TsType]` on a custom
+cast class) -> the raw DB column type. Then a class-level `@property` docblock refines any result that is
+still vague.
 
-| PHP                                                      | TypeScript                                        |
-| -------------------------------------------------------- | ------------------------------------------------- |
-| int/bigint/decimal/float/double/numeric column or cast   | `number`                                          |
-| `boolean` cast, `tinyint(1)`                             | `boolean` (bare `tinyint` is `number`)            |
-| string/text/char/uuid/enum column, `hashed`, `encrypted` | `string`                                          |
-| date/datetime/timestamp/`Carbon` cast                    | `string` (or `Date` with `timestamps_as_date`)    |
-| `array`, `collection`, `json` column with no docblock    | `unknown[]` / `object` -> add a `@property` shape |
-| Enum class cast                                          | `{Enum}Type` (+ `AsEnum` on `{Model}Resource`)    |
-| `AsEnumCollection::of(Status::class)`                    | `StatusType[]`                                    |
-| `AsCollection::of(LineItemDto::class)`                   | `{ ...dto shape }[]`                              |
-| `AsArrayObject` family                                   | `unknown[] \| Record<string, unknown>`            |
-| Custom `CastsAttributes` with `#[TsType('X')]`           | `X` (with import when given)                      |
-| Nullable column                                          | `\| null` appended                                |
+| PHP                                                      | TypeScript                                     |
+| -------------------------------------------------------- | ---------------------------------------------- |
+| int/bigint/decimal/float/double/numeric column or cast   | `number`                                       |
+| `boolean` cast, `tinyint(1)`                             | `boolean` (bare `tinyint` is `number`)         |
+| string/text/char/uuid/enum column, `hashed`, `encrypted` | `string`                                       |
+| date/datetime/timestamp/`Carbon` cast                    | `string` (or `Date` with `timestamps_as_date`) |
 
 **A `datetime` column and an `<input type="date">` agree on the type and disagree at runtime.** The column
 publishes as `string` and the request field as `string`, so `vue-tsc` is green, but the value is a full
@@ -128,6 +118,13 @@ submits an empty string, which `ConvertEmptyStringsToNull` turns into `null` and
 happily accepts. **Every save wipes the column.** Slice when seeding the form
 (`props.task.due_at?.slice(0, 10)`) or bind an `<input type="datetime-local">`; `timestamps_as_date` does not
 help, it only swaps the TypeScript type for `Date`.
+| `array`, `collection`, `json` column with no docblock | `unknown[]` / `object` -> add a `@property` shape |
+| Enum class cast | `{Enum}Type` (+ `AsEnum` on `{Model}Resource`) |
+| `AsEnumCollection::of(Status::class)` | `StatusType[]` |
+| `AsCollection::of(LineItemDto::class)` | `{ ...dto shape }[]` |
+| `AsArrayObject` family | `unknown[] \| Record<string, unknown>` |
+| Custom `CastsAttributes` with `#[TsType('X')]` | `X` (with import when given) |
+| Nullable column | `\| null` appended |
 
 `custom_ts_mappings` in config overrides a DB/cast type globally (`'binary' => 'Blob'`).
 
@@ -161,17 +158,13 @@ Rules that matter:
 
 - The tag only applies when the waterfall result is vague (`unknown`, `unknown[]`, `object`,
   `Record<string, unknown>`). It never overrides a type already resolved specifically — an enum cast, a custom
-  cast class, a typed accessor return, an accessor body the generator can read — but it does refine a _vague_
-  one, such as an accessor declared `fn (): array` whose body it cannot read.
+  cast class, a typed accessor return — but it does refine a _vague_ one, including an accessor declared
+  `fn (): array`.
 - `array{...}` -> object literal with optional keys kept (`key?:`); `list<T>` / `array<int, T>` -> `T[]`;
-  `array<string, T>` (or a refined string key such as `non-empty-string`) -> `Record<string, T>`;
-  `array<array-key, T>` / `array<mixed, T>` -> `T[] | Record<string, T>`.
+  `array<string, T>` -> `Record<string, T>`; `array<array-key, T>` / `array<mixed, T>` -> `T[] | Record<string, T>`.
 - A shape worth naming: declare `@phpstan-type PresetConfig array{...}` on the DTO/class that owns it, then
-  `@phpstan-import-type PresetConfig from PresetDto` + `@property PresetConfig|null $config` (or
-  `?PresetConfig`) on the model. The alias expands inline; nothing imports the DTO.
-- A tag for a name that is neither a column nor a relation, such as a `withSum()` or `selectRaw` alias
-  (`@property-read int|null $comments_total`), adds no key to the model interface, but it types a resource's
-  `$this->comments_total`. A tag naming a relation is never read.
+  `@phpstan-import-type PresetConfig from PresetDto` + `@property PresetConfig|null $config` on the model.
+  The alias expands inline; nothing imports the DTO.
 - `@property-read` works the same. Tags on used traits and parent classes are walked too; the subclass wins.
 - `#[TsCasts(['settings' => '...'])]` on `casts()`, `$casts`, or the class still works and wins over
   everything, but the docblock is preferred because static analysis checks it and it needs no TS string.
@@ -192,33 +185,12 @@ protected function lineItems(): Attribute { ... }             // -> line_items: 
 
 /** @return Attribute<?string, string> */                     // write-only: Get type from the generic
 protected function trackingCode(): Attribute { return Attribute::make(set: ...); }
-
-/** @return Attribute<never, string> */                       // set-only: `never` means no getter, so the
-protected function status(): Attribute { return Attribute::set(...); }   // status column keeps its DB type
 ```
 
 - Type the closure (`fn (): string`) or the `Attribute<Get, Set>` generic; `@return`/`@phpstan-return`
-  on the method is read too, and a trait accessor's `@template` binds from the model's `@use Trait<Comment>`.
-- When both are missing or vague (`fn (): array`), the getter's body is read:
-  `fn () => ['due_at' => $this->due_at]` gives `{ due_at: string | null }`,
-  `fn () => $this->only(['id', 'title'])` gives `Pick<Task, 'id' | 'title'>`,
-  `$this->assignee?->only(['id', 'name'])` gives `Pick<User, 'id' | 'name'> | null`, a runtime key list gives
-  `Record<string, unknown>`, and a to-many relation's `only()`/`except()` gives the relation's own `Comment[]`.
-  A model method whose body is analyzed and reads such an accessor keeps its shape, with the filter spelled
-  import-free: `{ id: number; title: string }`, where a column typed by an enum or class becomes `unknown`, and
-  `unknown[]` for the relation. A body the generator cannot follow (keys built in a loop, two accessors reading
-  each other) still gives `unknown` or `unknown[]`: annotate it. So does a body left as only `null` once an arm it
-  cannot type is dropped (`$attributes['nickname'] ?? null`, whose real value is that arm's), one naming two
-  same-named classes or enums under one name, and one returning a resource. An accessor that returns a different
-  `Attribute::get()` from each `if` branch is typed from the first one found, not a merge of them.
-- A write-only `Attribute::set()` / `Attribute::make(set:)` publishes its `Get` generic when that is a specific
-  type. With no generic, a vague one (`mixed`, `array`) or a `never` Get (`Attribute<never, string>`, the usual
-  mutator spelling), a same-named column publishes its **database** type: Laravel reports a mutated column's
-  cast as the mutator, so an enum, `integer` or `boolean` cast on it is not applied (an old-style
-  `setFooAttribute()` does the same). Give such a column a specific Get (`Attribute<TaskStatus, string>`
-  publishes `TaskStatusType`) or `#[TsCasts]`. Any other name is omitted, unless a class-level `@property` tag
-  types it.
-- Old-style `getFooAttribute()` accessors are supported; the same docblock and body rules apply.
+  on the method is read too. Untyped closures degrade to `unknown`.
+- A write-only `Attribute::make(set:)` with no `Get` generic and no same-named column is omitted.
+- Old-style `getFooAttribute()` accessors are supported; the same docblock rules apply.
 - An `Arrayable` DTO returned from an accessor or cast infers its shape from its typed public
   properties when `toArray()` has no `@return array{...}`.
 
@@ -229,17 +201,13 @@ strategy (`HasOne`/`MorphOne`/`HasOneThrough`: always; `BelongsTo`: when the FK 
 `MorphTo`: when the morph columns are nullable; collections: never). Override with
 `models.nullable_relations = false` or `models.relation_nullability_map`.
 
-- `morphTo()` targets are found by scanning every model for the reverse `morphOne`/`morphMany` (one onto a
-  subclass counts for the base model's `morphTo()` too) and for a `morphToMany(...)->using(Labelable::class)`
-  onto a custom pivot model (not the base `Pivot` or `MorphPivot`; a `morphedByMany()` adds nothing), which
-  types that pivot's own `morphTo()`; narrow with `/** @return MorphTo<User|Team, $this> */`.
+- `morphTo()` targets are found by scanning every model for the reverse `morphOne`/`morphMany`; narrow
+  with `/** @return MorphTo<User|Team, $this> */`.
 - A relation onto a framework model (`Notifiable` gives `notifications(): DatabaseNotification[]`)
   imports from `illuminate/notifications`, which is only generated when that class is listed in
   `models.additional_directories` (FQCNs are accepted there). Add
   `\Illuminate\Notifications\DatabaseNotification::class` to it, or `#[TsExclude]` the relation, or the
-  import will not resolve. With no `notifications` table the run then warns `Table [notifications] does not
-  exist` and publishes the interface with no columns; `php artisan make:notifications-table`, then
-  `php artisan migrate`, fills them in.
+  import will not resolve.
 - Two models with the same basename in different namespaces are imported under aliases automatically.
 - **`withPivot()` columns are never published.** A `BelongsToMany` generates as `Related[]` with no `pivot`
   member, and `#[TsCasts]` cannot retype a relation, so there is no PHP-side fix: intersect at the use site
@@ -261,9 +229,7 @@ strategy (`HasOne`/`MorphOne`/`HasOneThrough`: always; `BelongsTo`: when the FK 
 
 `php artisan ts:publish --source="App\Models\Task"` after editing a model. Column changes come from the
 database, so run the migration first (the package republishes after `migrate` automatically unless
-`run_after_migrate` is off). A new model needs a full `php artisan ts:publish` for the barrel. A model whose
-table does not exist still publishes, with no columns. If it has no accessors either, the run prints
-`Table [tasks] does not exist on connection [...]` after the summary: migrate, then publish again.
+`run_after_migrate` is off). A new model needs a full `php artisan ts:publish` for the barrel.
 
 ## Still seeing `unknown`?
 

@@ -121,32 +121,17 @@ declare module '@laravel/echo-vue' {            // -vue / -react / -svelte detec
 }
 ```
 
-- With `broadcastWith()` present it is the only payload source; otherwise every public property **the class
-  declares or inherits from a parent class** is used (promoted or class-body, `@var` docblock preferred; an untyped
-  one types from a scalar default, so `public $kind = 'created'` is `string`). **Trait-declared properties are
-  skipped**, so `InteractsWithSockets`' `$socket` — present in every `make:event` class — is broadcast but never
-  typed. A payload field living on a plain trait needs to move into the class, gain `#[TsExtends]`, or go through
-  `broadcastWith()`. A model-typed property is `Partial<Model>`, an enum-typed one is `{Enum}Type`, both imported.
+- With `broadcastWith()` present it is the only payload source; otherwise every public property **the class itself
+  declares** is used (promoted or class-body, `@var` docblock preferred). **Trait-declared properties are skipped**,
+  so `InteractsWithSockets`' `$socket` — present in every `make:event` class — is broadcast but never typed. A
+  payload field living on a plain trait needs to move into the class, gain `#[TsExtends]`, or go through
+  `broadcastWith()`. A model-typed property is `Partial<Model>`, an
+  enum-typed one is `{Enum}Type`, both imported.
 - Inside `broadcastWith()`, hand the model attribute through (`'completed_at' => $this->task->completed_at`)
   and it types from the cast (`string | null`; Carbon serializes to ISO-8601 in the JSON payload anyway).
-  A call on the value types from the method's declared return: `$this->task->completed_at?->format('Y-m-d')`,
-  `?->toISOString()` and `?->toJSON()` are all `string | null`. When `broadcastWith()` returns an array literal,
-  a key the body still cannot type (an untyped helper's result) takes its type from `broadcastWith()`'s own
-  `@return array{...}` docblock, which fills only keys the body left `unknown`: it never adds a key or retypes one
-  the body typed, though a `key?:` in it still makes that key optional. A string or number literal in it
-  (`'draft'|'live'`) publishes as that literal, and a class, enum or model name fills nothing. When it returns a
-  helper's result (`return $this->payload();`), only the helper's own docblock is read, and when it returns a
-  variable (`$data = [...]; return $data;`) the payload publishes empty. To override a key outright, use
-  `#[TsCasts(['completed_at' => 'string | null'])]` on the event class.
-- A helper spread into the payload (`...$this->counts()`, or `return $this->counts();`) that writes
-  `$data["{$name}_count"]` in a loop publishes a template-literal index signature,
-  `` [key: `${string}_count`]: number | undefined ``. The value comes from the loop body, or, when the body cannot
-  type it, from the helper's `@return array<string, int>`. Named keys the pattern covers join the value as a union
-  when their type can, each with its `#[TsCasts]` type where the event retypes it. The `@return` fill reverts to
-  `unknown | undefined` beside a covered key that is `unknown` or class-typed (`'task_count' => $this->task`),
-  beside another signature that may cover the same keys (`${string}_sub_count`), or when the event has any
-  `#[TsExtends]` / `ts_extends.broadcast_events` entry, whose keys the analyzer cannot see. A value the loop body
-  typed stays as it is, and can then fail `tsc` beside such a covered key.
+  A call on the value (`?->toJSON()`, `->format(...)`, `->toISOString()`) types as `unknown`, and a
+  `@return array{...}` docblock on `broadcastWith()` is **not** consulted as an override; fix it with
+  `#[TsCasts(['completed_at' => 'string | null'])]` on the event class or by passing the attribute through.
 - A **typed** class-body property with no default renders optional (`label?: string`) — reflection cannot see
   a constructor assignment — so promote it or give it a declaration default to make it required.
 - **Give every broadcast event a `broadcastAs()` that returns one string literal** (`'task.completed'`),
