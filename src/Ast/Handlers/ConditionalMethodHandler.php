@@ -109,14 +109,12 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
         if ($this->isThisMethodCall($expr, 'whenCounted')) {
             /** @var MethodCall $expr */
-            return $this->analyzeWhenAggregate($expr, 'whenCounted', ['type' => 'number', 'optional' => false], $scope, $engine);
+            return $this->analyzeWhenAggregate($expr, 'whenCounted', $scope, $engine);
         }
 
-        // An aggregate's type depends on its column, function and driver, so its value closure's parameter binds
-        // nothing; the key publishes as number by convention (plan follow-up 113 narrows it by driver and cast).
         if ($this->isThisMethodCall($expr, 'whenAggregated')) {
             /** @var MethodCall $expr */
-            return $this->analyzeWhenAggregate($expr, 'whenAggregated', ValueResult::unknown(), $scope, $engine);
+            return $this->analyzeWhenAggregate($expr, 'whenAggregated', $scope, $engine);
         }
 
         if ($this->isThisMethodCall($expr, 'whenPivotLoaded')) {
@@ -363,16 +361,20 @@ final class ConditionalMethodHandler implements ExpressionHandler
      * Analyze $this->whenCounted()/whenAggregated() — Laravel returns `value($value, $aggregate)`, swapping a null
      * $value for the identity closure, so a missing or null value publishes the aggregate itself.
      *
-     * A value closure is passed $aggregate: `number` for a count, `unknown` for a column aggregate. The closure's own
-     * result types the key when it resolves; otherwise the key publishes `number`, the package's convention for an
-     * aggregate, although a driver can return a numeric or date string for one that is not a count.
+     * A value closure's parameter binds to `number` for a count, which is always an integer, and to nothing for any
+     * other aggregate, whose type depends on its column, function and driver. The closure's own result types the key
+     * when it resolves; otherwise the key publishes `number`, the package's convention for an aggregate, although a
+     * driver can return a numeric or date string for one that is not a count.
      *
-     * @param  ValueExpressionResult  $aggregate
      * @return ValueExpressionResult
      */
-    protected function analyzeWhenAggregate(MethodCall $call, string $method, array $aggregate, AnalysisScope $scope, ExpressionEngine $engine): array
+    protected function analyzeWhenAggregate(MethodCall $call, string $method, AnalysisScope $scope, ExpressionEngine $engine): array
     {
         $args = $this->arguments($call, $method);
+        $function = $args->named('aggregate')?->value;
+        $aggregate = $method === 'whenCounted' || ($function instanceof String_ && $function->value === 'count')
+            ? ['type' => 'number', 'optional' => false]
+            : ValueResult::unknown();
         $fromValue = $this->resolveValueArgument($args, $aggregate, $scope, $engine);
 
         return $this->applyConditionalDefault($fromValue ?? ['type' => 'number', 'optional' => false], $args, $scope, $engine);
@@ -430,7 +432,8 @@ final class ConditionalMethodHandler implements ExpressionHandler
      *
      * A single-model relation's closure param binds to the model; a to-many relation's binds to the
      * collection type instead, since the param holds the whole collection rather than one element, and a morphTo's to
-     * its targets. A variadic param binds to the list the relation collects into.
+     * its targets. A variadic param binds to the list the relation collects into, except a morphTo's, which binds
+     * nothing: its key then stays `unknown`, which admits the null whenLoaded() returns for a relation loaded as null.
      *
      * @return ValueExpressionResult
      */
@@ -464,15 +467,6 @@ final class ConditionalMethodHandler implements ExpressionHandler
                         'type' => $relationInfo['type'],
                         'optional' => false,
                         'modelFqcn' => $relationInfo['modelFqcn'],
-                    ], $scope, $engine);
-                }
-
-                // A morphTo's list holds whichever target loaded, never null: whenLoaded() skips the closure for null.
-                if ($relationInfo !== null && $relationInfo['modelFqcn'] === null && $relationInfo['morphFqcns'] !== []) {
-                    $this->bindVariadicList($valueExpr, [
-                        'type' => ValueResult::stripNullArm($relationInfo['type']),
-                        'optional' => false,
-                        'embeddedModelFqcns' => $relationInfo['morphFqcns'],
                     ], $scope, $engine);
                 }
 

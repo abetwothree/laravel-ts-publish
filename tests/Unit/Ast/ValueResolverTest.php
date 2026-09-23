@@ -11,14 +11,17 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ScalarHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use Illuminate\Support\Carbon;
 use PhpParser\ConstExprEvaluationException;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ClassConstFetch;
+use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\ClassConstantResource;
+use Workbench\App\Models\User;
 use Workbench\App\Services\ChannelDefaults;
 
 /**
@@ -258,6 +261,9 @@ it('evaluates a constant expression as PHP does, reading class constants and enu
     'an enum case, a spread and an operator' => ['[\\'.Status::class.'::Draft, ...[1 + 1]]', [Status::Draft, 2]],
     'a constant holding an enum case' => ['self::DEFAULT_STATUS', Status::Draft],
     'a ternary' => ['self::SCHEMA_VERSION > 1 ? [1] : "x"', [1]],
+    'a global constant' => ['[PHP_INT_SIZE, PHP_EOL]', [PHP_INT_SIZE, PHP_EOL]],
+    'an enum case ->name and ->value' => ['[\\'.Status::class.'::Published->name, \\'.Status::class.'::Published->value]', ['Published', 1]],
+    'the magic constants' => ['[__LINE__, __CLASS__, __FUNCTION__, __METHOD__]', [1, ClassConstantResource::class, '{closure}', '{closure}']],
 ]);
 
 it('throws for what a constant expression reads that the evaluator cannot', function (string $php) {
@@ -265,12 +271,16 @@ it('throws for what a constant expression reads that the evaluator cannot', func
         ->toThrow(ConstExprEvaluationException::class);
 })->with([
     'new' => ['new Foo'],
-    'a global constant' => ['[PHP_INT_SIZE]'],
+    'an undefined constant' => ['[NO_SUCH_CONSTANT_ANYWHERE]'],
+    'a division by zero' => ['1 / 0'],
+    'a constant whose initializer throws' => ['\\'.ChannelDefaults::class.'::BROKEN'],
+    'a property of an enum case other than name or value' => ['\\'.Status::class.'::Draft->label'],
+    '__DIR__' => ['__DIR__'],
     'a variable' => ['$other'],
     'a missing class constant' => ['self::MISSING'],
 ]);
 
-it('types an evaluated value as a constant, declining an int-keyed record a resource re-indexes into a list', function (mixed $value, ?string $type) {
+it('types an evaluated value as a constant, declining a numeric-keyed record a resource re-indexes into a list', function (mixed $value, ?string $type) {
     expect(new ValueResolver()->resolveConstantValue($value, valueResolverLeafEngine())['type'] ?? null)->toBe($type);
 })->with([
     'a list' => [[1, 'a'], '(number | string)[]'],
@@ -278,4 +288,18 @@ it('types an evaluated value as a constant, declining an int-keyed record a reso
     'a record with an int key beside a string one' => [['a' => 1, 2], '{ a: number }'],
     'int keys that do not form a list' => [[1 => 'a'], null],
     'the same, nested in a record' => [['a' => [2 => 'x']], null],
+    'float-string keys, which is_numeric() accepts' => [['1.5' => 'x', '-0' => 'y'], null],
+    'an int key beside a float-string one' => [[1 => 'a', '1.5' => 'b'], null],
+    'a numeric key beside a word key' => [['1.5' => 1, 'a' => 2], '{ "1.5": number; a: number }'],
+]);
+
+it('types a new default as string only when the class publishes and encodes as one', function (string $class, ?string $type) {
+    $new = new New_(new Name($class));
+
+    expect(new ValueResolver()->resolveStringSerializedNew($new)['type'] ?? null)->toBe($type);
+})->with([
+    'a Carbon date' => [Carbon::class, 'string'],
+    'a DateTime, published as string but written by json_encode() as an object' => [DateTime::class, null],
+    'a model' => [User::class, null],
+    'a class that is not a string' => [stdClass::class, null],
 ]);

@@ -42,7 +42,6 @@ use Workbench\App\Models\Review;
 use Workbench\App\Models\User;
 use Workbench\App\Models\Venue;
 use Workbench\App\Models\VenueReview;
-use Workbench\Crm\Models\User as CrmUser;
 
 /**
  * An AnalysisScope for tests that don't need a real backing model.
@@ -645,6 +644,7 @@ it('binds each conditional closure parameter to what Laravel passes it', functio
     'whenAggregated() closure, ignoring the aggregate' => ['$this->whenAggregated("comments", "id", "max", fn ($m) => "x")', 'string'],
     'whenAggregated() closure, returning the untyped aggregate' => ['$this->whenAggregated("comments", "id", "max", fn ($m) => $m)', 'number'],
     'whenAggregated() closure, binding nothing' => ['$this->whenAggregated("comments", "id", "max", fn ($m) => ["m" => $m])', '{ m: unknown }'],
+    'whenAggregated() count closure, passed the count' => ['$this->whenAggregated("comments", "id", "count", fn ($c) => ["c" => $c])', '{ c: number }'],
     'whenLoaded() second parameter, optional int' => ['$this->whenLoaded("author", fn ($a, $b = 5) => $b)', 'number'],
     'transform() callback second parameter, optional int' => ['$this->transform($this->title, fn ($t, $u = 5) => $u)', 'number'],
     'transform() default, variadic, passed the blank value' => ['$this->transform($this->rating, fn ($r) => "x", fn (...$r) => $r)', 'string | (number | null)[]'],
@@ -654,7 +654,7 @@ it('binds each conditional closure parameter to what Laravel passes it', functio
     ],
 ]);
 
-// The package publishes an aggregate as number whatever its column; narrowing it by driver and cast is still open.
+// The package publishes an aggregate as number by convention, whatever its column, function and driver.
 it('publishes whenAggregated()\'s aggregate as number', function (string $php) {
     expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe('number');
 })->with([
@@ -664,7 +664,7 @@ it('publishes whenAggregated()\'s aggregate as number', function (string $php) {
 ]);
 
 // A parameter the call passes nothing holds its default, which PHP evaluates as a constant expression: a list literal
-// is a list, never the record the engine types an array literal as, and one the evaluator cannot read binds nothing.
+// is a list, never the record the engine types an array literal as, and a list the evaluator cannot read binds nothing.
 it('binds a parameter default to the value it evaluates to', function (string $php, string $type) {
     expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe($type);
 })->with([
@@ -678,14 +678,44 @@ it('binds a parameter default to the value it evaluates to', function (string $p
     'transform() callback, a later list' => ['$this->transform($this->title, fn ($t, $u = [1]) => $u)', 'number[]'],
     'whenLoaded(), a later list' => ['$this->whenLoaded("author", fn ($a, $u = ["x"]) => $u)', 'string[]'],
     'when(), an int-keyed record a resource re-indexes' => ['$this->when($this->title, fn ($t = [1 => "a"]) => $t)', 'unknown'],
-    'when(), a list the evaluator cannot read' => ['$this->when($this->title, fn ($t = [PHP_INT_SIZE]) => $t)', 'unknown'],
-    'when(), a record the evaluator cannot read' => ['$this->when($this->title, fn ($t = ["a" => PHP_INT_SIZE]) => $t)', '{ a: unknown }'],
-    'when(), a record holding a list the evaluator cannot read' => [
-        '$this->when($this->title, fn ($t = ["a" => [PHP_INT_SIZE]]) => $t)',
-        'unknown',
-    ],
-    'when(), an int-like key the evaluator cannot read' => ['$this->when($this->title, fn ($t = ["0" => PHP_INT_SIZE]) => $t)', 'unknown'],
+    'when(), a list the evaluator cannot read' => ['$this->when($this->title, fn ($t = [new Foo]) => $t)', 'unknown'],
+    'when(), a record the evaluator cannot read' => ['$this->when($this->title, fn ($t = ["a" => new Foo]) => $t)', '{ a: unknown }'],
+    'when(), a record holding a list the evaluator cannot read' => ['$this->when($this->title, fn ($t = ["a" => [new Foo]]) => $t)', 'unknown'],
+    'when(), an int-like key the evaluator cannot read' => ['$this->when($this->title, fn ($t = ["0" => new Foo]) => $t)', 'unknown'],
+    'when(), a numeric key the evaluator cannot read' => ['$this->when($this->title, fn ($t = ["1.5" => new Foo]) => $t)', 'unknown'],
     'when(), a default that reads another parameter' => ['$this->when($this->title, fn ($a = null, $b = $a) => $b)', 'unknown'],
+    'when(), a list whose evaluation errors' => ['$this->when($this->title, fn ($t = [1 / 0]) => $t)', 'unknown'],
+]);
+
+// A resource's removeMissingValues() re-indexes an array whose keys all pass is_numeric() into a list, at any depth, so
+// the record those keys would type as is not what reaches JSON.
+it('binds nothing for a default a resource re-indexes into a list', function (string $default) {
+    expect(conditionalMethodHandlerResolveOnPost('$this->when($this->title, fn ($t = '.$default.') => $t)')['type'])
+        ->toBe('unknown');
+})->with([
+    'a float-string key' => ['["1.5" => "x"]'],
+    'an exponent key' => ['["1e3" => "x"]'],
+    'a key with a leading space' => ['[" 1" => "x"]'],
+    'a negative-zero key' => ['["-0" => "x"]'],
+    'an int key beside a float-string one' => ['[1 => "a", "1.5" => "b"]'],
+    'a float-string key nested in a record' => ['["a" => ["2.5" => 1]]'],
+    'a float-string key over a global constant' => ['["1.5" => PHP_INT_SIZE]'],
+]);
+
+// Each of these is a constant expression whose value serializes to a string, so its parameter binds as one.
+it('binds a default of a global or magic constant, an enum case property or a Carbon date to its type', function (string $default, string $type) {
+    expect(conditionalMethodHandlerResolveOnPost('$this->when($this->title, fn ($t = '.$default.') => $t)')['type'])
+        ->toBe($type);
+})->with([
+    'an enum case ->name' => ['\\Workbench\\App\\Enums\\Status::Published->name', 'string'],
+    'an enum case ->value' => ['\\Workbench\\App\\Enums\\Status::Published->value', 'number'],
+    '__CLASS__' => ['__CLASS__', 'string'],
+    '__FUNCTION__' => ['__FUNCTION__', 'string'],
+    '__LINE__' => ['__LINE__', 'number'],
+    'PHP_EOL' => ['PHP_EOL', 'string'],
+    'a global constant in a list' => ['[PHP_INT_SIZE]', 'number[]'],
+    'a Carbon date' => ['new \\Illuminate\\Support\\Carbon("2020-01-01 00:00:00")', 'string'],
+    'a DateTime, which json_encode() writes as an object' => ['new \\DateTime("2020-01-01")', 'unknown'],
 ]);
 
 // A later key must see the outer binding again once a default closure has bound the same name and returned.
@@ -695,19 +725,18 @@ it('restores the outer binding after a conditional default binds its parameter',
     expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe('{ a: number | null; b: string }');
 });
 
-// whenLoaded() skips its closure for a null relation, so a morphTo's variadic list holds whichever target loaded.
-it('binds a morphTo whenLoaded() variadic parameter to the list of its targets', function (string $resource, string $model, string $type, array $targets) {
+// whenLoaded() returns null for a relation loaded as null before it calls the closure, and a list type would omit it.
+it('leaves a morphTo whenLoaded() variadic parameter unbound', function (string $resource, string $model) {
     resolve(ModelAttributeResolver::class)->buildMorphTargetMap([Venue::class, Artist::class, Review::class, VenueReview::class, ArtistReview::class]);
     $scope = new AnalysisScope(new ReflectionClass($resource), $model);
     $expr = new AstParser()->parseSource('<?php $this->whenLoaded("reviewable", fn (...$r) => $r);')[0]->expr;
 
     $result = new ResourceAstAnalyzer(new ReflectionClass($resource), $model, 'toArray', null, $scope)->resolve($expr);
 
-    expect($result['type'])->toBe($type)
-        ->and($result['embeddedModelFqcns'] ?? null)->toBe($targets);
+    expect($result['type'])->toBe('unknown');
 })->with([
-    'targets from the morph map' => [ReviewResource::class, Review::class, '(Artist | Venue)[]', [Artist::class, Venue::class]],
-    'a nullable relation, its null arm dropped' => [ImageResource::class, Image::class, '(User | User)[]', [CrmUser::class, User::class]],
+    'targets from the morph map' => [ReviewResource::class, Review::class],
+    'a nullable relation' => [ImageResource::class, Image::class],
 ]);
 
 // The value is typed before the claim frees the name it shares, or `$local->profile` would read an unbound `$local`.

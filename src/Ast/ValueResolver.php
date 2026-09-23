@@ -8,13 +8,19 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
+use BackedEnum;
 use PhpParser\BuilderFactory;
 use PhpParser\ConstExprEvaluationException;
 use PhpParser\ConstExprEvaluator;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ClassConstFetch;
+use PhpParser\Node\Expr\ConstFetch;
+use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\MagicConst;
 use ReflectionClass;
 use Throwable;
 use UnitEnum;
@@ -105,28 +111,57 @@ final class ValueResolver
     }
 
     /**
-     * Evaluate a constant expression, such as a parameter default, as PHP does: a class constant or enum case it names
-     * is read through reflection, with self, static and parent read against the subject.
+     * Evaluate a constant expression, such as a parameter default, as PHP does. A class constant or enum case it names
+     * is read through reflection, with self, static and parent read against the subject; a global constant as it is
+     * defined where the types are published; `__LINE__` as its line and `__CLASS__` as the subject; and `__FUNCTION__`
+     * or `__METHOD__` as the `{closure}` a default's closure is named.
      *
-     * @throws ConstExprEvaluationException when it reads anything else, such as `new`, a global constant or a variable
+     * @throws ConstExprEvaluationException when it reads anything else, such as `new` or a variable, or its evaluation
+     *                                      errors, as `1 / 0` or a constant whose initializer fails does
      */
     public function evaluateConstantExpression(Expr $expr, AnalysisScope $scope): mixed
     {
-        return new ConstExprEvaluator(fn (Expr $fetch): mixed => $this->evaluateClassConstFetch($fetch, $scope))
-            ->evaluateSilently($expr);
+        $evaluator = null;
+        $evaluator = new ConstExprEvaluator(function (Expr $node) use ($scope, &$evaluator): mixed {
+            /** @var ConstExprEvaluator $evaluator */
+            return $this->evaluateFallback($node, $scope, $evaluator);
+        });
+
+        return $evaluator->evaluateSilently($expr);
     }
 
     /**
      * Type an evaluated constant value the way a class constant's value is typed, or null when it cannot be.
      *
-     * An array whose keys are all ints yet which is not a list declines: a resource re-indexes it into a list, which
-     * the record it would type as does not describe.
+     * An array whose keys all pass is_numeric() yet which is not a list declines: a resource re-indexes it into a list,
+     * which the record it would type as does not describe.
      *
      * @return ValueExpressionResult|null
      */
     public function resolveConstantValue(mixed $value, ExpressionEngine $engine): ?array
     {
-        return $this->holdsIntKeyedRecord($value) ? null : $this->analyzeConstantValue($value, $engine);
+        return $this->holdsNumericKeyedRecord($value) ? null : $this->analyzeConstantValue($value, $engine);
+    }
+
+    /**
+     * Type `new X(...)` as `string` when the package publishes X as `string` and json_encode() writes X as one, such as
+     * a Carbon date; null for any other class.
+     *
+     * @return ValueExpressionResult|null
+     */
+    public function resolveStringSerializedNew(New_ $new): ?array
+    {
+        if (! $new->class instanceof Name) {
+            return null;
+        }
+
+        $class = $new->class->toString();
+
+        return class_exists($class)
+            && LaravelTsPublish::toTsType($class)['type'] === 'string'
+            && ! StringSerialization::isFalseString($class)
+                ? ['type' => 'string', 'optional' => false]
+                : null;
     }
 
     /**
@@ -362,15 +397,32 @@ final class ValueResolver
     }
 
     /**
-     * ConstExprEvaluator's fallback: the value of the class constant or enum case a constant expression names, read
-     * through reflection since a default may name a constant only its own class can see.
+     * ConstExprEvaluator's fallback: the value of a node it cannot evaluate itself, as evaluateConstantExpression()
+     * describes.
      *
-     * @throws ConstExprEvaluationException for any other node, or a constant that cannot be read
+     * @throws ConstExprEvaluationException for any other node
      */
-    private function evaluateClassConstFetch(Expr $expr, AnalysisScope $scope): mixed
+    private function evaluateFallback(Expr $expr, AnalysisScope $scope, ConstExprEvaluator $evaluator): mixed
     {
-        if (! $expr instanceof ClassConstFetch || ! $expr->class instanceof Name || ! $expr->name instanceof Identifier) {
-            throw new ConstExprEvaluationException("Expression of type {$expr->getType()} cannot be evaluated");
+        return match (true) {
+            $expr instanceof ClassConstFetch => $this->evaluateClassConstFetch($expr, $scope),
+            $expr instanceof ConstFetch => $this->evaluateGlobalConstant($expr),
+            $expr instanceof MagicConst => $this->evaluateMagicConstant($expr, $scope),
+            $expr instanceof PropertyFetch => $this->evaluateEnumProperty($expr, $evaluator),
+            default => throw new ConstExprEvaluationException("Expression of type {$expr->getType()} cannot be evaluated"),
+        };
+    }
+
+    /**
+     * The value of the class constant or enum case a constant expression names, read through reflection since a
+     * default may name a constant only its own class can see.
+     *
+     * @throws ConstExprEvaluationException for a computed name, or a constant that cannot be read
+     */
+    private function evaluateClassConstFetch(ClassConstFetch $expr, AnalysisScope $scope): mixed
+    {
+        if (! $expr->class instanceof Name || ! $expr->name instanceof Identifier) {
+            throw new ConstExprEvaluationException('A computed class constant cannot be evaluated');
         }
 
         $className = $this->constantClassName($expr->class, $scope);
@@ -392,18 +444,69 @@ final class ValueResolver
     }
 
     /**
-     * Whether a value holds, at any depth, an array whose keys are all ints yet which is not a list.
+     * The value of a global constant, looked up in the namespace PHP would try first, then globally.
+     *
+     * @throws ConstExprEvaluationException when neither is defined
      */
-    private function holdsIntKeyedRecord(mixed $value): bool
+    private function evaluateGlobalConstant(ConstFetch $expr): mixed
+    {
+        $namespaced = $expr->name->getAttribute('namespacedName');
+
+        foreach ([$namespaced instanceof Name ? $namespaced->toString() : null, $expr->name->toString()] as $name) {
+            if ($name !== null && defined($name)) {
+                return constant($name);
+            }
+        }
+
+        throw new ConstExprEvaluationException("Constant {$expr->name->toString()} is not defined");
+    }
+
+    /**
+     * The value of a magic constant whose type is known before runtime.
+     *
+     * @throws ConstExprEvaluationException for any other magic constant
+     */
+    private function evaluateMagicConstant(MagicConst $expr, AnalysisScope $scope): int|string
+    {
+        return match (true) {
+            $expr instanceof MagicConst\Line => $expr->getStartLine(),
+            $expr instanceof MagicConst\Class_ => $scope->subjectReflection->getName(),
+            $expr instanceof MagicConst\Function_, $expr instanceof MagicConst\Method => '{closure}',
+            default => throw new ConstExprEvaluationException("{$expr->getName()} cannot be evaluated"),
+        };
+    }
+
+    /**
+     * The `->name` or `->value` of the enum case a constant expression reads.
+     *
+     * @throws ConstExprEvaluationException for any other property, or a receiver that is not an enum case
+     */
+    private function evaluateEnumProperty(PropertyFetch $expr, ConstExprEvaluator $evaluator): int|string
+    {
+        $case = $expr->name instanceof Identifier ? $evaluator->evaluateDirectly($expr->var) : null;
+        $property = $expr->name instanceof Identifier ? $expr->name->toString() : '';
+
+        return match (true) {
+            $case instanceof UnitEnum && $property === 'name' => $case->name,
+            $case instanceof BackedEnum && $property === 'value' => $case->value,
+            default => throw new ConstExprEvaluationException("Property {$property} of an enum case cannot be read"),
+        };
+    }
+
+    /**
+     * Whether a value holds, at any depth, an array whose keys all pass is_numeric() yet which is not a list: the rule
+     * a resource's removeMissingValues() re-indexes by.
+     */
+    private function holdsNumericKeyedRecord(mixed $value): bool
     {
         if (! is_array($value)) {
             return false;
         }
 
-        if (! array_is_list($value) && array_all(array_keys($value), fn (int|string $key): bool => is_int($key))) {
+        if (! array_is_list($value) && array_all(array_keys($value), fn (int|string $key): bool => is_numeric($key))) {
             return true;
         }
 
-        return array_any($value, fn (mixed $item): bool => $this->holdsIntKeyedRecord($item));
+        return array_any($value, fn (mixed $item): bool => $this->holdsNumericKeyedRecord($item));
     }
 }

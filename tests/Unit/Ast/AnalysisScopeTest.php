@@ -158,13 +158,15 @@ it('binds each parameter a call passes nothing to what it holds: a default, or a
 it('binds a default to the value PHP evaluates it to, and one the evaluator cannot read only where the engine reads it right', function () {
     $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
     $engine = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class, 'toArray', null, $scope);
-    $closure = new AstParser()->parseSource('<?php fn ($list = [1, [2]], $record = ["a" => PHP_INT_SIZE],
-        $recordList = ["a" => [PHP_INT_SIZE]], $intLike = ["0" => PHP_INT_SIZE], $reads = $list, $new = new Foo) => 1;')[0]->expr;
+    $closure = new AstParser()->parseSource('<?php fn ($list = [1, [2]], $record = ["a" => new Foo],
+        $recordList = ["a" => [new Foo]], $intLike = ["0" => new Foo], $numeric = ["1.5" => new Foo], $reads = $list,
+        $new = new Foo, $date = new \\Illuminate\\Support\\Carbon) => 1;')[0]->expr;
 
     $scope->bindUnpassedParameters($closure, 0, $engine);
 
     expect(array_map(fn (array $held): string => $held['type'], $scope->varValueBindings))->toBe([
         'list' => '(number | number[])[]',
         'record' => '{ a: unknown }',
+        'date' => 'string',
     ]);
 });

@@ -16,6 +16,7 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure;
+use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\NodeFinder;
@@ -101,9 +102,10 @@ final class AnalysisScope
     public array $varClassBindings = [];
 
     /**
-     * Closure params / loop vars bound to a model class (whenLoaded params, map params on a relation
-     * chain or a variable, a transform() callback param passed a model, foreach over a many-relation), so `$var`,
-     * `$var->prop`, `$var->method()` resolve against that model. Scoped: writers save and restore around the body.
+     * Names bound to a model class, so `$var`, `$var->prop`, `$var->method()` resolve against that model: to-one
+     * whenLoaded params, map params on a relation chain or a variable, a transform() param passed a model or the entry
+     * a passed variable held, each scoped to its closure's body; and, method-wide, foreach over a many-relation and
+     * AstEngine::bindingsFor()'s `Model`-typed parameters.
      *
      * @var VarModelBindingsMap
      */
@@ -326,8 +328,14 @@ final class AnalysisScope
         try {
             $value = $resolver->evaluateConstantExpression($default, $this);
         } catch (ConstExprEvaluationException) {
-            // Only the engine reads `new` or a global constant, but it types a list literal as a record, and a default
-            // that reads a variable is no constant expression PHP compiles.
+            $stringDefault = $default instanceof New_ ? $resolver->resolveStringSerializedNew($default) : null;
+
+            if ($stringDefault !== null) {
+                return $stringDefault;
+            }
+
+            // Only the engine reads `new`, but it types a list literal as a record, and a default that reads a variable
+            // is no constant expression PHP compiles.
             $unreadable = new NodeFinder()->findFirst($default, fn (Node $node): bool => $node instanceof Variable
                 || ($node instanceof Array_ && ! $this->isRecordLiteral($node)));
 
@@ -338,12 +346,12 @@ final class AnalysisScope
     }
 
     /**
-     * Whether an array literal keys every item by a string PHP keeps as a string, not one it casts to an int key.
+     * Whether an array literal keys every item by a string that fails is_numeric(), so no resource re-indexes it.
      */
     private function isRecordLiteral(Array_ $array): bool
     {
         return array_all($array->items, fn (ArrayItem $item): bool => $item->key instanceof String_
-            && (string) (int) $item->key->value !== $item->key->value);
+            && ! is_numeric($item->key->value));
     }
 
     /**

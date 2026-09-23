@@ -196,7 +196,7 @@ Seven of its fields are **name-keyed tables**, each mapping a variable name to w
 | `varClassBindings` | `array<string, non-empty-list<class-string>>` | Variables an `instanceof` guard or ternary has proven to hold a class. Read **first** in `ReceiverClassResolver::fromVariable()`. What that ordering actually buys today is precedence over the `closureParamExprBindings ?? localVarBindings` fallback, since a guarded variable is normally bound by a plain local assignment; sitting above `varModelBindings` is the same concern for a narrowed closure param or loop variable, and is motivating rather than currently proven. Scoped: `ClosureHandler` and `TernaryHandler` save and restore it around the body they narrow for. See [Narrowing](#narrowing). |
 | `varModelBindings` | `array<string, class-string<Model>>` | Closure params / loop vars bound to a model class (to-one `whenLoaded` params, `map()` params on a relation chain or a variable, a `transform()` callback param passed a model, the entry a variable passed to `transform()` held, `foreach` over a many-relation), so `$var`, `$var->prop`, `$var->method()` resolve against that model. Scoped: every closure writer saves and restores it around the body; the `foreach` binding is method-wide. Also seeded, via `AstEngine::bindingsFor()`, from every `Model`-typed parameter of the located method — a route-bound `Post $post`, a metadata provider's `Model $model` — bound to the parameter's **declared** type. [How it gets populated](#how-varmodelbindings-gets-populated-and-how-scoping-holds) lists every writer. |
 | `varCollectionBindings` | `array<string, array{type: string, modelFqcn: class-string<Model>}>` | Closure params bound to a whole relation collection rather than one element — a to-many `whenLoaded` param. Read for a bare return of the param, and as the element-model fallback for an untyped `->map()` closure param. |
-| `varValueBindings` | `array<string, ValueExpressionResult>` | Closure params bound to an already-resolved *value* rather than to a class. Six writers: `CollectionPipelineHandler::resolveMapBody()`, for a `collect(...)->map()` param, whose element type the pipeline read off the `collect()` argument before descending; `ConditionalMethodHandler::bindPassedValue()`, for a `transform()` callback param passed a value that is not a model, and for `transform()`'s default param, passed the value with its `null` arm; `ConditionalMethodHandler::bindVariadicList()`, for a variadic param, bound to the list its one argument collects into; `ConditionalMethodHandler::resolveValueArgument()`, for a `whenCounted()` value closure's param, bound to `number`; `AnalysisScope::bindUnpassedParameters()`, for a param the call passes nothing, bound to the type of the value its default evaluates to or, variadic, to `never[]`; and `AnalysisScope::copyBindings()`, for the entry a variable passed to `transform()` held. A bare read of the param resolves straight to it, checked after `varModelBindings` and `varCollectionBindings`, which name a model instead; the writer first releases the param's name from those tables, so an outer binding of it cannot win. Scoped: every writer runs inside a claim that saves and restores every name-keyed table around the body. |
+| `varValueBindings` | `array<string, ValueExpressionResult>` | Closure params bound to an already-resolved *value* rather than to a class. Six writers: `CollectionPipelineHandler::resolveMapBody()`, for a `collect(...)->map()` param, whose element type the pipeline read off the `collect()` argument before descending; `ConditionalMethodHandler::bindPassedValue()`, for a `transform()` callback param passed a value that is not a model, and for `transform()`'s default param, passed the value with its `null` arm; `ConditionalMethodHandler::bindVariadicList()`, for a variadic param, bound to the list its one argument collects into; `ConditionalMethodHandler::resolveValueArgument()`, for a `whenCounted()` or `whenAggregated(…, 'count')` value closure's param, bound to `number`; `AnalysisScope::bindUnpassedParameters()`, for a param the call passes nothing, bound to the type of the value its default evaluates to or, variadic, to `never[]`; and `AnalysisScope::copyBindings()`, for the entry a variable passed to `transform()` held. A bare read of the param resolves straight to it, checked after `varModelBindings` and `varCollectionBindings`, which name a model instead; the writer first releases the param's name from those tables, so an outer binding of it cannot win. Scoped: every writer runs inside a claim that saves and restores every name-keyed table around the body. |
 | `localVarBindings` | `array<string, Expr>` | Top-level `$var = expr;` bindings for the method last analyzed, so a bare `Variable` value expression resolves through its bound expression instead of degrading to `unknown`. Only variables written exactly once are recorded; `analyzeThisMethodSpread()` saves and restores this per method. |
 | `resolvingLocalVars` | `array<string, true>` | Re-entrancy guard: variable names currently mid-resolution, so a self- or mutually-referential binding (`$a = $b; $b = $a;`) resolves as `unknown` instead of recursing forever. |
 | `visitedSpreadMethods` | `array<string, true>` | Spread methods currently on the analysis stack, so a method that spreads itself — directly or through a cycle — degrades to an empty analysis instead of recursing until memory runs out. |
@@ -274,37 +274,48 @@ parameter to it:
 | `whenLoaded()` | the loaded relation | its model, its collection, or its `morphTo` targets |
 | `whenHas()`, `whenExistsLoaded()` | `$this->resource->{$attribute}`, the `{relation}_exists` flag | that property read |
 | `whenCounted()` | the count | `number` |
-| `whenAggregated()` | the aggregate, whose type depends on its column, function and driver | nothing |
+| `whenAggregated()` | the aggregate | `number` for a `count`, which is always an integer; nothing for any other aggregate, whose type depends on its column, function and driver |
 | `transform()`'s callback | the value | a `$this->prop` value's read; every binding a passed variable held before the claim; otherwise the value's resolved type, a nullable model read as the model, since the callback runs only for a filled value |
 | `transform()`'s default | the value, only when it is blank | the value's full type, `null` arm included |
 | `when()`, `unless()` | nothing: `value($value)` | a *required* one: the `$this->prop` its condition tests, if any, although the call throws (below); an optional or variadic one: nothing beyond what it holds (below) |
 | `whenAppended()`, `merge()`, `mergeWhen()`, `mergeUnless()` and every other conditional default | nothing: `value($value)`, `value($default)` | nothing, beyond what an optional or variadic parameter holds (below) |
 
 **`whenAggregated()` publishes its aggregate as `number`,** the package's convention, when it has no value closure or
-the closure's result cannot be typed. A driver can return a column aggregate as a numeric or date string, a MySQL
-`SUM()` for one, so narrowing the type by driver and column cast is plan follow-up 113; until then the parameter of
-its value closure binds nothing.
+the closure's result cannot be typed. A driver can return an aggregate that is not a count as a numeric or date
+string, a MySQL `SUM()` for one, which that `number` does not describe; the package does not yet narrow the type by
+driver and column cast.
 
 **A parameter the call passes nothing holds its default,** and a variadic one holds an empty list:
 `AnalysisScope::bindUnpassedParameters()` binds each parameter past the passed arguments to the type of the value its
 default evaluates to, or to `never[]`. A default is a constant expression, so
-`ValueResolver::evaluateConstantExpression()` evaluates it as PHP does, reading a class constant or enum case through
-reflection, and `ValueResolver::resolveConstantValue()` types the value as a class constant's value is typed: a list
-literal is a list, `fn ($t = [1, 2])` holding `number[]`, and an array whose keys are all ints but which is not a list,
-which a resource re-indexes into one, binds nothing. A default the evaluator cannot read, such as `new` or a global
-constant, is the engine's to type, unless it holds an array literal whose keys are not all strings PHP keeps as
-strings, which the engine would type as a record, or reads a variable, which no constant expression may. A default
-whose value cannot be typed leaves its parameter unbound. So `when($this->title, fn ($t = null) => $t)` publishes
-`null`, which is what Laravel returns.
-Every writer that claims a conditional or merge closure calls it. Two kinds of closure do not get it: a
-`whenNotNull()`/`whenNull()` value closure, which no writer claims, and a map closure, whose writers bind only its
-first parameter, so a parameter past `$key` stays unbound although `map()` passes it nothing.
+`ValueResolver::evaluateConstantExpression()` evaluates it as PHP does. It reads a class constant or enum case through
+reflection, a global constant as it is defined where the types are published, an enum case's `->name` or `->value`,
+`__LINE__` and `__CLASS__`, and `__FUNCTION__` or `__METHOD__` as a string. `ValueResolver::resolveConstantValue()`
+then types the value as a class constant's value is typed: a list literal is a list, `fn ($t = [1, 2])` holding
+`number[]`. An array whose keys all pass `is_numeric()` but which is not a list binds nothing: a resource's
+`removeMissingValues()` re-indexes it into a list at any depth, so `['1.5' => 'x']` reaches JSON as `["x"]`.
+
+A default the evaluator cannot read, and one whose evaluation errors, such as `1 / 0`, falls back in two steps:
+- **A `new` of a class the package publishes as `string` and `json_encode()` writes as one,** such as a Carbon date,
+  types as `string`.
+- **Anything else is the engine's to type,** with two exceptions that bind nothing: an array literal not keyed wholly
+  by string literals that fail `is_numeric()`, which the engine would type as a record, and a variable, which no
+  constant expression may read.
+
+A default whose value cannot be typed leaves its parameter unbound. So `when($this->title, fn ($t = null) => $t)`
+publishes `null`, which is what Laravel returns. Every writer that claims a conditional or merge closure calls
+`bindUnpassedParameters()`. Two kinds of closure do not get it: a `whenNotNull()`/`whenNull()` value closure, which no
+writer claims, and a map closure, whose writers bind only its first parameter, so a parameter past `$key` stays unbound
+although `map()` passes it nothing.
 
 **A variadic parameter collects its arguments into a list.** Where the call passes one argument, the writer binds a
-variadic first parameter to that argument's type as a list: `whenLoaded('author', fn (...$a) => $a)` is `User[]`, a
-`morphTo`'s is the list of its targets, and `whenHas('title', fn (...$t) => $t)` is `string[]`. The three map writers
-are the exception: `map()` passes `($value, $key)`, two values of different types, so they skip a variadic first
-parameter and analyze no body for it.
+variadic first parameter to that argument's type as a list: `whenLoaded('author', fn (...$a) => $a)` is `User[]`, and
+`whenHas('title', fn (...$t) => $t)` is `string[]`. There are two exceptions:
+- **The three map writers.** `map()` passes `($value, $key)`, two values of different types, so they skip a variadic
+  first parameter and analyze no body for it.
+- **A `morphTo` `whenLoaded()`.** Its variadic parameter binds nothing, so the key stays `unknown`. That admits the
+  `null` `whenLoaded()` returns, before it calls the closure, for a relation loaded as null. No `whenLoaded()` value
+  closure's key publishes that `null` itself: a to-one relation's variadic `User[]` omits it too.
 
 **One writer still binds what the call does not pass.** `when()` and `unless()` bind a *required* first parameter
 to the condition's `$this->prop`, although Laravel calls their value closure with no argument. That call throws
