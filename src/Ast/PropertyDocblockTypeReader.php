@@ -71,7 +71,8 @@ final class PropertyDocblockTypeReader
 
     /**
      * Capture an inline `@var` on a local assignment: its type, and the variable it names, null when it names none.
-     * Null for a tag whose type does not read to its end, such as a callable signature's return.
+     * Null for a type the docblock resolution cannot read in full: one that does not read to its end, or holds a
+     * callable or closure signature, a parenthesized group or an intersection.
      *
      * @return VarTag|null
      */
@@ -79,7 +80,7 @@ final class PropertyDocblockTypeReader
     {
         $tag = $this->captureTag($docComment, '/(?<![\w-])@var\s+/');
 
-        if ($tag === null || $tag[0] === '' || ! $tag[2]) {
+        if ($tag === null || $tag[0] === '' || ! $tag[2] || strpbrk($tag[0], '(&') !== false) {
             return null;
         }
 

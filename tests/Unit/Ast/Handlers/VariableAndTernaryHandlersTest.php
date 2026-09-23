@@ -576,7 +576,11 @@ final class TernaryClassBindingRecordingEngine implements ExpressionEngine
     /** Watches the scope the ternary under test narrows, for one variable. */
     public function __construct(private AnalysisScope $scope, private string $variable) {}
 
-    /** @return array<string, mixed> */
+    /**
+     * Record the variable's class binding while a string-literal arm resolves, and type every arm as a string.
+     *
+     * @return array<string, mixed>
+     */
     public function resolve(Expr $expr): array
     {
         if ($expr instanceof String_) {

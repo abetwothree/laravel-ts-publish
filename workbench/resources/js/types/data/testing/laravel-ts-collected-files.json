@@ -128,6 +128,7 @@
     "app\/Http\/Resources\/ConditionalParamPrimitiveResource.php",
     "app\/Http\/Resources\/ControlFlowReturnResource.php",
     "app\/Http\/Resources\/CustomImportChannelResource.php",
+    "app\/Http\/Resources\/DeclaredPrecedenceResource.php",
     "app\/Http\/Resources\/DeclaredReadingResource.php",
     "app\/Http\/Resources\/DelegatingResource.php",
     "app\/Http\/Resources\/DelegatingWithMixinResource.php",

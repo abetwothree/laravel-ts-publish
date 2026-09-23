@@ -35,7 +35,13 @@ use ReflectionClass;
  * @phpstan-type ClosureParamExprBindingsMap array<string, Expr>
  * @phpstan-type VarClassBindingsMap array<string, non-empty-list<class-string>>
  * @phpstan-type VarGuardBindingsMap array<string, array{classes: non-empty-list<class-string>, after: int}>
- * @phpstan-type VarDocBinding array{type: string, context: ReflectionClass<object>, after: int, before: int|null}
+ * @phpstan-type VarDocBinding array{
+ *      type: string,
+ *      context: ReflectionClass<object>,
+ *      after: int,
+ *      before: int|null,
+ *      expr: Expr
+ * }
  * @phpstan-type VarDocBindingsMap array<string, non-empty-list<VarDocBinding>>
  * @phpstan-type VarModelBindingsMap array<string, class-string<Model>>
  * @phpstan-type VarCollectionBindingsMap array<string, array{type: string, modelFqcn: class-string<Model>}>
@@ -117,8 +123,8 @@ final class AnalysisScope
 
     /**
      * Variables an inline `@var` on their assignment declares a type for: the type as written, the class whose file
-     * resolves its names, and the reads it holds for, past the assignment and before the top-level statement that next
-     * writes the variable. Written by CollectsLocalVarBindings, and scoped like localVarBindings.
+     * resolves its names, the value assigned, and the reads it holds for, past the assignment and before the top-level
+     * statement that next writes the variable. Written by CollectsLocalVarBindings, and scoped like localVarBindings.
      *
      * @var VarDocBindingsMap
      */

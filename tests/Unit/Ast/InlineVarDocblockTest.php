@@ -22,6 +22,7 @@ use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\NodeFinder;
 use Workbench\App\Http\Resources\CartTotalsResource;
+use Workbench\App\Http\Resources\DeclaredPrecedenceResource;
 use Workbench\App\Http\Resources\DeclaredReadingResource;
 use Workbench\App\Http\Resources\PostPinnedCommentsResource;
 use Workbench\App\Models\Comment;
@@ -181,7 +182,7 @@ describe('an inline @var on a local assignment', function () {
         ],
     ]);
 
-    test('outranks what the assignment reads unless that agrees and says more, and a union or ?T names each class', function () {
+    test('keeps what the assignment reads when it names a class, and a union or ?T names each class it does not', function () {
         $resolver = resolve(ReceiverClassResolver::class);
         [$modelScope, $model] = inlineVarReturned('/** @var \Illuminate\Database\Eloquent\Model $a */ $a = $this->author; return $a;');
         [$collectionScope, $collection] = inlineVarReturned('/** @var \Illuminate\Database\Eloquent\Collection<int, \Workbench\App\Models\Comment> $c */ $c = $this->comments; return $c;');
@@ -192,7 +193,7 @@ describe('an inline @var on a local assignment', function () {
         expect($resolver->resolve($model, $modelScope)?->classes)->toBe([User::class])
             ->and($resolver->resolve($collection, $collectionScope)?->classes)->toBe([EloquentCollection::class])
             ->and($resolver->resolve($collection, $collectionScope)?->elementModel)->toBe(Comment::class)
-            ->and($resolver->resolve($narrower, $narrowerScope)?->classes)->toBe([SubscribedTeam::class])
+            ->and($resolver->resolve($narrower, $narrowerScope)?->classes)->toBe([Team::class])
             ->and($resolver->resolve($union, $unionScope)?->classes)->toBe([Post::class, User::class])
             ->and($resolver->resolve($nullable, $nullableScope)?->classes)->toBe([Post::class]);
     });
@@ -278,8 +279,14 @@ describe('an inline @var on a local assignment', function () {
     test('declines a tag whose type it cannot read to the end, such as a callable signature', function () {
         [$scope, $returned] = inlineVarReturned('/** @var callable(int): string $d */ $d = json_decode(""); return $d;');
 
-        expect(resolve(PropertyDocblockTypeReader::class)->extractVarTag('/** @var callable(int): string $d */'))->toBeNull()
-            ->and(resolve(PropertyDocblockTypeReader::class)->extractVarTag('/** @var array{a: int $d */'))->toBeNull()
+        $reader = resolve(PropertyDocblockTypeReader::class);
+
+        expect($reader->extractVarTag('/** @var callable(int): string $d */'))->toBeNull()
+            ->and($reader->extractVarTag('/** @var callable(int):string $d */'))->toBeNull()
+            ->and($reader->extractVarTag('/** @var array{fn: callable(int): string} $d */'))->toBeNull()
+            ->and($reader->extractVarTag('/** @var \Closure(int): string $d */'))->toBeNull()
+            ->and($reader->extractVarTag('/** @var \Workbench\App\Models\Post&\JsonSerializable $d */'))->toBeNull()
+            ->and($reader->extractVarTag('/** @var array{a: int $d */'))->toBeNull()
             ->and($scope->varDocBindings)->toBe([])
             ->and(new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class, 'toArray', null, $scope)
                 ->resolve($returned)['type'])->toBe('unknown');
@@ -298,7 +305,7 @@ describe('an inline @var on a local assignment', function () {
         expect($resolved('\Illuminate\Database\Eloquent\Model'))->toBe('string')
             ->and($resolved('\Workbench\App\ValueObjects\CartTotals'))->toBe('unknown');
     });
-    test('lets a known reading win over a contradicting declaration, and still fills a narrower subclass or an unsure shape', function () {
+    test('types a local from its assigned value when the engine reads it, and from the tag only where that is vague', function () {
         $value = function (string $body, ?string $modelOf = null): string {
             [$scope, $returned] = inlineVarReturned($body);
 
@@ -317,14 +324,68 @@ describe('an inline @var on a local assignment', function () {
 
         expect($value('/** @var int|null $n */ $n = $this->resource->title; return $n;'))->toBe('string')
             ->and($value('/** @var \Workbench\App\Models\Comment $c */ $c = $this->resource->author; return $c;'))->toBe('User')
-            ->and($value('/** @var string $u */ $u = $this->resource->author; return $u;'))->toBe('User')
-            ->and($receiver('/** @var \Workbench\App\Models\Comment $c */ $c = $this->author; return $c;'))->toBe([User::class])
+            ->and($value('/** @var string $g */ $g = ["a" => 1]; return $g;'))->toBe('{ a: number }')
+            ->and($value('/** @var array{a: int} $i */ $i = $this->resource->title; return $i;'))->toBe('string')
+            ->and($value('/** @var \Workbench\App\ValueObjects\CartTotals $j */ $j = $this->resource->title; return $j;'))->toBe('string')
+            ->and($value('/** @var array{id: int, name: string} $w */ $w = $this->resource->author->only(["id", "name"]); return $w;'))
+            ->toBe("Pick<User, 'id' | 'name'>")
             ->and($value('/** @var \Workbench\App\Models\SubscribedTeam $t */ $t = json_decode(""); return $t;', Team::class))
             ->toBe('SubscribedTeam')
+            ->and($value('/** @var string|null $a */ $a = $this->resource->id > 0 ? json_decode("\"x\"") : null; return $a;'))
+            ->toBe('string | null')
+            ->and($value('/** @var string $b */ $b = $this->resource->id > 0 ? json_decode("\"x\"") : null; return $b;'))->toBe('string')
+            ->and($value('/** @var int|string $c */ $c = $this->resource->id > 0 ? json_decode("\"x\"") : 0; return $c;'))
+            ->toBe('number | string')
+            ->and($value('/** @var string|null $d */ $d = json_decode("\"x\"") ?: null; return $d;'))->toBe('string | null')
+            ->and($value('/** @var string $n */ $n = null; return $n;'))->toBe('null')
+            ->and($receiver('/** @var \Workbench\App\Models\Comment $c */ $c = $this->author; return $c;'))->toBe([User::class])
+            ->and($receiver('/** @var \Illuminate\Contracts\Auth\MustVerifyEmail $k */ $k = $this->author; return $k;'))->toBe([User::class])
             ->and($receiver('/** @var \Workbench\App\Models\SubscribedTeam $t */ $t = new \Workbench\App\Models\Team; return $t;'))
+            ->toBe([Team::class])
+            ->and($receiver('/** @var \Workbench\App\Models\SubscribedTeam $m */ $m = $this->resource->getRelationValue("x"); return $m;'))
             ->toBe([SubscribedTeam::class])
-            ->and($value('/** @var array{id: int, name: string} $w */ $w = $this->resource->author->only(["id", "name"]); return $w;'))
-            ->toBe('{ id: number; name: string }')
-            ->and($receiver('/** @var \Countable $c */ $c = $this->author; return $c;'))->toBe([Countable::class]);
+            ->and($receiver('/** @var \Workbench\App\Models\User $u */ $u = new \Illuminate\Database\Eloquent\Model; return $u;'))
+            ->toBe([User::class]);
+    });
+
+    test('types a closure parameter reassigned under a tag from its new value, not the value it was passed', function () {
+        $resolved = fn (string $php): string => new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class)
+            ->resolve(new AstParser()->parseSource('<?php '.$php.';')[0]->expr)['type'];
+
+        expect($resolved('$this->whenHas("title", function ($t) { /** @var int $t */ $t = strlen($t); return $t; })'))->toBe('number')
+            ->and($resolved('$this->transform($this->resource->title, function ($t) { /** @var int $t */ $t = strlen($t); return $t; })'))
+            ->toBe('number')
+            ->and($resolved('$this->whenLoaded("author", function (\Workbench\App\Models\User $a) { /** @var string $a */ $a = $a->name; return $a; })'))
+            ->toBe('string')
+            ->and($resolved('$this->whenLoaded("author", function (\Workbench\App\Models\User $a) { /** @var \Workbench\App\Models\Comment|null $a */ $a = $a->comments->first(); return $a; })'))
+            ->toBe('Comment | null');
+    });
+
+    test('pins the precedence through a workbench resource', function () {
+        config()->set('ts-publish.output_to_files', false);
+
+        expect(resolve(ResourceGenerator::class, ['findable' => DeclaredPrecedenceResource::class])->content)
+            ->toContain("import type { Comment } from '../../models';")
+            ->toContain(<<<'TS'
+                export interface DeclaredPrecedenceResource
+                {
+                    picked: string | null;
+                    picked_strict: string;
+                    picked_or_zero: number | string;
+                    elvis: string | null;
+                    literal: { a: number };
+                    heading: string;
+                    title_as_totals: string;
+                    verifiable_email: string;
+                    callable: unknown;
+                    callable_shape: unknown;
+                    closure: unknown;
+                    intersection: unknown;
+                    length?: number;
+                    transformed_length?: number;
+                    author_name?: string;
+                    first_comment?: Comment | null;
+                }
+                TS);
     });
 });

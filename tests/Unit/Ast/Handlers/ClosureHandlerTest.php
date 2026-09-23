@@ -275,7 +275,7 @@ it('releases an unclaimed parameter from every name-keyed table, then restores e
         $scope->closureParamExprBindings[$name] = $outer;
         $scope->varClassBindings[$name] = [stdClass::class];
         $scope->varGuardBindings[$name] = ['classes' => [stdClass::class], 'after' => 0];
-        $scope->varDocBindings[$name] = [['type' => 'User', 'context' => $scope->declaringFileClass, 'after' => 0, 'before' => null]];
+        $scope->varDocBindings[$name] = [['type' => 'User', 'context' => $scope->declaringFileClass, 'after' => 0, 'before' => null, 'expr' => new Variable('outer')]];
         $scope->varModelBindings[$name] = User::class;
         $scope->varCollectionBindings[$name] = ['type' => 'User[]', 'modelFqcn' => User::class];
         $scope->varValueBindings[$name] = ['type' => 'string', 'optional' => false];
@@ -391,7 +391,7 @@ it('shadows an outer local with the closure body\'s own binding, and leaks nothi
 
 it('drops an outer inline @var binding of a name the closure body writes, and binds the body\'s own annotated local', function () {
     $scope = closureHandlerTestScope();
-    $outer = [['type' => 'User', 'context' => $scope->declaringFileClass, 'after' => 0, 'before' => null]];
+    $outer = [['type' => 'User', 'context' => $scope->declaringFileClass, 'after' => 0, 'before' => null, 'expr' => new Variable('outer')]];
     $scope->varDocBindings = ['u' => $outer, 'kept' => $outer];
     $before = $scope->nameBindings();
     $engine = new ClosureHandlerNameTablesSpyEngine($scope);

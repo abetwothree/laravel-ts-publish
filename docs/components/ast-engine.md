@@ -480,29 +480,26 @@ has a single expression and no statement list, so only the parameter suppression
 `$x = …;` and writes a `varDocBindings` span. The span starts after that statement and ends where the next top-level
 statement holding a write to `$x` starts, through `writesFrom()`, the position-ordered rule the guard pass reads its
 writes by. A loop that writes `$x` ends the span where the loop starts, since a read earlier in its body can follow
-the write on the next pass. A tag naming another variable, a tag whose type does not read to its end (a callable
-signature), and a second write inside the assigning statement bind nothing. `T` resolves against the imports and
-namespace of `AnalysisScope::$declaringFileClass`, a trait's file for a trait's method.
+the write on the next pass. A tag naming another variable, a tag whose type the docblock resolution cannot read in
+full (a callable or closure signature, a parenthesized group, an intersection), and a second write inside the
+assigning statement bind nothing. `T` resolves against the imports and namespace of
+`AnalysisScope::$declaringFileClass`, a trait's file for a trait's method.
 
-`DeclaredTypeWeigher` weighs `T` against what the engine reads without it, one rule on both paths: a known reading
-stands whether `T` admits or contradicts it, since a `@var` is a hint and `#[TsCasts]` the override, and `T` fills an
-unknown or vaguer reading, a supertype `T` narrows to a subclass included. A contradiction counts only where it is
-definite, two scalar kinds or two classes neither extending the other; an unsure comparison, such as an intersection,
-`Pick<…>`, `AsEnum<…>` or an index signature, keeps `T`.
+A read in the span takes the engine's reading of the assigned value itself, never an earlier binding of `$x`, which
+the assignment replaced. That reading stands whenever it is known; `T` types the read only where it is vague.
 
-- **Receivers.** `ReceiverClassResolver::fromVariable()` names `T`'s classes as it does a property's `@var`, and
-  weighs them against the variable's other bindings. So `@var Model` never widens a `User`. A `T` naming no loadable
-  class, such as `int` or a missing class, leaves the receiver to those bindings.
-- **Values.** `VariableHandler` reads `T` as `PropertyDocblockTypeReader` reads a property's `@var`, and weighs it
-  through `TsTypeShape::admits()`. So `@var string|null` over a `string` column publishes `string`. A `T` that is vague
-  by `TsTypeString::isVagueTsType()`, or names a model with no published file, leaves the value to the reading.
+- **Receivers.** `ReceiverClassResolver::fromVariable()` reads the assigned value's classes, and names `T`'s, as it does
+  a property's `@var`, only when those are none or only models with no published file, such as `Model`.
+- **Values.** `VariableHandler` reads the assigned value, and publishes `T`, read as `PropertyDocblockTypeReader` reads
+  a property's `@var`, only when that reading is vague by `TsTypeString::isVagueTsType()` or dropped an untypable union
+  arm (`DroppedUnionArms::dropped()`), and `T` itself is precise and names only published models.
 - **Ambient models.** Inside a `whenLoaded()` closure, a declared local's `$x->prop` and `$x->m()` keep the closure's
-  relation model when `T` admits it, and resolve through the receiver path when `T` contradicts it.
+  relation model when `T` admits it, and resolve through the receiver path otherwise.
 
 The pass does not see a write through a by-reference argument, or through a reference taken before the assignment
 (`$r = &$x;`, a closure's `use (&$x)`), so a span can outlive such a write. `CartTotalsResource`,
-`PostPinnedCommentsResource` and `DeclaredReadingResource` are the fixtures; `DeclaredTotalsTraitResource`, a test
-fixture, pins the name resolution through a trait's file.
+`PostPinnedCommentsResource`, `DeclaredReadingResource` and `DeclaredPrecedenceResource` are the fixtures;
+`DeclaredTotalsTraitResource`, a test fixture, pins the name resolution through a trait's file.
 
 ### What deliberately stays unbound
 

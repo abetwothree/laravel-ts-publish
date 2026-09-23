@@ -280,10 +280,19 @@ final class ReceiverClassResolver
             return new ReceiverType($guard['classes']);
         }
 
-        $declared = $this->declaredClasses($variable, $scope);
-        $bound = $this->fromBindings($name, $scope);
+        $span = $scope->declaredAt($variable);
 
-        return $declared === null ? $bound : resolve(DeclaredTypeWeigher::class)->receiver($declared, $bound);
+        if ($span === null) {
+            return $this->fromBindings($name, $scope);
+        }
+
+        // The annotated assignment replaces what the variable held, so its own value is read; the `@var` fills in only
+        // where that names no class the engine can use.
+        $assigned = $this->fromBoundExpression($name, $span['expr'], $scope);
+
+        return $assigned !== null && array_any($assigned->classes, $this->isNameable(...))
+            ? $assigned
+            : $this->typeOf($this->declaredClasses($variable, $scope)) ?? $assigned;
     }
 
     /**
@@ -305,7 +314,15 @@ final class ReceiverClassResolver
 
         $bound = $scope->closureParamExprBindings[$name] ?? $scope->localVarBindings[$name] ?? null;
 
-        if ($bound === null || isset($scope->resolvingLocalVars[$name])) {
+        return $bound === null ? null : $this->fromBoundExpression($name, $bound, $scope);
+    }
+
+    /**
+     * Resolve the expression a variable is bound to, or null while that variable is already mid-resolution.
+     */
+    private function fromBoundExpression(string $name, Expr $bound, AnalysisScope $scope): ?ReceiverType
+    {
+        if (isset($scope->resolvingLocalVars[$name])) {
             return null;
         }
 
@@ -316,6 +333,15 @@ final class ReceiverClassResolver
         } finally {
             unset($scope->resolvingLocalVars[$name]);
         }
+    }
+
+    /**
+     * Whether a class names a reading the engine can use: any but a model with no published file, such as `Model`.
+     */
+    private function isNameable(string $class): bool
+    {
+        return ! is_a($class, Model::class, true)
+            || ValueResult::namesOnlyPublishedModels([...ValueResult::unknown(), 'modelFqcn' => $class]);
     }
 
     /**

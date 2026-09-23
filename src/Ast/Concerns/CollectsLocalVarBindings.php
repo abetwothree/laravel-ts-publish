@@ -58,7 +58,7 @@ trait CollectsLocalVarBindings
                 $scope->localVarBindings[$name] = $stmt->expr->expr;
             }
 
-            $this->bindDeclaredType($stmt, $name, $stmts, $writes, $scope);
+            $this->bindDeclaredType($stmt, $stmt->expr, $name, $stmts, $writes, $scope);
         }
     }
 
@@ -175,6 +175,7 @@ trait CollectsLocalVarBindings
      */
     private function bindDeclaredType(
         ExpressionStmt $assignment,
+        Assign $assign,
         string $name,
         array $stmts,
         array $writes,
@@ -189,7 +190,7 @@ trait CollectsLocalVarBindings
         $before = null;
 
         foreach ($this->writesFrom($name, $assignment->getStartFilePos(), $writes) as $write) {
-            if ($write === $assignment->expr) {
+            if ($write === $assign) {
                 continue;
             }
 
@@ -212,6 +213,7 @@ trait CollectsLocalVarBindings
             'context' => $scope->declaringFileClass,
             'after' => $assignment->getEndFilePos(),
             'before' => $before,
+            'expr' => $assign->expr,
         ];
     }
 }

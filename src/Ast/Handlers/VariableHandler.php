@@ -15,7 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\DeclaredTypeWeigher;
+use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
@@ -40,6 +40,7 @@ use ReflectionMethod;
  * assignment, then the scope's model, collection, closure-parameter and local-assignment binding maps.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type VarDocBinding from AnalysisScope
  *
  * @internal
  */
@@ -139,10 +140,11 @@ final class VariableHandler implements ExpressionHandler
             return null;
         }
 
-        $bound = $this->boundValue($expr->name, $scope, $engine);
-        $declared = $this->declaredValue($expr, $scope);
+        $span = $scope->declaredAt($expr);
 
-        return $declared === null ? $bound : resolve(DeclaredTypeWeigher::class)->value($declared, $bound);
+        return $span === null
+            ? $this->boundValue($expr->name, $scope, $engine)
+            : $this->declaredLocalValue($expr->name, $span, $scope, $engine);
     }
 
     /**
@@ -188,36 +190,51 @@ final class VariableHandler implements ExpressionHandler
         // scope, and the re-entrancy guard makes a cyclic binding resolve as unknown.
         $boundExpr = $scope->closureParamExprBindings[$name] ?? $scope->localVarBindings[$name] ?? null;
 
-        if ($boundExpr === null || isset($scope->resolvingLocalVars[$name])) {
+        return $boundExpr === null ? null : $this->boundExpressionValue($name, $boundExpr, $scope, $engine);
+    }
+
+    /**
+     * A declared local's value: the engine's reading of the value its annotated assignment holds when that reading is
+     * known, else the `@var` type when that is precise enough to publish. A reading that left out an untypable union
+     * arm is not known, since what is left, such as a lone `null`, is not the value.
+     *
+     * @param  VarDocBinding  $span
+     * @return ValueExpressionResult|null
+     */
+    private function declaredLocalValue(string $name, array $span, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $dropped = DroppedUnionArms::dropped();
+        $reading = $this->boundExpressionValue($name, $span['expr'], $scope, $engine);
+
+        if ($reading !== null && ! TsTypeString::isVagueTsType($reading['type']) && DroppedUnionArms::dropped() === $dropped) {
+            return $reading;
+        }
+
+        $declared = resolve(PropertyDocblockTypeReader::class)->readDeclared($span['type'], $span['context']);
+
+        return $declared !== null && ! TsTypeString::isVagueTsType($declared['type']) && ValueResult::namesOnlyPublishedModels($declared)
+            ? $declared
+            : $reading;
+    }
+
+    /**
+     * Resolve the expression a variable is bound to, or null while that variable is already mid-resolution.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function boundExpressionValue(string $name, Expr $bound, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        if (isset($scope->resolvingLocalVars[$name])) {
             return null;
         }
 
         $scope->resolvingLocalVars[$name] = true;
 
         try {
-            return $engine->resolve($boundExpr);
+            return $engine->resolve($bound);
         } finally {
             unset($scope->resolvingLocalVars[$name]);
         }
-    }
-
-    /**
-     * The type an inline `@var` on a variable's assignment declares for this read, when precise enough to publish.
-     *
-     * A vague declaration yields to the assignment's own reading, as a vague declared return yields to the method body.
-     *
-     * @return ValueExpressionResult|null
-     */
-    private function declaredValue(Variable $variable, AnalysisScope $scope): ?array
-    {
-        $declared = $scope->declaredAt($variable);
-        $value = $declared === null
-            ? null
-            : resolve(PropertyDocblockTypeReader::class)->readDeclared($declared['type'], $declared['context']);
-
-        return $value !== null && ! TsTypeString::isVagueTsType($value['type']) && ValueResult::namesOnlyPublishedModels($value)
-            ? $value
-            : null;
     }
 
     /**

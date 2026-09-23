@@ -11744,6 +11744,91 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource": {
+            "name": "DeclaredPrecedenceResource",
+            "properties": [
+                {
+                    "name": "picked",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "picked_strict",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "picked_or_zero",
+                    "type": "number | string",
+                    "optional": false
+                },
+                {
+                    "name": "elvis",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "literal",
+                    "type": "{ a: number }",
+                    "optional": false
+                },
+                {
+                    "name": "heading",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "title_as_totals",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "verifiable_email",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "callable",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "callable_shape",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "closure",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "intersection",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "length",
+                    "type": "number",
+                    "optional": true
+                },
+                {
+                    "name": "transformed_length",
+                    "type": "number",
+                    "optional": true
+                },
+                {
+                    "name": "author_name",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "first_comment",
+                    "type": "Comment | null",
+                    "optional": true
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\DeclaredReadingResource": {
             "name": "DeclaredReadingResource",
             "properties": [

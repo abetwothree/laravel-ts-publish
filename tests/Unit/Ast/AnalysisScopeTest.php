@@ -68,7 +68,7 @@ function analysisScopeWithEveryTableBound(): AnalysisScope
         $scope->closureParamExprBindings[$name] = $expr;
         $scope->varClassBindings[$name] = [User::class];
         $scope->varGuardBindings[$name] = ['classes' => [User::class], 'after' => 0];
-        $scope->varDocBindings[$name] = [['type' => 'User', 'context' => $scope->declaringFileClass, 'after' => 0, 'before' => null]];
+        $scope->varDocBindings[$name] = [['type' => 'User', 'context' => $scope->declaringFileClass, 'after' => 0, 'before' => null, 'expr' => new Variable('outer')]];
         $scope->varModelBindings[$name] = User::class;
         $scope->varCollectionBindings[$name] = ['type' => 'User[]', 'modelFqcn' => User::class];
         $scope->varValueBindings[$name] = ['type' => 'string', 'optional' => false];

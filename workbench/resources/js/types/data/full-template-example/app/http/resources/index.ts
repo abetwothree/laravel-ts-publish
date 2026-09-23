@@ -43,6 +43,7 @@ export * from './conditional-param-mapped-resource';
 export * from './conditional-param-primitive-resource';
 export * from './control-flow-return-resource';
 export * from './custom-import-channel-resource';
+export * from './declared-precedence-resource';
 export * from './declared-reading-resource';
 export * from './delegating-resource';
 export * from './delegating-with-mixin-resource';
