@@ -5,8 +5,10 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\BothSpellingsBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastTagSignatureBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendedTagSignatureBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RawCrCastBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SignatureCastSpellingBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
 use Workbench\App\Events\ComputedNameEvent;
@@ -565,4 +567,21 @@ test('an event\'s #[TsCasts] key with the backslashes a single-quoted PHP string
         '[key: `${string}\\\\_cast`]' => 'number',
         'id' => 'number',
     ]);
+});
+
+test('an event\'s cast key holding a raw CR retypes the CR LF signature', function () {
+    $properties = app(BroadcastEventTransformer::class, ['findable' => RawCrCastBroadcastEvent::class])->properties;
+
+    expect(array_map(fn (array $property): string => $property['type'], $properties))->toBe([
+        "[key: `\${string}\\r\n`]" => 'string',
+        'id' => 'number',
+    ]);
+});
+
+test('an event\'s losing spelling drops its optional flag and import with its type', function () {
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => BothSpellingsBroadcastEvent::class]);
+
+    expect($transformer->properties['[key: `${string}\\\\_e`]'])->toBe(['type' => 'string', 'optional' => false])
+        ->and($transformer->properties['[key: `${string}\\\\_f`]'])->toBe(['type' => 'Money', 'optional' => false])
+        ->and($transformer->typeImports)->not->toHaveKey('@/types/money');
 });

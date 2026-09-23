@@ -66,6 +66,28 @@ describe('castsByKey', function () {
         'exact last' => [['[key: `${string}\\_x`]' => 'boolean', '[key: `${string}\\\\_x`]' => 'number']],
     ]);
 
+    test('a cast key with a raw CR for the name\'s `\r`, or single backslashes, or both, takes the name', function (string $castKey) {
+        $name = '[key: `${string}\\\\\\r_x`]';
+
+        expect($this->service->castsByKey([$castKey => 'number'], [$name]))->toBe([$name => 'number']);
+    })->with([
+        'a raw CR' => ['[key: `${string}\\\\'."\r".'_x`]'],
+        'single backslashes' => ['[key: `${string}\\\\r_x`]'],
+        'both' => ['[key: `${string}\\'."\r".'_x`]'],
+    ]);
+
+    test('the escapes are read token by token, so an escaped backslash before `r` is never a CR', function () {
+        $castKey = '[key: `${string}\\'."\r".'`]';
+
+        expect($this->service->castsByKey([$castKey => 'number'], ['[key: `${string}\\\\r`]']))->toBe([$castKey => 'number']);
+    });
+
+    test('a spelling two signatures share matches neither', function () {
+        $keys = ['[key: `${string}\\\\\\r`]', '[key: `${string}\\\\\\\\r`]'];
+
+        expect($this->service->castsByKey(['[key: `${string}\\\\r`]' => 'number'], $keys))->toBe(['[key: `${string}\\\\r`]' => 'number']);
+    });
+
     test('a cast key equal to one name keeps it, though it is another signature\'s single-quoted paste', function () {
         $keys = ['[key: `${string}\\_x`]', '[key: `${string}\\\\_x`]'];
 

@@ -18,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeSpreadChildResourc
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ModelArmAppendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NamedMergeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NestedMethodModelSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RawCrCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SamePatternDeclinedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SignatureCastSpellingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UnreadableReturnResource;
@@ -6280,6 +6281,15 @@ test('a spread method\'s #[TsCasts] key with the backslashes a single-quoted PHP
 
     expect($props['[key: `${string}\\\\_mc`]']['type'] ?? null)->toBe('number')
         ->and($props->has('[key: `${string}\\_mc`]'))->toBeFalse();
+});
+
+test('a spread method\'s cast key holding a raw CR retypes its CR LF signature', function () {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(RawCrCastResource::class), Post::class)->analyze()->properties);
+
+    expect($props->pluck('type', 'name')->all())->toBe([
+        "[key: `\${string}\\r\n`]" => 'string | undefined',
+        "[key: `\${string}\\r\n_m`]" => 'number',
+    ]);
 });
 
 test('an interpolated key the body cannot type takes its value type from the method @return', function () {

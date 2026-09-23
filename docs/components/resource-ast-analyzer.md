@@ -1007,12 +1007,17 @@ publishes ``[key: `${string}\\unit`]``.
 is still a signature, and `IndexSignatureReconciler` undoes the three escapes when it reads the pattern back
 ([below](#index-signatures-are-reconciled-with-the-keys-beside-them)).
 
-A `#[TsCasts]` key retypes such a signature under either of two spellings, matched by `JsEmitter::castsByKey()`
-in `applyTsCastsFromMethod()`, `ResourceTransformer`, `BroadcastEventTransformer` and both Inertia analyzers:
-the published name, or the published name with each `\\` collapsed to `\`, which is what pasting the published
-name into a single-quoted PHP string gives. So ``'[key: `${string}\\unit`]'`` and
-``'[key: `${string}\\\\unit`]'`` both retype ``[key: `${string}\\unit`]``, which is published once, under its
-escaped name. Where both spellings are given, the exact one wins and the other is dropped.
+A `#[TsCasts]` key retypes such a signature when it equals the published name or, failing that, another spelling
+a user can write for it: the name with each `\\` read as `\` (what pasting it into a single-quoted PHP string
+gives), with each `\r` read as a raw CR (what a double-quoted string gives, and the name before CRs were escaped),
+or both. The escapes are read one by one from the left, so an `r` after an escaped backslash (`\\r`) stays an `r`. So
+``'[key: `${string}\\unit`]'`` and ``'[key: `${string}\\\\unit`]'`` both retype ``[key: `${string}\\unit`]``,
+and ``"[key: `\${string}\r`]"`` retypes ``[key: `${string}\r`]``. Each is published once, under its escaped
+name. `JsEmitter::castTargets()` decides each cast key's target once per cast source, in `applyTsCastsFromMethod()`,
+`ResourceTransformer`, `BroadcastEventTransformer` and both Inertia analyzers. A spelling two signatures share
+retypes neither. Where two spellings name one signature, the exact one wins, or else the first, and the other is
+dropped with its optional flag and import. On an Inertia page and in shared data, though, the losing spelling's
+import is still emitted, unused.
 
 Such a key always publishes `optional = false` with its value type widened to include `| undefined`,
 never `key?:` on the signature itself. `[key: T]?:` is a TypeScript syntax error regardless of how

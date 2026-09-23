@@ -16,9 +16,11 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LineTerminatorCastResou
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LongerNameCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ModelCastAbsentDataSignatureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ModelCastDataSignatureResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ModelSignatureCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MultilineQuoteCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MultilineTemplateCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\QuotedCastReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RawCrCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ResourceCastOverModelCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SignatureCastSpellingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SplitTemplateCastResource;
@@ -2941,6 +2943,8 @@ describe('SignatureCastSpellingResource — a #[TsCasts] key for a backslash sig
             '[key: `${string}\\\\_cast`]',
             '[key: `${string}\\\\unit`]',
             '[key: `${string}\\\\_both`]',
+            '[key: `${string}\\\\_y`]',
+            '[key: `${string}\\\\_z`]',
             '[key: `${string}\\\\_mc`]',
         ]);
     });
@@ -2949,4 +2953,32 @@ describe('SignatureCastSpellingResource — a #[TsCasts] key for a backslash sig
         expect($this->types['[key: `${string}\\\\_both`]'])->toBe('number')
             ->and($this->types)->not->toHaveKey('[key: `${string}\\_both`]');
     });
+
+    test('the losing spelling\'s optional flag and import are dropped with its type', function () {
+        $data = (new ResourceTransformer(SignatureCastSpellingResource::class))->data();
+
+        expect($data->properties['[key: `${string}\\\\_z`]'])->toMatchArray(['type' => 'number', 'optional' => false])
+            ->and($this->types['[key: `${string}\\\\_y`]'])->toBe('Money')
+            ->and($data->typeImports)->not->toHaveKey('@/types/money');
+    });
+});
+
+test('a model\'s losing spelling drops its optional flag and import with its type', function () {
+    $data = (new ResourceTransformer(ModelSignatureCastResource::class))->data();
+
+    expect($data->properties['[key: `${string}\\\\_v`]'])->toMatchArray(['type' => 'number', 'optional' => false])
+        ->and($data->properties['[key: `${string}\\\\_w`]'])->toMatchArray(['type' => 'string', 'optional' => false])
+        ->and($data->typeImports)->not->toHaveKey('@/types/money');
+});
+
+test('a cast key holding a raw CR, as a double-quoted PHP string gives it, retypes the CR signature', function () {
+    $types = array_map(
+        fn (array $property): string => $property['type'],
+        (new ResourceTransformer(RawCrCastResource::class))->data()->properties,
+    );
+
+    expect($types)->toBe([
+        "[key: `\${string}\\r\n`]" => 'number',
+        "[key: `\${string}\\r\n_m`]" => 'number',
+    ]);
 });

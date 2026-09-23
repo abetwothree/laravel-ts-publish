@@ -496,3 +496,8 @@ test('a controller method\'s #[TsCasts] key with the backslashes a single-quoted
     expect(pageData(ControllerWithSignatureCastSpelling::class.'@show')['pageType'])
         ->toBe('Inertia.SharedData & { [key: `${string}\\\\_cast`]: number, id: number }');
 });
+
+test('a controller method\'s cast key holding a raw CR retypes the CR signature', function () {
+    expect(pageData(ControllerWithSignatureCastSpelling::class.'@rawCr')['pageType'])
+        ->toBe('Inertia.SharedData & { [key: `${string}\r`]: number, id: number }');
+});

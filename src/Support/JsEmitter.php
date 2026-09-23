@@ -53,9 +53,7 @@ class JsEmitter
     }
 
     /**
-     * Re-key #[TsCasts] entries to the published keys they retype. A cast key equal to a key keeps it; failing that,
-     * one equal to an index signature's name with each `\\` collapsed to `\`, as a single-quoted PHP string reads the
-     * pasted name, takes that name unless the name is cast under its own spelling too.
+     * Re-key #[TsCasts] entries to the published keys they retype, as castTargets() decides for their own keys.
      *
      * @template TCast
      *
@@ -65,29 +63,78 @@ class JsEmitter
      */
     public function castsByKey(array $casts, array $keys): array
     {
+        return $this->retargetCasts($casts, $this->castTargets(array_keys($casts), $keys));
+    }
+
+    /**
+     * The published key each #[TsCasts] key retypes: a key it equals, else the one index signature it spells another
+     * way a user can write that name, or null where that signature is cast under its exact name or an earlier key.
+     *
+     * The other ways read the name's escapes token by token: each `\\` as `\` (pasted into a single-quoted PHP
+     * string), each `\r` as a raw CR (the spelling before CRs were escaped, and a double-quoted string's), or both.
+     * A spelling two signatures share retypes neither.
+     *
+     * @param  list<string>  $castKeys
+     * @param  array<array-key, int|string>  $keys  the keys the casts are laid over
+     * @return array<string, string|null>
+     */
+    public function castTargets(array $castKeys, array $keys): array
+    {
         $known = [];
-        $collapsed = [];
+        $spelledBy = [];
 
         foreach ($keys as $key) {
             $key = (string) $key;
             $known[$key] = true;
 
             if (str_contains($key, '\\') && $this->isIndexSignatureKey($key)) {
-                $collapsed[str_replace('\\\\', '\\', $key)] ??= $key;
+                foreach ($this->castSpellings($key) as $spelling) {
+                    $spelledBy[$spelling][$key] = true;
+                }
             }
         }
 
-        $byKey = [];
+        $cast = array_fill_keys($castKeys, true);
+        $claimed = [];
+        $targets = [];
 
-        foreach ($casts as $castKey => $cast) {
-            $key = isset($known[$castKey]) ? $castKey : ($collapsed[$castKey] ?? $castKey);
+        foreach ($castKeys as $castKey) {
+            if (isset($known[$castKey]) || count($spelledBy[$castKey] ?? []) !== 1) {
+                $targets[$castKey] = $castKey;
 
-            if ($key === $castKey || ! isset($casts[$key])) {
-                $byKey[$key] = $cast;
+                continue;
+            }
+
+            $name = (string) array_key_first($spelledBy[$castKey]);
+            $targets[$castKey] = isset($cast[$name]) || isset($claimed[$name]) ? null : $name;
+            $claimed[$name] = true;
+        }
+
+        return $targets;
+    }
+
+    /**
+     * Move each cast to the key castTargets() gave it, dropping one it gave none; a key it did not decide stays.
+     *
+     * @template TCast
+     *
+     * @param  array<string, TCast>  $casts
+     * @param  array<string, string|null>  $targets
+     * @return array<string, TCast>
+     */
+    public function retargetCasts(array $casts, array $targets): array
+    {
+        $moved = [];
+
+        foreach ($casts as $key => $cast) {
+            $target = array_key_exists($key, $targets) ? $targets[$key] : $key;
+
+            if ($target !== null) {
+                $moved[$target] = $cast;
             }
         }
 
-        return $byKey;
+        return $moved;
     }
 
     /**
@@ -309,5 +356,35 @@ class JsEmitter
         }
 
         return implode("\n", $description);
+    }
+
+    /**
+     * The spellings of a signature's name, other than the name, that a #[TsCasts] key may use for it.
+     *
+     * @return list<string>
+     */
+    private function castSpellings(string $name): array
+    {
+        $spellings = [
+            $this->readEscapes($name, ['\\' => '\\']),
+            $this->readEscapes($name, ['r' => "\r"]),
+            $this->readEscapes($name, ['\\' => '\\', 'r' => "\r"]),
+        ];
+
+        return array_values(array_diff(array_unique($spellings), [$name]));
+    }
+
+    /**
+     * The text with each escape the map names read back, pair by pair from the left, and every other one kept.
+     *
+     * @param  array<string, string>  $as  escaped character => what it reads as
+     */
+    private function readEscapes(string $text, array $as): string
+    {
+        return (string) preg_replace_callback(
+            '/\\\\(.)/s',
+            fn (array $escape): string => $as[$escape[1]] ?? $escape[0],
+            $text,
+        );
     }
 }

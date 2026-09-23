@@ -87,6 +87,9 @@ class ResourceTransformer extends CoreTransformer
     /** @var array<string, bool> property name => optional override */
     protected array $optionalOverrides = [];
 
+    /** @var array<string, string> property name => import path from the resource's #[TsCasts] */
+    protected array $tsCastsImportPaths = [];
+
     /** @var array<class-string, string> FQCN => resource interface name */
     protected array $resourceFqcnMap = [];
 
@@ -271,15 +274,7 @@ class ResourceTransformer extends CoreTransformer
             $this->tsTypeOverrides[$property] = $type;
         }
 
-        foreach ($result['importPaths'] as $property => $importPath) {
-            $type = $result['overrides'][$property] ?? null;
-
-            if ($type !== null) {
-                foreach (TsTypeString::extractImportableTypes($type) as $importName) {
-                    $this->customImports[$importPath][] = $importName;
-                }
-            }
-        }
+        $this->tsCastsImportPaths = $result['importPaths'];
 
         foreach ($result['optionalOverrides'] as $property => $optional) {
             $this->optionalOverrides[$property] = $optional;
@@ -411,17 +406,28 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * Re-key every #[TsCasts] map to the analysis's spelling of each key it retypes.
+     * Re-key each #[TsCasts] source to the analysis's spelling of the keys it retypes, then import what the resource's
+     * own surviving casts name. One decision per source moves its type, optional and import entries together.
      *
      * @param  list<string>  $keys
      */
     protected function castsOverAnalysisKeys(array $keys): void
     {
-        $this->tsTypeOverrides = JsEmitter::castsByKey($this->tsTypeOverrides, $keys);
-        $this->optionalOverrides = JsEmitter::castsByKey($this->optionalOverrides, $keys);
-        $this->modelTsCastsOverrides = JsEmitter::castsByKey($this->modelTsCastsOverrides, $keys);
-        $this->modelTsCastsImportPaths = JsEmitter::castsByKey($this->modelTsCastsImportPaths, $keys);
-        $this->modelTsCastsOptionalOverrides = JsEmitter::castsByKey($this->modelTsCastsOptionalOverrides, $keys);
+        $resource = JsEmitter::castTargets(array_keys($this->tsTypeOverrides), $keys);
+        $this->tsTypeOverrides = JsEmitter::retargetCasts($this->tsTypeOverrides, $resource);
+        $this->tsCastsImportPaths = JsEmitter::retargetCasts($this->tsCastsImportPaths, $resource);
+        $this->optionalOverrides = JsEmitter::retargetCasts($this->optionalOverrides, $resource);
+
+        $model = JsEmitter::castTargets(array_keys($this->modelTsCastsOverrides), $keys);
+        $this->modelTsCastsOverrides = JsEmitter::retargetCasts($this->modelTsCastsOverrides, $model);
+        $this->modelTsCastsImportPaths = JsEmitter::retargetCasts($this->modelTsCastsImportPaths, $model);
+        $this->modelTsCastsOptionalOverrides = JsEmitter::retargetCasts($this->modelTsCastsOptionalOverrides, $model);
+
+        foreach ($this->tsCastsImportPaths as $property => $importPath) {
+            foreach (TsTypeString::extractImportableTypes($this->tsTypeOverrides[$property] ?? '') as $importName) {
+                $this->customImports[$importPath][] = $importName;
+            }
+        }
     }
 
     /**

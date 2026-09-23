@@ -8,7 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use Inertia\Inertia;
 use Inertia\Response;
 
-/** A page whose cast key is pasted from a backslash signature's published name into a single-quoted PHP string. */
+/** Pages whose cast key spells a signature's published name otherwise: pasted into single quotes, or with a raw CR. */
 class ControllerWithSignatureCastSpelling
 {
     /** The cast retypes the `\_cast` signature. */
@@ -18,6 +18,13 @@ class ControllerWithSignatureCastSpelling
         return Inertia::render('Escaped/Show', [...$this->keys(), 'id' => 1]);
     }
 
+    /** The cast, a double-quoted PHP string, holds a raw CR where the published name writes `\r`. */
+    #[TsCasts(["[key: `\${string}\r`]" => 'number'])]
+    public function rawCr(): Response
+    {
+        return Inertia::render('Escaped/RawCr', [...$this->crKeys(), 'id' => 1]);
+    }
+
     /** Keys whose literal text holds a backslash. */
     public function keys(): array
     {
@@ -25,6 +32,18 @@ class ControllerWithSignatureCastSpelling
 
         foreach (['a', 'b'] as $name) {
             $data["{$name}\\_cast"] = 'x';
+        }
+
+        return $data;
+    }
+
+    /** Keys whose literal text ends in a CR. */
+    public function crKeys(): array
+    {
+        $data = [];
+
+        foreach (['a', 'b'] as $name) {
+            $data["{$name}\r"] = 'x';
         }
 
         return $data;

@@ -203,9 +203,11 @@ class BroadcastEventTransformer extends CoreTransformer
         $analysis = $this->runAnalysis();
         $keys = array_column($analysis->properties, 'name');
 
-        $this->tsTypeOverrides = JsEmitter::castsByKey($this->tsTypeOverrides, $keys);
-        $this->tsCastsImportPaths = JsEmitter::castsByKey($this->tsCastsImportPaths, $keys);
-        $this->optionalOverrides = JsEmitter::castsByKey($this->optionalOverrides, $keys);
+        $targets = JsEmitter::castTargets(array_keys($this->tsTypeOverrides), $keys);
+
+        $this->tsTypeOverrides = JsEmitter::retargetCasts($this->tsTypeOverrides, $targets);
+        $this->tsCastsImportPaths = JsEmitter::retargetCasts($this->tsCastsImportPaths, $targets);
+        $this->optionalOverrides = JsEmitter::retargetCasts($this->optionalOverrides, $targets);
 
         // resolveProperties() lays each cast over its key, and an extends clause adds keys no analysis sees.
         resolve(IndexSignatureReconciler::class)->reconcile(

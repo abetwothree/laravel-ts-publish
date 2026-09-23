@@ -14,6 +14,10 @@ use Illuminate\Http\Resources\Json\JsonResource;
     '[key: `${string}\\unit`]' => 'boolean',
     '[key: `${string}\\\\_both`]' => 'number',
     '[key: `${string}\\_both`]' => 'boolean',
+    '[key: `${string}\\\\_y`]' => 'Money',
+    '[key: `${string}\\_y`]' => ['type' => 'Money', 'import' => '@/types/money'],
+    '[key: `${string}\\\\_z`]' => 'number',
+    '[key: `${string}\\_z`]' => ['type' => 'boolean', 'optional' => true],
 ])]
 final class SignatureCastSpellingResource extends JsonResource
 {
@@ -23,7 +27,7 @@ final class SignatureCastSpellingResource extends JsonResource
         return [...$this->keys(), ...$this->methodCast()];
     }
 
-    /** Keys the class-level casts retype; `_both` is cast under its exact name and its single-backslash one. */
+    /** Keys the class-level casts retype; `_both`, `_y` and `_z` are cast under exact and single-backslash names. */
     public function keys(): array
     {
         $data = [];
@@ -32,6 +36,8 @@ final class SignatureCastSpellingResource extends JsonResource
             $data["{$name}\\_cast"] = 'x';
             $data["{$name}\\unit"] = 'x';
             $data["{$name}\\_both"] = 'x';
+            $data["{$name}\\_y"] = 'x';
+            $data["{$name}\\_z"] = 'x';
         }
 
         return $data;
