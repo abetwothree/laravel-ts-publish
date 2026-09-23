@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -20,30 +21,34 @@ use PhpParser\Node\Expr\Variable;
 trait NarrowsInstanceofSubjects
 {
     /**
-     * Resolve an arm with the tested subject bound to the classes the test proves, then restore the scope: a variable
-     * through varClassBindings, and `$this->resource` proved one model through the scope's model, which every
-     * `$this->prop` read resolves against. Null when the subject is neither, or when the arm writes it, since a read
-     * after that write no longer holds what the test saw.
+     * Resolve an arm with the subject bound to what the test leaves of its own classes (a variable's varClassBindings,
+     * or `$this->resource`'s model when that is one), then restore the scope. Null for any other subject, or for an
+     * arm that writes it, since a read after the write no longer holds what the test saw.
      *
      * @template TResult
      *
-     * @param  non-empty-list<class-string>  $classes
+     * @param  non-empty-list<class-string>  $tested
      * @param  Closure(): TResult  $resolve
      * @return TResult|null
      */
-    protected function resolveNarrowed(Expr $subject, array $classes, Expr $arm, AnalysisScope $scope, Closure $resolve): mixed
+    protected function resolveNarrowed(Expr $subject, array $tested, Expr $arm, AnalysisScope $scope, Closure $resolve): mixed
     {
-        $written = array_column($this->collectVariableWrites([$arm]), 0);
+        $variable = $subject instanceof Variable && is_string($subject->name) ? $subject->name : null;
 
-        if ($subject instanceof Variable && is_string($subject->name)) {
-            if (in_array($subject->name, $written, true)) {
-                return null;
-            }
+        // `$this->resource` is written through the `this` variable.
+        if (($variable === null && ! $this->isResourceFetch($subject))
+            || in_array($variable ?? 'this', array_column($this->collectVariableWrites([$arm]), 0), true)
+        ) {
+            return null;
+        }
 
+        $classes = resolve(ReceiverClassResolver::class)->narrowedSubject($subject, $tested, $scope);
+
+        if ($variable !== null) {
             $previousVarClassBindings = $scope->varClassBindings;
 
             try {
-                $scope->varClassBindings[$subject->name] = $classes;
+                $scope->varClassBindings[$variable] = $classes;
 
                 return $resolve();
             } finally {
@@ -53,11 +58,7 @@ trait NarrowsInstanceofSubjects
 
         $model = $classes[0];
 
-        if (! $this->isResourceFetch($subject)
-            || count($classes) !== 1
-            || ! is_a($model, Model::class, true)
-            || in_array('this', $written, true)
-        ) {
+        if (count($classes) !== 1 || ! is_a($model, Model::class, true)) {
             return null;
         }
 

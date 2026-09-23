@@ -17,8 +17,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Enumerable;
@@ -133,17 +135,32 @@ final class VariableHandler implements ExpressionHandler
             }
         }
 
-        $declared = $expr instanceof Variable ? $this->declaredValue($expr, $scope) : null;
-
-        if ($declared !== null) {
-            return $declared;
+        if (! $expr instanceof Variable || ! is_string($expr->name)) {
+            return null;
         }
 
-        // Bare variable bound to a model class (whenLoaded param, map param, foreach value var) —
-        // resolves to the model's own type. Checked before closure-param/local-var expression bindings,
-        // which resolve through a *different* expression rather than naming a model directly.
-        if ($expr instanceof Variable && is_string($expr->name) && isset($scope->varModelBindings[$expr->name])) {
-            $modelFqcn = $scope->varModelBindings[$expr->name];
+        $bound = $this->boundValue($expr->name, $scope, $engine);
+        $declared = $this->declaredValue($expr, $scope);
+
+        // A known reading the declaration admits stands; the declaration fills an unknown or vaguer one, and wins over
+        // one it contradicts.
+        return $declared === null || ($bound !== null && ! TsTypeString::isVagueTsType($bound['type'])
+            && TsTypeShape::admits($declared['type'], $bound['type']))
+            ? $bound
+            : $declared;
+    }
+
+    /**
+     * A bare variable's value from its model, collection, value, closure-parameter or local-assignment binding.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function boundValue(string $name, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        // Bound to a model class (whenLoaded param, map param, foreach value var) — resolves to the model's own type.
+        // Checked before closure-param/local-var expression bindings, which resolve through a *different* expression.
+        if (isset($scope->varModelBindings[$name])) {
+            $modelFqcn = $scope->varModelBindings[$name];
 
             return [
                 ...ValueResult::unknown(),
@@ -153,10 +170,10 @@ final class VariableHandler implements ExpressionHandler
             ];
         }
 
-        // Bare variable bound to a whole relation collection (to-many whenLoaded param) — resolves to
-        // the collection type, e.g. `User[]`, never the singular element model.
-        if ($expr instanceof Variable && is_string($expr->name) && isset($scope->varCollectionBindings[$expr->name])) {
-            $binding = $scope->varCollectionBindings[$expr->name];
+        // Bound to a whole relation collection (to-many whenLoaded param) — resolves to the collection type, e.g.
+        // `User[]`, never the singular element model.
+        if (isset($scope->varCollectionBindings[$name])) {
+            $binding = $scope->varCollectionBindings[$name];
 
             return [
                 ...ValueResult::unknown(),
@@ -166,33 +183,27 @@ final class VariableHandler implements ExpressionHandler
             ];
         }
 
-        // Bare variable bound to an already-resolved value — a `collect(...)->map()` closure param,
-        // whose element type CollectionPipelineHandler resolved before descending into the body.
-        if ($expr instanceof Variable && is_string($expr->name) && isset($scope->varValueBindings[$expr->name])) {
-            return $scope->varValueBindings[$expr->name];
+        // Bound to an already-resolved value — a `collect(...)->map()` closure param, whose element type
+        // CollectionPipelineHandler resolved before descending into the body.
+        if (isset($scope->varValueBindings[$name])) {
+            return $scope->varValueBindings[$name];
         }
 
-        // Bare variable bound either to a closure parameter (ConditionalMethodHandler's
-        // bindClosureParamsFromCondition()) or to a top-level local assignment
-        // (collectLocalVarBindings). Closure-param bindings win, being the
-        // narrower scope; the re-entrancy guard makes a cyclic binding resolve as unknown.
-        if ($expr instanceof Variable && is_string($expr->name)) {
-            $boundExpr = $scope->closureParamExprBindings[$expr->name]
-                ?? $scope->localVarBindings[$expr->name]
-                ?? null;
+        // Bound to a closure parameter's expression or a top-level local assignment; the closure param is the narrower
+        // scope, and the re-entrancy guard makes a cyclic binding resolve as unknown.
+        $boundExpr = $scope->closureParamExprBindings[$name] ?? $scope->localVarBindings[$name] ?? null;
 
-            if ($boundExpr !== null && ! isset($scope->resolvingLocalVars[$expr->name])) {
-                $scope->resolvingLocalVars[$expr->name] = true;
-
-                try {
-                    return $engine->resolve($boundExpr);
-                } finally {
-                    unset($scope->resolvingLocalVars[$expr->name]);
-                }
-            }
+        if ($boundExpr === null || isset($scope->resolvingLocalVars[$name])) {
+            return null;
         }
 
-        return null;
+        $scope->resolvingLocalVars[$name] = true;
+
+        try {
+            return $engine->resolve($boundExpr);
+        } finally {
+            unset($scope->resolvingLocalVars[$name]);
+        }
     }
 
     /**
@@ -215,14 +226,17 @@ final class VariableHandler implements ExpressionHandler
     }
 
     /**
-     * The model a whenLoaded closure's relation holds, as a guess at an unbound variable; none for one an inline `@var`
-     * declares, whose reads the receiver path types from that declaration.
+     * The model a whenLoaded closure's relation holds, as a guess at an unbound variable; none when an inline `@var`
+     * declares classes it is not one of, since the receiver path then types the read from that declaration.
      *
      * @return class-string<Model>|null
      */
     private function ambientModel(Variable $variable, AnalysisScope $scope): ?string
     {
-        return $scope->declaredAt($variable) === null ? $scope->closureRelationModelClass : null;
+        $ambient = $scope->closureRelationModelClass;
+        $declared = resolve(ReceiverClassResolver::class)->declaredClasses($variable, $scope);
+
+        return $ambient !== null && ($declared === null || ReceiverType::of($ambient)->within($declared)) ? $ambient : null;
     }
 
     /**

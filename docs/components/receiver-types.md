@@ -137,13 +137,14 @@ and string-keyed models, and its `$either` is bound through
 `open_id: number | string | null`.
 
 When the proven arm reads a member through the tested subject instead, as in
-`$this->resource instanceof SubscribedTeam ? $this->resource->subscriber : null`, and the subject is a variable or
-`$this->resource` tested for one model, `provenArm()` resolves the arm with the subject narrowed, through the
-binding `TernaryHandler` resolves the same arm's value under
-(`NarrowsInstanceofSubjects::resolveNarrowed()`). The subject holds what `narrowed()` leaves of its own classes, so a
-supertype test never widens what the arm reads. An arm that writes its subject is not narrowed.
-`TeamSubscriberLocalResource` pins it: a local bound to that ternary publishes `subscriber_name: string | null`, as
-the same ternary written inline does.
+`$this->resource instanceof SubscribedTeam ? $this->resource->subscriber : null`, `provenArm()` resolves it under
+`NarrowsInstanceofSubjects::resolveNarrowed()`, the same binding `TernaryHandler` resolves that arm's value under.
+Both bind the subject to `narrowedSubject()`, what `narrowed()` leaves of its own classes, so a supertype, interface
+or sibling test never widens it: a variable through `varClassBindings`, and `$this->resource` through the scope's
+model when one model is left. Any other subject, or an arm that writes its subject, is not narrowed.
+`TeamSubscriberLocalResource` pins the member read: a local bound to that ternary publishes
+`subscriber_name: string | null`, as the ternary written inline does. `NarrowedWiderTestResource` pins the wider
+tests.
 
 The same read path means the same variable, or the same chain of property reads, such as `$this->a->b` or
 `$x?->y`, with the same names and the same `->` or `?->` at each step. A method call never qualifies, because a

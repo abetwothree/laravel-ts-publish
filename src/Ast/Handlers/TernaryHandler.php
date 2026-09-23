@@ -21,6 +21,9 @@ use PhpParser\Node\Expr\Ternary;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
+ * @phpstan-type TernaryArms = array{Expr, Expr}
+ * @phpstan-type ArmResults = array{ValueExpressionResult, ValueExpressionResult}
+ *
  * @internal
  */
 final class TernaryHandler implements ExpressionHandler
@@ -88,8 +91,8 @@ final class TernaryHandler implements ExpressionHandler
      * scalar one — re-resolving each arm here, while still distinct, is the only place that survives.
      *
      * @param  ValueExpressionResult  $result
-     * @param  array{Expr, Expr}  $arms
-     * @param  array{ValueExpressionResult, ValueExpressionResult}|null  $armResults  both arms, under any narrowing
+     * @param  TernaryArms  $arms
+     * @param  ArmResults|null  $armResults  both arms, under any narrowing
      * @return ValueExpressionResult
      */
     private function recordMixedArmShapes(array $result, array $arms, ExpressionEngine $engine, ?array $armResults = null): array

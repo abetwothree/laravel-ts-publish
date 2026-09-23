@@ -25,16 +25,16 @@ use PhpParser\NodeFinder;
  * The single `$var = expr;` binding pass. Shared because both the resource analyzer's own
  * method walk and AstEngine::bindingsFor() must read a body's variables the same way.
  *
+ * @phpstan-type VariableWrites = list<array{string, Node}>
+ *
  * @internal
  */
 trait CollectsLocalVarBindings
 {
     /**
-     * Record top-level `$var = expr;` statements so values referencing those variables resolve, and the type an inline
-     * `@var` on one declares.
-     *
-     * The expression binding skips variables written more than once — this flat list can't tell which write is live at
-     * a given return branch, so binding one risks a wrong-but-plausible type instead of unknown.
+     * Record top-level `$var = expr;` statements, and the type an inline `@var` on one declares. The expression binding
+     * skips a variable written more than once: this flat list can't tell which write is live at a given return branch,
+     * so binding one risks a wrong-but-plausible type instead of unknown.
      *
      * @param  array<Node\Stmt>  $stmts
      */
@@ -80,7 +80,7 @@ trait CollectsLocalVarBindings
      * By-reference call arguments are a known gap — the callee's signature isn't statically knowable.
      *
      * @param  array<Node>  $stmts
-     * @return list<array{string, Node}>
+     * @return VariableWrites
      */
     protected function collectVariableWrites(array $stmts): array
     {
@@ -99,7 +99,7 @@ trait CollectsLocalVarBindings
                 || $node instanceof ClosureExpr,
         );
 
-        /** @var list<array{string, Node}> $writes */
+        /** @var VariableWrites $writes */
         $writes = [];
 
         foreach ($writeNodes as $node) {
@@ -149,7 +149,7 @@ trait CollectsLocalVarBindings
      *
      * The one position-ordered rule both the early-exit guard pass and an inline `@var` read a variable's writes by.
      *
-     * @param  list<array{string, Node}>  $writes
+     * @param  VariableWrites  $writes
      * @return list<Node>
      */
     protected function writesFrom(string $name, int $offset, array $writes): array
@@ -167,13 +167,11 @@ trait CollectsLocalVarBindings
 
     /**
      * Bind a variable to the type an inline `@var` on its assignment declares, for the reads after that statement and
-     * before the top-level statement holding the variable's next write.
-     *
-     * A top-level statement runs once, so a read in an earlier one never sees a later write; a loop holding both is one
-     * statement, which is why the span ends where the writing statement starts rather than at the write.
+     * before the top-level statement holding its next write. A top-level statement runs once, so an earlier one never
+     * sees a later write; a loop holding both is one statement, so the span ends where it starts, not at the write.
      *
      * @param  array<Node\Stmt>  $stmts
-     * @param  list<array{string, Node}>  $writes
+     * @param  VariableWrites  $writes
      */
     private function bindDeclaredType(
         ExpressionStmt $assignment,

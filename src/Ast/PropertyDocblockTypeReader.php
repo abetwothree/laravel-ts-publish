@@ -16,6 +16,7 @@ use ReflectionProperty;
  * @phpstan-import-type TypeScriptTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
  *
  * @phpstan-type VarTag = array{string, string|null}
+ * @phpstan-type CapturedTag = array{string, string, bool}
  *
  * @internal
  */
@@ -70,6 +71,7 @@ final class PropertyDocblockTypeReader
 
     /**
      * Capture an inline `@var` on a local assignment: its type, and the variable it names, null when it names none.
+     * Null for a tag whose type does not read to its end, such as a callable signature's return.
      *
      * @return VarTag|null
      */
@@ -77,7 +79,7 @@ final class PropertyDocblockTypeReader
     {
         $tag = $this->captureTag($docComment, '/(?<![\w-])@var\s+/');
 
-        if ($tag === null || $tag[0] === '') {
+        if ($tag === null || $tag[0] === '' || ! $tag[2]) {
             return null;
         }
 
@@ -105,9 +107,9 @@ final class PropertyDocblockTypeReader
 
     /**
      * Capture the type expression after the first match of a tag pattern, stopping at the separator that ends it, with
-     * the text that follows it.
+     * the text that follows it and whether the type read to its end: brackets closed, and no `:` left dangling.
      *
-     * @return array{string, string}|null
+     * @return CapturedTag|null
      */
     private function captureTag(string $docComment, string $tagPattern): ?array
     {
@@ -145,7 +147,9 @@ final class PropertyDocblockTypeReader
             }
         }
 
-        return [trim($type), substr($rest, $end)];
+        $type = trim($type);
+
+        return [$type, substr($rest, $end), $depth === 0 && ! str_ends_with($type, ':')];
     }
 
     /**

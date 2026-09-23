@@ -63,6 +63,7 @@ use Workbench\App\Http\Resources\ImageResource;
 use Workbench\App\Http\Resources\ModelWrappedPropResource;
 use Workbench\App\Http\Resources\NarrowedImageableResource;
 use Workbench\App\Http\Resources\NarrowedParentResource;
+use Workbench\App\Http\Resources\NarrowedWiderTestResource;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\PostStatsResource;
 use Workbench\App\Http\Resources\ReceiverMethodResource;
@@ -809,6 +810,28 @@ describe('narrowing', function () {
                 negated_true_arm_name: unknown;
             }
             TS);
+    });
+
+    test('a test naming a supertype, interface or sibling of what the subject holds never widens the arm it proves', function () {
+        config()->set('ts-publish.output_to_files', false);
+
+        expect(resolve(ResourceGenerator::class, ['findable' => NarrowedWiderTestResource::class])->content)
+            ->toContain("import type { User } from '../../models';")
+            ->toContain(<<<'TS'
+                export interface NarrowedWiderTestResource
+                {
+                    negated_model_title: string | null;
+                    negated_interface_title: string | null;
+                    negated_interface_email: string | null;
+                    negated_resource_title: string | null;
+                    negated_model_author: User | null;
+                    sibling_chain_title: string | null;
+                    supertype_chain_title: string | null;
+                    interface_chain_email: string | null;
+                    negated_chain_email: string | null;
+                    positive_model_title: string | null;
+                }
+                TS);
     });
 
     test('a $this->resource instanceof ternary narrows the model for its true arm', function () {

@@ -99,11 +99,9 @@ final class AstEngine
     }
 
     /**
-     * Build the starting scope for a located method: its subject, the file its body lives in, the classes its
-     * parameters bind, and the local variables its body assigns.
-     *
-     * A route-bound `Post $post` and an injected `Request $request` are both parameter facts the
-     * resource path never had, which is why they are seeded here rather than inside the analyzer.
+     * Build the starting scope for a located method: its subject, its body's file, the classes its parameters bind and
+     * the locals its body assigns. Parameters are seeded here because a route-bound `Post $post` or an injected
+     * `Request $request` is a fact the resource path never had.
      *
      * @internal
      */

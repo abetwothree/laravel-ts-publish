@@ -18,6 +18,8 @@ use PhpParser\Node\Stmt\Return_;
  * The early-exit `instanceof` guard pass. Hosts must also use CollectsLocalVarBindings: its write
  * collection is what decides a binding is safe, and both passes read the same statement list.
  *
+ * @phpstan-import-type VariableWrites from CollectsLocalVarBindings
+ *
  * @internal
  */
 trait CollectsInstanceofGuards
@@ -85,7 +87,7 @@ trait CollectsInstanceofGuards
      * Whether a write to the variable can change it once the guard has tested it: one that does not end before the
      * test, and does not sit in the guard's own body, which always exits.
      *
-     * @param  list<array{string, Node}>  $writes
+     * @param  VariableWrites  $writes
      */
     private function writtenAfterTest(string $name, Expr $test, If_ $guard, array $writes): bool
     {

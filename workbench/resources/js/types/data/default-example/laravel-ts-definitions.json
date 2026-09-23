@@ -11744,6 +11744,61 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\DeclaredReadingResource": {
+            "name": "DeclaredReadingResource",
+            "properties": [
+                {
+                    "name": "title",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "counts",
+                    "type": "{ a: number; b: number }",
+                    "optional": false
+                },
+                {
+                    "name": "mixed",
+                    "type": "{ a: number; b: string }",
+                    "optional": false
+                },
+                {
+                    "name": "shape",
+                    "type": "{ a: number; b: string }",
+                    "optional": false
+                },
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "comment_count",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "either",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "scalar",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "author",
+                    "type": "User",
+                    "optional": false
+                },
+                {
+                    "name": "opaque_name",
+                    "type": "string",
+                    "optional": true
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\DelegatingResource": {
             "name": "DelegatingResource",
             "properties": []
@@ -13247,6 +13302,61 @@
                 },
                 {
                     "name": "record_title",
+                    "type": "string | null",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\NarrowedWiderTestResource": {
+            "name": "NarrowedWiderTestResource",
+            "properties": [
+                {
+                    "name": "negated_model_title",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "negated_interface_title",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "negated_interface_email",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "negated_resource_title",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "negated_model_author",
+                    "type": "User | null",
+                    "optional": false
+                },
+                {
+                    "name": "sibling_chain_title",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "supertype_chain_title",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "interface_chain_email",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "negated_chain_email",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "positive_model_title",
                     "type": "string | null",
                     "optional": false
                 }

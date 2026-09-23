@@ -2911,6 +2911,23 @@ declare global {
             assigned_label: string;
             assigned_meta: WidgetConfigType;
         }
+        /**
+         * Each local's inline `@var` admits what its assignment already reads, so the reading stands: a declaration never
+         * widens a value the engine types more precisely. The engine cannot read what `$opaque` holds, so its vaguer
+         * declaration keeps the loaded relation's model, which it admits.
+         */
+        export interface DeclaredReadingResource {
+            title: string;
+            counts: { a: number; b: number };
+            mixed: { a: number; b: string };
+            shape: { a: number; b: string };
+            id: number;
+            comment_count: number;
+            either: string;
+            scalar: string;
+            author: workbench.app.models.User;
+            opaque_name?: string;
+        }
         /** Resource that delegates to parent — tests non-array return guard. */
         export interface DelegatingResource {
         }
@@ -3458,6 +3475,22 @@ declare global {
         export interface NarrowedParentResource {
             parent?: { title: string; class: string; morph: string } | null;
             record_title: string | null;
+        }
+        /**
+         * `instanceof` tests that name a supertype, an interface or a sibling of what the subject already holds. The arm a
+         * test proves reads the subject as what the test leaves of its own classes, so a wider test never widens it.
+         */
+        export interface NarrowedWiderTestResource {
+            negated_model_title: string | null;
+            negated_interface_title: string | null;
+            negated_interface_email: string | null;
+            negated_resource_title: string | null;
+            negated_model_author: workbench.app.models.User | null;
+            sibling_chain_title: string | null;
+            supertype_chain_title: string | null;
+            interface_chain_email: string | null;
+            negated_chain_email: string | null;
+            positive_model_title: string | null;
         }
         /**
          * Exercises spreading a resolved resource inside a NESTED inline array literal — a map()

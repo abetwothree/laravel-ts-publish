@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsInstanceofGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
+use AbeTwoThree\LaravelTsPublish\Ast\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclaredTotalsTraitResource;
@@ -21,6 +22,7 @@ use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\NodeFinder;
 use Workbench\App\Http\Resources\CartTotalsResource;
+use Workbench\App\Http\Resources\DeclaredReadingResource;
 use Workbench\App\Http\Resources\PostPinnedCommentsResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
@@ -44,7 +46,11 @@ function inlineVarSeededBody(string $body): array
         use CollectsInstanceofGuards;
         use CollectsLocalVarBindings;
 
-        /** @param  list<Stmt>  $stmts */
+        /**
+         * Seed the scope from the body, as the analyzer does.
+         *
+         * @param  list<Stmt>  $stmts
+         */
         public function run(array $stmts, AnalysisScope $scope): void
         {
             $this->collectLocalVarBindings($stmts, $scope);
@@ -77,7 +83,11 @@ function inlineVarReadClasses(string $body): array
     );
 }
 
-/** The expression a seeded body's final `return` hands back, with the scope that body seeded. */
+/**
+ * The expression a seeded body's final `return` hands back, with the scope that body seeded.
+ *
+ * @return array{AnalysisScope, Expr}
+ */
 function inlineVarReturned(string $body): array
 {
     [$scope, $stmts] = inlineVarSeededBody($body);
@@ -223,5 +233,68 @@ describe('an inline @var on a local assignment', function () {
 
         expect(new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class)->resolve($closure)['type'])
             ->toBe('string');
+    });
+    test('keeps a reading the declaration admits, and the loaded relation\'s model a vague declaration admits', function () {
+        config()->set('ts-publish.output_to_files', false);
+
+        expect(resolve(ResourceGenerator::class, ['findable' => DeclaredReadingResource::class])->content)
+            ->toContain("import type { User } from '../../models';")
+            ->toContain(<<<'TS'
+                export interface DeclaredReadingResource
+                {
+                    title: string;
+                    counts: { a: number; b: number };
+                    mixed: { a: number; b: string };
+                    shape: { a: number; b: string };
+                    id: number;
+                    comment_count: number;
+                    either: string;
+                    scalar: string;
+                    author: User;
+                    opaque_name?: string;
+                }
+                TS);
+    });
+
+    test('keeps a known reading it admits, fills one that is unknown or vaguer, and yields to none it contradicts', function () {
+        $resolved = function (string $body): string {
+            [$scope, $returned] = inlineVarReturned($body);
+
+            return new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class, 'toArray', null, $scope)
+                ->resolve($returned)['type'];
+        };
+
+        expect($resolved('/** @var string|null $t */ $t = $this->resource->title; return $t;'))->toBe('string')
+            ->and($resolved('/** @var array<string, int> $r */ $r = ["a" => 1, "b" => 2]; return $r;'))->toBe('{ a: number; b: number }')
+            ->and($resolved('/** @var array{a: int, b?: string} $s */ $s = ["a" => 1, "b" => "x"]; return $s;'))
+            ->toBe('{ a: number; b: string }')
+            ->and($resolved('/** @var \Workbench\App\Models\User|null $u */ $u = $this->resource->author; return $u;'))->toBe('User')
+            ->and($resolved('/** @var list<string> $l */ $l = json_decode(""); return $l;'))->toBe('string[]')
+            ->and($resolved('/** @var array{a: int} $v */ $v = (array) json_decode(""); return $v;'))->toBe('{ a: number }')
+            ->and($resolved('/** @var int $n */ $n = $this->resource->title; return $n;'))->toBe('number');
+    });
+
+    test('declines a tag whose type it cannot read to the end, such as a callable signature', function () {
+        [$scope, $returned] = inlineVarReturned('/** @var callable(int): string $d */ $d = json_decode(""); return $d;');
+
+        expect(resolve(PropertyDocblockTypeReader::class)->extractVarTag('/** @var callable(int): string $d */'))->toBeNull()
+            ->and(resolve(PropertyDocblockTypeReader::class)->extractVarTag('/** @var array{a: int $d */'))->toBeNull()
+            ->and($scope->varDocBindings)->toBe([])
+            ->and(new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class, 'toArray', null, $scope)
+                ->resolve($returned)['type'])->toBe('unknown');
+    });
+
+    test('keeps the loaded relation\'s model for a member read when the declaration admits it', function () {
+        $closure = fn (string $declared): Expr => new AstParser()->parseSource('<?php $this->whenLoaded("author", function () {
+            /** @var '.$declared.' $o */
+            $o = json_decode("");
+
+            return $o->name;
+        });')[0]->expr;
+        $resolved = fn (string $declared): string => new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class)
+            ->resolve($closure($declared))['type'];
+
+        expect($resolved('\Illuminate\Database\Eloquent\Model'))->toBe('string')
+            ->and($resolved('\Workbench\App\ValueObjects\CartTotals'))->toBe('unknown');
     });
 });

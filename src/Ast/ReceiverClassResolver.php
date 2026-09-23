@@ -227,6 +227,36 @@ final class ReceiverClassResolver
     }
 
     /**
+     * The classes an inline `@var` in force at a read of a variable names; null when none is, or it names a type that
+     * is not a loadable class.
+     *
+     * @return non-empty-list<class-string>|null
+     */
+    public function declaredClasses(Variable $variable, AnalysisScope $scope): ?array
+    {
+        $declared = $scope->declaredAt($variable);
+
+        return $declared === null ? null : $this->docblockClasses(
+            $declared['type'],
+            $declared['context'],
+            $scope->subjectReflection->getName(),
+            $declared['context']->getName(),
+        );
+    }
+
+    /**
+     * The classes a subject holds once its `instanceof` test passes: its own classes narrowed class by class, so a
+     * supertype, interface or sibling test never widens it; the tested classes when it names none.
+     *
+     * @param  non-empty-list<class-string>  $tested
+     * @return non-empty-list<class-string>
+     */
+    public function narrowedSubject(Expr $subject, array $tested, AnalysisScope $scope): array
+    {
+        return $this->narrowed($this->resolve($subject, $scope), $tested)->classes;
+    }
+
+    /**
      * Resolve a variable through the scope's bindings; an unbound variable declines.
      */
     private function fromVariable(Variable $variable, AnalysisScope $scope): ?ReceiverType
@@ -250,18 +280,18 @@ final class ReceiverClassResolver
             return new ReceiverType($guard['classes']);
         }
 
-        $declared = $scope->declaredAt($variable);
-        $declaredClasses = $declared === null ? null : $this->docblockClasses(
-            $declared['type'],
-            $declared['context'],
-            $scope->subjectReflection->getName(),
-            $declared['context']->getName(),
-        );
+        $declared = $this->declaredClasses($variable, $scope);
+        $bound = $this->fromBindings($name, $scope);
 
-        if ($declaredClasses !== null) {
-            return $this->declaredOver($declaredClasses, $this->fromBoundExpression($name, $scope));
-        }
+        // A reading the declaration admits stands; the declaration fills an unknown one and beats a contradiction.
+        return $declared === null || $bound?->within($declared) === true ? $bound : new ReceiverType($declared);
+    }
 
+    /**
+     * Resolve a variable through its model, collection, request, closure-parameter or local-assignment binding.
+     */
+    private function fromBindings(string $name, AnalysisScope $scope): ?ReceiverType
+    {
         if (isset($scope->varModelBindings[$name])) {
             return ReceiverType::of($scope->varModelBindings[$name]);
         }
@@ -274,14 +304,6 @@ final class ReceiverClassResolver
             return ReceiverType::of($scope->requestVarNames[$name]);
         }
 
-        return $this->fromBoundExpression($name, $scope);
-    }
-
-    /**
-     * Resolve a variable through the expression a closure parameter or a local assignment binds it to.
-     */
-    private function fromBoundExpression(string $name, AnalysisScope $scope): ?ReceiverType
-    {
         $bound = $scope->closureParamExprBindings[$name] ?? $scope->localVarBindings[$name] ?? null;
 
         if ($bound === null || isset($scope->resolvingLocalVars[$name])) {
@@ -295,22 +317,6 @@ final class ReceiverClassResolver
         } finally {
             unset($scope->resolvingLocalVars[$name]);
         }
-    }
-
-    /**
-     * What a variable an inline `@var` declares holds: the declared classes, or what its assignment resolves to when
-     * every class of that is one of them, so the declaration never widens a reading it agrees with.
-     *
-     * @param  non-empty-list<class-string>  $declared
-     */
-    private function declaredOver(array $declared, ?ReceiverType $assigned): ReceiverType
-    {
-        $agrees = $assigned !== null && array_all(
-            $assigned->classes,
-            fn (string $class): bool => array_any($declared, fn (string $type): bool => is_a($class, $type, true)),
-        );
-
-        return $agrees ? $assigned : new ReceiverType($declared);
     }
 
     /**
@@ -486,7 +492,7 @@ final class ReceiverClassResolver
 
     /**
      * The arm an `instanceof` condition proves: its tested read narrowed class by class, or a member read through that
-     * subject resolved with the subject narrowed, as TernaryHandler resolves the same arm's value.
+     * subject resolved under the narrowing TernaryHandler resolves the same arm's value under.
      *
      * @param  non-empty-list<class-string>  $tested
      */
@@ -496,15 +502,11 @@ final class ReceiverClassResolver
             return $this->narrowed($this->resolve($arm, $scope), $tested);
         }
 
-        if (! $this->readsThrough($arm, $subject)) {
-            return $this->resolve($arm, $scope);
-        }
+        $narrowed = $this->readsThrough($arm, $subject)
+            ? $this->resolveNarrowed($subject, $tested, $arm, $scope, fn (): ?ReceiverType => $this->resolve($arm, $scope))
+            : null;
 
-        // The subject keeps what narrowed() leaves of its own classes, so a supertype test never widens what it reads.
-        $held = $this->narrowed($this->resolve($subject, $scope), $tested)->classes;
-
-        return $this->resolveNarrowed($subject, $held, $arm, $scope, fn (): ?ReceiverType => $this->resolve($arm, $scope))
-            ?? $this->resolve($arm, $scope);
+        return $narrowed ?? $this->resolve($arm, $scope);
     }
 
     /**

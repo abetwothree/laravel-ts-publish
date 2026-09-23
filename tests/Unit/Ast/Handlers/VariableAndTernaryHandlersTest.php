@@ -564,3 +564,52 @@ it('does not narrow an arm that writes its subject, so a read after the write ho
     expect(variableHandlersResolveOn($written, Image::class, ternaryRecordScope())['type'])->toBe('{ r: unknown; t: unknown } | null')
         ->and(variableHandlersResolveOn($unwritten, Image::class, ternaryRecordScope())['type'])->toBe('{ t: string } | null');
 });
+
+/**
+ * An engine that records what a variable's class binding is while each string-literal arm resolves.
+ */
+final class TernaryClassBindingRecordingEngine implements ExpressionEngine
+{
+    /** @var array<string, list<class-string>|null> */
+    public array $classesPerArm = [];
+
+    /** Watches the scope the ternary under test narrows, for one variable. */
+    public function __construct(private AnalysisScope $scope, private string $variable) {}
+
+    /** @return array<string, mixed> */
+    public function resolve(Expr $expr): array
+    {
+        if ($expr instanceof String_) {
+            $this->classesPerArm[$expr->value] = $this->scope->varClassBindings[$this->variable] ?? null;
+        }
+
+        return ['type' => 'string', 'optional' => false];
+    }
+
+    /** Fails the test: no method is spread in this case. */
+    public function spreadAnalysis(string $methodName): ?MethodAnalysis
+    {
+        throw new RuntimeException('spreadAnalysis() must not be called in this case');
+    }
+
+    /** Fails the test: no array is analyzed in this case. */
+    public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
+    {
+        throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
+    }
+}
+
+it('binds the proven arm\'s subject to what the test leaves of its own classes, as the receiver path does', function (string $php, array $classes) {
+    $scope = new AnalysisScope(new ReflectionClass(PostCommentAuthorsResource::class), Post::class);
+    $scope->localVarBindings['post'] = new AstParser()->parseSource('<?php $this->resource;')[0]->expr;
+    $engine = new TernaryClassBindingRecordingEngine($scope, 'post');
+
+    (new TernaryHandler)->resolve(new AstParser()->parseSource('<?php '.$php.';')[0]->expr, $scope, $engine);
+
+    expect($engine->classesPerArm)->toBe($classes)
+        ->and($scope->varClassBindings)->toBe([]);
+})->with([
+    'a supertype' => ['$post instanceof \Illuminate\Database\Eloquent\Model ? "if" : "else"', ['if' => [Post::class], 'else' => null]],
+    'a negated interface' => ['! $post instanceof \JsonSerializable ? "if" : "else"', ['else' => [Post::class], 'if' => null]],
+    'a sibling chain' => ['$post instanceof \Workbench\App\Models\Post || $post instanceof \Workbench\App\Models\Comment ? "if" : "else"', ['if' => [Post::class], 'else' => null]],
+]);

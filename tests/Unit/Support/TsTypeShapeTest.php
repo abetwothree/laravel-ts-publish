@@ -106,3 +106,39 @@ describe('elementType', function () {
             ->and(TsTypeShape::elementType('[]'))->toBeNull();
     });
 });
+
+describe('admits', function () {
+    test('admits a candidate every value of which the type holds', function (string $type, string $candidate) {
+        expect(TsTypeShape::admits($type, $candidate))->toBeTrue();
+    })->with([
+        'itself' => ['User', 'User'],
+        'one arm of a union' => ['string | null', 'string'],
+        'a union within a wider union' => ['string | number | boolean', 'string | number'],
+        'a literal of its primitive' => ['string', "'draft' | 'published'"],
+        'a number and a boolean literal' => ['number | boolean', '1 | true'],
+        'a parenthesized union arm' => ['string | number | null', '(string | number) | null'],
+        'an array of an admitted element' => ['(string | null)[]', 'string[]'],
+        'the empty list' => ['string[]', 'never[]'],
+        'a literal under a string-keyed record' => ['Record<string, number | string>', '{ a: number; b: string }'],
+        'a record with the same key' => ['Record<string, number | null>', 'Record<string, number>'],
+        'a present key for an optional one' => ['{ a: number; b?: string }', '{ a: number; b: string }'],
+        'an absent optional key' => ['{ a: number; b?: string }', '{ a: number }'],
+        'a key the type does not name' => ['{ a: number }', '{ a: number; c: boolean }'],
+        'a quoted key' => ["{ 'a-b': number }", "{ 'a-b': number }"],
+        'anything under unknown' => ['unknown', '{ a: number }'],
+    ]);
+
+    test('declines a candidate it cannot show the type holds', function (string $type, string $candidate) {
+        expect(TsTypeShape::admits($type, $candidate))->toBeFalse();
+    })->with([
+        'a wider union' => ['string', 'string | null'],
+        'another primitive' => ['number', 'string'],
+        'another name' => ['User', 'Post'],
+        'unknown' => ['string', 'unknown'],
+        'an unknown member' => ['{ a: string }', '{ a: unknown }'],
+        'a missing required key' => ['{ a: number; b: string }', '{ a: number }'],
+        'an optional key for a required one' => ['{ a: number; b: string }', '{ a: number; b?: string }'],
+        'a number-keyed record over a literal' => ['Record<number, string>', '{ a: string }'],
+        'an array of another element' => ['string[]', 'number[]'],
+    ]);
+});

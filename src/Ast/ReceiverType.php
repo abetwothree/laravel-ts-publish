@@ -45,6 +45,19 @@ final readonly class ReceiverType
     }
 
     /**
+     * Whether every class the receiver holds is one of the given classes, or a subtype of one.
+     *
+     * @param  non-empty-list<class-string>  $classes
+     */
+    public function within(array $classes): bool
+    {
+        return array_all(
+            $this->classes,
+            fn (string $class): bool => array_any($classes, fn (string $type): bool => is_a($class, $type, true)),
+        );
+    }
+
+    /**
      * The receiver's classes that are Eloquent models.
      *
      * @return list<class-string<Model>>
