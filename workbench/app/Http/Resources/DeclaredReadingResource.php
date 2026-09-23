@@ -11,9 +11,9 @@ use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 
 /**
- * Each local's inline `@var` admits what its assignment already reads, so the reading stands: a declaration never
- * widens a value the engine types more precisely. The engine cannot read what `$opaque` holds, so its vaguer
- * declaration keeps the loaded relation's model, which it admits.
+ * The engine reads each local's assigned value as a known type, so that reading stands over the inline `@var` and a
+ * wider declaration never widens it. It cannot read what `$opaque` holds, so the declaration applies there, and inside
+ * whenLoaded() the loaded relation's model, which is a `Model` too, types the member read.
  *
  * @mixin Post
  */

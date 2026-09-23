@@ -194,9 +194,9 @@ final class VariableHandler implements ExpressionHandler
     }
 
     /**
-     * A declared local's value: the engine's reading of the value its annotated assignment holds when that reading is
-     * known, else the `@var` type when that is precise enough to publish. A reading that left out an untypable union
-     * arm is not known, since what is left, such as a lone `null`, is not the value.
+     * A declared local's value: the engine's reading of its annotated assignment's value, unless that is vague or only
+     * the `null` an untypable arm's drop left, as AccessorBodyAnalyzer reads a body. Then the `@var` type, if it is
+     * precise enough to publish, optional where the reading was, since Laravel drops a missing conditional value.
      *
      * @param  VarDocBinding  $span
      * @return ValueExpressionResult|null
@@ -206,14 +206,17 @@ final class VariableHandler implements ExpressionHandler
         $dropped = DroppedUnionArms::dropped();
         $reading = $this->boundExpressionValue($name, $span['expr'], $scope, $engine);
 
-        if ($reading !== null && ! TsTypeString::isVagueTsType($reading['type']) && DroppedUnionArms::dropped() === $dropped) {
+        if ($reading !== null
+            && ! TsTypeString::isVagueTsType($reading['type'])
+            && ($reading['type'] !== 'null' || DroppedUnionArms::dropped() === $dropped)
+        ) {
             return $reading;
         }
 
         $declared = resolve(PropertyDocblockTypeReader::class)->readDeclared($span['type'], $span['context']);
 
         return $declared !== null && ! TsTypeString::isVagueTsType($declared['type']) && ValueResult::namesOnlyPublishedModels($declared)
-            ? $declared
+            ? [...$declared, 'optional' => $reading['optional'] ?? false]
             : $reading;
     }
 
@@ -238,17 +241,22 @@ final class VariableHandler implements ExpressionHandler
     }
 
     /**
-     * The model a whenLoaded closure's relation holds, as a guess at an unbound variable; none when an inline `@var`
-     * declares classes it is not one of, since the receiver path then types the read from that declaration.
+     * The model a whenLoaded closure's relation holds, as a guess at an unbound variable. A declared local keeps it
+     * only where it is one of the classes the receiver path reads it as: its assigned value's, else the `@var`'s.
      *
      * @return class-string<Model>|null
      */
     private function ambientModel(Variable $variable, AnalysisScope $scope): ?string
     {
         $ambient = $scope->closureRelationModelClass;
-        $declared = resolve(ReceiverClassResolver::class)->declaredClasses($variable, $scope);
 
-        return $ambient !== null && ($declared === null || ReceiverType::of($ambient)->within($declared)) ? $ambient : null;
+        if ($ambient === null || $scope->declaredAt($variable) === null) {
+            return $ambient;
+        }
+
+        $held = resolve(ReceiverClassResolver::class)->resolve($variable, $scope);
+
+        return $held === null || ReceiverType::of($ambient)->within($held->classes) ? $ambient : null;
     }
 
     /**

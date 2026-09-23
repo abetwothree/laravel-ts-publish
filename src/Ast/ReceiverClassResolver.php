@@ -45,6 +45,7 @@ use ReflectionUnionType;
  * The rules are in docs/components/receiver-types.md § Receiver resolution.
  *
  * @phpstan-import-type InstanceofProof from ReadsInstanceofChains
+ * @phpstan-import-type VarDocBinding from AnalysisScope
  *
  * @internal
  */
@@ -227,24 +228,6 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The classes an inline `@var` in force at a read of a variable names; null when none is, or it names a type that
-     * is not a loadable class.
-     *
-     * @return non-empty-list<class-string>|null
-     */
-    public function declaredClasses(Variable $variable, AnalysisScope $scope): ?array
-    {
-        $declared = $scope->declaredAt($variable);
-
-        return $declared === null ? null : $this->docblockClasses(
-            $declared['type'],
-            $declared['context'],
-            $scope->subjectReflection->getName(),
-            $declared['context']->getName(),
-        );
-    }
-
-    /**
      * The classes a subject holds once its `instanceof` test passes: its own classes narrowed class by class, so a
      * supertype, interface or sibling test never widens it; the tested classes when it names none.
      *
@@ -292,7 +275,19 @@ final class ReceiverClassResolver
 
         return $assigned !== null && array_any($assigned->classes, $this->isNameable(...))
             ? $assigned
-            : $this->typeOf($this->declaredClasses($variable, $scope)) ?? $assigned;
+            : $this->typeOf($this->declaredClasses($span, $scope)) ?? $assigned;
+    }
+
+    /**
+     * The classes an inline `@var` names, read as a property's `@var` is; null when it names a type that is not a
+     * loadable class.
+     *
+     * @param  VarDocBinding  $span
+     * @return non-empty-list<class-string>|null
+     */
+    private function declaredClasses(array $span, AnalysisScope $scope): ?array
+    {
+        return $this->docblockClasses($span['type'], $span['context'], $scope->subjectReflection->getName(), $span['context']->getName());
     }
 
     /**

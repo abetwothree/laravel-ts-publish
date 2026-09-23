@@ -13,11 +13,16 @@ return [
     // operand. The dropped arm is an enum-case fetch, which no rule types yet — a candidate repair.
     ['subject' => 'Workbench\\App\\Http\\Resources\\CoalesceChannelResource', 'line' => 30, 'expression' => '\\Workbench\\App\\Enums\\OrderStatus::Pending', 'site' => 'coalesce-right'],
     // Deliberate: each arm is the value the engine cannot type that the local's inline `@var` types instead, which is
-    // the fixture's point. The arm still drops while the assigned value is read, and so marks that reading as vague.
-    ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource', 'line' => 32, 'expression' => 'json_decode(\'"x"\')', 'site' => 'closure-union'],
-    ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource', 'line' => 35, 'expression' => 'json_decode(\'"x"\')', 'site' => 'closure-union'],
-    ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource', 'line' => 38, 'expression' => 'json_decode(\'"x"\')', 'site' => 'closure-union'],
-    ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource', 'line' => 41, 'expression' => 'json_decode(\'"x"\')', 'site' => 'closure-union'],
+    // the fixture's point. Where the arm leaves only `null`, its drop marks the assigned value's reading as vague.
+    ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource', 'line' => 33, 'expression' => 'json_decode(\'"x"\')', 'site' => 'closure-union'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource', 'line' => 36, 'expression' => 'json_decode(\'"x"\')', 'site' => 'closure-union'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource', 'line' => 39, 'expression' => 'json_decode(\'"x"\')', 'site' => 'closure-union'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource', 'line' => 42, 'expression' => 'json_decode(\'"x"\')', 'site' => 'closure-union'],
+    // Deliberate: arms the same fixture drops beside a reading that is not only `null`, which stands over the tag.
+    ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource', 'line' => 81, 'expression' => 'json_decode(\'"x"\')', 'site' => 'closure-union'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource', 'line' => 86, 'expression' => 'json_decode(\'"x"\')', 'site' => 'closure-union'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource', 'line' => 92, 'expression' => 'json_decode(\'"x"\')', 'site' => 'closure-union'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource', 'line' => 96, 'expression' => '\\Workbench\\App\\Enums\\Status::Draft', 'site' => 'coalesce-right'],
     // Deliberate: moneyValue() returns OpaqueHandle, which the acceptor rejects because no published
     // file exists to import it from — the sibling key `money_value` publishes unknown for that reason.
     ['subject' => 'Workbench\\App\\Http\\Resources\\StaticCallResource', 'line' => 67, 'expression' => '\\Workbench\\App\\Services\\UrlService::moneyValue()', 'site' => 'coalesce-left'],

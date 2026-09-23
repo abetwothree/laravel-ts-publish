@@ -9,15 +9,16 @@ use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use JsonSerializable;
+use Workbench\App\Enums\Status;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 use Workbench\App\ValueObjects\CartTotals;
 
 /**
- * An inline `@var` types a local only where the engine's reading of the assigned value is vague: an arm it cannot
- * type, or a value it cannot read. A known reading stands whatever the tag says, a closure parameter reassigned under
- * a tag takes its new value, and a tag the package cannot fully read binds nothing.
+ * An inline `@var` types a local only where the engine's reading of the assigned value is vague: a value it cannot
+ * read, or a lone `null` left once an arm it cannot type dropped. Any other reading stands, a closure parameter
+ * reassigned under a tag takes its new value, and a tag with a form the package cannot read binds nothing.
  *
  * @mixin Post
  */
@@ -64,6 +65,36 @@ final class DeclaredPrecedenceResource extends JsonResource
         /** @var Post&JsonSerializable $intersection */
         $intersection = $this->resource->getRelationValue('x');
 
+        /** @var list{int, string} $tuple */
+        $tuple = json_decode('[1,"a"]', true);
+
+        /** @var object{a: int} $decoded */
+        $decoded = json_decode('{"a":1}');
+
+        /** @var array<'a'|'b', int> $literalKeys */
+        $literalKeys = json_decode('{"a":1,"b":2}', true);
+
+        /** @var array{'a': int, b: string} $quotedKey */
+        $quotedKey = json_decode('{"a":1,"b":"x"}', true);
+
+        /** @var string|null $keptTitle */
+        $keptTitle = $this->resource->id > 0 ? $this->resource->title : json_decode('"x"');
+
+        /** @var array<string, int|string> $keptRecord */
+        $keptRecord = [
+            'a' => $this->resource->id,
+            'b' => $this->resource->id > 0 ? $this->resource->title : json_decode('"x"'),
+        ];
+
+        /** @var array{a: int, b: string|null} $keptShape */
+        $keptShape = [
+            'a' => $this->resource->id,
+            'b' => $this->resource->id > 0 ? $this->resource->title : json_decode('"x"'),
+        ];
+
+        /** @var Status|null $keptStatus */
+        $keptStatus = $this->resource->status ?? Status::Draft;
+
         return [
             'picked' => $picked,
             'picked_strict' => $pickedStrict,
@@ -77,6 +108,14 @@ final class DeclaredPrecedenceResource extends JsonResource
             'callable_shape' => $callableShape,
             'closure' => $closure,
             'intersection' => $intersection,
+            'tuple' => $tuple,
+            'decoded' => $decoded,
+            'literal_keys' => $literalKeys,
+            'quoted_key' => $quotedKey,
+            'kept_title' => $keptTitle,
+            'kept_record' => $keptRecord,
+            'kept_shape' => $keptShape,
+            'kept_status' => $keptStatus,
             'length' => $this->whenHas('title', function ($title) {
                 /** @var int $title */
                 $title = strlen($title);

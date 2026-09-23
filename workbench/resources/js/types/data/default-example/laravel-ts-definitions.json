@@ -11744,6 +11744,31 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\DeclaredConditionalResource": {
+            "name": "DeclaredConditionalResource",
+            "properties": [
+                {
+                    "name": "reviewer",
+                    "type": "User",
+                    "optional": true
+                },
+                {
+                    "name": "flags",
+                    "type": "{ a: number }",
+                    "optional": true
+                },
+                {
+                    "name": "views",
+                    "type": "number",
+                    "optional": true
+                },
+                {
+                    "name": "author_name",
+                    "type": "string",
+                    "optional": true
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource": {
             "name": "DeclaredPrecedenceResource",
             "properties": [
@@ -11759,7 +11784,7 @@
                 },
                 {
                     "name": "picked_or_zero",
-                    "type": "number | string",
+                    "type": "number",
                     "optional": false
                 },
                 {
@@ -11805,6 +11830,46 @@
                 {
                     "name": "intersection",
                     "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "tuple",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "decoded",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "literal_keys",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "quoted_key",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "kept_title",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "kept_record",
+                    "type": "{ a: number; b: string }",
+                    "optional": false
+                },
+                {
+                    "name": "kept_shape",
+                    "type": "{ a: number; b: string }",
+                    "optional": false
+                },
+                {
+                    "name": "kept_status",
+                    "type": "StatusType",
                     "optional": false
                 },
                 {

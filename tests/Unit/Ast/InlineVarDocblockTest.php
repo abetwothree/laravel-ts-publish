@@ -22,6 +22,7 @@ use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\NodeFinder;
 use Workbench\App\Http\Resources\CartTotalsResource;
+use Workbench\App\Http\Resources\DeclaredConditionalResource;
 use Workbench\App\Http\Resources\DeclaredPrecedenceResource;
 use Workbench\App\Http\Resources\DeclaredReadingResource;
 use Workbench\App\Http\Resources\PostPinnedCommentsResource;
@@ -276,21 +277,74 @@ describe('an inline @var on a local assignment', function () {
             ->and($resolved('/** @var int $n */ $n = $this->resource->title; return $n;'))->toBe('string');
     });
 
-    test('declines a tag whose type it cannot read to the end, such as a callable signature', function () {
-        [$scope, $returned] = inlineVarReturned('/** @var callable(int): string $d */ $d = json_decode(""); return $d;');
+    test('declines a tag holding any form outside the ones the docblock resolution reads in full', function (string $type) {
+        [$scope, $returned] = inlineVarReturned('/** @var '.$type.' $d */ $d = json_decode(""); return $d;');
 
-        $reader = resolve(PropertyDocblockTypeReader::class);
-
-        expect($reader->extractVarTag('/** @var callable(int): string $d */'))->toBeNull()
-            ->and($reader->extractVarTag('/** @var callable(int):string $d */'))->toBeNull()
-            ->and($reader->extractVarTag('/** @var array{fn: callable(int): string} $d */'))->toBeNull()
-            ->and($reader->extractVarTag('/** @var \Closure(int): string $d */'))->toBeNull()
-            ->and($reader->extractVarTag('/** @var \Workbench\App\Models\Post&\JsonSerializable $d */'))->toBeNull()
-            ->and($reader->extractVarTag('/** @var array{a: int $d */'))->toBeNull()
+        expect(resolve(PropertyDocblockTypeReader::class)->extractVarTag('/** @var '.$type.' $d */', new ReflectionClass(DeclaredPrecedenceResource::class)))
+            ->toBeNull()
             ->and($scope->varDocBindings)->toBe([])
             ->and(new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class, 'toArray', null, $scope)
                 ->resolve($returned)['type'])->toBe('unknown');
-    });
+    })->with([
+        'a callable signature' => ['callable(int): string'],
+        'a callable signature with no space' => ['callable(int):string'],
+        'a void callable' => ['callable():void'],
+        'a pure callable' => ['pure-callable(int): string'],
+        'a callable in a shape' => ['array{fn: callable(int): string}'],
+        'a callable in a list' => ['list<callable(int): string>'],
+        'a callable in a record' => ['array<string, callable(int): string>'],
+        'a closure signature' => ['\Closure(int): string'],
+        'an intersection' => ['\Workbench\App\Models\Post&\JsonSerializable'],
+        'an unclosed shape' => ['array{a: int'],
+        'a tuple list' => ['list{int, string}'],
+        'an object shape' => ['object{a: int}'],
+        'literal keys' => ["array<'a'|'b', int>"],
+        'a quoted shape key, which the shape reader skips' => ["array{'a': int, b: string}"],
+        'a positional shape' => ['array{int, string}'],
+        'an empty shape' => ['array{}'],
+        'a bracket list' => ['int[]'],
+        'a parenthesized union' => ['(int|string)[]'],
+        'a key union' => ['array<int|string, int>'],
+        'an array-key key' => ['array<array-key, int>'],
+        'a one-parameter array' => ['array<int>'],
+        'a one-parameter collection' => ['\Illuminate\Support\Collection<\Workbench\App\Models\Comment>'],
+        'a generic that is not a collection' => ['\Workbench\App\Models\Post<int, int>'],
+        'a pseudo-type' => ['non-empty-string'],
+        'an integer range' => ['int<0, max>'],
+        'integer literals' => ['1|2|3'],
+        'a class string' => ['class-string<\Workbench\App\Models\Post>'],
+        'a bare array' => ['array'],
+        'mixed' => ['mixed'],
+        'object' => ['object'],
+        'scalar' => ['scalar'],
+        'a missing class' => ['\No\Such\Totals'],
+        'a global class the file does not import' => ['Exception'],
+        'a nullable union' => ['?int|string'],
+        'a nullable member' => ['int|?string'],
+        'a dangling union' => ['string|'],
+    ]);
+
+    test('binds a tag built only from supported forms, as written', function (string $type) {
+        expect(resolve(PropertyDocblockTypeReader::class)->extractVarTag('/** @var '.$type.' $d */', new ReflectionClass(DeclaredPrecedenceResource::class)))
+            ->toBe([$type, 'd']);
+    })->with([
+        'each scalar' => ['int|string|bool|float|null|true|false'],
+        'a nullable scalar' => ['?int'],
+        'an imported class' => ['CartTotals'],
+        'an imported interface' => ['MustVerifyEmail'],
+        'a nullable model' => ['?User'],
+        'a union of models' => ['Comment|User|null'],
+        'a qualified enum' => ['\Workbench\App\Enums\Status'],
+        'a list' => ['list<User|null>'],
+        'a list of nullables' => ['list<?int>'],
+        'an int-keyed array' => ['array<int, User>'],
+        'a string-keyed array of lists' => ['array<string, list<int>>'],
+        'a shape' => ['array{a: int, b?: string, c: ?int, d: array{e: list<string>}}'],
+        'a shape with a trailing comma' => ['array{a: int,}'],
+        'a list of shapes' => ['list<array{a: int}>'],
+        'a support collection' => ['\Illuminate\Support\Collection<int, Comment>'],
+        'an Eloquent collection' => ['?\Illuminate\Database\Eloquent\Collection<string, User>'],
+    ]);
 
     test('keeps the loaded relation\'s model for a member read when the declaration admits it', function () {
         $closure = fn (string $declared): Expr => new AstParser()->parseSource('<?php $this->whenLoaded("author", function () {
@@ -335,8 +389,15 @@ describe('an inline @var on a local assignment', function () {
             ->toBe('string | null')
             ->and($value('/** @var string $b */ $b = $this->resource->id > 0 ? json_decode("\"x\"") : null; return $b;'))->toBe('string')
             ->and($value('/** @var int|string $c */ $c = $this->resource->id > 0 ? json_decode("\"x\"") : 0; return $c;'))
-            ->toBe('number | string')
+            ->toBe('number')
             ->and($value('/** @var string|null $d */ $d = json_decode("\"x\"") ?: null; return $d;'))->toBe('string | null')
+            ->and($value('/** @var string|null $k */ $k = $this->resource->id > 0 ? $this->resource->title : json_decode("\"x\""); return $k;'))
+            ->toBe('string')
+            ->and($value('/** @var string|int $k */ $k = $this->resource->title ?: json_decode("1"); return $k;'))->toBe('string')
+            ->and($value('/** @var array<string, int|string> $k */ $k = ["a" => $this->resource->id, "b" => $this->resource->id > 0 ? $this->resource->title : json_decode("\"x\"")]; return $k;'))
+            ->toBe('{ a: number; b: string }')
+            ->and($value('/** @var \Workbench\App\Enums\Status|null $k */ $k = $this->resource->status ?? \Workbench\App\Enums\Status::Draft; return $k;'))
+            ->toBe('StatusType')
             ->and($value('/** @var string $n */ $n = null; return $n;'))->toBe('null')
             ->and($receiver('/** @var \Workbench\App\Models\Comment $c */ $c = $this->author; return $c;'))->toBe([User::class])
             ->and($receiver('/** @var \Illuminate\Contracts\Auth\MustVerifyEmail $k */ $k = $this->author; return $k;'))->toBe([User::class])
@@ -346,6 +407,31 @@ describe('an inline @var on a local assignment', function () {
             ->toBe([SubscribedTeam::class])
             ->and($receiver('/** @var \Workbench\App\Models\User $u */ $u = new \Illuminate\Database\Eloquent\Model; return $u;'))
             ->toBe([User::class]);
+    });
+
+    test('keeps a conditional value the tag types optional, since Laravel drops the key when the condition fails', function () {
+        $resolved = function (string $body): array {
+            [$scope, $returned] = inlineVarReturned($body);
+            $result = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class, 'toArray', null, $scope)
+                ->resolve($returned);
+
+            return [$result['type'], $result['optional']];
+        };
+
+        expect($resolved('/** @var \Workbench\App\Models\User $a */ $a = $this->whenLoaded("undeclaredRelation"); return $a;'))
+            ->toBe(['User', true])
+            ->and($resolved('/** @var array{a: int} $b */ $b = $this->when($request->boolean("x"), fn () => json_decode("{}", true)); return $b;'))
+            ->toBe(['{ a: number }', true])
+            ->and($resolved('/** @var int $c */ $c = $this->whenHas("undeclared_attr"); return $c;'))->toBe(['number', true])
+            ->and($resolved('/** @var int $n */ $n = json_decode("1"); return $n;'))->toBe(['number', false]);
+    });
+
+    test('lets a known reading of the assigned value stand over the loaded relation\'s model inside a whenLoaded closure', function () {
+        [$scope, $returned] = inlineVarReturned('/** @var \Illuminate\Database\Eloquent\Model $m */ $m = $this->resource->author;
+            return $this->whenLoaded("comments", fn () => $m->name);');
+
+        expect(new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class, 'toArray', null, $scope)
+            ->resolve($returned)['type'])->toBe('string');
     });
 
     test('types a closure parameter reassigned under a tag from its new value, not the value it was passed', function () {
@@ -365,13 +451,14 @@ describe('an inline @var on a local assignment', function () {
         config()->set('ts-publish.output_to_files', false);
 
         expect(resolve(ResourceGenerator::class, ['findable' => DeclaredPrecedenceResource::class])->content)
+            ->toContain("import type { StatusType } from '../../enums';")
             ->toContain("import type { Comment } from '../../models';")
             ->toContain(<<<'TS'
                 export interface DeclaredPrecedenceResource
                 {
                     picked: string | null;
                     picked_strict: string;
-                    picked_or_zero: number | string;
+                    picked_or_zero: number;
                     elvis: string | null;
                     literal: { a: number };
                     heading: string;
@@ -381,10 +468,34 @@ describe('an inline @var on a local assignment', function () {
                     callable_shape: unknown;
                     closure: unknown;
                     intersection: unknown;
+                    tuple: unknown;
+                    decoded: unknown;
+                    literal_keys: unknown;
+                    quoted_key: unknown;
+                    kept_title: string;
+                    kept_record: { a: number; b: string };
+                    kept_shape: { a: number; b: string };
+                    kept_status: StatusType;
                     length?: number;
                     transformed_length?: number;
                     author_name?: string;
                     first_comment?: Comment | null;
+                }
+                TS);
+    });
+
+    test('pins an optional declared local and the whenLoaded() rule through a workbench resource', function () {
+        config()->set('ts-publish.output_to_files', false);
+
+        expect(resolve(ResourceGenerator::class, ['findable' => DeclaredConditionalResource::class])->content)
+            ->toContain("import type { User } from '../../models';")
+            ->toContain(<<<'TS'
+                export interface DeclaredConditionalResource
+                {
+                    reviewer?: User;
+                    flags?: { a: number };
+                    views?: number;
+                    author_name?: string;
                 }
                 TS);
     });

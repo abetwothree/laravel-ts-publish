@@ -2912,14 +2912,25 @@ declare global {
             assigned_meta: WidgetConfigType;
         }
         /**
-         * An inline `@var` types a local only where the engine's reading of the assigned value is vague: an arm it cannot
-         * type, or a value it cannot read. A known reading stands whatever the tag says, a closure parameter reassigned under
-         * a tag takes its new value, and a tag the package cannot fully read binds nothing.
+         * Locals holding a conditional value the engine cannot read, or read inside a whenLoaded() closure. A key the `@var`
+         * types stays optional, since Laravel drops it when the condition fails, and inside the closure a known reading of
+         * the assigned value stands over the loaded relation's model.
+         */
+        export interface DeclaredConditionalResource {
+            reviewer?: workbench.app.models.User;
+            flags?: { a: number };
+            views?: number;
+            author_name?: string;
+        }
+        /**
+         * An inline `@var` types a local only where the engine's reading of the assigned value is vague: a value it cannot
+         * read, or a lone `null` left once an arm it cannot type dropped. Any other reading stands, a closure parameter
+         * reassigned under a tag takes its new value, and a tag with a form the package cannot read binds nothing.
          */
         export interface DeclaredPrecedenceResource {
             picked: string | null;
             picked_strict: string;
-            picked_or_zero: number | string;
+            picked_or_zero: number;
             elvis: string | null;
             literal: { a: number };
             heading: string;
@@ -2929,15 +2940,23 @@ declare global {
             callable_shape: unknown;
             closure: unknown;
             intersection: unknown;
+            tuple: unknown;
+            decoded: unknown;
+            literal_keys: unknown;
+            quoted_key: unknown;
+            kept_title: string;
+            kept_record: { a: number; b: string };
+            kept_shape: { a: number; b: string };
+            kept_status: workbench.app.enums.StatusType;
             length?: number;
             transformed_length?: number;
             author_name?: string;
             first_comment?: workbench.app.models.Comment | null;
         }
         /**
-         * Each local's inline `@var` admits what its assignment already reads, so the reading stands: a declaration never
-         * widens a value the engine types more precisely. The engine cannot read what `$opaque` holds, so its vaguer
-         * declaration keeps the loaded relation's model, which it admits.
+         * The engine reads each local's assigned value as a known type, so that reading stands over the inline `@var` and a
+         * wider declaration never widens it. It cannot read what `$opaque` holds, so the declaration applies there, and inside
+         * whenLoaded() the loaded relation's model, which is a `Model` too, types the member read.
          */
         export interface DeclaredReadingResource {
             title: string;

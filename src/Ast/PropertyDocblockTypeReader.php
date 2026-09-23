@@ -16,7 +16,7 @@ use ReflectionProperty;
  * @phpstan-import-type TypeScriptTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
  *
  * @phpstan-type VarTag = array{string, string|null}
- * @phpstan-type CapturedTag = array{string, string, bool}
+ * @phpstan-type CapturedTag = array{string, string}
  *
  * @internal
  */
@@ -71,16 +71,16 @@ final class PropertyDocblockTypeReader
 
     /**
      * Capture an inline `@var` on a local assignment: its type, and the variable it names, null when it names none.
-     * Null for a type the docblock resolution cannot read in full: one that does not read to its end, or holds a
-     * callable or closure signature, a parenthesized group or an intersection.
+     * Null for a type with any part outside VarTypeWhitelist, whose forms the docblock resolution reads in full.
      *
+     * @param  ReflectionClass<object>  $context  the class or trait whose file's imports and namespace resolve it
      * @return VarTag|null
      */
-    public function extractVarTag(string $docComment): ?array
+    public function extractVarTag(string $docComment, ReflectionClass $context): ?array
     {
         $tag = $this->captureTag($docComment, '/(?<![\w-])@var\s+/');
 
-        if ($tag === null || $tag[0] === '' || ! $tag[2] || strpbrk($tag[0], '(&') !== false) {
+        if ($tag === null || ! VarTypeWhitelist::for($context)->accepts($tag[0])) {
             return null;
         }
 
@@ -108,7 +108,7 @@ final class PropertyDocblockTypeReader
 
     /**
      * Capture the type expression after the first match of a tag pattern, stopping at the separator that ends it, with
-     * the text that follows it and whether the type read to its end: brackets closed, and no `:` left dangling.
+     * the text that follows it.
      *
      * @return CapturedTag|null
      */
@@ -150,7 +150,7 @@ final class PropertyDocblockTypeReader
 
         $type = trim($type);
 
-        return [$type, substr($rest, $end), $depth === 0 && ! str_ends_with($type, ':')];
+        return [$type, substr($rest, $end)];
     }
 
     /**

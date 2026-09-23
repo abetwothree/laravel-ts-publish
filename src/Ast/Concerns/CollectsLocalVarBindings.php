@@ -181,7 +181,8 @@ trait CollectsLocalVarBindings
         array $writes,
         AnalysisScope $scope,
     ): void {
-        $tag = resolve(PropertyDocblockTypeReader::class)->extractVarTag((string) $assignment->getDocComment()?->getText());
+        $tag = resolve(PropertyDocblockTypeReader::class)
+            ->extractVarTag((string) $assignment->getDocComment()?->getText(), $scope->declaringFileClass);
 
         if ($tag === null || ($tag[1] !== null && $tag[1] !== $name)) {
             return;

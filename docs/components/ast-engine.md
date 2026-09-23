@@ -480,26 +480,31 @@ has a single expression and no statement list, so only the parameter suppression
 `$x = …;` and writes a `varDocBindings` span. The span starts after that statement and ends where the next top-level
 statement holding a write to `$x` starts, through `writesFrom()`, the position-ordered rule the guard pass reads its
 writes by. A loop that writes `$x` ends the span where the loop starts, since a read earlier in its body can follow
-the write on the next pass. A tag naming another variable, a tag whose type the docblock resolution cannot read in
-full (a callable or closure signature, a parenthesized group, an intersection), and a second write inside the
-assigning statement bind nothing. `T` resolves against the imports and namespace of
-`AnalysisScope::$declaringFileClass`, a trait's file for a trait's method.
+the write on the next pass. A tag naming another variable, a tag with any part outside `VarTypeWhitelist`'s forms,
+which the docblock resolution reads in full, and a second write inside the assigning statement bind nothing. `T`
+resolves against the imports and namespace of `AnalysisScope::$declaringFileClass`, a trait's file for a trait's
+method.
 
 A read in the span takes the engine's reading of the assigned value itself, never an earlier binding of `$x`, which
-the assignment replaced. That reading stands whenever it is known; `T` types the read only where it is vague.
+the assignment replaced, except a `$x->prop` or `$x->m()` on a `varModelBindings`-bound parameter or loop variable,
+which `VariableHandler` reads from that binding first. That reading stands whenever it is known; `T` types the read
+only where it is vague.
 
 - **Receivers.** `ReceiverClassResolver::fromVariable()` reads the assigned value's classes, and names `T`'s, as it does
   a property's `@var`, only when those are none or only models with no published file, such as `Model`.
 - **Values.** `VariableHandler` reads the assigned value, and publishes `T`, read as `PropertyDocblockTypeReader` reads
-  a property's `@var`, only when that reading is vague by `TsTypeString::isVagueTsType()` or dropped an untypable union
-  arm (`DroppedUnionArms::dropped()`), and `T` itself is precise and names only published models.
+  a property's `@var`, only when that reading is vague by `TsTypeString::isVagueTsType()` or is only the `null` an
+  untypable union arm's drop left (`DroppedUnionArms::dropped()`, as `AccessorBodyAnalyzer` reads a body), and `T`
+  itself is precise and names only published models. `T` keeps the reading's `optional`.
 - **Ambient models.** Inside a `whenLoaded()` closure, a declared local's `$x->prop` and `$x->m()` keep the closure's
-  relation model when `T` admits it, and resolve through the receiver path otherwise.
+  relation model only when it is one of the classes the receiver path reads `$x` as, and resolve through that path
+  otherwise.
 
 The pass does not see a write through a by-reference argument, or through a reference taken before the assignment
 (`$r = &$x;`, a closure's `use (&$x)`), so a span can outlive such a write. `CartTotalsResource`,
-`PostPinnedCommentsResource`, `DeclaredReadingResource` and `DeclaredPrecedenceResource` are the fixtures;
-`DeclaredTotalsTraitResource`, a test fixture, pins the name resolution through a trait's file.
+`PostPinnedCommentsResource`, `DeclaredReadingResource`, `DeclaredPrecedenceResource` and
+`DeclaredConditionalResource` are the fixtures; `DeclaredTotalsTraitResource`, a test fixture, pins the name
+resolution through a trait's file.
 
 ### What deliberately stays unbound
 
