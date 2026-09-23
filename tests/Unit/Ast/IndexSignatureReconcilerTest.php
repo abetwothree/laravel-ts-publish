@@ -179,15 +179,15 @@ test('a union keeps its undefined arm when another arm names undefined only insi
     ],
 ]);
 
-test('a string literal with an escaped quote joins whole, whatever its text holds', function (string $cast, string $expected) {
+test('a string literal holding a backslash cannot join, so the fill goes back', function (string $cast) {
     $types = reconciledTypes(reconciled([[TAG_SIGNATURE, 'number | undefined', UNTYPED_SIGNATURE_VALUE]], castKeys: ['state_tag' => $cast]));
 
-    expect($types[TAG_SIGNATURE])->toBe($expected);
+    expect($types[TAG_SIGNATURE])->toBe(UNTYPED_SIGNATURE_VALUE);
 })->with([
-    'an undefined in single quotes' => ["'it\\'s | undefined | x'", "number | 'it\\'s | undefined | x' | undefined"],
-    'a null in single quotes' => ["'it\\'s | null | x'", "number | 'it\\'s | null | x' | undefined"],
-    'an undefined in double quotes' => ['"q\\" | undefined | r"', 'number | "q\\" | undefined | r" | undefined'],
-    'a template literal, which cannot join' => ['`it\\`s | undefined | x`', UNTYPED_SIGNATURE_VALUE],
+    'an undefined in single quotes' => ["'it\\'s | undefined | x'"],
+    'a null in single quotes' => ["'it\\'s | null | x'"],
+    'an undefined in double quotes' => ['"q\\" | undefined | r"'],
+    'an escaped backslash' => ["'a\\\\' | 'b'"],
 ]);
 
 test('a lone fill is never put back, whatever its type', function () {

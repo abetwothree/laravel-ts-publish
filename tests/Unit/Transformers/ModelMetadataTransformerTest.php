@@ -374,14 +374,13 @@ test('spells an empty PHP array as an empty object wherever its type is object-l
         ->and($properties['rows'][1])->toBeInstanceOf(stdClass::class);
 });
 
-test('spells an empty container beside a template literal whose placeholder holds a quoted backtick', function () {
+test('spells an empty container beside a template literal holding a quoted backtick or an escaped quote', function (string $key) {
     config()->set('ts-publish.model_metadata.provider_class', TemplateLiteralModelMetadataProvider::class);
 
     $properties = (new ModelMetadataTransformer(User::class))->data()->properties;
 
-    expect($properties['singleQuoted']['b'])->toBeInstanceOf(stdClass::class)
-        ->and($properties['doubleQuoted']['b'])->toBeInstanceOf(stdClass::class);
-});
+    expect($properties[$key]['b'])->toBeInstanceOf(stdClass::class);
+})->with(['singleQuoted', 'doubleQuoted', 'escapedDoublePair', 'escapedDoubleText', 'escapedSinglePair', 'apostropheThenEscaped']);
 
 test('spells body-inferred empty containers by their inferred type', function () {
     config()->set('ts-publish.model_metadata.provider_class', AstEmptyValuesModelMetadataProvider::class);

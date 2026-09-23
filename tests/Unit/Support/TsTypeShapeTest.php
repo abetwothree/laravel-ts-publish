@@ -45,12 +45,12 @@ describe('splitTopLevel', function () {
             ->toBe(['a: string', 'b: [number, string]', 'c: Record<string, { d: number; e: string }>']);
     });
 
-    test('keeps a quoted span whole past an escaped quote of its own kind', function (string $type, array $expected) {
+    test('splits a template literal whose text holds escaped quotes at its own pipes', function (string $type, array $expected) {
         expect(TsTypeShape::splitTopLevel($type, ['|']))->toBe($expected);
     })->with([
-        'single quotes' => ["'it\\'s | undefined | x' | null", ["'it\\'s | undefined | x'", 'null']],
-        'double quotes' => ['"q\\" | undefined | r" | null', ['"q\\" | undefined | r"', 'null']],
-        'an escaped backslash before the closing quote' => ["'a\\\\' | 'b'", ["'a\\\\'", "'b'"]],
+        'escaped double quotes around a placeholder' => ['`\\"${string}\\"` | null', ['`\\"${string}\\"`', 'null']],
+        'escaped double quotes in plain text' => ['`say \\"hi\\"` | null', ['`say \\"hi\\"`', 'null']],
+        'escaped single quotes around a placeholder' => ["`\\'\\${string}\\'` | null", ["`\\'\\${string}\\'`", 'null']],
     ]);
 
     test('reads a backtick as template text, so one inside a placeholder cannot close a span', function (string $type, array $expected) {
@@ -74,7 +74,7 @@ describe('memberType', function () {
             ->and(TsTypeShape::memberType('{ a: { b: string; c: number }; d: string }', 'a'))->toBe('{ b: string; c: number }')
             ->and(TsTypeShape::memberType('{ "2fa"?: boolean, other: string }', '2fa'))->toBe('boolean')
             ->and(TsTypeShape::memberType('{ "a:b": string; other: number }', 'a:b'))->toBe('string')
-            ->and(TsTypeShape::memberType('{ "a\\": b": string; other: number }', 'other'))->toBe('number')
+            ->and(TsTypeShape::memberType('{ a: `\\"${string}\\"`; b: Record<string, number> }', 'b'))->toBe('Record<string, number>')
             ->and(TsTypeShape::memberType('{ a: number } | null', 'a'))->toBe('number');
     });
 

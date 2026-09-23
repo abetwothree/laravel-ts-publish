@@ -6358,10 +6358,10 @@ describe('IndexSignatureConflictResource — a docblock-filled signature never c
         expect($props['[key: `${string}_tag`]']['type'])->toBe('string | number | undefined');
     });
 
-    test('a key cast to a string literal with an escaped quote joins the union whole', function () {
+    test('a key cast to a string literal holding a backslash puts the fill back, and keeps its own cast', function () {
         $props = ($this->shape)('escapedLiteralKey');
 
-        expect($props['[key: `${string}_a_tag`]']['type'])->toBe("number | 'it\\'s | null | x' | undefined")
+        expect($props['[key: `${string}_a_tag`]']['type'])->toBe('unknown | undefined')
             ->and($props['state_a_tag']['type'])->toBe("'it\\'s | null | x'");
     });
 

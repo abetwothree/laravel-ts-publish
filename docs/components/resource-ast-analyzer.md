@@ -1087,18 +1087,19 @@ under ``${string}_tag`` exactly as TypeScript reads it, and an escaped `\${` is 
   `_code` signatures (one filled from `@return array<string, int>`) and two body-typed `_mark` ones.
 - **Put back.** A key cannot join when its type has a top-level `unknown` arm, when it holds a token
   `TsTypeString::shapeValueHasUnimportableToken()` rejects other than a string or number literal (a class
-  name, a global name, a template literal type), or when a key that is not a cast key carries an FQCN channel
-  (`MethodAnalysis::hasFqcnChannel()`), the signature's own name included. `unknown` would swallow the typed
-  arms, and a class token is imported and rewritten, with an alias or an `AsEnum<>`, under its own key's
-  name. A signature also conflicts when another signature in the shape may cover a key it covers: two
-  template patterns are proven disjoint only when their leading literal texts, or their trailing ones,
-  cannot both hold for one key, and `[key: number]` or `[key: string]` beside a template counts as
-  overlapping. And when the published interface has an extends clause, whose keys no analysis sees, every
-  signature conflicts. On any of these, every entry whose value came from a fill or a union goes back to
-  its `bodyType`, and nothing is unioned, so the shape publishes what a name-keyed publish of its body
-  values gives. An entry the body typed, and never unioned, is left as it is. A signature with no other
-  entry, no matching key and no overlapping pattern is never put back, whatever its type, unless the
-  interface has an extends clause.
+  name, a global name, a template literal type), when a string literal in it holds a backslash, or when a key
+  that is not a cast key carries an FQCN channel (`MethodAnalysis::hasFqcnChannel()`), the signature's own name
+  included. `unknown` would swallow the typed arms, the shared splitter ends a quoted span at the next quote of
+  its kind even after a backslash and so cuts such a literal apart, and a class token is imported and
+  rewritten, with an alias or an `AsEnum<>`, under its own key's name. A signature also conflicts when another
+  signature in the shape may cover a key it covers: two template patterns are proven disjoint only when their
+  leading literal texts, or their trailing ones, cannot both hold for one key, and `[key: number]` or
+  `[key: string]` beside a template counts as overlapping. And when the published interface has an extends
+  clause, whose keys no analysis sees, every signature conflicts. On any of these, every entry whose value
+  came from a fill or a union goes back to its `bodyType`, and nothing is unioned, so the shape publishes
+  what a name-keyed publish of its body values gives. An entry the body typed, and never unioned, is left as
+  it is. A signature with no other entry, no matching key and no overlapping pattern is never put back,
+  whatever its type, unless the interface has an extends clause.
 
 `bodyType` is how a later conflict still finds the body value. The refiner sets it to
 `unknown | undefined` when it fills, a union sets it to the last entry's body value, `mergeReturnBranches()`
@@ -1270,9 +1271,8 @@ type alone — instead of `string | number, required`. The fix was checked again
 ### `stripNullArm()` only drops the top-level `null` arm
 
 `stripNullArm()` splits the type on `TsTypeString::splitTopLevelUnion()`, a depth-aware splitter over
-braces, parens, angle brackets, and square brackets that skips a `'…'` or `"…"` span whole (a backslash
-inside one escapes the next character) but reads a template literal's backticks as plain text, and filters
-out a member equal to exactly `'null'`.
+braces, parens, angle brackets, and square brackets that skips a `'…'` or `"…"` span whole, ending each at
+the next quote of its kind, and filters out a member equal to exactly `'null'`.
 Only a union member sitting at depth zero is ever removed — `(string | null)[]` and `{ a: string; b: number
 | null }` both keep their nested `| null` untouched, since neither nested `null` is a top-level member of
 the outer type. `ConditionalMethodHandler` (stripping `whenNotNull()`'s success arm) and `CoalesceHandler`
@@ -1935,8 +1935,7 @@ are both nullable — `$this->regional_hub?->only(['primaryContact', 'manager'])
 `->only(['manager', 'secondaryContact', 'primaryContact'])` — survive that dedupe as two distinct
 strings, so a plain `implode(' | ', …)` repeated the nullable marker once per arm: `A | null | B | null`.
 `unionBranchTypes()` splits every arm on its top-level `|` via `TsTypeString::splitTopLevelUnion()`
-(depth-aware over `{`, `(`, `<` and `[`; it skips a `'…'` or `"…"` span whole, honouring backslash escapes,
-and reads backticks as plain text), drops the top-level
+(depth-aware over `{`, `(`, `<` and `[`, and it skips a `'…'` or `"…"` span whole), drops the top-level
 `null` members, and appends one trailing `| null` if any arm carried one. A nested null — `| null` on a
 member inside `{ … }` — sits inside a group, so the splitter never yields it and it is left alone. Arm
 order is otherwise preserved, which is load-bearing: `aliasPropertyType()` consumes `inlineModelFqcns`

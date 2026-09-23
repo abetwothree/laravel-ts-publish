@@ -192,8 +192,8 @@ class TsTypeString
     /**
      * Split a type string into its top-level union members.
      *
-     * Depth-aware over braces, parens, angle brackets, and square brackets, and skips a '…' or "…" literal
-     * whole, so a `|` inside one never splits; a template literal's backticks are read as plain text.
+     * Depth-aware over braces, parens, angle brackets, and square brackets, and skips
+     * quoted literals whole, so a nested `|` never splits.
      *
      * @return list<string>
      */

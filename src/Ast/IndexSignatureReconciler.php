@@ -127,8 +127,8 @@ final class IndexSignatureReconciler
 
     /**
      * Every arm of the given types except `undefined`, or null when one of them cannot join: a top-level `unknown`
-     * arm swallows the rest, and a token other than a primitive, `Record`, `Date` or a literal, or an FQCN channel,
-     * is imported and rewritten under its own key's name, so a copy in the signature would miss both.
+     * arm swallows the rest, a token other than a primitive, `Record`, `Date` or a literal, or an FQCN channel, is
+     * rewritten under its own key's name, and the splitter can cut a string literal holding a backslash apart.
      *
      * @param  list<string>  $keys  the signature's name and the named keys its pattern matches
      * @param  list<string>  $types  the signature's entries' types and those keys' types
@@ -146,7 +146,8 @@ final class IndexSignatureReconciler
         $arms = [];
 
         foreach ($types as $type) {
-            if (TsTypeString::shapeValueHasUnimportableToken($this->literalsAsPrimitives($type))) {
+            if ($this->holdsEscapedLiteral($type)
+                || TsTypeString::shapeValueHasUnimportableToken($this->literalsAsPrimitives($type))) {
                 return null;
             }
 
@@ -170,6 +171,12 @@ final class IndexSignatureReconciler
         $type = (string) preg_replace('/\'(?:[^\'\\\\]|\\\\.)*\'|"(?:[^"\\\\]|\\\\.)*"/', 'string', $type);
 
         return (string) preg_replace('/(?<![\w$.])-?\d+(?:\.\d+)?(?![\w$.])/', 'number', $type);
+    }
+
+    /** Whether a `'` or `"` in the type is followed by a backslash before the next quote of its kind. */
+    private function holdsEscapedLiteral(string $type): bool
+    {
+        return preg_match('/([\'"])(?:(?!\1)[^\\\\])*\\\\/', $type) === 1;
     }
 
     /**

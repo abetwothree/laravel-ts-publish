@@ -494,9 +494,9 @@ every resource or event. A value the body typed stands, so the interface can sti
 
 - the signature, or a key its pattern matches, cannot join the union: its type has a top-level `unknown`
   arm, it holds a token `TsTypeString::shapeValueHasUnimportableToken()` rejects other than a string or
-  number literal (a class name, a global name such as `Blob`, a template literal type), or it is not a cast
-  key and carries an FQCN channel. ``[key: `${string}_tag`]: string | undefined`` beside
-  `main_tag: PostResource` fails TS2411;
+  number literal (a class name, a global name such as `Blob`, a template literal type), it holds a string
+  literal with a backslash, or it is not a cast key and carries an FQCN channel.
+  ``[key: `${string}_tag`]: string | undefined`` beside `main_tag: PostResource` fails TS2411;
 - another signature's pattern may overlap its own, which declines the union even for a key that could
   join: ``[key: `${string}_tag`]: string | undefined`` beside ``[key: `a${string}`]: boolean | undefined``
   and `price_tag: number` fails TS2411;
