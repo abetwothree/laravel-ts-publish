@@ -21,14 +21,6 @@ use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
-use PhpParser\Node\Scalar\MagicConst;
-use PhpParser\Node\Scalar\MagicConst\Class_;
-use PhpParser\Node\Scalar\MagicConst\Dir;
-use PhpParser\Node\Scalar\MagicConst\File;
-use PhpParser\Node\Scalar\MagicConst\Function_;
-use PhpParser\Node\Scalar\MagicConst\Line;
-use PhpParser\Node\Scalar\MagicConst\Method;
-use PhpParser\Node\Scalar\MagicConst\Namespace_;
 use ReflectionClass;
 use ReflectionMethod;
 use ReflectionNamedType;
@@ -121,10 +113,10 @@ final class ValueResolver
     }
 
     /**
-     * Evaluate a constant expression, such as a parameter default, as PHP does, reading every constant, magic constant
-     * and enum property it names the way evaluateFallback() describes.
+     * Evaluate a constant expression, such as a parameter default, as PHP does, reading every constant and enum
+     * property it names the way evaluateFallback() describes.
      *
-     * @throws ConstExprEvaluationException for a value it cannot know, such as `new`, a variable or a failed evaluation
+     * @throws ConstExprEvaluationException for a value it cannot know, such as `new`, a magic constant or a variable
      */
     public function evaluateConstantExpression(Expr $expr, AnalysisScope $scope): mixed
     {
@@ -151,8 +143,8 @@ final class ValueResolver
     }
 
     /**
-     * Type `new X(...)` as `string` when json_encode() writes X as a string, such as a Carbon date, whatever TS name
-     * the package publishes X under; null for any other class.
+     * Type `new X(...)` by the string json_encode() writes X as, such as a Carbon date's, whatever TS name the package
+     * publishes X under: `string`, or `string | null` for a nullable one; null for any other class.
      *
      * @return ValueExpressionResult|null
      */
@@ -160,9 +152,9 @@ final class ValueResolver
     {
         $class = $new->class instanceof Name ? $new->class->toString() : null;
 
-        return $class !== null && class_exists($class) && $this->serializesAsString($class)
-            ? ['type' => 'string', 'optional' => false]
-            : null;
+        $type = $class !== null && class_exists($class) ? $this->stringSerializationType($class) : null;
+
+        return $type === null ? null : ['type' => $type, 'optional' => false];
     }
 
     /**
@@ -399,7 +391,7 @@ final class ValueResolver
 
     /**
      * ConstExprEvaluator's fallback: a class constant or enum case through reflection, a global constant as defined
-     * where the types are published, a magic constant, or an enum case's `->name` or `->value`.
+     * where the types are published, or an enum case's `->name` or `->value`.
      *
      * @throws ConstExprEvaluationException for any other node
      */
@@ -408,7 +400,6 @@ final class ValueResolver
         return match (true) {
             $expr instanceof ClassConstFetch => $this->evaluateClassConstFetch($expr, $scope),
             $expr instanceof ConstFetch => $this->evaluateGlobalConstant($expr),
-            $expr instanceof MagicConst => $this->evaluateMagicConstant($expr, $scope),
             $expr instanceof PropertyFetch => $this->evaluateEnumProperty($expr, $evaluator),
             default => throw new ConstExprEvaluationException("Expression of type {$expr->getType()} cannot be evaluated"),
         };
@@ -463,25 +454,6 @@ final class ValueResolver
     }
 
     /**
-     * The value of a magic constant, each known before runtime: its line; the subject's class, file, directory or
-     * namespace; `{closure}` for a closure's function or method name; and otherwise, as `__TRAIT__`, a string.
-     */
-    private function evaluateMagicConstant(MagicConst $expr, AnalysisScope $scope): int|string
-    {
-        $file = (string) $scope->subjectReflection->getFileName();
-
-        return match (true) {
-            $expr instanceof Line => $expr->getStartLine(),
-            $expr instanceof Class_ => $scope->subjectReflection->getName(),
-            $expr instanceof File => $file,
-            $expr instanceof Dir => dirname($file),
-            $expr instanceof Namespace_ => $scope->subjectReflection->getNamespaceName(),
-            $expr instanceof Function_, $expr instanceof Method => '{closure}',
-            default => '',
-        };
-    }
-
-    /**
      * The `->name` or `->value` of the enum case a constant expression reads.
      *
      * @throws ConstExprEvaluationException for any other property, or a receiver that is not an enum case
@@ -499,20 +471,25 @@ final class ValueResolver
     }
 
     /**
-     * Whether json_encode() writes an instance as a string: its jsonSerialize() declares `string`, or it is a date that
-     * keeps Carbon's own jsonSerialize(), the ISO string, where StringSerialization::isFalseString() passes any date.
+     * The type json_encode() writes an instance as, when a string: `string | null` for a `?string` jsonSerialize(),
+     * `string` for a `string` one or for a date that keeps Carbon's own, the ISO string; null for anything else.
      */
-    private function serializesAsString(string $class): bool
+    private function stringSerializationType(string $class): ?string
     {
         if (! is_a($class, JsonSerializable::class, true)) {
-            return false;
+            return null;
         }
 
         $method = new ReflectionMethod($class, 'jsonSerialize');
         $type = $method->getReturnType();
 
-        return ($type instanceof ReflectionNamedType && $type->getName() === 'string')
-            || (is_a($class, DateTimeInterface::class, true) && str_starts_with($method->getDeclaringClass()->getName(), 'Carbon\\'));
+        if ($type instanceof ReflectionNamedType && $type->getName() === 'string') {
+            return $type->allowsNull() ? 'string | null' : 'string';
+        }
+
+        return is_a($class, DateTimeInterface::class, true) && str_starts_with($method->getDeclaringClass()->getName(), 'Carbon\\')
+            ? 'string'
+            : null;
     }
 
     /**

@@ -19,6 +19,8 @@ use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Closure;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Scalar\MagicConst;
+use PhpParser\Node\Scalar\MagicConst\Line;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\NodeFinder;
 use ReflectionClass;
@@ -328,6 +330,11 @@ final class AnalysisScope
         try {
             $value = $resolver->evaluateConstantExpression($default, $this);
         } catch (ConstExprEvaluationException) {
+            // A magic constant's value depends on where it appears, so only a bare one binds, and only by its type.
+            if ($default instanceof MagicConst) {
+                return ['type' => $default instanceof Line ? 'number' : 'string', 'optional' => false];
+            }
+
             $stringDefault = $default instanceof New_ ? $resolver->resolveStringSerializedNew($default) : null;
 
             if ($stringDefault !== null) {

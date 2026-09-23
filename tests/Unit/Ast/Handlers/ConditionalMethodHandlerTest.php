@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NullableStringJson;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -725,6 +726,11 @@ it('binds a default of a global or magic constant, an enum case property or a Ca
     'a global constant in a list' => ['[PHP_INT_SIZE]', 'number[]'],
     'a Carbon date' => ['new \\Illuminate\\Support\\Carbon("2020-01-01 00:00:00")', 'string'],
     'a DateTime, which json_encode() writes as an object' => ['new \\DateTime("2020-01-01")', 'unknown'],
+    'a ?string serialization returning null' => ['new \\'.NullableStringJson::class.'()', 'string | null'],
+    'a ?string serialization returning a string' => ['new \\'.NullableStringJson::class.'("x")', 'string | null'],
+    '__TRAIT__ as a key, whose value depends on where it appears' => ['[__TRAIT__ => 1]', 'unknown'],
+    '__FILE__ as a key' => ['[__FILE__ => 1]', 'unknown'],
+    'a comparison on __TRAIT__, which never folds' => ['__TRAIT__ === "" ? 1 : "a"', 'number | string'],
 ]);
 
 // A later key must see the outer binding again once a default closure has bound the same name and returned.

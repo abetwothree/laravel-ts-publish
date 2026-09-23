@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ArrayJsonCarbon;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ArrayJsonDate;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NullableStringJson;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\StringJsonArrayable;
 use Carbon\Carbon as CarbonCarbon;
 use Carbon\CarbonImmutable;
@@ -270,14 +271,6 @@ it('evaluates a constant expression as PHP does, reading class constants and enu
     'a ternary' => ['self::SCHEMA_VERSION > 1 ? [1] : "x"', [1]],
     'a global constant' => ['[PHP_INT_SIZE, PHP_EOL]', [PHP_INT_SIZE, PHP_EOL]],
     'an enum case ->name and ->value' => ['[\\'.Status::class.'::Published->name, \\'.Status::class.'::Published->value]', ['Published', 1]],
-    'the magic constants' => ['[__LINE__, __CLASS__, __FUNCTION__, __METHOD__]', [1, ClassConstantResource::class, '{closure}', '{closure}']],
-    'the path, namespace, trait and property magic constants' => ['[__DIR__, __FILE__, __NAMESPACE__, __TRAIT__, __PROPERTY__]', [
-        dirname((string) new ReflectionClass(ClassConstantResource::class)->getFileName()),
-        (string) new ReflectionClass(ClassConstantResource::class)->getFileName(),
-        'Workbench\\App\\Http\\Resources',
-        '',
-        '',
-    ]],
 ]);
 
 it('throws for what a constant expression reads that the evaluator cannot', function (string $php) {
@@ -289,6 +282,7 @@ it('throws for what a constant expression reads that the evaluator cannot', func
     'a division by zero' => ['1 / 0'],
     'a constant whose initializer throws' => ['\\'.ChannelDefaults::class.'::BROKEN'],
     'a property of an enum case other than name or value' => ['\\'.Status::class.'::Draft->label'],
+    'a magic constant, whose value depends on where it appears' => ['[__TRAIT__ => 1]'],
     'a variable' => ['$other'],
     'a missing class constant' => ['self::MISSING'],
 ]);
@@ -320,6 +314,7 @@ it('types a new default as string only when the class publishes and encodes as o
     'a DateTime whose jsonSerialize() returns an array' => [ArrayJsonDate::class, null],
     'a Carbon date whose jsonSerialize() override returns an array' => [ArrayJsonCarbon::class, null],
     'an Arrayable whose jsonSerialize() returns a string, which json_encode() prefers' => [StringJsonArrayable::class, 'string'],
+    'a ?string jsonSerialize()' => [NullableStringJson::class, 'string | null'],
 ]);
 
 // timestamps_as_date publishes a Carbon attribute as Date, but json_encode() still writes a Carbon value as a string.
