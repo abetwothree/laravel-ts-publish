@@ -380,7 +380,8 @@ it('keeps a typed map over a relation the model does not declare through a trail
         ->and($props['featured_posts']['optional'])->toBeTrue();
 });
 
-// Only the map arm's own answer passes through an unnamed receiver: nothing is invented, and a named model still declines.
+// Only the map arm's own answer passes through an unnamed receiver: nothing is invented,
+// and a named model still declines.
 it('declines a trailing values()/all() the map arm does not answer, or on a variable that holds a model', function (string $php, string $model) {
     $scope = new AnalysisScope(new ReflectionClass(PostCommentAuthorsResource::class), $model);
     $scope->localVarBindings['one'] = new AstParser()->parseSource('<?php $this->resource->getRelation("author");')[0]->expr;

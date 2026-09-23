@@ -287,8 +287,8 @@ final class VariableHandler implements ExpressionHandler
     {
         $receiver = resolve(ReceiverClassResolver::class)->resolve($expr, $scope);
 
-        // A receiver nothing names passes only as the map arm's `$variable->map(callback)` on a variable nothing names
-        // either, which that arm already types as a Collection map; values() leaves it one.
+        // An unnamed receiver passes only as the map arm's `$variable->map(callback)` over an unnamed variable,
+        // which that arm already types as a Collection map; values() leaves it one.
         if ($receiver === null) {
             while ($expr instanceof MethodCall
                 && $expr->name instanceof Identifier
