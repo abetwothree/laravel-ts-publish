@@ -250,13 +250,16 @@ final class IndexSignatureReconciler
             return null;
         }
 
-        // A literal `${` is written `\${`, so only an unescaped one is a placeholder.
-        $segments = preg_split('/(?<!\\\\)\$\{string\}/', $template[1]);
+        // The name writes a literal `\` as `\\` and `${` as `\${`: a `${string}` no escape consumes is a placeholder.
+        $segments = preg_split('/\\\\.(*SKIP)(*FAIL)|\$\{string\}/s', $template[1]);
 
         if ($segments === false || $segments === []) {
             return null; // @codeCoverageIgnore
         }
 
-        return array_map(fn (string $segment): string => str_replace('\\${', '${', $segment), $segments);
+        return array_map(
+            fn (string $segment): string => (string) preg_replace('/\\\\(.)/s', '$1', $segment),
+            $segments,
+        );
     }
 }

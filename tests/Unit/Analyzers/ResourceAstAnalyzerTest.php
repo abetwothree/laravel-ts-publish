@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendedCustomImportResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclinedTopLevelSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\EscapedKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\IndexSignatureConflictResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeArrayMergeChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeParameterShadowResource;
@@ -6250,6 +6251,27 @@ test('a concatenated key becomes a template-literal index signature', function (
 
     expect($props['[key: `${string}_region`]'])->toMatchArray(['type' => 'string | undefined', 'optional' => false]);
 });
+
+test('a backslash in an interpolated key is written as two, so TypeScript reads the runtime text back', function () {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(PermissionsSpreadResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+    expect($props['[key: `${string}\\\\unit`]'] ?? null)->toMatchArray(['type' => 'string | undefined', 'optional' => false]);
+});
+
+test('every backslash in an interpolated key\'s literal text is escaped, wherever it stands', function (string $name) {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(EscapedKeyResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+    expect($props[$name] ?? null)->toMatchArray(['type' => 'string | undefined', 'optional' => false]);
+})->with([
+    'after a placeholder' => ['[key: `${string}\\\\unit`]'],
+    'before a placeholder' => ['[key: `unit\\\\${string}`]'],
+    'between placeholders' => ['[key: `${string}\\\\${string}`]'],
+    'before a letter TypeScript would read as an escape' => ['[key: `b\\\\b${string}`]'],
+    'two in a row' => ['[key: `${string}\\\\\\\\pair`]'],
+    'ending the literal text' => ['[key: `${string}_end\\\\`]'],
+    'before an escaped placeholder' => ['[key: `${string}\\\\\${x}`]'],
+    'in a concatenated key' => ['[key: `${string}\\\\cat`]'],
+]);
 
 test('an interpolated key the body cannot type takes its value type from the method @return', function () {
     $props = collect(new ResourceAstAnalyzer(new ReflectionClass(PermissionsSpreadResource::class), Post::class)->analyze()->properties)->keyBy('name');

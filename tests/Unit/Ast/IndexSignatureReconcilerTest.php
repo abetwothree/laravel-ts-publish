@@ -111,6 +111,15 @@ test('an escaped placeholder is literal text, not a wildcard', function () {
     expect($types['[key: `${string}\${x}`]'])->toBe('string | number | undefined');
 });
 
+test('an escaped backslash is one literal backslash, as TypeScript reads it', function (string $signature, string $covered, string $uncovered) {
+    $types = reconciledTypes(reconciled([[$signature, 'string | undefined', UNTYPED_SIGNATURE_VALUE], [$covered, 'number'], [$uncovered, 'boolean']]));
+
+    expect($types[$signature])->toBe('string | number | undefined');
+})->with([
+    'after a placeholder' => ['[key: `${string}\\\\_tag`]', 'main\\_tag', 'main_tag'],
+    'before a placeholder, which stays one' => ['[key: `a\\\\${string}`]', 'a\\x', 'ax'],
+]);
+
 test('a folded union goes back to the last body value when an outer conflict appears', function () {
     $inner = reconciled([[TAG_SIGNATURE, 'string | undefined'], [TAG_SIGNATURE, 'number | undefined', UNTYPED_SIGNATURE_VALUE]]);
     $outer = new MethodAnalysis(properties: [

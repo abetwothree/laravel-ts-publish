@@ -13809,6 +13809,11 @@
                     "optional": false
                 },
                 {
+                    "name": "[key: `${string}\\\\unit`]",
+                    "type": "string | undefined",
+                    "optional": false
+                },
+                {
                     "name": "id",
                     "type": "number",
                     "optional": false

@@ -87,6 +87,22 @@ trait GathersPermissions
         return $data;
     }
 
+    /**
+     * A key whose literal text holds a backslash: unless it is written `\\`, TypeScript reads `\u` as a Unicode escape.
+     *
+     * @return array<string, string>
+     */
+    public function gatherEscapedUnits(): array
+    {
+        $data = [];
+
+        foreach (['east', 'west'] as $name) {
+            $data["{$name}\\unit"] = 'Unit';
+        }
+
+        return $data;
+    }
+
     /** Deliberately untyped so only the docblocks above can type what it returns. */
     protected function opaque()
     {

@@ -1071,7 +1071,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
                     return null;
                 }
 
-                $pattern .= str_replace('${', '\\${', $part->value);
+                // TypeScript reads a backslash in template text as an escape, so `\` is written `\\` and a literal `${`
+                // `\${`; IndexSignatureReconciler::literalSegments() undoes both.
+                $pattern .= strtr($part->value, ['\\' => '\\\\', '${' => '\\${']);
                 $hasLiteral = true;
             } else {
                 $pattern .= '${string}';

@@ -362,7 +362,7 @@ class TsTypeString
             $char = is_int($codePoint) && $codePoint <= 0x10FFFF ? mb_chr($codePoint, 'UTF-8') : false;
 
             // Every escape is decoded whatever this PCRE2's tables hold: one left as written runs its digits into the
-            // next name. An escape of no code point (a surrogate, past U+10FFFF) stays; TypeScript rejects it anyway.
+            // next name. One naming no Unicode scalar value (a surrogate, past U+10FFFF) stays; TypeScript rejects it.
             return $char === false ? $match[0] : $char;
         }, $type);
     }

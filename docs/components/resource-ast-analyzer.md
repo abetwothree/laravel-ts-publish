@@ -989,14 +989,21 @@ through `interpolatedKeyName()`, which reads an `InterpolatedString`'s parts (v5
 `Encapsed` is now the deprecated shim that extends it, not the other way round) or a `Concat`'s two
 operands, and requires **both** a literal segment and a dynamic one — a purely dynamic dim
 (`$data[$name]`) or a purely literal one is left to the existing handling. A literal segment
-containing a backtick declines the whole key (returns `null`): `JsEmitter::isIndexSignatureKey()`'s
-backtick alternative has no escape clause, so an escaped backtick could not be read back, and there is no
-fixture that needs it. Otherwise it publishes a template-literal index signature, e.g.
-``[key: `${string}_label`]``, with `${` in any literal segment escaped so the pattern stays valid
-TypeScript syntax without being misread as an actual interpolation. Only `${` is escaped: any other
-backslash in a literal segment is published as written, and TypeScript reads it as a template escape. A
-`\u` or `\x` with no hex digits after it is a syntax error (TS1125), a backslash ending the segment escapes
-the `${string}` after it (TS1337), and any other changes the text the pattern matches (`\b` is a backspace).
+containing a backtick declines the whole key (returns `null`), so the key is not published at all:
+`JsEmitter::isIndexSignatureKey()`'s backtick alternative has no escape clause, so an escaped backtick could
+not be read back, and there is no fixture that needs it. Otherwise it publishes a template-literal index
+signature, e.g. ``[key: `${string}_label`]``.
+
+TypeScript reads a backslash in template text as an escape, so each literal segment is written with its
+backslashes doubled and each `${` as `\${`. The pattern then matches the runtime text exactly, backslashes
+included. Written as it stands, a backslash would instead fail to compile (`\u` or `\x` with no hex digits
+after it is TS1125, and one before a `${string}` escapes it, TS1337 when no placeholder is left), or match
+other text (`\b` is a backspace, `\\` one backslash, `\_` a plain `_`). `GathersPermissions::gatherEscapedUnits()`
+pins it: `$data["{$name}\\unit"]`, whose runtime keys end in `\unit`, publishes ``[key: `${string}\\unit`]``.
+`JsEmitter::isIndexSignatureKey()` accepts any text but a backtick between the backticks, so the escaped name
+is still a signature; `IndexSignatureReconciler` undoes both escapes when it reads the pattern back
+([below](#index-signatures-are-reconciled-with-the-keys-beside-them)), and a `#[TsCasts]` key that retypes
+such a signature spells it with the backslashes doubled.
 
 Such a key always publishes `optional = false` with its value type widened to include `| undefined`,
 never `key?:` on the signature itself. `[key: T]?:` is a TypeScript syntax error regardless of how
@@ -1080,10 +1087,10 @@ beside it are all known:
 It reads the keys that will be published. For a named key that is only the last entry of its name, since a
 later literal or spread replaces an earlier one, with a cast key's type in place of the analysis's. Every
 entry of a signature's name counts, since each stands for other runtime keys. The pattern is read back from
-the name: an unescaped `${string}` matches any run of characters, empty included, so `_tag` itself falls
-under ``${string}_tag`` exactly as TypeScript reads it, and an escaped `\${` is literal text. Any other
-backslash is read as a literal one, so for a literal segment holding one this reading and TypeScript's part
-ways ([Interpolated keys](#interpolated-keys)).
+the name as TypeScript reads it. `literalSegments()` undoes the two escapes the analyzer writes
+([Interpolated keys](#interpolated-keys)): a doubled backslash is one literal backslash and `\${` is a literal
+`${`. A `${string}` that no escape consumes matches any run of characters, empty included, so `_tag` itself
+falls under ``${string}_tag``, and ``${string}\\_tag`` covers `main\_tag` but not `main_tag`.
 
 - **Union.** When the signature's entries and the keys its pattern matches can all join, the entries fold
   into the first, valued with every arm and the `| undefined`, and the named keys keep their own type.

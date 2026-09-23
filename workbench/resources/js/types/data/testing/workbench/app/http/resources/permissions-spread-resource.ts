@@ -14,5 +14,6 @@ export interface PermissionsSpreadResource
     [key: `${string}_label`]: string | undefined;
     [key: `${string}_region`]: string | undefined;
     [key: `${string}_tag`]: string | undefined;
+    [key: `${string}\\unit`]: string | undefined;
     id: number;
 }
