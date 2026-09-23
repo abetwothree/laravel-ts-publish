@@ -181,7 +181,9 @@ final class AppModelMetadataProvider implements ModelMetadataProvider
 ## Typing the payload
 
 Every returned key must end up with a type. **There is no `unknown` fallback here** — an untyped key fails
-the model. For each key the type is the first of:
+the model. The exception is a ternary or `??` with one untyped arm: that arm is dropped and the other publishes
+alone, so `$model instanceof Task ? $model->status : null` is `null` rather than a failure (an `instanceof` test
+does not narrow `$model` here). For each key the type is the first of:
 
 | Precedence                            | Use it for                                                                     |
 | ------------------------------------- | ------------------------------------------------------------------------------ |
@@ -207,7 +209,9 @@ Nested `array{...}` docblock shapes work too and become inline object literals; 
 What inference does **not** resolve, so these need tier 1 or 2:
 
 - **A helper with no declared return type.** `'x' => $this->helper($model)` on `private function helper($model)`
-  infers nothing. Adding the return type to the helper is usually the better fix than annotating the key.
+  infers nothing, unless the helper returns an array literal whose values type on their own: `['limit' => 25]`
+  gives `{ limit: number }`, as it does behind a bare `: array`, but `['table' => $model->getTable()]` inside the
+  helper fails. Adding the return type to the helper is usually the better fix than annotating the key.
 - **An attribute read on the parameter.** `$model->status` is not typed — the parameter is bound to the
   abstract `Model`, which has no schema. A cast works (`(string) $model->status` is `string`).
 - **An enum case written inline.** `'visibility' => Visibility::Public` fails outright. Route it through a
@@ -303,7 +307,8 @@ file it touches.
   the phase is available. That is the duplication this phase removes.
 - Comparing a companion value with `=== true` / `=== false`, then silencing the resulting TS2367 with a cast.
   Use truthiness.
-- Assuming an untyped key degrades to `unknown` like the rest of the package. It fails the model instead.
+- Assuming an untyped key degrades to `unknown` like the rest of the package. It fails the model instead, or,
+  as one arm of a ternary or `??`, drops out of the union without a warning.
 - Annotating everything up front. Publish first, annotate only the keys that fail.
 - Replacing the provider and losing `morphClass` because the new payload never returned it.
 - Importing `_meta` files when the phase is off. Disabling it prunes the barrel exports but leaves the old

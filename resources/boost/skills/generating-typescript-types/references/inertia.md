@@ -20,7 +20,7 @@ class HandleInertiaRequests extends Middleware
             'appName' => config('app.name'),
             'auth' => ['user' => $request->user()],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state'),
-            'role' => EnumResource::make($request->user()?->role ?? Role::Guest),
+            'defaultRole' => EnumResource::make(Role::Guest),
         ];
     }
 }
@@ -33,7 +33,7 @@ import type { User } from './app/models';
 
 declare global {
     namespace Inertia {
-        type SharedData = { appName: string, auth: { user: User | null }, sidebarOpen: boolean, role: AsEnum<typeof Role> };
+        type SharedData = { appName: string, auth: { user: User | null }, sidebarOpen: boolean, defaultRole: AsEnum<typeof Role> };
     }
 }
 declare module '@inertiajs/core' {
@@ -43,7 +43,12 @@ export {};
 ```
 
 - `$request->user()`, `auth()->user()`, `Auth::user()` type through `auth.defaults.guard` -> provider ->
-  model, so `User | null` with the import written for you.
+  model, so `User | null` with the import written for you. A read through it types only on the injected
+  `Request`: `$request->user()?->name` is `string | null` and `$request->user()?->role` is `RoleType | null`,
+  while `auth()->user()?->name` and `Auth::user()?->name` are `unknown`.
+- `EnumResource::make()` here resolves a case constant only (`Role::Guest` above). Around a read,
+  `EnumResource::make($request->user()?->role)` is `unknown`, so pass the read bare (`RoleType | null`) or
+  override the key with `#[TsCasts]`.
 - `config('literal.key')` types from the live config value; `$request->url()/path()/integer()/boolean()/string()/hasCookie()`
   type from Laravel's signatures. `$request->cookie('x')` is the one that declines — Laravel declares
   `@return string|array|null`, too vague to accept — so it types `unknown`; override that key with `#[TsCasts]`.
@@ -110,13 +115,21 @@ What the analyzer resolves without annotations:
 | `->paginate()/simplePaginate()/cursorPaginate()`                               | `LengthAwarePaginator<Model>` etc.                                                                |
 | `->count()`, `->exists()`                                                      | `number`, `boolean`                                                                               |
 | `SomeResource::make($x)`, `::collection($x)`, `new SomeCollection($paginator)` | the resource interface(s), paginated when wrapped                                                 |
-| `EnumResource::make($x)`, an enum case, or an enum-typed value                 | `{Enum}Type` — page props are **not** rewritten to `AsEnum<>`; only shared data and resources are |
+| an enum-typed value (`$task->priority`), `EnumResource::make(Priority::High)`  | `{Enum}Type` — page props are **not** rewritten to `AsEnum<>`; only shared data and resources are. A bare case (`'priority' => Priority::High`) and `EnumResource::make($task->priority)` are `unknown` |
 | `$request->user()`, typed `Request` reads, `$request->validated('key')`        | as in shared data / from the form request rules                                                   |
+| a call or read on a receiver it can name (`$task->assignee?->name`, see below) | the member's declared type; for a bare `array` or no return type, the array literal returned. On the bound model itself, columns, casts and the methods the model declares type, but not a relation read or an Eloquent method (below) |
 | `compact('a', 'b')`, `array_merge($base, [...])`, a ternary-assigned array     | read as the literal they stand for                                                                |
 | `Inertia::defer()/optional()/lazy()`                                           | wrapped type, key optional                                                                        |
 | an Inertia UI Table (`SomeTable::make()`)                                      | `TableResource<Model>` from `@inertiaui/table-vue` or `-react`                                    |
 | two renders of the same component                                              | merged; keys only one branch sets are optional                                                    |
 | conditional renders of different components                                    | `component: { a: 'X', b: 'Y' }` and a union of page-props types                                   |
+
+A helper spread into the props or `share()` array (`...$this->tags()`) that writes `$data["{$name}_tag"]` in a
+loop publishes `` [key: `${string}_tag`]: V | undefined ``, with `V` from the loop body or, failing that, the
+helper's `@return array<string, V>`. Keys the pattern covers join `V` as a union when their type can,
+`#[TsCasts]` keys included. Beside a covered key that cannot (one that is `unknown`, or names a class such as a
+resource), or another signature that may cover the same keys, the `@return` fill reverts to `unknown | undefined`;
+a `V` the loop body typed stays as it is, and can then fail `tsc` beside that key.
 
 A paginated or collection prop is **never a bare array** — iterate `props.tasks.data`. `paginate()` gives
 `LengthAwarePaginator<Task>` (`data` plus `current_page`/`last_page`/`total`/`links` at the top level),
@@ -132,12 +145,18 @@ actually receives.
 
 What degrades to `unknown` (never fails the run):
 
-- A method chained on the bound model inline: `'task' => $task->load('assignee')`. Call `load()` on its
-  own line and pass `$task`.
-- A service/repository call the analyzer cannot reflect: the receiver is not a `$this->` property declared with a
-  concrete class, or the method has no return type and no `@return array{...}`. A concrete-class property whose
-  method declares a real type or an `array{...}` docblock **does** resolve, and so does a closure whose body it
-  can read.
+- A relation read or an Eloquent method on the bound model itself: `'assignee' => $task->assignee`,
+  `$task->fresh()`, `$task->getKey()`, `'task' => $task->load('assignee')`. A read one step further
+  (`$task->assignee?->name`) does type. Call `load()` on its own line and pass `$task`.
+- A service/repository call the analyzer cannot follow. It follows calls and reads on `app(X::class)`,
+  `resolve(X::class)`, `new X`, a static method the class declares with a class return (`X::make()->total()`),
+  a `$this->` property typed with a class, a bound model's relations and casts (`$task->assignee?->fresh()`,
+  `$task->due_at?->format('Y-m-d')`), and a local assigned once from any of those. It does not follow a read
+  through Eloquent's statics (`Task::find($id)?->title`, `Task::query()->firstOrFail()->title`, or a local
+  assigned from one). A service injected as an **action parameter** is not one (only models and `Request`
+  bind there), so read it through a constructor property or `app()`. A method with no return type whose body
+  returns no array literal stays `unknown`, and a bare `: array` one is `unknown[]`; an `array{...}` docblock
+  fixes either. A closure whose body it can read resolves.
 - A variable assigned inside a branch rather than at the top level of the action, or written more than once.
 - A query builder assigned to a variable before `paginate()` (`$q = Post::query(); $q->paginate()`).
 - A key made optional by `Inertia::defer()` is genuinely **missing** from the first response, so render it inside
