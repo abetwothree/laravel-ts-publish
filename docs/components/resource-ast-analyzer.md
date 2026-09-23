@@ -1242,15 +1242,18 @@ keys are strings, so the two cannot collide, and `Omit<T, number>` on a string-k
 subtract nothing anyway.
 
 The shape that *would* collide is a numeric explicit sibling key — `[...$members->toArray(), 5 => 'x']`
-puts `5` in both halves. In a resource it is unreachable rather than unhandled. `resolveKeyName()` in
-`src/Ast/Concerns/InspectsAstNodes.php` names a `String_` key, an `Int_` key, and a class-constant key
-(`self::`, `static::`, `parent::` or another class's constant) whose value is an int or a string, but
-`publishableKeyName()` drops a numeric name whenever the analyzed subject is a `JsonResource`, and
-`analyzeReturnArray()` skips every item whose key resolves to `null`. `QuirkyResource` pins that
-independently — it writes `42 => $this->total` and `42 => 'number_keyed'`, and the generated
-`QuirkyResource` interface has no `42` member. On any other subject a numeric key is kept, because an int
-key is a real JSON object key (`[1 => 'Basic']` encodes as `{"1":"Basic"}`). There the collision can be
-written, and this arm does not resolve it: the collection arm is still never `Omit<>`'d.
+puts `5` in both halves. `resolveKeyName()` in `src/Ast/Concerns/InspectsAstNodes.php` returns a `String_`
+key's value as written, and passes only an `Int_` key and a class-constant key (`self::`, `static::`, `parent::`
+or another class's constant, whose value is an int or a string) through `publishableKeyName()`, which drops a
+numeric name whenever the analyzed subject is a `JsonResource`; `analyzeReturnArray()` skips every item whose key
+resolves to `null`. So in a resource an `Int_` or constant numeric key is dropped. `QuirkyResource` pins that — it
+writes `42 => $this->total` and `42 => 'number_keyed'`, and the generated `QuirkyResource` interface has no `42`
+member. A numeric **string** key such as `'6'` is kept, though PHP stores it as the int `6`, and publishes as
+`"6"`. On any other subject every numeric key is kept, because an int key is a real JSON object key
+(`[1 => 'Basic']` encodes as `{"1":"Basic"}`). So the collision can be published, in a resource through a
+numeric-string key, and this arm does not resolve it: the collection arm is still never `Omit<>`'d.
+`[...$members->toArray(), '0' => true]` publishes `Record<number, User> & { "0": boolean }`, while PHP overwrites
+index 0 and the array encodes as `[true]` for one member.
 
 For every other arm the subtraction is **unconditional**: an explicit key is Omitted whether or not
 the arm actually declares it. `Omit<T, K>` does not require `K extends keyof T`, so this is well-typed either way,

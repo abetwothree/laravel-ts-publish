@@ -23,8 +23,9 @@ if neither, it does not go in this file.
 
 `$cond ? $untypable : null` publishes `null`, and `$this->opaque() ?: null` does the same. The arm that
 resolved to nothing is dropped rather than widening the union to `unknown`, which would be more honest but
-less specific. A spread helper's `return` branches follow the same rule. Type the arm with a return type, a
-`@return` docblock, or `#[TsCasts]` and it comes back.
+less specific. A spread helper's `return` branches follow the same rule, except that a key left with only `null`
+once the untypable branch drops publishes `unknown`. Type the arm with a return type, a `@return` docblock, or
+`#[TsCasts]` and it comes back.
 
 A model accessor's getter body is the exception: a body left as only `null` once an arm dropped, such as
 `fn ($value, array $attributes) => $attributes['title'] ?? null`, publishes `unknown` rather than `null`, on the
@@ -91,6 +92,15 @@ omits them on the guard path while the type promises them. Declare the key with 
 `#[TsCasts]` entry, or hoist the closure into a method the resource spreads, which does honour the guard.
 Aligning the closure path with the method path changes published output for every guarded `merge()` closure
 at once, so it is its own decision rather than a rider on the rule that established it.
+
+### A helper that returns an empty `[]` on one path publishes an object shape, though `[]` encodes as an array
+
+A method typed from its body, such as `if ($flag) { return []; } return ['a' => 1];`, publishes the literal's
+shape with every key optional: `{ a?: number } | null` under a `?array` signature, and `{ a?: number }` under a bare
+`array`. The keys really are absent on that path, but `json_encode([])` writes the JSON array `[]`, not an object,
+so the value is not the kind the type promises. `MethodReturnTypeResolver::shapeReadsEveryReturn()` counts the
+empty `[]` as a return the shape reads. Under `?array`, return `null` on that path instead: it publishes
+`{ a: number } | null`.
 
 ### `#[TsCasts]` and the top-level spread flatten disagree by scope, in three separate ways
 
@@ -454,8 +464,9 @@ whose only guard is the positive `if ($this->resource instanceof MediaType)`, pu
 as `string` rather than `unknown`. Both keys still publish **optional**, because the method's other branch
 is a `return []` — that is the return-branch rule, not a narrowing failure.
 
-The negated `if` form binds only a variable the method writes once, and only for the reads after the guard: a
-`return` placed before it, and the guard's own body, still read the variable unnarrowed. A resource that already
+The negated `if` form binds a variable only when nothing writes it after the guard tests it, and only for the reads
+after the guard: a `return` placed before it, and the guard's own body, still read the variable unnarrowed. A write
+before the guard does not matter, since the guard tests the value it leaves. A resource that already
 guards on `$this->resource` needs no `#[TsCasts]` for the properties that guard proves.
 
 ### A shape whose values name a class loses those values, in one of two ways

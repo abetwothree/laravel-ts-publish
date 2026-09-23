@@ -28,10 +28,13 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CollectionMemberModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DocblockFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\GuardOrderResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\GuardWritePostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\HiddenFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ListTypedFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MagicPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NarrowingGuardBodyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ParamGuardAttachmentResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostScoreSource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverIntegerKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverMethodProbe;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverProbeEnum;
@@ -810,8 +813,35 @@ describe('narrowing', function () {
         expect(resolve(ReceiverClassResolver::class)->resolve(new Variable('x'), $scope)?->classes)->toBe([Post::class]);
     });
 
-    test('a guard on a variable written twice does not narrow', function () {
-        expect(narrowingBindings('$a = 1; $a = 2; if (! $a instanceof \Workbench\App\Models\Post) { return; }'))->toBe([]);
+    test('a guard binds a variable exactly when no write to it sits after the guard tests it', function (string $body, array $bindings) {
+        expect(narrowingBindings($body))->toBe($bindings);
+    })->with([
+        'no write at all' => ['if (! $a instanceof \Workbench\App\Models\Post) { return; }', ['a' => [Post::class]]],
+        'two writes, both before the guard' => ['$a = 1; $a = 2; if (! $a instanceof \Workbench\App\Models\Post) { return; }', ['a' => [Post::class]]],
+        'a write in the condition before the test' => ['if (($a = $this->author) === null || ! $a instanceof \Workbench\App\Models\Post) { return; }', ['a' => [Post::class]]],
+        'a write in the guard\'s own exiting body' => ['$a = $this->author; if (! $a instanceof \Workbench\App\Models\Post) { $a = null; return; }', ['a' => [Post::class]]],
+        'one write after the guard' => ['if (! $a instanceof \Workbench\App\Models\Post) { return; } $a = $this->author;', []],
+        'a write before the guard and one after it' => ['$a = $this->author; if (! $a instanceof \Workbench\App\Models\Post) { return; } foreach ([] as $a) {}', []],
+        'a write in the condition after the test' => ['if (! $a instanceof \Workbench\App\Models\Post || ! ($a = $this->author)) { return; }', []],
+    ]);
+
+    test('a guard narrows a variable never written or written only before it, and not one written after it', function () {
+        $resource = new GuardWritePostResource(null);
+        $props = collect(resolve(AstEngine::class)->analyze(GuardWritePostResource::class)->properties)
+            ->mapWithKeys(fn (array $p): array => [$p['name'] => ($p['optional'] ? '?' : '').$p['type']]);
+
+        // After the guard $source is reassigned, so the read holds 'draft' although the guard proved a score source.
+        expect($props->all())->toBe(['zero' => '?number', 'before' => '?number', 'after' => '?string'])
+            ->and(new ReflectionMethod($resource, 'writtenAfterGuard')->invoke($resource, new PostScoreSource))
+            ->toBe(['after' => 'draft']);
+    });
+
+    test('a guard narrows a whenLoaded() closure parameter the closure never writes', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(ParamGuardAttachmentResource::class), Attachment::class)->analyze()->properties)
+            ->keyBy('name');
+
+        expect($props['guarded']['type'])->toBe('{ title: string } | null')
+            ->and($props['unguarded']['type'])->toBe('{ title: unknown }');
     });
 
     test('a guard body that reads the guarded variable still binds, for the statements after the guard', function () {

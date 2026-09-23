@@ -61,12 +61,23 @@ trait CollectsLocalVarBindings
      * Collect every local variable name written anywhere in a statement tree (writes, mutations,
      * foreach targets, closure by-ref uses).
      *
-     * By-reference call arguments are a known gap — the callee's signature isn't statically knowable.
-     *
      * @param  array<Node>  $stmts
      * @return list<string>
      */
     protected function collectWrittenVariableNames(array $stmts): array
+    {
+        return array_column($this->collectVariableWrites($stmts), 0);
+    }
+
+    /**
+     * Every local variable write in a statement tree, as the name written and the node that writes it.
+     *
+     * By-reference call arguments are a known gap — the callee's signature isn't statically knowable.
+     *
+     * @param  array<Node>  $stmts
+     * @return list<array{string, Node}>
+     */
+    protected function collectVariableWrites(array $stmts): array
     {
         $finder = new NodeFinder;
 
@@ -83,8 +94,8 @@ trait CollectsLocalVarBindings
                 || $node instanceof ClosureExpr,
         );
 
-        /** @var list<string> $names */
-        $names = [];
+        /** @var list<array{string, Node}> $writes */
+        $writes = [];
 
         foreach ($writeNodes as $node) {
             /** @var list<Expr> $targets */
@@ -119,12 +130,12 @@ trait CollectsLocalVarBindings
 
                 foreach ($vars as $var) {
                     if ($var instanceof Variable && is_string($var->name)) {
-                        $names[] = $var->name;
+                        $writes[] = [$var->name, $node];
                     }
                 }
             }
         }
 
-        return $names;
+        return $writes;
     }
 }

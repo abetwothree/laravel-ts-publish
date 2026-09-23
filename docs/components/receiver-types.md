@@ -382,11 +382,12 @@ An int or class-constant array key is a real JSON object key, not a list index: 
 constant key against the subject under analysis, and the key emits quoted because `1` is not a bare JS
 identifier. So `PriceQuoteService::tierLabels()` publishes `{ "1": string; "2": string }`.
 
-A **numeric** key is still dropped whenever the analyzed subject is a `JsonResource`. So `42 => $this->total`
-in a resource publishes nothing, and `quirky-resource` pins that it must not. A published member name cannot
-be numeric: `ResourceTransformer` keys its property maps by name as `array<string, …>`, and PHP stores a
-numeric string array key as an `int`, so such a name arrives as an `int` where a `string` is declared. The
-test is the *subject*, not whether that particular key becomes a member — a numeric key nested in an inline
+An int or class-constant **numeric** key is still dropped whenever the analyzed subject is a `JsonResource`. So
+`42 => $this->total` in a resource publishes nothing, and `quirky-resource` pins that it must not. The drop keeps
+numeric names out of `ResourceTransformer`'s property maps, keyed by name as `array<string, …>`, where PHP stores
+such a name as an `int`. A numeric **string** key such as `'6' =>` is not dropped: it publishes as `"6"`, and the
+transformer casts the `int` PHP hands back to a string wherever it looks the name up on the model. The
+test is the *subject*, not whether that particular key becomes a member — such a key nested in an inline
 array inside a resource, or in a resource's own helper reached by the body fallback, is dropped too. A helper
 on a plain class keeps them, which is the only reason `PriceQuoteService` can publish `{ "1": string }` at all.
 

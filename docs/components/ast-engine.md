@@ -436,10 +436,14 @@ narrowed too, which rule 2 cannot do. Rule 1 and this rule read the `||` chain t
 `ReadsInstanceofChains` grammar. See
 [Receiver types § A ternary's `instanceof` condition](receiver-types.md#a-ternarys-instanceof-condition).
 
-**The single-write requirement.** Rule 1 binds only a variable written exactly once in the body, reusing
-`CollectsLocalVarBindings::collectWrittenVariableNames()`. A flat statement list cannot tell which write
-is live at a given guard, so a reassigned variable stays unnarrowed rather than taking a
-wrong-but-plausible type — the same trade `localVarBindings` already makes.
+**No write after the guard.** Rule 1 binds `$x` only when no write to it can land once the guard has tested
+it. Every write `CollectsLocalVarBindings::collectVariableWrites()` finds must end before the tested operand
+starts, or sit in the guard's own body, which always exits. A write before the guard does not matter, since the
+guard tests the value it leaves, so a parameter nothing writes and a variable reassigned only before the guard both
+bind. A write after the guard, or later in its condition, leaves `$x` unnarrowed rather than typed as a class it
+may no longer hold. `GuardWritePostResource` (a test fixture) pins the three cases. The pass does not see a write
+through a by-reference argument, or through a reference taken before the guard (`$r = &$x;`, a closure's
+`use (&$x)`).
 
 **A guard narrows by position.** The walk is flat and holds one binding per method, so the binding is in
 force while the whole body is analyzed: the guard's *own* body, the branch that proves `$x` is **not** a `C`,
@@ -467,7 +471,8 @@ a single expression and no statement list, so only the parameter suppression abo
 
 - **A reassigned local** (written more than once in the method) — `localVarBindings` already skips
   these; `varModelBindings` has no reassignment analog since it only ever binds closure params and
-  loop variables, each written exactly once by construction.
+  loop variables, each written exactly once by construction. An early-exit guard still narrows one
+  reassigned only before it, as § Narrowing says.
 - **First-class callables** (`->map(...)`, `->pluck(...)`) — there is no closure body to bind a
   param into, so these are rejected before any binding is attempted.
 - **A relation-chain `map()` whose argument isn't a `Closure`/`ArrowFunction`** (a string callable
@@ -509,10 +514,14 @@ still resolves to nothing at all. The default types the property only while no m
 it: `SubjectPropertyTypeResolver` reads the class, each ancestor and every trait each uses, transitively, for a
 write of `$this->prop` or an element of it (an assignment, compound assignment, reference, `++`/`--`,
 `foreach` target, by-reference `foreach` over it, `unset()` or destructuring) and, in application code, for
-any computed-name write such as `$this->{$name} = …`, since Laravel's own computed writes name columns. A
-class whose declaration it cannot read counts as writing. A default naming a constant this process cannot load declines
-rather than aborting the run. `SubjectPropertyTypeResolver` is the one home for all three;
-`AstEngine::analyzePublicProperties()` and both handler arms call it.
+any computed-name write such as `$this->{$name} = …`, since Laravel's own computed writes name columns. It does
+not see a write a subclass makes, since it reads only the class and what the class inherits, or a write through a
+by-reference argument such as `array_push($this->tags, 5)`: either leaves the default's type standing for a value
+the property may no longer hold. An internal class has no file and is skipped, since its code cannot name a
+property its user-land subclass declares; a parsed file that does not declare the class counts as writing. A
+default naming a constant this process cannot load declines rather than aborting the run.
+`SubjectPropertyTypeResolver` is the one home for all three; `AstEngine::analyzePublicProperties()` and both
+handler arms call it.
 
 There are two arms because the dispatcher never hands the inner node of a chain to a handler:
 
@@ -567,12 +576,14 @@ does.
 
 ### The run memo replays what it recorded
 
-`AnalysisMemo`, a container singleton, holds the engine's cycle guards and a memo for one run. Four analyses
-are memoized in it: `AstEngine::analyzeMethod()` per `analysis:class@method@model`,
+`AnalysisMemo`, a container singleton, holds the engine's cycle guards and a memo of analyses. A run starts by
+calling its `forget()`, which keeps the pinned outermost answers, so those outlive a run in the same process. Four
+analyses are memoized in it: `AstEngine::analyzeMethod()` per `analysis:class@method@model`,
 `MethodReturnTypeResolver::resolve()` per `method-return:class@method`, `AccessorBodyAnalyzer::analyze()` per
 `accessor-body:model@attribute`, and `ModelAttributeResolver`'s accessor waterfall per
-`accessor-type:model@attribute`. Every key but `method-return:`, whose analysis never carries an import, gains an
-`@importless` suffix for an analysis that carries none. So a helper that many keys read is analyzed once per run.
+`accessor-type:model@attribute`. Every key but `method-return:`, whose answer does not depend on the import mode,
+gains an `@importless` suffix for an analysis that carries no imports. So a helper that many keys read is analyzed
+once per run.
 
 An answer stores the dependency paths `DependencyRecorder` recorded while it was computed, and every reuse
 records them again, so the generation cache sees what a fresh computation would have shown it. An unpinned

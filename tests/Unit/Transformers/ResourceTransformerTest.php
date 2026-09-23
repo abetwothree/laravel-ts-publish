@@ -21,6 +21,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ModelCastDataSignatureR
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ModelSignatureCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MultilineQuoteCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MultilineTemplateCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NumericKeyTeamResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\QuotedCastReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RawCrCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ResourceCastOverModelCastResource;
@@ -31,6 +32,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TemplateCastReadResourc
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UnclosedTemplateCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UndefinedTextCastTagSignatureResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
+use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
+use Illuminate\Filesystem\Filesystem;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
@@ -2995,4 +2998,17 @@ test('a key named after a model accessor imports that accessor\'s model only whi
         ->and(implode(' ', array_merge(...array_values($unused->typeImports))))->not->toMatch('/\\bUser\\b/')
         ->and([$used->properties['author_model']['type'], $used->properties['lead']['type']])->toBe(['ModelsUser', 'CrmUser'])
         ->and(implode(' ', array_merge(...array_values($used->typeImports))))->toBe('User as ModelsUser User as CrmUser');
+});
+
+test('a numeric-string key in a model-backed resource publishes as written, where an int key is dropped', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $transformer = new ResourceTransformer(NumericKeyTeamResource::class);
+    $content = new ResourceWriter(new Filesystem)->write($transformer);
+
+    // PHP stores '6' as the int key 6, which the model attribute lookup once received as its string name.
+    expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))
+        ->toBe(['id' => 'number', 6 => 'string'])
+        ->and($content)->toContain('"6": string;')
+        ->not->toContain('int-key');
 });

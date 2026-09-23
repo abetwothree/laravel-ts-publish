@@ -349,6 +349,34 @@ describe('qualifyGlobalType', function () {
         expect($result)->toBe('Post | Product | User | crm.models.User');
     });
 
+    test('never rewrites a name inside a quoted string literal, whatever the literal escapes', function (string $type, string $qualified) {
+        $result = $this->service->qualifyGlobalType(
+            $type,
+            ['app.models' => ['Post', 'User']],
+            '',
+            ['CrmUser' => 'crm.models.User'],
+        );
+
+        expect($result)->toBe($qualified);
+    })->with([
+        'single-quoted names' => ["'Post' | 'User' | Post", "'Post' | 'User' | app.models.Post"],
+        'double-quoted names' => ['"Post" | User', '"Post" | app.models.User'],
+        'an alias' => ["'CrmUser' | CrmUser", "'CrmUser' | crm.models.User"],
+        'an escaped quote' => ["'it\\'s Post' | Post", "'it\\'s Post' | app.models.Post"],
+        'an escaped backslash before the closing quote' => ["'Post\\\\' | Post", "'Post\\\\' | app.models.Post"],
+        'the other quote inside' => ["\"it's Post\" | 'say \"User\"' | User", "\"it's Post\" | 'say \"User\"' | app.models.User"],
+        'a shape member and a quoted key' => ["{ kind: 'Post'; \"User\": User }", "{ kind: 'Post'; \"User\": app.models.User }"],
+    ]);
+
+    test('reads a template literal as before: its text is qualified, and a quote inside opens no string', function () {
+        $result = $this->service->qualifyGlobalType(
+            "`User's-\${string}` | 'Post'",
+            ['app.models' => ['Post', 'User']],
+        );
+
+        expect($result)->toBe("`app.models.User's-\${string}` | 'Post'");
+    });
+
     test('qualifies each type once per namespace under the same maps, and reads a repeat back', function () {
         $service = new CountingTsTypeString;
         $types = ['app.models' => ['User', 'Post'], 'crm.models' => ['User']];

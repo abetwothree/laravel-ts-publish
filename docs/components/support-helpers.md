@@ -83,7 +83,8 @@ no `\p{ID_Continue}`. And `qualifyGlobalType()` memoizes each answer for the run
 string, in `$qualifiedTypes`: the globals template calls it once per property, and most calls repeat a type
 already qualified. The memo holds the namespace and alias maps its answers were made under and starts over when a
 call brings other maps, and `Runner::run()` and `RunnerForSource::run()` drop it through `forgetQualifiedTypes()`.
-The work itself is the protected `qualifyGlobalTypeOnce()`. Its only outward dependency is
+The work itself is the protected `qualifyGlobalTypeOnce()`, which leaves each quoted string literal as written, so
+`'Post'` stays a literal, and hands the text around them to `qualifyNames()`. Its only outward dependency is
 `TsTypeShape::splitTopLevel()`, which `splitTopLevelUnion()` wraps.
 
 `isUnknownOnly()` is the one home for "this answer is `unknown` once its `null` arms are removed" —

@@ -161,7 +161,7 @@ class TsTypeString
      * Prefix unqualified type names in a TypeScript type string with their global namespace.
      *
      * Pass 1 resolves per-file import aliases (`CrmUser` → `models.User`) first, so aliased names
-     * reach the namespace-qualification pass already resolved.
+     * reach the namespace-qualification pass already resolved. A quoted string literal is left as written.
      *
      * @param  string  $typeStr  The TypeScript type string to rewrite.
      * @param  array<string, list<string>>  $namespacedTypes  Map of namespace prefix → type names it owns.
@@ -335,22 +335,48 @@ class TsTypeString
     }
 
     /**
-     * Qualify one type string under the given maps: aliases first, then every other namespace's bare names.
+     * Qualify one type string under the given maps, leaving each quoted string literal as written.
      *
      * @param  array<string, list<string>>  $namespacedTypes
      * @param  array<string, string>  $aliasResolution
      */
     protected function qualifyGlobalTypeOnce(string $typeStr, array $namespacedTypes, string $skipNamespace, array $aliasResolution): string
     {
+        // A literal's text is a value, so 'Post' must stay 'Post'. A template literal is matched only so a quote inside
+        // it opens no string; its own text is qualified like the rest.
+        $literal = '/(\'(?:[^\'\\\\]|\\\\.)*\'|"(?:[^"\\\\]|\\\\.)*"|`(?:[^`\\\\]|\\\\.)*`)/s';
+        $segments = preg_split($literal, $typeStr, -1, PREG_SPLIT_DELIM_CAPTURE) ?: [$typeStr];
+        $qualifiable = array_filter(
+            $segments,
+            static fn (string $segment, int $index): bool => $index % 2 === 0 || str_starts_with($segment, '`'),
+            ARRAY_FILTER_USE_BOTH,
+        );
+        [$patterns, $replacements] = $this->qualificationRules($namespacedTypes, $skipNamespace, $aliasResolution);
+        $qualified = preg_replace($patterns, $replacements, $qualifiable) ?? $qualifiable;
+
+        return implode('', array_replace($segments, $qualified));
+    }
+
+    /**
+     * The rewrites that qualify a name, applied in order: per-file aliases first, then every other namespace's names.
+     *
+     * @param  array<string, list<string>>  $namespacedTypes
+     * @param  array<string, string>  $aliasResolution
+     * @return array{list<string>, list<string>} the patterns, and the replacement for each
+     */
+    protected function qualificationRules(array $namespacedTypes, string $skipNamespace, array $aliasResolution): array
+    {
+        $patterns = [];
+        $replacements = [];
+
         // Pass 1: resolve per-file import aliases to their namespace-qualified equivalents
         foreach ($aliasResolution as $alias => $qualified) {
             $lastDot = strrpos($qualified, '.');
             $targetNs = $lastDot !== false ? substr($qualified, 0, $lastDot) : '';
-            $replacement = ($targetNs === $skipNamespace)
+            $patterns[] = '/(?<![A-Za-z0-9_$.])'.preg_quote($alias, '/').'(?![A-Za-z0-9_$])/';
+            $replacements[] = ($targetNs === $skipNamespace)
                 ? substr($qualified, $lastDot + 1)
                 : $qualified;
-            $pattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($alias, '/').'(?![A-Za-z0-9_$])/';
-            $typeStr = preg_replace($pattern, $replacement, $typeStr) ?? $typeStr;
         }
 
         // Pass 2: names that also exist in the skip namespace belong to the current context,
@@ -371,12 +397,12 @@ class TsTypeString
                     continue;
                 }
 
-                $pattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($typeName, '/').'(?![A-Za-z0-9_$])/';
-                $typeStr = preg_replace($pattern, $namespace.'.'.$typeName, $typeStr) ?? $typeStr;
+                $patterns[] = '/(?<![A-Za-z0-9_$.])'.preg_quote($typeName, '/').'(?![A-Za-z0-9_$])/';
+                $replacements[] = $namespace.'.'.$typeName;
             }
         }
 
-        return $typeStr;
+        return [$patterns, $replacements];
     }
 
     /**
