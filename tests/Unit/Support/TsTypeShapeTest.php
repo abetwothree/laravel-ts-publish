@@ -50,7 +50,7 @@ describe('splitTopLevel', function () {
     })->with([
         'escaped double quotes around a placeholder' => ['`\\"${string}\\"` | null', ['`\\"${string}\\"`', 'null']],
         'escaped double quotes in plain text' => ['`say \\"hi\\"` | null', ['`say \\"hi\\"`', 'null']],
-        'escaped single quotes around a placeholder' => ["`\\'\\${string}\\'` | null", ["`\\'\\${string}\\'`", 'null']],
+        'escaped single quotes around a placeholder' => ['`\\\'${string}\\\'` | null', ['`\\\'${string}\\\'`', 'null']],
     ]);
 
     test('reads a backtick as template text, so one inside a placeholder cannot close a span', function (string $type, array $expected) {

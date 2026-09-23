@@ -92,8 +92,8 @@ Two limits follow from where those declines stop:
   - A literal `only()` list that types no member of a single model publishes `Record<string, unknown>` in every
     scope, since `Model::only(['nope'])` returns `['nope' => null]`.
   - A member the package reads as holding a `Support\Collection` that runs that class's own filter publishes
-    `Record<string, unknown>` in every scope, `| null` through `?->`, because `Collection::only()`/`except()` keep
-    the entries whose keys are listed. That is a column cast with `'collection'`, `'encrypted:collection'`,
+    `Record<string, unknown>` in every scope, `| null` through `?->`, because `Collection::only()`/`except()` select
+    entries by key, keeping or dropping the listed ones. That is a column cast with `'collection'`, `'encrypted:collection'`,
     `AsCollection` or `AsEncryptedCollection` (or their `using()` class), or an accessor or cast whose getter returns a
     `Collection`, whatever its elements: `Attribute<Collection<int, User>, never>` publishes the record, not a `User`
     pick. `RelationFilterHandler` reads the member's collection class before any element model the accessor names,
@@ -993,7 +993,10 @@ containing a backtick declines the whole key (returns `null`): `JsEmitter::isInd
 backtick alternative has no escape clause, so an escaped backtick could not be read back, and there is no
 fixture that needs it. Otherwise it publishes a template-literal index signature, e.g.
 ``[key: `${string}_label`]``, with `${` in any literal segment escaped so the pattern stays valid
-TypeScript syntax without being misread as an actual interpolation.
+TypeScript syntax without being misread as an actual interpolation. Only `${` is escaped: any other
+backslash in a literal segment is published as written, and TypeScript reads it as a template escape. A
+`\u` or `\x` with no hex digits after it is a syntax error (TS1125), a backslash ending the segment escapes
+the `${string}` after it (TS1337), and any other changes the text the pattern matches (`\b` is a backspace).
 
 Such a key always publishes `optional = false` with its value type widened to include `| undefined`,
 never `key?:` on the signature itself. `[key: T]?:` is a TypeScript syntax error regardless of how
@@ -1078,7 +1081,9 @@ It reads the keys that will be published. For a named key that is only the last 
 later literal or spread replaces an earlier one, with a cast key's type in place of the analysis's. Every
 entry of a signature's name counts, since each stands for other runtime keys. The pattern is read back from
 the name: an unescaped `${string}` matches any run of characters, empty included, so `_tag` itself falls
-under ``${string}_tag`` exactly as TypeScript reads it, and an escaped `\${` is literal text.
+under ``${string}_tag`` exactly as TypeScript reads it, and an escaped `\${` is literal text. Any other
+backslash is read as a literal one, so for a literal segment holding one this reading and TypeScript's part
+ways ([Interpolated keys](#interpolated-keys)).
 
 - **Union.** When the signature's entries and the keys its pattern matches can all join, the entries fold
   into the first, valued with every arm and the `| undefined`, and the named keys keep their own type.

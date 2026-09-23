@@ -403,9 +403,12 @@ This is deliberate. Reading a type as TypeScript lexes it, to leave a name insid
 TypeScript reads as references (a string continued by a backslash-newline, a `//` comment ended by CR or
 U+2028, a template literal one value opens and the next closes), and each hidden name dropped an import the
 generated file needed, which is TS2304 for every consumer. An unused import is the cheaper failure, so the
-match reads every token, first decodes every `\u` escape that names a code point (a surrogate, or one past
-U+10FFFF, stays as written), and takes identifier characters, as the running PCRE2's Unicode tables know
-them, as its boundaries.
+match reads every token, first decodes every `\u` escape that names a character (an escape of a surrogate, or
+of a value above U+10FFFF, stays as written), and takes identifier characters, as the running PCRE2's Unicode
+tables know them, as its boundaries. Its one other accepted cost is in syntax TypeScript rejects: a name right
+after a numeric literal (`1User`, `0xUser`), or after a character TypeScript rejects at a name's start (`·User`,
+or a ZWJ before `User`), is missed and its import dropped, in a file that fails to compile either way (TS1351,
+TS1125, TS1127).
 
 **What to do about it.** Spell the literal without the imported name, or override the read with a type that
 uses the import.

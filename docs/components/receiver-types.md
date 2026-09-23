@@ -280,7 +280,7 @@ reflects to the vague `unknown[] | Record<string, unknown>`.
 | `modelKeys()` | An Eloquent collection with `elementModel` set | The element model's key type as a list, `number[]` or `string[]` |
 | `only([...])`, `except([...])` | A receiver holding exactly one model class, where the call carries a literal key list | Exactly what `RelationFilterHandler` builds for a relation to that model: `Pick<Model, …>` when every key is a published column, else the inline shape. Where the scope carries no import (`AnalysisScope::$carriesImports`), no `Pick<>`: the inline shape, where a member whose type names a token, such as an enum column, is `unknown`. A list that types no member, such as `only(['nope'])`, publishes `Record<string, unknown>`, because `Model::only()` still returns an attribute-keyed array (`['nope' => null]`); `RelationFilterHandler` declines that call on a single relation, so this row answers it there too |
 | `only($keys)`, `except($keys)` with no literal key list, such as `only($request->input('fields'))` | A receiver holding exactly one model class, including a model subject's bare `$this` | `Record<string, unknown>` from `ResolvesFilteredRelationTypes::attributeRecordResult()`: whatever keys arrive at runtime, either filter returns an array keyed by attribute name. In `ProxyFilterDirectResource` and `ProxyFilterWrappedResource` this rule answers the own-model cells `fields_own` and `except_own` in both spellings; the relation cells `fields_author` and `except_author` get the same answer from `RelationFilterHandler`, which runs first and calls the same helper. |
-| `only()`, `except()` | A class that runs `Illuminate\Support\Collection`'s own filter (`FiltersAttributeKeys::runsCollectionFilter()`), such as a method returning `Collection`, `collect([...])`, or an accessor typed `Attribute<Collection<string, int>, never>` or `Attribute<Collection<int, User>, never>` | `Record<string, unknown>` for any key list and any element type, from `attributeRecordResult()`: both filters keep the entries whose keys are listed. `RelationFilterHandler` answers a member holding one first, asking the same check before any element model the accessor names, and a column cast with `'collection'`, `'encrypted:collection'`, `AsCollection` or `AsEncryptedCollection` included, which no reflection names. `Eloquent\Collection` overrides both filters and is not this row: this resolver declines it, and `RelationFilterHandler` publishes an accessor holding one as a list of its models. |
+| `only()`, `except()` | A class that runs `Illuminate\Support\Collection`'s own filter (`FiltersAttributeKeys::runsCollectionFilter()`), such as a method returning `Collection`, `collect([...])`, or an accessor typed `Attribute<Collection<string, int>, never>` or `Attribute<Collection<int, User>, never>` | `Record<string, unknown>` for any key list and any element type, from `attributeRecordResult()`: both filters select entries by key, `only()` keeping the listed ones and `except()` dropping them. `RelationFilterHandler` answers a member holding one first, asking the same check before any element model the accessor names, and a column cast with `'collection'`, `'encrypted:collection'`, `AsCollection` or `AsEncryptedCollection` included, which no reflection names. `Eloquent\Collection` overrides both filters and is not this row: this resolver declines it, and `RelationFilterHandler` publishes an accessor holding one as a list of its models. |
 | `only()`, `except()` | Any other receiver — a union, an Eloquent collection, or a `StaticCall`, which carries no key list this can read | No rule. Reflection then declines the vague `array`. `RelationFilterHandler` answers a many-relation filter spelled `$this->comments->only(...)` or `$this->resource->comments->only(...)` before this rule runs, but it matches only a plain property fetch: `$this->resource?->comments->only([1])` reaches this row and publishes `unknown`. |
 
 The key type comes from `ModelAttributeResolver::getInstance()`, so `HasUuids`, `HasUlids`, and a
@@ -466,15 +466,17 @@ class's name inside a quoted string, template text or comment keeps that import 
 in a project compiling with `noUnusedLocals`, as TS6196 for each unused name, or as one TS6192 when the line holds two
 or more names and none is used; see
 [known-gaps](../known-gaps.md#a-tscasts-value-that-spells-an-imported-name-inside-a-string-template-or-comment-keeps-the-import).
-The token's boundaries are a keep-biased reading of TypeScript's: a character TypeScript reads as part of an identifier
-(`$`, ZWNJ, ZWJ or Unicode ID_Continue, as the running PCRE2's tables know it) on either side of the name joins it, so
-`CrmUser`, `a1User` and `User\u{e9}` are longer names and `foo.User`, `a1.User` and `Api.V2.User` member accesses, none
-of them the type, while `[string, ...User[]]` references it. Which characters are ID_Continue follows the Unicode
-tables of the PCRE2 that PHP runs on, plus U+30FB and U+FF65, which Unicode 15.1 added; a PCRE2 older than 10.40 has
-no `\p{ID_Continue}` and gets the same set spelled from its general categories and the Other_ID code points. Every
-`\u` escape is decoded to the character it names before the match, whatever those tables hold, so `\u{55}ser`
-references `User` and `Us\u{30FB}er` spells `Us・er`; only an escape that names no code point (a surrogate, or past
-U+10FFFF) stays as written. The departures that remain:
+The token's boundaries are a keep-biased reading of TypeScript's: an identifier character on either side of the name
+joins it, where that is `$`, ZWNJ, ZWJ, or Unicode ID_Continue as the running PCRE2's tables know it, so `CrmUser`,
+`a1User` and `User\u{e9}` are longer names and `foo.User`, `a1.User` and `Api.V2.User` member accesses, none of them
+the type, while `[string, ...User[]]` references it. Which characters are ID_Continue follows the Unicode tables of
+the PCRE2 that PHP runs on, plus U+30FB and U+FF65, which Unicode 15.1 added; a PCRE2 older than 10.40 has no
+`\p{ID_Continue}` and gets the same set spelled from its general categories and the Other_ID code points. Every `\u`
+escape is decoded to the character it names before the match, whatever those tables hold, so `\u{55}ser` references
+`User` and `Us\u{30FB}er` spells `Us・er`; only an escape that names no Unicode scalar value (a surrogate, or a value
+above U+10FFFF) stays as written, as does a `\u` with fewer than four hex digits. TypeScript's recovery reads those as
+the prune does, so `\uD800User` and `\u12User` are the names `uD800User` and `u12User` to both. The departures that
+remain:
 
 - **An import kept, unused at worst.** `import('x').User` counts, since only an identifier character before the dot
   marks a member access. A character TypeScript reads in an identifier but the running tables do not hold yet joins
@@ -482,11 +484,10 @@ U+10FFFF) stays as written. The departures that remain:
 - **Only in syntax TypeScript rejects, so the file fails either way.** A name right after a numeric literal (`1User`,
   `0xUser`) is missed. A character the running tables hold but TypeScript rejects where it stands (TS1127) joins the
   name beside it: one Unicode 16.0 added, on a PCRE2 whose tables have it, or ZWNJ, ZWJ, a combining mark or an
-  Other_ID_Continue character such as U+00B7 at the start of a name. A four-digit surrogate escape, or a `\u` with
-  fewer than four digits, runs its digits into the name after it. An escape of a character no identifier holds, or
-  of an identifier character TypeScript rejects where it stands, is decoded all the same, so the names TypeScript's
-  recovery makes of it are missed: `u002EUser` for `\u002EUser`, `u00B7User` for `\u00B7User`, and `u` and `B7`
-  for `\u{B7}`.
+  Other_ID_Continue character such as U+00B7 at the start of a name. An escape of a character no identifier holds,
+  or of an identifier character TypeScript rejects where it stands, is decoded all the same, so the names TypeScript's
+  recovery makes of it are missed: `u002EUser` for `\u002EUser`, `u00B7User` for `\u00B7User`, and `u`, `B7` and
+  `User` for `\u{B7}User`.
 
 `BulletinCastResource` overrides a `Comment` read and a `User` read and keeps only `User`, which its unoverridden
 `owner_list` still names. `ResourceTransformerTest` pins, over a model, an enum and a `#[TsType]` read each, a name
