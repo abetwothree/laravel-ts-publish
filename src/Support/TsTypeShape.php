@@ -16,6 +16,9 @@ namespace AbeTwoThree\LaravelTsPublish\Support;
  */
 final class TsTypeShape
 {
+    /** The characters that open a quoted span; a template literal's backtick is not one, since `${…}` can nest it. */
+    private const QUOTES = '\'"';
+
     /**
      * Whether every non-null union arm is an object literal, index signature, or Record.
      */
@@ -87,7 +90,7 @@ final class TsTypeShape
     }
 
     /**
-     * Split on any of $separators that sit outside brackets, braces, parentheses, angle brackets, and quoted spans.
+     * Split on any of $separators outside brackets, braces, parentheses, angle brackets, and '…' or "…" spans.
      *
      * Depth floors at zero so malformed input fails toward splitting, matching hasTopLevelSeparator().
      *
@@ -110,7 +113,7 @@ final class TsTypeShape
                 continue;
             }
 
-            if (str_contains('\'"`', $char)) {
+            if (str_contains(self::QUOTES, $char)) {
                 $quote = $char;
             } elseif (str_contains('{[(<', $char)) {
                 $depth++;
@@ -132,7 +135,7 @@ final class TsTypeShape
     }
 
     /**
-     * Offset of the first $needle outside brackets, braces, parentheses, angle brackets, and quoted spans.
+     * Offset of the first $needle outside brackets, braces, parentheses, angle brackets, and '…' or "…" spans.
      */
     private static function topLevelPosition(string $type, string $needle): ?int
     {
@@ -147,7 +150,7 @@ final class TsTypeShape
                 continue;
             }
 
-            if (str_contains('\'"`', $char)) {
+            if (str_contains(self::QUOTES, $char)) {
                 $quote = $char;
             } elseif (str_contains('{[(<', $char)) {
                 $depth++;

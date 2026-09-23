@@ -1058,12 +1058,12 @@ beside it are all known:
 - **In the analyzer:** at the end of `analyzeReturnArray()`, where spreads, `merge()` and literal keys
   meet, and in `analyze()` and `analyzeThisMethodSpread()` after `ReturnShapeRefiner::refine()` and
   `applyTsCastsFromMethod()`, because the refiner and a method's own `#[TsCasts]` change keys after the merge.
-- **In each publisher, over the keys it adds.** `ResourceTransformer::runAstAnalysis()` passes the keys
-  `applyOverrides()` will lay over the analysis (`castKeys()`: every resource `#[TsCasts]` key, whether the
-  analysis has it or not, and each model one `modelCastsOver()` picks, the rule `applyOverrides()` applies
-  too: a key the analysis has and the resource does not cast), and whether the interface has an extends
-  clause. `BroadcastEventTransformer::transformProperties()` passes its extends clause, but only the casts
-  on keys the analysis has, since `resolveProperties()` retypes no other key.
+- **In each publisher, over the keys it adds or retypes.** `ResourceTransformer::runAstAnalysis()` passes
+  the keys `applyOverrides()` will lay over the analysis (`castKeys()`: every resource `#[TsCasts]` key,
+  whether the analysis has it or not, and each model one `modelCastsOver()` picks, the rule
+  `applyOverrides()` applies too: a key the analysis has and the resource does not cast), and whether the
+  interface has an extends clause. `BroadcastEventTransformer::transformProperties()` passes its extends
+  clause, but only the casts on keys the analysis has, since `resolveProperties()` retypes no other key.
   `InertiaPageAnalyzer::buildPageData()` passes the controller method's casts for each component, whether
   its props come from one render call or from several merged, a ternary's props literals included.
   `InertiaSharedDataAnalyzer::buildResult()` passes its `#[TsCasts]` and docblock overrides. An extends
@@ -1270,7 +1270,9 @@ type alone — instead of `string | number, required`. The fix was checked again
 ### `stripNullArm()` only drops the top-level `null` arm
 
 `stripNullArm()` splits the type on `TsTypeString::splitTopLevelUnion()`, a depth-aware splitter over
-braces, parens, angle brackets, and square brackets, and filters out a member equal to exactly `'null'`.
+braces, parens, angle brackets, and square brackets that skips a `'…'` or `"…"` span whole (a backslash
+inside one escapes the next character) but reads a template literal's backticks as plain text, and filters
+out a member equal to exactly `'null'`.
 Only a union member sitting at depth zero is ever removed — `(string | null)[]` and `{ a: string; b: number
 | null }` both keep their nested `| null` untouched, since neither nested `null` is a top-level member of
 the outer type. `ConditionalMethodHandler` (stripping `whenNotNull()`'s success arm) and `CoalesceHandler`
@@ -1933,7 +1935,8 @@ are both nullable — `$this->regional_hub?->only(['primaryContact', 'manager'])
 `->only(['manager', 'secondaryContact', 'primaryContact'])` — survive that dedupe as two distinct
 strings, so a plain `implode(' | ', …)` repeated the nullable marker once per arm: `A | null | B | null`.
 `unionBranchTypes()` splits every arm on its top-level `|` via `TsTypeString::splitTopLevelUnion()`
-(depth-aware over `{`, `(`, `<` and `[`, and it skips single-quoted literals whole), drops the top-level
+(depth-aware over `{`, `(`, `<` and `[`; it skips a `'…'` or `"…"` span whole, honouring backslash escapes,
+and reads backticks as plain text), drops the top-level
 `null` members, and appends one trailing `| null` if any arm carried one. A nested null — `| null` on a
 member inside `{ … }` — sits inside a group, so the splitter never yields it and it is left alone. Arm
 order is otherwise preserved, which is load-bearing: `aliasPropertyType()` consumes `inlineModelFqcns`

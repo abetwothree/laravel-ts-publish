@@ -50,9 +50,15 @@ describe('splitTopLevel', function () {
     })->with([
         'single quotes' => ["'it\\'s | undefined | x' | null", ["'it\\'s | undefined | x'", 'null']],
         'double quotes' => ['"q\\" | undefined | r" | null', ['"q\\" | undefined | r"', 'null']],
-        'backticks' => ['`a\\` | undefined | b` | null', ['`a\\` | undefined | b`', 'null']],
         'an escaped backslash before the closing quote' => ["'a\\\\' | 'b'", ["'a\\\\'", "'b'"]],
-        'a backtick span with no escape' => ['`a | b` | c', ['`a | b`', 'c']],
+    ]);
+
+    test('reads a backtick as template text, so one inside a placeholder cannot close a span', function (string $type, array $expected) {
+        expect(TsTypeShape::splitTopLevel($type, ['|']))->toBe($expected);
+    })->with([
+        'a single-quoted backtick' => ["`\${'`'}` | null", ["`\${'`'}`", 'null']],
+        'a double-quoted backtick' => ['`${"`"}` | undefined', ['`${"`"}`', 'undefined']],
+        'a nested template with a pipe' => ['`${`a|b`}` | null', ['`${`a|b`}`', 'null']],
     ]);
 
     test('floors depth at zero so an unmatched closing bracket still splits what follows', function () {
@@ -68,7 +74,7 @@ describe('memberType', function () {
             ->and(TsTypeShape::memberType('{ a: { b: string; c: number }; d: string }', 'a'))->toBe('{ b: string; c: number }')
             ->and(TsTypeShape::memberType('{ "2fa"?: boolean, other: string }', '2fa'))->toBe('boolean')
             ->and(TsTypeShape::memberType('{ "a:b": string; other: number }', 'a:b'))->toBe('string')
-            ->and(TsTypeShape::memberType('{ "a\\": b": string; other: number }', 'a\\": b'))->toBe('string')
+            ->and(TsTypeShape::memberType('{ "a\\": b": string; other: number }', 'other'))->toBe('number')
             ->and(TsTypeShape::memberType('{ a: number } | null', 'a'))->toBe('number');
     });
 
