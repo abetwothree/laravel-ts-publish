@@ -2302,7 +2302,7 @@ declare global {
             currency: workbench.app.enums.CurrencyType;
             items?: workbench.app.models.OrderItem[];
             items_count?: number;
-            total_avg?: number | string;
+            total_avg?: number;
             paid_at?: string | null;
             shipped_at?: string | null;
             delivered_at?: string | null;
@@ -2725,7 +2725,7 @@ declare global {
             has_with_null: number | null;
             loaded_with_default: workbench.app.models.User | null;
             counted_with_default: number | string;
-            aggregated_no_default?: number | string;
+            aggregated_no_default?: number;
             aggregated_with_default: number | string;
             pivot_loaded_no_default?: unknown;
             pivot_loaded_with_default: unknown;
@@ -3579,7 +3579,7 @@ declare global {
             currency: workbench.app.enums.CurrencyType;
             items?: workbench.app.models.OrderItem[];
             items_count?: number;
-            total_avg?: number | string;
+            total_avg?: number;
             paid_at?: string | null;
             shipped_at?: string | null;
             delivered_at?: string | null;
@@ -3756,9 +3756,9 @@ declare global {
             tags?: TagResource[];
             images?: ImageResource[];
             orders_count?: number;
-            total_sold?: number | string;
-            min_unit_price?: number | string;
-            max_unit_price?: number | string;
+            total_sold?: number;
+            min_unit_price?: number;
+            max_unit_price?: number;
             weight?: number | null;
             dimensions?: { length: number; width: number; height: number; unit: "cm" | "in" };
             metadata?: ProductMetadata | ProductJsonMetaData | null;

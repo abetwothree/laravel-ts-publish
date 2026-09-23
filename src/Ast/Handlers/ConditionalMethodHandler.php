@@ -109,12 +109,14 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
         if ($this->isThisMethodCall($expr, 'whenCounted')) {
             /** @var MethodCall $expr */
-            return $this->analyzeWhenAggregate($expr, 'whenCounted', $scope, $engine);
+            return $this->analyzeWhenAggregate($expr, 'whenCounted', ['type' => 'number', 'optional' => false], $scope, $engine);
         }
 
+        // An aggregate's type depends on its column, function and driver, so its value closure's parameter binds
+        // nothing; the key publishes as number by convention (plan follow-up 113 narrows it by driver and cast).
         if ($this->isThisMethodCall($expr, 'whenAggregated')) {
             /** @var MethodCall $expr */
-            return $this->analyzeWhenAggregate($expr, 'whenAggregated', $scope, $engine);
+            return $this->analyzeWhenAggregate($expr, 'whenAggregated', ValueResult::unknown(), $scope, $engine);
         }
 
         if ($this->isThisMethodCall($expr, 'whenPivotLoaded')) {
@@ -361,26 +363,19 @@ final class ConditionalMethodHandler implements ExpressionHandler
      * Analyze $this->whenCounted()/whenAggregated() — Laravel returns `value($value, $aggregate)`, swapping a null
      * $value for the identity closure, so a missing or null value publishes the aggregate itself.
      *
-     * A count is a number. Any other aggregate is the raw column value the driver returns, which is a number or a
-     * string: a max() over a date, or a sum() or avg() MySQL returns as a decimal. A value closure is passed the
-     * aggregate, and its own result types the key when it resolves; one the engine cannot type leaves the aggregate.
+     * A value closure is passed $aggregate: `number` for a count, `unknown` for a column aggregate. The closure's own
+     * result types the key when it resolves; otherwise the key publishes `number`, the package's convention for an
+     * aggregate, although a driver can return a numeric or date string for one that is not a count.
      *
+     * @param  ValueExpressionResult  $aggregate
      * @return ValueExpressionResult
      */
-    protected function analyzeWhenAggregate(MethodCall $call, string $method, AnalysisScope $scope, ExpressionEngine $engine): array
+    protected function analyzeWhenAggregate(MethodCall $call, string $method, array $aggregate, AnalysisScope $scope, ExpressionEngine $engine): array
     {
         $args = $this->arguments($call, $method);
-        $function = $args->named('aggregate')?->value;
-        $aggregate = $method === 'whenCounted' || ($function instanceof String_ && $function->value === 'count')
-            ? ['type' => 'number', 'optional' => false]
-            : ['type' => 'number | string', 'optional' => false];
+        $fromValue = $this->resolveValueArgument($args, $aggregate, $scope, $engine);
 
-        return $this->applyConditionalDefault(
-            $this->resolveValueArgument($args, $aggregate, $scope, $engine) ?? $aggregate,
-            $args,
-            $scope,
-            $engine,
-        );
+        return $this->applyConditionalDefault($fromValue ?? ['type' => 'number', 'optional' => false], $args, $scope, $engine);
     }
 
     /**
@@ -653,8 +648,9 @@ final class ConditionalMethodHandler implements ExpressionHandler
     /**
      * The type Laravel's `value($value, ...$args)` produces, binding a closure's first parameter to $argument.
      *
-     * $argument is what Laravel passes the closure: an expression to read, a value already typed, or null when it
-     * passes nothing. Every parameter left without an argument takes its default's type.
+     * $argument is what Laravel passes the closure: an expression to read, a value already typed (`unknown` when
+     * the call passes one this handler cannot type), or null when it passes nothing. Every parameter left without an
+     * argument takes its default's type.
      *
      * Null means there is no usable value — none written, a literal null, an EnumResource wrap whose channel
      * the caller decides, or a resolution the engine cannot type — so the caller keeps its own
@@ -692,7 +688,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
                 if ($argument instanceof Expr) {
                     $scope->closureParamExprBindings[$name] = $argument;
-                } else {
+                } elseif ($argument['type'] !== 'unknown') {
                     $scope->varValueBindings[$name] = $argument;
                 }
             }

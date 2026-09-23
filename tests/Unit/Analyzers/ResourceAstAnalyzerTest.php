@@ -479,14 +479,14 @@ describe('ResourceAstAnalyzer with OrderResource', function () {
             ->and($deliveredAt['optional'])->toBeTrue();
     });
 
-    test('marks whenAggregated as optional, a number or the string a driver returns a decimal as', function () {
+    test('marks whenAggregated as optional number', function () {
         $reflection = new ReflectionClass(OrderResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection, Order::class);
         $analysis = $analyzer->analyze();
 
         $totalAvg = collect($analysis->properties)->firstWhere('name', 'total_avg');
 
-        expect($totalAvg['type'])->toBe('number | string')
+        expect($totalAvg['type'])->toBe('number')
             ->and($totalAvg['optional'])->toBeTrue();
     });
 
@@ -911,9 +911,9 @@ describe('ResourceAstAnalyzer with ProductResource', function () {
         $minPrice = collect($analysis->properties)->firstWhere('name', 'min_unit_price');
         $maxPrice = collect($analysis->properties)->firstWhere('name', 'max_unit_price');
 
-        expect($totalSold['type'])->toBe('number | string')
-            ->and($minPrice['type'])->toBe('number | string')
-            ->and($maxPrice['type'])->toBe('number | string');
+        expect($totalSold['type'])->toBe('number')
+            ->and($minPrice['type'])->toBe('number')
+            ->and($maxPrice['type'])->toBe('number');
     });
 });
 

@@ -120,7 +120,7 @@ final class AnalysisScope
 
     /**
      * Closure params bound to an already-resolved value rather than to a class — a `collect(...)->map()` param, a
-     * `transform()` param passed a value, a variadic param's list, an aggregate, or the value of a default a call
+     * `transform()` param passed a value, a variadic param's list, a count, or the value of a default a call
      * leaves in place. Scoped: writers save and restore around the body.
      *
      * @var VarValueBindingsMap

@@ -643,8 +643,8 @@ it('binds each conditional closure parameter to what Laravel passes it', functio
     'whenCounted() closure, comparing the count' => ['$this->whenCounted("comments", fn ($n) => $n > 3)', 'boolean'],
     'whenCounted() closure, ignoring the count' => ['$this->whenCounted("comments", fn ($n) => "x")', 'string'],
     'whenAggregated() closure, ignoring the aggregate' => ['$this->whenAggregated("comments", "id", "max", fn ($m) => "x")', 'string'],
-    'whenAggregated() closure, passed the aggregate' => ['$this->whenAggregated("comments", "id", "max", fn ($m) => ["m" => $m])', '{ m: number | string }'],
-    'whenAggregated() closure, variadic' => ['$this->whenAggregated("comments", "id", "max", fn (...$m) => $m)', '(number | string)[]'],
+    'whenAggregated() closure, returning the untyped aggregate' => ['$this->whenAggregated("comments", "id", "max", fn ($m) => $m)', 'number'],
+    'whenAggregated() closure, binding nothing' => ['$this->whenAggregated("comments", "id", "max", fn ($m) => ["m" => $m])', '{ m: unknown }'],
     'whenLoaded() second parameter, optional int' => ['$this->whenLoaded("author", fn ($a, $b = 5) => $b)', 'number'],
     'transform() callback second parameter, optional int' => ['$this->transform($this->title, fn ($t, $u = 5) => $u)', 'number'],
     'transform() default, variadic, passed the blank value' => ['$this->transform($this->rating, fn ($r) => "x", fn (...$r) => $r)', 'string | (number | null)[]'],
@@ -654,14 +654,13 @@ it('binds each conditional closure parameter to what Laravel passes it', functio
     ],
 ]);
 
-// whenAggregated() reads the raw column value, a number or a string by driver; only a count is always a number.
-it('types whenAggregated() as the aggregate it reads', function (string $php, string $type) {
-    expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe($type);
+// The package publishes an aggregate as number whatever its column; narrowing it by driver and cast is still open.
+it('publishes whenAggregated()\'s aggregate as number', function (string $php) {
+    expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe('number');
 })->with([
-    'max()' => ['$this->whenAggregated("comments", "created_at", "max")', 'number | string'],
-    'sum(), a null value' => ['$this->whenAggregated("comments", "id", "sum", null)', 'number | string'],
-    'count()' => ['$this->whenAggregated("comments", "id", "count")', 'number'],
-    'count(), passed to a closure' => ['$this->whenAggregated("comments", "id", "count", fn ($c) => ["c" => $c])', '{ c: number }'],
+    'max()' => ['$this->whenAggregated("comments", "created_at", "max")'],
+    'sum(), a null value' => ['$this->whenAggregated("comments", "id", "sum", null)'],
+    'count()' => ['$this->whenAggregated("comments", "id", "count")'],
 ]);
 
 // A parameter the call passes nothing holds its default, which PHP evaluates as a constant expression: a list literal

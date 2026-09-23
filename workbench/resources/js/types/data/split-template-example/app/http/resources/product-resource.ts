@@ -24,9 +24,9 @@ export interface ProductResource
     tags?: TagResource[];
     images?: ImageResource[];
     orders_count?: number;
-    total_sold?: number | string;
-    min_unit_price?: number | string;
-    max_unit_price?: number | string;
+    total_sold?: number;
+    min_unit_price?: number;
+    max_unit_price?: number;
     weight?: number | null;
     dimensions?: { length: number; width: number; height: number; unit: "cm" | "in" };
     metadata?: ProductMetadata | ProductJsonMetaData | null;
