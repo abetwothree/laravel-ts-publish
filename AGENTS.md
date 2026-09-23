@@ -36,6 +36,14 @@ Two CI gates check the generated output programmatically — one for properties 
 `unknown`, one for type tokens emitted without their import. See [Type inference gates](./docs/testing/type-inference-gates.md);
 note both read the **committed** type trees, so commit the regenerated output before running them.
 
+## Docs
+
+The documentation in `docs/` contains detailed information about the project's architecture, components, and functionality. When adding or editing doc files, make sure to provide clear and concise explanations, avoid repeating what the code already self-explains, and focus on describing the purpose and behavior of the code while linking to the relevant source files as the source of truth.
+
+## Skills
+
+Do not edit the skills when implementing features or plans. Skills must go through their own implementation process independently of feature or plan development to make sure they are correctly implemented. If you think updates are needed, propose them through the proper channels for skill development rather than modifying them directly in the course of feature or plan work.
+
 ## Use AI tools
 
 When working on this project, make sure to use the available MCP servers and skills as reference and helpers to ensure the code is of the highest quality possible. Use the TypeScript Expert skill to help with TypeScript-specific questions and best practices and ensure they meet the project's standards.
