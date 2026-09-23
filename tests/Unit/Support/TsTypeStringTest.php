@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CountingTsTypeString;
 
 beforeEach(function () {
     $this->service = new TsTypeString;
@@ -346,6 +347,49 @@ describe('qualifyGlobalType', function () {
         );
 
         expect($result)->toBe('Post | Product | User | crm.models.User');
+    });
+
+    test('qualifies each type once per namespace under the same maps, and reads a repeat back', function () {
+        $service = new CountingTsTypeString;
+        $types = ['app.models' => ['User', 'Post'], 'crm.models' => ['User']];
+        $aliases = ['CrmUser' => 'crm.models.User'];
+
+        $results = [
+            $service->qualifyGlobalType('User | CrmUser', $types, 'app.models', $aliases),
+            $service->qualifyGlobalType('User | CrmUser', $types, 'app.models', $aliases),
+            $service->qualifyGlobalType('User | CrmUser', $types, '', $aliases),
+            $service->qualifyGlobalType('Post', $types, '', $aliases),
+            $service->qualifyGlobalType('User | CrmUser', $types, 'app.models', $aliases),
+        ];
+
+        expect($results)->toBe(['User | crm.models.User', 'User | crm.models.User', 'app.models.User | crm.models.User', 'app.models.Post', 'User | crm.models.User'])
+            ->and($service->qualifications)->toBe(3);
+    });
+
+    test('qualifies under the maps each call brings, not the ones it memoized under', function () {
+        $service = new CountingTsTypeString;
+        $types = ['app.models' => ['User']];
+
+        $results = [
+            $service->qualifyGlobalType('User | CrmUser', $types, '', ['CrmUser' => 'crm.models.User']),
+            $service->qualifyGlobalType('User | CrmUser', $types, '', ['CrmUser' => 'app.models.User']),
+            $service->qualifyGlobalType('User | CrmUser', ['crm.models' => ['User']], '', ['CrmUser' => 'crm.models.User']),
+            $service->qualifyGlobalType('User | CrmUser', $types, '', ['CrmUser' => 'crm.models.User']),
+        ];
+
+        expect($results)->toBe(['app.models.User | crm.models.User', 'app.models.User | app.models.User', 'crm.models.User | crm.models.User', 'app.models.User | crm.models.User'])
+            ->and($service->qualifications)->toBe(4);
+    });
+
+    test('forgetQualifiedTypes() drops every memoized qualification', function () {
+        $service = new CountingTsTypeString;
+        $types = ['app.models' => ['User']];
+
+        $service->qualifyGlobalType('User', $types);
+        $service->forgetQualifiedTypes();
+
+        expect($service->qualifyGlobalType('User', $types))->toBe('app.models.User')
+            ->and($service->qualifications)->toBe(2);
     });
 });
 

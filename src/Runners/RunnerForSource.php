@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelMetadataCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
@@ -74,6 +75,7 @@ class RunnerForSource extends BaseRunner
         AnalysisWarnings::reset();
         CoreCollector::flushClassMapCache();
         resolve(AnalysisMemo::class)->forget();
+        TsTypeString::forgetQualifiedTypes();
 
         $fqcn = $this->resolveSourceToFqcn();
 

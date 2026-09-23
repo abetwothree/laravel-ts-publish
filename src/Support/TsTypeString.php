@@ -35,6 +35,17 @@ class TsTypeString
     protected static ?string $identifierCharacter = null;
 
     /**
+     * The namespace and alias maps the memoized qualifications were made under. qualifyGlobalType() reads nothing
+     * else, so its answers hold until a call brings other maps.
+     *
+     * @var array{array<string, list<string>>, array<string, string>}|null
+     */
+    protected ?array $qualificationMaps = null;
+
+    /** @var array<string, string> skip namespace and type string => the qualified type string */
+    protected array $qualifiedTypes = [];
+
+    /**
      * Whether a resolved shape value contains an identifier that would need an import to be valid.
      *
      * extractImportableTypes() can't be reused: it skips '<'/'{' content, which docblock shapes routinely have.
@@ -159,41 +170,23 @@ class TsTypeString
      */
     public function qualifyGlobalType(string $typeStr, array $namespacedTypes, string $skipNamespace = '', array $aliasResolution = []): string
     {
-        // Pass 1: resolve per-file import aliases to their namespace-qualified equivalents
-        foreach ($aliasResolution as $alias => $qualified) {
-            $lastDot = strrpos($qualified, '.');
-            $targetNs = $lastDot !== false ? substr($qualified, 0, $lastDot) : '';
-            $replacement = ($targetNs === $skipNamespace)
-                ? substr($qualified, $lastDot + 1)
-                : $qualified;
-            $pattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($alias, '/').'(?![A-Za-z0-9_$])/';
-            $typeStr = preg_replace($pattern, $replacement, $typeStr) ?? $typeStr;
+        // The globals file passes the same two maps for every property, so most calls repeat a type already qualified.
+        if ($this->qualificationMaps !== [$namespacedTypes, $aliasResolution]) {
+            $this->qualificationMaps = [$namespacedTypes, $aliasResolution];
+            $this->qualifiedTypes = [];
         }
 
-        // Pass 2: names that also exist in the skip namespace belong to the current context,
-        // so they must not be re-qualified with another namespace.
-        /** @var list<string> $skipTypeNames */
-        $skipTypeNames = $namespacedTypes[$skipNamespace] ?? [];
+        return $this->qualifiedTypes[$skipNamespace."\0".$typeStr]
+            ??= $this->qualifyGlobalTypeOnce($typeStr, $namespacedTypes, $skipNamespace, $aliasResolution);
+    }
 
-        foreach ($namespacedTypes as $namespace => $typeNames) {
-            if ($namespace === $skipNamespace) {
-                continue;
-            }
-
-            // Match longer names first to avoid partial replacements (e.g. 'StatusType' before 'Status')
-            usort($typeNames, fn (string $a, string $b): int => strlen($b) - strlen($a));
-
-            foreach ($typeNames as $typeName) {
-                if (in_array($typeName, $skipTypeNames, true)) {
-                    continue;
-                }
-
-                $pattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($typeName, '/').'(?![A-Za-z0-9_$])/';
-                $typeStr = preg_replace($pattern, $namespace.'.'.$typeName, $typeStr) ?? $typeStr;
-            }
-        }
-
-        return $typeStr;
+    /**
+     * Drop the memoized global qualifications, when a publish run starts.
+     */
+    public function forgetQualifiedTypes(): void
+    {
+        $this->qualificationMaps = null;
+        $this->qualifiedTypes = [];
     }
 
     /**
@@ -339,6 +332,51 @@ class TsTypeString
     public function isVagueTsType(string $type): bool
     {
         return $type === 'object' || (str_contains($type, 'unknown') && ! str_contains($type, '{'));
+    }
+
+    /**
+     * Qualify one type string under the given maps: aliases first, then every other namespace's bare names.
+     *
+     * @param  array<string, list<string>>  $namespacedTypes
+     * @param  array<string, string>  $aliasResolution
+     */
+    protected function qualifyGlobalTypeOnce(string $typeStr, array $namespacedTypes, string $skipNamespace, array $aliasResolution): string
+    {
+        // Pass 1: resolve per-file import aliases to their namespace-qualified equivalents
+        foreach ($aliasResolution as $alias => $qualified) {
+            $lastDot = strrpos($qualified, '.');
+            $targetNs = $lastDot !== false ? substr($qualified, 0, $lastDot) : '';
+            $replacement = ($targetNs === $skipNamespace)
+                ? substr($qualified, $lastDot + 1)
+                : $qualified;
+            $pattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($alias, '/').'(?![A-Za-z0-9_$])/';
+            $typeStr = preg_replace($pattern, $replacement, $typeStr) ?? $typeStr;
+        }
+
+        // Pass 2: names that also exist in the skip namespace belong to the current context,
+        // so they must not be re-qualified with another namespace.
+        /** @var list<string> $skipTypeNames */
+        $skipTypeNames = $namespacedTypes[$skipNamespace] ?? [];
+
+        foreach ($namespacedTypes as $namespace => $typeNames) {
+            if ($namespace === $skipNamespace) {
+                continue;
+            }
+
+            // Match longer names first to avoid partial replacements (e.g. 'StatusType' before 'Status')
+            usort($typeNames, fn (string $a, string $b): int => strlen($b) - strlen($a));
+
+            foreach ($typeNames as $typeName) {
+                if (in_array($typeName, $skipTypeNames, true)) {
+                    continue;
+                }
+
+                $pattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($typeName, '/').'(?![A-Za-z0-9_$])/';
+                $typeStr = preg_replace($pattern, $namespace.'.'.$typeName, $typeStr) ?? $typeStr;
+            }
+        }
+
+        return $typeStr;
     }
 
     /**
