@@ -99,6 +99,21 @@ final class TsTypeShape
     }
 
     /**
+     * The scalar kind of one union arm, `string`, `number`, `boolean` or `null`, a literal counting as its primitive;
+     * null for any other arm.
+     */
+    public static function scalarKind(string $arm): ?string
+    {
+        foreach (['string', 'number', 'boolean'] as $kind) {
+            if ($arm === $kind || self::isLiteralOf($arm, $kind)) {
+                return $kind;
+            }
+        }
+
+        return $arm === 'null' ? 'null' : null;
+    }
+
+    /**
      * Split on any of $separators that sit outside brackets, braces, parentheses, angle brackets, and quotes.
      *
      * Depth floors at zero so malformed input fails toward splitting, matching hasTopLevelSeparator().

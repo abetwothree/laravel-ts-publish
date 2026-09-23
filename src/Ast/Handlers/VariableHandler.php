@@ -15,12 +15,12 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\DeclaredTypeWeigher;
 use AbeTwoThree\LaravelTsPublish\Ast\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
-use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Enumerable;
@@ -142,12 +142,7 @@ final class VariableHandler implements ExpressionHandler
         $bound = $this->boundValue($expr->name, $scope, $engine);
         $declared = $this->declaredValue($expr, $scope);
 
-        // A known reading the declaration admits stands; the declaration fills an unknown or vaguer one, and wins over
-        // one it contradicts.
-        return $declared === null || ($bound !== null && ! TsTypeString::isVagueTsType($bound['type'])
-            && TsTypeShape::admits($declared['type'], $bound['type']))
-            ? $bound
-            : $declared;
+        return $declared === null ? $bound : resolve(DeclaredTypeWeigher::class)->value($declared, $bound);
     }
 
     /**

@@ -484,13 +484,16 @@ the write on the next pass. A tag naming another variable, a tag whose type does
 signature), and a second write inside the assigning statement bind nothing. `T` resolves against the imports and
 namespace of `AnalysisScope::$declaringFileClass`, a trait's file for a trait's method.
 
-One rule weighs `T` against what the engine reads without it, on both paths: a known reading `T` admits stands, `T`
-fills an unknown or vaguer one, and `T` wins over one it contradicts.
+`DeclaredTypeWeigher` weighs `T` against what the engine reads without it, one rule on both paths: a known reading
+stands whether `T` admits or contradicts it, since a `@var` is a hint and `#[TsCasts]` the override, and `T` fills an
+unknown or vaguer reading, a supertype `T` narrows to a subclass included. A contradiction counts only where it is
+definite, two scalar kinds or two classes neither extending the other; an unsure comparison, such as an intersection,
+`Pick<…>`, `AsEnum<…>` or an index signature, keeps `T`.
 
 - **Receivers.** `ReceiverClassResolver::fromVariable()` names `T`'s classes as it does a property's `@var`, and
-  compares them with the variable's other bindings through `ReceiverType::within()`. So `@var Model` never widens a
-  `User`. A `T` naming no loadable class, such as `int` or a missing class, leaves the receiver to those bindings.
-- **Values.** `VariableHandler` reads `T` as `PropertyDocblockTypeReader` reads a property's `@var`, and compares it
+  weighs them against the variable's other bindings. So `@var Model` never widens a `User`. A `T` naming no loadable
+  class, such as `int` or a missing class, leaves the receiver to those bindings.
+- **Values.** `VariableHandler` reads `T` as `PropertyDocblockTypeReader` reads a property's `@var`, and weighs it
   through `TsTypeShape::admits()`. So `@var string|null` over a `string` column publishes `string`. A `T` that is vague
   by `TsTypeString::isVagueTsType()`, or names a model with no published file, leaves the value to the reading.
 - **Ambient models.** Inside a `whenLoaded()` closure, a declared local's `$x->prop` and `$x->m()` keep the closure's

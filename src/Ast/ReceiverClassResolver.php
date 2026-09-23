@@ -283,8 +283,7 @@ final class ReceiverClassResolver
         $declared = $this->declaredClasses($variable, $scope);
         $bound = $this->fromBindings($name, $scope);
 
-        // A reading the declaration admits stands; the declaration fills an unknown one and beats a contradiction.
-        return $declared === null || $bound?->within($declared) === true ? $bound : new ReceiverType($declared);
+        return $declared === null ? $bound : resolve(DeclaredTypeWeigher::class)->receiver($declared, $bound);
     }
 
     /**

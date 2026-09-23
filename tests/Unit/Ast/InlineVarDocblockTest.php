@@ -27,6 +27,7 @@ use Workbench\App\Http\Resources\PostPinnedCommentsResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\SubscribedTeam;
+use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
 use Workbench\App\ValueObjects\CartTotals;
 
@@ -196,13 +197,13 @@ describe('an inline @var on a local assignment', function () {
             ->and($resolver->resolve($nullable, $nullableScope)?->classes)->toBe([Post::class]);
     });
 
-    test('leaves the receiver to the assignment when the type names no loadable class', function () {
+    test('leaves the receiver to the assignment when the type contradicts it or names no loadable class', function () {
         $resolver = resolve(ReceiverClassResolver::class);
         [$declaredScope, $declared] = inlineVarReturned('/** @var \Workbench\App\ValueObjects\CartTotals $n */ $n = $this->author; return $n;');
         [$scalarScope, $scalar] = inlineVarReturned('/** @var int $n */ $n = $this->author; return $n;');
         [$missingScope, $missing] = inlineVarReturned('/** @var \No\Such\Totals $n */ $n = $this->author; return $n;');
 
-        expect($resolver->resolve($declared, $declaredScope)?->classes)->toBe([CartTotals::class])
+        expect($resolver->resolve($declared, $declaredScope)?->classes)->toBe([User::class])
             ->and($resolver->resolve($scalar, $scalarScope)?->classes)->toBe([User::class])
             ->and($resolver->resolve($missing, $missingScope)?->classes)->toBe([User::class]);
     });
@@ -256,7 +257,7 @@ describe('an inline @var on a local assignment', function () {
                 TS);
     });
 
-    test('keeps a known reading it admits, fills one that is unknown or vaguer, and yields to none it contradicts', function () {
+    test('keeps a known reading it admits or contradicts, and fills one that is unknown or vaguer', function () {
         $resolved = function (string $body): string {
             [$scope, $returned] = inlineVarReturned($body);
 
@@ -271,7 +272,7 @@ describe('an inline @var on a local assignment', function () {
             ->and($resolved('/** @var \Workbench\App\Models\User|null $u */ $u = $this->resource->author; return $u;'))->toBe('User')
             ->and($resolved('/** @var list<string> $l */ $l = json_decode(""); return $l;'))->toBe('string[]')
             ->and($resolved('/** @var array{a: int} $v */ $v = (array) json_decode(""); return $v;'))->toBe('{ a: number }')
-            ->and($resolved('/** @var int $n */ $n = $this->resource->title; return $n;'))->toBe('number');
+            ->and($resolved('/** @var int $n */ $n = $this->resource->title; return $n;'))->toBe('string');
     });
 
     test('declines a tag whose type it cannot read to the end, such as a callable signature', function () {
@@ -296,5 +297,34 @@ describe('an inline @var on a local assignment', function () {
 
         expect($resolved('\Illuminate\Database\Eloquent\Model'))->toBe('string')
             ->and($resolved('\Workbench\App\ValueObjects\CartTotals'))->toBe('unknown');
+    });
+    test('lets a known reading win over a contradicting declaration, and still fills a narrower subclass or an unsure shape', function () {
+        $value = function (string $body, ?string $modelOf = null): string {
+            [$scope, $returned] = inlineVarReturned($body);
+
+            if ($modelOf !== null) {
+                $scope->varModelBindings['t'] = $modelOf;
+            }
+
+            return new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class, 'toArray', null, $scope)
+                ->resolve($returned)['type'];
+        };
+        $receiver = function (string $body): ?array {
+            [$scope, $returned] = inlineVarReturned($body);
+
+            return resolve(ReceiverClassResolver::class)->resolve($returned, $scope)?->classes;
+        };
+
+        expect($value('/** @var int|null $n */ $n = $this->resource->title; return $n;'))->toBe('string')
+            ->and($value('/** @var \Workbench\App\Models\Comment $c */ $c = $this->resource->author; return $c;'))->toBe('User')
+            ->and($value('/** @var string $u */ $u = $this->resource->author; return $u;'))->toBe('User')
+            ->and($receiver('/** @var \Workbench\App\Models\Comment $c */ $c = $this->author; return $c;'))->toBe([User::class])
+            ->and($value('/** @var \Workbench\App\Models\SubscribedTeam $t */ $t = json_decode(""); return $t;', Team::class))
+            ->toBe('SubscribedTeam')
+            ->and($receiver('/** @var \Workbench\App\Models\SubscribedTeam $t */ $t = new \Workbench\App\Models\Team; return $t;'))
+            ->toBe([SubscribedTeam::class])
+            ->and($value('/** @var array{id: int, name: string} $w */ $w = $this->resource->author->only(["id", "name"]); return $w;'))
+            ->toBe('{ id: number; name: string }')
+            ->and($receiver('/** @var \Countable $c */ $c = $this->author; return $c;'))->toBe([Countable::class]);
     });
 });

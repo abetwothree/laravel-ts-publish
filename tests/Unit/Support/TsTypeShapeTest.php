@@ -142,3 +142,22 @@ describe('admits', function () {
         'an array of another element' => ['string[]', 'number[]'],
     ]);
 });
+
+describe('scalarKind', function () {
+    test('reads the scalar kind of an arm, counting a literal as its primitive', function () {
+        expect(TsTypeShape::scalarKind('string'))->toBe('string')
+            ->and(TsTypeShape::scalarKind("'draft'"))->toBe('string')
+            ->and(TsTypeShape::scalarKind('number'))->toBe('number')
+            ->and(TsTypeShape::scalarKind('-1.5'))->toBe('number')
+            ->and(TsTypeShape::scalarKind('true'))->toBe('boolean')
+            ->and(TsTypeShape::scalarKind('boolean'))->toBe('boolean')
+            ->and(TsTypeShape::scalarKind('null'))->toBe('null');
+    });
+
+    test('names no kind for any other arm', function () {
+        expect(TsTypeShape::scalarKind('User'))->toBeNull()
+            ->and(TsTypeShape::scalarKind('string[]'))->toBeNull()
+            ->and(TsTypeShape::scalarKind('{ a: number }'))->toBeNull()
+            ->and(TsTypeShape::scalarKind('unknown'))->toBeNull();
+    });
+});
