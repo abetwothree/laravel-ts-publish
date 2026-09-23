@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish;
 
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesAccessorType;
@@ -111,7 +112,7 @@ class ModelAttributeResolver
 
         if (($cast === 'attribute' || $cast === 'accessor')) {
             try {
-                $accessorInfo = $this->resolveAccessorType($attributeName, $ctx['instance'], $ctx['reflection'], $carriesImports);
+                $accessorInfo = $this->accessorType($ctx, $attributeName, $carriesImports);
 
                 if ($accessorInfo['type'] !== 'unknown') {
                     $accessorInfo = $this->refineAccessorType($ctx, $attributeName, $accessorInfo, $carriesImports);
@@ -222,7 +223,7 @@ class ModelAttributeResolver
             return $refined;
         }
 
-        $published = $this->resolveAccessorType($attributeName, $ctx['instance'], $ctx['reflection']);
+        $published = $this->accessorType($ctx, $attributeName);
 
         return $this->isVagueTsType($published['type']) ? $refined : $accessorInfo;
     }
@@ -378,7 +379,7 @@ class ModelAttributeResolver
             return false;
         }
 
-        $accessorInfo = $this->resolveAccessorType($attributeName, $ctx['instance'], $ctx['reflection']);
+        $accessorInfo = $this->accessorType($ctx, $attributeName);
         $resolved = $this->refineWithPropertyDocblock($ctx['reflection'], $attributeName, $accessorInfo);
 
         return $resolved['omit'] ?? false;
@@ -702,7 +703,7 @@ class ModelAttributeResolver
         }
 
         try {
-            $accessorInfo = $this->resolveAccessorType($attributeName, $ctx['instance'], $ctx['reflection']);
+            $accessorInfo = $this->accessorType($ctx, $attributeName);
 
             /** @var list<class-string<Model>> $fqcns */
             $fqcns = array_values(array_filter(
@@ -947,6 +948,9 @@ class ModelAttributeResolver
         }
 
         $this->morphTargetMap = $map;
+
+        // An analysis the old map typed a morph relation for would otherwise be reused under the new one.
+        resolve(AnalysisMemo::class)->forget();
     }
 
     /**
@@ -1203,6 +1207,22 @@ class ModelAttributeResolver
         $morphType = $relation->getMorphType();
 
         return str_ends_with($morphType, '_type') ? substr($morphType, 0, -5) : $morphType;
+    }
+
+    /**
+     * An accessor's waterfall type, worked out once per model, attribute and import mode for the run.
+     *
+     * An import-less read refines its spelling against the type with imports, so the two share this one memo.
+     *
+     * @param  array{instance: Model, reflection: ReflectionClass<Model>, ...}  $ctx
+     * @return TypeScriptTypeInfo
+     */
+    protected function accessorType(array $ctx, string $attributeName, bool $carriesImports = true): array
+    {
+        return resolve(AnalysisMemo::class)->remember(
+            'accessor-type:'.$ctx['reflection']->getName().'@'.$attributeName.($carriesImports ? '' : '@importless'),
+            fn (): array => $this->resolveAccessorType($attributeName, $ctx['instance'], $ctx['reflection'], $carriesImports),
+        );
     }
 
     /**

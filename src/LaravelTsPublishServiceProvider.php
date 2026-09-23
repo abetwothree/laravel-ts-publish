@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Model\AccessorBodyAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\CallChainWalker;
@@ -35,12 +36,12 @@ class LaravelTsPublishServiceProvider extends PackageServiceProvider
     public function packageRegistered(): void
     {
         $this->app->singleton(ModelAttributeResolver::class);
-        // Shared so the accessor-body cycle guard spans every call site, not one instance.
+        // Shared so every analyzer sees one set of cycle guards and one memo for the run.
+        $this->app->singleton(AnalysisMemo::class);
         $this->app->singleton(AccessorBodyAnalyzer::class);
         $this->app->singleton(AstEngine::class);
         $this->app->singleton(AstParser::class);
         $this->app->singleton(MethodLocator::class);
-        // Shared so the body-fallback re-entrancy guard spans every call site, not one instance.
         $this->app->singleton(MethodReturnTypeResolver::class);
         $this->app->singleton(CallMatcher::class);
         $this->app->singleton(InertiaRenderLocator::class);

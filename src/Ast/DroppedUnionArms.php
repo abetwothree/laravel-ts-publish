@@ -49,6 +49,12 @@ final class DroppedUnionArms
         return self::$dropped;
     }
 
+    /** Count the arms a reused analysis dropped when it was first computed, as computing it again would. */
+    public static function replay(int $dropped): void
+    {
+        self::$dropped += $dropped;
+    }
+
     /** Record one union arm that was left out because it resolved to unknown, naming the site that dropped it. */
     public static function record(Expr $arm, AnalysisScope $scope, string $site): void
     {

@@ -30,19 +30,13 @@ final class AstEngine
     use CollectsInstanceofGuards;
     use CollectsLocalVarBindings;
 
-    /** @var array<string, true> class@method@modelClass keys currently on the call stack — cycle guard. */
-    private array $analyzing = [];
-
-    /** @var array<string, MethodAnalysis> class@method@modelClass => completed analysis, for reuse. */
-    private array $resultCache = [];
+    /** How many analyses are in progress, so the outermost one in a chain can be told apart. */
+    private int $depth = 0;
 
     /**
-     * Analyze a method body's return shape. Resources get full resource semantics ('toArray'
-     * default); any other class/method runs the same engine with the same handlers.
-     *
-     * Guarded against reentrant cycles (a spread reaching back to a class already mid-analysis) and
-     * memoized per class@method@modelClass whenever the call has no active ancestor of its own, so
-     * two resources spreading each other can't recurse until memory is exhausted.
+     * Analyze a method body's return shape: resources get full resource semantics ('toArray' default), and any other
+     * class or method runs the same engine with the same handlers. Cycle-guarded, and memoized for the run through
+     * AnalysisMemo: the outermost call in its chain always, any other call once nothing cut it short.
      *
      * @param  class-string  $class
      * @param  class-string<Model>|null  $modelClass  Backing model for `$this->prop` resolution; null to skip.
@@ -62,36 +56,13 @@ final class AstEngine
             $modelClass = resolve(ModelClassResolver::class)->resolve($reflection);
         }
 
-        $key = $class.'@'.$method.'@'.($modelClass ?? '').($carriesImports ? '' : '@importless');
+        $key = 'analysis:'.$class.'@'.$method.'@'.($modelClass ?? '').($carriesImports ? '' : '@importless');
 
-        if (isset($this->resultCache[$key])) {
-            return clone $this->resultCache[$key];
-        }
-
-        // Already on the stack: a self-spread or a cycle through other classes. Contribute nothing
-        // rather than re-entering — the caller's own merge() treats an empty analysis as a no-op.
-        if (isset($this->analyzing[$key])) {
-            return new MethodAnalysis;
-        }
-
-        // An active ancestor may itself be cut short by a cycle closing back through it, so what we
-        // compute here can be a truncated shape — caching that would make the result depend on which
-        // entry point ran first. Only the outermost call in its chain is safe to memoize.
-        $hasActiveAncestor = $this->analyzing !== [];
-
-        $this->analyzing[$key] = true;
-
-        try {
-            $analysis = new ResourceAstAnalyzer($reflection, $modelClass, $method, carriesImports: $carriesImports)->analyze();
-        } finally {
-            unset($this->analyzing[$key]);
-        }
-
-        if ($hasActiveAncestor) {
-            return $analysis;
-        }
-
-        $this->resultCache[$key] = $analysis;
+        $analysis = resolve(AnalysisMemo::class)->remember(
+            $key,
+            fn (): MethodAnalysis => $this->analyzeOnce($reflection, $method, $modelClass, $carriesImports, $key),
+            pin: $this->depth === 0,
+        );
 
         return clone $analysis;
     }
@@ -243,6 +214,37 @@ final class AstEngine
     private static function genericReflection(string $className): ReflectionClass
     {
         return new ReflectionClass($className);
+    }
+
+    /**
+     * Run one analysis of a method body, entering its cycle guard for the duration.
+     *
+     * @param  ReflectionClass<object>  $reflection
+     * @param  class-string<Model>|null  $modelClass
+     */
+    private function analyzeOnce(
+        ReflectionClass $reflection,
+        string $method,
+        ?string $modelClass,
+        bool $carriesImports,
+        string $key,
+    ): MethodAnalysis {
+        $memo = resolve(AnalysisMemo::class);
+
+        // Already on the stack: a self-spread or a cycle through other classes. Contribute nothing
+        // rather than re-entering — the caller's own merge() treats an empty analysis as a no-op.
+        if (! $memo->enter($key)) {
+            return new MethodAnalysis;
+        }
+
+        $this->depth++;
+
+        try {
+            return new ResourceAstAnalyzer($reflection, $modelClass, $method, carriesImports: $carriesImports)->analyze();
+        } finally {
+            $this->depth--;
+            $memo->leave($key);
+        }
     }
 
     /**

@@ -33,13 +33,9 @@ use PhpParser\NodeVisitorAbstract;
 use ReflectionClass;
 
 /**
- * A method's return type: the declaration first, then, when that is too vague to publish, the shape its
- * literal body spells in place of the declaration's array arm, beside every other arm it names.
- *
- * The rules are in docs/components/receiver-types.md § Following a method's return type. A container
- * singleton, so the re-entrancy guard below is shared by every call site rather than per instance. That
- * guard is deliberate defence-in-depth and changes no result today: AstEngine::analyzeMethod() cuts the
- * same cycle itself, so this one only stops a cycle before it reaches the engine.
+ * A method's return type: the declaration first, then, when that is too vague to publish, the shape its literal body
+ * spells in place of the declaration's array arm, beside every other arm it names. Memoized per `class@method` for the
+ * run; the rules are in docs/components/receiver-types.md § Following a method's return type.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -50,9 +46,6 @@ use ReflectionClass;
 final class MethodReturnTypeResolver
 {
     use BuildsInlineObjectTypes;
-
-    /** @var array<string, true> class@method bodies currently being analyzed */
-    private array $analyzing = [];
 
     /**
      * Reflect a method's return type; when that is vague or rejected, analyze the method body once.
@@ -66,6 +59,20 @@ final class MethodReturnTypeResolver
             return null;
         }
 
+        return resolve(AnalysisMemo::class)->remember(
+            'method-return:'.$class.'@'.$methodName,
+            fn (): ?array => $this->reflectOrReadBody($class, $methodName),
+        );
+    }
+
+    /**
+     * The reflected return type when it is precise, else the body's shape beside the declaration's other arms.
+     *
+     * @param  class-string  $class
+     * @return ValueExpressionResult|null
+     */
+    private function reflectOrReadBody(string $class, string $methodName): ?array
+    {
         $reflected = resolve(ReflectedTypeAcceptor::class)
             ->accept(LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($class), $methodName));
 
@@ -86,19 +93,20 @@ final class MethodReturnTypeResolver
      */
     private function bodyType(string $class, string $methodName, ?array $reflected): ?array
     {
-        $key = $class.'@'.$methodName;
+        $key = 'method-body:'.$class.'@'.$methodName;
         $otherArms = $this->nonArrayArms($reflected);
         $body = resolve(MethodLocator::class)->locate($class, $methodName)?->method->stmts;
+        $memo = resolve(AnalysisMemo::class);
 
-        if (isset($this->analyzing[$key])
-            || $otherArms === null
+        // Defence in depth: analyzeMethod() cuts the same cycle, and this stops one before it reaches the engine. It
+        // comes last, so a body declined for its own shape never counts as a cycle cut.
+        if ($otherArms === null
             || $body === null
             || ! $this->shapeReadsEveryReturn($body, $otherArms)
+            || ! $memo->enter($key)
         ) {
             return null;
         }
-
-        $this->analyzing[$key] = true;
 
         try {
             $analysis = resolve(AstEngine::class)->analyzeMethod(
@@ -108,7 +116,7 @@ final class MethodReturnTypeResolver
                 carriesImports: false,
             );
         } finally {
-            unset($this->analyzing[$key]);
+            $memo->leave($key);
         }
 
         if ($analysis->properties === []) {

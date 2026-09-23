@@ -13,6 +13,9 @@ class PublishedResourceRegistry
     /** @var array<class-string, true> */
     protected static array $published = [];
 
+    /** Bumped on every change, so an analysis read against an older set is never reused. */
+    protected static int $version = 0;
+
     /**
      * Add the resource classes this run will emit to the published set.
      *
@@ -23,6 +26,8 @@ class PublishedResourceRegistry
         foreach ($fqcns as $fqcn) {
             static::$published[$fqcn] = true;
         }
+
+        static::$version++;
     }
 
     /**
@@ -31,6 +36,7 @@ class PublishedResourceRegistry
     public static function reset(): void
     {
         static::$published = [];
+        static::$version++;
     }
 
     /**
@@ -47,5 +53,13 @@ class PublishedResourceRegistry
     public static function isPublished(string $fqcn): bool
     {
         return static::$published === [] || isset(static::$published[$fqcn]);
+    }
+
+    /**
+     * A number that changes whenever the set does.
+     */
+    public static function version(): int
+    {
+        return static::$version;
     }
 }

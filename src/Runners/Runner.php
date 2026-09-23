@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Runners;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastChannelsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastEventsCollector;
@@ -49,6 +50,7 @@ class Runner extends BaseRunner
         PublishedResourceRegistry::reset();
         AnalysisWarnings::reset();
         CoreCollector::flushClassMapCache();
+        resolve(AnalysisMemo::class)->forget();
 
         /** @var BarrelWriter $barrelWriter */
         $barrelWriter = resolve(Config::string('ts-publish.barrel_writer_class', BarrelWriter::class));

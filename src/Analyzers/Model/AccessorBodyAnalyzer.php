@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Model;
 
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
@@ -30,7 +31,7 @@ use ReflectionMethod;
  * Types an accessor from what its getter body actually returns, once the signature and the
  * `Attribute<>` docblock have both proven vague.
  *
- * Registered as a singleton so the cycle guard spans every call site, not one instance.
+ * Its cycle guard and its memo for the run live in AnalysisMemo, keyed per model@attribute and import mode.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypeScriptTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
@@ -43,15 +44,6 @@ final class AccessorBodyAnalyzer
     use NamesAccessorMethods;
 
     /**
-     * model@attribute bodies on the stack, so two accessors reading each other terminate. Keyed per import mode, so an
-     * analysis that keeps imports never stands in for one that carries none. It can still cut short the check with
-     * imports that an import-less read makes of a vague spelling.
-     *
-     * @var array<string, true>
-     */
-    private array $analyzing = [];
-
-    /**
      * The TypeScript type a model accessor's getter body resolves to.
      *
      * @param  class-string<Model>  $modelFqcn
@@ -61,19 +53,36 @@ final class AccessorBodyAnalyzer
      */
     public function analyze(string $modelFqcn, string $attributeName, bool $carriesImports = true): ?array
     {
-        $key = $modelFqcn.'@'.$attributeName.($carriesImports ? '' : '@importless');
+        // Keyed per import mode, so an analysis that keeps imports never stands in for one that carries none. Its guard
+        // can still cut short the check with imports that an import-less read makes of a vague spelling.
+        $key = 'accessor-body:'.$modelFqcn.'@'.$attributeName.($carriesImports ? '' : '@importless');
 
-        if (isset($this->analyzing[$key])) {
+        return resolve(AnalysisMemo::class)->remember(
+            $key,
+            fn (): ?array => $this->analyzeOnce($modelFqcn, $attributeName, $carriesImports, $key),
+        );
+    }
+
+    /**
+     * Analyze the getter body once, guarded so two accessors reading each other terminate.
+     *
+     * @param  class-string<Model>  $modelFqcn
+     * @return TypeScriptTypeInfo|null
+     */
+    private function analyzeOnce(string $modelFqcn, string $attributeName, bool $carriesImports, string $key): ?array
+    {
+        $memo = resolve(AnalysisMemo::class);
+
+        if (! $memo->enter($key)) {
             return null;
         }
 
-        $this->analyzing[$key] = true;
         $dropped = DroppedUnionArms::dropped();
 
         try {
             $result = $this->resolveBody($modelFqcn, $attributeName, $carriesImports);
         } finally {
-            unset($this->analyzing[$key]);
+            $memo->leave($key);
         }
 
         // `never[]` is what an empty `[]` literal resolves to — no element information at all, so a

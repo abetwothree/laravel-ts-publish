@@ -76,6 +76,32 @@ class DependencyRecorder
     }
 
     /**
+     * Whether dependency paths are being recorded.
+     */
+    public static function isRecording(): bool
+    {
+        return static::$recording;
+    }
+
+    /**
+     * A position in the paths recorded since start(), for since() to read on from.
+     */
+    public static function mark(): int
+    {
+        return count(static::$paths);
+    }
+
+    /**
+     * Every path recorded after a mark, in order and with repeats.
+     *
+     * @return list<string>
+     */
+    public static function since(int $mark): array
+    {
+        return array_slice(static::$paths, $mark);
+    }
+
+    /**
      * The de-duplicated list of dependency paths captured since start().
      *
      * @return list<string>

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Runners;
 
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Collectors\Concerns\ValidatesCollectorFiles;
 use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
@@ -72,6 +73,7 @@ class RunnerForSource extends BaseRunner
         PublishedResourceRegistry::reset();
         AnalysisWarnings::reset();
         CoreCollector::flushClassMapCache();
+        resolve(AnalysisMemo::class)->forget();
 
         $fqcn = $this->resolveSourceToFqcn();
 
