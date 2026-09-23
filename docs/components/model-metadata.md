@@ -195,8 +195,11 @@ Docblock shapes render through the same helpers the rest of the package uses: `a
 `Record<string, T>`, `list<T>` and `array<int, T>` → `T[]`, `array<array-key, T>` / `array<mixed, T>` →
 `T[] | Record<string, T>` (`wrapAsMaybeKeyedArray()` — key sequentiality is not guaranteed, so neither spelling
 alone is honest), nested `array{...}` → an inline object literal. A helper returning a native `array` with no
-docblock infers `unknown[]`, which `inferTypes()` discards; that key is then rejected as undeclared unless the
-return shape or `#[TsCasts]` names it.
+docblock types from the array literal it returns (`MethodReturnTypeResolver::bodyType()`), so `['limit' => 25]`
+infers `{ limit: number }`. With no literal it infers `unknown[]`, and a literal holding a value the helper's own
+body cannot type (`$model->getTable()`, since nothing binds the helper's parameter) infers a shape naming
+`unknown`. `inferTypes()` discards both, and that key is then rejected as undeclared unless the return shape or
+`#[TsCasts]` names it.
 
 ## Value normalization
 

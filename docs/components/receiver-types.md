@@ -467,14 +467,14 @@ in a project compiling with `noUnusedLocals`, as TS6196 for each unused name, or
 or more names and none is used; see
 [known-gaps](../known-gaps.md#a-tscasts-value-that-spells-an-imported-name-inside-a-string-template-or-comment-keeps-the-import).
 The token's boundaries are a keep-biased reading of TypeScript's: a character TypeScript reads as part of an identifier
-(Unicode ID_Continue, `$`, ZWNJ or ZWJ) on either side of the name joins it, so `CrmUser`, `a1User` and `User\u{e9}` are
-longer names and `foo.User`, `a1.User` and `Api.V2.User` member accesses, none of them the type, while
-`[string, ...User[]]` references it. Which characters are ID_Continue follows the Unicode tables of the PCRE2 that PHP
-runs on, plus U+30FB and U+FF65, which Unicode 15.1 added; a PCRE2 older than 10.40 has no `\p{ID_Continue}` and gets
-the same set spelled from its general categories and the Other_ID code points. Every `\u` escape is decoded to the
-character it names before the match, whatever those tables hold, so `\u{55}ser` references `User` and `Us\u{30FB}er`
-spells `Us・er`; only an escape that names no code point (a surrogate, or past U+10FFFF) stays as written. The
-departures that remain:
+(`$`, ZWNJ, ZWJ or Unicode ID_Continue, as the running PCRE2's tables know it) on either side of the name joins it, so
+`CrmUser`, `a1User` and `User\u{e9}` are longer names and `foo.User`, `a1.User` and `Api.V2.User` member accesses, none
+of them the type, while `[string, ...User[]]` references it. Which characters are ID_Continue follows the Unicode
+tables of the PCRE2 that PHP runs on, plus U+30FB and U+FF65, which Unicode 15.1 added; a PCRE2 older than 10.40 has
+no `\p{ID_Continue}` and gets the same set spelled from its general categories and the Other_ID code points. Every
+`\u` escape is decoded to the character it names before the match, whatever those tables hold, so `\u{55}ser`
+references `User` and `Us\u{30FB}er` spells `Us・er`; only an escape that names no code point (a surrogate, or past
+U+10FFFF) stays as written. The departures that remain:
 
 - **An import kept, unused at worst.** `import('x').User` counts, since only an identifier character before the dot
   marks a member access. A character TypeScript reads in an identifier but the running tables do not hold yet joins
@@ -483,8 +483,10 @@ departures that remain:
   `0xUser`) is missed. A character the running tables hold but TypeScript rejects where it stands (TS1127) joins the
   name beside it: one Unicode 16.0 added, on a PCRE2 whose tables have it, or ZWNJ, ZWJ, a combining mark or an
   Other_ID_Continue character such as U+00B7 at the start of a name. A four-digit surrogate escape, or a `\u` with
-  fewer than four digits, runs its digits into the name after it. An escape of a character no identifier holds is
-  decoded all the same, so the name TypeScript's recovery reads there (`u002EUser` for `\u002EUser`) is missed.
+  fewer than four digits, runs its digits into the name after it. An escape of a character no identifier holds, or
+  of an identifier character TypeScript rejects where it stands, is decoded all the same, so the names TypeScript's
+  recovery makes of it are missed: `u002EUser` for `\u002EUser`, `u00B7User` for `\u00B7User`, and `u` and `B7`
+  for `\u{B7}`.
 
 `BulletinCastResource` overrides a `Comment` read and a `User` read and keeps only `User`, which its unoverridden
 `owner_list` still names. `ResourceTransformerTest` pins, over a model, an enum and a `#[TsType]` read each, a name

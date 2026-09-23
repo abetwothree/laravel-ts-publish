@@ -1090,7 +1090,7 @@ under ``${string}_tag`` exactly as TypeScript reads it, and an escaped `\${` is 
   name, a global name, a template literal type), when a string literal in it holds a backslash, or when a key
   that is not a cast key carries an FQCN channel (`MethodAnalysis::hasFqcnChannel()`), the signature's own name
   included. `unknown` would swallow the typed arms, the shared splitter ends a quoted span at the next quote of
-  its kind even after a backslash and so cuts such a literal apart, and a class token is imported and
+  its kind even after a backslash and so can cut such a literal apart, and a class token is imported and
   rewritten, with an alias or an `AsEnum<>`, under its own key's name. A signature also conflicts when another
   signature in the shape may cover a key it covers: two template patterns are proven disjoint only when their
   leading literal texts, or their trailing ones, cannot both hold for one key, and `[key: number]` or
