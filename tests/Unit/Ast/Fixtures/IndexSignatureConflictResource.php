@@ -78,6 +78,13 @@ final class IndexSignatureConflictResource extends JsonResource
         return array_merge([...$this->docTags()], ['price_tag' => 5]);
     }
 
+    /** A filled `_a_tag` signature beside a key cast to a string literal whose escaped quote precedes a `null`. */
+    #[TsCasts(['state_a_tag' => "'it\\'s | null | x'"])]
+    public function escapedLiteralKey(): array
+    {
+        return [...$this->docNumberedTags(), 'state_a_tag' => 5];
+    }
+
     /** One branch nests the filled keys under `box_tag`, whose shape prints `undefined`; the other has `price_tag`. */
     public function nestedBranches(): array
     {

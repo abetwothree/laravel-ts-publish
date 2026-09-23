@@ -11,6 +11,8 @@ namespace AbeTwoThree\LaravelTsPublish\Support;
  * Record<K, V>, T[] / readonly T[] / Array<T> / ReadonlyArray<T>, tuples, and top-level unions with null.
  * Intersections and arrow-function types are opaque. Also the home of the one top-level splitter for
  * TypeScript type strings; PHPDoc types keep their own in LaravelTsPublish::splitPhpDocUnionType().
+ *
+ * @phpstan-type QuoteState = array{string|null, bool}
  */
 final class TsTypeShape
 {
@@ -85,7 +87,7 @@ final class TsTypeShape
     }
 
     /**
-     * Split on any of $separators that sit outside brackets, braces, parentheses, angle brackets, and quotes.
+     * Split on any of $separators that sit outside brackets, braces, parentheses, angle brackets, and quoted spans.
      *
      * Depth floors at zero so malformed input fails toward splitting, matching hasTopLevelSeparator().
      *
@@ -98,16 +100,17 @@ final class TsTypeShape
         $current = '';
         $depth = 0;
         $quote = null;
+        $escaped = false;
 
         foreach (str_split($type) as $char) {
             if ($quote !== null) {
                 $current .= $char;
-                $quote = $char === $quote ? null : $quote;
+                [$quote, $escaped] = self::readQuoted($quote, $escaped, $char);
 
                 continue;
             }
 
-            if ($char === '\'' || $char === '"') {
+            if (str_contains('\'"`', $char)) {
                 $quote = $char;
             } elseif (str_contains('{[(<', $char)) {
                 $depth++;
@@ -129,21 +132,22 @@ final class TsTypeShape
     }
 
     /**
-     * Offset of the first $needle outside brackets, braces, parentheses, angle brackets, and quotes.
+     * Offset of the first $needle outside brackets, braces, parentheses, angle brackets, and quoted spans.
      */
     private static function topLevelPosition(string $type, string $needle): ?int
     {
         $depth = 0;
         $quote = null;
+        $escaped = false;
 
         foreach (str_split($type) as $offset => $char) {
             if ($quote !== null) {
-                $quote = $char === $quote ? null : $quote;
+                [$quote, $escaped] = self::readQuoted($quote, $escaped, $char);
 
                 continue;
             }
 
-            if ($char === '\'' || $char === '"') {
+            if (str_contains('\'"`', $char)) {
                 $quote = $char;
             } elseif (str_contains('{[(<', $char)) {
                 $depth++;
@@ -155,6 +159,22 @@ final class TsTypeShape
         }
 
         return null;
+    }
+
+    /**
+     * The quote still open once $char is read inside it, and whether the next character is escaped.
+     *
+     * A backslash escapes the character after it, so `'it\'s'` stays one literal.
+     *
+     * @return QuoteState
+     */
+    private static function readQuoted(string $quote, bool $escaped, string $char): array
+    {
+        if ($escaped) {
+            return [$quote, false];
+        }
+
+        return $char === '\\' ? [$quote, true] : [$char === $quote ? null : $quote, false];
     }
 
     /**

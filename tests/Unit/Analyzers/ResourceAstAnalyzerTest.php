@@ -6358,6 +6358,13 @@ describe('IndexSignatureConflictResource — a docblock-filled signature never c
         expect($props['[key: `${string}_tag`]']['type'])->toBe('string | number | undefined');
     });
 
+    test('a key cast to a string literal with an escaped quote joins the union whole', function () {
+        $props = ($this->shape)('escapedLiteralKey');
+
+        expect($props['[key: `${string}_a_tag`]']['type'])->toBe("number | 'it\\'s | null | x' | undefined")
+            ->and($props['state_a_tag']['type'])->toBe("'it\\'s | null | x'");
+    });
+
     test('the union keeps its undefined arm beside a key whose shape names undefined only inside it', function () {
         $props = ($this->shape)('nestedBranches');
 

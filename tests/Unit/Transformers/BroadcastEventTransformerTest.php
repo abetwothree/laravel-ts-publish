@@ -540,6 +540,14 @@ describe('a docblock-filled index signature in a broadcastWith() payload', funct
         expect($transformer->properties['[key: `${string}_tag`]']['type'])->toBe('unknown | undefined');
     });
 
+    test('a config-level ts_extends entry puts the fill back, like #[TsExtends]', function () {
+        config()->set('ts-publish.ts_extends.broadcast_events', ['HasPriceTag']);
+
+        $transformer = app(BroadcastEventTransformer::class, ['findable' => CastTagSignatureBroadcastEvent::class]);
+
+        expect($transformer->properties['[key: `${string}_tag`]']['type'])->toBe('unknown | undefined');
+    });
+
     test('a key the event\'s #[TsCasts] retypes joins the union, and a cast on a key the payload lacks does not', function () {
         $transformer = app(BroadcastEventTransformer::class, ['findable' => CastTagSignatureBroadcastEvent::class]);
 

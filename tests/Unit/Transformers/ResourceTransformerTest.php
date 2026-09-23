@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendsOverriddenReadRe
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendsTsTypeOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LineTerminatorCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LongerNameCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ModelCastAbsentDataSignatureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ModelCastDataSignatureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MultilineQuoteCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MultilineTemplateCastResource;
@@ -2892,6 +2893,21 @@ describe('a docblock-filled index signature beside keys only the publisher adds'
 
         expect($properties['[key: `${string}data`]']['type'])
             ->toBe('string | Record<string, {title: string, content: string}> | undefined');
+    });
+
+    test('a model #[TsCasts] key the resource never publishes takes no part in the union', function () {
+        $properties = (new ResourceTransformer(ModelCastAbsentDataSignatureResource::class))->data()->properties;
+
+        expect($properties['[key: `${string}data`]']['type'])->toBe('string | undefined')
+            ->and($properties)->not->toHaveKey('metadata');
+    });
+
+    test('a config-level ts_extends entry puts the fill back, like #[TsExtends]', function () {
+        config()->set('ts-publish.ts_extends.resources', ['HasPriceTag']);
+
+        $properties = (new ResourceTransformer(ClassCastTagSignatureResource::class))->data()->properties;
+
+        expect($properties['[key: `${string}_tag`]']['type'])->toBe('unknown | undefined');
     });
 
     test('the union keeps its undefined arm beside casts that name undefined only in a literal or a Record', function () {
