@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMultiEnumTernary;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithOptionalDocblockKey;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithoutShareMethod;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithSignatureCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithTagSignatureCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithTsCastsAndDocblock;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithUndefinedLiteralCast;
@@ -366,4 +367,9 @@ test('a key the middleware\'s #[TsCasts] adds joins a docblock-filled signature\
 test('the union keeps its undefined arm beside a cast that names undefined only in a literal', function () {
     expect(analyzeSharedDataFor(MiddlewareWithUndefinedLiteralCast::class)['sharedPageProps'])
         ->toBe('{ [key: `${string}_tag`]: string | number | \'undefined\' | undefined, price_tag?: number, state_tag: \'undefined\' }');
+});
+
+test('a #[TsCasts] key with the backslashes a single-quoted PHP string leaves retypes the escaped signature', function () {
+    expect(analyzeSharedDataFor(MiddlewareWithSignatureCastSpelling::class)['sharedPageProps'])
+        ->toBe('{ [key: `${string}\\\\_cast`]: number }');
 });

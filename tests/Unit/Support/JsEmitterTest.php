@@ -49,6 +49,30 @@ describe('isIndexSignatureKey', function () {
     ]);
 });
 
+describe('castsByKey', function () {
+    test('a cast key takes the key it names, or the backslash signature whose single-quoted paste it is', function (array $casts, array $expected) {
+        expect($this->service->castsByKey($casts, ['[key: `${string}\\\\_x`]', 'main\\_x', 'id']))->toBe($expected);
+    })->with([
+        'the exact name' => [['[key: `${string}\\\\_x`]' => 'number'], ['[key: `${string}\\\\_x`]' => 'number']],
+        'each doubled backslash single' => [['[key: `${string}\\_x`]' => 'number'], ['[key: `${string}\\\\_x`]' => 'number']],
+        'a key no name answers to' => [['[key: `${string}_x`]' => 'number'], ['[key: `${string}_x`]' => 'number']],
+        'a named key, which only answers to its own spelling' => [['main\\\\_x' => 'number'], ['main\\\\_x' => 'number']],
+    ]);
+
+    test('when both spellings name one signature, the exact one wins and the other is dropped', function (array $casts) {
+        expect($this->service->castsByKey($casts, ['[key: `${string}\\\\_x`]']))->toBe(['[key: `${string}\\\\_x`]' => 'number']);
+    })->with([
+        'exact first' => [['[key: `${string}\\\\_x`]' => 'number', '[key: `${string}\\_x`]' => 'boolean']],
+        'exact last' => [['[key: `${string}\\_x`]' => 'boolean', '[key: `${string}\\\\_x`]' => 'number']],
+    ]);
+
+    test('a cast key equal to one name keeps it, though it is another signature\'s single-quoted paste', function () {
+        $keys = ['[key: `${string}\\_x`]', '[key: `${string}\\\\_x`]'];
+
+        expect($this->service->castsByKey(['[key: `${string}\\_x`]' => 'number'], $keys))->toBe(['[key: `${string}\\_x`]' => 'number']);
+    });
+});
+
 describe('safeJsIdentifier', function () {
     test('appends suffix to reserved keywords', function () {
         expect($this->service->safeJsIdentifier('delete', 'Method'))->toBe('deleteMethod')

@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsCastsImportResolver;
@@ -108,8 +109,9 @@ class InertiaSharedDataAnalyzer
         $resolver = new TsCastsImportResolver;
         $resolvedTsCasts = $resolver->resolve($tsCasts['overrides'], $tsCasts['importPaths']);
 
-        $mergedOverrides = $this->normalizeOverrideKeys(
-            array_merge($docblockOverrides, $resolvedTsCasts['overrides'])
+        $mergedOverrides = JsEmitter::castsByKey(
+            $this->normalizeOverrideKeys(array_merge($docblockOverrides, $resolvedTsCasts['overrides'])),
+            array_column($analysis->properties, 'name'),
         );
 
         // The overrides are laid over the props below, so they can add or retype a key a signature covers.

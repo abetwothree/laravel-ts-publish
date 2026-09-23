@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaInlineTabl
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaServiceTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithDelegatedProps;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithSignatureCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithSpreadProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTagSignatureBranches;
 use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
@@ -489,4 +490,9 @@ describe('a docblock-filled index signature in page props merged from several br
             .'price_tag?: number, state_tag: \'undefined\' }',
         );
     });
+});
+
+test('a controller method\'s #[TsCasts] key with the backslashes a single-quoted PHP string leaves retypes the signature', function () {
+    expect(pageData(ControllerWithSignatureCastSpelling::class.'@show')['pageType'])
+        ->toBe('Inertia.SharedData & { [key: `${string}\\\\_cast`]: number, id: number }');
 });

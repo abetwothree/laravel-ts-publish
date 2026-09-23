@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\ReturnLiteralReader;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -200,11 +201,16 @@ class BroadcastEventTransformer extends CoreTransformer
     protected function transformProperties(): self
     {
         $analysis = $this->runAnalysis();
+        $keys = array_column($analysis->properties, 'name');
+
+        $this->tsTypeOverrides = JsEmitter::castsByKey($this->tsTypeOverrides, $keys);
+        $this->tsCastsImportPaths = JsEmitter::castsByKey($this->tsCastsImportPaths, $keys);
+        $this->optionalOverrides = JsEmitter::castsByKey($this->optionalOverrides, $keys);
 
         // resolveProperties() lays each cast over its key, and an extends clause adds keys no analysis sees.
         resolve(IndexSignatureReconciler::class)->reconcile(
             $analysis,
-            array_intersect_key($this->tsTypeOverrides, array_flip(array_column($analysis->properties, 'name'))),
+            array_intersect_key($this->tsTypeOverrides, array_flip($keys)),
             $this->tsExtends !== [],
         );
 

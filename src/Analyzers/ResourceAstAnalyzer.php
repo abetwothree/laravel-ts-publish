@@ -865,9 +865,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
     private function applyTsCastsFromMethod(ReflectionMethod $method, ResourceAnalysis $analysis): void
     {
         foreach ($method->getAttributes(TsCasts::class) as $attr) {
-            $instance = $attr->newInstance();
+            $types = JsEmitter::castsByKey($attr->newInstance()->types, array_column($analysis->properties, 'name'));
 
-            foreach ($instance->types as $property => $value) {
+            foreach ($types as $property => $value) {
                 $type = is_array($value) ? $value['type'] : $value;
                 $optional = is_array($value) && isset($value['optional']) ? (bool) $value['optional'] : null;
 
@@ -1071,9 +1071,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
                     return null;
                 }
 
-                // TypeScript reads a backslash in template text as an escape, so `\` is written `\\` and a literal `${`
-                // `\${`; IndexSignatureReconciler::literalSegments() undoes both.
-                $pattern .= strtr($part->value, ['\\' => '\\\\', '${' => '\\${']);
+                // TypeScript reads a backslash in template text as an escape and a raw CR as LF, so `\` is written
+                // `\\`, `${` `\${` and a CR `\r`; IndexSignatureReconciler::literalSegments() undoes all three.
+                $pattern .= strtr($part->value, ['\\' => '\\\\', '${' => '\\${', "\r" => '\\r']);
                 $hasLiteral = true;
             } else {
                 $pattern .= '${string}';

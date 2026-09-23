@@ -53,6 +53,44 @@ class JsEmitter
     }
 
     /**
+     * Re-key #[TsCasts] entries to the published keys they retype. A cast key equal to a key keeps it; failing that,
+     * one equal to an index signature's name with each `\\` collapsed to `\`, as a single-quoted PHP string reads the
+     * pasted name, takes that name unless the name is cast under its own spelling too.
+     *
+     * @template TCast
+     *
+     * @param  array<string, TCast>  $casts
+     * @param  array<array-key, int|string>  $keys  the keys the casts are laid over
+     * @return array<string, TCast>
+     */
+    public function castsByKey(array $casts, array $keys): array
+    {
+        $known = [];
+        $collapsed = [];
+
+        foreach ($keys as $key) {
+            $key = (string) $key;
+            $known[$key] = true;
+
+            if (str_contains($key, '\\') && $this->isIndexSignatureKey($key)) {
+                $collapsed[str_replace('\\\\', '\\', $key)] ??= $key;
+            }
+        }
+
+        $byKey = [];
+
+        foreach ($casts as $castKey => $cast) {
+            $key = isset($known[$castKey]) ? $castKey : ($collapsed[$castKey] ?? $castKey);
+
+            if ($key === $castKey || ! isset($casts[$key])) {
+                $byKey[$key] = $cast;
+            }
+        }
+
+        return $byKey;
+    }
+
+    /**
      * Ensure a string is safe as a bare JS/TS identifier ('delete' → 'deleteMethod').
      *
      * Not for object property keys — reserved words are legal there in TS interfaces and literals.

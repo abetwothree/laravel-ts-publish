@@ -250,7 +250,7 @@ final class IndexSignatureReconciler
             return null;
         }
 
-        // The name writes a literal `\` as `\\` and `${` as `\${`: a `${string}` no escape consumes is a placeholder.
+        // `\` is written `\\`, `${` `\${` and a CR `\r`: a `${string}` that no escape consumes is a placeholder.
         $segments = preg_split('/\\\\.(*SKIP)(*FAIL)|\$\{string\}/s', $template[1]);
 
         if ($segments === false || $segments === []) {
@@ -258,7 +258,11 @@ final class IndexSignatureReconciler
         }
 
         return array_map(
-            fn (string $segment): string => (string) preg_replace('/\\\\(.)/s', '$1', $segment),
+            fn (string $segment): string => (string) preg_replace_callback(
+                '/\\\\(.)/s',
+                fn (array $escape): string => $escape[1] === 'r' ? "\r" : $escape[1],
+                $segment,
+            ),
             $segments,
         );
     }

@@ -7,7 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** Interpolated keys whose literal text holds a backslash, each of which TypeScript would read as an escape. */
+/** Interpolated keys whose literal text TypeScript would misread as written: a backslash, or a CR it reads as LF. */
 final class EscapedKeyResource extends JsonResource
 {
     /** Spreads the keys below, the way a published resource reaches them. */
@@ -16,7 +16,7 @@ final class EscapedKeyResource extends JsonResource
         return [...$this->keys()];
     }
 
-    /** One key per backslash position: after, before and between placeholders, `\b`, `\\`, trailing, before `${`. */
+    /** A key per backslash position (after, before, between placeholders, `\b`, `\\`, trailing, before `${`); a CR. */
     public function keys(): array
     {
         $data = [];
@@ -30,6 +30,7 @@ final class EscapedKeyResource extends JsonResource
             $data["{$name}_end\\"] = 'x';
             $data["{$name}\\\${x}"] = 'x';
             $data[$name.'\\cat'] = 'x';
+            $data["{$name}\r"] = 'x';
         }
 
         return $data;

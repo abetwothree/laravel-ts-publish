@@ -296,6 +296,8 @@ class ResourceTransformer extends CoreTransformer
         $analyzer = new ResourceAstAnalyzer($this->reflectionResource, $this->modelClass);
         $analysis = $analyzer->analyze();
 
+        $this->castsOverAnalysisKeys(array_column($analysis->properties, 'name'));
+
         // applyOverrides() lays the casts over the analysis, and an extends clause adds keys no analysis sees.
         resolve(IndexSignatureReconciler::class)
             ->reconcile($analysis, $this->castKeys($analysis), $this->tsExtends !== []);
@@ -406,6 +408,20 @@ class ResourceTransformer extends CoreTransformer
     protected function castKeys(MethodAnalysis $analysis): array
     {
         return $this->tsTypeOverrides + $this->modelCastsOver(array_flip(array_column($analysis->properties, 'name')));
+    }
+
+    /**
+     * Re-key every #[TsCasts] map to the analysis's spelling of each key it retypes.
+     *
+     * @param  list<string>  $keys
+     */
+    protected function castsOverAnalysisKeys(array $keys): void
+    {
+        $this->tsTypeOverrides = JsEmitter::castsByKey($this->tsTypeOverrides, $keys);
+        $this->optionalOverrides = JsEmitter::castsByKey($this->optionalOverrides, $keys);
+        $this->modelTsCastsOverrides = JsEmitter::castsByKey($this->modelTsCastsOverrides, $keys);
+        $this->modelTsCastsImportPaths = JsEmitter::castsByKey($this->modelTsCastsImportPaths, $keys);
+        $this->modelTsCastsOptionalOverrides = JsEmitter::castsByKey($this->modelTsCastsOptionalOverrides, $keys);
     }
 
     /**

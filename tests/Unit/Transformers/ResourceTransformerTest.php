@@ -20,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MultilineQuoteCastResou
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MultilineTemplateCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\QuotedCastReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ResourceCastOverModelCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SignatureCastSpellingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SplitTemplateCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SpreadCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TemplateCastReadResource;
@@ -2916,5 +2917,36 @@ describe('a docblock-filled index signature beside keys only the publisher adds'
         expect($properties['[key: `${string}_tag`]']['type'])
             ->toBe("string | number | 'undefined' | 'defined' | Record<string, number | undefined> | undefined")
             ->and($properties['price_tag']['optional'])->toBeTrue();
+    });
+});
+
+describe('SignatureCastSpellingResource — a #[TsCasts] key for a backslash signature, pasted into single quotes', function () {
+    beforeEach(function () {
+        $this->types = array_map(
+            fn (array $property): string => $property['type'],
+            (new ResourceTransformer(SignatureCastSpellingResource::class))->data()->properties,
+        );
+    });
+
+    test('a key with the single backslashes a single-quoted PHP string leaves retypes the escaped signature', function () {
+        expect($this->types)->toMatchArray([
+            '[key: `${string}\\\\_cast`]' => 'number',
+            '[key: `${string}\\\\unit`]' => 'boolean',
+            '[key: `${string}\\\\_mc`]' => 'number',
+        ]);
+    });
+
+    test('no cast key is published as a second signature beside the one it retypes', function () {
+        expect(array_keys($this->types))->toBe([
+            '[key: `${string}\\\\_cast`]',
+            '[key: `${string}\\\\unit`]',
+            '[key: `${string}\\\\_both`]',
+            '[key: `${string}\\\\_mc`]',
+        ]);
+    });
+
+    test('when both spellings name one signature, the exact one wins and the other is not published', function () {
+        expect($this->types['[key: `${string}\\\\_both`]'])->toBe('number')
+            ->and($this->types)->not->toHaveKey('[key: `${string}\\_both`]');
     });
 });

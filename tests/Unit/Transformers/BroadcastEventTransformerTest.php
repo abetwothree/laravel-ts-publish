@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastTagSignatureBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendedTagSignatureBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SignatureCastSpellingBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
 use Workbench\App\Events\ComputedNameEvent;
 use Workbench\App\Events\DeclaredPropsEvent;
@@ -555,4 +556,13 @@ describe('a docblock-filled index signature in a broadcastWith() payload', funct
             ->and($transformer->properties['main_tag']['type'])->toBe('number')
             ->and($transformer->properties)->not->toHaveKey('absent_tag');
     });
+});
+
+test('an event\'s #[TsCasts] key with the backslashes a single-quoted PHP string leaves retypes the escaped signature', function () {
+    $properties = app(BroadcastEventTransformer::class, ['findable' => SignatureCastSpellingBroadcastEvent::class])->properties;
+
+    expect(array_map(fn (array $property): string => $property['type'], $properties))->toBe([
+        '[key: `${string}\\\\_cast`]' => 'number',
+        'id' => 'number',
+    ]);
 });

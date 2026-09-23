@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ModelArmAppendsResource
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NamedMergeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NestedMethodModelSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SamePatternDeclinedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SignatureCastSpellingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UnreadableReturnResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Illuminate\Notifications\DatabaseNotification;
@@ -6271,7 +6272,15 @@ test('every backslash in an interpolated key\'s literal text is escaped, whereve
     'ending the literal text' => ['[key: `${string}_end\\\\`]'],
     'before an escaped placeholder' => ['[key: `${string}\\\\\${x}`]'],
     'in a concatenated key' => ['[key: `${string}\\\\cat`]'],
+    'a carriage return, which TypeScript would read as a line feed' => ['[key: `${string}\\r`]'],
 ]);
+
+test('a spread method\'s #[TsCasts] key with the backslashes a single-quoted PHP string leaves retypes its signature', function () {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(SignatureCastSpellingResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+    expect($props['[key: `${string}\\\\_mc`]']['type'] ?? null)->toBe('number')
+        ->and($props->has('[key: `${string}\\_mc`]'))->toBeFalse();
+});
 
 test('an interpolated key the body cannot type takes its value type from the method @return', function () {
     $props = collect(new ResourceAstAnalyzer(new ReflectionClass(PermissionsSpreadResource::class), Post::class)->analyze()->properties)->keyBy('name');

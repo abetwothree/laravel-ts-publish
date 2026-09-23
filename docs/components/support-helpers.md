@@ -46,8 +46,8 @@ the second one is a helper.
 ### `JsEmitter`
 
 PHP values and docblock text in, JavaScript source out: `validJsObjectKey()`, `isIndexSignatureKey()`,
-`safeJsIdentifier()`, `toJsLiteral()`, `enumScalar()`, `routeArgsToJs()`, `sanitizeJsDoc()`, `formatJsDoc()`,
-`parseDocBlockDescription()`, plus the private `RESERVED_JS_IDENTIFIERS` list `safeJsIdentifier()`
+`castsByKey()`, `safeJsIdentifier()`, `toJsLiteral()`, `enumScalar()`, `routeArgsToJs()`, `sanitizeJsDoc()`,
+`formatJsDoc()`, `parseDocBlockDescription()`, plus the private `RESERVED_JS_IDENTIFIERS` list `safeJsIdentifier()`
 reads. No state, no dependencies, no config.
 
 `validJsObjectKey()`'s `$allowIndexSignature` flag is the one member with a trap in it: a generated
@@ -59,6 +59,13 @@ delegation dropped it.
 name": `validJsObjectKey()` asks it, and so do `ResourceAstAnalyzer`, `ReturnShapeRefiner` and
 `IndexSignatureReconciler`, so the regex has one spelling. Like `isUnknownOnly()` below, it has no
 delegation on `LaravelTsPublish`.
+
+`castsByKey()` is the one home for "which published key does this `#[TsCasts]` key retype". A key equal to
+a published key keeps it. Failing that, one equal to a signature's name with each `\\` collapsed to `\`, the
+spelling a single-quoted PHP string gives the pasted name, takes that name; the exact spelling wins where both
+are given. `ResourceAstAnalyzer::applyTsCastsFromMethod()`, `ResourceTransformer`, `BroadcastEventTransformer`
+and both Inertia analyzers call it before any cast lookup, so the two spellings are matched in one place. It
+has no delegation either.
 
 ### `TsTypeString`
 
