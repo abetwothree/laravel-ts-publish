@@ -9,9 +9,12 @@ use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendedCustomImportResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\BranchedSpreadPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclinedTopLevelSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DocShapePostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\EscapedKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\IndexSignatureConflictResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LiteralSpreadPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeArrayMergeChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeParameterShadowResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeSpreadChildResource;
@@ -6446,4 +6449,47 @@ test('a merge closure parameter owns its name and holds its default', function (
         ->and($props['merged_loop']['type'])->toBe('null')
         ->and($props['merged_list']['type'])->toBe('string[]')
         ->and($props['title_after']['type'])->toBe('string');
+});
+
+test('a spread helper\'s `@return` publishes its literal types, and each union arm once', function (string $key, string $type) {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(LiteralSpreadPostResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+    expect($props[$key]['type'])->toBe($type);
+})->with([
+    'single-quoted strings' => ['mode', "'draft' | 'live'"],
+    'double-quoted strings' => ['quoted', "'draft' | 'live'"],
+    'an escaped quote' => ['escaped', "'it\\'s'"],
+    'ints' => ['level', '1 | 2 | 3'],
+    'negative ints' => ['sign', '-1 | 0 | 1'],
+    'a float' => ['ratio', '1.5'],
+    'literals and null' => ['maybe', "'draft' | 'live' | null"],
+    'a literal and a scalar' => ['mixed', "'a' | number"],
+    'two arms typed alike' => ['amount', 'number'],
+    'a name no class answers to' => ['custom', 'CustomObject'],
+    'a class the shape cannot import' => ['text', 'unknown'],
+]);
+
+test('toArray()\'s own `@return` types its literals but never ships a class name its file does not import', function () {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(DocShapePostResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+    expect($props['author']['type'])->toBe('unknown')
+        ->and($props['mode']['type'])->toBe("'draft' | 'live'");
+});
+
+test('a spread helper\'s branches drop the values they cannot type, as a ternary drops an arm', function (string $key, string $type) {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(BranchedSpreadPostResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+    expect($props[$key]['type'])->toBe($type);
+})->with([
+    'a typed branch and an untypable one' => ['label', 'string'],
+    'untypable in every branch' => ['opaque', 'unknown'],
+    'only null left once the untypable branch drops' => ['nothing', 'unknown'],
+]);
+
+test('only a spread helper\'s branches drop an untypable value; other merges stay unknown', function () {
+    $branch = fn (string $type): ResourceAnalysis => new ResourceAnalysis(properties: [['name' => 'label', 'type' => $type, 'optional' => false, 'description' => '']]);
+    $analyzer = new ResourceAstAnalyzer(new ReflectionClass(BranchedSpreadPostResource::class), Post::class);
+
+    expect($analyzer->mergeReturnBranches([$branch('string'), $branch('unknown')])->properties[0]['type'])->toBe('unknown')
+        ->and($analyzer->mergeReturnBranches([$branch('string'), $branch('unknown')], dropsUntypedBranches: true)->properties[0]['type'])->toBe('string');
 });

@@ -165,6 +165,14 @@ it('declines a plain method call it does not claim', function () {
     expect($result)->toBeNull();
 });
 
+it('declines a nullsafe method whose declared return is a class no generated file declares', function () {
+    // Model::toResource() declares JsonResource, a token nothing imports; a relation's model would carry its import.
+    $expr = new NullsafeMethodCall(chainThisProp('user'), 'toResource');
+    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
+
+    expect((new MethodChainHandler)->resolve($expr, $scope, chainHandlersThrowingEngine()))->toBeNull();
+});
+
 it('declines a nullsafe method chain with no resolvable return type', function () {
     $expr = new NullsafeMethodCall(chainThisProp('user'), 'notAMethodAnywhere');
     $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);

@@ -963,22 +963,47 @@ not type, which the AST records as `unknown | undefined`, counts as unknown too 
 cannot type falls back to the method's `@return`" below, and "Index signatures are reconciled with the keys
 beside them" for where that fill is put back.
 
+The shape is read by `LaravelTsPublish::parseDocblockReturnArrayShape()`, which types a PHPStan string, decimal
+int or float literal as the TypeScript literal (`'draft'|'live'` gives `'draft' | 'live'`, and a `"…"` string is
+re-quoted `'…'`). The refiner lists each union arm once, so `int|float` fills `number`, and an arm list left as
+only `unknown` fills nothing.
+
 Two values are declined rather than published. A shape value that resolves to a token needing an
 import the shape cannot carry (`TsTypeString::shapeValueHasUnimportableToken()`) is skipped, because
 the map is string-only and could never supply the FQCN. A value naming no PHP type at all is the
 opposite case: it resolves to `unknown`, but the consuming app declares it as a global, so the raw
 name is kept — `IncludesExtras`'s `custom_val: CustomObject` publishes `CustomObject`, matching the
 `CustomObject` stub under `tests/types/stubs`. Dropping it there would have replaced a real published
-type with `unknown`.
+type with `unknown`. That rescue is narrow:
 
-### An untypable branch makes the union `unknown`, not the typed arm
+- a name that resolves, through the docblock file's `use` statements and namespace, to a class, interface, enum or
+  trait is never kept, since that class needs the import the map cannot carry;
+- only a spread helper's `@return` keeps a name. The analyzed method's own `@return` (`toArray()`, `broadcastWith()`,
+  `share()`) passes `keepsUnresolvedNames: false`, because there an unresolved name is as likely a class its file
+  never imported, which `tsc` would reject (TS2304), and that path published the body's `unknown` before it read
+  the docblock at all.
 
-`unionBranchTypes()` returns `unknown` as soon as one branch resolved to `unknown`, because `unknown`
-absorbs every arm it is unioned with — `unknown | string` *is* `unknown`, spelled longer. The
-alternative, dropping the untypable arm the way `ValueResult::analyzeClosureUnion()` does for ternary
-unions, would promise the typed arm's `string` for a branch that guarantees no such thing.
-`NarrowingGuardBodyResource::dirty_label` pins it: one branch reads a member off an un-narrowed
-variable and the other returns a literal, and the honest answer is `unknown`.
+### A spread helper's untypable branch is dropped, as a ternary's untypable arm is
+
+`analyzeThisMethodSpread()` merges its branches with `mergeReturnBranches(…, dropsUntypedBranches: true)`, and
+`branchUnion()` then applies the drop-arm rule `ValueResult::analyzeClosureUnion()` applies to a ternary's arms:
+a branch whose value resolved to `unknown` is left out, and the typed branches are unioned. Before the branch sweep
+this path published the first return's value alone, so a typed first branch was never lost to an untypable later
+one, and dropping the arm keeps that. Two cases still answer `unknown`:
+
+- every branch is `unknown`;
+- only `null` is left once the untypable branches are gone, since that `null` says nothing about the value the
+  other branch holds. `null` in every branch is still `null`.
+
+A helper returning `['label' => $this->title]` in one branch and `['label' => $this->fallback()]` over an untyped
+`fallback()` in the other publishes `label: string`. `BranchedSpreadPostResource` pins all three cases, and
+`NarrowingGuardBodyResource::dirty_label` pins the drop beside a narrowing: the branch that reads a member off the
+un-narrowed variable drops, and the other branch's `number` is what is published.
+
+Every other merge keeps the old rule. `toArray()`'s own branches (`analyzeAllReturnBranches()`) and the Inertia
+page analyzer's same-component renders go through `mergeReturnBranches()` without the flag, so there
+`unionBranchTypes()` returns `unknown` as soon as one branch resolved to `unknown`, because `unknown` absorbs every
+arm it is unioned with.
 
 ## Interpolated keys
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 
+use Stringable;
 use Workbench\App\ValueObjects\OpaqueHandle;
 
 final class ReturnShapeFixture
@@ -14,6 +15,16 @@ final class ReturnShapeFixture
      * @return array{known: string, handle: OpaqueHandle, maybe?: int, custom?: CustomThing}
      */
     public function shaped(): array
+    {
+        return [];
+    }
+
+    /**
+     * `Stringable` is a class, whose import the string-only shape map cannot carry.
+     *
+     * @return array{text: Stringable, amount: int|float, spare: resource|callable, mode: 'draft'|'live'}
+     */
+    public function spelled(): array
     {
         return [];
     }

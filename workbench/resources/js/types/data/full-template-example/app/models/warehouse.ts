@@ -57,13 +57,10 @@ export interface Warehouse extends HasTimestamps, Pick<Auditable, "created_by" |
     secondary_contact_exists: boolean;
 }
 
-export interface WarehouseResource extends Omit<Warehouse, 'status' | 'color' | 'priority' | 'review_priority' | 'review_priority_typed' | 'review_priority_typed_short' | 'current_crm_status'>
+export interface WarehouseResource extends Omit<Warehouse, 'status' | 'color' | 'priority' | 'current_crm_status'>
 {
     status: AsEnum<typeof EnumsStatus> | null;
     color: AsEnum<typeof Color> | null;
     priority: AsEnum<typeof Priority> | null;
-    review_priority: AsEnum<typeof EnumsStatus> | null;
-    review_priority_typed: AsEnum<typeof EnumsStatus> | null;
-    review_priority_typed_short: AsEnum<typeof EnumsStatus> | null;
     current_crm_status: AsEnum<typeof CrmStatus> | null;
 }

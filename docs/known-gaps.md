@@ -23,7 +23,13 @@ if neither, it does not go in this file.
 
 `$cond ? $untypable : null` publishes `null`, and `$this->opaque() ?: null` does the same. The arm that
 resolved to nothing is dropped rather than widening the union to `unknown`, which would be more honest but
-less specific. Type the arm with a return type, a `@return` docblock, or `#[TsCasts]` and it comes back.
+less specific. A spread helper's `return` branches follow the same rule. Type the arm with a return type, a
+`@return` docblock, or `#[TsCasts]` and it comes back.
+
+A model accessor's getter body is the exception: a body left as only `null` once an arm dropped, such as
+`fn ($value, array $attributes) => $attributes['title'] ?? null`, publishes `unknown` rather than `null`, on the
+model and in every resource that reads it, since the real value is the dropped arm's. A getter that only ever
+returns `null` still publishes `null`.
 
 ### `config()` on an absent key with no default types as null
 

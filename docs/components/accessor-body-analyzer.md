@@ -34,6 +34,23 @@ An empty `[]` literal body is declined rather than published. `InlineArrayHandle
 publishing it would let the body override a `@property string[]` tag with a type that can hold
 nothing. `HasLabels::getLabelsAttribute()` is exactly that case and still publishes `string[]`.
 
+Two more results are declined:
+
+- **A bare `null` left once an arm was dropped.** A ternary or `??` drops the arm it cannot type, so
+  `fn ($value, array $attributes) => $attributes['title'] ?? null` resolves to `null`, while the runtime value is
+  the title. `analyze()` compares `DroppedUnionArms::dropped()` before and after the body and declines that `null`,
+  so the accessor publishes `unknown`, in the model and in every resource that reads it. A getter that only ever
+  returns `null` drops nothing, and still publishes `null` (`Image::no_docblock_accessor`). A real arm left beside
+  the `null`, `string | null` for `$this->title ?? null`, stays.
+- **A class or enum the model file cannot name.** The aliasing pass gives same-named classes or enums their own
+  aliases one occurrence at a time, so the type must spell that token once per FQCN.
+  `$this->status ?? $this->crmAuthor?->status` names `App\Status` and `Crm\Status` under one `StatusType`, and
+  `$this->author ?? $this->crmAuthor` names two `User` models under one `User`. Each would publish the first alias
+  alone and import the second unused, so the body declines, as it did before this step existed.
+  `['author' => $this->author, 'lead' => $this->crmAuthor]` spells `User` twice and publishes
+  `{ author: AuthorUser; lead: CrmAuthorUser }`. `ResultTypeInfoBridge` carries no resource channel either, so a
+  body naming a resource it returns (`new UserResource($this->author)`) declines too.
+
 ## Which getters are found
 
 `getterClosure()` walks the accessor method's return expressions and reads the `get` argument —

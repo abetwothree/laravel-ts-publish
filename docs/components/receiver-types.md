@@ -447,8 +447,11 @@ carried them. A key the resource's own `only()` or `except()` selects keeps only
 `directEnumFqcns` and `modelFqcns`, so a multi-class attribute's FQCNs, every enum after the first and every
 `#[TsType]` import are gone there. `ResourceTransformer::resolveMultiClassAccessorFqcns()` and
 `resolveMultiEnumAccessorFqcns()` import the classes and enums back by name, because each key that filter keeps is an
-attribute's own name. The first of them also restores each such key's `#[TsType]` import, before it skips a key whose
-model FQCN the filter kept, and only when the key's type still spells the name. The `Stockroom` resources pin that for
+attribute's own name. The first imports a class only while the key's type names it (`TsTypeString::typeNameOccursIn()`):
+a key named after an accessor may hold something else, `UserResource::make($this->author_model)` or
+`$this->lead?->email`, and an unused import is a `tsc` error (TS6196). It also restores each such key's `#[TsType]`
+import, before it skips a key whose model FQCN the filter kept, and only when the key's type still spells the name.
+The `Stockroom` resources pin that for
 an attribute naming one model and a `#[TsType]` class, through `$this->resource->only()`, `$this->resource->except()`,
 `$this->only()`, a spread of it and `$this->except()`. The `Bulletin` resources pin each read beside a `Comment` or
 `User` token, `WarehouseSettingsResource` pins `$this->menu_config` under a key of its own, whose `MenuSettingsType`
@@ -539,7 +542,10 @@ earlier claimants used to floor or misread calls it can answer, and now decline 
   `null` arms are removed. A `static|null` docblock such as `Model::fresh()`'s reflects to `unknown | null`, and
   flooring there made `$this->author?->fresh()` disagree with `$this->author->fresh()`; both are now
   `User | null`. It also declines when the last step of the chain is not a relation. It used to reflect the method on the model that declares
-  the step, which is the wrong receiver: `$this->imageable?->getTable()` read `Image::getTable()`.
+  the step, which is the wrong receiver: `$this->imageable?->getTable()` read `Image::getTable()`. The reflected return
+  now passes through `ReflectedTypeAcceptor`, so a model or enum it names carries its channel, and a class no
+  generated file declares declines: `$this->author?->toResource()` reflects `Model::toResource()`'s `JsonResource`,
+  which it used to publish as a bare `JsonResource | null` that no import could resolve (TS2304).
 - `StaticCallHandler` declines a static call whose class is an expression, such as `$record::className()`.
 
 ## Property access on a receiver

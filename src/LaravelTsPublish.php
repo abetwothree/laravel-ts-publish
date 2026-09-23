@@ -22,8 +22,10 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use JsonSerializable;
+use PhpParser\Error;
 use PhpParser\Node;
 use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Class_;
 use PhpParser\Node\Stmt\GroupUse;
 use PhpParser\Node\Stmt\TraitUse;
@@ -1683,6 +1685,12 @@ class LaravelTsPublish
             return $this->resolveArrayShapeString($phpType, $useMap, $namespace) ?? 'Record<string, unknown>';
         }
 
+        $literal = $this->phpDocLiteralType($phpType);
+
+        if ($literal !== null) {
+            return $literal;
+        }
+
         $resolved = $this->resolveDocblockTypeName($phpType, $useMap, $namespace);
 
         // A type still containing '<' is an unrecognized generic — degrade it rather than let
@@ -1694,6 +1702,38 @@ class LaravelTsPublish
         $info = $this->toTsType($resolved);
 
         return $info['type'];
+    }
+
+    /**
+     * The TypeScript literal a PHPStan string, decimal int or float literal type spells, or null for any other type.
+     *
+     * A string is re-quoted the way the generator writes every string literal, so `"draft"` publishes as `'draft'`.
+     */
+    protected function phpDocLiteralType(string $phpType): ?string
+    {
+        if (preg_match('/^(?:\'(?:[^\'\\\\]|\\\\.)*\'|"(?:[^"\\\\]|\\\\.)*")$/s', $phpType) === 1) {
+            try {
+                $value = String_::fromString($phpType)->value;
+            } catch (Error) {
+                return null;
+            }
+
+            // An escape past U+10FFFF, or a raw `\x..` byte, leaves no text a .ts file can hold.
+            return preg_match('//u', $value) === 1 ? JsEmitter::toJsLiteral($value) : null;
+        }
+
+        if (preg_match('/^-?(?:0|[1-9]\d*)$/', $phpType) === 1) {
+            // A literal past PHP_INT_MAX would publish a different number.
+            return (string) (int) $phpType === $phpType ? $phpType : null;
+        }
+
+        if (preg_match('/^-?\d+\.\d+$/', $phpType) !== 1) {
+            return null;
+        }
+
+        $float = (float) $phpType;
+
+        return is_finite($float) ? JsEmitter::toJsLiteral($float) : null;
     }
 
     /**
@@ -1876,8 +1916,8 @@ class LaravelTsPublish
     /**
      * Merge a list of TypeScriptTypeInfo results into one, joining type strings with ' | '.
      *
-     * Class-backed entries dedupe by FQCN, not short name, so two classes sharing a class_basename()
-     * keep separate tokens for rewriteTypeReferences() to alias independently.
+     * Class-backed and bare-enum entries dedupe by FQCN, not short name, so two classes or enums sharing a name keep
+     * separate tokens for rewriteTypeReferences() to alias independently. The enum channels stay index-aligned.
      *
      * @param  list<TypeScriptTypeInfo>  $infos
      * @return TypeScriptTypeInfo
@@ -1926,6 +1966,11 @@ class LaravelTsPublish
                         $types[] = $info['type'];
                     }
                 }
+            } elseif (count($info['enumFqcns']) === 1 && $info['type'] === $info['enumTypes'][0]) {
+                if (! in_array($info['enumFqcns'][0], $enumFqcns, true)) {
+                    $seenTypeTokens[] = $info['type'];
+                    $types[] = $info['type'];
+                }
             } else {
                 if (! in_array($info['type'], $seenTypeTokens, true)) {
                     $seenTypeTokens[] = $info['type'];
@@ -1933,9 +1978,14 @@ class LaravelTsPublish
                 }
             }
 
-            $enums = [...$enums, ...$info['enums']];
-            $enumTypes = [...$enumTypes, ...$info['enumTypes']];
-            $enumFqcns = [...$enumFqcns, ...$info['enumFqcns']];
+            // Readers take enumTypes[$i] and enums[$i] for enumFqcns[$i], so the three dedupe together.
+            foreach ($info['enumFqcns'] as $i => $fqcn) {
+                if (! in_array($fqcn, $enumFqcns, true)) {
+                    $enumFqcns[] = $fqcn;
+                    $enumTypes[] = $info['enumTypes'][$i];
+                    $enums[] = $info['enums'][$i];
+                }
+            }
 
             foreach ($info['customImports'] as $path => $importTypes) {
                 $customImports[$path] = [...($customImports[$path] ?? []), ...$importTypes];
@@ -1944,11 +1994,11 @@ class LaravelTsPublish
 
         $result = $this->emptyTypeScriptInfo();
         $result['type'] = implode(' | ', $types);
-        $result['enums'] = array_values(array_unique($enums));
-        $result['enumTypes'] = array_values(array_unique($enumTypes));
+        $result['enums'] = $enums;
+        $result['enumTypes'] = $enumTypes;
         $result['classes'] = array_values($classFqcnToName);
         $result['customImports'] = $customImports;
-        $result['enumFqcns'] = array_values(array_unique($enumFqcns));
+        $result['enumFqcns'] = $enumFqcns;
         $result['classFqcns'] = $orderedClassFqcns;
 
         return $result;

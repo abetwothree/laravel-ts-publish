@@ -146,8 +146,7 @@ final class IndexSignatureReconciler
         $arms = [];
 
         foreach ($types as $type) {
-            if ($this->holdsEscapedLiteral($type)
-                || TsTypeString::shapeValueHasUnimportableToken($this->literalsAsPrimitives($type))) {
+            if ($this->holdsEscapedLiteral($type) || TsTypeString::shapeValueHasUnimportableToken($type)) {
                 return null;
             }
 
@@ -163,14 +162,6 @@ final class IndexSignatureReconciler
         }
 
         return $arms;
-    }
-
-    /** The type with each string and number literal read as its primitive: a literal needs no import. */
-    private function literalsAsPrimitives(string $type): string
-    {
-        $type = (string) preg_replace('/\'(?:[^\'\\\\]|\\\\.)*\'|"(?:[^"\\\\]|\\\\.)*"/', 'string', $type);
-
-        return (string) preg_replace('/(?<![\w$.])-?\d+(?:\.\d+)?(?![\w$.])/', 'number', $type);
     }
 
     /** Whether a `'` or `"` in the type is followed by a backslash before the next quote of its kind. */

@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedKeysResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedModelsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastSettingsReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassCastTagSignatureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CommentQuoteCastResource;
@@ -2981,4 +2983,16 @@ test('a cast key holding a raw CR, as a double-quoted PHP string gives it, retyp
         "[key: `\${string}\\r\n`]" => 'number',
         "[key: `\${string}\\r\n_m`]" => 'number',
     ]);
+});
+
+test('a key named after a model accessor imports that accessor\'s model only while its type names it', function () {
+    config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+    $unused = new ResourceTransformer(AccessorNamedKeysResource::class)->data();
+    $used = new ResourceTransformer(AccessorNamedModelsResource::class)->data();
+
+    expect($unused->properties['author_model']['type'])->toBe('UserResource')
+        ->and(implode(' ', array_merge(...array_values($unused->typeImports))))->not->toMatch('/\\bUser\\b/')
+        ->and([$used->properties['author_model']['type'], $used->properties['lead']['type']])->toBe(['ModelsUser', 'CrmUser'])
+        ->and(implode(' ', array_merge(...array_values($used->typeImports))))->toBe('User as ModelsUser User as CrmUser');
 });

@@ -41,6 +41,7 @@ use Workbench\App\ValueObjects\Coordinate;
 use Workbench\App\ValueObjects\GridConfigDto;
 use Workbench\App\ValueObjects\Money;
 use Workbench\App\ValueObjects\OpaqueHandle;
+use Workbench\Crm\Enums\Status as CrmStatus;
 use Workbench\Shipping\Enums\Status as ShippingStatus;
 
 beforeEach(function () {
@@ -1131,6 +1132,33 @@ describe('resolvePhpDocTypeToTs', function () {
 
         expect($result)->toBe('unknown');
     });
+
+    test('types a PHPStan literal as the TypeScript literal, quoted as the generator quotes a string', function (string $phpType, string $expected) {
+        expect($this->service->resolvePhpDocTypeToTs($phpType, [], ''))->toBe($expected);
+    })->with([
+        'single-quoted strings' => ["'draft'|'live'", "'draft' | 'live'"],
+        'double-quoted strings' => ['"draft"|"live"', "'draft' | 'live'"],
+        'an escaped quote' => ["'it\\'s'", "'it\\'s'"],
+        'a double quote inside single quotes' => ["'say \"hi\"'", "'say \"hi\"'"],
+        'ints' => ['1|2|3', '1 | 2 | 3'],
+        'negative ints' => ['-1|0|1', '-1 | 0 | 1'],
+        'a float' => ['1.5', '1.5'],
+        'literals and null' => ["'draft'|'live'|null", "'draft' | 'live' | null"],
+        'a literal and a scalar' => ["'a'|int", "'a' | number"],
+        'one literal' => ["'only'", "'only'"],
+        'a literal inside a shape' => ["array{mode: 'a'|'b'}", "{ mode: 'a' | 'b' }"],
+    ]);
+
+    test('leaves a literal with no exact TypeScript spelling unknown', function (string $phpType) {
+        expect($this->service->resolvePhpDocTypeToTs($phpType, [], ''))->toBe('unknown');
+    })->with([
+        'an int past PHP_INT_MAX' => ['99999999999999999999'],
+        'a hex int' => ['0x1A'],
+        'an unterminated string' => ["'draft"],
+        'an escape past U+10FFFF' => ['"\\u{110000}"'],
+        'an escape past what UTF-8 encodes' => ['"\\u{200000}"'],
+        'a raw byte' => ['"\\xff"'],
+    ]);
 });
 
 describe('parseArrayShapeToTsTypes', function () {
@@ -1558,6 +1586,20 @@ describe('mergeTypeScriptInfos', function () {
         expect($result['type'])->toBe('A[] | B[]')
             ->and($result['classes'])->toBe(['A', 'B'])
             ->and($result['classFqcns'])->toBe(['App\\Models\\A', 'App\\Models\\B']);
+    });
+
+    test('keeps two same-named enums index-aligned, each with a token of its own', function () {
+        $result = $this->service->mergeTypeScriptInfos([
+            $this->service->toTsType(Status::class),
+            $this->service->toTsType(CrmStatus::class),
+            $this->service->toTsType(Status::class),
+            $this->service->toTsType(Role::class),
+        ]);
+
+        expect($result['type'])->toBe('StatusType | StatusType | RoleType')
+            ->and($result['enumFqcns'])->toBe([Status::class, CrmStatus::class, Role::class])
+            ->and($result['enumTypes'])->toBe(['StatusType', 'StatusType', 'RoleType'])
+            ->and($result['enums'])->toBe(['Status', 'Status', 'Role']);
     });
 });
 

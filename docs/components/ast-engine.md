@@ -646,9 +646,11 @@ record their own drops: `TernaryHandler`'s `instanceof`-narrowed arm, and `Known
 it records whichever operand of `??` it drops. Each entry names the site that recorded it, so a site going
 silent is visible rather than merely absent.
 
-`DroppedUnionArms` is the recorder — `start()`, `stop()`, `record()`. Recording is off until a test calls
-`start()`, so a publish run pays one null check per dropped arm; `stop()` returns each distinct
-`{subject, line, expression}` once.
+`DroppedUnionArms` is the recorder — `start()`, `stop()`, `record()`, `dropped()`. Recording is off until a test
+calls `start()`, so a publish run pays one count and one null check per dropped arm; `stop()` returns each distinct
+`{subject, line, expression}` once. The count is always kept: `AccessorBodyAnalyzer::analyze()` reads `dropped()`
+before and after a getter body, and declines a body left as only `null` when an arm was dropped in between, so an
+idiom such as `$attributes['title'] ?? null` publishes `unknown` rather than `null`.
 
 `tests/Unit/Ast/DroppedUnionArmsAuditTest.php` runs every non-abstract resource in the workbench corpus
 through `analyzeMethod()` and fails on any arm missing from

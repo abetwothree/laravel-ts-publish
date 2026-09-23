@@ -279,11 +279,13 @@ class ModelTransformer extends CoreTransformer
                 $this->columnFqcns[$name][] = $fqcn;
             }
 
-            if ($typings['enumFqcns'] !== []) {
+            $enumFqcn = $this->soleEnumFqcn($typings, $type);
+
+            if ($enumFqcn !== null) {
                 // $type itself may already carry '| null' here: resolveAttribute() appends it
                 // internally before this point, so the suffix check must strip it first.
                 $this->enumColumnProperties[$name] = [
-                    'fqcn' => $typings['enumFqcns'][0],
+                    'fqcn' => $enumFqcn,
                     'nullable' => $attribute['nullable'],
                     'isCollection' => str_ends_with(rtrim(str_replace('| null', '', $type)), '[]'),
                 ];
@@ -352,9 +354,11 @@ class ModelTransformer extends CoreTransformer
                 }
             }
 
-            if ($resolved['enumFqcns'] !== []) {
+            $enumFqcn = $this->soleEnumFqcn($resolved, $resolved['type']);
+
+            if ($enumFqcn !== null) {
                 $enumInfo = [
-                    'fqcn' => $resolved['enumFqcns'][0],
+                    'fqcn' => $enumFqcn,
                     'nullable' => str_contains($resolved['type'], 'null'),
                     'isCollection' => str_ends_with(rtrim(str_replace('| null', '', $resolved['type'])), '[]'),
                 ];
@@ -525,6 +529,26 @@ class ModelTransformer extends CoreTransformer
         // Mutators resolve accessors directly rather than through resolveAttribute()'s own cast/DB
         // waterfall, so a vague native return type (e.g. old-style `: array`) needs its own refinement pass.
         return resolve(ModelAttributeResolver::class)->refineWithPropertyDocblock($this->reflectionModel, $name, $accessorInfo);
+    }
+
+    /**
+     * The one enum a property's type is, bare or as a list and optionally nullable, else null.
+     *
+     * The model's Resource interface prints `AsEnum<typeof X>` in place of the whole type, so a shape, a list of shapes
+     * or a union with any other arm keeps its own type.
+     *
+     * @param  TypeScriptTypeInfo  $info
+     */
+    protected function soleEnumFqcn(array $info, string $type): ?string
+    {
+        if (count($info['enumFqcns']) !== 1) {
+            return null;
+        }
+
+        $arms = array_values(array_diff(TsTypeString::splitTopLevelUnion($type), ['null']));
+        $token = $info['enumTypes'][0];
+
+        return $arms === [$token] || $arms === [$token.'[]'] ? $info['enumFqcns'][0] : null;
     }
 
     protected function resolveAccessorDescription(string $name): string

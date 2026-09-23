@@ -9,7 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReturnShapeFixture;
 /**
  * @param  list<array{name: string, type: string, optional?: bool}>  $properties
  */
-function refinedAnalysis(array $properties, string $method): MethodAnalysis
+function refinedAnalysis(array $properties, string $method, bool $keepsUnresolvedNames = true): MethodAnalysis
 {
     $analysis = new MethodAnalysis(properties: array_map(
         fn (array $p): array => [
@@ -21,7 +21,7 @@ function refinedAnalysis(array $properties, string $method): MethodAnalysis
         $properties,
     ));
 
-    resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, $method));
+    resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, $method), $keepsUnresolvedNames);
 
     return $analysis;
 }
@@ -43,6 +43,28 @@ test('a shape value naming no PHP type at all keeps the name the app declares', 
 
     expect($props['custom'])->toMatchArray(['type' => 'CustomThing', 'optional' => true]);
 });
+
+test('a name no class answers to is not kept from the analyzed method\'s own docblock', function () {
+    $props = collect(refinedAnalysis([['name' => 'custom', 'type' => 'unknown']], 'shaped', keepsUnresolvedNames: false)->properties)->keyBy('name');
+
+    expect($props['custom'])->toMatchArray(['type' => 'unknown', 'optional' => true]);
+});
+
+test('a bare name a class answers to is not kept, since the shape cannot import it', function () {
+    $props = collect(refinedAnalysis([['name' => 'text', 'type' => 'unknown']], 'spelled')->properties)->keyBy('name');
+
+    expect($props['text']['type'])->toBe('unknown');
+});
+
+test('a shape value lists each arm once, and one left unknown fills nothing', function (string $name, string $expected) {
+    $props = collect(refinedAnalysis([['name' => $name, 'type' => 'unknown']], 'spelled')->properties)->keyBy('name');
+
+    expect($props[$name]['type'])->toBe($expected);
+})->with([
+    'int|float' => ['amount', 'number'],
+    'two unknown arms' => ['spare', 'unknown'],
+    'string literals' => ['mode', "'draft' | 'live'"],
+]);
 
 test('a key the shape declares optional becomes optional, keeping its own type', function () {
     $props = collect(refinedAnalysis([['name' => 'maybe', 'type' => 'unknown']], 'shaped')->properties)->keyBy('name');

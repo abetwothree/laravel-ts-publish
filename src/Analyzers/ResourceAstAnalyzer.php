@@ -244,7 +244,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             if ($this->scope->subjectReflection->hasMethod($this->methodName)) {
                 $ownMethod = $this->scope->subjectReflection->getMethod($this->methodName);
 
-                resolve(ReturnShapeRefiner::class)->refine($branchAnalysis, $ownMethod);
+                resolve(ReturnShapeRefiner::class)->refine($branchAnalysis, $ownMethod, keepsUnresolvedNames: false);
                 $this->applyTsCastsFromMethod($ownMethod, $branchAnalysis);
                 resolve(IndexSignatureReconciler::class)->reconcile($branchAnalysis);
             }
@@ -806,7 +806,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             // Every branch classified: each is a shape the method can return, so a key missing from
             // one publishes optional. Anything unclassifiable falls back to the first-return path.
             $analysis = $branches !== [] && ! in_array(null, $branches, true)
-                ? (count($branches) === 1 ? $branches[0] : $this->mergeReturnBranches($branches))
+                ? (count($branches) === 1 ? $branches[0] : $this->mergeReturnBranches($branches, dropsUntypedBranches: true))
                 : $this->analyzeFirstReturn($targetMethod->stmts, $topLevel);
         } finally {
             $this->scope->localVarBindings = $previousLocalVarBindings;
@@ -1169,9 +1169,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
      * Public because the page analyzer merges one component's several `Inertia::render()` calls by
      * exactly these rules.
      *
+     * A spread helper's branches drop a value they could not type, the rule a ternary's arms follow, since that path
+     * once published its first branch alone; elsewhere an `unknown` branch makes the key `unknown`.
+     *
      * @param  list<ResourceAnalysis>  $analyses
      */
-    public function mergeReturnBranches(array $analyses): ResourceAnalysis
+    public function mergeReturnBranches(array $analyses, bool $dropsUntypedBranches = false): ResourceAnalysis
     {
         $branchCount = count($analyses);
 
@@ -1200,8 +1203,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $properties = [];
 
         foreach ($propertyMap as $name => $entries) {
-            $type = $this->branchUnion(array_column($entries, 'type'));
-            $bodyType = $this->branchUnion(array_map(fn (array $e): string => $e['bodyType'] ?? $e['type'], $entries));
+            $type = $this->branchUnion(array_column($entries, 'type'), $dropsUntypedBranches);
+            $bodyTypes = array_map(fn (array $e): string => $e['bodyType'] ?? $e['type'], $entries);
+            $bodyType = $this->branchUnion($bodyTypes, $dropsUntypedBranches);
 
             $presentInAll = count($entries) === $branchCount;
             $anyOptional = (bool) array_filter($entries, fn (array $e) => $e['optional']);
@@ -1251,9 +1255,16 @@ class ResourceAstAnalyzer implements ExpressionEngine
      *
      * @param  list<string>  $types
      */
-    private function branchUnion(array $types): string
+    private function branchUnion(array $types, bool $dropsUntypedBranches): string
     {
         $unique = array_values(array_unique($types));
+
+        if ($dropsUntypedBranches && count($unique) > 1) {
+            $typed = array_values(array_diff($unique, ['unknown']));
+
+            // A bare `null` left once the untypable branches are gone says nothing about the value.
+            $unique = $typed === [] || $typed === ['null'] ? ['unknown'] : $typed;
+        }
 
         return count($unique) === 1 ? $unique[0] : $this->unionBranchTypes($unique);
     }

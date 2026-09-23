@@ -49,7 +49,14 @@ class TsTypeString
         // key) is a key just the same, and nothing imports it.
         $withoutKeys = (string) preg_replace('/(?:\b\w+|"[^"]*")\s*\??\s*:/', '', $type);
 
-        $tokens = preg_split('/[<>{}()|,;\[\]\s]+/', $withoutKeys, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        // A string or number literal needs no import, whatever it spells.
+        $withoutLiterals = (string) preg_replace(
+            ['/\'(?:[^\'\\\\]|\\\\.)*\'|"(?:[^"\\\\]|\\\\.)*"/', '/(?<![\w$.])-?\d+(?:\.\d+)?(?![\w$.])/'],
+            ' ',
+            $withoutKeys,
+        );
+
+        $tokens = preg_split('/[<>{}()|,;\[\]\s]+/', $withoutLiterals, -1, PREG_SPLIT_NO_EMPTY) ?: [];
 
         foreach ($tokens as $token) {
             if (in_array($token, self::TS_PRIMITIVES, true) || in_array($token, $importableNames, true)) {

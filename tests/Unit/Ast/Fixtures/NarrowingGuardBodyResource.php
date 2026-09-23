@@ -12,9 +12,9 @@ use Workbench\App\Models\Post;
 /**
  * Both halves of the guard-body rule, read through analyzeThisMethodSpread()'s branch sweep.
  *
- * `author` is a User, and User has no `title`, so a narrowing that reaches the wrong branch is
- * visible as `string` where the honest answer is `unknown`. dirtyRows() classifies both of its
- * returns, so dirty_label unions an untypable arm with a literal and collapses back to `unknown`.
+ * `author` is a User, and User has no `title`, so a narrowing that reaches the wrong branch shows
+ * as a `string` arm. dirtyRows() classifies both of its returns, so dirty_label drops the untypable
+ * branch, as a ternary drops an untypable arm, and keeps the other branch's `number`.
  *
  * @mixin Post
  */
@@ -44,7 +44,7 @@ final class NarrowingGuardBodyResource extends JsonResource
             return ['dirty_label' => $parent->title];
         }
 
-        return ['dirty_label' => 'ok'];
+        return ['dirty_label' => 0];
     }
 
     /**

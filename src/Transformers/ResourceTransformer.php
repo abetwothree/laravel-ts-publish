@@ -788,13 +788,21 @@ class ResourceTransformer extends CoreTransformer
                 continue;
             }
 
-            if ($tsInfo['classFqcns'] === []) {
+            // The key may hold something else under the accessor's name, and an unused import is a tsc error.
+            $type = $this->properties[$propName]['type'];
+            $named = array_filter(
+                $tsInfo['classFqcns'],
+                fn (int $i): bool => TsTypeString::typeNameOccursIn($tsInfo['classes'][$i], $type),
+                ARRAY_FILTER_USE_KEY,
+            );
+
+            if ($named === []) {
                 continue;
             }
 
-            $this->propertyModelFqcnsList[$propName] = $tsInfo['classFqcns'];
+            $this->propertyModelFqcnsList[$propName] = array_values($named);
 
-            foreach ($tsInfo['classFqcns'] as $i => $fqcn) {
+            foreach ($named as $i => $fqcn) {
                 /** @var class-string $fqcn */
                 if (! isset($this->modelFqcnMap[$fqcn])) {
                     $this->modelFqcnMap[$fqcn] = $tsInfo['classes'][$i]; // @codeCoverageIgnore

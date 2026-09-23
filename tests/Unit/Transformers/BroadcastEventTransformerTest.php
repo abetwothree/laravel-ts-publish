@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\BothSpellingsBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastTagSignatureBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DocShapePostEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendedTagSignatureBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RawCrCastBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SignatureCastSpellingBroadcastEvent;
@@ -584,4 +585,10 @@ test('an event\'s losing spelling drops its optional flag and import with its ty
     expect($transformer->properties['[key: `${string}\\\\_e`]'])->toBe(['type' => 'string', 'optional' => false])
         ->and($transformer->properties['[key: `${string}\\\\_f`]'])->toBe(['type' => 'Money', 'optional' => false])
         ->and($transformer->typeImports)->not->toHaveKey('@/types/money');
+});
+
+it('never ships a class name broadcastWith()\'s own `@return` names without importing it', function () {
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => DocShapePostEvent::class]);
+
+    expect($transformer->properties['user']['type'])->toBe('unknown');
 });

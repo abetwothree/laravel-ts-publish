@@ -55,13 +55,6 @@ export interface WarehouseMutators
     review_priority_typed_short: EnumsStatusType | PriorityType | null;
 }
 
-export interface WarehouseMutatorsResource extends Omit<WarehouseMutators, 'review_priority' | 'review_priority_typed' | 'review_priority_typed_short'>
-{
-    review_priority: AsEnum<typeof EnumsStatus> | null;
-    review_priority_typed: AsEnum<typeof EnumsStatus> | null;
-    review_priority_typed_short: AsEnum<typeof EnumsStatus> | null;
-}
-
 export interface WarehouseRelations
 {
     // Relations
@@ -80,4 +73,4 @@ export interface WarehouseRelations
 
 export interface WarehouseAll extends Warehouse, WarehouseMutators, WarehouseRelations {}
 
-export interface WarehouseAllResource extends WarehouseResource, WarehouseMutatorsResource, WarehouseRelations {}
+export interface WarehouseAllResource extends WarehouseResource, WarehouseMutators, WarehouseRelations {}

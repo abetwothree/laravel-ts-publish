@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
@@ -145,17 +146,20 @@ final class MethodChainHandler implements ExpressionHandler
 
         if ($tsInfo['type'] === '' || TsTypeString::isUnknownOnly($tsInfo['type'])) {
             // Same convention rules RelationCollectionChainHandler uses for the non-nullsafe chain.
-            $tsInfo = $this->knownMethodRule($call, $scope) ?? ValueResult::unknown();
+            $result = $this->knownMethodRule($call, $scope) ?? ValueResult::unknown();
+        } else {
+            // The channels carry the token's import; a class with no published file, such as JsonResource, has none.
+            $result = resolve(ReflectedTypeAcceptor::class)->accept($tsInfo) ?? ValueResult::unknown();
         }
 
-        if (TsTypeString::isUnknownOnly($tsInfo['type'])) {
+        if (TsTypeString::isUnknownOnly($result['type'])) {
             return ValueResult::unknown();
         }
 
-        $type = str_ends_with($tsInfo['type'], ' | null')
-            ? $tsInfo['type']
-            : $tsInfo['type'].' | null';
+        $type = str_ends_with($result['type'], ' | null')
+            ? $result['type']
+            : $result['type'].' | null';
 
-        return ['type' => $type, 'optional' => false];
+        return [...$result, 'type' => $type, 'optional' => false];
     }
 }

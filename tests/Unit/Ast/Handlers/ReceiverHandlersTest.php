@@ -798,8 +798,8 @@ describe('narrowing', function () {
     test('a guard whose body reads the variable leaves it un-narrowed, while a clean guard still narrows after it', function () {
         $props = collect(new ResourceAstAnalyzer(new ReflectionClass(NarrowingGuardBodyResource::class), Post::class)->analyze()->properties)->keyBy('name');
 
-        // dirty_label is read inside the branch proving $parent is NOT a Post; User has no `title`.
-        expect($props['dirty_label']['type'])->toBe('unknown')
+        // dirty_label is read inside the branch proving $parent is NOT a Post; User has no `title`, so that branch drops.
+        expect($props['dirty_label']['type'])->toBe('number')
             ->and($props['clean_label']['type'])->toBe('string');
     });
 

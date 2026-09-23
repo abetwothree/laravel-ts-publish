@@ -8,9 +8,12 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\ResultTypeInfoBridge;
 use AbeTwoThree\LaravelTsPublish\Concerns\NamesAccessorMethods;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
@@ -53,7 +56,8 @@ final class AccessorBodyAnalyzer
      *
      * @param  class-string<Model>  $modelFqcn
      * @param  bool  $carriesImports  false when the reader carries no import, so the getter's filters name no token
-     * @return TypeScriptTypeInfo|null null when there is no readable body, a cycle, or nothing better than unknown
+     * @return TypeScriptTypeInfo|null null when there is no readable body, a cycle, nothing better than unknown, or a
+     *                                 class or enum the model file cannot name
      */
     public function analyze(string $modelFqcn, string $attributeName, bool $carriesImports = true): ?array
     {
@@ -64,6 +68,7 @@ final class AccessorBodyAnalyzer
         }
 
         $this->analyzing[$key] = true;
+        $dropped = DroppedUnionArms::dropped();
 
         try {
             $result = $this->resolveBody($modelFqcn, $attributeName, $carriesImports);
@@ -77,7 +82,44 @@ final class AccessorBodyAnalyzer
             return null;
         }
 
-        return resolve(ResultTypeInfoBridge::class)->toTypeInfo($result);
+        // A bare `null` left once a ternary or `??` dropped the arm it could not type says nothing about the value.
+        if ($result['type'] === 'null' && DroppedUnionArms::dropped() > $dropped) {
+            return null;
+        }
+
+        $info = resolve(ResultTypeInfoBridge::class)->toTypeInfo($result);
+
+        return $this->namesEveryClass($result, $info) ? $info : null;
+    }
+
+    /**
+     * Whether the model file can name every class and enum the body type spells.
+     *
+     * The aliasing pass gives each same-named class or enum its own alias one occurrence at a time, so the type must
+     * name that token once per FQCN; and the bridge carries no resource channel, so a resource token has no import.
+     *
+     * @param  ValueExpressionResult  $result
+     * @param  TypeScriptTypeInfo  $info
+     */
+    private function namesEveryClass(array $result, array $info): bool
+    {
+        foreach ([$info['enumTypes'], $info['classes']] as $names) {
+            foreach (array_count_values($names) as $name => $count) {
+                $pattern = '/(?<![A-Za-z0-9_$.])'.preg_quote((string) $name, '/').'(?![A-Za-z0-9_$])/';
+
+                if ($count > 1 && preg_match_all($pattern, $info['type']) < $count) {
+                    return false;
+                }
+            }
+        }
+
+        foreach (array_filter([$result['resourceFqcn'] ?? null, ...$result['embeddedResourceFqcns'] ?? []]) as $fqcn) {
+            if (TsTypeString::typeNameOccursIn(TsNaming::resourceTypeName($fqcn), $info['type'])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

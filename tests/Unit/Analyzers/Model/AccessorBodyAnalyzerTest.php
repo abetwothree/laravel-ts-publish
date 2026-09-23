@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AuthoredPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumShapePost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\IdiomPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TwoStatusPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilteringAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UntypedFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
@@ -11,6 +15,7 @@ use Workbench\App\Models\BulletinArchive;
 use Workbench\App\Models\BulletinBoard;
 use Workbench\App\Models\BulletinFeed;
 use Workbench\App\Models\Comment;
+use Workbench\App\Models\Image;
 use Workbench\App\Models\Release;
 use Workbench\App\Models\User;
 
@@ -159,4 +164,46 @@ describe('AccessorBodyAnalyzer for a getter reading another model\'s accessor', 
             'optional' => false,
         ]);
     });
+});
+
+describe('AccessorBodyAnalyzer declines a body type that names nothing it can publish', function () {
+    // Each getter's untypable arm was dropped, and the runtime value is that arm's: 'Hello', {a: 1}, a decrypted string.
+    test('a bare null left once the untypable arm is dropped is not a type', function (string $attribute) {
+        expect(resolve(ModelAttributeResolver::class)->resolveAttribute(IdiomPost::class, $attribute)['type'])->toBe('unknown');
+    })->with(['nickname', 'decoded_meta', 'secret_note', 'meta_title', 'legacy_payload']);
+
+    test('a real arm left beside null stays, as does a getter that only ever returns null', function () {
+        expect(resolve(ModelAttributeResolver::class)->resolveAttribute(IdiomPost::class, 'title_or_null')['type'])->toBe('string | null')
+            ->and(resolve(ModelAttributeResolver::class)->resolveAttribute(Image::class, 'no_docblock_accessor')['type'])->toBe('null');
+    });
+
+    test('two models sharing a name decline under one token, and publish under a token each', function () {
+        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+        $data = (new ModelTransformer(AuthoredPost::class))->data();
+
+        expect($data->mutators['author_or_lead']['type'])->toBe('unknown')
+            ->and($data->mutators['both_authors']['type'])->toBe('{ author: AuthorUser; lead: CrmAuthorUser }');
+    });
+
+    test('a resource the body returns declines, since the model file cannot import it', function (string $attribute) {
+        expect(resolve(ModelAttributeResolver::class)->resolveAttribute(AuthoredPost::class, $attribute)['type'])->toBe('unknown');
+    })->with(['author_resource', 'author_to_resource']);
+
+    test('two enums sharing a name decline, since one token cannot name both', function () {
+        $resolved = resolve(ModelAttributeResolver::class)->resolveAttribute(TwoStatusPost::class, 'status_or_lead');
+
+        expect($resolved['type'])->toBe('unknown')
+            ->and($resolved['enumFqcns'])->toBe([])
+            ->and((new ModelTransformer(TwoStatusPost::class))->data()->mutators['status_or_lead']['type'])->toBe('unknown');
+    });
+
+    test('a shape, list or union around an enum keeps its own type in the model file', function (string $attribute, string $type) {
+        expect((new ModelTransformer(EnumShapePost::class))->data()->mutators[$attribute]['type'])->toBe($type);
+    })->with([
+        'a shape' => ['badge', '{ status: StatusType; label: string }'],
+        'a list of shapes' => ['state_list', '{ id: number; state: StatusType }[]'],
+        'a union with another arm' => ['state_or_none', 'StatusType | string'],
+        'the enum alone' => ['plain_state', 'StatusType'],
+    ]);
 });

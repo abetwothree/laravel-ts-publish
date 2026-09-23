@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumShapePost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TwoStatusPost;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -720,6 +722,31 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
         $data = (new ModelTransformer(Post::class))->data();
 
         expect($data->enumMutators)->toBeEmpty();
+    });
+
+    test('enumMutators holds only a mutator whose type is the bare enum, not a shape, list or union around it', function () {
+        $data = (new ModelTransformer(EnumShapePost::class))->data();
+
+        expect(array_keys($data->enumMutators))->toBe(['plain_state']);
+    });
+
+    test('a mutator typed with another arm beside its enum keeps that arm in the Resource interface', function () {
+        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+        $data = (new ModelTransformer(Warehouse::class))->data();
+
+        // A Warehouse with no status reads its priority, so `AsEnum<typeof Status>` would misname a Priority.
+        expect($data->enumMutators)->not->toHaveKeys(['review_priority', 'review_priority_typed', 'review_priority_typed_short'])
+            ->and($data->mutators['review_priority_typed']['type'])->toBe('EnumsStatusType | PriorityType | null');
+    });
+
+    test('a native getter over two same-named enums publishes both, each under its own alias', function () {
+        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+        $data = (new ModelTransformer(TwoStatusPost::class))->data();
+
+        expect($data->mutators['either_status']['type'])->toBe('EnumsStatusType | CrmStatusType')
+            ->and($data->enumMutators)->toBeEmpty();
     });
 
     test('uses aliased const names for Deal model enum columns', function () {
