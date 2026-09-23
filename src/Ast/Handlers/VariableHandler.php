@@ -242,7 +242,8 @@ final class VariableHandler implements ExpressionHandler
 
     /**
      * The model a whenLoaded closure's relation holds, as a guess at an unbound variable. A declared local keeps it
-     * only where it is one of the classes the receiver path reads it as: its assigned value's, else the `@var`'s.
+     * only where it is, or extends, one of the classes the receiver path reads it as: its assigned value's, else the
+     * `@var`'s.
      *
      * @return class-string<Model>|null
      */

@@ -322,28 +322,65 @@ describe('an inline @var on a local assignment', function () {
         'a nullable union' => ['?int|string'],
         'a nullable member' => ['int|?string'],
         'a dangling union' => ['string|'],
+        'a nullable shape inside a shape' => ['array{a: ?array{b: int}}'],
+        'a nullable shape inside a listed shape' => ['list<array{id: int, meta: ?array{k: string}}>'],
+        'a nullable shape inside a multi-line shape' => ["array{\n *     a: int,\n *     b: ?array{c: int},\n * }"],
+        'a nullable shape' => ['?array{a: int}'],
+        'a nullable list' => ['?list<int>'],
+        'a nullable keyed array' => ['?array<string, int>'],
+        'a list of nullable shapes' => ['list<?array{a: int}>'],
+        'a nullable collection' => ['?\Illuminate\Database\Eloquent\Collection<string, User>'],
+        'a nullable collection of nullables, whose own null the resolution drops' => ['?\Illuminate\Support\Collection<int, ?Comment>'],
+        'a nullable class whose own reading holds null, which the resolution drops' => ['?\Workbench\App\ValueObjects\ArrayableData'],
+        'a class bare and in a list before it' => ['list<User>|User'],
+        'a class bare and in a list after it' => ['User|list<User>'],
+        'a class bare and in a collection' => ['\Illuminate\Support\Collection<int, Comment>|Comment'],
+        'a class bare and in a collection, or null' => ['\Illuminate\Support\Collection<int, Comment>|Comment|null'],
+        'an enum bare and in a list' => ['list<\Workbench\App\Enums\OrderStatus>|\Workbench\App\Enums\OrderStatus'],
+        'a space between a shape key and its marker' => ['array{a ?: int, b: string}'],
+        'a space between a shape key and its colon' => ['array{a : int}'],
+        'a space before a shape\'s brace' => ['array {a: int}'],
+        'a space before a nested shape\'s brace' => ['array{a: array {b: int}}'],
+        'a list slot holding a scalar or a list' => ['list<int|list<string>>'],
+        'a list slot holding two lists' => ['list<list<int>|list<string>>'],
+        'a record slot holding a scalar or a list' => ['array<string, int|list<int>>'],
+        'a list slot holding two records' => ['list<array<string, int>|array<string, bool>>'],
+        'a list slot holding a shape or null' => ['list<array{a: int}|null>'],
+        'a shape member whose class the shape reader leaves unknown' => ['array{a: User}'],
+        'a bare collection, which resolves to unknown elements' => ['\Illuminate\Support\Collection'],
     ]);
 
-    test('binds a tag built only from supported forms, as written', function (string $type) {
-        expect(resolve(PropertyDocblockTypeReader::class)->extractVarTag('/** @var '.$type.' $d */', new ReflectionClass(DeclaredPrecedenceResource::class)))
-            ->toBe([$type, 'd']);
+    test('binds a tag built only from supported forms, and reads it in full', function (string $type, ?string $read) {
+        $reader = resolve(PropertyDocblockTypeReader::class);
+        $context = new ReflectionClass(DeclaredPrecedenceResource::class);
+
+        expect($reader->extractVarTag('/** @var '.$type.' $d */', $context))->toBe([$type, 'd'])
+            ->and($reader->readDeclared($type, $context)['type'] ?? null)->toBe($read);
     })->with([
-        'each scalar' => ['int|string|bool|float|null|true|false'],
-        'a nullable scalar' => ['?int'],
-        'an imported class' => ['CartTotals'],
-        'an imported interface' => ['MustVerifyEmail'],
-        'a nullable model' => ['?User'],
-        'a union of models' => ['Comment|User|null'],
-        'a qualified enum' => ['\Workbench\App\Enums\Status'],
-        'a list' => ['list<User|null>'],
-        'a list of nullables' => ['list<?int>'],
-        'an int-keyed array' => ['array<int, User>'],
-        'a string-keyed array of lists' => ['array<string, list<int>>'],
-        'a shape' => ['array{a: int, b?: string, c: ?int, d: array{e: list<string>}}'],
-        'a shape with a trailing comma' => ['array{a: int,}'],
-        'a list of shapes' => ['list<array{a: int}>'],
-        'a support collection' => ['\Illuminate\Support\Collection<int, Comment>'],
-        'an Eloquent collection' => ['?\Illuminate\Database\Eloquent\Collection<string, User>'],
+        'each scalar' => ['int|string|bool|float|null|true|false', 'number | string | boolean | null | true | false'],
+        'a nullable scalar' => ['?int', 'number | null'],
+        'an imported class' => ['CartTotals', '{ subtotal: number; chargeable: boolean; count: number; hasExtras: boolean }'],
+        'an imported interface, which only names a receiver' => ['MustVerifyEmail', null],
+        'a nullable model' => ['?User', 'User | null'],
+        'a union of models' => ['Comment|User|null', 'Comment | User | null'],
+        'a qualified enum' => ['\Workbench\App\Enums\Status', 'StatusType'],
+        'a list' => ['list<User|null>', '(User | null)[]'],
+        'a list of nullables' => ['list<?int>', '(number | null)[]'],
+        'an int-keyed array' => ['array<int, User>', 'User[]'],
+        'a string-keyed array of lists' => ['array<string, list<int>>', 'Record<string, number[]>'],
+        'a shape' => [
+            'array{a: int, b?: string, c: ?int, d: array{e: list<string>}}',
+            '{ a: number; b?: string; c: number | null; d: { e: string[] } }',
+        ],
+        'a shape with a trailing comma' => ['array{a: int,}', '{ a: number }'],
+        'a shape spaced inside its braces' => ['array{ a: int, b?: string }', '{ a: number; b?: string }'],
+        'a nullable shape member written as a union' => ['array{a: array{b: int}|null}', '{ a: { b: number } | null }'],
+        'a null-first shape member' => ['array{a: null|array{b: int}}', '{ a: null | { b: number } }'],
+        'a nullable shape' => ['array{a: int}|null', '{ a: number } | null'],
+        'a list of shapes' => ['list<array{a: int}>', '{ a: number }[]'],
+        'lists in a union' => ['list<int>|list<string>', 'number[] | string[]'],
+        'a support collection' => ['\Illuminate\Support\Collection<int, Comment>', 'Comment[]'],
+        'an Eloquent collection or null' => ['\Illuminate\Database\Eloquent\Collection<string, User>|null', 'Record<string, User> | null'],
     ]);
 
     test('keeps the loaded relation\'s model for a member read when the declaration admits it', function () {

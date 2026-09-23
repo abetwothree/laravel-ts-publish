@@ -480,10 +480,9 @@ has a single expression and no statement list, so only the parameter suppression
 `$x = …;` and writes a `varDocBindings` span. The span starts after that statement and ends where the next top-level
 statement holding a write to `$x` starts, through `writesFrom()`, the position-ordered rule the guard pass reads its
 writes by. A loop that writes `$x` ends the span where the loop starts, since a read earlier in its body can follow
-the write on the next pass. A tag naming another variable, a tag with any part outside `VarTypeWhitelist`'s forms,
-which the docblock resolution reads in full, and a second write inside the assigning statement bind nothing. `T`
-resolves against the imports and namespace of `AnalysisScope::$declaringFileClass`, a trait's file for a trait's
-method.
+the write on the next pass. A tag naming another variable, a tag that is not a `VarTypeWhitelist` form or whose
+resolution holds `unknown`, and a second write inside the assigning statement bind nothing. `T` resolves against the
+imports and namespace of `AnalysisScope::$declaringFileClass`, a trait's file for a trait's method.
 
 A read in the span takes the engine's reading of the assigned value itself, never an earlier binding of `$x`, which
 the assignment replaced, except a `$x->prop` or `$x->m()` on a `varModelBindings`-bound parameter or loop variable,
@@ -497,8 +496,8 @@ only where it is vague.
   untypable union arm's drop left (`DroppedUnionArms::dropped()`, as `AccessorBodyAnalyzer` reads a body), and `T`
   itself is precise and names only published models. `T` keeps the reading's `optional`.
 - **Ambient models.** Inside a `whenLoaded()` closure, a declared local's `$x->prop` and `$x->m()` keep the closure's
-  relation model only when it is one of the classes the receiver path reads `$x` as, and resolve through that path
-  otherwise.
+  relation model only when it is, or extends, one of the classes the receiver path reads `$x` as, and resolve through
+  that path otherwise.
 
 The pass does not see a write through a by-reference argument, or through a reference taken before the assignment
 (`$r = &$x;`, a closure's `use (&$x)`), so a span can outlive such a write. `CartTotalsResource`,

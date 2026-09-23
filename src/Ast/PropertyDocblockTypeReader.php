@@ -71,7 +71,7 @@ final class PropertyDocblockTypeReader
 
     /**
      * Capture an inline `@var` on a local assignment: its type, and the variable it names, null when it names none.
-     * Null for a type with any part outside VarTypeWhitelist, whose forms the docblock resolution reads in full.
+     * Null unless the type is a VarTypeWhitelist form that resolves with no `unknown` part.
      *
      * @param  ReflectionClass<object>  $context  the class or trait whose file's imports and namespace resolve it
      * @return VarTag|null
@@ -80,7 +80,10 @@ final class PropertyDocblockTypeReader
     {
         $tag = $this->captureTag($docComment, '/(?<![\w-])@var\s+/');
 
-        if ($tag === null || ! VarTypeWhitelist::for($context)->accepts($tag[0])) {
+        if ($tag === null
+            || ! VarTypeWhitelist::for($context)->accepts($tag[0])
+            || preg_match('/\bunknown\b/', $this->readDeclared($tag[0], $context)['type'] ?? '') === 1
+        ) {
             return null;
         }
 

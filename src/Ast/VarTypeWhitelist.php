@@ -11,9 +11,11 @@ use Illuminate\Support\Str;
 use ReflectionClass;
 
 /**
- * The PHPDoc forms an inline `@var` on a local may bind, each read in full by the docblock resolution: scalars, classes
- * the file names, `?T`, unions, `list<X>`, `array<int|string, X>`, identifier-keyed `array{…}` and the two collections.
- * A tag with any other part binds nothing, rather than the guess the resolution makes of it.
+ * The PHPDoc forms an inline `@var` on a local may bind: scalars, classes the file names, unions, `list<X>`,
+ * `array<int|string, X>`, identifier-keyed `array{…}` and the two collections, less spellings the docblock resolution
+ * misreads: `?` before a generic or shape, a generic's union of non-bare members, a class bare and contained.
+ *
+ * @phpstan-type Part array{end: int, classes: list<string>, bare: bool}
  *
  * @internal
  */
@@ -47,105 +49,159 @@ final readonly class VarTypeWhitelist
     {
         $tokens = $this->tokens($type);
 
-        return $tokens !== null && $this->type($tokens, 0) === count($tokens);
+        return $tokens !== null && ($this->type($tokens, 0, false)['end'] ?? null) === count($tokens);
     }
 
     /**
-     * Split a type into names and punctuation, or null when it holds any other character.
+     * Split a type into tokens, or null when it holds any other character. A shape's `array{` and each `key:` or
+     * `key?:` are single tokens, since the shape reader only reads them written together.
      *
      * @return list<string>|null
      */
     private function tokens(string $type): ?array
     {
-        preg_match_all('/\s*(\\\\?[a-z_\x80-\xff][\w\x80-\xff]*(?:\\\\[a-z_\x80-\xff][\w\x80-\xff]*)*|[|?<>{},:])\s*/i', $type, $matches);
+        $name = '\\\\?[a-z_\x80-\xff][\w\x80-\xff]*(?:\\\\[a-z_\x80-\xff][\w\x80-\xff]*)*';
+        preg_match_all('/\s*([a-z_]\w*\??:|array\{|'.$name.'|[|?<>},])\s*/i', $type, $matches);
 
         return implode('', $matches[0]) === $type ? $matches[1] : null;
     }
 
     /**
-     * Where a type starting at a token ends, `?T` or a union of forms, or null when it is not supported.
+     * A type starting at a token: `?T`, or a union of forms. A union may not name a class both bare and inside another
+     * member, which the union merge drops, and in a generic's value slot it takes only bare members.
      *
      * @param  list<string>  $tokens
+     * @return Part|null
      */
-    private function type(array $tokens, int $at): ?int
+    private function type(array $tokens, int $at, bool $slot): ?array
     {
+        // The resolution appends `| null` to a `?` only before a bare form whose own reading holds no `null`.
         if (($tokens[$at] ?? null) === '?') {
-            return $this->form($tokens, $at + 1);
+            $form = $this->form($tokens, $at + 1);
+
+            return $form !== null && $form['bare'] && ! $this->readsNull($form['classes']) ? $form : null;
         }
 
-        $at = $this->form($tokens, $at);
+        $members = [];
 
-        while ($at !== null && ($tokens[$at] ?? null) === '|') {
-            $at = $this->form($tokens, $at + 1);
+        do {
+            $member = $this->form($tokens, $at);
+
+            if ($member === null) {
+                return null;
+            }
+
+            $members[] = $member;
+            $at = $member['end'] + 1;
+        } while (($tokens[$member['end']] ?? null) === '|');
+
+        if (count($members) === 1) {
+            return $members[0];
         }
 
-        return $at;
+        $bare = array_filter($members, fn (array $part): bool => $part['bare']);
+        $bareClasses = array_merge([], ...array_column($bare, 'classes'));
+        $containedClasses = array_merge([], ...array_column(array_diff_key($members, $bare), 'classes'));
+
+        return ($slot && count($bare) < count($members)) || array_intersect($bareClasses, $containedClasses) !== []
+            ? null
+            : ['end' => $member['end'], 'classes' => [...$bareClasses, ...$containedClasses], 'bare' => false];
     }
 
     /**
-     * Where one form starting at a token ends: a scalar, a class, a list, a keyed array, a shape or a collection.
+     * One form starting at a token: a bare scalar or class, or a list, a keyed array, a shape or a collection.
      *
      * @param  list<string>  $tokens
+     * @return Part|null
      */
-    private function form(array $tokens, int $at): ?int
+    private function form(array $tokens, int $at): ?array
     {
         $name = $tokens[$at] ?? '';
         $next = $tokens[$at + 1] ?? null;
 
         return match (true) {
-            in_array($name, self::SCALARS, true) => $at + 1,
-            $name === 'list' && $next === '<' => $this->closed($tokens, $this->type($tokens, $at + 2), '>'),
+            in_array($name, self::SCALARS, true) => ['end' => $at + 1, 'classes' => [], 'bare' => true],
+            $name === 'list' && $next === '<' => $this->closed($tokens, $this->type($tokens, $at + 2, true)),
             $name === 'array' && $next === '<' => $this->keyed($tokens, $at + 2),
-            $name === 'array' && $next === '{' => $this->members($tokens, $at + 2),
+            $name === 'array{' => $this->members($tokens, $at + 1, []),
             $next === '<' => in_array($this->className($name), self::COLLECTIONS, true) ? $this->keyed($tokens, $at + 2) : null,
-            default => $this->className($name) === null ? null : $at + 1,
+            default => $this->bareClass($name, $at),
         };
     }
 
     /**
-     * Where a generic's `int` or `string` key, its value type and the closing `>` end.
+     * A generic's `int` or `string` key, its value type and the closing `>`.
      *
      * @param  list<string>  $tokens
+     * @return Part|null
      */
-    private function keyed(array $tokens, int $at): ?int
+    private function keyed(array $tokens, int $at): ?array
     {
         return in_array($tokens[$at] ?? null, self::KEYS, true) && ($tokens[$at + 1] ?? null) === ','
-            ? $this->closed($tokens, $this->type($tokens, $at + 2), '>')
+            ? $this->closed($tokens, $this->type($tokens, $at + 2, true))
             : null;
     }
 
     /**
-     * Where a shape's members, each an identifier key, an optional `?` and a type, end with the closing `}`.
+     * A shape's members, each a `key:` or `key?:` token and a type, up to the closing `}`.
      *
      * @param  list<string>  $tokens
+     * @param  list<string>  $classes  the classes the members before this one name
+     * @return Part|null
      */
-    private function members(array $tokens, int $at): ?int
+    private function members(array $tokens, int $at, array $classes): ?array
     {
-        if (preg_match('/^[a-z_]\w*$/i', $tokens[$at] ?? '') !== 1) {
+        $member = preg_match('/^[a-z_]\w*\??:$/i', $tokens[$at] ?? '') === 1 ? $this->type($tokens, $at + 1, false) : null;
+
+        if ($member === null) {
             return null;
         }
 
-        $at += ($tokens[$at + 1] ?? null) === '?' ? 2 : 1;
-        $at = ($tokens[$at] ?? null) === ':' ? $this->type($tokens, $at + 1) : null;
-        $after = $at === null ? null : $tokens[$at] ?? null;
+        $classes = [...$classes, ...$member['classes']];
+        $after = $tokens[$member['end']] ?? null;
 
         return match (true) {
-            $at === null => null,
-            $after === '}' => $at + 1,
-            $after === ',' && ($tokens[$at + 1] ?? null) === '}' => $at + 2,
-            $after === ',' => $this->members($tokens, $at + 1),
+            $after === '}' => ['end' => $member['end'] + 1, 'classes' => $classes, 'bare' => false],
+            $after === ',' && ($tokens[$member['end'] + 1] ?? null) === '}' => ['end' => $member['end'] + 2, 'classes' => $classes, 'bare' => false],
+            $after === ',' => $this->members($tokens, $member['end'] + 1, $classes),
             default => null,
         };
     }
 
     /**
-     * The position past a closing token that follows a parsed part, or null when the part failed or no closer follows.
+     * A generic's value type followed by its closing `>`, or null when the type failed or no `>` follows.
      *
      * @param  list<string>  $tokens
+     * @param  Part|null  $value
+     * @return Part|null
      */
-    private function closed(array $tokens, ?int $at, string $closer): ?int
+    private function closed(array $tokens, ?array $value): ?array
     {
-        return $at !== null && ($tokens[$at] ?? null) === $closer ? $at + 1 : null;
+        return $value !== null && ($tokens[$value['end']] ?? null) === '>'
+            ? ['end' => $value['end'] + 1, 'classes' => $value['classes'], 'bare' => false]
+            : null;
+    }
+
+    /**
+     * A bare class name at a token, or null when it names no class.
+     *
+     * @return Part|null
+     */
+    private function bareClass(string $name, int $at): ?array
+    {
+        $class = $this->className($name);
+
+        return $class === null ? null : ['end' => $at + 1, 'classes' => [$class], 'bare' => true];
+    }
+
+    /**
+     * Whether the docblock resolution's reading of any of these classes holds `null`, such as a nullable property's.
+     *
+     * @param  list<string>  $classes
+     */
+    private function readsNull(array $classes): bool
+    {
+        return array_any($classes, fn (string $class): bool => str_contains(LaravelTsPublish::toTsType($class)['type'], 'null'));
     }
 
     /**
@@ -155,7 +211,7 @@ final readonly class VarTypeWhitelist
      */
     private function className(string $name): ?string
     {
-        if (preg_match('/^\\\\?[a-z_\x80-\xff]/i', $name) !== 1) {
+        if (preg_match('/^\\\\?[a-z_\x80-\xff][\w\x80-\xff\\\\]*$/i', $name) !== 1) {
             return null;
         }
 
