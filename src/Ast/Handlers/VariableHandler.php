@@ -95,14 +95,7 @@ final class VariableHandler implements ExpressionHandler
 
         // `$variable->map(fn (Item $item) => [...])` — no ambient closureRelationModelClass is required: the element
         // model comes from the param's type hint, or from the receiver's own to-many whenLoaded binding.
-        if ($expr instanceof MethodCall
-            && $expr->var instanceof Variable
-            && is_string($expr->var->name)
-            && $expr->var->name !== 'this'
-            && $expr->name instanceof Identifier
-            && $expr->name->toString() === 'map'
-            && ! $this->mapArguments($expr)->isEmpty()
-        ) {
+        if ($expr instanceof MethodCall && $this->mappedVariable($expr) !== null) {
             $mapResult = $this->analyzeVariableMapCall($expr, $scope, $engine);
 
             if ($mapResult !== null) {
@@ -288,13 +281,45 @@ final class VariableHandler implements ExpressionHandler
     }
 
     /**
-     * Whether every class an expression holds is an Illuminate collection, whose values() and all() the engine knows.
+     * Whether an expression holds only Illuminate collections, whose values() and all() the engine knows.
      */
     private function holdsOnlyCollections(Expr $expr, AnalysisScope $scope): bool
     {
         $receiver = resolve(ReceiverClassResolver::class)->resolve($expr, $scope);
 
-        return $receiver !== null
-            && array_all($receiver->classes, fn (string $class): bool => is_a($class, Enumerable::class, true));
+        // A receiver nothing names passes only as the map arm's `$variable->map(callback)` on a variable nothing names
+        // either, which that arm already types as a Collection map; values() leaves it one.
+        if ($receiver === null) {
+            while ($expr instanceof MethodCall
+                && $expr->name instanceof Identifier
+                && $expr->name->toString() === 'values'
+                && ! $expr->isFirstClassCallable()
+                && $expr->getArgs() === []
+            ) {
+                $expr = $expr->var;
+            }
+
+            $mapped = $this->mappedVariable($expr);
+
+            return $mapped !== null && resolve(ReceiverClassResolver::class)->resolve($mapped, $scope) === null;
+        }
+
+        return array_all($receiver->classes, fn (string $class): bool => is_a($class, Enumerable::class, true));
+    }
+
+    /**
+     * The variable a `$variable->map(callback)` call maps over, else null.
+     */
+    private function mappedVariable(Expr $expr): ?Variable
+    {
+        return $expr instanceof MethodCall
+            && $expr->var instanceof Variable
+            && is_string($expr->var->name)
+            && $expr->var->name !== 'this'
+            && $expr->name instanceof Identifier
+            && $expr->name->toString() === 'map'
+            && ! $this->mapArguments($expr)->isEmpty()
+                ? $expr->var
+                : null;
     }
 }

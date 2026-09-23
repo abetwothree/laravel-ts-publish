@@ -754,9 +754,11 @@ carrying arms that are unreachable for half its callers.
 decaying to `unknown`. `VariableHandler` peels a trailing argument-less `values()`/`all()` off a
 method-call receiver for the same reason, which is what carries the element type through a pipeline
 rooted at a local variable: `all()` keeps the receiver's type, and `values()` turns each `Record<string, X>`
-arm into `X[]`. It peels only a receiver that `ReceiverClassResolver` resolves to classes that are all
-`Illuminate\Support\Enumerable`. On any other class `values()` and `all()` are that class's own methods, so
-the peel declines and the receiver rules reflect them.
+arm into `X[]`. It peels a receiver that `ReceiverClassResolver` resolves to classes that are all
+`Illuminate\Support\Enumerable`. Where the resolver names nothing, such as a local read from `getRelation()`
+of a name the model does not declare, it peels only the `$variable->map(callback)` that its own map arm types as
+a Collection map. On any class the resolver names that is not a collection, `values()` and `all()` are that
+class's own methods, so the peel declines and the receiver rules reflect them.
 
 ### `concat()` is identity only on exact type equality
 

@@ -5403,6 +5403,27 @@
                 }
             ]
         },
+        "Workbench\\App\\Models\\Crew": {
+            "name": "Crew",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "name",
+                    "type": "string"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                }
+            ]
+        },
         "Workbench\\App\\Models\\CustomKeyPost": {
             "name": "CustomKeyPost",
             "properties": [
@@ -7425,6 +7446,55 @@
                 }
             ]
         },
+        "Workbench\\App\\Models\\RosterSlot": {
+            "name": "RosterSlot",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "assignable_type",
+                    "type": "string"
+                },
+                {
+                    "name": "assignable_id",
+                    "type": "number"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "assignable",
+                    "type": "unknown"
+                },
+                {
+                    "name": "assignee",
+                    "type": "Crew | Squad"
+                },
+                {
+                    "name": "assignable_count",
+                    "type": "number"
+                },
+                {
+                    "name": "assignee_count",
+                    "type": "number"
+                },
+                {
+                    "name": "assignable_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "assignee_exists",
+                    "type": "boolean"
+                }
+            ]
+        },
         "Workbench\\App\\Models\\Sales\\Report\\Report": {
             "name": "Report",
             "properties": [
@@ -7593,6 +7663,27 @@
                 {
                     "name": "is_pinned",
                     "type": "boolean"
+                }
+            ]
+        },
+        "Workbench\\App\\Models\\Squad": {
+            "name": "Squad",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "name",
+                    "type": "string"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
                 }
             ]
         },
@@ -15102,6 +15193,36 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\RosterSlotResource": {
+            "name": "RosterSlotResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "assignable_label",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "assignable_title",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "assignee_label",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "assignee_title",
+                    "type": "string | null",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\RoutableResource": {
             "name": "RoutableResource",
             "properties": []
@@ -16883,6 +17004,21 @@
                     "name": "notifications",
                     "type": "DatabaseNotification[]",
                     "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\UserFeaturedPostsResource": {
+            "name": "UserFeaturedPostsResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "featured_posts",
+                    "type": "({ id: number; title: string; file: string | null })[]",
+                    "optional": true
                 }
             ]
         },

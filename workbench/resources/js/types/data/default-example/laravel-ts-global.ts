@@ -546,6 +546,14 @@ declare global {
             commentable_count: number;
             commentable_exists: boolean;
         }
+        /** One model a RosterSlot's assignee can be. */
+        export interface Crew {
+            // Columns
+            id: number;
+            name: string;
+            created_at: string | null;
+            updated_at: string | null;
+        }
         export interface CustomKeyPost {
             // Columns
             id: number;
@@ -1242,6 +1250,25 @@ declare global {
             reviewable_exists: boolean;
         }
         /**
+         * Fixture: one morphTo read through two generics. `assignable` names only Model and no model declares the inverse;
+         * `assignee` names the models the column can hold.
+         */
+        export interface RosterSlot {
+            // Columns
+            id: number;
+            assignable_type: string;
+            assignable_id: number;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            assignable: unknown;
+            assignable_count: number;
+            assignable_exists: boolean;
+            assignee: Crew | Squad;
+            assignee_count: number;
+            assignee_exists: boolean;
+        }
+        /**
          * A help-desk ticket linked to a customer Order and optionally assigned to a CRM agent.
          *
          * Exercises the inline model FQCN collision scenario: two relations to classes with the
@@ -1290,6 +1317,14 @@ declare global {
             reading_time_minutes: number | null;
             featured_image_url: string | null;
             is_pinned: boolean;
+        }
+        /** The other model a RosterSlot's assignee can be. */
+        export interface Squad {
+            // Columns
+            id: number;
+            name: string;
+            created_at: string | null;
+            updated_at: string | null;
         }
         /**
          * Accessors that each name one model and a `#[TsType(import:)]` class, for resources that filter this model with
@@ -4006,6 +4041,17 @@ declare global {
             reviewable?: ArtistResource | VenueResource;
             reviewable_name?: string;
         }
+        /**
+         * A nullsafe call on a morphTo whose methods the resource's own model also has. Only the relation's generic says
+         * what the relation holds, so `MorphTo<Model, $this>` stays unknown and `MorphTo<Crew|Squad, $this>` types.
+         */
+        export interface RosterSlotResource {
+            id: number;
+            assignable_label: unknown;
+            assignable_title: unknown;
+            assignee_label: string | null;
+            assignee_title: string | null;
+        }
         export interface RoutableResource extends ResourceRoutes, Pick<Routable, "store" | "update"> {
         }
         /**
@@ -4543,6 +4589,14 @@ declare global {
             ownedTeams: app.models.Team[];
             images: app.models.Image[];
             notifications: illuminate.notifications.DatabaseNotification[];
+        }
+        /**
+         * A map over a relation loaded under a name the model does not declare, so nothing names what the local holds. The
+         * map parameter's type names each element, and the trailing values()/all() keep that list.
+         */
+        export interface UserFeaturedPostsResource {
+            id: number;
+            featured_posts?: ({ id: number; title: string; file: string | null })[];
         }
         /**
          * Exercises return $this->only([...]) naming a $hidden column explicitly.

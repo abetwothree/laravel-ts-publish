@@ -352,7 +352,7 @@ class TsTypeString
             ARRAY_FILTER_USE_BOTH,
         );
         [$patterns, $replacements] = $this->qualificationRules($namespacedTypes, $skipNamespace, $aliasResolution);
-        $qualified = preg_replace($patterns, $replacements, $qualifiable) ?? $qualifiable;
+        $qualified = preg_replace($patterns, $replacements, $qualifiable);
 
         return implode('', array_replace($segments, $qualified));
     }

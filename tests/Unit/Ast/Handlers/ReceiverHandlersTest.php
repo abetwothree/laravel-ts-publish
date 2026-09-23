@@ -66,6 +66,7 @@ use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\PostStatsResource;
 use Workbench\App\Http\Resources\ReceiverMethodResource;
 use Workbench\App\Http\Resources\ReceiverPropertyResource;
+use Workbench\App\Http\Resources\RosterSlotResource;
 use Workbench\App\Http\Resources\TeamSubscriberResource;
 use Workbench\App\Models\Attachment;
 use Workbench\App\Models\Comment;
@@ -566,6 +567,20 @@ describe('MethodChainHandler no longer reflects on the wrong receiver', function
         $expr = new NullsafeMethodCall(new PropertyFetch(new Variable('this'), 'priority'), 'label');
 
         expect(new MethodChainHandler()->resolve($expr, $scope, chainHandlersThrowingEngine()))->toBeNull();
+    });
+
+    // RosterSlot has both methods too, so answering from the resource's own model would type the Model-bound pair.
+    test('types a method on a morphTo from the targets its generic names, not from the resource model', function () {
+        $props = collect(resolve(AstEngine::class)->analyze(RosterSlotResource::class)->properties)
+            ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+
+        expect($props->all())->toBe([
+            'id' => 'number',
+            'assignable_label' => 'unknown',
+            'assignable_title' => 'unknown',
+            'assignee_label' => 'string | null',
+            'assignee_title' => 'string | null',
+        ]);
     });
 });
 

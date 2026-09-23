@@ -34,6 +34,7 @@ use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\HelperCallResource;
 use Workbench\App\Http\Resources\PostCommentAuthorsResource;
 use Workbench\App\Http\Resources\TeamSubscriberResource;
+use Workbench\App\Http\Resources\UserFeaturedPostsResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Order;
@@ -372,6 +373,25 @@ it('resolves a nullsafe chain from a typed map-closure parameter', function () {
         ->and($props['loaded']['optional'])->toBeTrue();
 });
 
+it('keeps a typed map over a relation the model does not declare through a trailing values()->all()', function () {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(UserFeaturedPostsResource::class), User::class)->analyze()->properties)->keyBy('name');
+
+    expect($props['featured_posts']['type'])->toBe('({ id: number; title: string; file: string | null })[]')
+        ->and($props['featured_posts']['optional'])->toBeTrue();
+});
+
+// Only the map arm's own answer passes through an unnamed receiver: nothing is invented, and a named model still declines.
+it('declines a trailing values()/all() the map arm does not answer, or on a variable that holds a model', function (string $php, string $model) {
+    $scope = new AnalysisScope(new ReflectionClass(PostCommentAuthorsResource::class), $model);
+    $scope->localVarBindings['one'] = new AstParser()->parseSource('<?php $this->resource->getRelation("author");')[0]->expr;
+
+    expect(variableHandlersResolveOn($php, $model, $scope)['type'])->toBe('unknown');
+})->with([
+    'untyped map parameter' => ['$rows->map(fn ($c) => $c->user?->name)->values()->all()', Image::class],
+    'scalar map parameter' => ['$rows->map(fn (string $c) => $c)->values()->all()', Image::class],
+    'a variable holding a model' => ['$one->map(fn (\Workbench\App\Models\Comment $c) => $c->user?->name)->values()->all()', Post::class],
+]);
+
 it('resolves a nullsafe chain from an untyped map-closure parameter its receiver names the element of', function () {
     $scope = new AnalysisScope(new ReflectionClass(PostCommentAuthorsResource::class), Post::class);
     $scope->closureRelationModelClass = Comment::class;
@@ -437,9 +457,8 @@ it('lets a map-closure parameter own its name over an outer binding of the same 
         Post::class,
         '{ word: string }[]',
     ],
-    // Image has no `comments` relation, so what `$rows` holds is unknown and a trailing all() could not keep its type.
     'typed variable-receiver map under a morphTo whenLoaded parameter' => [
-        '$this->whenLoaded("reviewable", fn ($c) => $rows->map(fn (\Workbench\App\Models\Comment $c) => $c->user?->name))',
+        '$this->whenLoaded("reviewable", fn ($c) => $rows->map(fn (\Workbench\App\Models\Comment $c) => $c->user?->name)->all())',
         Image::class,
         '(string | null)[]',
     ],
