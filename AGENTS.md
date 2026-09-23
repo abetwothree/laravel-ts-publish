@@ -40,6 +40,8 @@ note both read the **committed** type trees, so commit the regenerated output be
 
 The documentation in `docs/` contains detailed information about the project's architecture, components, and functionality. When adding or editing doc files, make sure to provide clear and concise explanations, avoid repeating what the code already self-explains, and focus on describing the purpose and behavior of the code while linking to the relevant source files as the source of truth.
 
+The purpose of the `docs/` directory is to provide AI agents a quick overview of the project's source code. But the code is the actual source of truth, and the documentation should not repeat what is already evident from the code itself.
+
 ## Skills
 
 Do not edit the skills when implementing features or plans. Skills must go through their own implementation process independently of feature or plan development to make sure they are correctly implemented. If you think updates are needed, propose them through the proper channels for skill development rather than modifying them directly in the course of feature or plan work.
