@@ -36,11 +36,23 @@ Two CI gates check the generated output programmatically — one for properties 
 `unknown`, one for type tokens emitted without their import. See [Type inference gates](./docs/testing/type-inference-gates.md);
 note both read the **committed** type trees, so commit the regenerated output before running them.
 
+## Read Me
+
+The `README.md` at the root of the directory is meant to be a brief overview of the project. It should define each major section of functionality, provide a quick example of what the package can do, some key capabilities. It should then link to the more use detailed docs in the Tolki documentation for in-depth information.
+
+For the key capabilities, they should be extremely brief. Avoid going into any programming details or implementation specifics. If it cannot fit on a single line and quickly scanned, it is too way too much detail for the README.
+
 ## Docs
 
 The documentation in `docs/` contains detailed information about the project's architecture, components, and functionality. When adding or editing doc files, make sure to provide clear and concise explanations, avoid repeating what the code already self-explains, and focus on describing the purpose and behavior of the code while linking to the relevant source files as the source of truth.
 
 The purpose of the `docs/` directory is to provide AI agents a quick overview of the project's source code. But the code is the actual source of truth, and the documentation should not repeat what is already evident from the code itself.
+
+## Tolki Docs
+
+The Tolki documentation provides user in-depth information. It should be detailed on what this package can do and how to use its various features effectively. It should not include any information about how this package implements its functionality internally. Keep it focused on usage and capabilities rather than internal implementation details. Use how Laravel's official documentation is structured as a guide for writing clear and effective Tolki documentation.
+
+If you find yourself writing links to source files of this package or explaining lines of code for how this package does things, that's a sign that you're venturing into implementation details, which should be avoided in the Tolki documentation. Focus on usage and capabilities instead.
 
 ## Skills
 
