@@ -45,6 +45,22 @@ describe('splitTopLevel', function () {
             ->toBe(['a: string', 'b: [number, string]', 'c: Record<string, { d: number; e: string }>']);
     });
 
+    test('splits a template literal whose text holds escaped quotes at its own pipes', function (string $type, array $expected) {
+        expect(TsTypeShape::splitTopLevel($type, ['|']))->toBe($expected);
+    })->with([
+        'escaped double quotes around a placeholder' => ['`\\"${string}\\"` | null', ['`\\"${string}\\"`', 'null']],
+        'escaped double quotes in plain text' => ['`say \\"hi\\"` | null', ['`say \\"hi\\"`', 'null']],
+        'escaped single quotes around a placeholder' => ['`\\\'${string}\\\'` | null', ['`\\\'${string}\\\'`', 'null']],
+    ]);
+
+    test('reads a backtick as template text, so one inside a placeholder cannot close a span', function (string $type, array $expected) {
+        expect(TsTypeShape::splitTopLevel($type, ['|']))->toBe($expected);
+    })->with([
+        'a single-quoted backtick' => ["`\${'`'}` | null", ["`\${'`'}`", 'null']],
+        'a double-quoted backtick' => ['`${"`"}` | undefined', ['`${"`"}`', 'undefined']],
+        'a nested template with a pipe' => ['`${`a|b`}` | null', ['`${`a|b`}`', 'null']],
+    ]);
+
     test('floors depth at zero so an unmatched closing bracket still splits what follows', function () {
         expect(TsTypeShape::splitTopLevel('a) | b', ['|']))->toBe(['a)', 'b']);
     });
@@ -58,6 +74,7 @@ describe('memberType', function () {
             ->and(TsTypeShape::memberType('{ a: { b: string; c: number }; d: string }', 'a'))->toBe('{ b: string; c: number }')
             ->and(TsTypeShape::memberType('{ "2fa"?: boolean, other: string }', '2fa'))->toBe('boolean')
             ->and(TsTypeShape::memberType('{ "a:b": string; other: number }', 'a:b'))->toBe('string')
+            ->and(TsTypeShape::memberType('{ a: `\\"${string}\\"`; b: Record<string, number> }', 'b'))->toBe('Record<string, number>')
             ->and(TsTypeShape::memberType('{ a: number } | null', 'a'))->toBe('number');
     });
 

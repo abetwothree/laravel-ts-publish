@@ -25,6 +25,27 @@ final. A native PHP signature is often deliberately loose — `: array`, `: iter
    wins.
 3. **Whichever of the two is non-`unknown`**, signature preferred, as a last-resort fallback.
 
+Accessors insert a third source between 2 and 3: **what the getter body returns**. Once both the
+getter signature and the `Attribute<>` docblock have proven vague, `Concerns\ResolvesAccessorType`
+asks `Analyzers\Model\AccessorBodyAnalyzer` what the body resolves to and returns that if it is
+non-vague, so `Attribute::get(fn () => ['major' => $this->major])` publishes `{ major: number }`
+instead of `unknown[]`. A specific annotation still wins outright, and the step is identical on the
+old-style `get*Attribute()` branch. See
+[accessor-body-analyzer.md](accessor-body-analyzer.md).
+
+`resolveAttribute()` takes a `carriesImports` flag for that body step and for the `@property` refinement of its result.
+An analysis scope passes its own
+`AnalysisScope::$carriesImports`, so a method body the body fallback reads gets each getter analyzed without imports,
+and its filters name no token. The model transformer, resources and every other caller keep the default `true`, so
+the published accessor type does not change. Without imports, `refineAccessorType()` skips the `@property` refinement
+below when the tag names a class and the published type is not vague; a token-free tag refines as usual. See
+[accessor-body-analyzer § A reader that carries no import](accessor-body-analyzer.md#a-reader-that-carries-no-import).
+`$attributeClassCache` needs no split: `resolveAttributeClass()` reads reflection only, never a getter body. The
+accessor waterfall is memoized for the run in `AnalysisMemo`, per model, attribute and import mode
+(`accessor-type:model@attribute`, with `@importless` for a read that carries no import), so a mode never reuses the
+other's answer. `resolveAccessorModelFqcns()` takes no flag, because the models a getter returns do not depend on how
+its filters are spelled.
+
 ```php
 /** @return array{value: int, label: string} */
 public function asAutoCompleteOption(): array
@@ -50,6 +71,43 @@ keys resolves to `unknown` — `{ filters?: Record<string, unknown>; sorts?: str
 specific, because a `mixed`-typed key inside an otherwise-concrete shape is not the same thing as
 having no shape at all. Anything else — `string`, `OrderItem[]`, `{ value: number; label: string }`
 — is specific enough to win immediately.
+
+## Set-only mutators: a `never` Get records no getter, not a read type
+
+When an `Attribute` has no getter closure at all, `Concerns\ResolvesAccessorType` still reads the
+method's own `@return Attribute<Get, Set>` docblock, because a mutator with no getter is
+conventionally documented as `Attribute<never, string>` — the `never` states that no getter
+exists, it is not a claim about what reading the attribute returns. Reading it returns the raw,
+cast column value, so a `never` Get is excluded from the "docblock wins" check alongside `unknown`
+and falls through to `LaravelTsPublish::omittedTypeScriptInfo()`, the same as a set-only mutator
+with no docblock at all. From there the ordinary waterfall decides the answer: `ModelAttributeResolver::resolveAttribute()`
+re-resolves a real DB column's own type once the accessor step comes back empty, and
+`ModelTransformer::transformMutators()` omits a name with no backing column entirely rather than
+publish it as `unknown`. `Workbench\App\Models\OutgoingNote` pins both outcomes: `subject` and
+`type` are real columns behind `Attribute<never, string>` mutators and publish as `string`, while
+`normalizedTag` has no backing column and is dropped from the generated interface, not emitted as
+`never` or `unknown`.
+
+The rule applies to both nullable spellings of the same Get too, which reach this branch as the
+string `'never | null'` by different routes. For `Attribute<?never, ?string>`,
+`resolveDocblockTypePartOrAlias()`'s nullable-prefix handling appends `| null` to the resolved
+`never`. For `never|null` written without the `?` shorthand, `splitPhpDocUnionType()` splits the
+two members, each is resolved separately, and the results are merged back into one union. The check strips the null
+arm with `Ast\ValueResult::stripNullArm()` — the same helper `CoalesceHandler` and
+`ConditionalMethodHandler` use for the identical "ignore a `| null` arm before deciding" shape —
+before comparing against `never`, so both spellings are caught alike rather than only the bare one.
+`OutgoingNote::channel` pins this spelling: documented `Attribute<?never, ?string>`, it publishes
+its column's `string` type, not the literal `never | null`.
+
+`isOmittedMutator()` is the read for "was this omitted", not `resolveAttribute()`'s own `type`:
+once the accessor step's `omit` flag reaches `resolveAttribute()`, the no-backing-column path
+discards it and returns a fresh `emptyTypeScriptInfo()` — so a genuinely unresolvable attribute and
+one that resolved to `omittedTypeScriptInfo()` both read back `'unknown'` there, indistinguishably.
+`isOmittedMutator()` calls `resolveAccessorType()` directly and reads the `omit` key itself — the
+same check `ModelTransformer::transformMutators()` applies to `resolveMutatorType()`'s result for
+real publish output — so it is the
+correct assertion for "this name does not appear in the generated interface" — `resolveAttribute()`'s
+`'unknown'` alone does not prove it.
 
 ## Arrayable/JsonSerializable shape-source precedence
 
@@ -256,6 +314,31 @@ for a string-only shape map) still degrades that one key to `unknown` — `resol
 applies the same `shapeValueHasUnimportableToken()` check `arrayableShapeType()` uses — so only
 the unresolvable leaf is lost, not the whole shape.
 
+### Intersection values (`X&Y`, `X&object{...}`)
+
+A container's value slot may also be a PHPDoc intersection (`Collection<int, User&object{pivot:
+TaskAssignment}>`). `resolveDocblockContainerValue()` splits it at the top level with
+`splitPhpDocIntersectionType()` — mirroring `splitPhpDocUnionType()`'s brace/angle/paren-aware
+scan — before falling through to the union split, resolves each member (an `object{...}` member
+through `resolveArrayShapeString()`, same as any other shape; anything else recursively through
+`resolveDocblockContainerValue()` itself), and joins the results with
+`intersectTypeScriptInfos()`, which keeps every member's import channels via
+`mergeTypeScriptInfos()` but joins the type strings with `' & '` instead of `' | '`. A member that
+resolves to `unknown` is dropped rather than propagated — `A & B` is assignable to `A`, so losing
+an untypable member only widens the result instead of collapsing the whole intersection to
+`unknown`. Because an `object{...}` shape value is resolved through the same string-only shape
+channel described above, a class-valued key inside it (`pivot: TaskAssignment`) still degrades to
+`unknown`, even though the intersection's own member (`User`) carries a real import.
+`wrapAsArray()` parenthesizes an intersection the same way it already parenthesizes a union, so
+`Collection<int, User&object{pivot: TaskAssignment}>` resolves to `(User & { pivot: unknown })[]`.
+
+### String-refinement key types
+
+`resolveGenericContainerType()` treats a PHPStan string-refinement key (`non-empty-string`,
+`class-string`, `class-string<Model>`, `literal-string`, `lowercase-string`, `numeric-string`, …)
+the same as a plain `string` key, producing `Record<string, X>` instead of falling through to the
+default int-keyed `X[]`; an actual int refinement (`positive-int`, `array-key`, …) is unaffected.
+
 ## Nullable-prefixed generics
 
 `resolveGenericContainerType()` strips a leading `?` before attempting to match a container
@@ -309,6 +392,12 @@ recursion path outside the `$seen`-guarded import chain.
 its returned map key (`'filters?'` rather than `'filters'`), so an alias expanding to
 `array{filters?: ...}` emits `filters?: ...` in the generated interface instead of silently
 dropping optionality.
+
+A nullable member (`?Alias`) strips the leading `?` and recurses into
+`resolveDocblockTypePartOrAlias()` with the bare name. A resolved alias returns its expanded type
+from that recursive call; an unresolved name falls through to the ordinary pipeline and returns
+`unknown`. Either way the outer call appends `| null`, unless the type already contains `null`,
+mirroring the `?T` handling `toTsType()` does for a plain (non-alias) type.
 
 ## Castable-with-arguments cast strings
 
@@ -394,6 +483,23 @@ class Team extends Model
 `Record<string, unknown> | null` is accepted even though it still names `unknown`, and `settings`
 generates as `Record<string, unknown> | null` rather than `unknown[] | null`.
 
+### `@property` as the last fallback for a name that is neither a column nor a relation
+
+`resolveAttributeFallbacks()` tries, in order: the snake_case-accessor alias, then the
+`_count`/`_exists` relation-suffix guesses, and only once both have declined does it consult
+`propertyDocblockClasses()` for an `@property`/`@property-read` tag naming the attribute outright.
+This last step exists for a query-selected virtual attribute — a `select`/`selectRaw` column with
+no backing DB column, cast, or accessor, typed only by an ide-helper-style class docblock tag —
+which reaches `ModelAttributeResolver` when a resource or handler references it, but is never
+itself part of `ModelTransformer`'s own generated interface, since that transformer iterates
+`ModelInspector`'s attributes, not this resolver's fallback chain.
+
+The lookup is guarded on the name (and its camel alias) not already being a relation: an
+ide-helper `@property-read Collection<int, Child> $childRows` tag commonly documents a relation
+for IDE purposes only, and `resolveRelation()` — not this fallback — is the correct authority for
+a relation name's type. Without the guard, a relation's own tag would satisfy `resolveAttribute()`
+with a plausible-looking type that ignores relation nullability and `morphFqcns`.
+
 ## MorphTo target resolution: docblock generic → reverse map keyed by morph name
 
 `resolveMorphToTargets(string $modelFqcn, string $relationName): list<class-string>` is the
@@ -426,6 +532,69 @@ degrades to the old, model-wide behavior instead of losing the union to `unknown
 exactly one `morphTo` relation is unaffected either way, since its keyed and legacy buckets always
 hold the same parents.
 
+### A parent targeting a subclass of the child still types the base child's `morphTo`
+
+A parent's `MorphOne`/`MorphMany` may declare its related model as a **subclass** of the model
+that actually owns the `morphTo()` — e.g. `Venue::reviews()` returns
+`$this->morphMany(VenueReview::class, 'reviewable')`, where `VenueReview extends Review` and only
+`Review` declares `reviewable(): MorphTo`. `buildMorphTargetMap()` keys that relation under
+`VenueReview::class.'|reviewable'`, not under `Review::class`, so a plain lookup of
+`getMorphToTargets(Review::class, 'reviewable')` would miss it entirely — `Review` never appears
+as a key on its own account. `getMorphToTargets()` closes that gap with a second pass: for every
+`|`-keyed bucket in `$morphTargetMap`, if the bucket's morph name matches and its child
+(`VenueReview`) is a real `is_subclass_of()` descendant of the model being queried (`Review`), its
+parents (`Venue`) are unioned in. A query against the subclass itself
+(`getMorphToTargets(VenueReview::class, 'reviewable')`) does not re-trigger this pass — the loop's
+own `$mappedChild !== $childModelFqcn` guard skips a bucket matching the queried class exactly, and
+no other `|`-keyed bucket is `VenueReview`'s subclass — so `VenueReview::reviewable` stays scoped
+to `Venue`; a subclass never inherits its siblings' parents (`ArtistReview`'s `Artist` parent stays
+absent from `VenueReview`'s union, and vice versa).
+
+The union only runs in this one direction. A parent declared against the *base* child
+(`SomeModel::morphMany(Review::class, 'reviewable')`) is never folded into a subclass's targets,
+because at runtime that relation always returns plain `Review` instances — Eloquent's morph map
+resolves each row to the class named in its `reviewable_type` column, and a row written through
+that parent's relation carries `Review::class` (or whatever `Review`'s morph alias is) there, never
+`VenueReview::class` — so unioning it into `VenueReview::reviewable` would claim a target that row
+can never actually be.
+
+### A `morphToMany(...)->using(Pivot::class)` makes its pivot's own `morphTo` resolvable
+
+A `MorphToMany` relation is a different shape entirely — its `related` FQCN is the many-to-many
+target (`Label`), not a `morphTo`'s child — so `buildMorphTargetMap()`'s relation loop diverts it
+into its own branch before `isMorphParentRelation()` ever sees it: `str_contains($relation['type'],
+'MorphToMany')` (confirmed against `Illuminate\Database\Eloquent\ModelInspector::getRelations()`,
+which sets `'type'` to `Str::afterLast(get_class($relation), '\\')` — always the bare class name
+`'MorphToMany'`, never the FQCN) routes to `morphPivotKey()` instead.
+
+When a custom pivot model is wired in with `->using(Labelable::class)` and that pivot itself
+declares a `morphTo()` (`Labelable::labelable()`), the pivot row's own `labelable_type` column
+names the *declaring* parent (`Venue`, `Artist`) directly — the same shape as any other `morphTo`,
+just reached through a pivot model instead of a plain child model. `morphPivotKey()` reads the
+relation's `getPivotClass()` and, when it's neither the base `Pivot` nor `MorphPivot` (i.e. a real
+`->using()` was supplied), keys the same way as a `MorphOne`/`MorphMany`: `PivotFqcn.'|'.morphName`,
+using `MorphToMany::getMorphType()` (`'labelable_type'` minus the suffix) so the key lines up
+exactly with the morph name `Labelable::labelable()` itself resolves through `relationMorphName()`.
+Because it's the same `Fqcn|morphName` shape `buildMorphTargetMap()` already writes for `morphMany`
+relations, `getMorphToTargets(Labelable::class, 'labelable')` needs no separate code path — it hits
+the primary keyed lookup directly, not the subclass-union second pass.
+
+Three relation shapes add nothing to the map, all handled by returning `null` from
+`morphPivotKey()`: a `morphToMany()` call with no `->using()` at all (`getPivotClass()`'s only
+fallback is the base `Pivot::class` — `$this->using ?? Pivot::class` — never `MorphPivot`, which is
+excluded from the same check purely in case a caller passes `->using(MorphPivot::class)` explicitly
+without narrowing it further), a `morphedByMany()` (`MorphToMany::getInverse() === true`) — the
+*inverse* declaration, found on the many-to-many target (e.g. `Tag::posts()`), not the polymorphic
+owner: keying that side would record the wrong parent, since the pivot's morph column stores the
+*forward* declarer's own class (`Post`, via `Post::tags()`'s `morphToMany()`), never the inverse
+side's — and a `->using()` argument that isn't actually a `Model` at all. `getPivotClass()`'s
+`class-string<Pivot>` bound is docblock-only (`using()` itself takes no native parameter type), so
+Laravel accepts any class there at runtime; `morphPivotKey()` keeps its own `is_a($pivot,
+Model::class, true)` runtime check rather than trusting the docblock bound, even though PHPStan
+would otherwise report it as an already-narrowed, always-true condition (silenced with `@phpstan-
+ignore function.alreadyNarrowedType`, matching the inline-ignore convention already used elsewhere
+in this codebase, e.g. `CoreCollector::collect()`).
+
 ## An unresolved MorphTo stays bare `unknown`, never `unknown | null`
 
 When a `MorphTo` has no targets — the docblock generic is absent/non-narrowing and the reverse map
@@ -455,6 +624,33 @@ traits-of-traits via `flattenTraits()`) to find the one whose file matches. Left
 name in a trait-declared accessor's docblock — `@return Attribute<Collection<int, OptionValue>,
 never>` — would resolve against the *consuming* model's imports instead of the trait's, silently
 degrading to `unknown` whenever the model doesn't happen to import the same class.
+
+A trait's own `@template` names are a second case the file swap alone doesn't fix: a generic trait
+docblock — `@return Attribute<EloquentCollection<int, TChild>, never>` under a trait-level
+`@template TChild of Model` — resolves `TChild` against nothing, because a template name is never a
+real class the trait's own use-map could ever hold. `bindTraitTemplates()` runs before
+`resolveDocblockTypeStringAgainst()` in both `docblockReturnTypes()` and
+`resolveDocblockTypeString()`, substituting each of `traitTemplateNames()`'s ordered `@template`
+names with the matching argument from `traitUseArguments()` — the consumer's (or an ancestor's)
+`@use Trait<X>` tag, `@phpstan-use`/`@psalm-use` spelled the same way — before the type string ever
+reaches resolution. A method that isn't trait-declared, or a trait with no matching `@use` binding
+in the class hierarchy, passes the type string through unchanged.
+
+`@use Trait<X>` sits on the `use` statement inside the class body, not on the class docblock, so
+`traitUseArguments()` cannot reuse `ReflectionClass::getDocComment()`. It parses the consumer's file
+through `AstParser::parseFile()`, which caches the AST per path and records the cache dependency
+itself, matching the [dependency recording policy](ast-engine.md#dependency-recording-policy) every
+other file-read in the package follows. It finds the consumer's `Class_` node by its resolved name,
+then reads the tag from the doc comment of the one `TraitUse` statement inside that class naming the
+target trait, in the `@use`, `@phpstan-use`, or `@psalm-use` spelling. A prose mention elsewhere in
+the file, for example inside the class docblock, is never a candidate. Only that statement's own doc
+comment is read. `traitUseArguments()` checks the consumer before its parents, and skips a class
+with no file rather than reading it.
+
+The trait name in the tag must resolve through the file's own `use` imports or its namespace.
+`resolveDocblockTypeName()`'s namespace fallback checks `class_exists()` and `enum_exists()`, not
+`trait_exists()`, so a trait referenced by its bare name from the same namespace, with no `use`
+import, does not resolve, and the binding silently fails.
 
 ## `publishedColumnNames()` and the `exclude_hidden` coupling
 
@@ -546,3 +742,28 @@ same reason `getAttributes()` metadata is inert there: nothing calls `newInstanc
 `class_exists()` reference lives only in each attribute's `->skip()` test guard in
 `ModelTransformerTest.php`. See [Version-guarded Laravel
 classes](../laravel-version-guards.md) for the test-only guard rows this implies.
+
+## A missing table is reported, not guessed
+
+`resolveContext()` inspects a model through `ModelInspector::inspect()`, whose `attributes`
+collection comes straight from the schema (`getColumns($table)`). When the model's own table was
+never migrated, that call finds no columns at all, and every attribute lookup on the model
+silently resolves to `unknown` or the empty `TypeScriptTypeInfo` — indistinguishable, from the
+published output alone, from a model that genuinely has no typed columns. A cast-based guess at
+that point (say, treating every unresolved attribute as `unknown[] | Record<string, unknown>`
+because the shape "looks like a row") would only paper over the real problem: the migration is
+missing, not the type.
+
+So `resolveContext()` reports it instead. Once `$attributes` comes back empty, it asks the schema
+builder directly — `getConnection()->getSchemaBuilder()->hasTable($instance->getTable())` — and if
+the table genuinely does not exist, records one `AnalysisWarnings::add()` entry naming the model
+FQCN and the missing table/connection. `hasTable()` only runs on that already-empty path, so a
+healthy model with real columns never pays for the extra schema round trip. Because
+`resolveContext()` memoizes its result per model FQCN for the life of the resolver, the warning is
+recorded at most once per model per `ts:publish` run, no matter how many attributes are looked up
+against it.
+
+`TsPublishCommand::renderAnalysisWarnings()` prints every recorded entry after the summary output
+(the same mechanism `InertiaPageAnalyzer` uses for a degraded route action), so a missing migration
+surfaces as a warning line telling the developer to run their migrations and publish again — not as
+a silently empty model interface.

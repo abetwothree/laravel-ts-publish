@@ -1,5 +1,6 @@
 import type { ComputedNameEvent } from './app/events/ComputedNameEvent';
 import type { DeclaredPropsEvent } from './app/events/DeclaredPropsEvent';
+import type { DocblockShapedEvent } from './app/events/DocblockShapedEvent';
 import type { EnumBroadcastEvent } from './app/events/EnumBroadcastEvent';
 import type { MixedTypesEvent } from './app/events/MixedTypesEvent';
 import type { MultiModelEvent } from './app/events/MultiModelEvent';
@@ -20,6 +21,7 @@ import type { UserSynced as CrmUserSynced } from './crm/events/UserSynced';
 export type BroadcastEvent =
     | '.Workbench.App.Events.ComputedNameEvent'
     | '.Workbench.App.Events.DeclaredPropsEvent'
+    | '.Workbench.App.Events.DocblockShapedEvent'
     | '.Workbench.App.Events.EnumBroadcastEvent'
     | '.Workbench.App.Events.MixedTypesEvent'
     | '.Workbench.App.Events.MultiModelEvent'
@@ -40,6 +42,7 @@ export type BroadcastEvent =
 export const BroadcastEvents = Object.freeze({
     ComputedNameEvent: '.Workbench.App.Events.ComputedNameEvent',
     DeclaredPropsEvent: '.Workbench.App.Events.DeclaredPropsEvent',
+    DocblockShapedEvent: '.Workbench.App.Events.DocblockShapedEvent',
     EnumBroadcastEvent: '.Workbench.App.Events.EnumBroadcastEvent',
     MixedTypesEvent: '.Workbench.App.Events.MixedTypesEvent',
     MultiModelEvent: '.Workbench.App.Events.MultiModelEvent',
@@ -61,6 +64,7 @@ export const BroadcastEvents = Object.freeze({
 export type {
     ComputedNameEvent,
     DeclaredPropsEvent,
+    DocblockShapedEvent,
     EnumBroadcastEvent,
     MixedTypesEvent,
     MultiModelEvent,

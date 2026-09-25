@@ -12,12 +12,25 @@ deferred the work. Two kinds of entry earn a place here:
 Nothing here is a regression. These are limits that were understood and accepted.
 
 **What does not belong here.** Internal refactor debt, test-suite quality notes, release chores, and
-anything whose real audience is "whoever picks that work back up" — those live with the plan that deferred
-them, under its Follow-Ups Ledger, which is where that work is actually re-read from. Filing them here
-buries them. If you decline something a reviewer raised, ask which of the two bullets above it satisfies;
+anything whose real audience is "whoever picks that work back up" — those belong in the follow-ups ledger of
+the plan that deferred them, and anything meant for a future plan also in a `next-plan` GitHub issue, as
+AGENTS.md says. Filing them here buries them. If you decline something a reviewer raised, ask which of the two bullets above it satisfies;
 if neither, it does not go in this file.
 
 ## Types the generator will not give you
+
+### A union arm the engine cannot type is left out, so the union publishes the other arm
+
+`$cond ? $untypable : null` publishes `null`, and `$this->opaque() ?: null` does the same. The arm that
+resolved to nothing is dropped rather than widening the union to `unknown`, which would be more honest but
+less specific. A spread helper's `return` branches follow the same rule, except that a key left with only `null`
+once the untypable branch drops publishes `unknown`. Type the arm with a return type, a `@return` docblock, or
+`#[TsCasts]` and it comes back.
+
+A model accessor's getter body is the exception: a body left as only `null` once an arm dropped, such as
+`fn ($value, array $attributes) => $attributes['title'] ?? null`, publishes `unknown` rather than `null`, on the
+model and in every resource that reads it, since the real value is the dropped arm's. A getter that only ever
+returns `null` still publishes `null`.
 
 ### `config()` on an absent key with no default types as null
 
@@ -39,7 +52,7 @@ rather than guessing. **The workaround is fully supported:** `public $collects =
 on both versions. So does the `FooCollection` → `FooResource` naming convention, with one condition the
 explicit property does not carry: `resolveCollectedResourceClass()` gates the guess on
 `isPublishedResourceClass()`, so a `FooResource` the run excludes is not guessed into. The guard is in
-`src/Analyzers/Concerns/InspectsAstNodes.php`; see
+`src/Analyzers/Concerns/InspectsResourceCalls.php`; see
 [docs/laravel-version-guards.md](./laravel-version-guards.md) for how the version floor was established and
 which tests are skipped below it.
 
@@ -53,6 +66,41 @@ The same imprecision without `readonly` is present: `DeferredAssignmentDto::$ass
 the former nest a `?:` inside a shape value for `NestedOptionalKeyDto`. It is deliberate for the former
 — that fixture needs an optional key — but it is the same heuristic, so a future fix to optionality has
 to expect those fixtures to move.
+
+### A `return []` guard makes keys optional in a method body, but not inside a `merge()` closure
+
+`if (! $policy) { return []; } return ['authorizations' => …];` publishes `authorizations?`, because the
+guard branch really does omit the key: `ResourceAstAnalyzer::analyzeAllReturnBranches()` counts an empty
+return as a branch, and `analyzeThisMethodSpread()` does the same for a `...$this->method()` spread. A
+closure handed to `merge()` or `mergeWhen()` does not follow that rule — `resolveArrayOrClosureToProperties()`
+filters the closure's empty returns out before merging, so the identical guard publishes its keys **required**.
+
+`MergeClosureResource` is the shape: its `merge()` closure returns `[]` when `$this->user` is null and two
+keys otherwise, and the generated `merge-closure-resource.ts` spells both of them required.
+
+```ts
+export interface MergeClosureResource
+{
+    id: number;
+    user_name: string;
+    user_email: string;
+}
+```
+
+Nothing degrades to `unknown` and both keys carry their real types, so no gate moves — the payload simply
+omits them on the guard path while the type promises them. Declare the key with an `'optional' => true`
+`#[TsCasts]` entry, or hoist the closure into a method the resource spreads, which does honour the guard.
+Aligning the closure path with the method path changes published output for every guarded `merge()` closure
+at once, so it is its own decision rather than a rider on the rule that established it.
+
+### A helper that returns an empty `[]` on one path publishes an object shape, though `[]` encodes as an array
+
+A method typed from its body, such as `if ($flag) { return []; } return ['a' => 1];`, publishes the literal's
+shape with every key optional: `{ a?: number } | null` under a `?array` signature, and `{ a?: number }` under a bare
+`array`. The keys really are absent on that path, but `json_encode([])` writes the JSON array `[]`, not an object,
+so the value is not the kind the type promises. `MethodReturnTypeResolver::shapeReadsEveryReturn()` counts the
+empty `[]` as a return the shape reads. Under `?array`, return `null` on that path instead: it publishes
+`{ a: number } | null`.
 
 ### `#[TsCasts]` and the top-level spread flatten disagree by scope, in three separate ways
 
@@ -107,7 +155,9 @@ key walks that same rule trie by path (`FormRequestRulesAnalyzer::analyzeField()
   call returns. `$request->validated('options.*')` would otherwise type `string | null` where the runtime
   value is `(string | null)[]`, so `validatedKeyRule()` declines the key outright and the property types as
   `unknown`. Typing it means array-wrapping the composed element type once per `*` hop, plus reproducing
-  `Arr::collapse()`'s flattening for a key with more than one — its own task, not a guard.
+  `Arr::collapse()`'s flattening for a key with more than one — its own task, not a guard. A direct
+  `data_get($target, 'a.*.b')` declines for exactly this reason too, in
+  `KnownFunctionCallHandler::dataGetRule()`, so the two call sites onto `data_get()` agree.
 - **A `#[TsCasts]` key with a dot in it is ignored, on the request as well as here.**
   `FormRequestTransformer::applyTsCastsOverrides()` matches an override against a top-level field path, and
   `analyze()` emits only top-level paths, so `#[TsCasts(['options.default' => 'number'])]` moves nothing in
@@ -333,6 +383,182 @@ subclass that overrode the sort-group predicate to reorder imports, or that reac
 exception: it was `private` before the move and is `private` on `JsEmitter` now, so no subclass could ever
 reach it and nothing was actually taken away.
 
+### A morph union whose targets' resources share a basename spells the same token twice
+
+A `morphTo` relation exposed as `whenLoaded('rel', fn ($subject) => $subject->toResource())` publishes one
+resource per morph target — `reviewable?: ArtistResource | VenueResource;`. When two of those targets
+resolve to resource classes that live in different namespaces but share a **basename**, the property
+renders that basename twice: `subject?: StoreResource | StoreResource;`, standing for two genuinely
+different classes. Same-basename resources are real rather than hypothetical — this repo keeps the
+`Admin\Store` and `SameBasenameModelTrio` fixtures for exactly that reason.
+
+The aliasing pass that would rename one of them never runs for this property. A union reports its classes
+on the FQCN-keyed `embeddedResourceFqcns` channel, so the entry lands in `nestedResources` keyed by FQCN
+instead of by property name; `ResourceTransformer::rewriteTypeReferences()` looks up property names, none
+of which contain backslashes, so `TsTypeString::aliasPropertyType()` is never reached for it. Both imports
+still resolve, so `tsc` reports nothing and the unimportable-token gate stays green — read that green gate
+as saying nothing about this case either way.
+
+**What to do about it.** Give one of the colliding resources a distinct generated name with
+`#[TsResource(name: 'AdminStoreResource')]`, which `TsNaming::resourceTypeName()` honours everywhere the
+token is emitted and imported; renaming the class itself has the same effect. Otherwise declare the
+property with an import-aware `#[TsCasts]`. The real fix is to carry these FQCNs on a property-keyed
+channel so the alias pass reaches them, which is cross-cutting rather than local: `InlineArrayHandler`
+builds the identical FQCN-keyed shape for inline arrays.
+
+### A `#[TsCasts]` value that spells an imported name inside a string, template or comment keeps the import
+
+The import prunes ask `TsTypeString::typeNameOccursIn()` whether a property type or extends clause still spells
+a model, enum or `#[TsType]` name. That is a plain token match: it counts the name wherever its token stands,
+inside a quoted string, a template literal's text or a comment as much as outside. So
+`#[TsCasts(['app' => "'User' | 'Admin'"])]` over a read that carried the `User` import keeps
+`import type { User }`, unused. The file is valid; TypeScript reports the import only under `noUnusedLocals`,
+as TS6196 for each unused name, or as one TS6192 when the line holds two or more names and none is used.
+
+This is deliberate. Reading a type as TypeScript lexes it, to leave a name inside a literal out, hid names
+TypeScript reads as references (a string continued by a backslash-newline, a `//` comment ended by CR or
+U+2028, a template literal one value opens and the next closes), and each hidden name dropped an import the
+generated file needed, which is TS2304 for every consumer. An unused import is the cheaper failure, so the
+match reads every token, first decodes every `\u` escape that names a character (an escape of a surrogate, or
+of a value above U+10FFFF, stays as written), and takes identifier characters, as the running PCRE2's Unicode
+tables know them, as its boundaries. Its one other accepted cost is in syntax TypeScript rejects: a name right
+after a numeric literal (`1User`, `0xUser`), or after a character TypeScript rejects at a name's start (`·User`,
+or a ZWJ before `User`), is missed and its import dropped, in a file that fails to compile either way (TS1351,
+TS1125, TS1127).
+
+**What to do about it.** Spell the literal without the imported name, or override the read with a type that
+uses the import.
+
+### `instanceof` narrowing depends on the spelling, in four different ways
+
+There is one rule per spelling, not one rule overall. Check which spelling you wrote before assuming a
+value is `unknown`:
+
+- **A negated early-exit `if` on a local variable binds.** `if (! $x instanceof Post) { return null; }`
+  binds `$x` to `Post` for every statement after it, including through an `||` chain and a `throw` exit.
+  `NarrowedParentResource`'s closure is the fixture: after
+  `if (! $parent || ! $parent instanceof Post) { return null; }`, `$parent->title` publishes `string`.
+- **A positive `if`-statement on a local variable binds nothing.**
+  `if ($x instanceof Post) { return $x->title; }` leaves `$x->title` as `unknown`, pinned by
+  `tests/Unit/Ast/Handlers/ReceiverHandlersTest.php`. The walk is flat, so a binding made for that body
+  would still be in force *after* the `if`, where `$x` is exactly what the guard excluded. Only the
+  early-exit shape narrows for everything that follows.
+- **A *ternary* on a local variable does bind, for the arm its test proves only.** `TernaryHandler` binds
+  `$x` to what `C` leaves of the classes `$x` holds while `A` resolves in `$x instanceof C ? A : B`, and while
+  `B` resolves in `! $x instanceof C ? A : B`. That is sound: the binding cannot outlive the arm, and a supertype,
+  interface or sibling `C` never widens `$x`. `NarrowedParentResource`'s `$record instanceof Post ? $record->title
+  : null` — where `$record` holds a `morphTo` union — publishes `record_title: string | null`, not `unknown`.
+- **A positive ternary whose true arm is the tested expression narrows only what is read through it.**
+  After `$v = $this->imageable instanceof Post ? $this->imageable : null;`, `$v?->getKey()` reflects on `Post`
+  alone. The ternary's own value, and a bare `$v`, still publish the whole `morphTo` union, and so does
+  `$r instanceof Post ? $r : null` on a local variable. `TernaryHandler` narrows only reads made inside the true
+  arm, never the arm's bare subject. `NarrowedImageableResource` is the fixture.
+
+So the statement form and the ternary form of the *same* positive test disagree. That is the distinction
+to check first, and the one an earlier draft of this entry got wrong.
+
+**`$this->resource` is not a local variable, and it narrows in either polarity.** A different mechanism
+answers there: `ResourceAstAnalyzer::resolveInstanceOfType()` scans the analyzed method for any
+`$this->resource instanceof C` test, negated or not, and seeds `AnalysisScope::$instanceOfWrappedClass`
+with `C` as the subject's backing class for the whole method. So `MediaTypePositiveInstanceOfResource`,
+whose only guard is the positive `if ($this->resource instanceof MediaType)`, publishes `name` and `value`
+as `string` rather than `unknown`. Both keys still publish **optional**, because the method's other branch
+is a `return []` — that is the return-branch rule, not a narrowing failure.
+
+The negated `if` form binds a variable only when nothing writes it after the guard tests it, and only for the reads
+after the guard: a `return` placed before it, and the guard's own body, still read the variable unnarrowed. A write
+before the guard does not matter, since the guard tests the value it leaves. A resource that already
+guards on `$this->resource` needs no `#[TsCasts]` for the properties that guard proves.
+
+### A shape whose values name a class loses those values, in one of two ways
+
+Neither the method-body fallback nor a docblock array shape carries an FQCN channel. Both are plain type
+strings, so a class token inside one could never be emitted with the import it needs. The two paths spend
+that limit differently, and the difference decides where you go looking for the missing type.
+
+- **The body fallback discards the whole answer.** When a bare `: array` signature sends
+  `MethodReturnTypeResolver::bodyType()` to the literal body, the inline type it builds is tested with
+  `TsTypeString::shapeValueHasUnimportableToken()`, and a single class-named value throws the entire body
+  result away rather than degrading one leaf. The vague declaration then stands. An `only()`/`except()` value is
+  the one exception: it publishes an answer that names no token (its inline shape, where a member whose type names
+  a token is `unknown`, `Record<string, unknown>` for a runtime key list, or `unknown[]` for a to-many relation), so
+  a filter written in the method body itself no longer costs the shape. That holds for an override declaring a
+  class-typed return too, such as `only($attributes): static`. A top-level union arm that is a model, or a list of
+  one, publishes the columns and appended accessors that model serializes, narrowed to the call's literal keys, with
+  a member naming a token spelled `unknown`. Any other arm naming a token, such as an enum, makes the value
+  `unknown`, and a model nested deeper, as in `array{owner: User}`, is already `unknown` in its reflected docblock
+  shape. A filter in the getter of an accessor the method body reads costs no shape either: when the accessor's type
+  comes from its getter body, that getter is analyzed without imports too. An accessor whose type names a class any
+  other way still drops the method body's whole shape: one typed by its closure signature, its `Attribute<>` docblock,
+  an old-style getter's own return type or `@return` docblock, or an `@property` tag, and one whose getter returns a
+  class-typed value that is no filter, such as `fn () => $this->author`. See
+  [receiver-types § The body fallback carries no FQCN channel](./components/receiver-types.md#the-body-fallback-carries-no-fqcn-channel).
+- **A docblock shape degrades just the leaf.** An `Arrayable` whose `@return array{owner: User}` names a
+  class publishes `{ owner: unknown }`, and every sibling key keeps its real type;
+  `tests/Unit/LaravelTsPublishTest.php` pins that, alongside `Record<string, User>` degrading whole
+  because it has no shape to recurse into. A docblock **intersection** behaves the same way:
+  `Collection<int, User&object{pivot: TaskAssignment}>` publishes `(User & { pivot: unknown })[]`, so the
+  intersection's own member keeps its import while the class named inside the `object{...}` part does not.
+
+Declare the property with an import-aware `#[TsCasts]` when you need the token, or give the method a native
+return type that names the class directly.
+
+### An index signature its body types can fail to compile beside a key it cannot take in
+
+A docblock fill or same-pattern union of an interpolated key's index signature is kept only where it cannot
+conflict with another published key (see
+[resource-ast-analyzer § Index signatures are reconciled with the keys beside them](./components/resource-ast-analyzer.md#index-signatures-are-reconciled-with-the-keys-beside-them)).
+Where it could, each entry goes back to the value its body gives it, `unknown | undefined` where only the
+docblock typed it, so a union publishes its last same-pattern entry's body value. An interface with an
+extends clause puts back every signature this way, since the package cannot see the keys it inherits. That
+includes a `ts_extends.resources` or `ts_extends.broadcast_events` config entry, which gives the clause to
+every resource or event. A value the body typed stands, so the interface can still fail `tsc` when:
+
+- the signature, or a key its pattern matches, cannot join the union: its type has a top-level `unknown`
+  arm, it holds a token `TsTypeString::shapeValueHasUnimportableToken()` rejects other than a string or
+  number literal (a class name, a global name such as `Blob`, a template literal type), it holds a string
+  literal with a backslash, or it is not a cast key and carries an FQCN channel.
+  ``[key: `${string}_tag`]: string | undefined`` beside `main_tag: PostResource` fails TS2411;
+- another signature's pattern may overlap its own, which declines the union even for a key that could
+  join: ``[key: `${string}_tag`]: string | undefined`` beside ``[key: `a${string}`]: boolean | undefined``
+  and `price_tag: number` fails TS2411;
+- its pattern is contained in another signature's, and its value is not one the other accepts:
+  ``[key: `${string}_a_tag`]: number | undefined`` beside ``[key: `${string}_tag`]: string | undefined``
+  fails TS2413;
+- the interface has an extends clause, so no key joins: ``[key: `${string}_note`]: string | undefined``
+  beside the resource's own `count_note: number` fails TS2411, as does a key of the extended interface its
+  value does not accept.
+
+Where the union is declined, a second same-pattern signature still replaces the first. Type the key, or
+rename it out of the pattern.
+
+### `Model::toArray()` on a receiver declines, deliberately
+
+`ReceiverMethodReturnResolver::resolveOn()` answers nothing for `toArray()` on an Eloquent model receiver,
+so `$this->author->toArray()` in value position gets no shape from this path. It declines **even when the
+model declares a precise shape of its own**, which `tests/Unit/Ast/Handlers/ReceiverHandlersTest.php` pins.
+`Model::toArray()` merges `attributesToArray()` with `relationsToArray()`, and which relations happen to be
+loaded is runtime state that no declaration describes, so a shape read off the signature would claim more
+than the code guarantees. See
+[receiver-types § The order for one class](./components/receiver-types.md#the-order-for-one-class).
+
+What a value-position call publishes *instead* is not pinned by anything. Every `$model->toArray()` in the
+corpus sits in spread position, so whatever the remaining handlers make of the declined call is untested —
+expect something vague rather than a shape, and do not rely on the exact token.
+
+The spread form is the supported one, and it is typed: `[...$user->toArray(), 'flag' => true]` publishes
+`Omit<User, 'flag'> & { flag: boolean }`. Reach for that, or name the keys you want explicitly.
+
+### A model spread inside a `collect()->map()` closure names the wrong model, or none
+
+`collect($this->comments)->map(fn (Comment $c) => [...$c->toArray(), 'flag' => true])` binds `$c` to the
+pipeline's element *type*, which carries no model. `InlineArrayHandler::spreadModelToArrayFqcn()` then falls back to
+`AnalysisScope::$closureRelationModelClass`, the model an enclosing `whenLoaded()` closure or relation `map()` set.
+At the top level there is none, so the spread's columns are dropped and only `{ flag: boolean }` publishes. Inside
+`whenLoaded('author', …)` the fallback is `User`, so the element publishes as `Omit<User, 'flag'> & …` although
+it is a `Comment`. It is right only when the enclosing model happens to be the element's. A relation chain,
+`$this->comments->map(fn ($c) => [...$c->toArray(), 'flag' => true])`, binds the model and types the spread.
+
 ## Deliberate non-goals
 
 Absent on purpose. Do not "fix" these without raising it first.
@@ -365,12 +591,12 @@ Absent on purpose. Do not "fix" these without raising it first.
 
 ### Handler ordering is pinned pairwise, corpus-bounded
 
-Nine of the twenty-four handlers in the resource profile claim `MethodCall`
+Ten of the twenty-five handlers in the resource profile claim `MethodCall`
 (`src/Ast/ResourceExpressionHandlers.php`), so for a `$this->foo()` expression the dispatcher's registration
-order is what decides which one answers. Every one of the 36 unordered pairs among those nine is now run
-in both orders by `tests/Unit/Ast/MethodCallOrderingMatrixTest.php`: five pairs disagree and are held in
+order is what decides which one answers. Every one of the 45 unordered pairs among those ten is now run
+in both orders by `tests/Unit/Ast/MethodCallOrderingMatrixTest.php`: four pairs disagree and are held in
 the direction `handlers()` lists them (its `METHOD_CALL_PINNED` map, and the `MethodCall` row of the ordering table in
-[docs/components/ast-engine.md](./components/ast-engine.md#the-honest-ordering-inventory)); the other 31
+[docs/components/ast-engine.md](./components/ast-engine.md#the-honest-ordering-inventory)); the other 41
 are proven inert against that same corpus.
 
 The residual limit is the corpus, not the method: an expression shape the matrix never constructs cannot

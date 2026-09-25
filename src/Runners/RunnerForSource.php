@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Runners;
 
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Collectors\Concerns\ValidatesCollectorFiles;
 use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelMetadataCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
@@ -72,6 +74,8 @@ class RunnerForSource extends BaseRunner
         PublishedResourceRegistry::reset();
         AnalysisWarnings::reset();
         CoreCollector::flushClassMapCache();
+        resolve(AnalysisMemo::class)->forget();
+        TsTypeString::forgetQualifiedTypes();
 
         $fqcn = $this->resolveSourceToFqcn();
 

@@ -13,10 +13,10 @@
  * __toString() (their canonical ISO-ish datetime representation), so the Stringable
  * guard must not over-degrade these two.
  *
- * `user_key` is a Task 12 review follow-up (Important 4): `getKey()`'s type depends
- * on which model it's called on, unlike can()/cannot()/canAny() which are bool
- * regardless of receiver — so getKey() must NOT fire on an arbitrary receiver like
- * `$request->user()`, only on `$this->resource`. Must stay unknown.
+ * `user_key`: `getKey()`'s type depends on which model it's called on, unlike
+ * can()/cannot()/canAny() which are bool regardless of receiver. A resource's
+ * `$request` is unbound, so `$request->user()` names no model and this stays
+ * unknown rather than borrowing the Order this resource wraps.
  *
  * @see Workbench\App\Http\Resources\HelperCallResource
  */

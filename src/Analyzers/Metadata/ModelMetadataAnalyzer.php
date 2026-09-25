@@ -135,15 +135,13 @@ class ModelMetadataAnalyzer
             );
         }
 
-        $spelled = implode(' ', array_intersect_key($types, array_fill_keys($inferredKeys, true)));
+        $spelled = array_values(array_intersect_key($types, array_fill_keys($inferredKeys, true)));
         $imports = [];
 
         foreach (new AnalysisImports()->build($analysis, $namespacePath)['typeImports'] as $path => $names) {
-            // No fixture reaches this filter with a name the inferred keys never spell, so its drop
-            // direction is unexercised — a green suite is not coverage for it.
             $used = array_values(array_filter(
                 $names,
-                static fn (string $name): bool => TsTypeString::typeNameOccursIn($name, $spelled),
+                static fn (string $name): bool => TsTypeString::typeNameOccursIn($name, ...$spelled),
             ));
 
             if ($used !== []) {

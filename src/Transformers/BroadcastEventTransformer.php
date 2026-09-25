@@ -6,11 +6,13 @@ namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisImports;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ReturnLiteralReader;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -199,6 +201,20 @@ class BroadcastEventTransformer extends CoreTransformer
     protected function transformProperties(): self
     {
         $analysis = $this->runAnalysis();
+        $keys = array_column($analysis->properties, 'name');
+
+        $targets = JsEmitter::castTargets(array_keys($this->tsTypeOverrides), $keys);
+
+        $this->tsTypeOverrides = JsEmitter::retargetCasts($this->tsTypeOverrides, $targets);
+        $this->tsCastsImportPaths = JsEmitter::retargetCasts($this->tsCastsImportPaths, $targets);
+        $this->optionalOverrides = JsEmitter::retargetCasts($this->optionalOverrides, $targets);
+
+        // resolveProperties() lays each cast over its key, and an extends clause adds keys no analysis sees.
+        resolve(IndexSignatureReconciler::class)->reconcile(
+            $analysis,
+            array_intersect_key($this->tsTypeOverrides, array_flip($keys)),
+            $this->tsExtends !== [],
+        );
 
         // A #[TsCasts] override replaces the property's type outright, so the type it displaced
         // must not keep an import alive.

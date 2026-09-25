@@ -5,6 +5,12 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\BothSpellingsBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastTagSignatureBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DocShapePostEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendedTagSignatureBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RawCrCastBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SignatureCastSpellingBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
 use Workbench\App\Events\ComputedNameEvent;
 use Workbench\App\Events\DeclaredPropsEvent;
@@ -529,4 +535,60 @@ test('an uninitialized typed public property on an event is optional, a promoted
         'id' => false,     // promoted
         'note' => false,   // promoted, nullable
     ]);
+});
+
+describe('a docblock-filled index signature in a broadcastWith() payload', function () {
+    test('an extends clause puts the fill back, since its keys are unseen', function () {
+        $transformer = app(BroadcastEventTransformer::class, ['findable' => ExtendedTagSignatureBroadcastEvent::class]);
+
+        expect($transformer->properties['[key: `${string}_tag`]']['type'])->toBe('unknown | undefined');
+    });
+
+    test('a config-level ts_extends entry puts the fill back, like #[TsExtends]', function () {
+        config()->set('ts-publish.ts_extends.broadcast_events', ['HasPriceTag']);
+
+        $transformer = app(BroadcastEventTransformer::class, ['findable' => CastTagSignatureBroadcastEvent::class]);
+
+        expect($transformer->properties['[key: `${string}_tag`]']['type'])->toBe('unknown | undefined');
+    });
+
+    test('a key the event\'s #[TsCasts] retypes joins the union, and a cast on a key the payload lacks does not', function () {
+        $transformer = app(BroadcastEventTransformer::class, ['findable' => CastTagSignatureBroadcastEvent::class]);
+
+        expect($transformer->properties['[key: `${string}_tag`]']['type'])->toBe('string | number | undefined')
+            ->and($transformer->properties['main_tag']['type'])->toBe('number')
+            ->and($transformer->properties)->not->toHaveKey('absent_tag');
+    });
+});
+
+test('an event\'s #[TsCasts] key with the backslashes a single-quoted PHP string leaves retypes the escaped signature', function () {
+    $properties = app(BroadcastEventTransformer::class, ['findable' => SignatureCastSpellingBroadcastEvent::class])->properties;
+
+    expect(array_map(fn (array $property): string => $property['type'], $properties))->toBe([
+        '[key: `${string}\\\\_cast`]' => 'number',
+        'id' => 'number',
+    ]);
+});
+
+test('an event\'s cast key holding a raw CR retypes the CR LF signature', function () {
+    $properties = app(BroadcastEventTransformer::class, ['findable' => RawCrCastBroadcastEvent::class])->properties;
+
+    expect(array_map(fn (array $property): string => $property['type'], $properties))->toBe([
+        "[key: `\${string}\\r\n`]" => 'string',
+        'id' => 'number',
+    ]);
+});
+
+test('an event\'s losing spelling drops its optional flag and import with its type', function () {
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => BothSpellingsBroadcastEvent::class]);
+
+    expect($transformer->properties['[key: `${string}\\\\_e`]'])->toBe(['type' => 'string', 'optional' => false])
+        ->and($transformer->properties['[key: `${string}\\\\_f`]'])->toBe(['type' => 'Money', 'optional' => false])
+        ->and($transformer->typeImports)->not->toHaveKey('@/types/money');
+});
+
+it('never ships a class name broadcastWith()\'s own `@return` names without importing it', function () {
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => DocShapePostEvent::class]);
+
+    expect($transformer->properties['user']['type'])->toBe('unknown');
 });

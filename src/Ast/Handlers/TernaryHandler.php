@@ -5,8 +5,13 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\NarrowsInstanceofSubjects;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsInstanceofChains;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Ternary;
@@ -16,10 +21,18 @@ use PhpParser\Node\Expr\Ternary;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
+ * @phpstan-type TernaryArms = array{Expr, Expr}
+ * @phpstan-type ArmResults = array{ValueExpressionResult, ValueExpressionResult}
+ *
  * @internal
  */
 final class TernaryHandler implements ExpressionHandler
 {
+    use CollectsLocalVarBindings;
+    use InspectsAstNodes;
+    use NarrowsInstanceofSubjects;
+    use ReadsInstanceofChains;
+
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
     {
@@ -30,7 +43,7 @@ final class TernaryHandler implements ExpressionHandler
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         if ($expr instanceof Ternary) {
-            return $this->analyzeTernary($expr, $engine);
+            return $this->analyzeTernary($expr, $scope, $engine);
         }
 
         return null;
@@ -40,16 +53,36 @@ final class TernaryHandler implements ExpressionHandler
      * Analyze a ternary or Elvis expression, unioning both branches.
      *
      * In Elvis (`$cond ?: $else`) the parser leaves `if` null, so the truthy value is `$cond` itself.
+     * An `instanceof` condition narrows its subject for the arm it proves only.
      *
      * @return ValueExpressionResult
      */
-    private function analyzeTernary(Ternary $expr, ExpressionEngine $engine): array
+    private function analyzeTernary(Ternary $expr, AnalysisScope $scope, ExpressionEngine $engine): array
     {
-        $ifExpr = $expr->if ?? $expr->cond;
+        $arms = [$expr->if ?? $expr->cond, $expr->else];
+        $proof = $expr->if === null ? null : $this->instanceofProof($expr->cond);
+        $narrowed = null;
 
-        $result = ValueResult::analyzeClosureUnion([$ifExpr, $expr->else], $engine);
+        if ($proof !== null) {
+            $proven = $arms[$proof[2]];
+            $narrowed = $this->resolveNarrowed($proof[0], $proof[1], $proven, $scope, fn (): array => $engine->resolve($proven));
+        }
 
-        return $this->recordMixedArmShapes($result, $ifExpr, $expr->else, $engine);
+        if ($proof === null || $narrowed === null) {
+            return $this->recordMixedArmShapes(ValueResult::analyzeClosureUnion($arms, $engine, $scope), $arms, $engine);
+        }
+
+        $other = $engine->resolve($arms[1 - $proof[2]]);
+        $results = $proof[2] === 0 ? [$narrowed, $other] : [$other, $narrowed];
+
+        // This path resolves its arms itself, so it records its own drops: analyzeClosureUnion() never sees them.
+        foreach ($results as $index => $armResult) {
+            if ($armResult['type'] === 'unknown') {
+                DroppedUnionArms::record($arms[$index], $scope, 'ternary-narrowed');
+            }
+        }
+
+        return $this->recordMixedArmShapes(ValueResult::unionResults($results), $arms, $engine, $results);
     }
 
     /**
@@ -58,16 +91,19 @@ final class TernaryHandler implements ExpressionHandler
      * scalar one — re-resolving each arm here, while still distinct, is the only place that survives.
      *
      * @param  ValueExpressionResult  $result
+     * @param  TernaryArms  $arms
+     * @param  ArmResults|null  $armResults  both arms, under any narrowing
      * @return ValueExpressionResult
      */
-    private function recordMixedArmShapes(array $result, Expr $ifExpr, Expr $elseExpr, ExpressionEngine $engine): array
+    private function recordMixedArmShapes(array $result, array $arms, ExpressionEngine $engine, ?array $armResults = null): array
     {
         if (! isset($result['enumFqcn'], $result['directEnumFqcn']) || $result['enumFqcn'] !== $result['directEnumFqcn']) {
             return $result;
         }
 
-        $ifResult = $engine->resolve($ifExpr);
-        $elseResult = $engine->resolve($elseExpr);
+        // Reuse the narrowed resolution when there was one: resolving again here would drop the narrowing
+        // and let two resolutions of the same arm disagree by construction.
+        [$ifResult, $elseResult] = $armResults ?? [$engine->resolve($arms[0]), $engine->resolve($arms[1])];
 
         $wrapResult = $this->unambiguousArm($ifResult, $elseResult, 'enumFqcn');
         $directResult = $this->unambiguousArm($ifResult, $elseResult, 'directEnumFqcn');

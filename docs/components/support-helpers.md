@@ -26,6 +26,7 @@ Ask what the helper's **input domain** is, not what happens to call it:
 | **"What does this go into a generated file as?"** — a PHP value or docblock text turned into the literal, key, identifier or comment a `.ts` file carries | `JsEmitter` |
 | **"What is true of this TypeScript type string, or what does it become?"** — type string in, answer or rewritten type string out | `TsTypeString` |
 | **"What is this called, and where does it live?"** — an FQCN, a file path or an array key resolved to a name, a directory, or another path | `TsNaming` |
+| **"Does this class actually reach JSON as a string?"** — a PHP class, or a method's declared return, resolved to whether `json_encode()` really emits a string for it | `StringSerialization` |
 | **"What *is* this, as a type?"** — a PHP type, a `ReflectionX` or a docblock resolved to a `TypeScriptTypeInfo` | stays on `LaravelTsPublish` |
 
 Read the question, not the signature: two of the clusters have members whose return type alone would
@@ -44,24 +45,53 @@ the second one is a helper.
 
 ### `JsEmitter`
 
-PHP values and docblock text in, JavaScript source out: `validJsObjectKey()`, `safeJsIdentifier()`,
-`toJsLiteral()`, `enumScalar()`, `routeArgsToJs()`, `sanitizeJsDoc()`, `formatJsDoc()`,
-`parseDocBlockDescription()`, plus the private `RESERVED_JS_IDENTIFIERS` list `safeJsIdentifier()`
-reads. No state, no dependencies, no config.
+PHP values and docblock text in, JavaScript source out: `validJsObjectKey()`, `isIndexSignatureKey()`,
+`castTargets()`, `retargetCasts()`, `castsByKey()`, `safeJsIdentifier()`, `toJsLiteral()`, `enumScalar()`,
+`routeArgsToJs()`, `sanitizeJsDoc()`, `formatJsDoc()`, `parseDocBlockDescription()`, plus the private
+`RESERVED_JS_IDENTIFIERS` list `safeJsIdentifier()` reads and the private `castSpellings()` and `readEscapes()`
+that `castTargets()` reads a signature's name through. No state, no dependencies, no config.
 
 `validJsObjectKey()`'s `$allowIndexSignature` flag is the one member with a trap in it: a generated
 `[key: number]` / `[key: string]` is legal only in a type position, so every value-position caller must
 leave the default alone. See [the arbiter](#the-arbiter-is-the-generated-tree) for what happened when a
 delegation dropped it.
 
+`isIndexSignatureKey()` is the one home for "this key is a generated index signature, not a property
+name": `validJsObjectKey()` asks it, and so do `ResourceAstAnalyzer`, `ReturnShapeRefiner` and
+`IndexSignatureReconciler`, so the regex has one spelling. Like `isUnknownOnly()` below, it has no
+delegation on `LaravelTsPublish`.
+
+`castTargets()` is the one home for "which published key does this `#[TsCasts]` key retype". A key equal to
+a published key keeps it. Failing that, one equal to another spelling of a signature's name takes that name:
+the name with each `\\` read as `\` (a single-quoted paste), each `\r` as a raw CR (a double-quoted one), or
+both, read escape by escape. The exact spelling, else the first, wins where two name one signature, and the
+loser's target is null. A spelling two signatures share matches neither. `retargetCasts()` applies one decision to
+every map parallel to the source it was made for, so a loser's optional flag and import go with its type, and
+`castsByKey()` does both for a map whose entries are whole. `ResourceAstAnalyzer::applyTsCastsFromMethod()`,
+`ResourceTransformer`, `BroadcastEventTransformer` and both Inertia analyzers call them before any cast lookup.
+None has a delegation.
+
 ### `TsTypeString`
 
 Structural questions about a TypeScript type string, and rewrites of one: `extractImportableTypes()`,
 `shapeValueHasUnimportableToken()`, `aliasPropertyType()`, `qualifyGlobalType()`,
-`splitTopLevelUnion()`, `hoistNull()`, `typeNameOccursIn()`, `substituteEnumType()`,
-`rewriteAsEnumToType()`, `isVagueTsType()`, plus the public `TS_PRIMITIVES` list several of them filter
-against. No state. Its only outward dependency is `TsTypeShape::splitTopLevel()`, which
-`splitTopLevelUnion()` wraps.
+`forgetQualifiedTypes()`, `splitTopLevelUnion()`, `hoistNull()`, `orUndefined()`, `typeNameOccursIn()`,
+`substituteEnumType()`, `rewriteAsEnumToType()`, `isUnknownOnly()`, `isVagueTsType()`, plus the public
+`TS_PRIMITIVES` list several of them filter against. It holds two pieces of state. A static note records which
+identifier-character pattern `typeNameOccursIn()` uses, probed once per process because a PCRE2 before 10.40 has
+no `\p{ID_Continue}`. And `qualifyGlobalType()` memoizes each answer for the run, per skip namespace and type
+string, in `$qualifiedTypes`: the globals template calls it once per property, and most calls repeat a type
+already qualified. The memo holds the namespace and alias maps its answers were made under and starts over when a
+call brings other maps, and `Runner::run()` and `RunnerForSource::run()` drop it through `forgetQualifiedTypes()`.
+The work itself is the protected `qualifyGlobalTypeOnce()`, which leaves each quoted string literal as written, so
+`'Post'` stays a literal, and hands the text around them to `qualifyNames()`. Its only outward dependency is
+`TsTypeShape::splitTopLevel()`, which `splitTopLevelUnion()` wraps.
+
+`isUnknownOnly()` is the one home for "this answer is `unknown` once its `null` arms are removed" —
+the test `MethodChainHandler` and `PropertyChainHandler` both decline on. It has no delegation on
+`LaravelTsPublish`, because that surface is the frozen pre-extraction one, not a place new helpers
+join. `orUndefined()`, the one spelling of an index signature's ` | undefined` suffix, has none either, and
+neither has `forgetQualifiedTypes()`.
 
 **The retained type engine calls into it, and that direction is one-way.** Six sites across five engine
 methods — `toTsType()`, `arrayableShapeType()`, `publicPropertyShapeType()`,
@@ -79,10 +109,28 @@ PHP names in, TypeScript names and import paths out: `resourceTypeName()`, `name
 `keyCase()`, plus the `protected importSortGroup()` that classifies a path into `sortImportPaths()`'s
 three groups — an implementation detail with no delegation and no facade surface.
 
-It holds the only state of the three: `$resourceTypeNames`, a per-instance FQCN → published interface
-name cache that `resourceTypeName()` fills, since resolving a name means reading a `#[TsResource]`
-attribute off the class. That cache is the entire reason the container binding below is not pure
-decoration.
+It holds per-instance state: `$resourceTypeNames`, an FQCN → published interface name cache that
+`resourceTypeName()` fills, since resolving a name means reading a `#[TsResource]` attribute off the class.
+That cache, and `TsTypeString`'s `qualifyGlobalType()` memo, are the reason the container bindings below are
+not pure decoration.
+
+### `StringSerialization`
+
+The fourth `src/Support/` class, and the one exception to the shape above: it has **no facade and no
+delegation**, because it is not part of the frozen pre-extraction surface — it was written inside
+`src/Ast/` and moved here once the rule in this file was applied to it. Callers name the class directly.
+
+PHP classes and method return declarations in, one boolean out: `isFalseString()` and
+`methodReturnsFalseString()`. No state, no config. It answers the question `toTsType()` cannot ask
+itself — `toTsType()` maps `DateTime` and any `__toString()` class to `string`, but `json_encode()`
+ignores `__toString()` and writes a plain `DateTime` as a `{date, timezone_type, timezone}` object, so a
+receiver rule that trusted the `string` would publish a type the payload never carries. Its callers
+decline instead; see [Receiver types](./receiver-types.md#following-a-methods-return-type).
+
+It lives here rather than in `src/Ast/` because it never touches a `PhpParser` node — it asks a pure
+type-engine question, which is this file's test, not the layer its callers happen to sit in. It keeps
+its `@internal` tag deliberately: leaving `src/Ast/` also leaves `InternalBoundaryTest`'s per-directory
+sweep, and nothing else would reinstate the tag.
 
 ## What stayed on `LaravelTsPublish`, and why the docblock engine could not follow
 
@@ -196,7 +244,8 @@ identical `resourceTypeName()` cache profile (35,567 hits, 5,437 misses).
 
 What the bindings do change is `app(TsNaming::class)` and constructor injection, neither of which
 consults `Facade::$resolvedInstance`. Unbound, each such resolution hands back a fresh `TsNaming` whose
-`$resourceTypeNames` cache starts empty and never warms. They also matter for a long-lived worker,
+`$resourceTypeNames` cache starts empty and never warms, and a fresh `TsTypeString` whose `qualifyGlobalType()`
+memo does the same. They also matter for a long-lived worker,
 where `Facade::clearResolvedInstances()` runs between requests while `$app->instances` survives — the
 facade's memo is dropped and the container's is not. So they are three lines of currently-inert
 insurance, and the delegation test pins each one (`app(X::class)` identical to `app(X::class)`) so that

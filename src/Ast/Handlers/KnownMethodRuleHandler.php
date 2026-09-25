@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
-use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Analyzers\FormRequest\FormRequestRulesAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AuthUserResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\AppliesKnownMethodRules;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
@@ -19,20 +19,17 @@ use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Config;
-use JsonSerializable;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Scalar\String_;
 use ReflectionClass;
-use ReflectionIntersectionType;
 use ReflectionMethod;
-use ReflectionNamedType;
-use ReflectionUnionType;
 
 /**
  * The dispatch floor: Laravel-convention method-name rules for method calls no earlier handler
@@ -68,7 +65,7 @@ final class KnownMethodRuleHandler implements ExpressionHandler
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        // Only MethodCall reaches here — every NullsafeMethodCall already returned via MethodChainHandler.
+        // Claims MethodCall only: a NullsafeMethodCall every earlier claimant declines floors at unknown.
         if ($expr instanceof MethodCall) {
             $request = $this->requestMethodRule($expr, $scope);
 
@@ -210,40 +207,11 @@ final class KnownMethodRuleHandler implements ExpressionHandler
     /**
      * Whether every class the declared return names reaches a page prop as the type reflection derived.
      *
-     * `toTsType()` reads `__toString` as `string`, but `json_encode` ignores it and emits an object:
-     * `allFiles()`'s UploadedFile and `interval()`'s CarbonInterval are not the strings it promises.
+     * `allFiles()`'s UploadedFile and `interval()`'s CarbonInterval are not the strings `toTsType()` promises;
+     * see StringSerialization.
      */
     private function serializesAsReflected(ReflectionMethod $method): bool
     {
-        $returnType = $method->getReturnType();
-        $docComment = $method->getDocComment();
-
-        $declared = $docComment === false ? '' : (string) LaravelTsPublish::extractReturnTypeFromDocblock($docComment);
-
-        $arms = match (true) {
-            $returnType instanceof ReflectionNamedType => [$returnType],
-            $returnType instanceof ReflectionUnionType,
-            $returnType instanceof ReflectionIntersectionType => $returnType->getTypes(),
-            default => [],
-        };
-
-        foreach ($arms as $arm) {
-            // A DNF arm is an intersection nested inside a union: flatten one level to reach its names.
-            foreach ($arm instanceof ReflectionIntersectionType ? $arm->getTypes() : [$arm] as $named) {
-                if ($named instanceof ReflectionNamedType && ! $named->isBuiltin()) {
-                    $declared .= '|'.$named->getName();
-                }
-            }
-        }
-
-        // `class_exists` mirrors step 5b's own gate, so an interface — which it never launders — is skipped.
-        // Request writes every class in its declarations fully qualified, so no use map is needed here.
-        foreach (preg_split('/[^\w\\\\]+/', $declared) ?: [] as $token) {
-            if (str_contains($token, '\\') && class_exists($token) && ! is_a($token, JsonSerializable::class, true)) {
-                return false;
-            }
-        }
-
-        return true;
+        return ! StringSerialization::methodReturnsFalseString($method->class, $method->getName());
     }
 }

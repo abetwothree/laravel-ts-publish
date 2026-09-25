@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ModelClassResolver;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
@@ -80,8 +81,14 @@ class ResourceTransformer extends CoreTransformer
     /** @var ImportMapType custom import path => list of type names */
     protected array $customImports = [];
 
+    /** @var ImportMapType custom imports the AST analysis carried, kept apart until overrides have replaced types */
+    protected array $analysisCustomImports = [];
+
     /** @var array<string, bool> property name => optional override */
     protected array $optionalOverrides = [];
+
+    /** @var array<string, string> property name => import path from the resource's #[TsCasts] */
+    protected array $tsCastsImportPaths = [];
 
     /** @var array<class-string, string> FQCN => resource interface name */
     protected array $resourceFqcnMap = [];
@@ -157,6 +164,7 @@ class ResourceTransformer extends CoreTransformer
             ->runAstAnalysis()
             ->applyOverrides()
             ->pruneOverriddenEnumImports()
+            ->pruneOverriddenAnalysisImports()
             ->resolveMultiClassAccessorFqcns()
             ->resolveMultiEnumAccessorFqcns()
             ->resolveImportConflicts()
@@ -266,15 +274,7 @@ class ResourceTransformer extends CoreTransformer
             $this->tsTypeOverrides[$property] = $type;
         }
 
-        foreach ($result['importPaths'] as $property => $importPath) {
-            $type = $result['overrides'][$property] ?? null;
-
-            if ($type !== null) {
-                foreach (TsTypeString::extractImportableTypes($type) as $importName) {
-                    $this->customImports[$importPath][] = $importName;
-                }
-            }
-        }
+        $this->tsCastsImportPaths = $result['importPaths'];
 
         foreach ($result['optionalOverrides'] as $property => $optional) {
             $this->optionalOverrides[$property] = $optional;
@@ -290,6 +290,12 @@ class ResourceTransformer extends CoreTransformer
     {
         $analyzer = new ResourceAstAnalyzer($this->reflectionResource, $this->modelClass);
         $analysis = $analyzer->analyze();
+
+        $this->castsOverAnalysisKeys(array_column($analysis->properties, 'name'));
+
+        // applyOverrides() lays the casts over the analysis, and an extends clause adds keys no analysis sees.
+        resolve(IndexSignatureReconciler::class)
+            ->reconcile($analysis, $this->castKeys($analysis), $this->tsExtends !== []);
 
         // ResourceCollection subclasses with $wrap = null emit an alias, not an interface.
         if ($analysis->flatTypeAlias !== null) {
@@ -383,11 +389,60 @@ class ResourceTransformer extends CoreTransformer
             $this->multiEnumResourceProperties[$propName] = $fqcns;
         }
 
-        foreach ($analysis->customImports as $importPath => $types) {
-            $this->customImports[$importPath] = [...($this->customImports[$importPath] ?? []), ...$types];
-        }
+        $this->analysisCustomImports = $analysis->customImports;
 
         return $this;
+    }
+
+    /**
+     * The keys applyOverrides() will publish over the analysis: every resource #[TsCasts] key, and each model one
+     * modelCastsOver() lays over the analysis's keys.
+     *
+     * @return array<string, string>
+     */
+    protected function castKeys(MethodAnalysis $analysis): array
+    {
+        return $this->tsTypeOverrides + $this->modelCastsOver(array_flip(array_column($analysis->properties, 'name')));
+    }
+
+    /**
+     * Re-key each #[TsCasts] source to the analysis's spelling of the keys it retypes, then import what the resource's
+     * own surviving casts name. One decision per source moves its type, optional and import entries together.
+     *
+     * @param  list<string>  $keys
+     */
+    protected function castsOverAnalysisKeys(array $keys): void
+    {
+        $resource = JsEmitter::castTargets(array_keys($this->tsTypeOverrides), $keys);
+        $this->tsTypeOverrides = JsEmitter::retargetCasts($this->tsTypeOverrides, $resource);
+        $this->tsCastsImportPaths = JsEmitter::retargetCasts($this->tsCastsImportPaths, $resource);
+        $this->optionalOverrides = JsEmitter::retargetCasts($this->optionalOverrides, $resource);
+
+        $model = JsEmitter::castTargets(array_keys($this->modelTsCastsOverrides), $keys);
+        $this->modelTsCastsOverrides = JsEmitter::retargetCasts($this->modelTsCastsOverrides, $model);
+        $this->modelTsCastsImportPaths = JsEmitter::retargetCasts($this->modelTsCastsImportPaths, $model);
+        $this->modelTsCastsOptionalOverrides = JsEmitter::retargetCasts($this->modelTsCastsOptionalOverrides, $model);
+
+        foreach ($this->tsCastsImportPaths as $property => $importPath) {
+            foreach (TsTypeString::extractImportableTypes($this->tsTypeOverrides[$property] ?? '') as $importName) {
+                $this->customImports[$importPath][] = $importName;
+            }
+        }
+    }
+
+    /**
+     * The model #[TsCasts] types that apply to the given keys: each one the model casts and the resource does not.
+     *
+     * @param  array<array-key, mixed>  $keys  the analysis's keys, as array keys
+     * @return array<string, string>
+     */
+    protected function modelCastsOver(array $keys): array
+    {
+        return array_filter(
+            $this->modelTsCastsOverrides,
+            fn (int|string $property): bool => isset($keys[$property]) && ! isset($this->tsTypeOverrides[$property]),
+            ARRAY_FILTER_USE_KEY,
+        );
     }
 
     /**
@@ -395,19 +450,17 @@ class ResourceTransformer extends CoreTransformer
      */
     protected function applyOverrides(): self
     {
-        foreach ($this->modelTsCastsOverrides as $property => $type) {
-            if (isset($this->properties[$property]) && ! isset($this->tsTypeOverrides[$property])) {
-                $this->properties[$property]['type'] = $type;
+        foreach ($this->modelCastsOver($this->properties) as $property => $type) {
+            $this->properties[$property] = [...$this->properties[$property], 'type' => $type];
 
-                if (isset($this->modelTsCastsImportPaths[$property])) {
-                    foreach (TsTypeString::extractImportableTypes($type) as $importName) {
-                        $this->customImports[$this->modelTsCastsImportPaths[$property]][] = $importName;
-                    }
+            if (isset($this->modelTsCastsImportPaths[$property])) {
+                foreach (TsTypeString::extractImportableTypes($type) as $importName) {
+                    $this->customImports[$this->modelTsCastsImportPaths[$property]][] = $importName;
                 }
+            }
 
-                if (isset($this->modelTsCastsOptionalOverrides[$property])) {
-                    $this->properties[$property]['optional'] = $this->modelTsCastsOptionalOverrides[$property];
-                }
+            if (isset($this->modelTsCastsOptionalOverrides[$property])) {
+                $this->properties[$property]['optional'] = $this->modelTsCastsOptionalOverrides[$property];
             }
         }
 
@@ -433,17 +486,45 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * Drops enum-map entries whose bare type no longer appears in any property after #[TsCasts] overrides.
+     * Drops enum-map entries whose bare type no property or extends clause names any more after #[TsCasts] overrides.
      *
      * @return $this
      */
     protected function pruneOverriddenEnumImports(): self
     {
-        $rendered = implode("\n", array_column($this->properties, 'type'));
+        $types = [...array_column($this->properties, 'type'), ...$this->tsExtends];
 
         foreach ($this->enumFqcnMap as $fqcn => $typeName) {
-            if (! TsTypeString::typeNameOccursIn($typeName, $rendered)) {
+            if (! TsTypeString::typeNameOccursIn($typeName, ...$types)) {
                 unset($this->enumFqcnMap[$fqcn]);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * Drops the model and #[TsType] imports the analysis carried for a name that neither a property type nor an extends
+     * clause still spells after #[TsCasts] overrides, which would otherwise be emitted as an unused import.
+     *
+     * @return $this
+     */
+    protected function pruneOverriddenAnalysisImports(): self
+    {
+        // An extends clause names a type as surely as a property does, and can rely on the same import.
+        $types = [...array_column($this->properties, 'type'), ...$this->tsExtends];
+
+        foreach ($this->modelFqcnMap as $fqcn => $typeName) {
+            if (! TsTypeString::typeNameOccursIn($typeName, ...$types)) {
+                unset($this->modelFqcnMap[$fqcn]);
+            }
+        }
+
+        foreach ($this->analysisCustomImports as $importPath => $typeNames) {
+            foreach ($typeNames as $typeName) {
+                if (TsTypeString::typeNameOccursIn($typeName, ...$types)) {
+                    $this->customImports[$importPath][] = $typeName;
+                }
             }
         }
 
@@ -661,7 +742,8 @@ class ResourceTransformer extends CoreTransformer
                 continue;
             }
 
-            $tsInfo = $resolver->resolveAttribute($this->modelClass, $propName);
+            // PHP stores a numeric-string key such as '6' as an int.
+            $tsInfo = $resolver->resolveAttribute($this->modelClass, (string) $propName);
 
             if (count($tsInfo['enumFqcns']) < 2) {
                 continue;
@@ -683,7 +765,7 @@ class ResourceTransformer extends CoreTransformer
 
     /**
      * Register both class FQCNs of accessors typed Attribute<ClassA|ClassB, never> so they can be aliased,
-     * and the #[TsType(import:)] paths of model attributes, which no analysis path carries into a resource.
+     * and the #[TsType(import:)] paths of the model attribute a property is named after, while its type uses them.
      */
     protected function resolveMultiClassAccessorFqcns(): self
     {
@@ -695,23 +777,34 @@ class ResourceTransformer extends CoreTransformer
         $modelClass = $this->modelClass;
 
         foreach (array_keys($this->properties) as $propName) {
+            // PHP stores a numeric-string key such as '6' as an int.
+            $tsInfo = $resolver->resolveAttribute($modelClass, (string) $propName);
+
+            // An only()/except() filter keeps a key's single model FQCN but drops its #[TsType] imports, so they are
+            // registered before the skip below.
+            $this->registerModelAttributeCustomImports((string) $propName, $tsInfo['customImports']);
+
             // Skip when inline analysis already owns this property's FQCNs — letting both maps populate here
             // would double the merged queue and break its prefix alignment with real occurrences.
             if (isset($this->propertyModelFqcns[$propName]) || isset($this->propertyInlineModelFqcns[$propName])) {
                 continue;
             }
 
-            $tsInfo = $resolver->resolveAttribute($modelClass, $propName);
+            // The key may hold something else under the accessor's name, and an unused import is a tsc error.
+            $type = $this->properties[$propName]['type'];
+            $named = array_filter(
+                $tsInfo['classFqcns'],
+                fn (int $i): bool => TsTypeString::typeNameOccursIn($tsInfo['classes'][$i], $type),
+                ARRAY_FILTER_USE_KEY,
+            );
 
-            $this->registerModelAttributeCustomImports($propName, $tsInfo['customImports']);
-
-            if ($tsInfo['classFqcns'] === []) {
+            if ($named === []) {
                 continue;
             }
 
-            $this->propertyModelFqcnsList[$propName] = $tsInfo['classFqcns'];
+            $this->propertyModelFqcnsList[$propName] = array_values($named);
 
-            foreach ($tsInfo['classFqcns'] as $i => $fqcn) {
+            foreach ($named as $i => $fqcn) {
                 /** @var class-string $fqcn */
                 if (! isset($this->modelFqcnMap[$fqcn])) {
                     $this->modelFqcnMap[$fqcn] = $tsInfo['classes'][$i]; // @codeCoverageIgnore
@@ -723,7 +816,8 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * Import a model attribute's #[TsType(import:)] names, but only those the emitted property still uses.
+     * Import a model attribute's #[TsType(import:)] names, but only those the emitted property or an extends clause
+     * still uses.
      *
      * A resource may override the model's type, and an unused import is a tsc error under noUnusedLocals.
      *
@@ -733,7 +827,9 @@ class ResourceTransformer extends CoreTransformer
     {
         foreach ($imports as $path => $names) {
             foreach ($names as $name) {
-                if (str_contains($this->properties[$propName]['type'] ?? '', $name)) {
+                $type = $this->properties[$propName]['type'] ?? '';
+
+                if (TsTypeString::typeNameOccursIn($name, $type, ...$this->tsExtends)) {
                     $this->customImports[$path][] = $name;
                 }
             }

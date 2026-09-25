@@ -1,1 +1,3 @@
-See AGENTS.md
+# Guidelines
+
+See [AGENTS.md](AGENTS.md)

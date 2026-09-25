@@ -4,15 +4,17 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
-use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\CallMatcher;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\AnalyzesPluckCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\AppliesKnownMethodRules;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
@@ -20,7 +22,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\SubjectMethodTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
-use Carbon\Carbon as BaseCarbon;
+use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
@@ -35,7 +37,6 @@ use PhpParser\Node\Identifier;
 use PhpParser\Node\Scalar\Int_;
 use ReflectionClass;
 use ReflectionMethod;
-use ReflectionNamedType;
 
 /**
  * Non-nullsafe method calls on `$this`: collection chains rooted at a many-relation, calls on a
@@ -49,10 +50,12 @@ final class RelationCollectionChainHandler implements ExpressionHandler
 {
     use AnalyzesPluckCalls;
     use AppliesKnownMethodRules;
+    use FiltersAttributeKeys;
     use InspectsAstNodes;
     use InspectsResourceSubject;
     use ResolvesModelRelationTypes;
     use ResolvesRelatedModelTypes;
+    use SpellsKeyedCollections;
 
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
@@ -63,6 +66,12 @@ final class RelationCollectionChainHandler implements ExpressionHandler
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
+        // On a model-backed scope a filter is left to RelationFilterHandler or the receiver rules, even where neither
+        // answers: reflection reads except()'s `@return array` as a list, and a many-relation keeps whole models.
+        if ($expr instanceof MethodCall && $scope->modelClass !== null && $this->callsAttributeFilter($expr)) {
+            return null;
+        }
+
         // Collection chains rooted at `$this->{manyRelation}` (e.g. `->take(5)->map(...)->values()`).
         // Must precede the `$this->anyProp->method()` branch below: a 1-deep `$this->items->count()`
         // matches both, and this returns null for it so knownMethodRule()'s count()/exists() rule wins.
@@ -88,7 +97,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
                 $info = $this->analyzeRelatedModelMethodCall($expr->name->toString(), $scope);
             }
 
-            return $info;
+            return $info['type'] === 'unknown' ? null : $info;
         }
 
         // Generic `$this->method()` — reflect the declared return type; the helper guards above ran first.
@@ -116,7 +125,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
         $identityOps = [
             'take', 'skip', 'filter', 'reject', 'values', 'unique',
             'sortBy', 'sortByDesc', 'slice', 'reverse', 'where', 'whereNotNull',
-            'load', 'loadMissing',
+            'load', 'loadMissing', 'all',
         ];
 
         // Walk down the chain collecting op names until we reach $this->prop.
@@ -168,7 +177,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
                 $sequentialKeys = match ($op['name']) {
                     'values' => true,
                     'take' => $sequentialKeys && $this->isFrontAnchoredTake($op['node']),
-                    'load', 'loadMissing' => $sequentialKeys,
+                    'load', 'loadMissing', 'all' => $sequentialKeys,
                     default => false,
                 };
 
@@ -187,6 +196,18 @@ final class RelationCollectionChainHandler implements ExpressionHandler
                 $sequentialKeys = $this->collectionArguments($op['node'], 'pluck')->named('key') === null;
 
                 continue;
+            }
+
+            // concat() is identity only when it appends the very same collection type; a different
+            // element type makes a genuinely different collection, so that declines instead.
+            if ($op['name'] === 'concat') {
+                $argument = $this->collectionArguments($op['node'], 'concat')->named('source')?->value;
+
+                if ($argument !== null && $engine->resolve($argument)['type'] === $relationInfo['type']) {
+                    continue;
+                }
+
+                return null;
             }
 
             // Unsupported op, including a 2nd map()/pluck() or map()+pluck() combined.
@@ -252,22 +273,29 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             return null;
         }
 
-        $previousContext = $scope->closureRelationModelClass;
-        $previousVarModelBindings = $scope->varModelBindings;
-        $scope->closureRelationModelClass = $elementModel;
-
-        if ($mapArg->params !== []
-            && $mapArg->params[0]->var instanceof Variable
-            && is_string($mapArg->params[0]->var->name)
-        ) {
-            $scope->varModelBindings[$mapArg->params[0]->var->name] = $elementModel;
+        // map() passes ($value, $key), so a variadic first param collects both and never holds one element.
+        if ($mapArg->params !== [] && $mapArg->params[0]->variadic) {
+            return null;
         }
 
+        $previousContext = $scope->closureRelationModelClass;
+        $previousNameBindings = $scope->nameBindings();
+
         try {
+            $scope->closureRelationModelClass = $elementModel;
+            $scope->claimParameters($mapArg);
+
+            if ($mapArg->params !== []
+                && $mapArg->params[0]->var instanceof Variable
+                && is_string($mapArg->params[0]->var->name)
+            ) {
+                $scope->varModelBindings[$mapArg->params[0]->var->name] = $elementModel;
+            }
+
             $bodyResult = $engine->resolve($mapArg);
         } finally {
             $scope->closureRelationModelClass = $previousContext;
-            $scope->varModelBindings = $previousVarModelBindings;
+            $scope->restoreNameBindings($previousNameBindings);
         }
 
         if ($bodyResult['type'] === 'unknown') {
@@ -337,7 +365,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
                     ? CarbonImmutable::class
                     : Carbon::class;
 
-                if (! $this->carbonMethodReturnsUnimportableStringable($carbonClass, $methodName)) {
+                if (! StringSerialization::methodReturnsFalseString($carbonClass, $methodName)) {
                     $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes(
                         new ReflectionClass($carbonClass),
                         $methodName,
@@ -378,44 +406,11 @@ final class RelationCollectionChainHandler implements ExpressionHandler
     }
 
     /**
-     * Determine whether a Carbon(Immutable) method returns a __toString()-only class, not a genuine string.
-     *
-     * Needed since toTsType() erases Stringable classes to a bare `string` — mirrors step 5b's own condition.
-     * Carbon/CarbonImmutable are excluded — their `__toString()` IS the canonical value, unlike CarbonInterval's.
-     */
-    private function carbonMethodReturnsUnimportableStringable(string $carbonClass, string $methodName): bool
-    {
-        if (! method_exists($carbonClass, $methodName)) {
-            return false;
-        }
-
-        $returnType = new ReflectionMethod($carbonClass, $methodName)->getReturnType();
-
-        if (! $returnType instanceof ReflectionNamedType) {
-            return false;
-        }
-
-        $name = $returnType->getName();
-
-        if (in_array($name, [BaseCarbon::class, CarbonImmutable::class], true)) {
-            return false;
-        }
-
-        return class_exists($name)
-            && ! is_a($name, Model::class, true)
-            && method_exists($name, '__toString');
-    }
-
-    /**
-     * Determine whether a resolved model cast belongs to the date/datetime family, including
-     * immutable_* variants and the `:format` suffix on custom_datetime casts.
+     * Determine whether a resolved model cast belongs to the date/datetime family; see ModelAttributeResolver.
      */
     private function isDateFamilyCast(string $cast): bool
     {
-        return in_array(explode(':', $cast)[0], [
-            'date', 'datetime', 'custom_datetime', 'timestamp',
-            'immutable_date', 'immutable_datetime', 'immutable_custom_datetime',
-        ], true);
+        return resolve(ModelAttributeResolver::class)->isDateFamilyCast($cast);
     }
 
     /**
@@ -432,14 +427,6 @@ final class RelationCollectionChainHandler implements ExpressionHandler
         $args = $this->collectionArguments($call, 'take');
 
         return $args->passedCount() === 1 && ! $args->hasUnpack() && $args->named('limit')?->value instanceof Int_;
-    }
-
-    /**
-     * Add the object arm json_encode emits for a gapped or reordered collection: `X[]` → `X[] | Record<string, X>`.
-     */
-    private function keyedObjectArm(string $arrayType): string
-    {
-        return $arrayType.' | Record<string, '.substr($arrayType, 0, -2).'>';
     }
 
     /**

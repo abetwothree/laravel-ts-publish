@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\ExpressionDispatcher;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConstFetchHandler;
@@ -10,13 +11,25 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ScalarHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ArrayJsonCarbon;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ArrayJsonDate;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NullableStringJson;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\StringJsonArrayable;
+use Carbon\Carbon as CarbonCarbon;
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\HtmlString;
+use Illuminate\Support\Stringable;
+use PhpParser\ConstExprEvaluationException;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ClassConstFetch;
+use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\ClassConstantResource;
+use Workbench\App\Models\User;
 use Workbench\App\Services\ChannelDefaults;
 
 /**
@@ -83,6 +96,14 @@ function valueResolverLeafEngine(): ExpressionEngine
             throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
         }
     };
+}
+
+/**
+ * Parse one PHP expression, names resolved as the analyzer resolves them.
+ */
+function valueResolverParse(string $php): Expr
+{
+    return new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
 }
 
 /**
@@ -237,3 +258,72 @@ it('declines a plain (non-::class) constant fetch as a ::class argument', functi
 
     expect($resolver->resolveClassConstArgument($expr))->toBeNull();
 });
+
+// evaluateConstantExpression() and resolveConstantValue() — a parameter default, evaluated as PHP evaluates it
+
+it('evaluates a constant expression as PHP does, reading class constants and enum cases through the subject', function (string $php, mixed $value) {
+    expect(new ValueResolver()->evaluateConstantExpression(valueResolverParse($php), valueResolverTestScope()))->toBe($value);
+})->with([
+    'protected self:: and parent:: constants' => ['[self::SCHEMA_VERSION, parent::BASE_VERSION]', [2, 1]],
+    'self::class' => ['self::class', ClassConstantResource::class],
+    'an enum case, a spread and an operator' => ['[\\'.Status::class.'::Draft, ...[1 + 1]]', [Status::Draft, 2]],
+    'a constant holding an enum case' => ['self::DEFAULT_STATUS', Status::Draft],
+    'a ternary' => ['self::SCHEMA_VERSION > 1 ? [1] : "x"', [1]],
+    'a global constant' => ['[PHP_INT_SIZE, PHP_EOL]', [PHP_INT_SIZE, PHP_EOL]],
+    'an enum case ->name and ->value' => ['[\\'.Status::class.'::Published->name, \\'.Status::class.'::Published->value]', ['Published', 1]],
+]);
+
+it('throws for what a constant expression reads that the evaluator cannot', function (string $php) {
+    expect(fn () => new ValueResolver()->evaluateConstantExpression(valueResolverParse($php), valueResolverTestScope()))
+        ->toThrow(ConstExprEvaluationException::class);
+})->with([
+    'new' => ['new Foo'],
+    'an undefined constant' => ['[NO_SUCH_CONSTANT_ANYWHERE]'],
+    'a division by zero' => ['1 / 0'],
+    'a constant whose initializer throws' => ['\\'.ChannelDefaults::class.'::BROKEN'],
+    'a property of an enum case other than name or value' => ['\\'.Status::class.'::Draft->label'],
+    'a magic constant, whose value depends on where it appears' => ['[__TRAIT__ => 1]'],
+    'a variable' => ['$other'],
+    'a missing class constant' => ['self::MISSING'],
+]);
+
+it('types an evaluated value as a constant, declining a numeric-keyed record a resource re-indexes into a list', function (mixed $value, ?string $type) {
+    expect(new ValueResolver()->resolveConstantValue($value, valueResolverLeafEngine())['type'] ?? null)->toBe($type);
+})->with([
+    'a list' => [[1, 'a'], '(number | string)[]'],
+    'int keys that form a list' => [[0 => 'a', 1 => 'b'], 'string[]'],
+    'a record with an int key beside a string one' => [['a' => 1, 2], '{ a: number }'],
+    'int keys that do not form a list' => [[1 => 'a'], null],
+    'the same, nested in a record' => [['a' => [2 => 'x']], null],
+    'float-string keys, which is_numeric() accepts' => [['1.5' => 'x', '-0' => 'y'], null],
+    'an int key beside a float-string one' => [[1 => 'a', '1.5' => 'b'], null],
+    'a numeric key beside a word key' => [['1.5' => 1, 'a' => 2], '{ "1.5": number; a: number }'],
+]);
+
+it('types a new default as string only when the class publishes and encodes as one', function (string $class, ?string $type) {
+    $new = new New_(new Name($class));
+
+    expect(new ValueResolver()->resolveStringSerializedNew($new)['type'] ?? null)->toBe($type);
+})->with([
+    'a Carbon date' => [Carbon::class, 'string'],
+    'a DateTime, published as string but written by json_encode() as an object' => [DateTime::class, null],
+    'a model' => [User::class, null],
+    'a class that is not a string' => [stdClass::class, null],
+    'a __toString() class json_encode() writes as an object' => [HtmlString::class, null],
+    'a Stringable, which json_encode() writes as a string' => [Stringable::class, 'string'],
+    'a DateTime whose jsonSerialize() returns an array' => [ArrayJsonDate::class, null],
+    'a Carbon date whose jsonSerialize() override returns an array' => [ArrayJsonCarbon::class, null],
+    'an Arrayable whose jsonSerialize() returns a string, which json_encode() prefers' => [StringJsonArrayable::class, 'string'],
+    'a ?string jsonSerialize()' => [NullableStringJson::class, 'string | null'],
+]);
+
+// timestamps_as_date publishes a Carbon attribute as Date, but json_encode() still writes a Carbon value as a string.
+it('types a Carbon new default as string under timestamps_as_date', function (string $class) {
+    config()->set('ts-publish.timestamps_as_date', true);
+
+    expect(new ValueResolver()->resolveStringSerializedNew(new New_(new Name($class)))['type'] ?? null)->toBe('string');
+})->with([
+    'Illuminate\\Support\\Carbon' => [Carbon::class],
+    'Carbon\\Carbon' => [CarbonCarbon::class],
+    'Carbon\\CarbonImmutable' => [CarbonImmutable::class],
+]);

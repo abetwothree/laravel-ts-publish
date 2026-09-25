@@ -3,7 +3,37 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedKeysResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedModelsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastSettingsReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassCastTagSignatureResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CommentQuoteCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ContinuationCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\EscapedNameCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendedTagSignatureResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendsEnumCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendsOverriddenReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendsTsTypeOnlyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LineTerminatorCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LongerNameCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ModelCastAbsentDataSignatureResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ModelCastDataSignatureResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ModelSignatureCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MultilineQuoteCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MultilineTemplateCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NumericKeyTeamResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\QuotedCastReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RawCrCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ResourceCastOverModelCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SignatureCastSpellingResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SplitTemplateCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SpreadCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TemplateCastReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UnclosedTemplateCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UndefinedTextCastTagSignatureResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
+use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
+use Illuminate\Filesystem\Filesystem;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
@@ -15,6 +45,7 @@ use Workbench\App\Http\Resources\ApiPostResource;
 use Workbench\App\Http\Resources\BodylessOrderResource;
 use Workbench\App\Http\Resources\BodylessTeamResource;
 use Workbench\App\Http\Resources\BranchedInlineFqcnResource;
+use Workbench\App\Http\Resources\BulletinCastResource;
 use Workbench\App\Http\Resources\CategoryResource;
 use Workbench\App\Http\Resources\ChildInlineFqcnResource;
 use Workbench\App\Http\Resources\ChildSharedResource;
@@ -49,6 +80,11 @@ use Workbench\App\Http\Resources\RelationChainResource;
 use Workbench\App\Http\Resources\ResourceWrappedEnumResource;
 use Workbench\App\Http\Resources\SameBasenameModelTrioResource;
 use Workbench\App\Http\Resources\ServiceDeskResource;
+use Workbench\App\Http\Resources\StockroomExceptResource;
+use Workbench\App\Http\Resources\StockroomOnlyResource;
+use Workbench\App\Http\Resources\StockroomPickResource;
+use Workbench\App\Http\Resources\StockroomSpreadResource;
+use Workbench\App\Http\Resources\StockroomTrimResource;
 use Workbench\App\Http\Resources\TeamStatusAuditResource;
 use Workbench\App\Http\Resources\TernaryResource;
 use Workbench\App\Http\Resources\ToArrayCastsResource;
@@ -982,6 +1018,13 @@ describe('ResourceTransformer TsCasts waterfall from model', function () {
 
         // Model and resource declare the same #[TsCasts] value, so this pins precedence, not the result.
         expect($data->properties['metadata']['type'])->toBe('Record<string, unknown>');
+    });
+
+    test('a resource #[TsCasts] on a key the model also casts wins, and the model cast\'s import stays out', function () {
+        $data = (new ResourceTransformer(ResourceCastOverModelCastResource::class))->data();
+
+        expect($data->properties['metadata']['type'])->toBe('string')
+            ->and($data->typeImports)->not->toHaveKey('@js/types/product');
     });
 
     test('ProductResource inherits model TsCasts inline type for dimensions', function () {
@@ -2301,9 +2344,9 @@ describe('ResourceTransformer with EnumCollectionResource — EnumResource::coll
             ->toBe('{ week_days: AsEnum<typeof WeekDays>[] | null }');
     });
 
-    // whenHas() never analyzes its value argument for a type, but IS checked for EnumResource
-    // shape, so the wrapped first-class-callable value still gets the AsEnum rewrite — this is
-    // the real reported bug pattern: $this->whenHas('kinds', EnumResource::collection(...)).
+    // whenHas() declines to type from an EnumResource-wrapped value, so the wrapped first-class-
+    // callable value still gets the AsEnum rewrite — this is the real reported bug pattern:
+    // $this->whenHas('kinds', EnumResource::collection(...)).
     test('first-class callable inside whenHas() rewrites to AsEnum<typeof WeekDays>[] | null', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(EnumCollectionResource::class))->data();
@@ -2526,14 +2569,14 @@ describe('ResourceTransformer with morphTo-backed resources', function () {
             ->and($allTypeImports)->toContain('Post', 'Product', 'User as WorkbenchUser', 'User as CrmUser');
     });
 
-    test('a get-having accessor with an unresolvable type survives model-delegated analysis as unknown', function () {
-        // no_docblock_accessor has a real getter (unlike search_index's write-only case), just
-        // nothing to read a type from. ModelTransformer::transformMutators() keeps such a mutator
-        // as 'unknown' rather than omitting it, and buildModelDelegatedAnalysis() must agree.
+    test('a get-having accessor with no annotation survives model-delegated analysis typed by its body', function () {
+        // no_docblock_accessor has a real getter (unlike search_index's write-only case) and no
+        // annotation to read, so its body types it: `fn () => null`. ModelTransformer::transformMutators()
+        // keeps such a mutator rather than omitting it, and buildModelDelegatedAnalysis() must agree.
         $data = (new ResourceTransformer(ImageDelegatedResource::class))->data();
 
         expect($data->properties)->toHaveKey('no_docblock_accessor')
-            ->and($data->properties['no_docblock_accessor']['type'])->toBe('unknown');
+            ->and($data->properties['no_docblock_accessor']['type'])->toBe('null');
     });
 
     // A widened container names its element in both arms; aliasing only the first left the second bare.
@@ -2689,4 +2732,283 @@ describe('ResourceTransformer with SameBasenameModelTrioResource', function () {
             ->and($data->properties['control_arms']['type'])
             ->toBe('CrmUser | { c: WorkbenchUser | null } | null');
     });
+});
+
+describe('ResourceTransformer imports for a read a #[TsCasts] override replaces', function () {
+    test('drops a class only the overridden reads named and keeps one another read still names', function () {
+        $data = (new ResourceTransformer(BulletinCastResource::class))->data();
+
+        expect($data->properties['lists']['type'])->toBe('{ id: number; content: string }[][]')
+            ->and($data->properties['lead_pick']['type'])->toBe('{ id: number; name: string } | null')
+            ->and($data->properties['owner_list']['type'])->toBe('User[]')
+            ->and($data->typeImports)->toBe(['../../models' => ['User']]);
+    });
+
+    test('drops the #[TsType] import an overridden $this->accessor read carried', function () {
+        $data = (new ResourceTransformer(CastSettingsReadResource::class))->data();
+
+        expect($data->properties['settings']['type'])->toBe('Record<string, unknown> | null')
+            ->and($data->typeImports)->toBe([]);
+    });
+
+    test('keeps a class an extends clause still names after its read is overridden', function () {
+        $data = (new ResourceTransformer(ExtendsOverriddenReadResource::class))->data();
+
+        expect($data->tsExtends)->toBe(['Pick<User, "id">'])
+            ->and($data->properties['app']['type'])->toBe('number')
+            ->and(array_merge(...array_values($data->typeImports)))->toBe(['User']);
+    });
+
+    test('keeps every import a later property needs after a template literal holding a quote', function () {
+        $data = (new ResourceTransformer(TemplateCastReadResource::class))->data();
+        $names = array_merge(...array_values($data->typeImports));
+        sort($names);
+
+        expect($data->properties['label']['type'])->toBe("`\${string}'s label`")
+            ->and($names)->toBe(['MenuSettingsType', 'StatusType', 'User']);
+    });
+
+    test('adds no #[TsType] import for a type that spells only a longer name containing it', function () {
+        $data = (new ResourceTransformer(LongerNameCastResource::class))->data();
+
+        expect($data->properties['menu_config']['type'])->toBe('MenuSettingsTypeV2 | null')
+            ->and($data->typeImports)->toBe([]);
+    });
+
+    // The token match's accepted cost: a name inside a string literal keeps its import, unused, where a lexer that hid
+    // the name from the prune dropped imports the generated file needed.
+    test('keeps an import an override spells only inside a string literal', function () {
+        $data = (new ResourceTransformer(QuotedCastReadResource::class))->data();
+        $names = array_merge(...array_values($data->typeImports));
+        sort($names);
+
+        expect($data->properties['app']['type'])->toBe("'User' | 'Admin'")
+            ->and($data->properties['settings']['type'])->toBe("'MenuSettingsType' | null")
+            ->and($names)->toBe(['MenuSettingsType', 'User']);
+    });
+
+    test('keeps the import a type names after a multi-line template literal or a comment holding a quote', function (string $resource, string $key, string $type, string $name) {
+        $data = (new ResourceTransformer($resource))->data();
+
+        expect($data->properties[$key]['type'])->toBe($type)
+            ->and(array_merge(...array_values($data->typeImports)))->toContain($name);
+    })->with([
+        'a template literal spanning lines, over a model' => [MultilineTemplateCastResource::class, 'app', "`line one\nline two` | User | `x`", 'User'],
+        'a template literal spanning lines, over an enum' => [MultilineTemplateCastResource::class, 'state', "`a\nb` | StatusType | `x`", 'StatusType'],
+        'a template literal spanning lines, over a #[TsType] class' => [MultilineTemplateCastResource::class, 'settings', "`a\nb` | MenuSettingsType | `x`", 'MenuSettingsType'],
+        'a quote closing a multi-line template literal, over a model' => [MultilineQuoteCastResource::class, 'app', "`line one\nit's` | User | 'x'", 'User'],
+        'a quote closing a multi-line template literal, over an enum' => [MultilineQuoteCastResource::class, 'state', "`a\nit's` | StatusType | 'x'", 'StatusType'],
+        'a quote closing a multi-line template literal, over a #[TsType] class' => [MultilineQuoteCastResource::class, 'settings', "`a\nit's` | MenuSettingsType | 'x'", 'MenuSettingsType'],
+        'a block comment holding a quote, over a model' => [CommentQuoteCastResource::class, 'app', "/* it's */ User | 'x'", 'User'],
+        'a block comment holding a quote, over an enum' => [CommentQuoteCastResource::class, 'state', "/* it's */ StatusType | 'x'", 'StatusType'],
+        'a block comment holding a quote, over a #[TsType] class' => [CommentQuoteCastResource::class, 'settings', "/* it's */ MenuSettingsType | 'x'", 'MenuSettingsType'],
+    ]);
+
+    test('reads each property type on its own, so a template literal one never closes hides no later name', function () {
+        $data = (new ResourceTransformer(UnclosedTemplateCastResource::class))->data();
+
+        $names = array_merge(...array_values($data->typeImports));
+        sort($names);
+
+        expect($data->properties['label']['type'])->toBe("`\${string}'s label")
+            ->and($data->properties['app']['type'])->toBe('User | `x`')
+            ->and($data->properties['state']['type'])->toBe('StatusType | `x`')
+            ->and($names)->toBe(['StatusType', 'User']);
+    });
+
+    test('keeps the import a type names after a line continuation, an odd line terminator, a spread or an identifier escape', function (string $resource, string $key, string $type, string $name) {
+        $data = (new ResourceTransformer($resource))->data();
+
+        expect($data->properties[$key]['type'])->toBe($type)
+            ->and(array_merge(...array_values($data->typeImports)))->toContain($name);
+    })->with([
+        'a line continuation, over a model' => [ContinuationCastResource::class, 'app', "'a\\\nb' | 'x' | User | 'y'", 'User'],
+        'a line continuation in double quotes, over an enum' => [ContinuationCastResource::class, 'state', "\"a\\\nb\" | \"x\" | StatusType | \"y\"", 'StatusType'],
+        'a line continuation in an object key, over a #[TsType] class' => [ContinuationCastResource::class, 'settings', "{ 'a\\\nb': 'x'; c: MenuSettingsType; d: 'y' }", 'MenuSettingsType'],
+        'a line comment ended by CR, over a model' => [LineTerminatorCastResource::class, 'app', "// c\r`a\nb` | User | `x`", 'User'],
+        'a line comment ended by U+2028, over an enum' => [LineTerminatorCastResource::class, 'state', "// c\u{2028}`a\nb` | StatusType | `x`", 'StatusType'],
+        'a line comment ended by U+2029, over a #[TsType] class' => [LineTerminatorCastResource::class, 'settings', "// c\u{2029}`a\nb` | MenuSettingsType | `x`", 'MenuSettingsType'],
+        'a variadic tuple element, over a model' => [SpreadCastResource::class, 'app', '[string, ...User[]]', 'User'],
+        'a variadic tuple head, over an enum' => [SpreadCastResource::class, 'state', '[...StatusType[], string]', 'StatusType'],
+        'a readonly variadic tuple, over a #[TsType] class' => [SpreadCastResource::class, 'settings', 'readonly [...MenuSettingsType[]]', 'MenuSettingsType'],
+        'an identifier escape, over a model' => [EscapedNameCastResource::class, 'app', chr(92).'u{55}ser | null', 'User'],
+        'an identifier escape, over an enum' => [EscapedNameCastResource::class, 'state', chr(92).'u{53}tatusType', 'StatusType'],
+        'an identifier escape inside the name, over a #[TsType] class' => [EscapedNameCastResource::class, 'settings', 'Menu'.chr(92).'u{53}ettingsType | null', 'MenuSettingsType'],
+    ]);
+
+    test('keeps every import two property types name once TypeScript lexes them as one', function () {
+        $data = (new ResourceTransformer(SplitTemplateCastResource::class))->data();
+        $names = array_merge(...array_values($data->typeImports));
+        sort($names);
+
+        expect($data->properties['label']['type'])->toBe('`a')
+            ->and($data->properties['app']['type'])->toBe('x` | User | `y`')
+            ->and($data->properties['state']['type'])->toBe('x` | StatusType | `y`')
+            ->and($data->properties['settings']['type'])->toBe('x` | MenuSettingsType | `y`')
+            ->and($names)->toBe(['MenuSettingsType', 'StatusType', 'User']);
+    });
+
+    test('keeps an enum an extends clause still names after its read is overridden', function () {
+        $data = (new ResourceTransformer(ExtendsEnumCastResource::class))->data();
+
+        expect($data->tsExtends)->toBe(['Partial<Record<StatusType, unknown>>'])
+            ->and($data->properties['state']['type'])->toBe('string')
+            ->and(array_merge(...array_values($data->typeImports)))->toBe(['StatusType']);
+    });
+});
+
+describe('ResourceTransformer imports after an only() or except() filter', function () {
+    // Each accessor names one model and a #[TsType] class; the filter keeps the model's channel and drops the import.
+    test('keeps the #[TsType] import of an accessor that also names a model', function (string $resource) {
+        $data = (new ResourceTransformer($resource))->data();
+
+        expect($data->properties['contact']['type'])->toBe('User | MenuSettingsType | null')
+            ->and($data->properties['layout']['type'])->toBe('{ manager: User | null; settings: MenuSettingsType | null }')
+            ->and($data->typeImports['@js/types/settings'] ?? null)->toBe(['MenuSettingsType']);
+    })->with([
+        '$this->resource->only()' => [StockroomPickResource::class],
+        '$this->resource->except()' => [StockroomTrimResource::class],
+        '$this->only()' => [StockroomOnlyResource::class],
+        'a spread of $this->only()' => [StockroomSpreadResource::class],
+        '$this->except()' => [StockroomExceptResource::class],
+    ]);
+
+    test('keeps the #[TsType] import an extends clause still names after an only() read is overridden', function () {
+        $data = (new ResourceTransformer(ExtendsTsTypeOnlyResource::class))->data();
+
+        expect($data->tsExtends)->toBe(['Partial<Record<"s", MenuSettingsType>>'])
+            ->and($data->properties['menu_config']['type'])->toBe('string')
+            ->and($data->typeImports['@js/types/settings'] ?? null)->toBe(['MenuSettingsType']);
+    });
+});
+
+describe('a docblock-filled index signature beside keys only the publisher adds', function () {
+    test('an extends clause puts the fill back, since its keys are unseen', function () {
+        $properties = (new ResourceTransformer(ExtendedTagSignatureResource::class))->data()->properties;
+
+        expect($properties['[key: `${string}_tag`]']['type'])->toBe('unknown | undefined');
+    });
+
+    test('a key a class-level #[TsCasts] adds joins the union', function () {
+        $properties = (new ResourceTransformer(ClassCastTagSignatureResource::class))->data()->properties;
+
+        expect($properties['[key: `${string}_tag`]']['type'])->toBe('string | number | undefined')
+            ->and($properties['extra_tag']['type'])->toBe('number');
+    });
+
+    test('a key the model\'s #[TsCasts] retypes joins the union with its cast type', function () {
+        $properties = (new ResourceTransformer(ModelCastDataSignatureResource::class))->data()->properties;
+
+        expect($properties['[key: `${string}data`]']['type'])
+            ->toBe('string | Record<string, {title: string, content: string}> | undefined');
+    });
+
+    test('a model #[TsCasts] key the resource never publishes takes no part in the union', function () {
+        $properties = (new ResourceTransformer(ModelCastAbsentDataSignatureResource::class))->data()->properties;
+
+        expect($properties['[key: `${string}data`]']['type'])->toBe('string | undefined')
+            ->and($properties)->not->toHaveKey('metadata');
+    });
+
+    test('a config-level ts_extends entry puts the fill back, like #[TsExtends]', function () {
+        config()->set('ts-publish.ts_extends.resources', ['HasPriceTag']);
+
+        $properties = (new ResourceTransformer(ClassCastTagSignatureResource::class))->data()->properties;
+
+        expect($properties['[key: `${string}_tag`]']['type'])->toBe('unknown | undefined');
+    });
+
+    test('the union keeps its undefined arm beside casts that name undefined only in a literal or a Record', function () {
+        $properties = (new ResourceTransformer(UndefinedTextCastTagSignatureResource::class))->data()->properties;
+
+        expect($properties['[key: `${string}_tag`]']['type'])
+            ->toBe("string | number | 'undefined' | 'defined' | Record<string, number | undefined> | undefined")
+            ->and($properties['price_tag']['optional'])->toBeTrue();
+    });
+});
+
+describe('SignatureCastSpellingResource — a #[TsCasts] key for a backslash signature, pasted into single quotes', function () {
+    beforeEach(function () {
+        $this->types = array_map(
+            fn (array $property): string => $property['type'],
+            (new ResourceTransformer(SignatureCastSpellingResource::class))->data()->properties,
+        );
+    });
+
+    test('a key with the single backslashes a single-quoted PHP string leaves retypes the escaped signature', function () {
+        expect($this->types)->toMatchArray([
+            '[key: `${string}\\\\_cast`]' => 'number',
+            '[key: `${string}\\\\unit`]' => 'boolean',
+            '[key: `${string}\\\\_mc`]' => 'number',
+        ]);
+    });
+
+    test('no cast key is published as a second signature beside the one it retypes', function () {
+        expect(array_keys($this->types))->toBe([
+            '[key: `${string}\\\\_cast`]',
+            '[key: `${string}\\\\unit`]',
+            '[key: `${string}\\\\_both`]',
+            '[key: `${string}\\\\_y`]',
+            '[key: `${string}\\\\_z`]',
+            '[key: `${string}\\\\_mc`]',
+        ]);
+    });
+
+    test('when both spellings name one signature, the exact one wins and the other is not published', function () {
+        expect($this->types['[key: `${string}\\\\_both`]'])->toBe('number')
+            ->and($this->types)->not->toHaveKey('[key: `${string}\\_both`]');
+    });
+
+    test('the losing spelling\'s optional flag and import are dropped with its type', function () {
+        $data = (new ResourceTransformer(SignatureCastSpellingResource::class))->data();
+
+        expect($data->properties['[key: `${string}\\\\_z`]'])->toMatchArray(['type' => 'number', 'optional' => false])
+            ->and($this->types['[key: `${string}\\\\_y`]'])->toBe('Money')
+            ->and($data->typeImports)->not->toHaveKey('@/types/money');
+    });
+});
+
+test('a model\'s losing spelling drops its optional flag and import with its type', function () {
+    $data = (new ResourceTransformer(ModelSignatureCastResource::class))->data();
+
+    expect($data->properties['[key: `${string}\\\\_v`]'])->toMatchArray(['type' => 'number', 'optional' => false])
+        ->and($data->properties['[key: `${string}\\\\_w`]'])->toMatchArray(['type' => 'string', 'optional' => false])
+        ->and($data->typeImports)->not->toHaveKey('@/types/money');
+});
+
+test('a cast key holding a raw CR, as a double-quoted PHP string gives it, retypes the CR signature', function () {
+    $types = array_map(
+        fn (array $property): string => $property['type'],
+        (new ResourceTransformer(RawCrCastResource::class))->data()->properties,
+    );
+
+    expect($types)->toBe([
+        "[key: `\${string}\\r\n`]" => 'number',
+        "[key: `\${string}\\r\n_m`]" => 'number',
+    ]);
+});
+
+test('a key named after a model accessor imports that accessor\'s model only while its type names it', function () {
+    config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+    $unused = new ResourceTransformer(AccessorNamedKeysResource::class)->data();
+    $used = new ResourceTransformer(AccessorNamedModelsResource::class)->data();
+
+    expect($unused->properties['author_model']['type'])->toBe('UserResource')
+        ->and(implode(' ', array_merge(...array_values($unused->typeImports))))->not->toMatch('/\\bUser\\b/')
+        ->and([$used->properties['author_model']['type'], $used->properties['lead']['type']])->toBe(['ModelsUser', 'CrmUser'])
+        ->and(implode(' ', array_merge(...array_values($used->typeImports))))->toBe('User as ModelsUser User as CrmUser');
+});
+
+test('a numeric-string key in a model-backed resource publishes as written, where an int key is dropped', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $transformer = new ResourceTransformer(NumericKeyTeamResource::class);
+    $content = new ResourceWriter(new Filesystem)->write($transformer);
+
+    // PHP stores '6' as the int key 6, which the model attribute lookup once received as its string name.
+    expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))
+        ->toBe(['id' => 'number', 6 => 'string'])
+        ->and($content)->toContain('"6": string;')
+        ->not->toContain('int-key');
 });

@@ -3,10 +3,81 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CountingTsTypeString;
 
 beforeEach(function () {
     $this->service = new TsTypeString;
 });
+
+/**
+ * A TsTypeString on a PCRE2 without `\p{ID_Continue}`, as before 10.40, exposing the pattern its probe settles on.
+ */
+function olderPcreTsTypeString(): TsTypeString
+{
+    return new class extends TsTypeString
+    {
+        protected const string IDENTIFIER_CHARACTER = '[\p{ID_Continue_Missing}$\x{200C}\x{200D}]';
+
+        protected static ?string $identifierCharacter = null;
+
+        /**
+         * The identifier-character pattern its probe settled on.
+         */
+        public function chosen(): string
+        {
+            return $this->identifierCharacter();
+        }
+
+        /**
+         * The stand-in pattern a PCRE2 without `\p{ID_Continue}` gets.
+         */
+        public function fallback(): string
+        {
+            return self::IDENTIFIER_CHARACTER_FALLBACK;
+        }
+    };
+}
+
+/**
+ * A TsTypeString on a PCRE2 whose tables hold only ASCII identifier characters, as older tables lack newer ones.
+ */
+function asciiTablesTsTypeString(): TsTypeString
+{
+    return new class extends TsTypeString
+    {
+        protected const string IDENTIFIER_CHARACTER = '[A-Za-z0-9_$\x{200C}\x{200D}]';
+
+        protected static ?string $identifierCharacter = null;
+    };
+}
+
+/**
+ * A TsTypeString whose identifier-character pattern PCRE cannot compile at all.
+ */
+function uncompilableTsTypeString(): TsTypeString
+{
+    return new class extends TsTypeString
+    {
+        protected static ?string $identifierCharacter = '[\p{ID_Continue_Missing}]';
+    };
+}
+
+/**
+ * A TsTypeString whose escape decoder fails, as it does when PCRE cannot run its pattern.
+ */
+function undecodableTsTypeString(): TsTypeString
+{
+    return new class extends TsTypeString
+    {
+        /**
+         * Fails as the decoder does when PCRE cannot run its pattern.
+         */
+        protected function decodeIdentifierEscapes(string $type): ?string
+        {
+            return null;
+        }
+    };
+}
 
 describe('aliasPropertyType', function () {
     $nameMap = [
@@ -277,6 +348,77 @@ describe('qualifyGlobalType', function () {
 
         expect($result)->toBe('Post | Product | User | crm.models.User');
     });
+
+    test('never rewrites a name inside a quoted string literal, whatever the literal escapes', function (string $type, string $qualified) {
+        $result = $this->service->qualifyGlobalType(
+            $type,
+            ['app.models' => ['Post', 'User']],
+            '',
+            ['CrmUser' => 'crm.models.User'],
+        );
+
+        expect($result)->toBe($qualified);
+    })->with([
+        'single-quoted names' => ["'Post' | 'User' | Post", "'Post' | 'User' | app.models.Post"],
+        'double-quoted names' => ['"Post" | User', '"Post" | app.models.User'],
+        'an alias' => ["'CrmUser' | CrmUser", "'CrmUser' | crm.models.User"],
+        'an escaped quote' => ["'it\\'s Post' | Post", "'it\\'s Post' | app.models.Post"],
+        'an escaped backslash before the closing quote' => ["'Post\\\\' | Post", "'Post\\\\' | app.models.Post"],
+        'the other quote inside' => ["\"it's Post\" | 'say \"User\"' | User", "\"it's Post\" | 'say \"User\"' | app.models.User"],
+        'a shape member and a quoted key' => ["{ kind: 'Post'; \"User\": User }", "{ kind: 'Post'; \"User\": app.models.User }"],
+    ]);
+
+    test('reads a template literal as before: its text is qualified, and a quote inside opens no string', function () {
+        $result = $this->service->qualifyGlobalType(
+            "`User's-\${string}` | 'Post'",
+            ['app.models' => ['Post', 'User']],
+        );
+
+        expect($result)->toBe("`app.models.User's-\${string}` | 'Post'");
+    });
+
+    test('qualifies each type once per namespace under the same maps, and reads a repeat back', function () {
+        $service = new CountingTsTypeString;
+        $types = ['app.models' => ['User', 'Post'], 'crm.models' => ['User']];
+        $aliases = ['CrmUser' => 'crm.models.User'];
+
+        $results = [
+            $service->qualifyGlobalType('User | CrmUser', $types, 'app.models', $aliases),
+            $service->qualifyGlobalType('User | CrmUser', $types, 'app.models', $aliases),
+            $service->qualifyGlobalType('User | CrmUser', $types, '', $aliases),
+            $service->qualifyGlobalType('Post', $types, '', $aliases),
+            $service->qualifyGlobalType('User | CrmUser', $types, 'app.models', $aliases),
+        ];
+
+        expect($results)->toBe(['User | crm.models.User', 'User | crm.models.User', 'app.models.User | crm.models.User', 'app.models.Post', 'User | crm.models.User'])
+            ->and($service->qualifications)->toBe(3);
+    });
+
+    test('qualifies under the maps each call brings, not the ones it memoized under', function () {
+        $service = new CountingTsTypeString;
+        $types = ['app.models' => ['User']];
+
+        $results = [
+            $service->qualifyGlobalType('User | CrmUser', $types, '', ['CrmUser' => 'crm.models.User']),
+            $service->qualifyGlobalType('User | CrmUser', $types, '', ['CrmUser' => 'app.models.User']),
+            $service->qualifyGlobalType('User | CrmUser', ['crm.models' => ['User']], '', ['CrmUser' => 'crm.models.User']),
+            $service->qualifyGlobalType('User | CrmUser', $types, '', ['CrmUser' => 'crm.models.User']),
+        ];
+
+        expect($results)->toBe(['app.models.User | crm.models.User', 'app.models.User | app.models.User', 'crm.models.User | crm.models.User', 'app.models.User | crm.models.User'])
+            ->and($service->qualifications)->toBe(4);
+    });
+
+    test('forgetQualifiedTypes() drops every memoized qualification', function () {
+        $service = new CountingTsTypeString;
+        $types = ['app.models' => ['User']];
+
+        $service->qualifyGlobalType('User', $types);
+        $service->forgetQualifiedTypes();
+
+        expect($service->qualifyGlobalType('User', $types))->toBe('app.models.User')
+            ->and($service->qualifications)->toBe(2);
+    });
 });
 
 describe('rewriteAsEnumToType', function () {
@@ -436,10 +578,395 @@ describe('typeNameOccursIn', function () {
         expect($s->typeNameOccursIn('StatusType', 'StatusType | null'))->toBeTrue()
             ->and($s->typeNameOccursIn('StatusType', '{ a: StatusType[] }'))->toBeTrue()
             ->and($s->typeNameOccursIn('StatusType', 'foo.StatusType'))->toBeFalse()
+            ->and($s->typeNameOccursIn('StatusType', 'foo.bar.StatusType'))->toBeFalse()
+            ->and($s->typeNameOccursIn('StatusType', 'StatusType.foo'))->toBeTrue()
             ->and($s->typeNameOccursIn('StatusType', '$StatusType'))->toBeFalse()
+            ->and($s->typeNameOccursIn('StatusType', '_StatusType'))->toBeFalse()
             ->and($s->typeNameOccursIn('StatusType', 'CrmStatusType'))->toBeFalse()
-            ->and($s->typeNameOccursIn('StatusType', 'StatusTypeExtra'))->toBeFalse();
+            ->and($s->typeNameOccursIn('StatusType', 'StatusTypeExtra'))->toBeFalse()
+            ->and($s->typeNameOccursIn('StatusType', 'StatusType2'))->toBeFalse()
+            ->and($s->typeNameOccursIn('StatusType', 'StatusType$'))->toBeFalse();
     });
+
+    test('typeNameOccursIn() reads every boundary TypeScript reads as a type reference', function (string $haystack, bool $found) {
+        expect($this->service->typeNameOccursIn('User', $haystack))->toBe($found);
+    })->with([
+        'a type query' => ['typeof User', true],
+        'a keyof' => ['keyof User', true],
+        'an array' => ['User[]', true],
+        'a generic' => ['User<string>', true],
+        'a type argument' => ['Array<User>', true],
+        'a union arm' => ['string | User | null', true],
+        'parenthesized' => ['(User)', true],
+        'an object member' => ['{ k: User }', true],
+        'a tuple element' => ['[User]', true],
+        'a conditional check' => ['User extends Post ? 1 : 0', true],
+        'an inferred name' => ['Post extends infer User ? 1 : 0', true],
+        'a variadic tuple tail' => ['[string, ...User[]]', true],
+        'a variadic tuple head' => ['[...User[], string]', true],
+        'a rest element without brackets' => ['[string, ...User]', true],
+        'a readonly variadic tuple' => ['readonly [...User[]]', true],
+        'a variadic tuple inside an object' => ['{ a: [...User[]] }', true],
+        'a spread inside braces' => ['{...User}', true],
+        'a labeled rest element' => ['[a: string, ...rest: User[]]', true],
+        'a spread with a space' => ['[string, ... User[]]', true],
+        'a name after a digit inside a longer identifier' => ['a1User', false],
+        'a name after a non-ASCII letter' => ["\u{e9}User", false],
+        'a name before a non-ASCII letter' => ["User\u{e9}", false],
+        'a name before a middle dot, an Other_ID_Continue character' => ["User\u{b7}", false],
+        'a name after a script capital P, an Other_ID_Start character' => ["\u{2118}User", false],
+        'a name before a zero-width non-joiner' => ["User\u{200c}", false],
+        // A numeric literal is not modelled, so a name right after one is missed; TypeScript rejects that syntax too.
+        'a name right after a numeric literal' => ['1User', false],
+        'a name after a numeric literal and a dot' => ['1.User', false],
+        'a member of a namespace' => ['Models.User', false],
+        'a member of a nested namespace' => ['App.Models.User', false],
+        'a member of a namespace ending in a digit' => ['Models2.User', false],
+        'a member of a namespace named by a non-ASCII letter' => ["\u{e9}.User", false],
+        'a member of an imported module' => ["import('x').User", true],
+        'a member of the type' => ['User.Inner', true],
+        'a name after a closing bracket and a dot' => ['].User', true],
+        'a dollar-prefixed identifier' => ['$User', false],
+        'an underscore-prefixed identifier' => ['_User', false],
+        'a dollar-suffixed identifier' => ['User$', false],
+    ]);
+
+    // The fallback's accepted cost: an override that spells an imported name inside a string, template text or comment
+    // keeps that import unused, where a lexer that hid the name from the prune dropped an import the file needed.
+    test('typeNameOccursIn() counts a name spelled inside a string literal too', function () {
+        $s = $this->service;
+        expect($s->typeNameOccursIn('User', "'User' | 'Admin'"))->toBeTrue()
+            ->and($s->typeNameOccursIn('User', '{ "User": string }'))->toBeTrue()
+            ->and($s->typeNameOccursIn('User', "'it\\'s User'"))->toBeTrue()
+            ->and($s->typeNameOccursIn('User', "Pick<User, 'id' | 'name'>"))->toBeTrue()
+            ->and($s->typeNameOccursIn('User', "'User' | User"))->toBeTrue();
+    });
+
+    test('typeNameOccursIn() reads a template literal\'s placeholders and its text alike', function (string $haystack, string $name, bool $found) {
+        expect($this->service->typeNameOccursIn($name, $haystack))->toBe($found);
+    })->with([
+        'an apostrophe, then a model' => ["`\${string}'s label`\nPick<User, 'id' | 'name'> | null", 'User', true],
+        'an apostrophe, then an enum' => ["`\${string}'s label`\nStatusType | null\nPick<User, 'id'> | null", 'StatusType', true],
+        'an apostrophe, then a #[TsType] class' => ["`\${string}'s label`\nMenuSettingsType | null", 'MenuSettingsType', true],
+        'feet and inches' => ["`\${number}'\${number}\"`\nPick<User, 'id' | 'name'> | null", 'User', true],
+        'an inch mark, then a quoted key' => ["`\${number}\"`\n{ \"a-b\": User | null }\n{ \"c-d\": number }", 'User', true],
+        'an escaped single quote' => ["'it\\'s' | 'b'\nUser", 'User', true],
+        'an escaped double quote' => ["\"say \\\"hi\\\"\" | \"b\"\nUser", 'User', true],
+        'no quote at all' => ["`\${string}-label`\nUser", 'User', true],
+        'a placeholder names the type' => ['`${Priority}-label`', 'Priority', true],
+        // The accepted cost, in a placeholder's string and in a template's text.
+        'a quoted literal inside a placeholder' => ["`\${'User' | 'Admin'}-label`", 'User', true],
+        'the literal text names it' => ['`User-${string}`', 'User', true],
+        'a template literal that never closes' => ["`\${string}'s label\nUser", 'User', true],
+        'a literal that never closes, before the name on its line' => ["`\${string}'s label | User", 'User', true],
+    ]);
+
+    // Every name TypeScript reads is counted; the five it reads as text count as well, which is the accepted cost.
+    test('typeNameOccursIn() counts a name whatever literal or comment surrounds it', function (string $haystack, string $name, bool $found) {
+        expect($this->service->typeNameOccursIn($name, $haystack))->toBe($found);
+    })->with([
+        'nested template, name in inner placeholder' => ['`${`a${User}`}`', 'User', true],
+        'nested template, then name' => ['`${`a${string}`}` | User', 'User', true],
+        'nested template text names it' => ['`${`User ${string}`}`', 'User', true],
+        'quote inside placeholder, then name in it' => ["`\${'x' | User}`", 'User', true],
+        'brace inside a string in a placeholder' => ['`${"}"}` | User', 'User', true],
+        'backtick literal inside placeholder' => ['`${`}`}` | User', 'User', true],
+        '${ inside single-quoted string, then name' => ["'\${' | User", 'User', true],
+        '${ inside double-quoted string, then name' => ['"${" | User', 'User', true],
+        'name inside ${…} of a single-quoted string' => ["'\${User}'", 'User', true],
+        'unterminated single quote before name' => ["'abc | User", 'User', true],
+        'unterminated template before name' => ['`abc | User', 'User', true],
+        'unterminated placeholder' => ['`${User', 'User', true],
+        'apostrophe in template then name' => ["`\${string}'s` | User", 'User', true],
+        'escaped quote in single' => ["'it\\'s' | User", 'User', true],
+        'escaped quote in double' => ['"a\\"b" | User', 'User', true],
+        'escaped backtick in template' => ['`a\\`b` | User', 'User', true],
+        'escaped placeholder is text' => ['`\\${User}`', 'User', true],
+        'backtick inside quoted string' => ["'`' | User", 'User', true],
+        'empty placeholder' => ['`${}` | User', 'User', true],
+        'object braces inside placeholder' => ['`${ {a: User}["a"] }`', 'User', true],
+        'a name after object braces inside a placeholder' => ['`${ {a: string}["a"] | User }`', 'User', true],
+        'multi-line: next properties on own lines' => ["`\${string}'s`\nUser", 'User', true],
+        'multi-line template, closing line then name then template' => ["`line one\nline two` | User | `x`", 'User', true],
+        'multi-line template, closing line then name then quote' => ["`line one\nit's` | User | 'x'", 'User', true],
+        'multi-line template, closing line then name' => ["`one\ntwo` | User", 'User', true],
+        'multi-line template, name in its text' => ["`User\nline`", 'User', true],
+        'multi-line template, placeholder on middle line' => ["`a\n\${User}\nb`", 'User', true],
+        'multi-line template, quote on opening line' => ["`it's\nx` | User", 'User', true],
+        'comment with apostrophe then name then quote' => ["/* it's */ User | 'x'", 'User', true],
+        'name as JSON-quoted key' => ['{ "User": string }', 'User', true],
+        'name after JSON-quoted key' => ['{ "a-b": User }', 'User', true],
+    ]);
+
+    test('typeNameOccursIn() counts a name inside or after a comment, an unpaired quote or an unclosed literal', function (string $haystack, bool $found) {
+        expect($this->service->typeNameOccursIn('User', $haystack))->toBe($found);
+    })->with([
+        'a name inside a block comment' => ['/* User */ string', true],
+        'a name inside a line comment' => ["string // User\n| null", true],
+        'a quote inside a line comment' => ["// it's\nUser | 'x'", true],
+        'a backtick inside a block comment' => ['/* ` */ User | `x`', true],
+        'a block comment that never closes' => ["/* it's 'x' | User", true],
+        'a quote whose partner is on the next line' => ["'a\nUser | b'", true],
+        'an escaped newline inside a quoted string' => ["'a\\\nUser'", true],
+        'an unpaired quote, then a backtick, then the name on the next line' => ["'it`s\nUser | `x`", true],
+        'a quoted string inside a template literal that never closes' => ["`abc 'User'", true],
+        'a quoted string inside a placeholder that never closes' => ["`a \${ 'User' `b", true],
+        'a placeholder spanning lines' => ["`a\${\nUser\n}b`", true],
+        'a line comment inside a placeholder' => ["`\${ // }\nUser }`", true],
+        'a quote in a template literal spanning lines, the name in its text' => ["`it's\nUser` | 'x'", true],
+    ]);
+
+    // TypeScript reads each of these names; a lexer that paired quotes or ended `//` comments differently, or a
+    // boundary that rejected `...`, hid it, and the prune then dropped an import the generated file needed.
+    test('typeNameOccursIn() counts a name after a line continuation, an odd line terminator or a spread', function (string $haystack, string $name) {
+        expect($this->service->typeNameOccursIn($name, $haystack))->toBeTrue();
+    })->with([
+        'a line continuation, then quoted arms around the name' => ["'a\\\nb' | 'x' | User | 'y'", 'User'],
+        'a line continuation in double quotes' => ["\"a\\\nb\" | \"x\" | User | \"y\"", 'User'],
+        'a CRLF line continuation' => ["'a\\\r\nb' | 'x' | User | 'y'", 'User'],
+        'a CR line continuation' => ["'a\\\rb' | 'x' | User | 'y'", 'User'],
+        'a line continuation in an object key' => ["{ 'a\\\nb': 'x'; c: User; d: 'y' }", 'User'],
+        'a line continuation in a placeholder string' => ["`\${'a\\\nb' | 'x}' | StatusType}`", 'StatusType'],
+        'a line continuation, then the name alone' => ["'a\\\nb' | User", 'User'],
+        'a line comment ended by CR' => ["// c\r`a\nb` | User | `x`", 'User'],
+        'a line comment ended by U+2028' => ["// c\u{2028}`a\nb` | User | `x`", 'User'],
+        'a line comment ended by U+2029' => ["// c\u{2029}`a\nb` | User | `x`", 'User'],
+        'a line comment ended by LF' => ["// c\n`a\nb` | User | `x`", 'User'],
+        'a line comment ended by CRLF' => ["// c\r\n`a\nb` | User | `x`", 'User'],
+        'a variadic tuple element' => ['[string, ...User[]]', 'User'],
+        'a variadic tuple head naming a #[TsType] class' => ['[...MenuSettingsType[], string]', 'MenuSettingsType'],
+        'a variadic tuple element naming an enum' => ['[string, ...StatusType[]]', 'StatusType'],
+        'a variadic tuple element after a quoted name' => ["'User' | [string, ...User[]]", 'User'],
+    ]);
+
+    // chr(92) keeps each `\u` escape a literal backslash, whatever decodes such escapes on the way into this file.
+    test('typeNameOccursIn() decodes an identifier escape, as TypeScript does', function (string $haystack, string $name, bool $found) {
+        expect($this->service->typeNameOccursIn($name, $haystack))->toBe($found);
+    })->with([
+        'a four-digit escape' => [chr(92).'u0055ser', 'User', true],
+        'a braced escape' => [chr(92).'u{55}ser', 'User', true],
+        'an escape inside the name' => ['Us'.chr(92).'u0065r', 'User', true],
+        'two braced escapes with leading zeros' => [chr(92).'u{0055}'.chr(92).'u{0073}er', 'User', true],
+        'an escaped enum name' => [chr(92).'u0053tatusType | null', 'StatusType', true],
+        'an escaped #[TsType] name' => [chr(92).'u004DenuSettingsType', 'MenuSettingsType', true],
+        'an escape after an escaped backslash' => [chr(92).chr(92).'u0055ser', 'User', true],
+        'an escape inside a string literal' => ["'".chr(92)."u0055ser'", 'User', true],
+        'an escape of a dot, decoded like any other character' => [chr(92).'u002EUser', 'User', true],
+        'an escape of a space, decoded like any other character' => [chr(92).'u0020User', 'User', true],
+        'the name TypeScript reads after an escaped dot, invalid syntax' => [chr(92).'u002EUser', 'u002EUser', false],
+        'an escape past the last code point' => [chr(92).'u{110000}User', 'User', true],
+        'a lone surrogate escape' => [chr(92).'uD800User', 'uD800User', true],
+        'an escape that joins the name to a longer identifier' => [chr(92).'u0041User', 'User', false],
+        'an escape that joins the name to a longer identifier, as TypeScript reads it' => [chr(92).'u0041User', 'AUser', true],
+        // Other_ID_Start and Other_ID_Continue characters are identifier characters too, outside every letter class.
+        'an escape of a script capital P at the start' => [chr(92).'u2118User', "\u{2118}User", true],
+        'an escape of an estimated sign in the middle' => ['Us'.chr(92).'u{212E}er', "Us\u{212e}er", true],
+        'an escape of a middle dot at the end' => ['User'.chr(92).'u00B7 | null', "User\u{b7}", true],
+        'an escape of an Ethiopic digit one at the end' => ['User'.chr(92).'u{1369}', "User\u{1369}", true],
+        'an escape of a katakana voiced sound mark at the start' => [chr(92).'u309BUser', "\u{309b}User", true],
+        'an escape of a katakana middle dot in the middle' => ['User'.chr(92).'u{30FB}Kind', "User\u{30fb}Kind", true],
+        'an escape of a halfwidth katakana middle dot at the end' => ['User'.chr(92).'uFF65', "User\u{ff65}", true],
+        'an escape of a middle dot is not the bare name' => ['User'.chr(92).'u00B7', 'User', false],
+    ]);
+
+    test('typeNameOccursIn() reads every type it is given, and none is no match', function () {
+        $s = $this->service;
+        expect($s->typeNameOccursIn('User', "`\${string}'s label", 'User | `x`'))->toBeTrue()
+            ->and($s->typeNameOccursIn('User', "`\${string}'s label\nUser | `x`"))->toBeTrue()
+            // Two #[TsCasts] values TypeScript lexes as one once emitted: the first opens a template the second closes.
+            ->and($s->typeNameOccursIn('User', '`a', 'x` | User | `y`'))->toBeTrue()
+            ->and($s->typeNameOccursIn('User', "`a\nx` | User | `y`"))->toBeTrue()
+            ->and($s->typeNameOccursIn('User', 'string', 'number'))->toBeFalse()
+            ->and($s->typeNameOccursIn('User'))->toBeFalse();
+    });
+
+    test('typeNameOccursIn() keeps a name PCRE cannot read, whether or not the haystack spells it', function () {
+        // Invalid UTF-8 fails the match without a warning; the name is kept, since a dropped import breaks the file.
+        expect($this->service->typeNameOccursIn('User', "\xFF\xFE garbage"))->toBeTrue()
+            ->and($this->service->typeNameOccursIn('User', "\xFF\xFE User"))->toBeTrue();
+    });
+
+    test('typeNameOccursIn() keeps `\p{ID_Continue}` wherever the PCRE2 compiles it', function () {
+        $probe = new class extends TsTypeString
+        {
+            /**
+             * The pattern the probe settled on, the one it prefers and its stand-in.
+             *
+             * @return array{0: string, 1: string, 2: string}
+             */
+            public function patterns(): array
+            {
+                return [$this->identifierCharacter(), self::IDENTIFIER_CHARACTER, self::IDENTIFIER_CHARACTER_FALLBACK];
+            }
+        };
+        [$chosen, $preferred, $fallback] = $probe->patterns();
+
+        expect($chosen)->toBe(@preg_match('/'.$preferred.'/u', '') !== false ? $preferred : $fallback);
+    });
+
+    test('typeNameOccursIn() falls back quietly on a PCRE2 without `\p{ID_Continue}`', function () {
+        $older = olderPcreTsTypeString();
+
+        // Laravel's error handler rethrows a warning, so an unsilenced probe would fail here rather than fall back.
+        expect($older->chosen())->toBe($older->fallback())
+            ->and($older->typeNameOccursIn('User', 'User | null'))->toBeTrue();
+    });
+
+    test('typeNameOccursIn() probes its PCRE2 once, across calls and instances', function () {
+        $older = olderPcreTsTypeString();
+        (new ReflectionProperty($older, 'identifierCharacter'))->setValue(null, null);
+        // Each probe of the missing property raises one silenced warning, which a handler still sees.
+        $probes = 0;
+        set_error_handler(static function () use (&$probes): bool {
+            $probes++;
+
+            return true;
+        });
+
+        try {
+            foreach ([$older, olderPcreTsTypeString(), olderPcreTsTypeString()] as $instance) {
+                $instance->typeNameOccursIn('User', 'User | null');
+                $instance->typeNameOccursIn('Post', chr(92).'u0050ost');
+            }
+        } finally {
+            restore_error_handler();
+        }
+
+        expect($probes)->toBe(1)
+            ->and($older->chosen())->toBe($older->fallback());
+    });
+
+    test('the stand-in pattern holds just the identifier characters', function (int $codePoint, bool $inside) {
+        $char = (string) mb_chr($codePoint, 'UTF-8');
+
+        expect(preg_match('/^'.olderPcreTsTypeString()->fallback().'$/u', $char))->toBe($inside ? 1 : 0);
+    })->with([
+        'U+2118 script capital P' => [0x2118, true],
+        'U+212E estimated sign' => [0x212E, true],
+        'U+309B katakana voiced sound mark' => [0x309B, true],
+        'U+309C katakana semi-voiced sound mark' => [0x309C, true],
+        'U+1885 Mongolian letter Ali Gali baluda' => [0x1885, true],
+        'U+1886 Mongolian letter Ali Gali three baluda' => [0x1886, true],
+        'U+00B7 middle dot' => [0xB7, true],
+        'U+0387 Greek ano teleia' => [0x387, true],
+        'U+1369 Ethiopic digit one' => [0x1369, true],
+        'U+1371 Ethiopic digit nine' => [0x1371, true],
+        'U+19DA New Tai Lue tham digit one' => [0x19DA, true],
+        'U+30FB katakana middle dot' => [0x30FB, true],
+        'U+FF65 halfwidth katakana middle dot' => [0xFF65, true],
+        'a letter' => [0x61, true],
+        'a digit' => [0x31, true],
+        'an underscore' => [0x5F, true],
+        'a dollar sign' => [0x24, true],
+        'a zero-width non-joiner' => [0x200C, true],
+        'a zero-width joiner' => [0x200D, true],
+        'U+2E2F vertical tilde, a letter that is pattern syntax' => [0x2E2F, false],
+        'a dot' => [0x2E, false],
+        'a space' => [0x20, false],
+        'a line separator' => [0x2028, false],
+    ]);
+
+    test('the stand-in pattern answers the same', function (string $haystack, string $name, bool $found) {
+        expect(olderPcreTsTypeString()->typeNameOccursIn($name, $haystack))->toBe($found)
+            ->and($this->service->typeNameOccursIn($name, $haystack))->toBe($found);
+    })->with([
+        'a bare name' => ['User | null', 'User', true],
+        'a variadic tuple element' => ['[string, ...User[]]', 'User', true],
+        'a name inside a string literal' => ["'User' | 'Admin'", 'User', true],
+        'a member of a namespace' => ['Models.User', 'User', false],
+        'a member of an imported module' => ["import('x').User", 'User', true],
+        'a longer identifier' => ['CrmUser', 'User', false],
+        'a name after a digit inside a longer identifier' => ['a1User', 'User', false],
+        'a name after a non-ASCII letter' => ["\u{e9}User", 'User', false],
+        'a name before a middle dot' => ["User\u{b7}", 'User', false],
+        'a name after a script capital P' => ["\u{2118}User", 'User', false],
+        'a name before a vertical tilde, which is no identifier character' => ["User\u{2e2f}", 'User', true],
+        'a name right after a numeric literal' => ['1User', 'User', false],
+        'a four-digit escape' => [chr(92).'u0055ser', 'User', true],
+        'an escape of a script capital P at the start' => [chr(92).'u2118User', "\u{2118}User", true],
+        'an escape of an estimated sign in the middle' => ['Us'.chr(92).'u{212E}er', "Us\u{212e}er", true],
+        'an escape of a middle dot at the end' => ['User'.chr(92).'u00B7 | null', "User\u{b7}", true],
+        'an escape of an Ethiopic digit one at the end' => ['User'.chr(92).'u{1369}', "User\u{1369}", true],
+        'an escape of a katakana voiced sound mark at the start' => [chr(92).'u309BUser', "\u{309b}User", true],
+        'an escape of a katakana middle dot in the middle' => ['User'.chr(92).'u{30FB}Kind', "User\u{30fb}Kind", true],
+        'an escape of a halfwidth katakana middle dot at the end' => ['User'.chr(92).'uFF65', "User\u{ff65}", true],
+        'an escape of a dot, decoded like any other character' => [chr(92).'u002EUser', 'User', true],
+        'an escape of a space, decoded like any other character' => [chr(92).'u0020User', 'User', true],
+        'the name TypeScript reads after an escaped dot, invalid syntax' => [chr(92).'u002EUser', 'u002EUser', false],
+    ]);
+
+    test('typeNameOccursIn() decodes every escape on any tables', function (string $haystack, string $name) {
+        expect(asciiTablesTsTypeString()->typeNameOccursIn($name, $haystack))->toBeTrue()
+            ->and(olderPcreTsTypeString()->typeNameOccursIn($name, $haystack))->toBeTrue()
+            ->and($this->service->typeNameOccursIn($name, $haystack))->toBeTrue();
+    })->with([
+        'a katakana middle dot inside the name' => ['Us'.chr(92).'u{30FB}er | null', "Us\u{30fb}er"],
+        'a halfwidth katakana middle dot ending the name' => ['User'.chr(92).'uFF65 | null', "User\u{ff65}"],
+        'a CJK Extension I ideograph inside the name' => ['Us'.chr(92).'u{2EBF0}er | null', "Us\u{2ebf0}er"],
+        'a space before the name' => [chr(92).'u0020User', 'User'],
+    ]);
+
+    test('typeNameOccursIn() joins U+30FB and U+FF65 to a name on any PCRE2', function (string $haystack) {
+        expect($this->service->typeNameOccursIn('User', $haystack))->toBeFalse()
+            ->and(olderPcreTsTypeString()->typeNameOccursIn('User', $haystack))->toBeFalse();
+    })->with([
+        'a katakana middle dot' => ["User\u{30fb}Kind"],
+        'a halfwidth katakana middle dot' => ["User\u{ff65}"],
+    ]);
+
+    test('typeNameOccursIn() keeps the name when PCRE cannot run its pattern or its escape decoder', function () {
+        // An uncompilable pattern raises a warning on each call, which Laravel's error handler would rethrow.
+        set_error_handler(static fn (): bool => true);
+
+        try {
+            $unmatched = uncompilableTsTypeString()->typeNameOccursIn('User', 'string');
+        } finally {
+            restore_error_handler();
+        }
+
+        expect($unmatched)->toBeTrue()
+            ->and(undecodableTsTypeString()->typeNameOccursIn('User', chr(92).'u0055ser'))->toBeTrue();
+    });
+
+    test('typeNameOccursIn() reads a deeply nested template literal in one pass', function () {
+        $depth = 2000;
+        $textOnly = str_repeat('`${', $depth).'string'.str_repeat('}User`', $depth);
+
+        expect($this->service->typeNameOccursIn('User', str_repeat('`${', $depth).'User'.str_repeat('}`', $depth)))->toBeTrue()
+            ->and($this->service->typeNameOccursIn('User', $textOnly))->toBeTrue()
+            ->and($this->service->typeNameOccursIn('Post', $textOnly))->toBeFalse()
+            ->and($this->service->typeNameOccursIn('Post', $textOnly.' | Post'))->toBeTrue();
+    });
+});
+
+describe('orUndefined', function () {
+    test('appends an undefined arm only when the type has no top-level one', function (string $type, string $expected) {
+        expect($this->service->orUndefined($type))->toBe($expected);
+    })->with([
+        'a bare type' => ['string', 'string | undefined'],
+        'a nullable type' => ['string | null', 'string | null | undefined'],
+        'already carrying it' => ['string | undefined', 'string | undefined'],
+        'carrying it first' => ['undefined | string', 'undefined | string'],
+        'naming it only inside a shape' => ['{ a: string | undefined }', '{ a: string | undefined } | undefined'],
+        'naming it only inside a Record' => ['Record<string, number | undefined>', 'Record<string, number | undefined> | undefined'],
+        'naming it only in a string literal' => ["'undefined'", "'undefined' | undefined"],
+        'a name that differs by case' => ['UndefinedThing', 'UndefinedThing | undefined'],
+    ]);
+});
+
+describe('isUnknownOnly', function () {
+    test('only a type whose non-null arms are all unknown is unknown-only', function (string $type, bool $expected) {
+        expect($this->service->isUnknownOnly($type))->toBe($expected);
+    })->with([
+        'bare unknown' => ['unknown', true],
+        'unknown with a null arm' => ['unknown | null', true],
+        'null before unknown' => ['null | unknown', true],
+        'a real type' => ['string', false],
+        'a real type with a null arm' => ['User | null', false],
+        'unknown beside a real arm' => ['unknown | string', false],
+        'an unknown inside a shape' => ['{ a: unknown }', false],
+        'an unknown element type' => ['unknown[]', false],
+    ]);
 });
 
 describe('isVagueTsType', function () {

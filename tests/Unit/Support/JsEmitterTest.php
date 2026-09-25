@@ -29,6 +29,70 @@ describe('validJsObjectKey', function () {
             ->and($this->service->validJsObjectKey('[key: number]', allowIndexSignature: true))->toBe('[key: number]')
             ->and($this->service->validJsObjectKey('[key: string]', allowIndexSignature: true))->toBe('[key: string]');
     });
+
+    test('validJsObjectKey keeps a template-literal index signature verbatim', function () {
+        expect($this->service->validJsObjectKey('[key: `${string}_label`]', allowIndexSignature: true))->toBe('[key: `${string}_label`]');
+    });
+});
+
+describe('isIndexSignatureKey', function () {
+    test('only a generated index signature is one', function (string $key, bool $expected) {
+        expect($this->service->isIndexSignatureKey($key))->toBe($expected);
+    })->with([
+        'number key' => ['[key: number]', true],
+        'string key' => ['[key: string]', true],
+        'template literal' => ['[key: `${string}_tag`]', true],
+        'a property name' => ['price_tag', false],
+        'a bracketed name that is not a signature' => ['[weird]', false],
+        'a symbol key type' => ['[key: symbol]', false],
+        'a backtick inside the template' => ['[key: `a`b`]', false],
+    ]);
+});
+
+describe('castsByKey', function () {
+    test('a cast key takes the key it names, or the backslash signature whose single-quoted paste it is', function (array $casts, array $expected) {
+        expect($this->service->castsByKey($casts, ['[key: `${string}\\\\_x`]', 'main\\_x', 'id']))->toBe($expected);
+    })->with([
+        'the exact name' => [['[key: `${string}\\\\_x`]' => 'number'], ['[key: `${string}\\\\_x`]' => 'number']],
+        'each doubled backslash single' => [['[key: `${string}\\_x`]' => 'number'], ['[key: `${string}\\\\_x`]' => 'number']],
+        'a key no name answers to' => [['[key: `${string}_x`]' => 'number'], ['[key: `${string}_x`]' => 'number']],
+        'a named key, which only answers to its own spelling' => [['main\\\\_x' => 'number'], ['main\\\\_x' => 'number']],
+    ]);
+
+    test('when both spellings name one signature, the exact one wins and the other is dropped', function (array $casts) {
+        expect($this->service->castsByKey($casts, ['[key: `${string}\\\\_x`]']))->toBe(['[key: `${string}\\\\_x`]' => 'number']);
+    })->with([
+        'exact first' => [['[key: `${string}\\\\_x`]' => 'number', '[key: `${string}\\_x`]' => 'boolean']],
+        'exact last' => [['[key: `${string}\\_x`]' => 'boolean', '[key: `${string}\\\\_x`]' => 'number']],
+    ]);
+
+    test('a cast key with a raw CR for the name\'s `\r`, or single backslashes, or both, takes the name', function (string $castKey) {
+        $name = '[key: `${string}\\\\\\r_x`]';
+
+        expect($this->service->castsByKey([$castKey => 'number'], [$name]))->toBe([$name => 'number']);
+    })->with([
+        'a raw CR' => ['[key: `${string}\\\\'."\r".'_x`]'],
+        'single backslashes' => ['[key: `${string}\\\\r_x`]'],
+        'both' => ['[key: `${string}\\'."\r".'_x`]'],
+    ]);
+
+    test('the escapes are read token by token, so an escaped backslash before `r` is never a CR', function () {
+        $castKey = '[key: `${string}\\'."\r".'`]';
+
+        expect($this->service->castsByKey([$castKey => 'number'], ['[key: `${string}\\\\r`]']))->toBe([$castKey => 'number']);
+    });
+
+    test('a spelling two signatures share matches neither', function () {
+        $keys = ['[key: `${string}\\\\\\r`]', '[key: `${string}\\\\\\\\r`]'];
+
+        expect($this->service->castsByKey(['[key: `${string}\\\\r`]' => 'number'], $keys))->toBe(['[key: `${string}\\\\r`]' => 'number']);
+    });
+
+    test('a cast key equal to one name keeps it, though it is another signature\'s single-quoted paste', function () {
+        $keys = ['[key: `${string}\\_x`]', '[key: `${string}\\\\_x`]'];
+
+        expect($this->service->castsByKey(['[key: `${string}\\_x`]' => 'number'], $keys))->toBe(['[key: `${string}\\_x`]' => 'number']);
+    });
 });
 
 describe('safeJsIdentifier', function () {

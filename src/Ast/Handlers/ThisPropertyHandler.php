@@ -5,9 +5,10 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ChecksPreserveKeys;
-use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
@@ -22,6 +23,7 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Identifier;
+use ReflectionClass;
 
 /**
  * `$this->property` — resolved against the backing model, attributes before relations, matching
@@ -36,6 +38,7 @@ final class ThisPropertyHandler implements ExpressionHandler
 {
     use ChecksPreserveKeys;
     use InspectsAstNodes;
+    use InspectsResourceCalls;
     use InspectsResourceSubject;
     use ResolvesEnumPropertyArgTypes;
     use ResolvesModelRelationTypes;
@@ -62,8 +65,10 @@ final class ThisPropertyHandler implements ExpressionHandler
      *
      * Public: the analyzer's own resolveArrayOrClosureToProperties() (merge()/mergeWhen() resolution)
      * calls this directly — the array machinery moved here while that caller stayed on the analyzer.
+     *
+     * @param  ReflectionClass<object>  $subject  the analyzed subject, which decides whether a numeric key survives
      */
-    public function extractPropertiesFromArray(Array_ $array, ExpressionEngine $engine, bool $optional = false): ResourceAnalysis
+    public function extractPropertiesFromArray(Array_ $array, ExpressionEngine $engine, ReflectionClass $subject, bool $optional = false): ResourceAnalysis
     {
         $analysis = new ResourceAnalysis;
 
@@ -72,7 +77,7 @@ final class ThisPropertyHandler implements ExpressionHandler
                 continue;
             }
 
-            $keyName = $this->resolveKeyName($item->key);
+            $keyName = $this->resolveKeyName($item->key, $subject);
 
             if ($keyName === null) {
                 continue;
@@ -105,31 +110,18 @@ final class ThisPropertyHandler implements ExpressionHandler
             return $this->analyzeCollectionProperty($scope);
         }
 
+        // PHP reads a declared property before JsonResource::__get() ever forwards to the model.
+        if ($scope->modelClass !== null && resolve(SubjectPropertyTypeResolver::class)->declaresOwnProperty($scope->subjectReflection, $propName)) {
+            $own = resolve(SubjectPropertyTypeResolver::class)->resolve($scope->subjectReflection, $propName);
+
+            // An abstract or framework model would be emitted as a token nothing imports.
+            return $own !== null && ValueResult::namesOnlyPublishedModels($own) ? $own : $result;
+        }
+
         $info = $this->resolveModelAttributeTypeInfo($propName, $scope);
 
         if ($info['type'] !== 'unknown') {
-            $result = [
-                ...$result,
-                'type' => $info['type'],
-            ];
-
-            // An accessor typed Attribute<StatusA|StatusB, never> spells both names; only the first
-            // reaches directEnumFqcn, so the rest travel per-occurrence the way classFqcns do below.
-            if (count($info['enumFqcns']) > 1) {
-                $result['embeddedEnumFqcns'] = $info['enumFqcns'];
-            } elseif ($info['enumFqcn'] !== null) {
-                $result['directEnumFqcn'] = $info['enumFqcn'];
-            }
-
-            // A single-FQCN accessor needs no per-occurrence disambiguation; only a genuine union
-            // needs its FQCNs threaded out here for aliasPropertyType() to consume per occurrence.
-            if (count($info['classFqcns']) > 1) {
-                $result['embeddedModelFqcns'] = $info['classFqcns'];
-            } elseif (count($info['classFqcns']) === 1) {
-                $result['modelFqcn'] = $info['classFqcns'][0];
-            }
-
-            return $result;
+            return ValueResult::withAttributeChannels([...$result, 'type' => $info['type']], $info);
         }
 
         $relationInfo = $this->resolveModelRelationTypeInfo($propName, $scope);

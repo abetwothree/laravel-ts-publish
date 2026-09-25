@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Inertia;
 
-use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\CallMatcher;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\ControllerExpressionHandlers;
+use AbeTwoThree\LaravelTsPublish\Ast\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\InertiaRenderLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodContext;
@@ -18,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -223,7 +225,11 @@ class InertiaPageAnalyzer
             $literals,
         );
 
-        return count($analyses) === 1 ? $analyses[0] : $analyzer->mergeReturnBranches($analyses);
+        if (count($analyses) === 1) {
+            return $analyses[0];
+        }
+
+        return $analyzer->mergeReturnBranches($analyses);
     }
 
     /**
@@ -343,13 +349,17 @@ class InertiaPageAnalyzer
 
         foreach ($branches as $analyses) {
             $analysis = count($analyses) === 1 ? $analyses[0] : $analyzer->mergeReturnBranches($analyses);
+            $casts = JsEmitter::castsByKey($overrides, array_column($analysis->properties, 'name'));
 
-            $this->forgetOverriddenChannels($analysis, $overrides);
+            // Each props literal was reconciled alone, and the controller's own casts are laid over the props below.
+            resolve(IndexSignatureReconciler::class)->reconcile($analysis, $casts);
+
+            $this->forgetOverriddenChannels($analysis, $casts);
 
             $props = $this->collectProps($analysis);
-            $pageType = $props === [] && $overrides === []
+            $pageType = $props === [] && $casts === []
                 ? 'Inertia.SharedData'
-                : 'Inertia.SharedData & '.$this->buildTypeStringWithOverrides($props, $overrides);
+                : 'Inertia.SharedData & '.$this->buildTypeStringWithOverrides($props, $casts);
 
             $pageTypes[] = $pageType;
 

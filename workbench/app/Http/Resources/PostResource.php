@@ -36,7 +36,7 @@ class PostResource extends JsonResource
             'priority' => EnumResource::make($this->priority),
             'priority_new' => new EnumResource($this->priority),
             'comments' => $this->comments->only('id', 'content', 'user'),
-            'comments_limited' => $this->comments->only(['id', 'content']), // hasMany with all-column keys — proves the Pick<> [] suffix
+            'comments_limited' => $this->comments->only(['id', 'content']), // hasMany filter keeps whole models by primary key — publishes the relation's own Comment[]
             'published' => (bool) $this->published_at, // attribute with cast but no return type annotation
             'rating_display' => (int) round(($this->rating ?? 0) * 2) / 2, // attribute with cast and return type annotation in body
             'word_count' => (string) number_format($this->word_count ?? 0), // attribute with cast and return type annotation in body that casts to a different type — analyzer should resolve type from body (string) rather than cast (integer)

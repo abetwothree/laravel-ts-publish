@@ -14,6 +14,9 @@ final class SubjectProps
 {
     public int $teamId;
 
+    /** Deliberately disagrees with Post::$title, which is a string column, to prove which one wins. */
+    public int $title;
+
     /** @var list<string> */
     public array $tags;
 

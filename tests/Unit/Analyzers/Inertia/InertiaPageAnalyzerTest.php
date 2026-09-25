@@ -10,7 +10,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaInlineTabl
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaServiceTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithDelegatedProps;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithSignatureCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithSpreadProps;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTagSignatureBranches;
 use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
 use Workbench\App\Http\Controllers\InertiaPaginationsController;
 use Workbench\App\Http\Controllers\InertiaPreserveKeysController;
@@ -455,4 +457,47 @@ test('analyze() applies the #[TsCasts] override on a sibling of a table action',
 
 test('analyze() returns null for a non-Inertia action on a table-bearing controller', function () {
     expect(pageData(InertiaServiceTableController::class.'@store'))->toBeNull();
+});
+
+describe('a docblock-filled index signature in page props merged from several branches', function () {
+    test('keys from another render call join the union', function () {
+        expect(pageData(ControllerWithTagSignatureBranches::class.'@show')['pageType'])->toBe(
+            'Inertia.SharedData & { [key: `${string}_tag`]: string | number | undefined, id: number, price_tag?: number }',
+        );
+    });
+
+    test('a resource-typed key from the other ternary arm puts the fill back', function () {
+        expect(pageData(ControllerWithTagSignatureBranches::class.'@ternary')['pageType'])->toBe(
+            'Inertia.SharedData & { [key: `${string}_tag`]: unknown | undefined, price_tag?: PostResource }',
+        );
+    });
+
+    test('a key the controller method\'s #[TsCasts] adds joins the union', function () {
+        expect(pageData(ControllerWithTagSignatureBranches::class.'@cast')['pageType'])->toBe(
+            'Inertia.SharedData & { [key: `${string}_tag`]: string | boolean | undefined, extra_tag: boolean }',
+        );
+    });
+
+    test('a ternary arm\'s key the controller method\'s #[TsCasts] retypes joins with its cast type', function () {
+        expect(pageData(ControllerWithTagSignatureBranches::class.'@ternaryCast')['pageType'])->toBe(
+            'Inertia.SharedData & { [key: `${string}_tag`]: string | number | undefined, price_tag: number }',
+        );
+    });
+
+    test('the union keeps its undefined arm beside a cast that names undefined only in a literal', function () {
+        expect(pageData(ControllerWithTagSignatureBranches::class.'@undefinedLiteral')['pageType'])->toBe(
+            'Inertia.SharedData & { [key: `${string}_tag`]: string | number | \'undefined\' | undefined, '
+            .'price_tag?: number, state_tag: \'undefined\' }',
+        );
+    });
+});
+
+test('a controller method\'s #[TsCasts] key with the backslashes a single-quoted PHP string leaves retypes the signature', function () {
+    expect(pageData(ControllerWithSignatureCastSpelling::class.'@show')['pageType'])
+        ->toBe('Inertia.SharedData & { [key: `${string}\\\\_cast`]: number, id: number }');
+});
+
+test('a controller method\'s cast key holding a raw CR retypes the CR signature', function () {
+    expect(pageData(ControllerWithSignatureCastSpelling::class.'@rawCr')['pageType'])
+        ->toBe('Inertia.SharedData & { [key: `${string}\r`]: number, id: number }');
 });

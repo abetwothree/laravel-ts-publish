@@ -145,8 +145,7 @@ that column — and PHPStan already rejects that read on a `Model`-typed paramet
 guard. What a shared provider actually reads are method calls the declared-type binding already types. The
 change would buy no simplification, put a schema lookup back into the type pass, and make identical provider
 bodies infer differently per companion. The engine plumbing (`AnalysisScope::$varModelBindings`) accepts a
-concrete class already, so this stays a one-line change if a provider author ever asks for it; the reasoning
-is recorded in the plan's follow-ups ledger, not here.
+concrete class already, so this stays a one-line change if a provider author ever asks for it.
 
 Also deliberately not done: the controller handler profile (`InertiaResourcePropHandler` / `ModelFinderHandler`
 have no meaning in a provider and would move inference for existing providers), and class-level `#[TsCasts]`
@@ -196,8 +195,11 @@ Docblock shapes render through the same helpers the rest of the package uses: `a
 `Record<string, T>`, `list<T>` and `array<int, T>` → `T[]`, `array<array-key, T>` / `array<mixed, T>` →
 `T[] | Record<string, T>` (`wrapAsMaybeKeyedArray()` — key sequentiality is not guaranteed, so neither spelling
 alone is honest), nested `array{...}` → an inline object literal. A helper returning a native `array` with no
-docblock infers `unknown[]`, which `inferTypes()` discards; that key is then rejected as undeclared unless the
-return shape or `#[TsCasts]` names it.
+docblock types from the array literal it returns (`MethodReturnTypeResolver::bodyType()`), so `['limit' => 25]`
+infers `{ limit: number }`. With no literal it infers `unknown[]`, and a literal holding a value the helper's own
+body cannot type (`$model->getTable()`, since nothing binds the helper's parameter) infers a shape naming
+`unknown`. `inferTypes()` discards both, and that key is then rejected as undeclared unless the return shape or
+`#[TsCasts]` names it.
 
 ## Value normalization
 
@@ -325,7 +327,7 @@ Two consequences worth knowing before changing this:
   instead. Hashing the normalized payload means lifting `normalizeMetadataValue()` out of the transformer into
   something the generator can call.
 
-Both are recorded as deferred, with their reasoning, in the plan's follow-ups ledger.
+Both limits are deliberate.
 
 Manifest entries are keyed `GeneratorFQCN::ModelFQCN` before `GenerationManifest::entryKey()` hashes them, which
 is what keeps one model's interface entry and its metadata entry apart.

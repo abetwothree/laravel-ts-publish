@@ -108,7 +108,7 @@ it('extractPropertiesFromArray() resolves each keyed item through the engine, fo
         [$nameValue, ['type' => 'string', 'optional' => false]],
     ]);
 
-    $analysis = (new ThisPropertyHandler)->extractPropertiesFromArray($array, $engine, optional: true);
+    $analysis = (new ThisPropertyHandler)->extractPropertiesFromArray($array, $engine, new ReflectionClass(UserResource::class), optional: true);
 
     expect($analysis)->toBeInstanceOf(ResourceAnalysis::class)
         ->and($analysis->properties)->toBe([
@@ -121,7 +121,7 @@ it('extractPropertiesFromArray() skips unkeyed items — it does not support spr
         new ArrayItem(new Variable('spread'), null, unpack: true),
     ]);
 
-    $analysis = (new ThisPropertyHandler)->extractPropertiesFromArray($array, thisPropertyHandlerThrowingEngine());
+    $analysis = (new ThisPropertyHandler)->extractPropertiesFromArray($array, thisPropertyHandlerThrowingEngine(), new ReflectionClass(UserResource::class));
 
     expect($analysis->properties)->toBe([]);
 });
@@ -154,15 +154,36 @@ it('declines a subject-mode chain whose root property is not a model', function 
     ]);
 });
 
-// Subject mode is the model-less branch only: a model-backed scope must still miss on a property
-// the subject declares but the model does not, or every resource's output could shift.
-it('leaves a model-backed scope on the model, never on the subject own property', function () {
+// D3: PHP reads a declared property before JsonResource::__get() forwards to the model, so a
+// model-backed scope now answers from the subject's own declaration too.
+it('answers a model-backed scope from the subject own property', function () {
     $expr = new PropertyFetch(new Variable('this'), 'teamId');
     $scope = new AnalysisScope(new ReflectionClass(SubjectProps::class), Post::class);
 
     $result = (new ThisPropertyHandler)->resolve($expr, $scope, thisPropertyHandlerThrowingEngine());
 
-    expect($result)->toBe(['type' => 'unknown', 'optional' => false]);
+    expect($result)->toBe(['type' => 'number', 'optional' => false]);
+});
+
+// The precedence itself: SubjectProps::$title is an int, Post::$title a string column.
+it('prefers the subject own property over a same-named model attribute', function () {
+    $expr = new PropertyFetch(new Variable('this'), 'title');
+    $scope = new AnalysisScope(new ReflectionClass(SubjectProps::class), Post::class);
+
+    $result = (new ThisPropertyHandler)->resolve($expr, $scope, thisPropertyHandlerThrowingEngine());
+
+    expect($result)->toBe(['type' => 'number', 'optional' => false]);
+});
+
+// The D3 branch only fires for a real declaration: a name the subject does not declare at all is
+// rejected at the hasProperty() guard and still resolves from the model.
+it('a name the subject does not declare still resolves from the model', function () {
+    $expr = new PropertyFetch(new Variable('this'), 'title');
+    $scope = new AnalysisScope(new ReflectionClass(UserResource::class), Post::class);
+
+    $result = (new ThisPropertyHandler)->resolve($expr, $scope, thisPropertyHandlerThrowingEngine());
+
+    expect($result)->toBe(['type' => 'string', 'optional' => false]);
 });
 
 // An accessor typed Attribute<Status|Priority, never> spells both enum names, and only the first
