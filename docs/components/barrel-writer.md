@@ -1,102 +1,93 @@
 # BarrelWriter
 
-> User-facing docs: [README § Modular publishing](../../README.md#modular-publishing) and
-> [README § Publishing types](../../README.md#publishing-types) for the `--only-*` flags.
+[`BarrelWriter`](../../src/Writers/BarrelWriter.php) writes the `index.ts` barrel in each namespace directory, with one
+`export * from './file';` line per generated file, sorted and de-duplicated. [`Runner`](../../src/Runners/Runner.php)
+resolves it through the `barrel_writer_class` config key, and calls it for the enum, model, resource, form request and
+broadcast event phases, after each writes its files. Barrels are generated files, so a write keeps only the export
+lines the writer decides on.
 
-`AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter` writes the `index.ts` barrel files that re-export every
-generated file in a namespace directory. Barrels are **generated files**: their content is exactly the
-sorted, de-duplicated set of `export * from './file';` lines the writer decides on, and nothing else in the
-file survives.
+## Where things live
 
-## API
+Barrel writing spans these classes:
 
-| Method | Semantics |
-| --- | --- |
-| `write(Collection $transformers, string $filename, string $outputDirectory)` | One flat barrel at a fixed path (the non-modular layout; used by no runner path today). |
-| `writeModular(Collection $generators, ?string $outputBase = null)` | Groups generators by `namespacePath()` and **rewrites** each namespace's `index.ts` from the generators alone. |
-| `writeModularPreserving(Collection $generators, Closure $keepExisting, ?string $outputBase = null)` | Same grouping, plus every export already in that `index.ts` whose filename `$keepExisting(string): bool` approves. |
+- [`BarrelWriter`](../../src/Writers/BarrelWriter.php): `writeModular()` rebuilds each barrel from the run's
+  generators, and `writeModularPreserving()` also keeps the existing exports a predicate approves. Its flat `write()`
+  has no caller in the runners.
+- [`Runner::preservedModelBarrelExports()`](../../src/Runners/Runner.php): builds that predicate for the model barrel,
+  the one barrel two phases share.
+- [`ModelMetadataTransformer`](../../src/Transformers/ModelMetadataTransformer.php): `filenameFor()` names a metadata
+  companion and `isMetadataFilename()` recognizes one.
+- [`RouteWriter::writeRouteBarrels()`](../../src/Writers/RouteWriter.php): writes route barrels instead, because they
+  re-export each controller's default export rather than `export *`.
 
-Both modular methods return the barrel contents keyed by namespace path, and both delegate to one private
-`writeModularBarrels()` that differs only in whether it merges the approved existing exports in before
-sorting. `$outputBase` falls back to `ts-publish.output_directory` when null or empty; it must match the
-directory the per-file writer targeted, or the barrel lands beside nothing.
+## How a barrel is written
 
-Only namespaces that received at least one generator this run are touched — a namespace with no generator
-keeps its file untouched, which is also why a phase that publishes nothing cannot prune anything. Existing
-exports are read from disk even when `output_to_files` is false, so a `--preview` shows what a real run
-would write. `putIfChanged()` skips the write when the content is byte-identical, keeping the mtime stable
-so a watching Vite server does not reload for an unchanged barrel.
+Every write follows these rules:
 
-An existing barrel is parsed line by line against `EXPORT_LINE`
-(`export * from './x';` — either quote style, optional semicolon, any surrounding whitespace, and `preg_split`
-on `\R` so CRLF files parse). Comments, blank lines, and anything hand-written are not carried over: a
-Prettier pass over a barrel is harmless, a header comment is not preserved.
+- **Scope**: a write touches only the namespaces that received a generator this run. Every other barrel keeps its
+  file, which is also why a phase that publishes nothing prunes nothing.
+- **Output base**: `$outputBase` must match the directory the per-file writer targeted, or the barrel lands beside
+  nothing.
+- **Preview**: a preserving write reads the existing barrel even when `output_to_files` is false, so `--preview` shows
+  what a real run would write.
+- **What survives**: only export lines carry over, matched loosely enough that a Prettier pass or CRLF endings are
+  harmless. Comments and hand-written lines are dropped.
 
-The preserving behavior is a separate method rather than a third parameter on `writeModular()`, because PHP
-fatals when a subclass declares **fewer** parameters than its parent: widening `writeModular()` would break
-every `barrel_writer_class` override in the wild at load time, while a new method they simply inherit breaks
-none.
+`writeModularPreserving()` is a separate method, not a new parameter on `writeModular()`. PHP fatals when a subclass
+declares fewer parameters than its parent, so widening `writeModular()` would break every `barrel_writer_class`
+override at load time. A new method they inherit breaks none.
 
 ## Phase ownership of model barrels
 
-Model interfaces and metadata companions live in the same namespace directory and therefore share one
-barrel. Every export in a model barrel belongs to exactly one phase, decided by
-`ModelMetadataTransformer::isMetadataFilename()` — a suffix test, which is sound because `Str::kebab()` never
-*introduces* an underscore, so a model interface filename can only end in `_meta` if the class name itself
-carried the underscore (`User_meta`, which [known-gaps.md](../known-gaps.md) accepts rather than guards). See
-[Model metadata § Filenames and barrels](model-metadata.md#filenames-and-barrels).
-`Runner::preservedModelBarrelExports()` turns the run's state into the `keepExisting` predicate:
+Model interfaces and metadata companions live in one namespace directory, so they share one barrel. Every export in it
+belongs to exactly one phase, decided by `ModelMetadataTransformer::isMetadataFilename()`. The suffix test is sound
+because `Str::kebab()` never introduces an underscore, so a model interface's filename ends in `_meta` only when the
+class name itself carries the underscore.
+[Model metadata § Filenames and barrels](model-metadata.md#filenames-and-barrels) covers the naming side.
+
+`Runner::preservedModelBarrelExports()` turns the run's state into the predicate:
 
 | Phase state this run | Its exports in the rewritten barrel |
 | --- | --- |
-| Ran | Exactly what it generated this run — stale exports are dropped |
-| Enabled in config, skipped by an `--only-*` flag (or by the runner flags a caller set) | Carried over from the existing file |
-| Disabled in config | Dropped — turning a phase off prunes it |
-| Ran, but a model's provider threw | That model's existing `_meta` export is kept (last known good) |
+| Ran | Exactly what it generated this run. Stale exports are dropped |
+| Enabled in config, skipped by an `--only-*` flag or by runner flags a caller set | Carried over from the existing file |
+| Disabled in config | Dropped, so turning a phase off prunes it |
+| Ran, but a model's provider threw | That model's existing `_meta` export is kept as last known good |
 
-When neither phase needs preserving and nothing failed, the predicate is `null` and the runner calls
-`writeModular()` instead. That is the path a full run on the default config takes, and it is what makes
-deleting a model drop its export on the next publish.
+When nothing needs preserving and nothing failed, the predicate is `null` and the runner calls `writeModular()`. A full
+run on the default config takes that path, which is how deleting a model drops its export on the next publish.
 
-"Skipped by a flag" is derived, not tracked: a phase is preserved when its `should*` flag is false **and**
-its `*.enabled` config is true. `--only-models`, `--only-model-metadata`, `--only-functional`, and the
-interactive config-override prompt all fall out of that one rule with no special cases — including the
-prompt's inverse, where a phase runs while its config says disabled and so preserves nothing.
+"Skipped by a flag" is derived, not tracked. A phase is preserved when its `should*` flag is false and its `*.enabled`
+config is true. `--only-models`, `--only-model-metadata`, `--only-functional` and the interactive config-override
+prompt all follow from that one rule. The prompt's inverse, a phase that runs while its config says disabled, preserves
+nothing.
 
-The predicate resolves the **configured** `model_metadata.transformer_class`, not the base class. A custom
-transformer names its own companion files, so only it can say which exports the metadata phase owns.
-`tests/Fixtures/SuffixedModelMetadataTransformer.php` pins a run where ownership follows `user.meta` rather
-than `user_meta` by redefining `FILENAME_SUFFIX`; `tests/Fixtures/PrefixedModelMetadataTransformer.php` pins one
-that overrides `filenameFor()` and `isMetadataFilename()` outright, which only agrees with the written files
-because `ModelMetadataTransformer::filename()` dispatches through `static::`.
+The predicate asks the configured `model_metadata.transformer_class`, not the base class, because a custom transformer
+names its own companions. Its `filenameFor()` and `isMetadataFilename()` must agree, and `filename()` dispatches
+through `static::`, so an override of the pair changes the written file and its barrel ownership together. Failed
+models are matched through `filenameFor()`, so one model's failure preserves one export and no more.
+`tests/Unit/RunnerTest.php` pins the table row by row, including the custom transformer fixtures.
 
-Those two methods must be overridden together — one names a companion, the other recognises one, and ownership
-holds only while they agree.
+`RunnerForSource` writes no barrels, so a `--source` run neither prunes nor preserves. The barrel stays as the last full
+run left it.
 
-Failed models are matched by filename, not by class: `preservedModelBarrelExports()` maps every entry in
-`Runner::$modelMetadataFailures` through `$transformerClass::filenameFor()` and approves those filenames
-individually, so one model's failure preserves one export and no more.
+## Custom barrel writers
 
-`RunnerForSource` writes no barrels at all, so a `--source` run never prunes or preserves anything — the
-barrel is whatever the last full run left.
+A `barrel_writer_class` subclass inherits `writeModularPreserving()`, so partial runs stay correct with no opt-in.
+A subclass that overrides `writeModular()` to change the output format must override `writeModularPreserving()` the
+same way. Partial runs call the preserving method, and the inherited one emits the base format. `writeModularBarrels()`
+and `existingExports()` are `protected` so such a subclass can reuse the merge, as
+`tests/Fixtures/HeaderedBarrelWriter.php` does.
 
-## Custom writers
+## Related
 
-A `barrel_writer_class` subclass inherits `writeModularPreserving()` and needs no opt-in for partial runs to
-stay correct (`tests/Fixtures/CustomBarrelWriter.php` — a subclass that overrides nothing — pins this). A
-subclass that overrides `writeModular()` to change the output *format* should override
-`writeModularPreserving()` the same way: the parent implementation is what partial runs call, and it would
-otherwise emit the base format for exactly the runs that preserve. `writeModularBarrels()` and
-`existingExports()` are `protected` so such a subclass can reuse the merge instead of reimplementing it —
-`tests/Fixtures/HeaderedBarrelWriter.php` overrides both entry points that way and pins a preserving run
-that keeps its header.
+These pages hold the user docs and the accepted gaps:
 
-## Tests
-
-- `tests/Unit/Writers/BarrelWriterTest.php` — rewrite versus preserve, the predicate, non-export lines, quote
-  styles, CRLF, and preview parity.
-- `tests/Unit/RunnerTest.php` — the ownership table row by row: flag-skipped models, flag-skipped metadata,
-  config-disabled metadata, a failed model, a custom `transformer_class`, and both custom barrel writers.
-- `tests/Feature/Commands/TsPublishCommandTest.php` — *a full publish drops barrel exports for models that no
-  longer exist*, the `--only-*` sequences over a real temp directory, and the same sequences under a custom
-  barrel writer.
+- [Modular Publishing](https://tolki.abe.dev/ts/modular-publishing.html) in the tolki docs, for the barrel layout users
+  see, and [Publishing](https://tolki.abe.dev/ts/publishing.html) for the `--only-*` flags.
+- [Known gaps: a model class name containing an
+  underscore](../known-gaps.md#a-model-class-name-containing-an-underscore-can-collide-with-a-metadata-companion),
+  accepted rather than guarded.
+- [Known gaps: a `transformer_class` that overrides only
+  one](../known-gaps.md#a-transformer_class-that-overrides-only-one-of-the-two-filename-methods-orphans-its-companions)
+  of the two filename methods, which orphans its companions.
