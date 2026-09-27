@@ -42,8 +42,8 @@ unquoted number only when a sibling rule is in `NUMERIC_TYPE_RULES`. The same co
 declaration-ordered match, so a rule cannot be numeric to one check and not to the other.
 
 Even then, a param loses its quotes only when `$v === (string) ($v + 0)`. Laravel's `validateIn()` compares
-`(string) $value` strictly against the literal param, so an unquoted `2.5` or `7` would describe a value the validator
-rejects. `'2.50'` and `'007'` therefore stay quoted. Keep this guard.
+`(string) $value` strictly against the literal param, so normalizing `'2.50'` to `2.5` or `'007'` to `7` would describe
+a value Laravel's validator rejects. Those params therefore stay quoted. Keep this guard.
 
 ## Dotted keys compose through a trie
 
