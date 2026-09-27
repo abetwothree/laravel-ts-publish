@@ -229,8 +229,7 @@ it('returns the unknown body result when there is no usable return-type annotati
 it('suppresses a closure param that shadows a populated localVarBindings entry, then restores it', function () {
     // This pins the ShadowedClosureParamResource invariant: a closure param that merely shares a
     // name with an outer local must not resolve through that outer binding just because nothing
-    // else claimed it — see docs/components/resource-ast-analyzer.md, "Closure params vs.
-    // AnalysisScope::$localVarBindings".
+    // else claimed it. See docs/components/ast-engine.md, "A closure parameter owns its name".
     $scope = closureHandlerTestScope();
     $outerBoundExpr = new Variable('outerSource');
     $scope->localVarBindings['slug'] = $outerBoundExpr;

@@ -1,698 +1,325 @@
 # Type inference gates
 
-Two scripts in `.github/scripts/` guard the generated TypeScript against the two ways type inference
-fails silently. Both run in CI (`.github/workflows/run-tests.yml`, job `type-inference-gates`) and both
-can be run locally.
+Two scripts in `.github/scripts/` check the generated TypeScript for the two ways type inference fails silently.
+[`unknown-regression-gate.py`](../../.github/scripts/unknown-regression-gate.py) fails when a property that had a real
+type starts emitting `unknown`, and [`unimportable-token-gate.sh`](../../.github/scripts/unimportable-token-gate.sh)
+compiles the generated trees and fails when a token is emitted without its import or two imports collide. A green test
+suite does not prove the types are right, since a helper's unit test can pass while the pipeline emits a wrong type, so
+the gates read the output itself. They do not overlap, because a leaked token is a new property with a plausible type,
+which the regression gate cannot see. [Performance gate](performance-gate.md) covers speed.
 
-They exist because **a green test suite does not prove the generated types are right.** A unit test can
-pass against an inner helper while the pipeline still emits a wrong type, and a fixture can pass while
-emitting TypeScript that does not compile. These gates check the committed output itself.
+## Running the gates
 
-Types are gated here; speed is gated separately — see
-[`performance-gate.md`](performance-gate.md) for the publish-speed A/B gate.
+The `type-inference-gates` job in [`run-tests.yml`](../../.github/workflows/run-tests.yml) regenerates the trees under
+`workbench/resources/js/types/data` and fails when `git diff` shows a committed file there changed. That check
+ignores untracked files, so a newly generated file that was never committed passes it. The job then runs both gates,
+plus the regression gate's `--parsetest` and the token gate's `--selftest`. CI never runs the regression gate's
+`--selftest` range, so run it yourself after changing that script.
 
-| Script                       | Catches                                                                                                                  |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `unknown-regression-gate.py` | A property that had a real type now emits `unknown`                                                                      |
-| `unimportable-token-gate.sh` | A type token emitted without its `import` — TypeScript that will not compile, or that compiles against a DOM global of the same name |
+Locally, the token gate runs `npx tsc`, so install the npm dependencies first with `npm ci`, as CI does. Then
+regenerate the trees and run both gates:
 
-The two are complements, not overlaps. A leaked token is a *new* property carrying a plausible-looking
-type, not an existing property degrading, so the regression gate structurally cannot see it.
+```bash
+composer test
+.github/scripts/unimportable-token-gate.sh 0 0 0
+python3 .github/scripts/unknown-regression-gate.py "$(git merge-base origin/main HEAD)" HEAD   # after committing the trees
+```
+
+The token gate compiles the files on disk, so it checks the trees `composer test` wrote. The regression gate compares
+two commits, so commit the regenerated trees before you run it, or it never sees them. Pass the merge-base, as CI does.
+The default base, `a6c268da`, guards only the properties that existed at that commit.
 
 ## `unknown-regression-gate.py`
 
-Compares the committed type trees under `workbench/resources/js/types/data` at two revisions and fails if
-a property that carried a real type now emits one containing `unknown`. One blind spot survives by
-design: an inline object that *already* carries an `unknown` member anywhere cannot report its own
-wholesale collapse. See [What the gates do not cover](#what-the-gates-do-not-cover).
+The gate parses every `.ts` file in the generated trees at two revisions, and fails when a property whose type
+contained no `unknown` at the base contains one at the head:
 
 ```bash
 python3 .github/scripts/unknown-regression-gate.py [BASE_REV] [HEAD_REV]
 ```
 
-`BASE_REV` defaults to the branch point of the type-inference work; `HEAD_REV` defaults to `HEAD`.
+`HEAD_REV` defaults to `HEAD`, and `BASE_REV` to `a6c268da`, the commit the type-inference work branched from. CI
+passes the merge-base with `origin/main` instead, or `HEAD~1` when that merge-base is missing or is `HEAD`. The
+property counts the script prints are informational. The `PASS` or `FAIL` line is the result, and a failure lists the
+first 40 regressed properties with their base and head types.
 
-```
-base properties: 17072   head properties: <moves with every regeneration>
-PASS - no property regressed to unknown
-```
+### How properties are keyed
 
-The base count is stable, because `BASE_REV` is a pinned commit and only a change to this script's own
-parser moves it. The head count changes whenever the trees are regenerated, so it is left as a
-placeholder rather than a literal that rots on every commit. Neither number is load-bearing; the
-`PASS`/`FAIL` line is.
+A key is the file, the enclosing interface or namespace path, and the property name, so `Invoice.status` and
+`InvoiceResource.status` stay apart, and so do the nested namespaces in `laravel-ts-global.ts`. Single-line
+`type X = …;` aliases are keyed like properties, including one inside `declare global`.
 
-Because it reads both sides out of git, it also enforces that regenerated output was **committed** — a
-change that improves inference but leaves the trees stale compares against itself and reports nothing.
+An inline `{ … }` object also gives each member a key beside the parent's: `prop.member` for one object, and
+`prop[i].member` for each arm of a union of objects. Member keys stop an already-`unknown` sibling from masking a
+member's regression, and the parent key catches a whole object that collapses to `unknown`. `detect_regressions()`
+skips the parent when all its head members existed at the base, so a regression reports once. A member new at the
+head has no base key, so an object that gains an `unknown` member fails on its parent. Treat that as a real question,
+not noise. A `Pick<Model, K>` value has no `{` to split and stays one key, and the model's own file checks its members.
 
-Every property is keyed by `(file, enclosing interface/namespace path, property name)`. The scope matters:
-without it, `Invoice.status` and `InvoiceResource.status` collide, and the nested namespaces in
-`laravel-ts-global.ts` collapse into one bucket. An earlier version of this script keyed on file and name
-only, silently conflated ~116 pairs, and could never fail.
+### Self-tests
 
-### Aliases and inline-object members
-
-Single-line `export type X = …;` aliases are parsed the same way as properties, keyed by their name —
-including a namespaced alias nested inside `declare global { namespace … { type X = …; } }`. When a
-property's or alias's value contains one or more inline `{ … }` object types, each member becomes its own
-key *in addition to* the parent: `prop.member` for a single object, `prop[i].member` per arm for a union of
-objects, alongside `prop` itself holding the whole rendered value. A member regressing to `unknown` is
-therefore not masked by an already-`unknown` sibling in the same object, and a property whose whole inline
-object collapses to a bare `unknown` still matches its own base key rather than sharing none — provided
-that object was entirely real-typed at base. If it was not, see the residual below.
-
-Keeping the parent is what makes the whole-object case visible at all. When only the members were keyed,
-a base holding `heading_content.title` and `heading_content.summary` and a head holding just
-`heading_content: unknown` had no key in common, and `detect_regressions()` — which iterates
-`for k in h if k in b` — matched nothing and reported zero regressions.
-
-The parent key holds the whole rendered value, so it is coarse on purpose: it also fires when an existing
-object merely *gains* a member typed `unknown`, since that member is a new key with no base counterpart
-and nothing else in the gate would see it. Treat such a failure as a real question to answer, not as
-noise to silence.
-
-`prop[i]` is a positional index into the arms as written, not a content hash: reordering two union arms in a
-regenerated file shifts which arm sits at index `0` and can mask a regression. This is a known, accepted
-limit — not something a future change to this gate should try to fix with content-hashed arm keys.
-
-A `Pick<Model, K>` reference is the companion case: it has no `{` for the member-splitting logic to
-descend into, so it stays a single opaque key rather than expanding into `prop.member`/`prop[i].member`
-entries. This is de-duplicated coverage, not lost coverage — the members `Pick<>` names still live in
-`Model`'s own generated file (e.g. `app/models/user.ts`), which this same gate already watches, so a
-regression on one of them still fails here, just keyed under the model file instead of the resource
-that references it.
-
-### Parser self-test
+Run both after any change to the script:
 
 ```bash
 python3 .github/scripts/unknown-regression-gate.py --parsetest
-```
-
-No commit in this repo's history exercises a member-level `FAIL`, so this self-test is the only guard on
-the alias-, parent- and member-splitting logic above. Measured, not assumed: 190 commits have touched the
-generated tree (`git rev-list --count HEAD -- workbench/resources/js/types/data`), and replaying each of
-the 185 parent→commit transitions that changed a `.ts` file through `parse_source()` and
-`detect_regressions()` reports a regression on 2 of them and a **member-level** regression on **0**. That
-covers consecutive transitions, not every possible `BASE..HEAD` pair, so it is a strong absence rather
-than a proof. It checks seven cases: five lifted from the
-corpus — a single-line type alias, a namespaced alias inside `declare global`, an inline object with one
-member, one with several members, and a union of two inline objects — plus two synthetic regressions. The
-first is a member degrading to `unknown` beside a sibling that is already `unknown[]`, the exact shape the
-whole-string `FAIL` test below used to miss. The second is a whole inline object collapsing to a bare
-`unknown`, the shape member-splitting itself used to miss. Run it after any change to this script.
-
-### Self-test
-
-The gate has a known-bad range built in. Use it whenever you change the script:
-
-```bash
 python3 .github/scripts/unknown-regression-gate.py 0faf1f5 3880323 --selftest
 ```
 
-That range deliberately turned `TrackingEvent.status` from `string` into `unknown`, so the script must
-report **16 regressions** (four template trees × the model and its resource, plus the global files).
-`--selftest` inverts the exit code: finding the regressions is success. A `PASS` here means the script is
-broken, not the code.
+`--parsetest` checks the parser on cases lifted from the trees and on a synthetic regression for each splitting rule,
+and CI runs it on every push that runs the workflow. `--selftest` runs over a range that turned `TrackingEvent.status`
+from `string` into `unknown`, and inverts the exit code. It must report 16 regressions, four per tree: the model and
+its resource, each in its own file and in `laravel-ts-global.ts`. A `PASS` means the script is broken. That range
+regresses only top-level properties, so `--parsetest` is the only guard on the alias, parent and member splitting.
 
-### When it fails
+### When the regression gate fails
 
-A property degraded. Do not restore the old value and do not accept `unknown` — find the real type. The
-old value may itself have been wrong: when `TrackingEvent.status` first degraded, the previous `string`
-turned out to be a lie masking a broken cast (the model imported an enum's *TypeScript* alias instead of
-its PHP class, and the namespace segment `\Enums\` was substring-matching the `enum` map key). The correct
-answer was neither `string` nor `unknown` but `ShipmentStatusType`.
+A property degraded. Find its real type. Accepting `unknown` is not a fix, and neither is restoring the old type,
+which can be wrong too. When `TrackingEvent.status` degraded, its old `string` hid a broken cast, and the real type was
+`ShipmentStatusType`.
 
 ## `unimportable-token-gate.sh`
 
-Runs `npx tsc --noEmit` over the generated tree and counts "cannot find name" diagnostics — TS2304, plus
-TS2552 (`Did you mean…`), which TypeScript emits instead when a similarly-named global exists — together
-with TS2300 (`Duplicate identifier`), TS2440 (`Import declaration conflicts with local declaration`),
-TS2344 (`does not satisfy the constraint`), TS2305/TS2724 (`has no exported member`) and TS6196
-(`declared but never used`) — the trace a dropped `extends` clause or an overridden cast leaves behind.
-A second program over the same tree, without the DOM lib, counts the tokens those codes cannot see; see
-[The DOM-global count](#the-dom-global-count).
+The gate runs `npx tsc --noEmit` over each generated tree and counts these diagnostics in files under `workbench/` or
+`tests/`:
 
-**It runs once per generated tree**, against its own tsconfig file — `tsconfig.json` for
-`data/default-example`, plus `tsconfig.testing.json`, `tsconfig.full-template-example.json` and
-`tsconfig.split-template-example.json` for the other three — rather than once over all four combined.
-Each tree carries its own `laravel-ts-global.ts` declaring the same names under `declare global`, so a
-single program spanning all four reports well over a hundred TS2300 duplicate identifiers, a fixture artifact of
-checking four trees together, not a defect in any one of them. The env var `TSCONFIGS` (space-separated,
-default all four) selects which configs a run checks; both fail-open guards below run per config, and the
-script fails if any config fails, not only the last.
+- **TS2304 and TS2552 (cannot find name)**: a token emitted without its import. TS2552 replaces TS2304 when a similar
+  name exists.
+- **TS2305 and TS2724 (no exported member)**: an imported name its module does not export.
+- **TS2300 (duplicate identifier)**: two imports resolving to one local name, which
+  [`ImportNameRegistry`](../components/import-name-registry.md) exists to prevent.
+- **TS2440**: an import colliding with a local declaration of the same name.
+- **TS2344 (does not satisfy the constraint)**: a token used where its type rejects it, such as a
+  [`Pick<Model, K>`](../components/resource-ast-analyzer.md#when-a-pick-reference-is-emitted) key the model interface
+  does not declare.
+- **TS6196 (declared but never used)**: an unused type import, the trace a dropped `extends` clause or an overridden
+  cast leaves.
 
-**It also covers the analyzer API.** `tests/Feature/AnalyzeApiProbeTest.php` renders
-`AstEngine::analyze()`'s three fields into `.ts` modules under
-`workbench/resources/js/types/data/testing/analysis-probe/` — mechanically, with no transformer or
-template in the way — so this gate is what proves that what `analyze()` hands a consumer actually
-compiles. The rendering is deliberately dumb: an import line per path, a member per property, nothing
-that could repair a token whose import is missing or two imports colliding on one name.
+A leaked `toResource()` convention guess, the failure `PublishedResourceRegistry` prevents, shows up as TS2305 or
+TS2724 in the modular files, or as a relative TS2307 when the run writes nothing to the guessed class's directory. In
+`laravel-ts-global.ts` it shows up as TS2304 or TS2552. The gate counts each of them. The analyzer page covers
+[guess gating](../components/resource-ast-analyzer.md#toresource-convention-guesses-are-gated-on-the-published-set).
+TS2307 has [its own two counts](#the-ts2307-sub-gates), and a leaked DOM-named token has
+[a count of its own](#the-dom-global-count).
 
-**`skipLibCheck` is off.** `tsconfig.json` sets `"skipLibCheck": false`, so `tsc` checks the *body* of
-every `.d.ts` it includes, not just its shape — the generated tree ships `.d.ts` files on purpose (e.g.
-`echo-broadcast-events.d.ts`), and a broken import inside one used to produce no diagnostic at all.
+`tsconfig.json` checks `default-example`, and `tsconfig.testing.json`, `tsconfig.full-template-example.json` and
+`tsconfig.split-template-example.json` check the other trees, one program each, because every tree's
+`laravel-ts-global.ts` declares the same globals. `TSCONFIGS` takes a space-separated list of configs, and the gate
+fails if any of them fails.
 
-Turning it off also checks `node_modules`, which is not this package's code to fix. So `gate_one()` counts
-only diagnostics whose path starts with `workbench/` or `tests/` — the two fail-open guards above still
-read the *whole* `tsc` output, since a config or parse error can print with no path prefix at all, but
-every subsequent count is scoped.
+The testing tree includes `analysis-probe/`, which `tests/Feature/AnalyzeApiProbeTest.php` writes from
+`AstEngine::analyze()`'s result with nothing in between to repair an import, so this gate also checks that what
+`analyze()` returns compiles. `"skipLibCheck": false` makes `tsc` check every `.d.ts` body, including the ones the
+trees ship, and `node_modules` too, which is why the counts read only `workbench/` and `tests/` paths.
 
-**All three baselines are `0`.** The app-side modules the generated tree imports are stubbed under
-`tests/types/stubs` (see [The app-side stubs](#the-app-side-stubs)), so the gate is an *identity* check
-rather than a cardinality one: any unresolvable module, any name a stub does not export, any bad `Pick`
-key fails immediately. A count-based baseline could not do that — at a baseline of 61, one baseline
-diagnostic disappearing while a genuinely new leaked token appeared still totalled 61 and passed.
-
-TS2300 catches a different failure shape than the other two: not a token emitted *without* an import, but
-two *different* imports resolving to the *same* local name. This is exactly how the MailPrice collision
-manifested — two unrelated `MailPrice` models both aliased to `MailPriceMailPrice`, because the old aliasing
-algorithm derived an alias from a single namespace segment and two classes happened to share both their
-basename and that segment. `ImportNameRegistry` (`docs/components/import-name-registry.md`) exists to make
-that impossible, and this gate is the standing check that it stays that way.
-
-TS2440 is that collision one step over: an import colliding with a *local* declaration of the same name
-rather than with a second import. Same defect class, but TypeScript files it under its own code, so the
-grep has to name it explicitly — until it did, a generated file declaring a name it also imported read as
-a clean `0` and the gate exited 0. It was armed while the count was already `0`, so no baseline moved.
-
-TS2344 is a third shape: the token is imported and unique, but named somewhere its own type rejects it —
-the case that motivated adding it was `Pick<Model, K>` built from raw schema columns while the model
-interface omits `$hidden` ones, so `K extends keyof T` failed. See
-`docs/components/resource-ast-analyzer.md`.
+Each argument is a baseline that arms one more gate, and fewer arguments leave the rest report-only:
 
 ```bash
-.github/scripts/unimportable-token-gate.sh              # report only, all four trees
-.github/scripts/unimportable-token-gate.sh 0            # fail on any counted name diagnostic
-.github/scripts/unimportable-token-gate.sh 0 0 0        # also gate both TS2307 sub-counts
-TSCONFIGS=tsconfig.testing.json .github/scripts/unimportable-token-gate.sh 0 0 0   # one tree only
+.github/scripts/unimportable-token-gate.sh          # report only
+.github/scripts/unimportable-token-gate.sh 0        # gate the main count and the DOM-global count
+.github/scripts/unimportable-token-gate.sh 0 0      # also gate relative-specifier TS2307s
+.github/scripts/unimportable-token-gate.sh 0 0 0    # also gate bare-specifier TS2307s, as CI does
+TSCONFIGS=tsconfig.testing.json .github/scripts/unimportable-token-gate.sh 0 0 0
 ```
 
-```
-== tsconfig.json ==
-TS2300/TS2304/TS2305/TS2344/TS2440/TS2552/TS2724/TS6196 (duplicate identifier / cannot find name / unexported name / bad type argument / import-local conflict / unused import) in generated tree: 0
-TS2307 (cannot find module) with a relative specifier in generated tree: 0
-TS2307 (cannot find module) with a bare specifier in generated tree: 0
-TS2304/TS2552 (cannot find name) for names only the DOM lib declares, in generated tree: 0
-
-PASS - no new unimportable or colliding tokens (baseline 0)
-PASS - no token named like a DOM global emitted without its import
-PASS - no new relative-specifier TS2307s (baseline 0)
-PASS - no new bare-specifier TS2307s (baseline 0)
-== tsconfig.testing.json ==
-… (repeats per config) …
-```
-
-Each zero count prints one blank histogram line — `printf '%s\n' ""` on an empty match. Cosmetic, and now
-the permanent steady state.
+Every baseline is `0`, and none has a legitimate non-zero cause, so raising one is never the fix. Each tree prints its
+counts, a histogram of the names behind them, and a `PASS` or `FAIL` line per armed gate. A `FAIL` line is followed by
+the diagnostics behind it. A zero main or DOM-global count still prints one histogram line, `1` with no name after it,
+because `uniq -c` counts the empty match. That line is not a diagnostic.
 
 ### The DOM-global count
 
-`tsconfig.json` sets no `lib`, so `tsc` loads the DOM lib, and a leaked token that shares a DOM global's name binds to
-that global instead of failing. `Comment` is the case that forced this: a model's getter that read another model's
-`Comment[]` accessor through a closure parameter published `Comment[][]` without importing `Comment`, and the file
-compiled against the DOM's `Comment` node. None of the codes above fires on it.
-
-So `gate_one()` runs the same tsconfig a second time with `--lib esnext`. A `file(line,col) name` pair that TS2304 or
-TS2552 reports only in that second program names something only the DOM declares, and it is counted on its own line.
-`missing_names()` builds both lists and `comm` keeps the pairs the first program never reported, so a leaked `User`,
-which fails in both programs, stays in the main count alone. The second program gets the first one's setup-error
-guard; it parses the same files, so the syntax guard needs no second run.
-
-The package writes one DOM name on purpose without an import: `File`, `FormRequestRulesAnalyzer`'s type for an uploaded
-file. `DOM_GLOBALS` at the top of the script lists it, and the count skips it. `Blob` appears only in
-the shipped config's commented `'binary' => 'Blob'` mapping, and no workbench fixture enables it, so it is not listed:
-a fixture that maps a type to another DOM name adds that name to `DOM_GLOBALS` by hand, the same way a new app-side
-name is added to a stub. Any other name only the DOM-less program reports is a leak. `Date`,
-`Record`, `Pick` and the other names the package writes without an import come from the ES lib, which both programs
-load.
-
-The count has no baseline argument of its own. `BASELINE_COUNT`, the first argument, arms it, and any non-zero reading
-fails: every DOM name the package means to write is already in `DOM_GLOBALS`, so no other one is legitimate. A failure
-still lets the two TS2307 sub-gates print their `PASS`/`FAIL` lines before the tree fails. The
-other three counts, their arguments and their baselines mean what they meant before it existed.
-
-### The app-side stubs
-
-The generated TypeScript imports from aliased modules that do not exist in this repo *by design* — they are
-named by `#[TsCasts]` / `#[TsExtends]` / `#[TsType]` and belong to the consuming application. Those imports
-used to be absorbed as a numeric baseline. They are now **resolved** instead, against hand-written stubs:
-
-| Alias | Stub | Exports |
-| --- | --- | --- |
-| `@/types/*` | `tests/types/stubs/app/*.d.ts` | 14 modules, 15 names |
-| `@js/types/*` | `tests/types/stubs/js/*.d.ts` | 6 modules, 7 names |
-| `@workbench/types` | `tests/types/stubs/workbench/index.d.ts` | `PageMeta` |
-| *(no import — bare globals)* | `tests/types/stubs/globals.d.ts` | `CustomObject`, `ExtendableInterface` |
-
-`tsconfig.json`'s `paths` maps the three aliases at the stub directories. There is no `baseUrl`; TS 5+ with
-`moduleResolution: "bundler"` accepts `./`-relative `paths` values without one.
-
-Three rules keep the stubs honest, and all three are the point of the exercise:
-
-1. **Each module declares exactly the names the generated tree imports — no more, no fewer.** No wildcard
-   `declare module '@/types/*'`, no `any`, no blanket declaration that would make an arbitrary specifier
-   resolve. A blanket declaration would restore precisely the tolerance the zero baseline removes.
-2. **They are hand-maintained fixtures, never generated from the output.** Deriving them from the generated
-   tree at gate time would check that tree against itself and always pass.
-3. **Members exist only where a type operator demands them.** `Auditable` carries `created_by`/`updated_by`
-   and `Routable` carries `store`/`update` because `Pick<T, K>` constrains `K extends keyof T` and would
-   otherwise raise TS2344 — a code this gate counts. `Timestamps` carries `created_at`/`updated_at` so the
-   generated `Omit<Timestamps, …>` removes something rather than omitting from an empty type. Everything
-   else is an empty `interface`, which is what the `extends` positions require (a type alias to a primitive
-   would not be extendable). Members are typed `unknown`: honest, since the package genuinely does not know
-   the app's shape, and maximally permissive as a base — a derived interface redeclaring `created_by: number`
-   still satisfies assignability.
-
-`globals.d.ts` needs `export {}` plus `declare global { … }`: `moduleDetection: "force"` makes every
-non-declaration file a module, and a bare `interface` in a module file would not be global.
-
-**Adding a fixture that imports a new app-side name means adding it to the stub by hand.** That is not
-friction to route around — it is the gate working. The alternative, raising a baseline, is what let a
-swapped token through.
-
-### History: the former TS2304 baseline
-
-Kept because the origins are worth re-deriving rather than assuming. This bucket was **10** until the stubs
-took it to 0, and it was **not** made of `custom_ts_mappings` entries. The workbench's
-`custom_ts_mappings` is empty (the entry in `workbench/config/ts-publish.php` is only a commented-out
-example), so it contributes none of the 10. Traced to source, the two surviving names are:
-
-| Name | Count | Where it comes from | Expected? |
-| --- | --- | --- | --- |
-| `CustomObject` | 8 | A `@return array{…, custom_val: CustomObject, …}` docblock shape in `workbench/app/Http/Resources/Concerns/IncludesExtras.php`. A resource docblock shape map is string-only, so it carries no FQCN and no import can be derived. | Yes — app-declared |
-| `ExtendableInterface` | 2 | `#[TsExtends('ExtendableInterface')]` on `workbench/app/Http/Resources/Concerns/ExtendsInterfaces.php`, with no import argument. (Its sibling `#[TsExtends(…, '@/types/util', …)]` on the next line passes one and resolves fine.) | Yes — app-declared |
-
-Both names are genuine escape hatches, in two different flavors, neither of them `custom_ts_mappings`: the
-*consuming app* declares the type and the package has no FQCN or import path to work from. They are expected
-and must not be "fixed". As of this measurement the bucket holds nothing else — but it has held real defects
-before, so re-derive rather than assume; the two most recent are recorded below.
-
-`PostAttributes` sat in this bucket until the count dropped from 12 to 11.
-`GlobalsWriter` built its `$externalTypeImports` map (`src/Writers/GlobalsWriter.php`, the block beginning
-at the comment "Collect external (non-relative) type imports") from three generator collections —
-`modelGenerators`' `customImports`, `resourceGenerators`' non-relative `typeImports`, and
-`broadcastEventGenerators`' non-relative `typeImports` — with `formRequestGenerators` absent, so
-`UpdatePostRequest`'s `#[TsCasts(['attributes' => ['type' => 'PostAttributes', 'import' => '@js/types/posts']])]`
-reached the modular flavor and was dropped on the way to the global one. A fourth loop over
-`formRequestGenerators` closed that. (`enumGenerators` is still absent from that map, but `EnumTransformer`
-declares no import channel at all, so that is not a gap.)
-
-The measured effect was a move, not a removal, as the mechanism implied: `@js/types/posts` is app-declared
-either way, so the *name* now resolves and the unresolved *module* joined the uncounted TS2307 bucket. That
-bucket rose by three rather than one, because the same loop also propagated two form-request `#[TsExtends]`
-imports the globals body never references. `laravel-ts-global.ts` now carries **20** imports, at lines 9-28,
-six `@js/types/*` and fourteen `@/types/*`.
-
-`AddressResource` was a real leak rather than an escape hatch, and took the count from 11 to 10 when it
-was fixed. `AddressResource` carries `#[TsResource(name: 'Address')]`, so it **is**
-published — as the interface `Address` in `app/http/resources/address.ts` — but `InlineArrayFqcnResource`'s
-`AddressResource::make($this->user)` reference emitted the *class basename*, which nothing declares. It was
-the corpus's only live instance of the counted/uncounted split
-[`resource-ast-analyzer.md`](../components/resource-ast-analyzer.md) describes, showing up once per output
-flavor: `TS2552` on the bare name in `laravel-ts-global.ts`, counted here, and `TS2724` on the import in
-`app/http/resources/inline-array-fqcn-resource.ts` (`'"."' has no exported member named 'AddressResource'`),
-counted by neither gate. Both were reproduced before the fix and both are gone after it, which is the point
-worth keeping: the gate saw one of the two, so the baseline moved by 1 while 2 diagnostics disappeared.
-
-Resolving an analyzer-derived resource reference through the same `#[TsResource]`-aware naming the publisher
-uses closed it. No live instance of that split remains in the corpus. TS2305/TS2724 are **no longer the
-uncounted half** — they joined the main count when the stubs landed, because a resolvable stub module turns
-a leaked or renamed name into "has no exported member" rather than the TS2307 the old baseline swallowed.
-
-The count fell `14` → `11` → `10` → `0`: step 5c of `toTsType()` inlining a value object's property shape
-(which also took the relative-specifier count from `1` to `0` — one fixture change, two diagnostic codes
-disappearing together), then `GlobalsWriter`'s form-request import loop, then `#[TsResource(name:)]`-aware
-analyzer references, then the stubs. Lowering a baseline once the defect behind it is gone was always the
-point; defending the number never was. There is no baseline left to defend.
-
-After the stubs, `npx tsc --noEmit -p tsconfig.json` over the generated tree reports nothing outside the
-gated codes. Two once did: four TS6196s (`declared but never used`), fixed when `laravel-ts-global.ts`
-started emitting the `extends` clause it imports for and a `#[TsCasts]` override started releasing the
-enum import it replaces; and one TS2526 inside `@tolki/types`'s own shipped declaration file, which went
-with `@tolki/types` 1.6.0.
+`tsconfig.json` sets no `lib`, so `tsc` loads the DOM lib, and a leaked token named like a DOM global, such as
+`Comment`, binds to that global and compiles. The gate runs each config again with `--lib esnext` and counts each
+cannot-find-name that only this second program reports, minus the names in `DOM_GLOBALS`. The package writes one DOM
+name without an import on purpose, `File`, for an uploaded file in a form request, and `DOM_GLOBALS` lists it. A
+fixture that maps a type to another DOM name, such as the shipped config's commented `'binary' => 'Blob'`, adds it to
+`DOM_GLOBALS` by hand. `Date`, `Record`, `Pick` and the other names the package writes without an import come from the
+ES lib, which both programs load. The first argument arms this count with no baseline of its own, so any reading above
+`0` fails, after the TS2307 sub-gates report.
 
 ### The TS2307 sub-gates
 
-Two further optional arguments gate TS2307 ("Cannot find module") diagnostics — kept as **two separate
-counts with two separate baselines**, not pooled into one:
+The second and third arguments gate TS2307 (cannot find module) in two counts, kept apart on purpose:
 
-- **Relative-specifier TS2307** (second argument, `RELATIVE_BASELINE`). A relative specifier (`./` or `../`)
-  can only resolve against a file *this package itself writes*, so an unresolved one is never an app-side
-  escape hatch — it is always the failure mode
-  `PublishedResourceRegistry` exists to prevent (see [below](#what-the-gates-do-not-cover)). This baseline is
-  always `0`. Unlike the other two baselines in this script, it has no legitimate non-zero cause, so it is
-  never appropriate to raise it — a non-zero reading is a defect to fix, not a fixture to explain away.
-- **Bare-specifier TS2307** (third argument, `BARE_BASELINE`), e.g. `@js/types/settings`, `@/types/geo`. The
-  token is imported and the specifier is well-formed, and the module it names lives in the *consuming app*.
-  This was an app-side escape hatch with a baseline of 61 until those modules were stubbed under
-  `tests/types/stubs` and wired up by `paths`; it is now `0` and an unresolved bare specifier means either a
-  genuinely new alias (add the stub) or a defect.
+- **Relative specifier (`./`, `../`)**: resolves only against a file this package writes, so an unresolved one is
+  always a defect, an import of a file or directory the run never writes.
+- **Bare specifier (`@/types/geo`)**: names a module in the consuming app, which a stub stands in for. An unresolved
+  one needs a new stub, or is an import nothing should have emitted.
 
-**Why two counts instead of one.** An earlier version of this gate summed the two into a single TS2307
-baseline. That pools a zero-tolerance signal into a large, ordinarily-fluctuating one: the bare-specifier
-count moved on routine fixture churn (58→59→60→61 and back down across unrelated changes), so a commit that
-happened to drop one bare-alias import while separately introducing one broken relative import netted to the
-same combined total and passed silently. Both counts are `0` now, which removes that particular swap, but
-they stay separate: the two failures have different remedies — add a stub, versus fix the emitter — and
-collapsing them would lose that distinction the moment either needed a temporary non-zero value.
+The fixes differ, fixing the emitter or adding a stub, and one pooled count would let a new broken relative import
+hide inside an unrelated change to the bare count.
 
-Before either sub-gate existed, both flavors were an unenumerated footnote (see
-[below](#what-the-gates-do-not-cover)) — nothing stopped the annotation machinery from emitting an import to
-a module that does not exist, and only a live `tsc` run over the generated tree would ever have caught it.
-Each sub-gate gets its own baseline rather than joining the main one above because this is a structurally
-different failure (an unresolved *module*, not an unresolved *name*) with its own, distinct set of
-legitimate escape hatches.
+### The app-side stubs
 
-```bash
-.github/scripts/unimportable-token-gate.sh 0           # unchanged: neither TS2307 check runs
-.github/scripts/unimportable-token-gate.sh 0 0         # gate the relative-specifier count only
-.github/scripts/unimportable-token-gate.sh 0 0 0       # gate both TS2307 counts (what CI runs)
-```
+The trees import modules that belong to the consuming app, named by `#[TsCasts]`, `#[TsExtends]` and `#[TsType]`. The
+`paths` in `tsconfig.json` point those aliases at hand-written stubs:
 
-Each argument activates its own gate on top of the ones before it; passing fewer leaves the rest report-only
-— the same truncation behavior the script already had before the bare-specifier count existed.
+| Alias | Stub |
+| --- | --- |
+| `@/types/*` | `tests/types/stubs/app/*.d.ts` |
+| `@js/types/*` | `tests/types/stubs/js/*.d.ts` |
+| `@workbench/types` | `tests/types/stubs/workbench/index.d.ts` |
+| None: bare global names | `tests/types/stubs/globals.d.ts` |
 
-#### The relative-specifier baseline
+Because the stubs resolve, the gate checks identity rather than a total: an unresolved module, a name a stub does not
+export, or a bad `Pick` key fails at once. A total could not, since one old diagnostic disappearing while a new leak
+appeared kept it level. Three rules keep the stubs honest:
 
-**0**, always. It was `1` while
-`workbench/resources/js/types/data/default-example/app/models/warehouse.ts` imported `Coordinate` from
-`'../value-objects'` — the unpublished `Workbench\App\ValueObjects\Coordinate`. `toTsType()` step 5c now
-inlines that class's property shape, so no relative import is emitted and the count has stayed `0` since.
+1. **Each module declares exactly the names the trees import**: no wildcard `declare module`, no `any`, and nothing
+   that makes an arbitrary specifier resolve. Nothing checks this by machine, so widening a stub to silence a TS2305
+   moves the leak instead of fixing it.
+2. **The stubs are written by hand, never generated from the output**: stubs derived from the trees would check the
+   trees against themselves and always pass.
+3. **Members exist only where a type operator needs them**: `Auditable` and `Routable` carry the keys the trees
+   `Pick`, because `Pick<T, K>` requires `K extends keyof T`, and `Timestamps` carries the columns the trees `Omit`.
+   Everything else is an empty `interface`, which an `extends` position needs. Members are typed `unknown`, since the
+   package does not know the app's shape, and a derived interface can still redeclare one with a real type.
 
-#### The bare-specifier baseline
+`globals.d.ts` needs `export {}` beside `declare global { … }`, because a global augmentation is legal only in a
+module (TS2669 otherwise), and `moduleDetection: "force"` never makes a declaration file one. It declares
+`CustomObject` and `ExtendableInterface`, which the trees emit bare because their sources, a docblock array shape and a
+`#[TsExtends]` with no import argument, carry no FQCN or path. When a fixture imports a new app-side name, add it to a
+stub by hand. Raising a baseline instead would let a swapped token through.
 
-**0**, since the stubs landed. It was **61**, spanning **21 distinct module names** — `@/types/*` (14 names,
-40 diagnostics), `@js/types/*` (6 names, 20) and `@workbench/types` (1) — each an app-side alias namespace
-the consuming app declares. None were ever unresolved npm packages: `@tolki/ts` and `@tolki/types` are
-direct dependencies and resolve cleanly, so the 61 were never a symptom of a missing `npm install`.
+### Proving each gate fires
 
-While it was a count it moved on ordinary fixture churn, which is exactly what made it swap-tolerant. It
-rose from 58 when `GlobalsWriter` gained its form-request import loop and `laravel-ts-global.ts` picked up
-three more bare specifiers; fell to 59 when step 5c stopped `warehouse.ts` importing `'../value-objects'`
-(the same fixture change that took the relative-specifier count from `1` to `0` above); and fell to 60 at
-`4016f7c9` (`Make relation except() expansions return columns only`), which stopped `warehouse-resource.ts`
-importing `@js/types/settings`. Every one of those moves would have masked a new leaked token of the
-opposite sign. `npx tsc --noEmit -p tsconfig.json 2>&1 | grep "error TS2307" | grep -vE "Cannot find module
-'\.{1,2}/"` reproduces the count directly; it should now print nothing.
+After changing the script, plant a defect for each gate and check that it exits `1` on the expected line. Each
+control's last command restores what it changed.
 
-#### Proving each gate fires
-
-Six detection controls and one comparison control, each checked separately — a multi-count gate where
-only one branch was ever exercised is not meaningfully better than the single-count gate it replaced.
-Every expected number below has been reproduced against the committed tree; two of them were wrong once.
-
-Now that every baseline is `0`, the old "one below its baseline" controls are gone: there is no lower
-number to pass. Every control below is a **detection** control, which is the stronger kind anyway — it
-exercises the tsc run and the grep, not just the comparison arithmetic. Most mutate a committed stub, so
-restore it afterwards (`git checkout -- tests/types/stubs`); the relative-specifier control instead writes
-a throwaway file and the TS2440 one edits the golden tree, so each names its own cleanup. `tests/types/`
-also has its own CI step that fails on any diagnostic there.
-
-**Bare-specifier gate — an alias nothing stubs.** Point one alias at nothing by deleting its stub:
+A module nothing stubs fails the bare-specifier gate:
 
 ```bash
 mv tests/types/stubs/app/geo.d.ts /tmp/geo.bak
-.github/scripts/unimportable-token-gate.sh 0 0 0   # exit 1: "bare-specifier TS2307 count rose from 0 to 7"
+.github/scripts/unimportable-token-gate.sh 0 0 0   # FAIL - bare-specifier TS2307 count rose from 0 to …
 mv /tmp/geo.bak tests/types/stubs/app/geo.d.ts
 ```
 
-**Main gate — a name the stub does not export (TS2305).** This is the control the stubs *added*; before
-them this shape was an unresolved module absorbed by the 61:
+A name the stub does not export fails the main count with TS2305, or TS2724 if you rename the export instead:
 
 ```bash
-printf 'export interface GeoPoint {}\n' > tests/types/stubs/app/geo.d.ts   # drop GeoBounds
-.github/scripts/unimportable-token-gate.sh 0 0 0   # exit 1: "token count rose from 0 to 2", histogram "2 GeoBounds"
+printf 'export interface GeoPoint {}\n' > tests/types/stubs/app/geo.d.ts
+.github/scripts/unimportable-token-gate.sh 0 0 0   # FAIL - token count rose from 0 to …, histogram GeoBounds
 git checkout -- tests/types/stubs/app/geo.d.ts
 ```
 
-Renaming the export instead of dropping it (`GeoBound`) raises TS2724 rather than TS2305; both are counted.
-
-**Main gate — a `Pick` key the stub does not declare (TS2344).** Remove a member the generated tree picks:
+A `Pick` key the stub does not declare fails the main count with TS2344, once per `Pick<Routable, …>` site. The
+histogram prints these as whole diagnostics, because its `sed` patterns match only the cannot-find-name,
+duplicate-identifier, local-conflict, no-exported-member and never-used messages:
 
 ```bash
 printf 'export interface Routable {\n    update: unknown;\n}\n' > tests/types/stubs/app/routing.d.ts
-.github/scripts/unimportable-token-gate.sh 0 0 0   # exit 1: "token count rose from 0 to 4" (TS2344)
+.github/scripts/unimportable-token-gate.sh 0 0 0   # FAIL - token count rose from 0 to …
 git checkout -- tests/types/stubs/app/routing.d.ts
 ```
 
-4 is the ceiling, not an arbitrary reading: the checked tree holds exactly four `Pick<Routable, …>` sites —
-`routable-resource.ts:5`, `warehouse-resource.ts:16`, and `laravel-ts-global.ts` at `:3040` and `:3487`.
-The histogram does not collapse TS2344 to a name; its `sed` matches only quoted identifiers, so these four
-print as whole diagnostic lines.
-
-**Main gate — an import colliding with a local declaration (TS2440).** No stub is involved: the collision
-has to be *in* a generated file, so this is the one control that mutates the golden tree. Restore it:
+An import colliding with a local declaration fails the main count with TS2440. The collision has to be in a generated
+file, so this control edits the committed tree:
 
 ```bash
 printf '\nexport interface GeoPoint {\n    lat: unknown;\n}\n' \
   >> workbench/resources/js/types/data/default-example/app/http/resources/address.ts
-.github/scripts/unimportable-token-gate.sh 0 0 0   # exit 1: "token count rose from 0 to 1", histogram "1 GeoPoint"
+.github/scripts/unimportable-token-gate.sh 0 0 0   # FAIL - token count rose from 0 to 1, histogram GeoPoint
 git checkout -- workbench/resources/js/types/data/default-example/app/http/resources/address.ts
 ```
 
-Before TS2440 joined the grep, that same mutation left all three counts at `0` and the gate exited **0** —
-the diagnostic was in the `tsc` output the whole time, just not in the pattern reading it.
-
-**Relative-specifier gate.** No stub is involved — synthesize an unresolvable relative import:
+An import of a missing file fails the relative-specifier gate:
 
 ```bash
 printf "import type { Nope } from './deliberately-missing';\nexport type Control = Nope;\n" > tests/types/relative-subgate-control.ts
-.github/scripts/unimportable-token-gate.sh 0 0 0   # exit 1: "relative-specifier TS2307 count rose from 0 to 1"
+.github/scripts/unimportable-token-gate.sh 0 0 0   # FAIL - relative-specifier TS2307 count rose from 0 to 1
 rm tests/types/relative-subgate-control.ts
 ```
 
-**DOM-global count — a DOM-named token with no import.** No stub is involved: plant a leaked `Comment` beside the
-allowed `File`:
+A leaked `Comment` fails the DOM-global count, which allows the `File` beside it:
 
 ```bash
 printf "export interface Control {\n    node: Comment;\n    upload: File;\n}\n" > tests/types/dom-global-control.ts
-.github/scripts/unimportable-token-gate.sh 0 0 0   # exit 1: "names only the DOM lib declares, in generated tree: 1", histogram "1 Comment"
+.github/scripts/unimportable-token-gate.sh 0 0 0   # FAIL - 1 token(s) named like a DOM global…, histogram Comment
 rm tests/types/dom-global-control.ts
 ```
 
-Before the DOM-less program existed, that file left every count at `0` and the gate exited 0. `--selftest` runs this
-control after its relative-specifier case and demands exactly one count, a `FAIL` line naming the DOM, `Comment` in
-the histogram and no `File`.
-
-*Comparison control (no setup).* A negative baseline makes `rel_count -gt relative_baseline` true no matter
-the committed count, so this fails against the committed tree with nothing to clean up:
+`--selftest` automates the relative-specifier control, for a `.ts` and a `.d.ts` file, and the DOM-global control,
+and CI runs it on every push that runs the workflow:
 
 ```bash
-.github/scripts/unimportable-token-gate.sh 0 -1 0   # exit 1: "relative-specifier TS2307 count rose from -1 to 0"
+.github/scripts/unimportable-token-gate.sh --selftest
 ```
 
-It only exercises the threshold branch — the grep feeding it is not under test — so it is a weaker check
-than the synthesized import, not a substitute for it.
+A negative baseline fails with nothing to clean up, but it exercises only the comparison, not the `tsc` run or the
+pattern that feeds it, so it does not replace the controls above:
+
+```bash
+.github/scripts/unimportable-token-gate.sh 0 -1 0   # FAIL - relative-specifier TS2307 count rose from -1 to 0
+```
 
 ### Fails closed
 
-If `tsc` cannot run at all — bad `tsconfig.json`, missing binary, an `include` matching nothing — it emits
-no TS2304 lines, which a naive grep reads as a pass. The script distinguishes setup errors (printed
-unanchored) from real diagnostics (always prefixed `file(line,col):`) and fails on the former.
+A `tsc` run that checks nothing prints no diagnostics, which a count would read as a pass. So the gate fails when
+`tsc` prints an error with no `file(line,col):` prefix, such as a config error, when it exits non-zero with no
+diagnostic, or when it reports a syntax error (TS1xxx), after which nothing is type-checked. The DOM-less program gets
+the same setup check. The gate still passes when `tsc` checks fewer files than intended, as long as it checks some.
 
-One residual limit: it still passes if `tsc` checks *fewer* files than intended while checking something.
+### When the token gate fails
 
-### When it fails
+A token reached the output without its import, or two names collided, and the generated TypeScript does not compile.
+Never add the import by hand. Make the type resolution that produced the token carry its FQCN through to the import
+machinery, or degrade to `unknown`. The usual cause is a `return` that fires before a guard, and the durable fix is one
+check over all fields that accepts or rejects them together, rather than two reordered branches.
 
-A type token reached the output without its import. The generated TypeScript will not compile. The fix is
-never to add the import by hand — the type resolution that produced the token must either carry the FQCN
-through to the import machinery, or degrade to `unknown`.
+## The `@tolki/ts` type guard
 
-This failure mode recurred nine times during the type-inference work, and every instance had the same
-shape: a `return` that fired before a guard. If you hit it, prefer restructuring the accept/reject decision
-into a single check over all fields rather than reordering two branches.
+`tests/types/tolki-assertions.ts` fails the build when the types `@tolki/ts` exports degrade to `any`. Releases 0.2.0
+and 1.0.1 shipped `dist/enums.d.ts` and `dist/routes.d.ts` importing `'../packages/types/src/index.ts'`, a path
+missing from the tarball, and `dist/index.d.ts` re-exports only those two files. Under `skipLibCheck: true` the failed
+import is silent and every exported type is `any`, so `AsEnum<typeof Status>` accepted any property.
 
-## The `@tolki/ts` patch and `tests/types/tolki-assertions.ts`
+The guard puts `@ts-expect-error` on deliberate constraint violations, `AsEnum<string>` and `RouteCallResult<number>`.
+Real types raise TS2344 there, which satisfies the directive, while `any` raises nothing, so TypeScript reports TS2578
+(unused `@ts-expect-error` directive), which survives `any`. An `IsAny<T>` conditional cannot do this job, because a
+failed import propagates an error type through the conditional, so the assertion passes in the state it should catch.
 
-`@tolki/ts` ships two declaration files whose first line imports from
-`'../packages/types/src/index.ts'` — a monorepo source path that does not exist inside the published
-tarball. `dist/enums.d.ts` and `dist/routes.d.ts` both have it, and `dist/index.d.ts` is only
-`export * from './enums'; export * from './routes';`, so the package's **entire** type surface flows
-through one of the two broken imports.
-
-**Versions known to carry the defect: `0.2.0` and `1.0.1`.** The `1.0.1` major bump did not fix it, and
-the two `dist` files are byte-identical between the two releases — so the patch regenerated against
-`1.0.1` is identical to the original `0.2.0` one. Before assuming a newer release is fixed, check the
-**pristine tarball**, never `node_modules`:
-
-```bash
-npm pack @tolki/ts@<version> && tar xzf tolki-ts-<version>.tgz && head -1 package/dist/enums.d.ts
-```
-
-Reading `node_modules` after any install is misleading: `postinstall` has already run `patch-package`, so
-a successfully patched file is indistinguishable from a genuine upstream fix.
-
-`skipLibCheck: true` suppresses the resulting TS2307s, and the failure is then completely silent:
-every exported type degrades to `any`. `AsEnum<typeof Status>` accepted `.totallyBogusProperty` and was
-assignable to `string`; `defineEnum`'s result was `any`, so `Status.Draft`, `.from()`, `.tryFrom()` and
-`.cases()` were all unchecked. Nothing in the suite or either gate noticed.
-
-Two fixes do **not** work:
-
-| Candidate | Outcome |
-| --- | --- |
-| `skipLibCheck: false` | Surfaces the two TS2307s but does not repair the type — still `any` |
-| `paths` mapping in `tsconfig.json` | Never consulted: TypeScript applies `paths` only to *non-relative* specifiers, and `../packages/types/src/index.ts` is relative |
-
-The repair is `patches/@tolki+ts+1.0.1.patch`, applied by `patch-package` from the `postinstall` hook.
-It rewrites both specifiers to the bare name `@tolki/types`, which is why `@tolki/types` is a **direct**
-dependency rather than only a transitive one — the bare specifier must be guaranteed to resolve.
-**Delete the patch, the `postinstall` hook and the direct dependency once a fixed `@tolki/ts` ships**;
-the real fix belongs in that package's dts emitter.
-
-The patch filename encodes the version it was generated against. When `@tolki/ts` is upgraded,
-`patch-package` warns of a version mismatch on install and keeps applying the old patch as long as its
-context lines still match. Regenerate with `npx patch-package @tolki/ts` and delete the stale file, so
-the filename never misstates what is actually installed.
-
-`tests/types/tolki-assertions.ts` is the permanent regression guard and must stay inside `tsconfig.json`'s
-`include`. Note how it is written: an `IsAny<T>` conditional **cannot** work here. When an import fails to
-resolve, TypeScript propagates its *error type* through the conditional and suppresses the cascading
-diagnostic, so `IsAny<AsEnum<…>>` yields the error type rather than `true` and the assertion silently
-passes in exactly the broken state it is meant to catch. The guard instead uses `@ts-expect-error` on a
-deliberate constraint violation (`AsEnum<string>`, `RouteCallResult<number>`): when the types are real
-those raise TS2344 and the directive is satisfied, and when they have degraded to `any` no error occurs
-and TypeScript reports **TS2578 "Unused '@ts-expect-error' directive"** — which is emitted by the
-directive machinery and therefore survives `any`-poisoning.
-
-`unimportable-token-gate.sh` counts only TS2300/TS2304/TS2305/TS2344/TS2440/TS2552/TS2724/TS6196, so it
-does **not** fail on TS2578.
-CI evaluates this guard in its own step (`Gate - the @tolki/ts type surface resolves`), which fails on any
-diagnostic under `tests/types/`. Locally:
+The token gate does not count TS2578. CI's `Gate - the @tolki/ts type surface resolves` step fails when
+`tsc --listFiles` does not include `tolki-assertions.ts`, so keep it in the `include` of `tsconfig.json`, and it fails
+on any diagnostic under `tests/types/`. The same check runs locally:
 
 ```bash
 npx tsc --noEmit -p tsconfig.json 2>&1 | grep "^tests/types/"   # must print nothing
 ```
 
-## Running both
+`patches/@tolki+ts+1.0.1.patch`, applied by `patch-package` from the `postinstall` hook, rewrote both imports to
+`@tolki/types`. `@tolki/ts` 1.0.2, the locked version, ships that fix, so the patch changes nothing. `patch-package`
+finds the change already present and only warns about the version mismatch. If the guard step fails, suspect the
+installed `@tolki/ts` release, whatever its failure message says about the patch. Keep `@tolki/types` as a direct
+dependency whether or not the patch stays, because the trees import its paginator and collection types. To check
+whether a release carries the broken import, read its pristine tarball in a temporary directory, not `node_modules`,
+where `postinstall` has already run:
 
 ```bash
-composer test -- --passthru-php="-d memory_limit=1024M"   # regenerates the trees
-python3 .github/scripts/unknown-regression-gate.py
-.github/scripts/unimportable-token-gate.sh 0 0 0
+cd "$(mktemp -d)" && npm pack @tolki/ts@1.0.2 && tar xzf tolki-ts-1.0.2.tgz && head -1 package/dist/enums.d.ts
 ```
-
-Run the suite first — both gates read the committed trees, so they check whatever the last test run wrote.
-
-The `--passthru-php` flag is needed when the local `php.ini` caps memory below ~512M; paratest spawns
-workers that re-read `php.ini`, so `php -d` on the parent process does not reach them.
-
-When changing `unknown-regression-gate.py` itself, also run its
-[parser self-test](#parser-self-test): `python3 .github/scripts/unknown-regression-gate.py --parsetest`.
 
 ## What the gates do not cover
 
-- **Fixture coverage.** They read the **committed workbench corpus**, so they only see failures the
-  fixtures actually produce. A defect reachable only by a shape no fixture exercises passes both. When
-  adding an inference path, add a fixture for the hazardous shape too — several real defects were found
-  only by constructing a fixture and regenerating, never by reading the code or running the suite.
+The gates miss these cases:
 
-- **A leaked token named like a name in `DOM_GLOBALS`.** The DOM-global count skips `File` wherever it appears, so a
-  class named `File` emitted without its import compiles against the DOM's `File` and passes every count. No workbench
-  class has that name.
-
-- **A leaked token named like an ES-lib global.** `Error`, `Map`, `Date`, `Promise` and the rest are declared by the
-  ES lib, which both programs load, so a class of that name emitted without its import binds to the global in both and
-  no count sees it.
-
-- **TS2307 (`Cannot find module`) is counted, in two separate counts, not the main one.**
-  `unimportable-token-gate.sh`'s main count greps only
-  TS2300/TS2304/TS2305/TS2344/TS2440/TS2552/TS2724/TS6196, and an
-  unresolved *module* is not an existing property degrading to `unknown`, so the regression gate is
-  structurally blind to a bad import too. [The TS2307 sub-gates](#the-ts2307-sub-gates) above are where every
-  TS2307 is counted instead, kept apart on purpose: the relative-specifier count, whose diagnostic is the signature of
-  an import of a class the package never writes a file for (the failure mode `PublishedResourceRegistry`
-  exists to prevent, documented under
-  [convention guesses are gated on the published set](../components/resource-ast-analyzer.md#toresource-convention-guesses-are-gated-on-the-published-set),
-  including its shared `InspectsResourceCalls::resolveCollectedResourceClass()` resolver, which both
-  `ResourceAstAnalyzer` and `InertiaPageAnalyzer` call), and the bare-specifier count, gated separately so
-  that ordinary bare-alias churn can never mask a new relative-specifier regression inside a combined total.
-
-  `npx tsc --noEmit -p tsconfig.json` now reports **0** TS2307s of either flavor. Counting the bare half
-  closed the gap this bullet used to describe; stubbing the modules it counted (see
-  [The app-side stubs](#the-app-side-stubs)) removed the 61 themselves, so neither sub-gate carries a
-  tolerance any more.
-
-- **TS6196 (`declared but never used`) used to be counted by neither gate, with a baseline of 4.** They
-  were a genuine emitter defect, unrelated to the stubs and present at the same count before them.
-  `laravel-ts-global.ts` emitted the `#[TsExtends]` **import** for broadcast events and form requests
-  (`BroadcastableEvent`, `FormRequestBase`, `HasValidationMeta`) but dropped the corresponding `extends`
-  clause, which the per-file output did emit — so the global flavor silently lost the interface
-  composition while keeping a now-unused import. (The import half of this was already noted above, as
-  "`#[TsExtends]` imports the globals body never references"; the missing `extends` was the other half.)
-  The fourth was an unused `RoleType` import in `to-array-casts-resource.ts`, left behind when a
-  `#[TsCasts]` override replaced an analyzer-inferred enum type.
-
-  Both are fixed: `resources/views/globals.blade.php` now emits the `extends` clause alongside the
-  import, and `ResourceTransformer::pruneOverriddenEnumImports()` drops an enum-map entry a cast override
-  leaves unused. `npx tsc --noEmit -p tsconfig.json` now reports **0** TS6196s, and TS6196 joined the
-  main count above — this bullet is kept as the record of what the count used to hide.
-
-- **An inline object that already contains `unknown` cannot report its own wholesale collapse.**
-  `detect_regressions()` gates the base side on the substring test `"unknown" not in b[k]`, and the
-  restored parent key's value is the *whole rendered object*. So one already-`unknown` member anywhere
-  inside an object disarms that object's own parent key; when the object then collapses to a bare
-  `unknown`, its member keys are absent from the head snapshot and nothing is left to match. This is the
-  gate's founding design, not a regression — the same substring test disarmed the parent key before
-  member splitting existed — but it is a real residual and the prose above is scoped to it.
-
-  Measured at `HEAD`: **1104** top-level inline-object properties, **128** of them already carrying
-  `unknown` (about 12%). At the default base rev `a6c268da`: **576** and **72**. Real exposure is the
-  real-typed members sitting under those dirty parents — **120** member keys across six property names
-  (`meta`, `tree_from_docblock`, `metadata`, `grid_config`, `shipping`, `grid_configs`), with at most
-  **3** real members in any one property. The other eight dirty property names have no real-typed member
-  at all, so nothing could be lost there. Re-derive these with a snapshot diff rather than quoting them;
-  they move with every regeneration.
-
-- **Removed properties are structurally invisible to `unknown-regression-gate.py`.** The comparison loop
-  is `[... for k in h if k in b and ...]` — it only ever looks at keys present in the **head** snapshot,
-  then checks whether that same `(file, scope, property)` key existed in the base snapshot. A property
-  that existed at `BASE_REV` and is simply **gone** at `HEAD` never appears in `h`, so it never enters the
-  loop at all — not as a pass, not as a fail, not as any kind of signal. The gate has no code path that
-  even notices a key vanished.
-
-  This is not theoretical: this branch shipped the first base-only property **roots** the gate has
-  ever seen, both from the write-only-accessor waterfall (`cb7c302`). `order.search_index` was dropped
-  outright — a set-only mutator with no getter, no docblock generic, and no backing column, so it is
-  correctly omitted rather than emitted as `unknown`. `profile.normalized_phone` was *moved*: in the
-  three split-template trees it left `ProfileMutators` and reappeared in `Profile`, where the
-  same-named column types it `string | null` instead of `unknown`. Because keys are scoped by
-  enclosing interface, a relocation is a removal plus an addition, and the gate is blind to exactly
-  the half that would tell you a property left its old home. (In `full-template-example` the same
-  change is fully visible — one interface holds both sections, so the key never moved and the gate
-  simply saw `unknown` become `string | null`. Whether a change is observable can depend on the
-  template, which is its own reason not to treat a green gate as coverage.)
-
-  Keep the base-only *root* separate from the base-only *key*. Member splitting keys each inline object's
-  members individually, so any property that changes shape strands its old member keys on the base side.
-  Base-rev→HEAD currently has 867 base-only keys and only 35 property roots among them: the `search_index`
-  (32) and `normalized_phone` (3) entries above, and nothing else. The other 832 sit under nine roots whose
-  own key is present on both sides, every one a property that was an inline `{ … }` at base and is a
-  `Pick<Model, K>` at head — `Pick<>` has no `{` to descend into, so its members stop being keyed
-  separately (see [Aliases and inline-object members](#aliases-and-inline-object-members)). Those are
-  noise, not signal. Re-measure rather than quoting these counts; they move whenever any property's shape
-  changes.
-
-  What did **not** ship is a `$hidden` removal, and it is worth being precise about that, because it is
-  the change most likely to be misremembered as one. `config/ts-publish.php` ships
-  `'exclude_hidden' => false`, so hidden attributes are published by default: `user.password` and
-  `user.remember_token` are both still present, in all four committed trees. The setting is the opt-in
-  that *would* remove them — turn it on and those two properties leave `User` on the next regeneration,
-  matching Laravel's own `toArray()`/`toJson()` serialization (see
-  [What gets published](https://tolki.abe.dev/ts/models.html#what-gets-published-hidden-attributes-write-only-accessors)).
-  No workbench example enables it, so the committed corpus exercises the permissive branch only and the
-  gate has never actually been shown a `$hidden`-driven removal — a second reason not to lean on it here.
-
-  Every regenerated tree was reviewed by hand — reading the diff and confirming each property disappeared
-  for the intended reason — because the gate could not do, and did not do, any part of that verification.
-  A property quietly dropping for the *wrong* reason (a bug, not a deliberate design choice) would pass
-  both gates exactly the same way these did.
-
-  **Practical consequence:** whenever a change might remove a property — excluding more columns, widening
-  `$hidden`, tightening an accessor's visibility, deleting or renaming a workbench fixture — diff the
-  regenerated `workbench/resources/js/types/data` tree by hand (`git diff` on the committed output) and
-  account for every property that disappears. Neither gate substitutes for that review. Teaching the gate
-  to see removals — a second pass keyed the opposite direction (`for k in b if k not in h`), reporting each
-  base-only key as a `REMOVED — verify intentional` line rather than an automatic failure, since removal is
-  often correct — is real, scoped work, deliberately left for a follow-up rather than folded into this
-  documentation-only task.
+- **Shapes no fixture produces**: both gates read the workbench corpus, so a defect that only an unexercised shape
+  reaches passes both. When you add an inference path, add a fixture for its hazardous shape too.
+- **A leaked token named like `File` or an ES-lib global**: the DOM-global count skips `File` everywhere, and names
+  such as `Error`, `Map`, `Date` and `Promise` bind to the ES lib in both programs, so a class with one of those names
+  emitted without its import passes every count. No workbench class has such a name.
+- **Diagnostics outside the counted codes**: the main count reads only the codes listed above. TS2307 and the TS1xxx
+  syntax errors fail the gate on their own, but `tsc` can reject a file with any other code and the gate still passes.
+  Examples are TS6133 (an unused value import), TS6192 (an import line of two or more names, none used) and TS2308 (a
+  barrel that re-exports one name from two files). Two enums in one namespace, one named like the other's type name,
+  produce TS2308, as [its known gap](../known-gaps.md#an-enum-named-like-another-enums-type-name-collides-with-it)
+  describes.
+- **A property that disappears**: the regression gate walks only the keys present at the head, so a removed property
+  produces no signal, and a property that moves to another interface is a removal plus an addition. When a change can
+  remove a property, such as excluding columns, widening `$hidden` or deleting a fixture, diff the regenerated trees
+  and account for each property that disappears. A removal check would have to report rather than fail, since removing
+  a property is often correct.
+- **An object that already holds an `unknown` member**: `detect_regressions()` tests the base side with
+  `"unknown" not in b[k]` on the parent's whole rendered value, so one `unknown` member disarms the parent key, and
+  when the object then collapses to `unknown` no member key is left to match.
+- **Reordered union arms**: `prop[i]` indexes arms by position, so swapping two arms can mask a regression. This limit
+  is accepted. Do not fix it with content-hashed arm keys.

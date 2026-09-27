@@ -1,268 +1,172 @@
 # Support helpers: `JsEmitter`, `TsTypeString`, `TsNaming`
 
-> No user-facing counterpart: all three classes and their facades are `@internal`. What they produce
-> is verified indirectly, by [the type-inference gates](../testing/type-inference-gates.md) reading the
-> generated tree their callers write.
+[`JsEmitter`](../../src/Support/JsEmitter.php), [`TsTypeString`](../../src/Support/TsTypeString.php) and
+[`TsNaming`](../../src/Support/TsNaming.php) emit JavaScript source, answer and rewrite TypeScript type strings, and
+turn PHP names into TypeScript names. They were split out of [`LaravelTsPublish`](../../src/LaravelTsPublish.php),
+which keeps the PHP-type-to-TypeScript engine, and each is reached through its own `@internal` facade in
+`src/Facades/`. Every `LaravelTsPublish::` helper name still works through a delegation, the compatibility promise
+from `abetwothree/laravel-ts-publish#69`, so moving a helper here is never only a move.
 
-`AbeTwoThree\LaravelTsPublish\Support\JsEmitter`, `…\Support\TsTypeString` and `…\Support\TsNaming`
-are three helper classes carved out of `LaravelTsPublish`, each reached through its own `@internal`
-facade in `AbeTwoThree\LaravelTsPublish\Facades\`. They exist because `LaravelTsPublish` had become
-one class doing three jobs that have nothing to do with its actual subject — the PHP-type →
-TypeScript-type engine. None of the three reflects on a class, reads the config maps, or asks what a
-type *is*: they emit JavaScript source, rewrite TypeScript type strings, and turn PHP names into
-TypeScript names.
+## Where things live
 
-The extraction ran under one hard constraint, from `abetwothree/laravel-ts-publish#69`: every
-`LaravelTsPublish::` name that worked before still works. 220 call sites in `src/` and 107 in
-`resources/views/` depended on it, plus an unknowable number outside the package. That constraint is
-what produced the delegation layer below, and it is why moving a helper here is never simply a move.
+The helpers and the test that pins them live in these files:
+
+- [`Support\JsEmitter`](../../src/Support/JsEmitter.php): PHP values and docblock text in, JavaScript source out.
+- [`Support\TsTypeString`](../../src/Support/TsTypeString.php): TypeScript type strings in, answers or rewrites out.
+- [`Support\TsNaming`](../../src/Support/TsNaming.php): FQCNs, paths and keys in, TypeScript names and paths out.
+- [`Support\StringSerialization`](../../src/Support/StringSerialization.php): whether `json_encode()` writes a string
+  for a class. Static, with no facade.
+- [`LaravelTsPublishDelegationTest`](../../tests/Unit/LaravelTsPublishDelegationTest.php): the only pin on the
+  delegations and on the helpers' container bindings.
 
 ## Which class owns a new helper
 
-Ask what the helper's **input domain** is, not what happens to call it:
+Ask what the helper's input domain is, not what calls it:
 
 | The question the helper answers | Owner |
 | --- | --- |
-| **"What does this go into a generated file as?"** — a PHP value or docblock text turned into the literal, key, identifier or comment a `.ts` file carries | `JsEmitter` |
-| **"What is true of this TypeScript type string, or what does it become?"** — type string in, answer or rewritten type string out | `TsTypeString` |
-| **"What is this called, and where does it live?"** — an FQCN, a file path or an array key resolved to a name, a directory, or another path | `TsNaming` |
-| **"Does this class actually reach JSON as a string?"** — a PHP class, or a method's declared return, resolved to whether `json_encode()` really emits a string for it | `StringSerialization` |
-| **"What *is* this, as a type?"** — a PHP type, a `ReflectionX` or a docblock resolved to a `TypeScriptTypeInfo` | stays on `LaravelTsPublish` |
+| What does this PHP value or docblock text become in a `.ts` file: a literal, key, identifier or comment? | `JsEmitter` |
+| What is true of this TypeScript type string, or what does it become? | `TsTypeString` |
+| What is this FQCN, file path or array key called, and where does it live? | `TsNaming` |
+| Does `json_encode()` write a string for this class, or for this method's declared return? | `StringSerialization` |
+| What is this PHP type, `ReflectionX` or docblock, as a `TypeScriptTypeInfo`? | stays on `LaravelTsPublish` |
 
-Read the question, not the signature: two of the clusters have members whose return type alone would
-misfile them. `JsEmitter::enumScalar()` hands back a PHP `int|string` and `parseDocBlockDescription()`
-plain text — neither is JavaScript source, but each is the normalizing step immediately upstream of one
-(`toJsLiteral()` and `formatJsDoc()` respectively), and splitting them off would leave half of one
-emission decision in another class. `TsNaming::resolveRelativePath()` returns a PHP file path and
-`resolveClassFromFile()` a PHP FQCN — neither is a TypeScript name, but both answer "where does this
-live, what is it called" with no inference involved, which is the same question `namespaceToPath()`
-answers from the other direction.
+Read the question, not the signature. `JsEmitter::enumScalar()` returns a PHP `int|string`, not JavaScript, but it
+prepares the input of `toJsLiteral()`, and moving it would split one emission decision across two classes.
+`splitPhpDocUnionType()` and `splitTopLevelUnion()` both split a string on `|`, but only the second splits a
+TypeScript type string. The first reads PHPDoc, the engine's input, so it stays on the engine.
 
-The last row is the real test. If answering the question needs reflection, the config maps, or a
-recursion back into `toTsType()`, it belongs to the engine however string-shaped its signature looks —
-`splitPhpDocUnionType()` and `splitTopLevelUnion()` are both "split a string on a delimiter", and only
-the second one is a helper.
+The last row is the real test. A helper whose answer needs the engine's config maps or a call back into `toTsType()`
+belongs to the engine, however string-shaped its signature looks. Reflection alone does not decide it.
+`TsNaming::resourceTypeName()` reads a `#[TsResource]` attribute, but only to get a name.
 
 ### `JsEmitter`
 
-PHP values and docblock text in, JavaScript source out: `validJsObjectKey()`, `isIndexSignatureKey()`,
-`castTargets()`, `retargetCasts()`, `castsByKey()`, `safeJsIdentifier()`, `toJsLiteral()`, `enumScalar()`,
-`routeArgsToJs()`, `sanitizeJsDoc()`, `formatJsDoc()`, `parseDocBlockDescription()`, plus the private
-`RESERVED_JS_IDENTIFIERS` list `safeJsIdentifier()` reads and the private `castSpellings()` and `readEscapes()`
-that `castTargets()` reads a signature's name through. No state, no dependencies, no config.
+`validJsObjectKey()`'s `$allowIndexSignature` flag is a trap. A generated `[key: number]` or `[key: string]` is legal
+only in a type position, so every value-position caller must leave the default alone.
+[The arbiter](#the-arbiter-is-the-generated-tree) shows what a dropped default does.
 
-`validJsObjectKey()`'s `$allowIndexSignature` flag is the one member with a trap in it: a generated
-`[key: number]` / `[key: string]` is legal only in a type position, so every value-position caller must
-leave the default alone. See [the arbiter](#the-arbiter-is-the-generated-tree) for what happened when a
-delegation dropped it.
+`castTargets()` decides which published key a `#[TsCasts]` key retypes:
 
-`isIndexSignatureKey()` is the one home for "this key is a generated index signature, not a property
-name": `validJsObjectKey()` asks it, and so do `ResourceAstAnalyzer`, `ReturnShapeRefiner` and
-`IndexSignatureReconciler`, so the regex has one spelling. Like `isUnknownOnly()` below, it has no
-delegation on `LaravelTsPublish`.
+- A cast key equal to a published key retypes that key.
+- Failing that, a cast key equal to another spelling of an index signature's name retypes that signature. The other
+  spellings are the name with each `\\` read as `\` (a single-quoted paste), with each `\r` read as a raw CR (a
+  double-quoted paste), or with both, read escape by escape from the left.
+- Where two cast keys name one signature, the exact spelling wins, else the first. The loser's target is null.
+- A spelling two signatures share retypes neither.
 
-`castTargets()` is the one home for "which published key does this `#[TsCasts]` key retype". A key equal to
-a published key keeps it. Failing that, one equal to another spelling of a signature's name takes that name:
-the name with each `\\` read as `\` (a single-quoted paste), each `\r` as a raw CR (a double-quoted one), or
-both, read escape by escape. The exact spelling, else the first, wins where two name one signature, and the
-loser's target is null. A spelling two signatures share matches neither. `retargetCasts()` applies one decision to
-every map parallel to the source it was made for, so a loser's optional flag and import go with its type, and
-`castsByKey()` does both for a map whose entries are whole. `ResourceAstAnalyzer::applyTsCastsFromMethod()`,
-`ResourceTransformer`, `BroadcastEventTransformer` and both Inertia analyzers call them before any cast lookup.
-None has a delegation.
+`retargetCasts()` applies those decisions to every map that runs parallel to the casts, so a loser's optional flag and
+import are dropped with its type. `castsByKey()` does both steps for a map whose entries are whole. The resource,
+broadcast-event and Inertia paths call them before any cast lookup.
 
 ### `TsTypeString`
 
-Structural questions about a TypeScript type string, and rewrites of one: `extractImportableTypes()`,
-`shapeValueHasUnimportableToken()`, `aliasPropertyType()`, `qualifyGlobalType()`,
-`forgetQualifiedTypes()`, `splitTopLevelUnion()`, `hoistNull()`, `orUndefined()`, `typeNameOccursIn()`,
-`substituteEnumType()`, `rewriteAsEnumToType()`, `isUnknownOnly()`, `isVagueTsType()`, plus the public
-`TS_PRIMITIVES` list several of them filter against. It holds two pieces of state. A static note records which
-identifier-character pattern `typeNameOccursIn()` uses, probed once per process because a PCRE2 before 10.40 has
-no `\p{ID_Continue}`. And `qualifyGlobalType()` memoizes each answer for the run, per skip namespace and type
-string, in `$qualifiedTypes`: the globals template calls it once per property, and most calls repeat a type
-already qualified. The memo holds the namespace and alias maps its answers were made under and starts over when a
-call brings other maps, and `Runner::run()` and `RunnerForSource::run()` drop it through `forgetQualifiedTypes()`.
-The work itself is the protected `qualifyGlobalTypeOnce()`, which leaves each quoted string literal as written, so
-`'Post'` stays a literal, and hands the text around them to `qualifyNames()`. Its only outward dependency is
-`TsTypeShape::splitTopLevel()`, which `splitTopLevelUnion()` wraps.
+The engine calls `TsTypeString`, and `TsTypeString` never calls back. Its only outward call is
+`TsTypeShape::splitTopLevel()`. That one-way dependency is what made the class safe to lift out. A new member that
+wants `toTsType()` is not a type-string helper, and would be in the same bind as the
+[docblock sub-engine](#what-stayed-on-laraveltspublish-and-why-the-docblock-engine-could-not-follow).
 
-`isUnknownOnly()` is the one home for "this answer is `unknown` once its `null` arms are removed" —
-the test `MethodChainHandler` and `PropertyChainHandler` both decline on. It has no delegation on
-`LaravelTsPublish`, because that surface is the frozen pre-extraction one, not a place new helpers
-join. `orUndefined()`, the one spelling of an index signature's ` | undefined` suffix, has none either, and
-neither has `forgetQualifiedTypes()`.
-
-**The retained type engine calls into it, and that direction is one-way.** Six sites across five engine
-methods — `toTsType()`, `arrayableShapeType()`, `publicPropertyShapeType()`,
-`methodOrDocblockReturnTypes()` (twice) and `resolveArrayShapeString()` — reach for
-`extractImportableTypes()`, `shapeValueHasUnimportableToken()` or `isVagueTsType()`. `TsTypeString`
-never calls back. That asymmetry is deliberate and is what made this class safe to lift out at all; a
-helper that needed to ask the engine a question would be in the same bind the docblock sub-engine is in
-(below). Keep it that way: a new `TsTypeString` member that wants `toTsType()` is a sign it is not a
-type-string helper.
-
-### `TsNaming`
-
-PHP names in, TypeScript names and import paths out: `resourceTypeName()`, `namespaceToPath()`,
-`relativeImportPath()`, `sortImportPaths()`, `resolveRelativePath()`, `resolveClassFromFile()`,
-`keyCase()`, plus the `protected importSortGroup()` that classifies a path into `sortImportPaths()`'s
-three groups — an implementation detail with no delegation and no facade surface.
-
-It holds per-instance state: `$resourceTypeNames`, an FQCN → published interface name cache that
-`resourceTypeName()` fills, since resolving a name means reading a `#[TsResource]` attribute off the class.
-That cache, and `TsTypeString`'s `qualifyGlobalType()` memo, are the reason the container bindings below are
-not pure decoration.
+`JsEmitter::isIndexSignatureKey()`, `TsTypeString::isUnknownOnly()` and `TsTypeString::orUndefined()` are each the
+one home for their test or spelling, so a new caller uses them rather than a local regex.
 
 ### `StringSerialization`
 
-The fourth `src/Support/` class, and the one exception to the shape above: it has **no facade and no
-delegation**, because it is not part of the frozen pre-extraction surface — it was written inside
-`src/Ast/` and moved here once the rule in this file was applied to it. Callers name the class directly.
+Its callers in `src/Ast/` use it to decline a receiver rule where `toTsType()` says `string` but `json_encode()` writes
+an object. It lives in `src/Support/` because it asks a type question and never touches a `PhpParser` node. The
+question a class answers decides its home, not where its callers sit. It has no facade and no delegation because it
+was never part of the pre-extraction surface.
 
-PHP classes and method return declarations in, one boolean out: `isFalseString()` and
-`methodReturnsFalseString()`. No state, no config. It answers the question `toTsType()` cannot ask
-itself — `toTsType()` maps `DateTime` and any `__toString()` class to `string`, but `json_encode()`
-ignores `__toString()` and writes a plain `DateTime` as a `{date, timezone_type, timezone}` object, so a
-receiver rule that trusted the `string` would publish a type the payload never carries. Its callers
-decline instead; see [Receiver types](./receiver-types.md#following-a-methods-return-type).
-
-It lives here rather than in `src/Ast/` because it never touches a `PhpParser` node — it asks a pure
-type-engine question, which is this file's test, not the layer its callers happen to sit in. It keeps
-its `@internal` tag deliberately: leaving `src/Ast/` also leaves `InternalBoundaryTest`'s per-directory
-sweep, and nothing else would reinstate the tag.
+It stays `@internal`. [`InternalBoundaryTest`](../../tests/Architecture/InternalBoundaryTest.php) sweeps `src/Ast/` by
+directory, so it names `StringSerialization` explicitly, and another class that leaves `src/Ast/` but should stay
+internal needs the same entry.
 
 ## What stayed on `LaravelTsPublish`, and why the docblock engine could not follow
 
-What is left is the engine and the things only the engine uses: `toTsType()` with its cast, shape and
-reflection helpers; the docblock sub-engine; the engine's return shape
-(`emptyTypeScriptInfo()`/`omittedTypeScriptInfo()`/`mergeTypeScriptInfos()`); the config maps
-(`typesMap()`/`relationsMap()`/`relationStrategy()`); `callCommandUsing()`/`callCommandWith()`; and the
-delegations.
+What stays is the engine, what only the engine uses, and the delegations. The docblock sub-engine is the largest
+remaining block and the obvious next candidate, but it cannot move the way the three helpers did, because it and
+`toTsType()` are mutually recursive. Five calls close the cycle:
 
-The docblock sub-engine is the largest remaining block and the obvious next candidate. It cannot be
-extracted the way these three were, because it and `toTsType()` are **mutually recursive**. Five edges
-close the cycle:
+- **Docblock to engine**: `resolveDocblockTypePart()`, `resolveDocblockContainerValue()` and `resolvePhpDocTypeToTs()`
+  each call `toTsType()`.
+- **Engine to docblock**: `arrayableShapeType()` calls `parseDocblockReturnArrayShape()`, and
+  `methodOrDocblockReturnTypes()` calls `docblockReturnTypes()`.
 
-Docblock → engine:
-
-- `resolveDocblockTypePart()` calls `toTsType()`
-- `resolveDocblockContainerValue()` calls `toTsType()`
-- `resolvePhpDocTypeToTs()` calls `toTsType()`
-
-Engine → docblock:
-
-- `arrayableShapeType()` calls `parseDocblockReturnArrayShape()`
-- `methodOrDocblockReturnTypes()` calls `docblockReturnTypes()`
-
-Lift the docblock methods into a class of their own and three of them are left reaching for a
-`toTsType()` that is no longer theirs to call. The way out is an injected resolver — the new class
-takes something that resolves a PHP type to a `TypeScriptTypeInfo`, and `LaravelTsPublish` supplies
-itself — which is a design change with its own behavioural surface, not the mechanical move the three
-helpers above were. It was left whole rather than half-done for that reason, and anyone picking it up
-should treat "break the cycle" as the task and "move ~25 methods" as its consequence.
+A class holding the docblock methods would need an injected resolver that turns a PHP type into a `TypeScriptTypeInfo`,
+with `LaravelTsPublish` supplying itself. That is a design change with its own behavior to verify, not a mechanical
+move, so the sub-engine was left whole. Treat "break the cycle" as the task, and moving the methods as its consequence.
 
 ## The delegation rule
 
-Two rules, pointing in opposite directions:
+Two rules point in opposite directions:
 
-- **Inside this package, call the helper's own facade.** `JsEmitter::toJsLiteral(…)`,
-  `TsTypeString::hoistNull(…)`, `TsNaming::resourceTypeName(…)` — in `src/` and in
-  `resources/views/` alike. No Blade view references `LaravelTsPublish` at all any more. Never route a
-  new call through `LaravelTsPublish` for one of these helpers.
-- **`LaravelTsPublish` answers anyway.** 25 methods on it forward to the three facades, plus the
-  `TS_PRIMITIVES` alias — 26 names in total, the full pre-extraction helper surface.
+- **In-package code**: call the helper's own facade, such as `JsEmitter::toJsLiteral(…)` or
+  `TsNaming::resourceTypeName(…)`, in `src/` and in `resources/views/`. Never route a new call through
+  `LaravelTsPublish`.
+- **Outside callers**: `LaravelTsPublish` still answers. 25 of its methods forward to the three facades, and
+  `TS_PRIMITIVES` aliases `TsTypeString::TS_PRIMITIVES`, which makes 26 names, the whole pre-extraction helper
+  surface. That surface is frozen, so a helper added since gets no delegation.
 
-Every one of those 25 delegations has **zero callers inside `src/` and `resources/views/`**. That is
-the finished state, not an oversight: they are the compatibility surface `#69` required, and their
-only consumers live outside the package. A "this method has no callers" search result is therefore
-not evidence that one is dead code, and none of them may be deleted on that reasoning.
+None of the 25 delegations has a caller in `src/` or `resources/views/`. That is the finished state, not an oversight:
+they are the compatibility surface `#69` required, and their callers live outside the package. A "no callers" search
+result is not evidence of dead code, and none of them may be deleted on that basis.
 
 ### `LaravelTsPublishDelegationTest` is the only thing holding them up, and must never be swept
 
-`tests/Unit/LaravelTsPublishDelegationTest.php` is the sole pin on all 26 names. Each assertion reads
-`LaravelTsPublish::x(…)` on the left against `NewFacade::x(…)` on the right and asserts byte equality.
-**Rewriting the left-hand side to the new facade — the obvious thing to do when sweeping callers onto
-the helpers — turns every assertion into `Facade::x(…) === Facade::x(…)`**, a tautology that passes
-with all 25 delegations deleted. The three caller-migration commits skipped this file deliberately.
+Each assertion compares `LaravelTsPublish::x(…)` on the left with `Facade::x(…)` on the right. Rewriting the left
+side to the new facade, the obvious move in a caller sweep, turns every assertion into
+`Facade::x(…) === Facade::x(…)`, which passes with all 25 delegations deleted.
 
-Each equality test is paired with a second test asserting the chosen input is one the helper actually
-*transforms* — `validJsObjectKey('foo-bar')` really becoming `"foo-bar"`, not passing through
-unchanged — because an input a helper returns verbatim makes the equality assertion vacuous. Those
-second tests are also where defaulted and positional parameters are pinned: `$allowIndexSignature`,
-`$importableNames`, `qualifyGlobalType()`'s `$skipNamespace` and `$aliasResolution`, `keyCase()`'s
-`$case`, and `relativeImportPath()`'s argument order. A delegation that drops a default or swaps two
-arguments still returns a plausible string, which is exactly why each one needs a case that separates
-them.
+Each equality test is paired with one asserting that its input is one the helper transforms, such as
+`validJsObjectKey('foo-bar')` becoming `"foo-bar"`, because an input returned verbatim makes the equality vacuous.
+Those guards also pin defaulted and positional parameters: `$allowIndexSignature`, `$importableNames`,
+`qualifyGlobalType()`'s `$skipNamespace` and `$aliasResolution`, `keyCase()`'s `$case`, and `relativeImportPath()`'s
+argument order. A delegation that drops a default or swaps two arguments still returns a plausible string.
 
-**Those transform guards carry more weight than their name suggests.** Direct unit coverage in the new
-`tests/Unit/Support/*Test.php` files is not symmetric: `JsEmitter` has a `describe()` block per member,
-but `TsTypeString` has none for `shapeValueHasUnimportableToken()` or `substituteEnumType()`, and
-`TsNaming` none for `resolveRelativePath()`. All three are covered — the first by the `toTsType()` shape
-blocks that stayed in `LaravelTsPublishTest.php`, the other two by the delegation test's transform
-guards — so this is asymmetry, not a hole. But `substituteEnumType()` and `resolveRelativePath()` now
-have their only *direct* assertions inside a file whose stated job is pinning the compatibility surface,
-which means a future decision to trim that file when the delegations are finally dropped would take
-their coverage with it. Move them into the owning helper's test file before trimming, not after.
+The guards are also the only direct assertions on `TsTypeString::substituteEnumType()` and
+`TsNaming::resolveRelativePath()`. Move those into the owning helper's test file before you trim this one.
 
 ### `resolveRelativePath()` is the one `public static` delegation
 
-`TsNaming::resolveRelativePath()` is an ordinary instance method; the delegation on
-`LaravelTsPublish` is declared `public static`. The asymmetry is deliberate. Before the caller sweep,
-eight sites in `src/` called it statically on the concrete class — seven in `WatcherJsonWriter`, one in
-`CoreTransformer` — and dropping `static` turned each into a PHPStan `method.staticCall` error. Those
-eight now call `TsNaming` directly, so the modifier earns nothing inside the package; it stays because
-an outside caller written against the static form would break without it. The delegation test pins both
-shapes, the static call on the concrete class and the ordinary call through the facade.
+`TsNaming::resolveRelativePath()` is an instance method, but its delegation is declared `public static`. Keep the
+`static`. Outside code that calls it statically on the concrete class breaks without it, though nothing inside the
+package needs it. The delegation test pins both the static call and the call through the facade.
 
-## `TS_PRIMITIVES` is an alias, not a copy
+### `TS_PRIMITIVES` is an alias, not a copy
 
-A facade forwards *calls* through `__callStatic`, and a constant read is not a call, so a facade cannot
-carry a constant. `LaravelTsPublish::TS_PRIMITIVES` is therefore a language-level alias resolved against
-the concrete class rather than the facade:
+A facade forwards calls, and reading a constant is not a call, so the concrete class declares
+`TS_PRIMITIVES = TsTypeStringService::TS_PRIMITIVES`. That is one declaration under two names, so the two cannot
+drift. Keep it an alias. The delegation test asserts only that the two constants are equal, so a byte-identical
+literal copy would pass until someone edited one side.
 
-```php
-public const array TS_PRIMITIVES = TsTypeStringService::TS_PRIMITIVES;
-```
+## The singleton bindings are insurance, not current behavior
 
-One declaration under two names, so the two cannot drift. The honest limit: the delegation test asserts
-the two constants are *equal*, which is not the same as asserting there is one declaration. Replace the
-alias with a byte-identical literal array and that assertion still passes — nothing in the suite would
-notice until someone edited one copy and not the other.
+`LaravelTsPublishServiceProvider::register()` binds all three helpers as singletons, which changes nothing about how
+the package behaves. Every in-package call goes through a facade, and `Facade::resolveFacadeInstance()` already keeps
+one instance per accessor.
 
-## The singleton bindings are insurance, not current behaviour
-
-`LaravelTsPublishServiceProvider::register()` binds all three helpers as singletons. This is
-counter-intuitive enough to be worth stating flatly: **they change nothing about how the package
-behaves today.**
-
-`Facade::resolveFacadeInstance()` memoises what it resolves into `Facade::$resolvedInstance`, keyed by
-accessor, and every in-package call and every delegation goes through a facade. One instance per
-application lifetime is therefore guaranteed by the *facade*, not by the container. Measured across the
-full suite with and without the three bindings: identical helper construction counts (1,526) and an
-identical `resourceTypeName()` cache profile (35,567 hits, 5,437 misses).
-
-What the bindings do change is `app(TsNaming::class)` and constructor injection, neither of which
-consults `Facade::$resolvedInstance`. Unbound, each such resolution hands back a fresh `TsNaming` whose
-`$resourceTypeNames` cache starts empty and never warms, and a fresh `TsTypeString` whose `qualifyGlobalType()`
-memo does the same. They also matter for a long-lived worker,
-where `Facade::clearResolvedInstances()` runs between requests while `$app->instances` survives — the
-facade's memo is dropped and the container's is not. So they are three lines of currently-inert
-insurance, and the delegation test pins each one (`app(X::class)` identical to `app(X::class)`) so that
-nobody removes them as dead configuration.
+The bindings matter where the facade's memo is not consulted. Unbound, `app(TsNaming::class)` and constructor
+injection would each get a fresh `TsNaming` with an empty `$resourceTypeNames` cache, and a fresh `TsTypeString` with
+an empty `qualifyGlobalType()` memo. In a long-lived worker, `Facade::clearResolvedInstances()` runs between requests
+while the container's instances survive. The delegation test pins each binding, so nobody deletes them as dead
+configuration.
 
 ## The arbiter is the generated tree
 
-**Every commit on the branch that performed this extraction** — the three class extractions, the follow-up
-that moved `isVagueTsType()`, the three caller sweeps, and the docs commit — left
-`workbench/resources/js/types/` **byte-identical**. Not "the tree matched at the end": it matched at every
-single step. That property is what makes a refactor of this size auditable, because the suite proves the
-helpers behave and only an unchanged tree proves the *package* behaves. Any change here that is supposed
-to be behaviour-preserving and moves the tree has not preserved behaviour, whatever the suite reports.
+A change here that is meant to preserve behavior must leave `workbench/resources/js/types/` byte-identical at every
+step, not only at the end. The suite proves the helpers behave, and only an unchanged tree proves the package does.
 
-It earned its keep. A delegation that silently dropped a defaulted argument —
-`validJsObjectKey()`'s `$allowIndexSignature` — passed the entire test suite while rewriting 12
-generated files, turning `[key: number]: Tag;` into `"[key: number]": Tag;`. A quoted index signature
-is not an index signature; every one of those shapes had become an ordinary property with an odd name,
-and nothing but the tree said so. The defaulted- and positional-parameter pins in the delegation test
-exist because of it.
+The suite checks the calls it was written for. During the extraction, a delegation that dropped `validJsObjectKey()`'s
+`$allowIndexSignature` default passed the whole suite while turning `[key: number]: Tag;` into `"[key: number]": Tag;`
+in the generated files. A quoted index signature is an ordinary property with an odd name, and only the tree showed
+it. The delegation test's default and argument-order pins exist because of it.
+
+## Related
+
+These pages hold the neighboring rules:
+
+- [Type inference gates](../testing/type-inference-gates.md), which check what these helpers produce through the
+  generated tree. The helpers have no user-facing docs.
+- [Known gaps](../known-gaps.md), whose entry on overriding a moved helper on a `LaravelTsPublish` subclass says why a
+  subclass override leaves the output unchanged, and which container binding does change it.
+- [Receiver types § Following a method's return type](receiver-types.md#following-a-methods-return-type), where
+  `StringSerialization`'s callers decline.
