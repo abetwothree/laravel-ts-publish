@@ -6,12 +6,14 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CountingTsTypeString;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomBarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FailingModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HeaderedBarrelWriter;
@@ -807,6 +809,26 @@ test('runner skips broadcast events when shouldPublishBroadcastEvents is false',
     $runner->run();
 
     expect($runner->broadcastEventsIndexContent)->toBe('');
+});
+
+test('a run drops the global qualifications an earlier run memoized', function () {
+    config()->set('ts-publish.globals.enabled', false);
+    $service = new CountingTsTypeString;
+    TsTypeString::swap($service);
+    TsTypeString::qualifyGlobalType('User', ['app.models' => ['User']]);
+
+    $runner = new Runner;
+    $runner->shouldPublishModels = false;
+    $runner->shouldPublishModelMetadata = false;
+    $runner->shouldPublishResources = false;
+    $runner->shouldPublishRoutes = false;
+    $runner->shouldPublishFormRequests = false;
+    $runner->shouldPublishBroadcastChannels = false;
+    $runner->shouldPublishBroadcastEvents = false;
+    $runner->run();
+    TsTypeString::qualifyGlobalType('User', ['app.models' => ['User']]);
+
+    expect($service->qualifications)->toBe(2);
 });
 
 // ─── PublishedResourceRegistry run boundary ────────────────────────

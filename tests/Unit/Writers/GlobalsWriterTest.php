@@ -3,8 +3,16 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\LiteralKindPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LiteralKindPostEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LiteralKindPostResource;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
 use Illuminate\Filesystem\Filesystem;
+use Workbench\App\Enums\Status;
+use Workbench\App\Models\Comment;
+use Workbench\App\Models\Image;
+use Workbench\App\Models\Post;
+use Workbench\App\Models\User;
 
 test('writes globals content when enabled', function () {
     config()->set('ts-publish.globals.enabled', true);
@@ -216,4 +224,32 @@ test('globals content imports a form request custom type instead of leaving the 
     expect($content)
         ->toContain("import type { PostAttributes } from '@js/types/posts';")
         ->toContain('attributes?: PostAttributes');
+});
+
+test('globals content keeps a string literal type as written, though it spells a published class name', function () {
+    config()->set('ts-publish.globals.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+    config()->set('ts-publish.enums.included', [Status::class]);
+    config()->set('ts-publish.models.additional_directories', [LiteralKindPost::class]);
+    config()->set('ts-publish.models.included', [Comment::class, Image::class, Post::class, User::class, LiteralKindPost::class]);
+    config()->set('ts-publish.resources.additional_directories', [LiteralKindPostResource::class]);
+    config()->set('ts-publish.resources.included', [LiteralKindPostResource::class]);
+    config()->set('ts-publish.broadcast_events.additional_directories', [LiteralKindPostEvent::class]);
+    config()->set('ts-publish.broadcast_events.included', [LiteralKindPostEvent::class]);
+
+    $runner = resolve(Runner::class);
+    $runner->run();
+
+    $content = (new GlobalsWriter(new Filesystem))->write($runner);
+
+    // The runtime value is the string 'Post', which a type rewritten to 'app.models.Post' rejects.
+    expect($content)
+        ->toContain("metadata: { kind: 'Post' | 'User'; label: string } | null;")
+        ->toContain("kind: 'User' | 'Comment';")
+        ->toContain("status: 'Status';")
+        ->toContain("note: 'User\\'s Post';")
+        ->toContain("spread_kind?: 'Post' | 'Image';")
+        ->toContain("kind: 'Comment' | 'Post';")
+        ->not->toContain("'app.");
 });

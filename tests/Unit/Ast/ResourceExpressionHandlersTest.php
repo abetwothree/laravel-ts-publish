@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CastHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ClassConstantHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ClosureHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CoalesceHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CollectionPipelineHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConstFetchHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
@@ -21,6 +22,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MethodChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\NewResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverPropertyFetchHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationCollectionChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationFilterHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ScalarHandler;
@@ -45,6 +48,7 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\VariadicPlaceholder;
 use Workbench\App\Http\Resources\CommentResource;
+use Workbench\App\Http\Resources\ReceiverMethodResource;
 use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
@@ -82,13 +86,16 @@ function resourceExpressionHandlerOrder(): array
         MethodChainHandler::class,
         PropertyChainHandler::class,
         RelationCollectionChainHandler::class,
+        CollectionPipelineHandler::class,
         VariableHandler::class,
         TernaryHandler::class,
+        ReceiverPropertyFetchHandler::class,
+        ReceiverMethodCallHandler::class,
         KnownMethodRuleHandler::class,
     ];
 }
 
-/** A throwaway engine: make()/generic() only construct handlers, they never resolve anything. */
+/** A throwaway engine: make()/withoutResourceHandlers() only construct handlers, they never resolve anything. */
 function resourceExpressionHandlersTestEngine(): ExpressionEngine
 {
     return new class implements ExpressionEngine
@@ -110,7 +117,7 @@ function resourceExpressionHandlersTestEngine(): ExpressionEngine
     };
 }
 
-it('returns all 24 handlers in the documented dispatch order', function () {
+it('returns all 27 handlers in the documented dispatch order', function () {
     $classes = array_map(
         fn (ExpressionHandler $handler): string => $handler::class,
         ResourceExpressionHandlers::make(resourceExpressionHandlersTestEngine()),
@@ -119,10 +126,10 @@ it('returns all 24 handlers in the documented dispatch order', function () {
     expect($classes)->toBe(resourceExpressionHandlerOrder());
 });
 
-it('excludes exactly the three resource-only handlers from generic(), same relative order', function () {
+it('excludes exactly the three resource-only handlers from withoutResourceHandlers(), same relative order', function () {
     $classes = array_map(
         fn (ExpressionHandler $handler): string => $handler::class,
-        ResourceExpressionHandlers::generic(),
+        ResourceExpressionHandlers::withoutResourceHandlers(),
     );
 
     $expected = array_values(array_filter(
@@ -134,8 +141,25 @@ it('excludes exactly the three resource-only handlers from generic(), same relat
         ], true),
     ));
 
-    expect($classes)->toHaveCount(21)
+    expect($classes)->toHaveCount(24)
         ->and($classes)->toBe($expected);
+});
+
+// A model's getter body reads the model's own relations, whose only()/except() only RelationFilterHandler types.
+it('keeps RelationFilterHandler in forModelClosures() and excludes the two other resource-only handlers, same relative order', function () {
+    $classes = array_map(
+        fn (ExpressionHandler $handler): string => $handler::class,
+        ResourceExpressionHandlers::forModelClosures(),
+    );
+
+    $expected = array_values(array_filter(
+        resourceExpressionHandlerOrder(),
+        fn (string $class): bool => ! in_array($class, [ConditionalMethodHandler::class, ToResourceHandler::class], true),
+    ));
+
+    expect($classes)->toHaveCount(25)
+        ->and($classes)->toBe($expected)
+        ->and($classes)->toContain(RelationFilterHandler::class);
 });
 
 // Ordering pin #1: both handlers claim a first-class-callable $this->when(...) —
@@ -148,25 +172,40 @@ it('tries FirstClassCallableHandler before ConditionalMethodHandler for a first-
     expect($analyzer->resolve($expr))->toBe(['type' => 'unknown', 'optional' => false]);
 });
 
-// Ordering pin #2: both handlers claim NullsafeMethodCall, but MethodChainHandler's floor is
-// ValueResult::unknown(), never null, so it would win every NullsafeMethodCall if it ran first —
-// degrading this Pick<> reference to a plain reflected type.
-it('tries RelationFilterHandler before MethodChainHandler for $this->relation?->only([...])', function () {
+// MethodChainHandler declines every only()/except(), so the order of the two cannot decide this Pick<>, in either
+// spelling.
+it('answers $this->relation?->only([...]) with the Pick<> whichever of RelationFilterHandler and MethodChainHandler runs first', function (Expr $relation) {
     $expr = new NullsafeMethodCall(
-        new PropertyFetch(new Variable('this'), 'post'),
+        $relation,
         'only',
         [new Arg(new Array_([
             new ArrayItem(new String_('id')),
             new ArrayItem(new String_('title')),
         ]))],
     );
+    $expected = ['type' => "Pick<Post, 'id' | 'title'> | null", 'optional' => false, 'modelFqcn' => Post::class];
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class);
+    $swapped = new ResourceAstAnalyzer(
+        new ReflectionClass(CommentResource::class),
+        Comment::class,
+        'toArray',
+        [new MethodChainHandler, new RelationFilterHandler],
+    );
 
-    expect($analyzer->resolve($expr))->toBe([
-        'type' => "Pick<Post, 'id' | 'title'> | null",
-        'optional' => false,
-        'modelFqcn' => Post::class,
-    ]);
+    expect($analyzer->resolve($expr))->toBe($expected)
+        ->and($swapped->resolve($expr))->toBe($expected);
+})->with([
+    '$this->post' => fn (): Expr => new PropertyFetch(new Variable('this'), 'post'),
+    '$this->resource->post' => fn (): Expr => new PropertyFetch(new PropertyFetch(new Variable('this'), 'resource'), 'post'),
+]);
+
+// MethodChainHandler claims NullsafeMethodCall ahead of ReceiverMethodCallHandler. A `static|null` return reflects
+// to `unknown | null` on the related model; flooring there would split this from `$this->author->fresh()`'s type.
+it('lets MethodChainHandler decline an unknown-only $this->relation?->fresh() for ReceiverMethodCallHandler', function () {
+    $expr = new NullsafeMethodCall(new PropertyFetch(new Variable('this'), 'author'), 'fresh');
+    $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverMethodResource::class), Post::class);
+
+    expect($analyzer->resolve($expr))->toBe(['type' => 'User | null', 'optional' => false, 'modelFqcn' => User::class]);
 });
 
 // Ordering pin #3: both handlers claim $this->{multi-FQCN accessor}, but PropertyChainHandler's
@@ -183,7 +222,7 @@ it('tries ThisPropertyHandler before PropertyChainHandler for a multi-FQCN acces
     ]);
 });
 
-// Ordering pin #4: StaticCallHandler's last arm claims every StaticCall and never declines, so if it
+// Ordering pin #4: StaticCallHandler's last arm claims every StaticCall on a named class, so if it
 // ran first it would reflect `Inertia::always` as an ordinary static method and floor this at
 // unknown instead of resolving the wrapped value.
 it('tries InertiaWrapperHandler before StaticCallHandler for Inertia::always(...)', function () {

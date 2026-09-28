@@ -6,7 +6,6 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use ReflectionClass;
 
 /**
@@ -42,8 +41,7 @@ final class SubjectMethodTypeResolver
 
         if ($wrappedClass !== null && method_exists($wrappedClass, $methodName)) {
             /** @var class-string $wrappedClass */
-            $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($wrappedClass), $methodName);
-            $accepted = resolve(ReflectedTypeAcceptor::class)->accept($tsInfo);
+            $accepted = resolve(MethodReturnTypeResolver::class)->resolve($wrappedClass, $methodName);
 
             if ($accepted !== null) {
                 return $accepted;
@@ -53,8 +51,7 @@ final class SubjectMethodTypeResolver
         if ($scope->modelClass !== null && method_exists($scope->modelClass, $methodName)) {
             /** @var class-string $modelClass */
             $modelClass = $scope->modelClass;
-            $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($modelClass), $methodName);
-            $accepted = resolve(ReflectedTypeAcceptor::class)->accept($tsInfo);
+            $accepted = resolve(MethodReturnTypeResolver::class)->resolve($modelClass, $methodName);
 
             if ($accepted !== null) {
                 return $accepted;
@@ -78,8 +75,9 @@ final class SubjectMethodTypeResolver
             return null;
         }
 
-        $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes($reflection, $methodName);
+        /** @var class-string $class */
+        $class = $reflection->getName();
 
-        return resolve(ReflectedTypeAcceptor::class)->accept($tsInfo);
+        return resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName);
     }
 }

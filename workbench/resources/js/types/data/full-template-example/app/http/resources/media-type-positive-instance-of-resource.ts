@@ -7,8 +7,8 @@
  */
 export interface MediaTypePositiveInstanceOfResource
 {
-    name: string;
-    value: string;
-    meta: { label?: string };
-    empty: never[];
+    name?: string;
+    value?: string;
+    meta?: { label?: string };
+    empty?: never[];
 }

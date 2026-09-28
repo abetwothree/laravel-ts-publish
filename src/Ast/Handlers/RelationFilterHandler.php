@@ -4,30 +4,36 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
-use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesFilteredRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesMapProxyElementModels;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
-use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Database\Eloquent\Casts\AsCollection;
+use Illuminate\Database\Eloquent\Casts\AsEncryptedCollection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
-use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use ReflectionMethod;
 
 /**
- * `$this->relation->only([...])`/`->except([...])` and Laravel's `map` HigherOrderCollectionProxy
- * filter (`$var->map->only([...])`/`->except([...])`) — relation/collection attribute filters.
+ * `$this->relation->only([...])`/`->except([...])`, also read through `$this->resource`, and Laravel's `map`
+ * HigherOrderCollectionProxy filter (`$var->map->only([...])`). The relation arm declines what it cannot type, so a
+ * later handler answers; docs/components/resource-ast-analyzer.md § Attribute filters has each arm's rules.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypesImportMap from Datable
@@ -51,27 +57,25 @@ final class RelationFilterHandler implements ExpressionHandler
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        // $this->relation->only([...]) or $this->relation?->only([...])
-        if (($expr instanceof MethodCall || $expr instanceof NullsafeMethodCall)
-            && $expr->name instanceof Identifier
-            && in_array($expr->name->toString(), $this->supportedAttributeFilters(), true)
-            && $expr->var instanceof PropertyFetch
-            && $expr->var->var instanceof Variable
-            && $expr->var->var->name === 'this'
+        if (! ($expr instanceof MethodCall || $expr instanceof NullsafeMethodCall)
+            || ! $this->callsAttributeFilter($expr)
+            || ! $expr->var instanceof PropertyFetch
         ) {
-            return $this->analyzeRelationFilter($expr, $scope);
+            return null;
         }
 
-        // $var->map->only([...]) / ->except([...]) — Laravel's HigherOrderCollectionProxy on `map`:
-        // call the filter method on every element and collect the results. The PropertyFetch here is
-        // literally named 'map' (the proxy), never 'this' — disjoint from the relation guard above.
-        if (($expr instanceof MethodCall || $expr instanceof NullsafeMethodCall)
-            && $expr->name instanceof Identifier
-            && in_array($expr->name->toString(), $this->supportedAttributeFilters(), true)
-            && $expr->var instanceof PropertyFetch
-            && $expr->var->name instanceof Identifier
-            && $expr->var->name->toString() === 'map'
-        ) {
+        // $this->relation->only([...]), $this->relation?->only([...]), or either through $this->resource
+        if ($this->isModelMemberFetch($expr->var, $scope)) {
+            $result = $this->analyzeRelationFilter($expr, $scope, $engine);
+
+            if ($result !== null) {
+                return $result;
+            }
+        }
+
+        // $var->map->only([...]) / ->except([...]) — Laravel's HigherOrderCollectionProxy on `map`: call the filter on
+        // every element and collect the results. `$this->resource->map` reaches here once no member `map` answers.
+        if ($expr->var->name instanceof Identifier && $expr->var->name->toString() === 'map') {
             return $this->analyzeMapProxyFilter($expr, $scope);
         }
 
@@ -79,19 +83,31 @@ final class RelationFilterHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze `$this->relation->only([...])` or `$this->relation?->only([...])`.
+     * Whether a fetch reads a member of the scope's model: `$this->prop`, or `$this->resource->prop` in a resource.
      *
-     * @return ValueExpressionResult
+     * `$this->resource` itself is the model, not a member named `resource`; its filters belong to the receiver rules.
+     * Only a subject that forwards to its model has that proxy: in a model's own body it is the model's own member.
      */
-    private function analyzeRelationFilter(MethodCall|NullsafeMethodCall $call, AnalysisScope $scope): array
+    private function isModelMemberFetch(PropertyFetch $fetch, AnalysisScope $scope): bool
     {
-        $result = ValueResult::unknown();
+        return ($this->isThisPropertyFetch($fetch) && ! $this->isResourceFetch($fetch))
+            || ($this->isResourceFetch($fetch->var) && $scope->forwardsUndeclaredMembersTo !== null);
+    }
 
+    /**
+     * Analyze `$this->relation->only([...])` or `$this->relation?->only([...])`, declining when nothing types it.
+     *
+     * A many-relation publishes its own read, since `Eloquent\Collection::only()` keeps whole models by primary key.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function analyzeRelationFilter(MethodCall|NullsafeMethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
         $nullable = $call instanceof NullsafeMethodCall;
         $methodName = $call->name instanceof Identifier ? $call->name->toString() : null;
 
         if ($methodName === null) {
-            return $result; // @codeCoverageIgnore
+            return null; // @codeCoverageIgnore
         }
 
         /** @var PropertyFetch $varExpr */
@@ -99,147 +115,226 @@ final class RelationFilterHandler implements ExpressionHandler
         $propName = $varExpr->name instanceof Identifier ? $varExpr->name->toString() : null;
 
         if ($propName === null) {
-            return $result; // @codeCoverageIgnore
+            return null; // @codeCoverageIgnore
         }
 
         $relationInfo = $this->resolveModelRelationTypeInfo($propName, $scope);
+
+        if (str_ends_with($relationInfo['type'], '[]')) {
+            return $this->manyRelationRead($call, $scope, $engine);
+        }
+
+        // A collection's filter never runs on its elements, so its class decides before any element model it names.
+        $collectionClass = $relationInfo['modelFqcn'] === null ? $this->memberCollectionClass($propName, $scope) : null;
+
+        if ($collectionClass !== null) {
+            return $this->analyzeCollectionMemberFilter($call, $methodName, $propName, $collectionClass, $scope, $engine);
+        }
+
         $modelFqcn = $relationInfo['modelFqcn'] ?? $this->resolveAccessorModelFqcn($propName, $scope);
 
         if ($modelFqcn === null) {
             // Try the multi-model accessor path (e.g. Attribute<ModelA|ModelB, never>).
-            $modelFqcns = $this->resolveAccessorModelFqcns($propName, $scope);
-
-            if ($modelFqcns === []) {
-                return $result; // @codeCoverageIgnore
-            }
-
-            $keys = $this->extractFilterKeys($call, new ReflectionMethod(Model::class, $methodName));
-
-            if ($keys === null || $keys === []) {
-                return $result; // @codeCoverageIgnore
-            }
-
-            $include = $methodName === 'only';
-
-            /** @var list<string> $inlineTypes */
-            $inlineTypes = [];
-            /** @var list<class-string> $embeddedEnumFqcns */
-            $embeddedEnumFqcns = [];
-            /** @var list<class-string> $embeddedModelFqcns */
-            $embeddedModelFqcns = [];
-            /** @var TypesImportMap $embeddedCustomImports */
-            $embeddedCustomImports = [];
-            /** @var list<class-string<Model>> $seenFqcns */
-            $seenFqcns = [];
-
-            // Dedupe on the arm's own FQCN, not the rendered string: relationFilterModelReference()
-            // renders class_basename($fqcn), so two different FQCNs sharing a basename (e.g. two
-            // "User" models) would otherwise render identically and the second arm would be dropped.
-            foreach ($modelFqcns as $fqcn) {
-                if (in_array($fqcn, $seenFqcns, true)) {
-                    continue;
-                }
-
-                $seenFqcns[] = $fqcn;
-
-                // Every filter key is a plain DB column: reference the arm's own model interface so
-                // its #[TsCasts]/@property refinements stay authoritative, same as the single-model path.
-                $modelReference = $this->relationFilterModelReference($fqcn, $keys, $include);
-
-                if ($modelReference !== null) {
-                    $inlineTypes[] = $modelReference;
-                    $embeddedModelFqcns[] = $fqcn;
-
-                    continue;
-                }
-
-                $filterResult = $this->resolveFilteredRelationType($fqcn, $keys, $include);
-
-                if ($filterResult['type'] === 'unknown') {
-                    continue;
-                }
-
-                $inlineTypes[] = $filterResult['type'];
-                array_push($embeddedEnumFqcns, ...$filterResult['enumFqcns']);
-                array_push($embeddedModelFqcns, ...$filterResult['modelFqcns']);
-
-                foreach ($filterResult['customImports'] as $path => $names) {
-                    $embeddedCustomImports[$path] = [...($embeddedCustomImports[$path] ?? []), ...$names];
-                }
-            }
-
-            if ($inlineTypes === []) {
-                return $result; // @codeCoverageIgnore
-            }
-
-            $inlineType = implode(' | ', $inlineTypes);
-
-            if ($nullable) {
-                $inlineType .= ' | null';
-            }
-
-            return [
-                ...$result,
-                // Neither channel is deduped: aliasPropertyType() walks each list positionally
-                // against left-to-right occurrences of each basename in $inlineType, so a real
-                // repeat — across arms or within one arm's own picked columns — must survive.
-                'type' => $inlineType,
-                'embeddedEnumFqcns' => $embeddedEnumFqcns,
-                'embeddedModelFqcns' => $embeddedModelFqcns,
-                'customImports' => $embeddedCustomImports,
-            ];
+            return $this->analyzeMultiModelFilter($call, $methodName, $this->resolveAccessorModelFqcns($propName, $scope), $scope);
         }
 
-        $receiver = str_ends_with($relationInfo['type'], '[]') ? EloquentCollection::class : Model::class;
-        $keys = $this->extractFilterKeys($call, new ReflectionMethod($receiver, $methodName));
+        if (! $this->typesAsModelFilter($modelFqcn, $methodName)) {
+            return null;
+        }
+
+        $keys = $this->extractFilterKeys($call, new ReflectionMethod(Model::class, $methodName));
 
         if ($keys === null || $keys === []) {
-            return $result; // @codeCoverageIgnore
+            return $this->attributeRecordResult($nullable);
         }
 
-        $include = $methodName === 'only';
+        $filtered = $this->literalKeyFilterResult($modelFqcn, $keys, $methodName === 'only', $scope->carriesImports);
 
-        // Every filter key is a plain DB column: reference the emitted model interface directly so its
-        // #[TsCasts]/@property refinements stay authoritative instead of being re-derived and lost.
-        $modelReference = $this->relationFilterModelReference($modelFqcn, $keys, $include);
+        if ($filtered === null) {
+            return null;
+        }
 
-        if ($modelReference !== null) {
-            $type = $modelReference;
+        if ($nullable) {
+            $filtered['type'] .= ' | null';
+        }
 
-            if (str_ends_with($relationInfo['type'], '[]')) {
-                $type .= '[]';
+        return $filtered;
+    }
+
+    /**
+     * Analyze a filter on a member holding a collection, declining for a class whose filter is its own.
+     * Support\Collection's filter keeps the listed keys. Eloquent\Collection's keeps whole models by primary key, so an
+     * accessor holding one publishes a list of its models, else `unknown[]`; a cast building one has no key to match.
+     *
+     * @param  class-string  $collectionClass
+     * @return ValueExpressionResult|null
+     */
+    private function analyzeCollectionMemberFilter(
+        MethodCall|NullsafeMethodCall $call,
+        string $methodName,
+        string $propName,
+        string $collectionClass,
+        AnalysisScope $scope,
+        ExpressionEngine $engine,
+    ): ?array {
+        if ($this->runsCollectionFilter($collectionClass, $methodName)) {
+            return $this->attributeRecordResult($call instanceof NullsafeMethodCall);
+        }
+
+        if (! $this->runsEloquentCollectionFilter($collectionClass, $methodName) || ! $this->isAccessorMember($propName, $scope)) {
+            return null;
+        }
+
+        $models = $this->resolveAccessorModelFqcns($propName, $scope);
+        $nullable = $call instanceof NullsafeMethodCall || in_array('null', TsTypeString::splitTopLevelUnion($engine->resolve($call->var)['type']), true);
+        $suffix = $nullable ? ' | null' : '';
+
+        if ($models === [] || ! $scope->carriesImports) {
+            return [...ValueResult::unknown(), 'type' => 'unknown[]'.$suffix];
+        }
+
+        $element = implode(' | ', array_map(class_basename(...), $models));
+
+        return [
+            ...ValueResult::unknown(),
+            'type' => ValueResult::arrayWrapType($element).$suffix,
+            ...(count($models) === 1 ? ['modelFqcn' => $models[0]] : ['embeddedModelFqcns' => $models]),
+        ];
+    }
+
+    /**
+     * Analyze a filter on an accessor typed as a union of models, one arm per model, declining when an arm is untyped.
+     *
+     * An arm whose model overrides the filter with a return reflection types publishes that return. The attribute
+     * arms become one `Record<string, unknown>` for a runtime key list.
+     *
+     * @param  list<class-string<Model>>  $modelFqcns
+     * @return ValueExpressionResult|null
+     */
+    private function analyzeMultiModelFilter(MethodCall|NullsafeMethodCall $call, string $methodName, array $modelFqcns, AnalysisScope $scope): ?array
+    {
+        if ($modelFqcns === []) {
+            return null;
+        }
+
+        $nullable = $call instanceof NullsafeMethodCall;
+        $keys = $this->extractFilterKeys($call, new ReflectionMethod(Model::class, $methodName));
+        $runtimeKeys = $keys === null || $keys === [];
+
+        /** @var list<array{attributes: bool, result: ValueExpressionResult}> $arms */
+        $arms = [];
+        /** @var list<class-string<Model>> $seenFqcns */
+        $seenFqcns = [];
+
+        // Dedupe on the arm's own FQCN, not the rendered string: relationFilterModelReference()
+        // renders class_basename($fqcn), so two different FQCNs sharing a basename (e.g. two
+        // "User" models) would otherwise render identically and the second arm would be dropped.
+        foreach ($modelFqcns as $fqcn) {
+            if (in_array($fqcn, $seenFqcns, true)) {
+                continue;
             }
 
-            if ($nullable) {
-                $type .= ' | null';
+            $seenFqcns[] = $fqcn;
+
+            if (! $this->typesAsModelFilter($fqcn, $methodName)) {
+                $override = resolve(ReceiverMethodReturnResolver::class)->resolve(ReceiverType::of($fqcn), $methodName, $scope, call: $call);
+
+                // An `unknown` arm leaves the whole union unknown.
+                if ($override === null || TsTypeString::isUnknownOnly($override['type'])) {
+                    return null;
+                }
+
+                $arms[] = ['attributes' => false, 'result' => $override];
+
+                continue;
             }
 
-            return [
-                ...$result,
-                'type' => $type,
-                'modelFqcn' => $modelFqcn,
-            ];
+            $arm = $runtimeKeys ? $this->attributeRecordResult(false) : $this->literalKeyFilterResult($fqcn, $keys, $methodName === 'only', $scope->carriesImports);
+
+            if ($arm !== null) {
+                $arms[] = ['attributes' => true, 'result' => $arm];
+            }
         }
 
-        $filterResult = $this->resolveFilteredRelationType($modelFqcn, $keys, $include);
-        $inlineType = $filterResult['type'];
-
-        // Wrap in array suffix when the relation is a *-many type (HasMany, BelongsToMany, etc.)
-        if (str_ends_with($relationInfo['type'], '[]') && $inlineType !== 'unknown') {
-            $inlineType .= '[]';
+        if ($runtimeKeys && array_all($arms, fn (array $arm): bool => $arm['attributes'])) {
+            return $this->attributeRecordResult($nullable);
         }
 
-        if ($nullable && $inlineType !== 'unknown') {
-            $inlineType .= ' | null';
+        return $arms === [] ? null : $this->unionArms($arms, $nullable);
+    }
+
+    /**
+     * Join the arms into one union with every arm's import channels, hoisting a `null` any arm or `?->` adds.
+     *
+     * @param  non-empty-list<array{attributes: bool, result: ValueExpressionResult}>  $arms
+     * @return ValueExpressionResult
+     */
+    private function unionArms(array $arms, bool $nullable): array
+    {
+        /** @var list<string> $inlineTypes */
+        $inlineTypes = [];
+        /** @var list<class-string> $embeddedEnumFqcns */
+        $embeddedEnumFqcns = [];
+        /** @var list<class-string> $embeddedModelFqcns */
+        $embeddedModelFqcns = [];
+        /** @var TypesImportMap $embeddedCustomImports */
+        $embeddedCustomImports = [];
+
+        foreach ($arms as ['result' => $arm]) {
+            $nullable = $nullable || in_array('null', TsTypeString::splitTopLevelUnion($arm['type']), true);
+            $type = ValueResult::stripNullArm($arm['type']);
+
+            // A record carries no import channel, so a repeat of one adds nothing.
+            if ($type === 'Record<string, unknown>' && in_array($type, $inlineTypes, true)) {
+                continue;
+            }
+
+            $inlineTypes[] = $type;
+            array_push($embeddedEnumFqcns, ...(isset($arm['directEnumFqcn']) ? [$arm['directEnumFqcn']] : []), ...($arm['embeddedEnumFqcns'] ?? []));
+            array_push($embeddedModelFqcns, ...(isset($arm['modelFqcn']) ? [$arm['modelFqcn']] : []), ...($arm['embeddedModelFqcns'] ?? []));
+
+            foreach ($arm['customImports'] ?? [] as $path => $names) {
+                $embeddedCustomImports[$path] = [...($embeddedCustomImports[$path] ?? []), ...$names];
+            }
         }
 
         return [
-            ...$result,
-            'type' => $inlineType,
-            'embeddedEnumFqcns' => $filterResult['enumFqcns'],
-            'embeddedModelFqcns' => $filterResult['modelFqcns'],
-            'customImports' => $filterResult['customImports'],
+            ...ValueResult::unknown(),
+            // Neither channel is deduped: aliasPropertyType() walks each list positionally
+            // against left-to-right occurrences of each basename in the type, so a real
+            // repeat — across arms or within one arm's own picked columns — must survive.
+            'type' => implode(' | ', $inlineTypes).($nullable ? ' | null' : ''),
+            'embeddedEnumFqcns' => $embeddedEnumFqcns,
+            'embeddedModelFqcns' => $embeddedModelFqcns,
+            'customImports' => $embeddedCustomImports,
         ];
+    }
+
+    /**
+     * The many-relation read a filter on it publishes, with `| null` through `?->`, or null when the read is untyped.
+     * `Eloquent\Collection::only()`/`except()` keep the listed models whole, so any key list leaves the relation's own
+     * read, channels included; a scope that cannot import the element model keeps the list alone.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function manyRelationRead(MethodCall|NullsafeMethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $read = $engine->resolve($call->var);
+
+        if (TsTypeString::isUnknownOnly($read['type'])) {
+            return null;
+        }
+
+        if (! $scope->carriesImports && TsTypeString::shapeValueHasUnimportableToken($read['type'])) {
+            $nullableRead = in_array('null', TsTypeString::splitTopLevelUnion($read['type']), true);
+            $read = [...ValueResult::unknown(), 'type' => $nullableRead ? 'unknown[] | null' : 'unknown[]'];
+        }
+
+        if ($call instanceof NullsafeMethodCall && ! in_array('null', TsTypeString::splitTopLevelUnion($read['type']), true)) {
+            $read['type'] .= ' | null';
+        }
+
+        return $read;
     }
 
     /**
@@ -261,9 +356,18 @@ final class RelationFilterHandler implements ExpressionHandler
         /** @var PropertyFetch $mapFetch */
         $mapFetch = $call->var;
         $elementModel = $this->resolveMapProxyElementModel($mapFetch->var, $scope);
+        $nullable = $call instanceof NullsafeMethodCall;
 
         if ($elementModel === null) {
             return $result;
+        }
+
+        if (! $this->typesAsModelFilter($elementModel, $methodName)) {
+            $override = resolve(ReceiverMethodReturnResolver::class)->resolve(ReceiverType::of($elementModel), $methodName, $scope, call: $call);
+
+            return $override === null
+                ? $result
+                : [...$override, 'type' => ValueResult::arrayWrapType($override['type']).($nullable ? ' | null' : '')];
         }
 
         $keys = $this->extractFilterKeys($call, new ReflectionMethod(Model::class, $methodName));
@@ -272,7 +376,7 @@ final class RelationFilterHandler implements ExpressionHandler
             return $result;
         }
 
-        $filterResult = $this->resolveFilteredRelationType($elementModel, $keys, $methodName === 'only');
+        $filterResult = $this->resolveFilteredRelationType($elementModel, $keys, $methodName === 'only', tokenMembersUnknown: ! $scope->carriesImports);
 
         if ($filterResult['type'] === 'unknown') {
             return $result;
@@ -280,7 +384,7 @@ final class RelationFilterHandler implements ExpressionHandler
 
         $inlineType = ValueResult::arrayWrapType($filterResult['type']);
 
-        if ($call instanceof NullsafeMethodCall) {
+        if ($nullable) {
             $inlineType .= ' | null';
         }
 
@@ -294,38 +398,63 @@ final class RelationFilterHandler implements ExpressionHandler
     }
 
     /**
-     * Build a Pick<Model, …> reference when every filter key is a declared model column.
+     * Whether the filter answers type a model's only()/except(), asked of the receiver rules so both owners agree.
      *
-     * Targets the bare model interface: except() iterates only $this->getAttributes(), so relations and
-     * accessors never surface. Picks the complement, not Omit<>, to stay independent of the active template.
-     *
-     * @param  class-string<Model>  $modelFqcn
-     * @param  list<string>  $keys
+     * @param  class-string  $modelFqcn
      */
-    private function relationFilterModelReference(string $modelFqcn, array $keys, bool $include): ?string
+    private function typesAsModelFilter(string $modelFqcn, string $methodName): bool
     {
-        $resolver = resolve(ModelAttributeResolver::class);
-        $columns = $resolver->publishedColumnNames($modelFqcn);
+        return resolve(ReceiverMethodReturnResolver::class)->typesAsModelFilter($modelFqcn, $methodName);
+    }
 
-        if ($columns === []) {
+    /**
+     * The collection class a model member holds: what its accessor or cast reflects, else what a Laravel collection
+     * cast builds, which is Support\Collection or `using()`'s class. Those casts declare no return type to reflect.
+     *
+     * @return class-string|null null when the member holds no collection
+     */
+    private function memberCollectionClass(string $propName, AnalysisScope $scope): ?string
+    {
+        if ($scope->modelClass === null) {
             return null; // @codeCoverageIgnore
         }
 
-        foreach ($keys as $key) {
-            if (! in_array($key, $columns, true)) {
-                return null;
-            }
+        $resolver = resolve(ModelAttributeResolver::class);
+        $class = $resolver->resolveAttributeClass($scope->modelClass, $propName);
+
+        if ($class !== null) {
+            return is_a($class, Collection::class, true) ? $class : null;
         }
 
-        $picked = $include ? $keys : array_values(array_diff($columns, $keys));
+        $cast = (string) ($resolver->getAttributes($scope->modelClass)?->firstWhere('name', $propName)['cast'] ?? '');
 
-        if ($picked === []) {
-            return 'Pick<'.class_basename($modelFqcn).', never>';
+        if ($cast === 'collection' || $cast === 'encrypted:collection') {
+            return Collection::class;
         }
 
-        $quoted = implode(' | ', array_map(fn (string $k): string => "'".$k."'", $picked));
+        $head = Str::before($cast, ':');
 
-        return 'Pick<'.class_basename($modelFqcn).', '.$quoted.'>';
+        if (! is_a($head, AsCollection::class, true) && ! is_a($head, AsEncryptedCollection::class, true)) {
+            return null;
+        }
+
+        $collection = str_contains($cast, ':') ? Str::before(Str::after($cast, ':'), ',') : '';
+
+        return is_a($collection, Collection::class, true) ? $collection : Collection::class;
+    }
+
+    /**
+     * Whether a model member is an accessor, new-style or old-style, rather than a column or a cast.
+     */
+    private function isAccessorMember(string $propName, AnalysisScope $scope): bool
+    {
+        if ($scope->modelClass === null) {
+            return false; // @codeCoverageIgnore
+        }
+
+        $cast = resolve(ModelAttributeResolver::class)->getAttributes($scope->modelClass)?->firstWhere('name', $propName)['cast'] ?? null;
+
+        return $cast === 'attribute' || $cast === 'accessor';
     }
 
     /**

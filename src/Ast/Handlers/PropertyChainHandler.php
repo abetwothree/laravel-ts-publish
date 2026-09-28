@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
-use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DecomposesPropertyChains;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
@@ -48,7 +49,9 @@ final class PropertyChainHandler implements ExpressionHandler
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         if ($expr instanceof NullsafePropertyFetch) {
-            return $this->analyzePropertyChain($expr, $scope);
+            $info = $this->analyzePropertyChain($expr, $scope);
+
+            return TsTypeString::isUnknownOnly($info['type']) ? null : $info;
         }
 
         // $this->anyProp->subProp — e.g. $this->resource->name / ->value on a backed enum
@@ -59,7 +62,12 @@ final class PropertyChainHandler implements ExpressionHandler
                 $info = $this->analyzeWrappedModelResourceProperty($expr, $scope);
             }
 
-            if ($info['type'] === 'unknown' && $scope->closureRelationModelClass !== null && $expr->name instanceof Identifier) {
+            // `$this->resource->prop` reads the resource's own model, never the closure's relation model.
+            if ($info['type'] === 'unknown'
+                && $scope->closureRelationModelClass !== null
+                && $expr->name instanceof Identifier
+                && ! $this->isResourceFetch($expr->var)
+            ) {
                 $info = $this->analyzeRelatedModelProperty($expr->name->toString(), $scope);
             }
 
@@ -67,7 +75,7 @@ final class PropertyChainHandler implements ExpressionHandler
                 $info = $this->analyzePropertyChain($expr, $scope);
             }
 
-            return $info;
+            return TsTypeString::isUnknownOnly($info['type']) ? null : $info;
         }
 
         // Plain 3+-deep chains rooted at `$this` (e.g. `$this->resource->user->role`): the 2-deep handler
@@ -99,6 +107,14 @@ final class PropertyChainHandler implements ExpressionHandler
             return ValueResult::unknown();
         }
 
+        // A chain rooted at a property the subject declares is not a model walk. Declining hands it to
+        // ReceiverPropertyFetchHandler, which resolves it from that property's own class.
+        if ($scope->modelClass !== null
+            && resolve(SubjectPropertyTypeResolver::class)->declaresOwnProperty($scope->subjectReflection, $chain[0]['name'])
+        ) {
+            return ValueResult::unknown();
+        }
+
         /** @var class-string<Model>|null $currentModel */
         $currentModel = $scope->closureRelationModelClass ?? $scope->modelClass;
 
@@ -120,13 +136,16 @@ final class PropertyChainHandler implements ExpressionHandler
 
         $resolver = resolve(ModelAttributeResolver::class);
 
-        // Skip the `$this->resource` wrapper property when it is not a real model relation
-        if ($chain[0]['name'] === 'resource') {
-            $check = $resolver->resolveRelation($currentModel, 'resource');
+        $rootedAtResource = false;
 
-            if ($check['type'] === 'unknown') {
-                array_shift($chain);
-            }
+        // `$this->resource` is the resource's own model even inside a closure bound to a relation's model.
+        if ($chain[0]['name'] === 'resource'
+            && $scope->modelClass !== null
+            && $resolver->resolveRelation($scope->modelClass, 'resource')['type'] === 'unknown'
+        ) {
+            $currentModel = $scope->modelClass;
+            array_shift($chain);
+            $rootedAtResource = true;
         }
 
         if ($chain === []) {
@@ -141,7 +160,7 @@ final class PropertyChainHandler implements ExpressionHandler
         // relation model (`$this->user` in `whenLoaded('user', fn() => $this->user?->name)`) — skip it.
         $startIndex = 0;
 
-        if ($scope->closureRelationModelClass !== null && $count >= 2) {
+        if (! $rootedAtResource && $scope->closureRelationModelClass !== null && $count >= 2) {
             $firstRelation = $resolver->resolveRelation($currentModel, $chain[0]['name']);
 
             if ($firstRelation['type'] === 'unknown') {
@@ -160,7 +179,7 @@ final class PropertyChainHandler implements ExpressionHandler
         }
 
         $lastStep = $chain[$count - 1];
-        $tsInfo = $resolver->resolveAttribute($currentModel, $lastStep['name']);
+        $tsInfo = $resolver->resolveAttribute($currentModel, $lastStep['name'], $scope->carriesImports);
 
         if ($tsInfo['type'] === 'unknown') {
             // The final step may itself be a relation (e.g. $this->user?->profile).
@@ -192,17 +211,7 @@ final class PropertyChainHandler implements ExpressionHandler
             ? $tsInfo['type'].' | null'
             : $tsInfo['type'];
 
-        /** @var ValueExpressionResult $result */
-        $result = ['type' => $type, 'optional' => false];
-
-        /** @var class-string|null $enumFqcn */
-        $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
-
-        if ($enumFqcn !== null) {
-            $result['directEnumFqcn'] = $enumFqcn;
-        }
-
-        return $result;
+        return ValueResult::withAttributeChannels(['type' => $type, 'optional' => false], $tsInfo);
     }
 
     /**
@@ -284,13 +293,7 @@ final class PropertyChainHandler implements ExpressionHandler
         $info = $this->resolveModelAttributeTypeInfo($innerProp, $scope);
 
         if ($info['type'] !== 'unknown') {
-            $result = ['type' => $info['type'], 'optional' => false];
-
-            if ($info['enumFqcn'] !== null) {
-                $result['directEnumFqcn'] = $info['enumFqcn']; // @codeCoverageIgnore
-            }
-
-            return $result;
+            return ValueResult::withAttributeChannels(['type' => $info['type'], 'optional' => false], $info);
         }
 
         return $result; // @codeCoverageIgnore

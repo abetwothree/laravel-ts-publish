@@ -1,502 +1,464 @@
-# AST Engine
+# AST engine
 
-`AbeTwoThree\LaravelTsPublish\Ast\AstEngine` is the public entry point onto the package's php-parser
-layer — the only one it has: hand it a class and a method name, get back a `MethodAnalysis` DTO of
-TypeScript properties plus resource, model, and enum FQCN channels and import maps. It replaces the
-duplication that used to sit inside six separate files, each carrying its own nikic/php-parser logic —
-`ResourceAstAnalyzer`, `ControllerPaginatorAnalyzer`, `InertiaTableAnalyzer`, and the traits
-`InspectsAstNodes`, `FiltersModelAttributes`, `ResolvesClassNames` — with the shared primitives
-documented below: `AstParser`, `MethodLocator`, `ExpressionDispatcher`, and the two handler profiles.
+[`AstEngine`] is the entry point to the package's one php-parser layer. It reads a PHP method body, or an accessor's
+closure, and resolves its return shape into TypeScript property types plus the FQCN channels that imports are built
+from. Every inference feature runs on it: API resources, broadcast events, Inertia page props and shared data, model
+metadata and accessor bodies. Open [`AstEngine`] for the entry points, [`ResourceAstAnalyzer`] for the walk over a
+body's return branches, and [`ExpressionDispatcher`] for how one expression reaches the handler that types it.
 
-Every feature that infers a type runs on it. Resources, broadcast events, Inertia shared data and
-Inertia page props all go through `AstEngine`, and `laravel/surveyor` + `laravel/ranger` — the second,
-foreign AST engine that used to type events and both Inertia features — are gone from `composer.json`.
-`ControllerPaginatorAnalyzer` went with them: the handlers resolve a paginator from the prop expression
-itself, so its three prop-key maps had no caller left. The tracked
-[ADR: freeze Laravel Surveyor/Ranger and exit in stages](../decisions/2026-08-31-surveyor-staged-exit.md)
-records the staged exit and what each stage had to show before it landed.
+## Where things live
 
-## Dispatch semantics
+These are the classes a change to the engine usually touches:
 
-`ExpressionHandler::resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array`
-returning `null` means **decline**: the dispatcher tries the next candidate handler, and if none
-resolve it, the caller degrades to `ValueResult::unknown()`. This is the decline-and-fall-through
-contract every handler implements — it is what lets 24 independently-written handlers reproduce one
-ordered guard chain's behavior without any handler knowing about the others.
+| Class | Owns |
+| --- | --- |
+| [`AstEngine`] | The public `analyze()`, and the `@internal` `analyzeMethod()`, `analyzePublicProperties()`, `bindingsFor()` and `analyzeModelClosure()` |
+| [`ResourceAstAnalyzer`] | The `ExpressionEngine`: walks a method's return branches and resolves each value through the dispatcher |
+| [`ExpressionDispatcher`] | Tries each handler that claims an expression's node class, in registration order |
+| [`ExpressionHandler`], [`ExpressionEngine`] | The handler contract, and the callback a handler uses for a sub-expression it does not own |
+| [`ResourceExpressionHandlers`], [`ControllerExpressionHandlers`] | The ordered handler profiles |
+| [`src/Ast/Handlers/`](../../src/Ast/Handlers) | One handler per expression family |
+| [`AnalysisScope`] | The mutable state of one analysis: subject, backing model and the name-keyed binding tables |
+| [`MethodAnalysis`] | The analysis DTO: property rows plus the FQCN channels |
+| [`AnalysisComposer`], [`AnalysisImports`] | Turn a `MethodAnalysis` into import maps, and the composer also aliases and wraps |
+| [`AstParser`], [`MethodLocator`] | Parse a file, cached and recorded as a cache dependency, and find one method's AST node |
+| [`AnalysisMemo`] | The cycle guards and the per-run memo of analyses |
+| [`DroppedUnionArms`] | The record of union arms the engine left out |
+| [`ReturnLiteralReader`] | The one string literal a method returns, for `broadcastAs()` |
 
-`ExpressionDispatcher::dispatch()` does the trying. For an expression's *concrete* node class, it
-builds the candidate list once — every handler whose `nodeClasses()` claims that class via `is_a()`,
-so a handler can claim an abstract type (e.g. `Cast::class`) and match every concrete subclass — and
-memoizes it per class in `$candidatesByClass`. A class no handler claims still gets a cached empty
-list, so a repeated dispatch of an unclaimed node class never re-scans every handler's `nodeClasses()`
-again. Handlers run in registration order within that candidate list; the first non-null `resolve()`
-wins. This is PHPStan's `ExprHandlerRegistry` and Rector's `NodeNameResolver` memoization pattern,
-scaled down: no DI container, no attribute-driven autodiscovery, just a plain constructor array — at
-24 handlers that is enough.
+[Receiver types](receiver-types.md) covers `ReceiverClassResolver` and the handlers that type `$x->m()` and `$x->prop`.
 
-`ExpressionEngine` has exactly three methods, all implemented today by `ResourceAstAnalyzer`:
+## A handler declines what it cannot type
 
-- `resolve(Expr $expr): array` — full expression resolution; dispatches to the first handler that
-  claims the node, or degrades to `unknown` if none do. Handlers call back into this for a
-  sub-expression they don't own themselves.
-- `spreadAnalysis(string $methodName): ?MethodAnalysis` — re-enters the analyzer on a named method's
-  own return, for a handler that resolves a self-returning chain onto a non-preserving method body
-  (`StaticCallHandler`'s `new self($x)->method()` handling) instead of degrading to `unknown`.
-- `returnArrayAnalysis(Array_ $array): MethodAnalysis` — the same return-position array machinery used
-  for a nested inline array literal, reused by `InlineArrayHandler`.
+`ExpressionHandler::resolve()` returns `null` to decline. The dispatcher then tries the next handler that claims the
+node class, and when none answers, the caller degrades to `unknown`. A handler that answers `unknown` pre-empts every
+handler after it, so a handler declines a shape it cannot type unless that `unknown` is deliberate. The answer of
+`RelationFilterHandler`'s map-proxy arm is one such case, as
+[ResourceAstAnalyzer § Attribute filters][attribute-filters] records. `MethodChainHandler` and `PropertyChainHandler`
+test for a decline with `TsTypeString::isUnknownOnly()`, which ignores `null` arms.
 
 ## Handler ordering
 
-`ExpressionDispatcher::dispatch()` tries registered handlers, in registration order, for an
-expression's concrete node class, and returns the first non-null result —
-`ExpressionHandler::resolve()` returning `null` means DECLINE, fall through to the next candidate.
-Order is load-bearing wherever a node class is claimed by more than one handler: a reordering that
-changes which handler wins for a shared class is a silent behavior regression, not a refactor.
+When more than one handler claims a node class, registration order decides which one answers. A reorder that changes the
+winner changes published types, so treat it as a behavior change, not a refactor.
+`ResourceExpressionHandlers::handlers()` is the one ordered list, and each profile filters it:
 
-`ResourceExpressionHandlers::make()` builds the resource profile — the 22 handlers extracted from
-the legacy `analyzeValueExpression()` guard chain, in the exact order the chain checked them, plus
-`ArrayMergeHandler` and `InertiaWrapperHandler`.
-`ResourceExpressionHandlers::generic()` is that same list minus the three
-resource-only handlers (`ConditionalMethodHandler`, `ToResourceHandler`, `RelationFilterHandler`)
-— every other handler is class-agnostic and safe to reuse outside a resource's `toArray()`.
+- **`make()`**: the resource profile. It also runs for every subject `AstEngine::analyzeMethod()` reaches, such as a
+  broadcast event, model metadata or a DTO.
+- **`withoutResourceHandlers()`**: drops `ConditionalMethodHandler`, `ToResourceHandler` and `RelationFilterHandler`.
+  Its one production caller is `ControllerExpressionHandlers::make()`.
+- **`forModelClosures()`**: drops only the first two, for `AstEngine::analyzeModelClosure()`. `RelationFilterHandler`
+  stays as the only handler that types a to-many relation's filter, a map proxy, a multi-model accessor's filter, or a
+  filter on a collection-cast column or an `Eloquent\Collection` accessor.
 
-The executable ordering contract lives in `tests/Unit/Ast/ResourceExpressionHandlersTest.php`:
+Events and metadata run `make()`, so the three resource-only handlers are live in their bodies. Pointing
+`analyzeMethod()` at `withoutResourceHandlers()` would move published event and metadata types. Measure the diff both
+ways before you change it.
 
-- One test asserts `make()`'s exact class-name sequence, so an accidental reorder fails a test
-  instead of silently changing generated output.
-- One test asserts `generic()`'s exclusion set and relative order.
-- Six tests pin the *behavioral* precedence between handlers that both really claim a shared node
-  class — proven by mutation: swap the pinned pair, watch the pinned test fail, revert.
-  - `FirstClassCallableHandler` before `ConditionalMethodHandler` for a first-class-callable
-    `$this->when(...)`. `ConditionalMethodHandler::isThisMethodCall()` matches on method name
-    alone, ignoring arguments, so it also claims this shape; if it ran first it would call
-    `MethodCall::getArgs()`, which asserts `!isFirstClassCallable()` and fatals.
-  - `RelationFilterHandler` before `MethodChainHandler` for `$this->relation?->only([...])`.
-    `MethodChainHandler`'s floor is `ValueResult::unknown()`, never `null`, so it always claims
-    every `NullsafeMethodCall` — if it ran first it would win this one too, degrading a `Pick<>`
-    reference to a plain reflected type.
-  - `ThisPropertyHandler` before `PropertyChainHandler` for `$this->{multi-FQCN accessor}`.
-    `ThisPropertyHandler` threads a multi-model accessor's FQCNs out as `embeddedModelFqcns`, used
-    downstream to alias same-basename union arms apart; `PropertyChainHandler`'s last-step branch has
-    no equivalent, so swapping the two loses one arm's FQCN entirely rather than merely reordering.
-  - `InertiaWrapperHandler` before `StaticCallHandler` for `Inertia::always(...)`. `StaticCallHandler`'s
-    last arm claims every `StaticCall` and never declines, so if it ran first it would reflect the
-    wrapper as an ordinary static method and floor the prop at `unknown` instead of the wrapped value.
-  - `FirstClassCallableHandler` before `KnownFunctionCallHandler` for a first-class-callable
-    `auth()->user(...)`. `KnownFunctionCallHandler` gates only the inner `auth()` call on
-    `isFirstClassCallable()`, never the outer `MethodCall`, so if it ran first it would answer with
-    the guard's model — a confident type for what is actually a `Closure`.
-  - `FirstClassCallableHandler` before `ToResourceHandler` for a first-class-callable
-    `$this->post->toResource(...)`. `ToResourceHandler` matches on the method name alone and then
-    calls `getArgs()`, which asserts `!isFirstClassCallable()` and fatals without the guard ahead of it.
+`ReceiverPropertyFetchHandler` and `ReceiverMethodCallHandler` sit last, with only `KnownMethodRuleHandler` after them,
+so every specific handler answers first. `CollectionPipelineHandler` sits right after `RelationCollectionChainHandler`,
+whose op table it shares. See [ResourceAstAnalyzer § Collection pipelines][collection-pipelines].
 
-`MethodCall` gets a further, exhaustive layer on top of the six pins above:
-`tests/Unit/Ast/MethodCallOrderingMatrixTest.php` runs every one of its nine claimants' 36 unordered
-pairs in both orders over a curated corpus, the same mutate/watch-fail/revert method proves each pin
-with, rather than trusting a hand-picked example per pair — see that node class's inventory row below.
+`ResourceExpressionHandlersTest` pins `make()`'s sequence, the filtered profiles and the behavioral pins below.
+`MethodCallOrderingMatrixTest` runs every pair of `MethodCall` claimants in both orders over a curated corpus. A pair in
+its `METHOD_CALL_PINNED` map must answer as `handlers()` orders it, and every other pair must agree. When a new
+expression shape makes an inert pair disagree, the matrix fails. Pin the pair in the direction `handlers()` lists it.
 
 ### Controller profile
 
-`ControllerExpressionHandlers::make()` is the profile `InertiaPageAnalyzer` runs an
-`Inertia::render()` props expression through. It is `ResourceExpressionHandlers::generic()` with two
-handlers inserted **immediately before `StaticCallHandler`**:
+`ControllerExpressionHandlers::make()` inserts `ModelFinderHandler` and `InertiaResourcePropHandler` into
+`withoutResourceHandlers()` immediately before `StaticCallHandler`. That handler's last arm claims every static call on
+a named class and never declines one. `NewResourceHandler`, right after it, resolves a `ResourceCollection` to its
+element array. Placed later, the two additions would be unreachable for those shapes. `ControllerExpressionHandlersTest`
+pins the structure and the three orderings.
 
-- `ModelFinderHandler` — a chain rooted at a `Model` static call, typed by its terminal:
-  `find`/`first`/`firstWhere` → `{Model} | null`; `sole`/`firstOrFail`/`findOrFail`/`firstOrCreate`/
-  `firstOrNew`/`create`/`make`/`updateOrCreate` → `{Model}`; `all`/`get` → `{Model}[]`;
-  `paginate`/`simplePaginate`/`cursorPaginate` → the matching `TolkiTypes::MAP` name generic over the
-  model, with the `@tolki/types` external import; `count`/`exists` → `number`/`boolean`.
-- `InertiaResourcePropHandler` — a resource or resource collection in prop position, resolved to what
-  it wraps, including the preserve-keys `Omit<…, 'data'> & { data: Record<string, R> }` shape.
-
-That position is load-bearing in both directions. `StaticCallHandler`'s final arm claims every
-`StaticCall` and never declines, so anything registered after it never sees one; and `NewResourceHandler`
-sits directly after `StaticCallHandler` and resolves a `ResourceCollection` to its collected element
-array, so a `New_` handler has to precede that too. `tests/Unit/Ast/ControllerExpressionHandlersTest.php`
-pins the structure (the profile equals `generic()` with exactly those two inserted at that point) plus
-three behavioural ordering pins, each proven by mutation.
-
-`InertiaPageAnalyzer` pairs the profile with `AstEngine::bindingsFor()`, which seeds the scope from the
-action's own signature: route-bound `Model` parameters, `Request` parameter names, and the local
-variable bindings collected from the method body. That is what lets `compact('post', 'comments')`,
-`$post` from `show(Post $post)`, and `$request->integer('page')` all type without any Inertia-specific
-special case in the handlers.
+`InertiaPageAnalyzer` runs this profile over `AstEngine::bindingsFor()`'s scope, seeded from the action's route-bound
+models, `Request` parameters and locals. The seeded scope is why `compact()`, a route-bound `$post` and
+`$request->integer()` type with no Inertia-specific handler code.
 
 ### The honest ordering inventory
 
-Not every node class more than one handler claims has a pin. The table below is the full inventory of
-contested node classes — pinned pairs, and pairs explicitly proven inert (the two arms never both
-actually claim the same expression, so their relative order cannot change output).
+This table lists every node class that more than one resource-profile handler claims. A pinned pair must keep its order.
+Every other pair is inert: the two handlers never answer the same expression, or they answer it the same way.
+[Known gaps][gap-ordering] explains why the pins cover only the divergences a corpus has found.
 
-| Node class | Claimants | Status |
-| --- | --- | --- |
-| `MethodCall` | `FirstClassCallableHandler`, `KnownFunctionCallHandler`, `ConditionalMethodHandler`, `ToResourceHandler`, `StaticCallHandler`, `RelationFilterHandler`, `RelationCollectionChainHandler`, `VariableHandler`, `KnownMethodRuleHandler` (9) | Five of the 36 unordered pairs are pinned: `FirstClassCallableHandler` before `ConditionalMethodHandler` and before `ToResourceHandler` (both crash-level — the loser calls `getArgs()`, which asserts `!isFirstClassCallable()`); `FirstClassCallableHandler` before `KnownFunctionCallHandler` (a silent divergence: `auth()->user(...)` as a first-class callable resolves to the guard's model instead of `unknown`); `ToResourceHandler` and `RelationFilterHandler` each before `RelationCollectionChainHandler` (its separate `$this->anyProp->method()` branch would otherwise answer first — e.g. flooring `$this->post->toResource()` at `unknown` instead of resolving the guessed resource). `SubjectMethodTypeResolver::resolve()` declines when nothing in scope declares the method, so `RelationCollectionChainHandler` no longer floors every `$this->method()` at `unknown`; `ConditionalMethodHandler` and `KnownMethodRuleHandler` therefore answer `$this->when()`/`whenLoaded()` and `can()`/`cannot()`/`canAny()` in either order. The decline is not ordering alone: a model that declares `can()` with a return type `ReflectedTypeAcceptor` rejects — `can(): void` — falls through the same way, so it too lands on `KnownMethodRuleHandler`'s `boolean` where it used to floor at `unknown`. Every unordered pair is run in both orders by `tests/Unit/Ast/MethodCallOrderingMatrixTest.php` over a curated corpus: the pairs in its `METHOD_CALL_PINNED` map disagree and are held in the direction `handlers()` lists them; every other pair is proven inert on that corpus (a new expression shape that makes an inert pair disagree fails the matrix, which is the signal to pin it). In the controller profile `ControllerExpressionHandlers` splices `ModelFinderHandler` (`StaticCall` + `MethodCall`) ahead of `StaticCallHandler`, making ten claimants there. |
-| `NullsafeMethodCall` | `RelationFilterHandler`, `MethodChainHandler` (2) | Pinned — the whole candidate list, full coverage. |
-| `PropertyFetch` | `ThisPropertyHandler`, `PropertyChainHandler`, `VariableHandler` (3) | One pair pinned (`ThisPropertyHandler` before `PropertyChainHandler`). The other two pairs are **inert-proven**: `ThisPropertyHandler` vs. `VariableHandler` never both claim the same expression (`isThisPropertyFetch()` requires a `$this` receiver; `VariableHandler`'s property branch requires the receiver not be `$this`); `PropertyChainHandler` vs. `VariableHandler` likewise — `PropertyChainHandler`'s fallback declines any chain not rooted at `$this`, which is exactly `VariableHandler`'s territory. |
-| `BinaryOp\Coalesce` | `BinaryOpHandler`, `CoalesceHandler` (2) | Inert-proven — `BinaryOpHandler::resolve()` has no branch matching `BinaryOp\Coalesce`, so it always declines regardless of registration position. |
-| `StaticCall` | `InertiaWrapperHandler`, `StaticCallHandler` (2) | Pinned — the whole candidate list, full coverage. |
-| `FuncCall` | `ArrayMergeHandler`, `KnownFunctionCallHandler` (2) | Inert-proven — `KnownFunctionCallHandler` declines `array_merge`: its reflected return type is `unknown[]`, and `resolveKnownFunctionCallType()` rejects any type containing `unknown`. `ArrayMergeHandler` is still registered first, so the specific handler keeps winning if that ever changes. |
+| Node class | Claimants, in registration order | Pinned, winner first | Why the other pairs are inert |
+| --- | --- | --- | --- |
+| `MethodCall` | `FirstClassCallableHandler`, `KnownFunctionCallHandler`, `ConditionalMethodHandler`, `ToResourceHandler`, `StaticCallHandler`, `RelationFilterHandler`, `RelationCollectionChainHandler`, `CollectionPipelineHandler`, `VariableHandler`, `ReceiverMethodCallHandler`, `KnownMethodRuleHandler` | `FirstClassCallableHandler` before `ConditionalMethodHandler` and before `ToResourceHandler`: the loser calls `getArgs()`, which asserts `!isFirstClassCallable()` and fatals. `FirstClassCallableHandler` before `KnownFunctionCallHandler`: otherwise `auth()->user(...)` gets the guard's model, a confident type for a `Closure`. | The matrix proves each pair on its corpus. See the notes below. |
+| `NullsafeMethodCall` | `RelationFilterHandler`, `MethodChainHandler`, `ReceiverMethodCallHandler` | None | `MethodChainHandler` declines every `only()`/`except()`, every answer that is only `unknown`, and every chain whose last step is not a relation, where it would reflect on the wrong receiver. `RelationFilterHandler` and `ReceiverMethodCallHandler` agree on a filter. No matrix runs this class. |
+| `PropertyFetch` | `ThisPropertyHandler`, `PropertyChainHandler`, `VariableHandler`, `ReceiverPropertyFetchHandler` | `ThisPropertyHandler` before `PropertyChainHandler`: only `ThisPropertyHandler` threads a multi-model accessor's FQCNs out as `embeddedModelFqcns`, so the swap loses an arm's import | `VariableHandler` never reads a `$this` receiver, which the first two require. `ReceiverPropertyFetchHandler` declines every `$this->prop` leaf, and swapping it ahead of `PropertyChainHandler` or `VariableHandler` leaves the committed types unchanged. |
+| `NullsafePropertyFetch` | `PropertyChainHandler`, `ReceiverPropertyFetchHandler` | None | `PropertyChainHandler` declines a chain that is only `unknown`, and the two agree on a chain both type |
+| `StaticCall` | `InertiaWrapperHandler`, `StaticCallHandler`, `ReceiverMethodCallHandler` | `InertiaWrapperHandler` before `StaticCallHandler`: `StaticCallHandler` never declines a call on a named class, so it would reflect the wrapper and floor the prop at `unknown` | `StaticCallHandler` declines only a class expression it cannot name, such as `$record::className()`, the one shape `ReceiverMethodCallHandler` reaches. The `Inertia` facade declares no wrapper method, so `ReceiverMethodCallHandler` declines `Inertia::always(...)`. |
+| `FuncCall` | `ArrayMergeHandler`, `KnownFunctionCallHandler` | None | `KnownFunctionCallHandler` rejects `array_merge()`'s reflected `unknown[]`. `ArrayMergeHandler` stays first in case that changes. |
+| `BinaryOp\Coalesce` | `BinaryOpHandler`, which claims all of `BinaryOp`, and `CoalesceHandler` | None | `BinaryOpHandler` has no `Coalesce` branch |
 
-`MethodCall` is now the most thoroughly verified row in this table: every one of its 36 unordered
-pairs is run in both orders, not merely enumerated by inspection. Its residual limit is the matrix's
-own corpus — an expression shape the corpus never constructs cannot disagree there, however plausible
-it looks by inspection. Read the pin counts elsewhere in this table the way this file always has: as
-the divergences someone has actually gone and found, not as the only divergences that exist.
+These `MethodCall` pairs are the ones most likely to break under an edit:
+
+- **Attribute filters**: on a model-backed scope, `RelationCollectionChainHandler`, `MethodChainHandler` and
+  `VariableHandler`'s `$variable->method()` arm decline every `only()`/`except()`. `RelationFilterHandler` claims none
+  on `$this->resource` itself. On a model-less scope, as in the controller profile, `RelationCollectionChainHandler`
+  still reflects `$this->post->only([...])` to `Record<string, unknown>` and `except($keys)` to `unknown[]`. Those
+  answers win over the receiver rules' `Pick<Post, …>` and `Record<string, unknown>`, and the matrix runs only a
+  resource scope, so that divergence is unpinned.
+- **`RelationFilterHandler` and `ReceiverMethodCallHandler`**: both claim a single-model relation filter, and they agree
+  by construction, as [ResourceAstAnalyzer § Attribute filters][attribute-filters] explains. `ReceiverHandlersTest`'s
+  "both claim … and answer it the same" cases pin the agreement.
+- **`CollectionPipelineHandler` and `VariableHandler`**: both claim a trailing `values()` or `all()` on a `collect()`
+  chain. They agree because the peel spells `values()` through `SpellsKeyedCollections::valuesList()` and peels only an
+  `Enumerable` receiver or a `map()` it types itself. Typing the `collect()` argument needs a third handler, so
+  `CollectionPipelineHandlerTest` pins this pair instead of the matrix.
+- **`$this->method()`**: `SubjectMethodTypeResolver` declines when nothing in scope declares the method, so
+  `RelationCollectionChainHandler` never floors `$this->when()` or `$this->can()` at `unknown`. It rejects
+  `Model::getKey()`'s `mixed`, so only `ReceiverMethodCallHandler` answers a forwarded `$this->getKey()`.
+
+One `PropertyFetch` pair can disagree where the corpus is silent. `VariableHandler` types `$x->member` from the
+attributes of the model `varModelBindings` binds to `$x`, or of a `whenLoaded()` closure's relation model. It answers a
+relation there as `unknown` instead of declining, where `ReceiverPropertyFetchHandler` would type it. No fixture reads a
+relation that way.
+
+The controller profile adds `ModelFinderHandler` to the `StaticCall` and `MethodCall` claimants, and
+`InertiaResourcePropHandler` to the `StaticCall` and `New_` claimants. `ControllerExpressionHandlersTest` pins those
+pairs, and the matrix does not run this profile.
 
 ## AnalysisScope
 
-`AnalysisScope` is the mutable state threaded through one `ResourceAstAnalyzer::analyze()` call: the
-subject under analysis and its backing model, plus the closure/spread bookkeeping that makes local
-variables, `whenLoaded` relations, and recursive spreads resolve correctly as traversal descends. A
-handler reaches it as the `$scope` parameter `ExpressionHandler::resolve()` receives; the analyzer
-itself reaches the same instance as `$this->scope`.
+[`AnalysisScope`] is one mutable object shared by a whole analysis, not a value copied down the walk. Its field
+docblocks say what each binding table holds. These three facts span other classes:
 
-| Field | Type | Holds |
+- **`modelClass` is scoped, not fixed**: `NarrowsInstanceofSubjects::resolveNarrowed()` narrows it, with
+  `forwardsUndeclaredMembersTo`, while a ternary's proven arm resolves, for `TernaryHandler` and `ReceiverClassResolver`
+  alike, then restores both. The narrowing happens below `AstEngine`'s `analysis:` memo key, so the key does not
+  describe the model a nested resolution ran under.
+- **`requestVarNames` skips a resource's `Request` parameter**: `ResourceAstAnalyzer::resolveRequestVarNames()` seeds it
+  for any subject but a `JsonResource`. Typing the calls on a resource's `toArray(Request $request)` would move
+  committed resource output.
+- **`carriesImports` is false for the two readers that keep no FQCN channel**: the body fallback, and a getter that
+  `AstEngine::analyzeModelClosure()` reads without imports. See [Receiver types § The body fallback][body-fallback].
+
+### Writing a scope binding
+
+A writer that binds a name for one body, such as a closure, a loop or a spread, first snapshots what it changes. It then
+mutates the scope, resolves the body, and restores the snapshot in a `finally`. Every mutation, and every seeding step
+that can throw, sits inside that `try`.
+
+The scope outlives the expression, so a binding an exception leaves behind raises nothing. The binding answers a later
+property with a wrong but plausible type, far from the writer that leaked it. Restore the whole table, not the one key
+you believe you wrote.
+
+Closure writers and `ClosureHandler` snapshot with `AnalysisScope::nameBindings()` and restore with
+`restoreNameBindings()`. `ResourceAstAnalyzer::analyzeThisMethodSpread()` and
+`NarrowsInstanceofSubjects::resolveNarrowed()` hand-roll their snapshots.
+`ResourceAstAnalyzer::bindForeachLoopVariables()` takes none, because a `foreach` binding is method-wide by design. The
+closure writers' snapshots restore over it, so a same-named closure parameter still resolves against its own binding, as
+`ClosureParamShadowResource` pins.
+
+#### A closure parameter owns its name
+
+Readers rank the name-keyed tables differently. `VariableHandler` reads `varDocBindings` first and `varValueBindings`
+last, while `ReceiverClassResolver::fromVariable()` reads `varClassBindings` first and never reads `varValueBindings`.
+So an outer binding of a parameter's name, left in any table, outranks the parameter's own binding for some reader.
+Nested in `map(fn (Comment $c) => …)`, a `collect(...)->map(fn ($c) => …)` would read its string element as a `Comment`.
+
+Every writer that binds a closure parameter therefore calls `AnalysisScope::claimParameters()` inside its `try`. The
+claim drops each parameter name from every table and marks the closure claimed. The writer reads the value the call
+passes before it claims, since the claim can release a name that value shares, then binds the parameter to it.
+`ClosureHandler` calls `releaseUnclaimedParameters()`, which makes the same drop for a closure no writer claimed, such
+as a `whenNotNull()` value closure.
+
+Each writer binds the first parameter to what Laravel passes the closure:
+
+| Writer | Laravel passes | First parameter bound to |
 | --- | --- | --- |
-| `subjectReflection` | `ReflectionClass<object>` | The resource (or other AST subject) under analysis. Constructor argument. |
-| `modelClass` | `class-string<Model>\|null` | The subject's resolved backing model, if any. Constructor argument. |
-| `instanceOfWrappedClass` | `class-string\|null` | Wrapped class from an `instanceof` guard in `toArray()`; fallback when `resolveClassOnProperty()` returns `null`. |
-| `closureRelationModelClass` | `class-string<Model>\|null` | Related model set while analyzing a `whenLoaded` closure, so `$variable->prop`/`->method()` inside it resolve. |
-| `closureParamExprBindings` | `array<string, Expr>` | Closure parameter names bound to the `$this->prop` expression found in the surrounding `when()` condition, so `EnumResource::make($status)` resolves like `EnumResource::make($this->status)`. |
-| `varModelBindings` | `array<string, class-string<Model>>` | Closure params / loop vars bound to a model class (`whenLoaded` params, relation-chain `map()` params, `foreach` over a many-relation), so `$var`, `$var->prop`, `$var->method()` resolve against that model. Scoped: writers save and restore around the body. Also seeded, via `AstEngine::bindingsFor()`, from every `Model`-typed parameter of the located method — a route-bound `Post $post`, a metadata provider's `Model $model` — bound to the parameter's **declared** type. |
-| `varCollectionBindings` | `array<string, array{type: string, modelFqcn: class-string<Model>}>` | Closure params bound to a whole relation collection rather than one element — a to-many `whenLoaded` param. Read for a bare return of the param, and as the element-model fallback for an untyped `->map()` closure param. |
-| `localVarBindings` | `array<string, Expr>` | Top-level `$var = expr;` bindings for the method last analyzed, so a bare `Variable` value expression resolves through its bound expression instead of degrading to `unknown`. Only variables written exactly once are recorded; `analyzeThisMethodSpread()` saves and restores this per method. |
-| `resolvingLocalVars` | `array<string, true>` | Re-entrancy guard: variable names currently mid-resolution, so a self- or mutually-referential binding (`$a = $b; $b = $a;`) resolves as `unknown` instead of recursing forever. |
-| `visitedSpreadMethods` | `array<string, true>` | Spread methods currently on the analysis stack, so a method that spreads itself — directly or through a cycle — degrades to an empty analysis instead of recursing until memory runs out. |
-| `requestVarNames` | `array<string, class-string<Request>>` | Variable names holding an `Illuminate\Http\Request`, mapped to the bound class, so `KnownMethodRuleHandler`'s reflected Request rule (`url()`, `ip()`, `integer()`, …) fires on `$request->ip()` and stays off an unrelated receiver sharing a method name; the bound class is what `validated()` is resolved against, reading the `FormRequest` subclass's own `rules()`. `user()` is answered ahead of reflection, from the configured auth model. Seeded in `AstEngine::bindingsFor()` from a located method's `Request`-typed parameters, and in `ResourceAstAnalyzer::resolveRequestVarNames()` for a directly-constructed resource analysis — **except for a `JsonResource` subject**, whose `toArray(Request $request)` would otherwise start typing request calls and move committed resource output. |
+| The three map writers | `($value, $key)` | The element, never the key |
+| `whenLoaded()` | The loaded relation | Its model, its collection in `varCollectionBindings`, or its `morphTo` targets |
+| `whenHas()`, `whenExistsLoaded()` | The attribute, the `{relation}_exists` flag | That property read |
+| `whenCounted()`, `whenAggregated(…, 'count')` | The count | `number` |
+| `whenAggregated()`, other aggregates | The aggregate | Nothing: its type depends on column, function and driver |
+| `transform()`'s callback | The filled value | A `$this->prop` read, a passed variable's bindings, or the value's type, a nullable model read as the model |
+| `transform()`'s default | The blank value | The value's full type, `null` included |
+| `when()`, `unless()`, `merge()`, `mergeWhen()`, `mergeUnless()`, `whenAppended()`, other defaults | Nothing | Nothing beyond the unpassed-parameter rule below |
 
-**Snapshot/restore, not immutable copies.** `AnalysisScope` is one mutable object shared for the whole
-`analyze()` call, not a value threaded through with `mergeWith()`-style copying. A writer that needs a
-binding to hold only for one nested body — a closure, a loop, a spread — saves the field (or the one
-key it is about to overwrite), mutates it, analyzes the body, then restores the snapshot, typically in
-a `finally` so an exception path restores it too. This mirrors the analyzer's own pre-refactor save/
-restore discipline and is why the field inventory above calls out scoping per field rather than once.
+These rules settle the cases the table leaves open:
 
-### How `varModelBindings` gets populated, and how scoping holds
+- **A to-many `whenLoaded()` parameter holds the collection**: binding it to the element model would type a bare `$x` as
+  a wrong singular type.
+- **An unpassed parameter holds its default**: every conditional and merge writer calls
+  `AnalysisScope::bindUnpassedParameters()`, which binds an optional one to its default's type, evaluated as PHP does,
+  so `when($this->title, fn ($t = null) => $t)` publishes `null`, as Laravel returns. It binds a variadic one to
+  `never[]`, and leaves one whose default it cannot type unbound. A map closure's parameters past the first, and a
+  `whenNotNull()` or `whenNull()` value closure's, stay unbound.
+- **A variadic first parameter collects its one argument**: `whenLoaded('author', fn (...$a) => $a)` is `User[]`. The
+  map writers skip one, since `map()` passes two values of different types, and a `morphTo` `whenLoaded()` binds nothing
+  for one.
+- **`when()` and `unless()` bind a required first parameter anyway**: they bind the condition's `$this->prop`, although
+  Laravel passes nothing and the call throws `ArgumentCountError`. The workbench pins it with
+  `ConditionalParamPrimitiveResource` and `ConditionalParamEnumResource`, so it stays.
+- **`whenAggregated()` publishes `number` for an aggregate it cannot type**: a driver can return a numeric or date
+  string instead, such as a MySQL `SUM()`, which that `number` does not describe.
 
-`varModelBindings` is populated from three sources, each scoped to the body it binds:
+`ClosureHandlerTest` pins the release, and each writer's own tests pin its claim. `ShadowedClosureParamResource` stays
+green with either mechanism alone, so it pins neither.
 
-- **`whenLoaded('relation', fn ($x) => ...)`** (`ConditionalMethodHandler::analyzeWhenLoaded()`) —
-  when `relation` resolves to a *single*-model relation, `$x` is bound to that model for the closure
-  body. A to-many relation's closure param is deliberately **not** bound this way: the param holds the
-  whole collection, not one element, so binding it to the element model would resolve a bare `$x` to a
-  wrong-but-plausible singular type (e.g. `OrderItem` instead of `OrderItem[]`) —
-  `$x->pluck(...)`/`$x->map(...)` already resolve via `AnalysisScope::$closureRelationModelClass`,
-  unaffected by this guard.
-- **A relation-chain `map()`** (`$this->{manyRelation}->take(5)->map(fn ($m) => ...)`, handled in
-  `RelationCollectionChainHandler`) — `$m` is bound to the relation's element model for the map
-  closure's body.
-- **A top-level `foreach ($this->{manyRelation} as $item) { ... }`** (`ResourceAstAnalyzer::
-  bindForeachLoopVariables()`) — `$item` is bound to the relation's element model for the rest of the
-  method's analysis (mirrors `localVarBindings`' method-wide scope, restored around a
-  `...$this->method()` spread the same way).
+### Narrowing
 
-The two closure writers follow the save/restore discipline described above: snapshot the map (or the
-one key being overwritten), mutate it for the nested body's analysis, then restore the snapshot. The
-third writer does not — `bindForeachLoopVariables()` assigns `varModelBindings[$stmt->valueVar->name]`
-outright, with no snapshot and no restore, because its binding is method-wide by design. The shadowing
-guarantee survives that exception: a closure parameter that shadows an outer variable of the same name
-still resolves against its **own** binding and can never leak into, or be leaked into by, the outer
-scope, because it is the closure writers' own snapshots that restore over whatever the `foreach`
-binding left behind. `ClosureParamShadowResource` in the workbench pins this: a top-level `$member` and
-a `map(fn ($member) => $member)` closure param share a name, and each site resolves independently.
+Two mechanisms decide which class a variable holds at one point in a body, and each restores its binding in a `finally`:
 
-### `localVarBindings` and closure descent
+- **An early-exit guard**: [`CollectsInstanceofGuards`] reads a top-level `if` with no `elseif` or `else` whose body
+  ends in `return` or `throw`, and whose condition is `! $x instanceof C` or an `||` chain holding one. It binds `$x` to
+  `C` in `varGuardBindings` with the offset where the `if` ends. An earlier `return` and the guard's own body therefore
+  read `$x` unnarrowed.
+- **A ternary's proven arm**: `TernaryHandler` resolves it under `NarrowsInstanceofSubjects::resolveNarrowed()`, which
+  binds a variable in `varClassBindings`, or sets `modelClass` for `$this->resource` when one model is left. An arm that
+  writes its subject is not narrowed.
 
-`ClosureHandler::resolve()` — the generic closure/arrow-function handler every dispatch reaches —
-saves `$scope->localVarBindings`, unsets any entry whose name matches one of the closure's own
-parameters, analyzes the body, and restores the snapshot in a `finally`. Without that suppression, a
-closure parameter shadowing an outer local, inside a construct with no scoped binding of its own (none
-of the three `varModelBindings` sources above — e.g. `when()`'s condition isn't a `$this->prop` test),
-would resolve through the outer `localVarBindings` entry when analyzing the closure body, turning an
-honest `unknown` into a confidently wrong type. `ShadowedClosureParamResource` in the workbench pins
-this: its `$slug = $this->slug;` followed by a `when()` call whose closure param is also named `$slug`,
-with a condition that isn't a `$this->prop` test, must resolve to `unknown` rather than leaking the
-outer `$slug`'s type.
+A guard binds `$x` only when no write to it can land after the test, and a write before the guard is fine.
+`GuardWritePostResource` pins both cases. Neither mechanism sees a write through a reference.
+
+A positive `if ($x instanceof C) { … }` narrows nothing, because the walk is flat and the binding would still hold after
+the body, where `$x` is what the test excluded.
+
+`ClosureHandler` runs both passes over a `Closure`'s statements after unsetting every name the body writes from the
+outer `localVarBindings` and `varDocBindings`. So a body-local shadows an outer one even when written twice.
+
+[Receiver types § A ternary's `instanceof` condition][ternary] covers how a proven arm's classes narrow, and
+[known gaps][gap-narrowing] records what each spelling publishes.
+
+### Declared locals
+
+An inline `/** @var T $x */` on a top-level `$x = …;` records a `varDocBindings` span through
+`CollectsLocalVarBindings::bindDeclaredType()`. The span runs from after that statement to the next top-level statement
+that writes `$x`, and `T` resolves against `AnalysisScope::$declaringFileClass`, a trait's file for a trait's method.
+
+Inside the span the assigned value's reading wins, and `T` fills in only where that reading is vague.
+`VariableHandler::declaredLocalValue()` applies that to a value, `ReceiverClassResolver::fromVariable()` to a receiver,
+and `VariableHandler::ambientModel()` to the ambient model inside a `whenLoaded()` closure. Each states its own test for
+vague. A `$x->prop` on a parameter bound in `varModelBindings` still reads that binding first, and a span can outlive a
+write through a reference.
 
 ### What deliberately stays unbound
 
-- **A reassigned local** (written more than once in the method) — `localVarBindings` already skips
-  these; `varModelBindings` has no reassignment analog since it only ever binds closure params and
-  loop variables, each written exactly once by construction.
-- **First-class callables** (`->map(...)`, `->pluck(...)`) — there is no closure body to bind a
-  param into, so these are rejected before any binding is attempted.
-- **A relation-chain `map()` whose argument isn't a `Closure`/`ArrowFunction`** (a string callable
-  like `'strtoupper'`, or an array callable like `[$this, 'method']`) — same reasoning.
+These shapes stay unbound on purpose, so they resolve as `unknown` rather than as a guess:
 
-See [ResourceAstAnalyzer § Multi-model accessor unions](resource-ast-analyzer.md#multi-model-accessor-unions-reference-each-arms-own-model)
-and the fixtures named above for how these bindings surface in emitted output.
+- **A local written more than once**: the flat walk cannot tell which write is live at a given return. An early-exit
+  guard still narrows one reassigned only before it, and an inline `@var` types it for its span.
+- **A first-class callable**, such as `->map(...)`: there is no closure body to bind a parameter into.
+- **A relation-chain `map()` whose argument is not a closure**, such as `'strtoupper'`: the same reason.
 
 ## Subject mode
 
-Subject mode is how `$this->prop` resolves when `AnalysisScope::$modelClass` is `null` — a class the
-engine is pointed at that has no backing Eloquent model, which is every non-resource subject
-`AstEngine::analyzeMethod()` accepts (a broadcast event, a DTO, a plain class). A resource always has
-a model or the pipeline could not type it at all, so nothing on the resource path enters this mode;
-both arms below live strictly inside the `null` branch that previously returned `unknown`.
+Subject mode types `$this->prop` from the subject's own declaration. It always applies when `AnalysisScope::$modelClass`
+is `null`, as for a broadcast event, a DTO or any plain class. On a model-backed subject, it applies to a property
+`SubjectPropertyTypeResolver::declaresOwnProperty()` claims, which answers before the model's attributes and relations.
+PHP reads a declared property before `JsonResource::__get()` forwards to the model, so a resource's own `$stats`
+publishes that object, not a same-named attribute. A result naming an abstract or `Illuminate\` model declines rather
+than emit a token nothing imports.
 
-Resolution order for the property itself is **`@var` docblock first, native declared type second** —
-`PropertyDocblockTypeReader::read()`, then `LaravelTsPublish::propertyTypes()` — with the result
-accepted through `ReflectedTypeAcceptor`, so a token that has no importable published file rejects
-the whole result rather than shipping a name nothing imports. `SubjectPropertyTypeResolver` is the one
-home for that pair; `AstEngine::analyzePublicProperties()` and both handler arms call it.
+A name the framework declares is never the subject's own, however the subject redeclares it: `JsonResource`'s
+`resource`, `with` and `additional`, `ResourceCollection`'s `collects` and `collection`, every `Model` property, and
+every static property. The exclusion keeps `$this->resource` meaning the backing model. `preserveKeys` is deliberately
+outside that set, because Laravel reads it with `property_exists()` rather than declaring it.
 
-There are two arms because the dispatcher never hands the inner node of a chain to a handler:
+[`SubjectPropertyTypeResolver`] is the one home for how such a property types, for
+`AstEngine::analyzePublicProperties()` and both handler arms. It reads the `@var` docblock, then the native type, then
+an untyped property's literal default. The default counts only while no method the class runs writes the property, an
+ancestor's or a trait's included, and in application code a computed `$this->{$name}` write counts as one. The check
+cannot see a subclass's write or a by-reference one, such as `array_push($this->tags, 5)`.
 
-- **Leaf** (`ThisPropertyHandler`): `$this->teamId` — after the model attribute and relation lookups
-  both miss (they always do with no model), the subject's own property supplies the type and its FQCN
-  channels.
-- **Chain root** (`PropertyChainHandler::analyzePropertyChain()`): `$this->post->title` arrives as one
-  `PropertyFetch` whose outermost node is `title`, so `ThisPropertyHandler`'s resolution of the inner
-  `$this->post` is never consulted. The chain handler resolves its own first segment the same way, and
-  **only a `Model` subclass hands off**: that model becomes the walk's starting point and the existing
-  relation/attribute traversal runs unchanged over the remaining steps. Any other type declines, and
-  the expression degrades to `unknown` exactly as before.
+The dispatcher never hands a chain's inner node to a handler, so there are two arms. `ThisPropertyHandler` types a leaf
+such as `$this->teamId`. `PropertyChainHandler` receives `$this->post->title` whole and resolves its root itself. With
+no backing model, only a `Model` root hands off to the relation walk. On a model-backed subject it declines a root
+`declaresOwnProperty()` claims, so `ReceiverPropertyFetchHandler` follows `$this->stats?->views` through `PostStats`.
 
 ## Dependency recording policy
 
-Every analyzer file-read flows through `AstParser`, directly or via `MethodLocator`. Skipping it means
-the cache serves stale output when the underlying file changes — a live staleness bug, not a
-theoretical one: the controller paginator analysis parsed controller files without recording a single
-dependency until it was moved onto `AstParser`.
+Every analyzer file read goes through `AstParser::parseFile()`, directly or through [`MethodLocator`]. It records the
+file with `DependencyRecorder::record()` before it checks its AST cache, so a cache hit records the dependency too. A
+read that bypasses it leaves the generation cache serving stale output when that file changes.
+`AstParser::parseSource()` records nothing, so use it only for source that is not on disk.
 
-`AstParser::parseFile(string $path): array<Node>` calls `DependencyRecorder::record($path)`
-unconditionally, before it ever checks the cache — so a cache *hit* still records the dependency, not
-only a cache miss. The parsed AST is cached per path in `$fileAsts`, name-resolved (`NameResolver`
-runs over every file), bounded at `MAX_CACHED_FILES = 128` with FIFO eviction (`array_shift()`) once
-that cap is hit — spread analysis re-reads the same file many times per run, and the cap keeps a large
-app's file set from ballooning memory. `AstParser::parseSource(string $source): array<Node>` parses raw
-PHP text with no caching and no dependency recording; prefer `parseFile()` for anything on disk.
+`MethodLocator` hands a method's file to `parseFile()` and records nothing itself. `locate()` finds a method wherever it
+is declared, matching the name case-insensitively as PHP dispatches. `locateOwn()` searches the class's own file only. A
+method inherited from another file is a deliberate miss, the signal callers use to detect delegation, while a parent
+declared in the same file is a hit. Both memoize misses.
 
-`MethodLocator` finds one method's `ClassMethod` AST node, and its two entry points differ in exactly
-what "found" means:
+The body fallback records its dependencies the same way, because `MethodReturnTypeResolver` re-enters `analyzeMethod()`,
+which reads the helper's file through `MethodLocator`. So a resource typed from a helper's body is invalidated when that
+helper changes.
 
-| Method | Searches | Name match | Miss means |
-| --- | --- | --- | --- |
-| `locateOwn(class, method)` | the class's **own** file only | exact (case-sensitive) | the method is inherited, not declared here — the deliberate signal callers use to detect delegation |
-| `locate(class, method)` | wherever the method is **declared** (class, trait, or parent) | case-insensitive, mirroring PHP's own dispatch | the method genuinely doesn't exist anywhere in the hierarchy |
+### The run memo replays what it recorded
 
-Both memoize hits *and* misses — `memo()` checks `array_key_exists()`, not a truthy/falsy test, so a
-`null` result is cached exactly like a real one and a repeated lookup never re-parses. Both resolve
-their target file and hand it to `AstParser::parseFile()`, which is where the actual dependency
-recording happens; neither method records anything itself.
+[`AnalysisMemo`] is a container singleton holding the engine's cycle guards and a per-run memo of four analyses:
+`AstEngine::analyzeMethod()`, `MethodReturnTypeResolver::resolve()`, `AccessorBodyAnalyzer::analyze()` and
+`ModelAttributeResolver`'s accessor waterfall. Every key but `method-return:`, whose answer does not depend on the
+import mode, gains an `@importless` suffix for an analysis that carries no imports.
+
+A stored answer keeps the dependency paths recorded while it was computed, and every reuse records them again. The
+generation cache therefore sees what a fresh computation would have shown it. An unpinned reuse also replays its
+dropped-arm count, and happens only where computing the answer again could not differ, by the conditions in
+`AnalysisMemo::reproducible()`. The outermost `analyzeMethod()` in a chain is pinned instead: stored even when a cycle
+cut it short, and reused whatever is on the stack.
+
+`AnalysisMemo::forget()` drops every unpinned answer. `Runner::run()`, `RunnerForSource::run()` and
+`ModelAttributeResolver::buildMorphTargetMap()` call it, so a pinned answer outlives a run in the same process.
 
 ## MethodAnalysis
 
-`MethodAnalysis` (`src/Ast/MethodAnalysis.php`) is the unified analysis DTO — the generalized
-`ResourceAnalysis`, which now `extends MethodAnalysis {}` with an empty body. Its thirteen constructor
-properties are the whole surface a `toArray()`-style method analysis carries:
-
-| Field | Shape | Carries |
-| --- | --- | --- |
-| `properties` | `list<{name, type, optional, description}>` | The property list itself. |
-| `enumResources` | `array<string, class-string>` | Property name => enum FQCN, via `EnumResource::make()`. |
-| `nestedResources` | `array<string, class-string>` | Property name => resource FQCN. |
-| `customImports` | `TypesImportMap` | Import path => list of type names, from `#[TsType(import:)]`-annotated classes. |
-| `directEnumFqcns` | `array<string, class-string>` | Property name => FQCN for direct access; FQCN => FQCN for embedded enums. |
-| `modelFqcns` | `array<string, class-string>` | Property name => model FQCN, from a bare `whenLoaded`. |
-| `inlineEnumFqcns` | `array<string, list<class-string>>` | Property name => enum FQCNs embedded in an inline object type string. |
-| `inlineModelFqcns` | `array<string, list<class-string>>` | Property name => model FQCNs embedded in an inline object type string. |
-| `multiEnumResourceFqcns` | `array<string, list<class-string>>` | Property name => ordered enum FQCNs, for a multi-`EnumResource` ternary/union branch (feeds the `AsEnum` rewrite). |
-| `inlineEnumResourceFqcns` | `array<string, list<class-string>>` | Property name => enum FQCNs embedded via `EnumResource` inside an inline object type string (value-import channel). |
-| `enumResourceArmShapes` | `array<string, {wrapIsCollection, directIsArray}>` | Property name => each arm's own array shape, for a mixed `EnumResource`/direct-access ternary whose merged type string already collapsed which arm was the collection. |
-| `flatTypeAlias` | `string\|null` | When set, the collection emits `export type X = SingularResource[]` instead of an interface. |
-| `flatTypeAliasFqcn` | `class-string<JsonResource>\|null` | FQCN of the singular resource for the flat type alias. |
+[`MethodAnalysis`] carries a method's property rows plus the FQCN channels that imports and aliases are built from. Its
+constructor docblock describes each channel.
 
 ### `addProperty()` is the only way a value becomes a property
 
-`addProperty(string $name, array $result, bool $optional = false, string $description = '')` takes a
-handler's `ValueExpressionResult` and turns it into one property row plus every FQCN channel that
-result carries — the single-value maps and `enumResourceArmShapes` through
-`DispatchesFqcnResults::dispatchFqcnResults()`, then the three inline queues and `customImports`
-directly.
+`MethodAnalysis::addProperty()` turns a handler's `ValueExpressionResult` into one property row and routes every channel
+the result carries. Every collector goes through it, so a channel added to `ValueExpressionResult` reaches all of them
+at once. A collector that built rows by hand would miss a new channel silently. Nothing throws, the property still
+types, and only the generated TypeScript shows the missing import or alias.
 
-**Why one entry point rather than each collector doing it.** The collectors used to assemble the DTO
-by hand, at eight sites across `ResourceAstAnalyzer`, `ResolvesModelTypes`, `ThisPropertyHandler` and
-`AstEngine`. Adding a channel meant finding and updating every one, and the failure mode when one was
-missed is the expensive kind: nothing throws, the property still gets a plausible type, and only the
-generated TypeScript says the import or the alias went missing. Routing every collector through
-`addProperty()` means a channel added to `ValueExpressionResult` reaches all of them at once.
+Never deduplicate the three inline queues, `inlineEnumFqcns`, `inlineModelFqcns` and `inlineEnumResourceFqcns`.
+`addProperty()` appends to them, and `merge()` concatenates them per occurrence, for return branches and a spread parent
+alike. `TsTypeString::aliasPropertyType()` walks each as a positional queue against the type's tokens, so a property
+naming the same class twice needs two entries.
 
-Widening `analyzePublicProperties()` onto it is the one place behaviour changed. It dispatched the
-single-value channels and queued no inline FQCNs at all, so a broadcast event property whose `@var`
-unions two same-basename models rendered `User | User` against imports already aliased apart.
-`SameBasenameModelEvent::$actor` now emits `AppUser | CrmUser`.
+Branch merging takes every channel from `merge()`, and [ResourceAstAnalyzer § `mergeReturnBranches()`][merge-branches]
+owns its rules.
 
-**Why the three inline queues append instead of assigning or deduping.** `inlineEnumFqcns`,
-`inlineModelFqcns` and `inlineEnumResourceFqcns` reach
-`TsTypeString::aliasPropertyType()` as positional queues, walked against the type-name tokens in
-the rendered type string. A property whose inline object names the same FQCN twice needs two entries
-or the second token draws the first token's alias, so a repeat has to survive as a repeat.
+### An attribute read carries the attribute's channels
 
-### Merge rules
+A read that publishes a model attribute's type hands on the attribute's `classFqcns`, `enumFqcns` and `customImports`
+through `ValueResult::withAttributeChannels()`. The file then imports every class, enum and `#[TsType]` name that type
+spells. Every read position hands them on, from `$this->accessor` and relation chains to closure parameters, `pluck()`,
+`whenHas()`, `whenAppended()` and a model spread's columns, unless `#[TsCasts]` overrides the name.
+[AccessorBodyAnalyzer][accessor-reads] covers the model side.
 
-`merge(self $source)` folds another analysis into this one, field by field, and each field's merge
-rule differs on purpose:
+A key the resource's own `only()` or `except()` selects keeps only part of these channels, and
+[ResourceAstAnalyzer § A resource's imports follow its published types][resource-imports] covers the rest.
 
-- `properties` **appends**.
-- `enumResources`, `nestedResources`, `directEnumFqcns`, `modelFqcns`, `multiEnumResourceFqcns` and
-  `enumResourceArmShapes` are single-value maps: spread-merged, source wins on a colliding key.
-- `customImports` merges per import path, concatenating each path's type-name list.
-- `inlineEnumFqcns`, `inlineModelFqcns` and `inlineEnumResourceFqcns` concatenate per property key
-  **without** deduping, for the positional-queue reason above. `merge()`'s own docblock states the
-  invariant directly.
+## Dropped union arms
 
-`mergeReturnBranches()` stays on `ResourceAstAnalyzer` rather than moving onto `MethodAnalysis`: it
-needs a per-branch `propertyMap` to union-type a property name several branches set, which a
-field-by-field merge cannot express. It now unions only that `propertyMap` itself and accumulates
-every channel by calling `merge()` on a scratch analysis, so the two can no longer drift apart. It
-still resolves the two `flatTypeAlias*` scalars `merge()` never touches (first non-null branch wins).
-See
-[ResourceAstAnalyzer § `mergeReturnBranches()` carries every `MethodAnalysis::merge()` channel](resource-ast-analyzer.md#mergereturnbranches-carries-every-methodanalysismerge-channel-plus-two-flat-scalars)
-for the corpus evidence behind the per-occurrence rule.
+A union arm the engine cannot type is left out, never widened to `unknown`, so `$cond ? <untypable> : null` publishes
+`null`. `unknown` would be more honest but less specific, and no change may make a published type less specific. Close
+the gap instead with a return type, a `@return` docblock or `#[TsCasts]`. [Known gaps][gap-union-arm] records what users
+see. Return-branch merges outside a spread helper keep the strict rule, where one `unknown` branch makes the key
+`unknown`, as [ResourceAstAnalyzer § A spread helper drops an untypable branch][spread-branches] explains.
+
+[`DroppedUnionArms`] records the drops made at a fixed set of sites, and each entry names its site, so a site that goes
+silent shows. The sites are `ValueResult::analyzeClosureUnion()`, `TernaryHandler`'s narrowed arm,
+`KnownFunctionCallHandler`'s `data_get()` default and `CoalesceHandler`. `analyzeClosureUnion()` records because
+`unionResults()` receives only resolved results and cannot name the expression it drops. `CoalesceHandler` builds its
+own member list, because `??` never returns its left operand's `null`. It strips that arm with
+`ValueResult::stripNullArm()`, which the ternary union would keep. `ConditionalMethodHandler::applyConditionalDefault()`
+also leaves an `unknown` default arm out, but records nothing, so neither the drop count nor `DroppedUnionArmsAuditTest`
+sees that drop.
+
+Recording is off until a test calls `start()`, but the count always runs. `AccessorBodyAnalyzer` and `VariableHandler`
+compare it around a read to tell a dropped arm's `null` from a literal one, and `AnalysisMemo` replays it for a reused
+answer.
+
+`DroppedUnionArmsAuditTest` fails on a workbench arm missing from
+`tests/Unit/Ast/Fixtures/dropped-union-arms-baseline.php`, and on a baseline entry the corpus no longer drops. It also
+proves each recording site still fires. The baseline only shrinks: teach a rule to type the shape, then delete its
+entries. A recorded arm is a candidate gap, not a proven loss, because `ClosureHandler` and `VariableHandler` fall back
+to a return-type annotation or to `null`. Read the published property before you call an entry a bug.
 
 ## Public API
 
-```php
-AstEngine::analyze(string $class, string $method = 'toArray', ?string $modelClass = null, string $fromNamespacePath = ''): AnalysisResult
-```
+`AstEngine::analyze()` and the [`AnalysisResult`] it returns are the engine's whole public surface. The
+[Analyzer API](https://tolki.abe.dev/ts/analyzer-api.html) page documents them for users, including the shapes
+`analyze()` cannot answer. Everything else under `src/Ast/` is `@internal`, and
+`tests/Architecture/InternalBoundaryTest.php` enforces three rules:
 
-That signature and the `AnalysisResult` it returns are the engine's whole public surface. Everything
-else here — `analyzeMethod()`, `analyzePublicProperties()`, `bindingsFor()`, `AnalysisImports`,
-`AnalysisComposer`, every handler and DTO — is `@internal`, checked by
-`tests/Architecture/InternalBoundaryTest.php`; the three rules it enforces are in
-[known gaps](../known-gaps.md). The rest of this section documents those internals for people working
-*on* the engine, not for consumers of it.
+- Every other class under `src/Ast/` carries the tag.
+- No untagged class extends a tagged one.
+- No untagged public signature names an internal type.
 
-`analyze()` runs `analyzeMethod()` for the raw DTO and hands it to `AnalysisComposer`, which is what
-makes the three fields agree with each other:
+`AstEngine`'s other public methods each carry their own `@internal` tag, because each names `MethodAnalysis`,
+`MethodContext` or `AnalysisScope`, and the signature rule skips a tagged method. [Known gaps][gap-non-goals] records
+why the engine offers no extension point.
 
-1. **Index the properties by name.** `MethodAnalysis::$properties` is an append-only list, so a model
-   spread that repeats a key it already carries appears twice; rendered as-is those are duplicate
-   interface members. `ApiPostResource` measures 30 raw properties against 27 composed ones.
-2. **Resolve name collisions and rewrite the types.** Two `ImportNameRegistry` instances — one for type
-   names, a sibling for enum const names — over the enum, resource and model maps, then
-   `aliasPropertyType()` per property against its positional FQCN queue. This is the half
-   `AnalysisImports` deliberately leaves out; without it `ImageDelegatedResource` returns
-   `reviewable: User | User | null` beside two `User` imports.
-3. **Rewrite the `EnumResource` wraps** to `AsEnum<typeof Const>` — the same three cases
-   `ResourceTransformer::rewriteEnumResourceTypes()` handles: the plain substitution, the mixed
-   ternary whose arms are synthesized from `enumResourceArmShapes`, and the multi-enum ternary
-   replaced branch by branch. Gated on `ts-publish.enums.use_tolki_package`; with it off the bare
-   enum type name is already the right answer and its type import survives.
-4. **Import exactly the tokens the rewritten types spell.** One rule replaces two special cases:
-   `AnalysisImports::asEnumWrappedOnlyFqcns()`'s wrapped-only GC, and
-   `ResourceTransformer::pruneOverriddenEnumImports()`'s override GC. An enum the wrap replaced and
-   an enum a `#[TsCasts]` override displaced are both simply unspelled, so neither is imported.
+`analyze()` hands `analyzeMethod()`'s DTO to [`AnalysisComposer`], which aliases same-basename collisions, rewrites
+`EnumResource` wraps to `AsEnum<typeof X>`, and imports only the names the rewritten types spell.
 
-`$fromNamespacePath` is the generated file's own namespace path, so relative import paths resolve from
-where the file will live; `''` means the output root.
+`AnalysisComposer` tests each name with `TsTypeString::typeNameOccursIn()`, which keeps the import of a name only a
+string or a comment spells, unused at worst. See [known gaps][gap-spelled-name]. Where its identifier boundary departs
+from TypeScript's, the test either keeps an import unused or misreads syntax TypeScript rejects anyway. A name right
+after a numeric literal is one such case, and a name beside a character TypeScript refuses there, reported as TS1127, is
+another. `TsTypeString`'s identifier-character constants record which Unicode tables the boundary follows.
 
-`tests/Feature/AnalyzeApiProbeTest.php` renders the result of eight of these analyses into real `.ts`
-modules under `workbench/resources/js/types/data/testing/analysis-probe/`, so the
-[unimportable-token gate](../testing/type-inference-gates.md) type-checks them with `tsc`. Before the
-composer those eight files produced 11 diagnostics — TS2304, TS6133/TS6192, TS2300 and TS2344.
+`ResourceTransformer` applies the same test to a resource's own imports, as
+[ResourceAstAnalyzer § A resource's imports follow its published types][resource-imports] describes.
 
-`AnalysisResult` carries only those three fields, so a `$wrap = null` collection — whose entire answer
-lives in `MethodAnalysis`'s `flatTypeAlias`/`flatTypeAliasFqcn`, a channel neither `AnalysisImports`
-nor `AnalysisComposer` reads — comes back with all three empty, losing even the singular resource's
-type import. `PostFlatCollection` measures as `properties: []`, `typeImports: []`, `valueImports: []`
-against a `flatTypeAlias` of `PostResource[]`. There is no public answer for that shape.
+Three consumers rewrite a `MethodAnalysis`'s channels before importing, so they call `analyzeMethod()` and
+`AnalysisImports::build()` themselves: `InertiaSharedDataAnalyzer`, `ModelMetadataAnalyzer` and
+`BroadcastEventTransformer`. [`AnalysisImports`] decides what to import but never aliases, so a caller whose file can
+spell two same-named tokens runs `ImportNameRegistry` over the result. See
+[ImportNameRegistry](import-name-registry.md).
 
-Two more shapes `analyze()` does not answer, both recorded in the README's own capability list: a
-`morphTo` union needs the morph target map `BaseRunner::run()` builds by scanning every model class,
-so outside a publish run `resolveModelRelationTypeInfo()` types it `unknown` and the property is
-dropped altogether — `ImageDelegatedResource::imageable` is exactly that. And a form request's
-published interface comes from `FormRequestRulesAnalyzer` calling `rules()` at runtime, not from the
-engine, so `analyze($request, 'rules')` types the rules array itself: one
-`Record<string, unknown>` per rule key, dotted paths and all.
+A `$wrap = null` collection comes back from `analyze()` with all three fields empty, its singular resource's import
+included. Its whole answer lives in `MethodAnalysis::$flatTypeAlias` and `$flatTypeAliasFqcn`, which neither
+`AnalysisImports` nor `AnalysisComposer` reads.
 
-```php
-AstEngine::analyzeMethod(string $class, string $method = 'toArray', ?string $modelClass = null): MethodAnalysis
-AstEngine::analyzePublicProperties(string $class): MethodAnalysis
-```
+`tests/Feature/AnalyzeApiProbeTest.php` renders `analyze()` results into
+`workbench/resources/js/types/data/testing/analysis-probe/`, so the
+[unimportable-token gate](../testing/type-inference-gates.md) type-checks the public API's output with `tsc`.
 
-The other boundary is deliberate: in-package consumers that rewrite a `MethodAnalysis`'s FQCN channels
-before importing must build from the mutated DTO, so they keep calling `analyzeMethod()` and
-`AnalysisImports::build()` themselves rather than `analyze()`. There are three:
+## Which entry each consumer uses
 
-- `InertiaSharedDataAnalyzer::buildInferredImports()` filters against an analysis it has already run
-  `forgetOverriddenChannels()` over.
-- `ModelMetadataAnalyzer` prunes the same channels inline before building.
-- `BroadcastEventTransformer::transformProperties()` unsets eight channels for each `#[TsCasts]`
-  override, needs the `MethodAnalysis` object itself for `resolveProperties()`, and reaches
-  `analyzePublicProperties()` instead when the event has no `broadcastWith()`.
+Each consumer enters the engine at the point that fits its subject:
 
-`analyzeMethod()` analyzes one method body's return shape. `$method` defaults to `'toArray'`, the
-resource case, but any class/method pair works identically. When
-`$modelClass` is omitted and `$class` is a `JsonResource` subclass, it resolves the backing model via
-`ModelClassResolver::resolve()` (the same precedence `ResourceTransformer` uses, so the two never
-disagree about which model a resource wraps) before constructing
-`new ResourceAstAnalyzer($reflection, $modelClass, $method)` and calling `analyze()`.
+| Consumer | Entry | Why that entry |
+| --- | --- | --- |
+| `ResourceTransformer` | `ResourceAstAnalyzer::analyze()` on the resource profile | A resource's `toArray()` is that profile's own subject |
+| `BroadcastEventTransformer` | `analyzeMethod($event, 'broadcastWith')`, else `analyzePublicProperties()`, and `ReturnLiteralReader` for `broadcastAs()` | `hasMethod()` counts an inherited or trait `broadcastWith()`, as Laravel does |
+| `InertiaPageAnalyzer` | The controller profile over `bindingsFor()`'s scope, and `analyzeMethod()` only for props delegated whole to a collaborator | Page props are expressions in an action, not a method's return |
+| `InertiaSharedDataAnalyzer` | `analyzeMethod($middleware, 'share')` and `AnalysisImports::build()` | It rewrites channels before importing |
+| `ModelMetadataAnalyzer` | `bindingsFor()` on the declaring class's `provide()`, then `ResourceAstAnalyzer` on the resource profile | `analyzeMethod()` seeds no bindings. See [Model metadata][metadata-consumer]. |
+| `AccessorBodyAnalyzer` | `analyzeModelClosure()` on `forModelClosures()` | The model is the subject, so a trait's accessor reads `$this` as the model using it |
+| `MethodReturnTypeResolver` | `analyzeMethod()` with `carriesImports: false` | It is the body fallback. See [Receiver types][body-fallback]. |
 
-`analyzePublicProperties()` analyzes a class's public properties instead of a method body — promoted
-constructor parameters *and* class-body declarations, `@var` docblock first, native reflected type
-second. It skips any property a used trait declares (transitively), so a `#[TsExtends]` trait's own
-fields aren't emitted twice by the class that uses it. A property that is neither promoted nor
-defaulted is marked `optional`, because `json_encode()` omits it when it was never assigned;
-nullability stays separate, expressed as `| null` in the type. Reflection cannot see a constructor
-assignment, so a property a hand-written constructor always assigns still renders `?:` —
-`DeclaredPropsEvent::$label` is exactly that case.
+## Related
 
-`ReturnLiteralReader::stringLiteral(string $class, string $method): ?string` returns the one string
-literal a method returns, and `null` for anything else — several returns, no return, or an expression
-that merely *starts* with a literal. `'order.'.$this->kind` reads `null`, not `"order."` — folding a
-concatenation to its prefix and shipping that as a broadcast name is worse than emitting no key at all,
-because with no key the caller falls back to a convention it controls. The return count stops at
-every nested `FunctionLike`, so a closure's own `return` neither counts toward the total nor stands in
-for the method's — a plain `NodeFinder` sweep has no such boundary and over-rejects on it.
+These pages cover the engine's neighbors:
 
-`AnalysisImports::build(MethodAnalysis $analysis, string $fromNamespacePath): array{typeImports:
-TypesImportMap, valueImports: TypesImportMap}` turns a `MethodAnalysis`'s FQCN channels into resolved
-import maps for one generated file. What it does:
+- [Receiver types](receiver-types.md): how the engine names the class a `$x->m()` or `$x->prop` receiver holds.
+- [ResourceAstAnalyzer](resource-ast-analyzer.md): the resource-specific rules the handlers implement.
+- [AccessorBodyAnalyzer](accessor-body-analyzer.md) and [Model metadata](model-metadata.md): the two model-side
+  consumers.
+- [ImportNameRegistry](import-name-registry.md): aliasing two same-basename imports.
+- [Known gaps § Handler ordering is pinned pairwise][gap-ordering]: why a green ordering suite is narrower than it
+  looks.
+- [Type inference gates](../testing/type-inference-gates.md): the CI checks that read the generated types.
+- [ADR: freeze Laravel Surveyor/Ranger and exit in stages](../decisions/2026-08-31-surveyor-staged-exit.md): why every
+  inference feature moved onto this engine.
 
-- **Merges** colliding import paths. Two of its three FQCN maps (enum, resource, model) can resolve to
-  the same path — an app that keeps enums, models, and resources in one namespace — and `build()`
-  folds their name lists together rather than letting the second map's names replace the first's. This
-  is a deliberate divergence from `ResourceTransformer::buildResolvedImports()`, which spreads the
-  three maps together and so silently drops a whole path's names when two of them collide.
-- **Prunes** the type import for an enum reachable only through an `EnumResource`/`AsEnum` wrap (gated
-  on `ts-publish.enums.use_tolki_package`) — mirroring `ResourceTransformer::rewriteEnumResourceTypes()`'s
-  own import garbage collection, so a wrapped-only enum never emits a dead `import type` that trips a
-  consumer's `noUnusedLocals`.
-
-What it does **not** do: alias-conflict resolution. Every name it emits is the plain type/const name,
-unaliased — a caller whose file can emit two same-named tokens (the same-basename-across-namespaces
-case `ImportNameRegistry` exists for) runs `Support\ImportNameRegistry` over the result itself; that
-collision handling is deliberately kept out of `AnalysisImports`, which only resolves *what* to import,
-not what to *call* it once two imports collide. `AnalysisComposer` is the one caller that does run
-`ImportNameRegistry` over the result, which is why `analyze()` needs it and the three channel-rewriting
-consumers above do not. See [ImportNameRegistry](import-name-registry.md) for that half, and the
-[Analyzer API](https://tolki.abe.dev/ts/analyzer-api.html) page for the user-facing walkthrough of
-calling `AstEngine::analyze()`.
-
-## Consumers
-
-`BroadcastEventTransformer` is the first feature on this API, and shows the intended shape of a
-consumer: `analyzeMethod($fqcn, 'broadcastWith')` when the event has one — `hasMethod()`, so an
-inherited or trait-supplied `broadcastWith()` counts, matching what Laravel itself calls — and
-`analyzePublicProperties($fqcn)` otherwise, `ReturnLiteralReader` for the Echo name, then
-`AnalysisImports::build()` for every channel its own FQCN maps do not already own. Those two maps —
-enums and models — stay transformer-side because only the transformer knows the `Partial<Model>`
-presentation and the `ImportNameRegistry` aliases a same-basename collision forces; `buildTypeImports()`
-skips any `AnalysisImports` name they already emitted, so an alias is never shadowed by a bare
-duplicate.
-
-`InertiaPageAnalyzer` is the other shape a consumer can take: instead of one method's return shape it
-resolves *expressions* — every `Inertia::render()` props argument in a controller action — through the
-[controller profile](#controller-profile) over a scope built by `AstEngine::bindingsFor()`, merging
-same-component branches with `mergeReturnBranches()` so a key present in only one branch becomes
-optional. It reaches for `AstEngine::analyzeMethod()` directly only when the props are delegated whole
-to a collaborator (`Inertia::render('X', $this->service->build())`).
-
-`ModelMetadataAnalyzer` (`src/Analyzers/Metadata/`) is the second `bindingsFor()` caller and the third
-shape: it locates a metadata provider's `provide()` on its **declaring** class, seeds the scope so the
-`Model $model` parameter's method calls reflect Laravel's own docblocks, and runs `ResourceAstAnalyzer` on
-the default resource profile with that scope — not through `analyzeMethod()`, which seeds no bindings and
-would drop them on an inherited body. Docblock and method-level `#[TsCasts]` overrides layer on top, the
-FQCN channels of overridden or unreturned keys are forgotten, `modelFqcns` / `nestedResources` are cleared
-(a runtime metadata array need not satisfy a model interface), and `AnalysisImports::build()` supplies the
-enum imports the surviving inferred types spell. It strips the `customImports` that
-`applyTsCastsFromMethod()` already appended for the method's own `#[TsCasts]`, whose imports
-`TsCastsImportResolver` owns. See [model-metadata.md](model-metadata.md#body-inference-is-an-engine-consumer).
+[`AnalysisComposer`]: ../../src/Ast/AnalysisComposer.php
+[`AnalysisImports`]: ../../src/Ast/AnalysisImports.php
+[`AnalysisMemo`]: ../../src/Ast/AnalysisMemo.php
+[`AnalysisResult`]: ../../src/Ast/AnalysisResult.php
+[`AnalysisScope`]: ../../src/Ast/AnalysisScope.php
+[`AstEngine`]: ../../src/Ast/AstEngine.php
+[`AstParser`]: ../../src/Ast/AstParser.php
+[`CollectsInstanceofGuards`]: ../../src/Ast/Concerns/CollectsInstanceofGuards.php
+[`ControllerExpressionHandlers`]: ../../src/Ast/ControllerExpressionHandlers.php
+[`DroppedUnionArms`]: ../../src/Ast/DroppedUnionArms.php
+[`ExpressionDispatcher`]: ../../src/Ast/ExpressionDispatcher.php
+[`ExpressionEngine`]: ../../src/Ast/Contracts/ExpressionEngine.php
+[`ExpressionHandler`]: ../../src/Ast/Contracts/ExpressionHandler.php
+[`MethodAnalysis`]: ../../src/Ast/MethodAnalysis.php
+[`MethodLocator`]: ../../src/Ast/MethodLocator.php
+[`ResourceAstAnalyzer`]: ../../src/Analyzers/ResourceAstAnalyzer.php
+[`ResourceExpressionHandlers`]: ../../src/Ast/ResourceExpressionHandlers.php
+[`ReturnLiteralReader`]: ../../src/Ast/ReturnLiteralReader.php
+[`SubjectPropertyTypeResolver`]: ../../src/Ast/SubjectPropertyTypeResolver.php
+[accessor-reads]: accessor-body-analyzer.md#a-getter-that-reads-another-models-accessor
+[attribute-filters]: resource-ast-analyzer.md#attribute-filters-on-any-model-receiver
+[body-fallback]: receiver-types.md#the-body-fallback-carries-no-fqcn-channel
+[collection-pipelines]: resource-ast-analyzer.md#collection-pipelines
+[gap-narrowing]: ../known-gaps.md#instanceof-narrowing-depends-on-the-spelling-in-four-different-ways
+[gap-non-goals]: ../known-gaps.md#deliberate-non-goals
+[gap-ordering]: ../known-gaps.md#handler-ordering-is-pinned-pairwise-corpus-bounded
+[gap-spelled-name]: ../known-gaps.md#a-tscasts-value-that-spells-an-imported-name-inside-a-string-template-or-comment-keeps-the-import
+[gap-union-arm]: ../known-gaps.md#a-union-arm-the-engine-cannot-type-is-left-out-so-the-union-publishes-the-other-arm
+[merge-branches]: resource-ast-analyzer.md#mergereturnbranches-carries-every-methodanalysismerge-channel-plus-two-flat-scalars
+[metadata-consumer]: model-metadata.md#body-inference-is-an-engine-consumer
+[resource-imports]: resource-ast-analyzer.md#a-resources-imports-follow-its-published-types
+[spread-branches]: resource-ast-analyzer.md#a-spread-helper-drops-an-untypable-branch
+[ternary]: receiver-types.md#a-ternarys-instanceof-condition

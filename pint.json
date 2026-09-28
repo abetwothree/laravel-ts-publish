@@ -1,6 +1,7 @@
 {
     "preset": "laravel",
     "exclude": [
+        "docs/superpowers",
         "vendor"
     ],
     "rules": {

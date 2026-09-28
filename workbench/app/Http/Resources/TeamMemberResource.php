@@ -30,6 +30,10 @@ class TeamMemberResource extends JsonResource
             'email' => $this->email,
             'role' => $this->whenHas('role'),
             'membership_level' => $this->whenHas('membership_level'),
+
+            // Same enum column read through a value closure: whenHas() answers from the value before it
+            // can tag the enum channel itself, so the channel has to travel inside $role's own result.
+            'role_via_value' => $this->whenHas('role', fn ($role) => $role),
             'avatar' => $this->whenNotNull($this->avatar),
             'team_role' => $this->whenPivotLoaded('team_user', function () {
                 return $this->pivot->role;

@@ -14,7 +14,6 @@ use Illuminate\Http\Resources\Json\JsonResource;
  *
  * @phpstan-import-type TypesImportMap from Datable
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
- * @phpstan-import-type ResourcePropertyInfoList from AnalysisResult
  *
  * @phpstan-type ClassMapType = array<string, class-string>
  * @phpstan-type ImportMapType = TypesImportMap
@@ -23,6 +22,14 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * @phpstan-type MultiEnumFqcnsMap = array<string, list<class-string>>
  * @phpstan-type EnumResourceArmShape = array{wrapIsCollection: bool, directIsArray: bool}
  * @phpstan-type EnumResourceArmShapeMap = array<string, EnumResourceArmShape>
+ * @phpstan-type AnalyzedProperty = array{
+ *     name: string,
+ *     type: string,
+ *     optional: bool,
+ *     description: string,
+ *     bodyType?: string,
+ * }
+ * @phpstan-type AnalyzedPropertyList = list<AnalyzedProperty>
  *
  * @internal
  */
@@ -31,7 +38,8 @@ class MethodAnalysis
     use DispatchesFqcnResults;
 
     /**
-     * @param  ResourcePropertyInfoList  $properties
+     * @param  AnalyzedPropertyList  $properties  `bodyType` is set only on an index signature whose value a docblock
+     *                                            fill or a same-pattern union changed: the value its body gives it
      * @param  ClassMapType  $enumResources  property name => enum FQCN (via EnumResource::make)
      * @param  ClassMapType  $nestedResources  property name => resource FQCN
      * @param  ImportMapType  $customImports  import path => list of type names
@@ -135,5 +143,15 @@ class MethodAnalysis
                 ...($this->inlineEnumResourceFqcns[$propName] ?? []), ...$fqcns,
             ];
         }
+    }
+
+    /** Whether any FQCN channel carries an entry for this property name, whose tokens are rewritten under it. */
+    public function hasFqcnChannel(string $name): bool
+    {
+        return isset($this->enumResources[$name]) || isset($this->nestedResources[$name])
+            || isset($this->directEnumFqcns[$name]) || isset($this->modelFqcns[$name])
+            || isset($this->inlineEnumFqcns[$name]) || isset($this->inlineModelFqcns[$name])
+            || isset($this->multiEnumResourceFqcns[$name]) || isset($this->inlineEnumResourceFqcns[$name])
+            || isset($this->enumResourceArmShapes[$name]);
     }
 }

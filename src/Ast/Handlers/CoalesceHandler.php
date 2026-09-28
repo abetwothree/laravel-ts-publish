@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\BinaryOp;
@@ -43,10 +44,14 @@ final class CoalesceHandler implements ExpressionHandler
             $leftType = ValueResult::stripNullArm($leftType);
 
             if ($leftType === 'unknown' || $leftType === '') {
+                DroppedUnionArms::record($expr->left, $scope, 'coalesce-left');
+
                 return ValueResult::mergeUnion([$rightType], [$rightResult]);
             }
 
             if ($rightType === 'unknown') {
+                DroppedUnionArms::record($expr->right, $scope, 'coalesce-right');
+
                 return ValueResult::mergeUnion([$leftType], [$leftResult]);
             }
 

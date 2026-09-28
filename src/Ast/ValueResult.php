@@ -9,12 +9,19 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use PhpParser\Node\Expr;
+use ReflectionClass;
 
 /**
  * Shared building blocks for ExpressionHandler results.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypesImportMap from Datable
+ *
+ * @phpstan-type AttributeChannels = array{
+ *      enumFqcns: list<class-string>,
+ *      classFqcns: list<class-string>,
+ *      customImports?: TypesImportMap
+ * }
  *
  * @internal
  */
@@ -59,6 +66,57 @@ final class ValueResult
     }
 
     /**
+     * Whether every model a result names gets a published file; a framework or abstract model such as `Model` does not.
+     *
+     * A token with no file behind it would be emitted without an import, so the result declines instead.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    public static function namesOnlyPublishedModels(array $result): bool
+    {
+        $models = [...(isset($result['modelFqcn']) ? [$result['modelFqcn']] : []), ...($result['embeddedModelFqcns'] ?? [])];
+
+        foreach ($models as $model) {
+            if (str_starts_with($model, 'Illuminate\\') || new ReflectionClass($model)->isAbstract()) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Carry a model attribute's FQCN channels onto the result that reads it, so every class, enum and `#[TsType]` name
+     * the attribute's type spells keeps its import wherever the read is published.
+     *
+     * One FQCN of a kind rides its single-entry channel and several ride the embedded one, as `$this->attr` reads do.
+     *
+     * @param  ValueExpressionResult  $result
+     * @param  AttributeChannels  $attribute
+     * @return ValueExpressionResult
+     */
+    public static function withAttributeChannels(array $result, array $attribute): array
+    {
+        if (count($attribute['enumFqcns']) > 1) {
+            $result['embeddedEnumFqcns'] = $attribute['enumFqcns'];
+        } elseif ($attribute['enumFqcns'] !== []) {
+            $result['directEnumFqcn'] = $attribute['enumFqcns'][0];
+        }
+
+        if (count($attribute['classFqcns']) > 1) {
+            $result['embeddedModelFqcns'] = $attribute['classFqcns'];
+        } elseif ($attribute['classFqcns'] !== []) {
+            $result['modelFqcn'] = $attribute['classFqcns'][0];
+        }
+
+        if (($attribute['customImports'] ?? []) !== []) {
+            $result['customImports'] = $attribute['customImports'];
+        }
+
+        return $result;
+    }
+
+    /**
      * Merge multiple branch expressions into a single union-typed ValueExpressionResult.
      *
      * Null returns (guard clauses) contribute `null` to the union instead of a full object shape;
@@ -67,16 +125,38 @@ final class ValueResult
      * @param  list<Expr>  $returns
      * @return ValueExpressionResult
      */
-    public static function analyzeClosureUnion(array $returns, ExpressionEngine $engine): array
+    public static function analyzeClosureUnion(array $returns, ExpressionEngine $engine, AnalysisScope $scope): array
+    {
+        $results = array_map($engine->resolve(...), $returns);
+
+        // Paired with their expressions here because unionResults() receives results only, and by then
+        // the Expr an audit has to name is gone. The arm is still dropped, never widened to `unknown`.
+        foreach ($results as $index => $result) {
+            if ($result['type'] === 'unknown') {
+                DroppedUnionArms::record($returns[$index], $scope, 'closure-union');
+            }
+        }
+
+        return self::unionResults($results);
+    }
+
+    /**
+     * Merge already-resolved branch results into a single union-typed ValueExpressionResult.
+     *
+     * A branch the engine could not type is dropped rather than widening the union to `unknown` (D1);
+     * a caller that resolves its arms under its own narrowing enters here instead of resolving twice.
+     *
+     * @param  list<ValueExpressionResult>  $results
+     * @return ValueExpressionResult
+     */
+    public static function unionResults(array $results): array
     {
         /** @var list<string> $types */
         $types = [];
         /** @var list<ValueExpressionResult> $branchResults every non-unknown branch, for channel merging */
         $branchResults = [];
 
-        foreach ($returns as $returnExpr) {
-            $inner = $engine->resolve($returnExpr);
-
+        foreach ($results as $inner) {
             if ($inner['type'] === 'unknown') {
                 continue; // @codeCoverageIgnore
             }

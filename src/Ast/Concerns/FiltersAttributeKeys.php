@@ -5,17 +5,20 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafeMethodCall;
+use PhpParser\Node\Identifier;
 use PhpParser\Node\Scalar\String_;
 use ReflectionMethod;
 
 /**
- * The `only`/`except` filter vocabulary and the key list read off such a call's arguments.
- *
- * The single home for both: FiltersModelAttributes composes this trait for `$this->only([...])`,
- * RelationFilterHandler for `$this->relation->only([...])`. Stateless — no host state is read.
+ * The `only`/`except` filter vocabulary, the key list read off such a call's arguments, and whether a class runs
+ * Model's, Support\Collection's or Eloquent\Collection's own filter. The one home for all three: filter-aware code
+ * reads keys and overrides here, and the generic reflectors ask it which calls to decline. It reads no host state.
  *
  * @internal
  */
@@ -75,5 +78,58 @@ trait FiltersAttributeKeys
         }
 
         return $keys !== [] ? $keys : null;
+    }
+
+    /**
+     * Whether a call is an `only()`/`except()` attribute filter, whatever its key list.
+     *
+     * The generic reflectors ask this to decline: `Model::except()`'s `@return array` reflects to a list, and a
+     * many-relation's filter keeps models by primary key. RelationFilterHandler and the receiver rules own them.
+     */
+    protected function callsAttributeFilter(MethodCall|NullsafeMethodCall $call): bool
+    {
+        return ! $call->isFirstClassCallable()
+            && $call->name instanceof Identifier
+            && in_array($call->name->toString(), $this->supportedAttributeFilters(), true);
+    }
+
+    /**
+     * Whether a class runs Model's own `only()`/`except()`, whose return the filter answers describe.
+     *
+     * An override declares its own return, which reflection answers instead wherever it can type it; see
+     * ReceiverMethodReturnResolver::typesAsModelFilter() for the override it cannot.
+     *
+     * @param  class-string  $class
+     */
+    protected function runsModelFilter(string $class, string $methodName): bool
+    {
+        return method_exists($class, $methodName)
+            && new ReflectionMethod($class, $methodName)->getDeclaringClass()->getName() === Model::class;
+    }
+
+    /**
+     * Whether a class runs Support\Collection's own `only()`/`except()`, which keep the entries whose keys are listed.
+     *
+     * Eloquent\Collection overrides both to keep whole models by primary key, so it never matches.
+     *
+     * @param  class-string  $class
+     */
+    protected function runsCollectionFilter(string $class, string $methodName): bool
+    {
+        return is_a($class, Collection::class, true)
+            && method_exists($class, $methodName)
+            && new ReflectionMethod($class, $methodName)->getDeclaringClass()->getName() === Collection::class;
+    }
+
+    /**
+     * Whether a class runs Eloquent\Collection's own `only()`/`except()`, which keep whole models by primary key.
+     *
+     * @param  class-string  $class
+     */
+    protected function runsEloquentCollectionFilter(string $class, string $methodName): bool
+    {
+        return is_a($class, EloquentCollection::class, true)
+            && method_exists($class, $methodName)
+            && new ReflectionMethod($class, $methodName)->getDeclaringClass()->getName() === EloquentCollection::class;
     }
 }

@@ -50,7 +50,7 @@ export interface Image
     tree_from_docblock: { label: string; child: unknown[] };
     price_from_docblock: { amount: number; currency: string };
     label_from_docblock: string;
-    no_docblock_accessor: unknown;
+    no_docblock_accessor: null;
     wrong_format_docblock: string | null;
     positive_int_accessor: number;
     numeric_string_accessor: string;

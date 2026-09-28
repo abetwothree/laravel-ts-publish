@@ -70,9 +70,9 @@ class FluentSelfResource extends JsonResource
             // summary() declares `: array`, so the expression is no longer the resource — the analyzer
             // resolves the method body instead of degrading, giving `{ id: number }`.
             'parent_summary' => $this->whenLoaded('parent', fn () => new self($this->parent)->summary()),
-            // Scope boundary: the receiver is a *foreign* resource class, so its body would need a second
-            // analyzer instance to resolve. Out of scope — this deliberately stays at the `unknown` floor,
-            // and must never be "improved" to CategoryResource, which the payload is not.
+            // The receiver is a *foreign* resource class, so its body is resolved by a second analyzer
+            // through the method-body fallback, giving `{ slug: string }`. It must never be "improved"
+            // to CategoryResource, which the payload is not.
             'foreign_summary' => $this->whenLoaded('parent', fn () => new CategoryResource($this->parent)->summary()),
             // `?static` — must keep the resource type but add `| null`, not just the bare resource.
             'parent_fluent_nullable' => $this->whenLoaded('parent', fn () => new self($this->parent)->whenAuthorized()),

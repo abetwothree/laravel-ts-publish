@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ChecksPreserveKeys;
-use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
@@ -33,6 +34,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
 {
     use ChecksPreserveKeys;
     use InspectsAstNodes;
+    use InspectsResourceCalls;
 
     /** @var list<string> The `@tolki/types` names ModelFinderHandler renders a paginator as. */
     private const PAGINATOR_NAMES = ['LengthAwarePaginator', 'SimplePaginator', 'CursorPaginator'];

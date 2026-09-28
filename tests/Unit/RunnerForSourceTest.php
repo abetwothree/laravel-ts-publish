@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
@@ -13,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Runners\RunnerForSource;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CountingTsTypeString;
 use Illuminate\Filesystem\Filesystem;
 
 use function Orchestra\Testbench\workbench_path;
@@ -278,6 +280,17 @@ test('a --source run clears a full run\'s stale registry instead of narrowing ag
     expect($sourceRunner->resourceGenerators->first()->content)
         ->toContain('owner_via_closure?: UserResource;')
         ->not->toContain('owner_via_closure?: unknown;');
+});
+
+test('a --source run drops the global qualifications an earlier run memoized', function () {
+    $service = new CountingTsTypeString;
+    TsTypeString::swap($service);
+    TsTypeString::qualifyGlobalType('User', ['app.models' => ['User']]);
+
+    new RunnerForSource('Workbench\App\Enums\Status')->run();
+    TsTypeString::qualifyGlobalType('User', ['app.models' => ['User']]);
+
+    expect($service->qualifications)->toBe(2);
 });
 
 test('a --source run clears a leftover AnalysisWarnings entry instead of leaking it', function () {

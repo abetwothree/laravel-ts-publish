@@ -1,62 +1,39 @@
 # RouteTransformer
 
-> User-facing docs: [README § Routes](../../README.md#routes). Verified by
-> [the type-inference gates](../testing/type-inference-gates.md).
+[`RouteTransformer`](../../src/Transformers/RouteTransformer.php) builds each controller action's `RouteActionData`.
+This page covers one piece of it, the `_routeKey` a model-bound parameter carries, which tells `defineRoute()` from
+`@tolki/ts` which property to read when a caller passes a model instead of a scalar.
+`RouteTransformer::resolveBindingField()` resolves the key, and `RouteTransformer::overridesRouteKey()` decides
+whether the model is worth constructing to ask.
 
-`AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer` builds each controller action's
-`RouteActionData`, including the `_routeKey` a model-bound parameter emits so the generated
-`defineRoute()` helper knows which model property to read when a caller passes a model instance
-instead of a scalar. This doc is scoped to that one piece: how a model-bound parameter's route key
-is resolved.
+## How a route key resolves
 
-## `resolveBindingField()`'s resolution order
+`resolveBindingField()` takes the first answer in this order:
 
-`resolveBindingField()` (`src/Transformers/RouteTransformer.php`) resolves the `_routeKey` for a
-single route parameter, checked in this order — the first hit wins:
+1. An explicit `{post:slug}` binding, read through `Route::bindingFieldFor()`. The model is not consulted.
+2. `null`, when the parameter has no class type or its class is not a `Model`.
+3. The model's own `getRouteKeyName()`, when `overridesRouteKey()` says the key can differ from `'id'`. The model is
+   constructed once per class and cached.
+4. `'id'`, without constructing the model.
 
-1. **Explicit `{param:field}` binding.** `Route::bindingFieldFor($paramName)` reads Laravel's own
-   explicit binding syntax (`Route::get('/articles/{article:slug}', ...)`). If present, it wins
-   outright — nothing about the model itself is consulted.
-2. **Not a typed model parameter.** If the reflected parameter has no class type, or the type isn't
-   a `Model` subclass, there is no route key to resolve at all — the method returns `null`.
-3. **The `overridesRouteKey()` gate.** Before instantiating the model, `overridesRouteKey()` checks
-   whether the class *would* answer anything other than `'id'`. See below.
-4. **Instantiate and ask.** Only when the gate says yes does `resolveBindingField()` build (or reuse
-   a cached) instance and call `$instance->getRouteKeyName()` for the real answer. Otherwise it
-   short-circuits to the literal `'id'` without ever constructing the model.
+## `overridesRouteKey()` must see every source of a non-default key
 
-## Why the gate exists: instantiation is the expensive step
+Constructing a model runs its constructor, which on Laravel 13 also resolves its class attributes through
+`initializeModelAttributes()`. Most route models key by `id` and gain nothing from that, so the transformer asks
+reflection first and builds a model only when its key can differ.
 
-Building a model instance runs its constructor, which in Laravel 13 also resolves several of the
-`Illuminate\Database\Eloquent\Attributes` class attributes (`#[Table]`, `#[Connection]`, etc.) via
-`initializeModelAttributes()`. Doing that for every model-typed route parameter in the entire route
-tree — most of which key by the default `'id'` and gain nothing from asking — would be wasted work
-at generation time. `overridesRouteKey()` is a cheap, purely-reflective pre-check that answers "would
-instantiating this model produce something other than `'id'`?" without paying the instantiation cost
-for the common case.
+The check is sound only while it tracks every input to Laravel's `Model::getRouteKeyName()`, which reads the
+`#[RouteKey]` attribute and falls back to `getKeyName()`, which reads `$primaryKey`. So `overridesRouteKey()` returns
+true when `getRouteKeyName()`, `getKeyName()` or `$primaryKey` is declared below `Model`, or when the class carries
+`#[RouteKey]`. A source it misses publishes `'id'` for a model that binds by another key, with no error.
 
-## The four signals `overridesRouteKey()` checks
+`#[RouteKey]` first ships in Laravel 13.21.0, so the check names it by string behind `class_exists()`. Its guard is
+recorded in [Version-guarded Laravel classes](../laravel-version-guards.md).
 
-`overridesRouteKey(string $className): bool` returns `true` — meaning instantiation is worth it — the
-moment any of these four hold, and `false` (skip straight to `'id'`) only when none do:
+## Related
 
-1. `getRouteKeyName()` is declared somewhere other than `Illuminate\Database\Eloquent\Model` itself.
-2. `getKeyName()` is declared somewhere other than `Model` — Eloquent's own `getRouteKeyName()`
-   delegates to `getKeyName()` by default, so an override there changes the answer just as much as
-   overriding `getRouteKeyName()` directly.
-3. `$primaryKey` is declared somewhere other than `Model` — the property `getKeyName()` itself reads
-   by default.
-4. The class carries Laravel 13's `#[RouteKey]` class attribute (`Illuminate\Database\Eloquent\Attributes\RouteKey`),
-   read via `ReflectionClass::getAttributes()`. Laravel's own `Model::getRouteKeyName()` resolves this
-   attribute when none of the first three overrides are present, so a model carrying *only* the
-   attribute needs this fourth check — without it, none of the first three signals fire and the gate
-   would wrongly report `'id'` even though instantiating the model and calling `getRouteKeyName()`
-   would return the attribute's key.
+These pages cover route usage and the `#[RouteKey]` guard:
 
-All four checks are purely reflective — no model gets constructed to evaluate them — which is what
-keeps the gate cheap enough to run for every model-typed route parameter.
-
-The `#[RouteKey]` attribute does not exist before Laravel 13.0.0, so signal 4 is guarded by
-`class_exists()` on its string FQCN rather than a `use` import. See [Version-guarded Laravel
-classes](../laravel-version-guards.md) for the guard's registry row and when it can be converted to
-a plain import.
+- [Routing](https://tolki.abe.dev/ts/routing.html) in the tolki docs, for how route files are used.
+- [Version-guarded Laravel classes](../laravel-version-guards.md), for when the `#[RouteKey]` guard can become an
+  import.

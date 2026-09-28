@@ -19,6 +19,33 @@ class TsTypeString
     ];
 
     /**
+     * A character TypeScript reads as part of an identifier: Unicode ID_Continue, `$`, ZWNJ and ZWJ, plus U+30FB and
+     * U+FF65, which joined ID_Continue in Unicode 15.1 and so are missing from an older PCRE2's tables.
+     */
+    protected const string IDENTIFIER_CHARACTER = '[\p{ID_Continue}$\x{200C}\x{200D}\x{30FB}\x{FF65}]';
+
+    /**
+     * The same set for a PCRE2 before 10.40, which lacks `\p{ID_Continue}`: its categories and Other_ID code points,
+     * less U+2E2F, the one letter Unicode makes pattern syntax and so never an identifier character.
+     */
+    protected const string IDENTIFIER_CHARACTER_FALLBACK = '(?:(?!\x{2E2F})[\p{L}\p{Nl}\p{Mn}\p{Mc}\p{Nd}\p{Pc}$'
+        .'\x{200C}\x{200D}\x{B7}\x{387}\x{1369}-\x{1371}\x{19DA}\x{2118}\x{212E}\x{309B}\x{309C}\x{30FB}\x{FF65}])';
+
+    /** The identifier-character pattern this process's PCRE2 compiles, decided on first use. */
+    protected static ?string $identifierCharacter = null;
+
+    /**
+     * The namespace and alias maps the memoized qualifications were made under. qualifyGlobalType() reads nothing
+     * else, so its answers hold until a call brings other maps.
+     *
+     * @var array{array<string, list<string>>, array<string, string>}|null
+     */
+    protected ?array $qualificationMaps = null;
+
+    /** @var array<string, string> skip namespace and type string => the qualified type string */
+    protected array $qualifiedTypes = [];
+
+    /**
      * Whether a resolved shape value contains an identifier that would need an import to be valid.
      *
      * extractImportableTypes() can't be reused: it skips '<'/'{' content, which docblock shapes routinely have.
@@ -29,10 +56,18 @@ class TsTypeString
     public function shapeValueHasUnimportableToken(string $type, array $importableNames = []): bool
     {
         // The `?` of an optional key is not a token separator, so a key stripped without it survives as
-        // `name?` and reads as an unimportable value.
-        $withoutKeys = (string) preg_replace('/\b\w+\s*\??\s*:/', '', $type);
+        // `name?` and reads as an unimportable value. A quoted key (`"1"`, from an int or constant array
+        // key) is a key just the same, and nothing imports it.
+        $withoutKeys = (string) preg_replace('/(?:\b\w+|"[^"]*")\s*\??\s*:/', '', $type);
 
-        $tokens = preg_split('/[<>{}()|,;\[\]\s]+/', $withoutKeys, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        // A string or number literal needs no import, whatever it spells.
+        $withoutLiterals = (string) preg_replace(
+            ['/\'(?:[^\'\\\\]|\\\\.)*\'|"(?:[^"\\\\]|\\\\.)*"/', '/(?<![\w$.])-?\d+(?:\.\d+)?(?![\w$.])/'],
+            ' ',
+            $withoutKeys,
+        );
+
+        $tokens = preg_split('/[<>{}()|,;\[\]\s]+/', $withoutLiterals, -1, PREG_SPLIT_NO_EMPTY) ?: [];
 
         foreach ($tokens as $token) {
             if (in_array($token, self::TS_PRIMITIVES, true) || in_array($token, $importableNames, true)) {
@@ -126,7 +161,7 @@ class TsTypeString
      * Prefix unqualified type names in a TypeScript type string with their global namespace.
      *
      * Pass 1 resolves per-file import aliases (`CrmUser` → `models.User`) first, so aliased names
-     * reach the namespace-qualification pass already resolved.
+     * reach the namespace-qualification pass already resolved. A quoted string literal is left as written.
      *
      * @param  string  $typeStr  The TypeScript type string to rewrite.
      * @param  array<string, list<string>>  $namespacedTypes  Map of namespace prefix → type names it owns.
@@ -135,41 +170,23 @@ class TsTypeString
      */
     public function qualifyGlobalType(string $typeStr, array $namespacedTypes, string $skipNamespace = '', array $aliasResolution = []): string
     {
-        // Pass 1: resolve per-file import aliases to their namespace-qualified equivalents
-        foreach ($aliasResolution as $alias => $qualified) {
-            $lastDot = strrpos($qualified, '.');
-            $targetNs = $lastDot !== false ? substr($qualified, 0, $lastDot) : '';
-            $replacement = ($targetNs === $skipNamespace)
-                ? substr($qualified, $lastDot + 1)
-                : $qualified;
-            $pattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($alias, '/').'(?![A-Za-z0-9_$])/';
-            $typeStr = preg_replace($pattern, $replacement, $typeStr) ?? $typeStr;
+        // The globals file passes the same two maps for every property, so most calls repeat a type already qualified.
+        if ($this->qualificationMaps !== [$namespacedTypes, $aliasResolution]) {
+            $this->qualificationMaps = [$namespacedTypes, $aliasResolution];
+            $this->qualifiedTypes = [];
         }
 
-        // Pass 2: names that also exist in the skip namespace belong to the current context,
-        // so they must not be re-qualified with another namespace.
-        /** @var list<string> $skipTypeNames */
-        $skipTypeNames = $namespacedTypes[$skipNamespace] ?? [];
+        return $this->qualifiedTypes[$skipNamespace."\0".$typeStr]
+            ??= $this->qualifyGlobalTypeOnce($typeStr, $namespacedTypes, $skipNamespace, $aliasResolution);
+    }
 
-        foreach ($namespacedTypes as $namespace => $typeNames) {
-            if ($namespace === $skipNamespace) {
-                continue;
-            }
-
-            // Match longer names first to avoid partial replacements (e.g. 'StatusType' before 'Status')
-            usort($typeNames, fn (string $a, string $b): int => strlen($b) - strlen($a));
-
-            foreach ($typeNames as $typeName) {
-                if (in_array($typeName, $skipTypeNames, true)) {
-                    continue;
-                }
-
-                $pattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($typeName, '/').'(?![A-Za-z0-9_$])/';
-                $typeStr = preg_replace($pattern, $namespace.'.'.$typeName, $typeStr) ?? $typeStr;
-            }
-        }
-
-        return $typeStr;
+    /**
+     * Drop the memoized global qualifications, when a publish run starts.
+     */
+    public function forgetQualifiedTypes(): void
+    {
+        $this->qualificationMaps = null;
+        $this->qualifiedTypes = [];
     }
 
     /**
@@ -217,14 +234,36 @@ class TsTypeString
     }
 
     /**
-     * Whether a TypeScript type name occurs as its own token, not inside a longer identifier.
-     *
-     * Only a leading `.` disqualifies: `foo.StatusType` is a property read, while `StatusType.foo`
-     * reads a member of the type and so still names it.
+     * The type with an `undefined` arm appended, unless it already has one at the top level: an `undefined` inside a
+     * shape, a `Record` or a string literal does not admit an absent key.
      */
-    public function typeNameOccursIn(string $typeName, string $haystack): bool
+    public function orUndefined(string $type): string
     {
-        return preg_match('/(?<![A-Za-z0-9_$.])'.preg_quote($typeName, '/').'(?![A-Za-z0-9_$])/', $haystack) === 1;
+        return in_array('undefined', $this->splitTopLevelUnion($type), true) ? $type : $type.' | undefined';
+    }
+
+    /**
+     * Whether a type name occurs as its own token in any of the given types, wherever it stands: a name inside a
+     * string, template or comment counts too, since a kept import is unused at worst while a hidden one breaks the
+     * generated file. `foo.StatusType` is a member access and `CrmStatusType` a longer name; `...StatusType[]` counts.
+     */
+    public function typeNameOccursIn(string $typeName, string ...$types): bool
+    {
+        // An identifier character on either side joins the name, and a `.` after one is a member access. `[...User]`
+        // still counts, as does `import('x').User`; a name right after a numeric literal (`1User`) is missed.
+        $class = $this->identifierCharacter();
+        $pattern = '/(?<!'.$class.')(?<!'.$class.'\.)'.preg_quote($typeName, '/').'(?!'.$class.')/u';
+
+        foreach ($types as $type) {
+            $decoded = $this->decodeIdentifierEscapes($type);
+
+            // A type PCRE cannot decode or read (invalid UTF-8) keeps the name rather than drops its import.
+            if ($decoded === null || preg_match($pattern, $decoded) !== 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -275,6 +314,16 @@ class TsTypeString
     }
 
     /**
+     * Whether a type is `unknown` once its `null` arms are removed, as a `static|null` docblock reflects.
+     *
+     * TypeScript already reads `unknown | null` as `unknown`, so a handler declining one loses nothing.
+     */
+    public function isUnknownOnly(string $type): bool
+    {
+        return array_values(array_diff($this->splitTopLevelUnion($type), ['null'])) === ['unknown'];
+    }
+
+    /**
      * A "vague" TS type carries no element information, so a docblock generic can usually do better.
      *
      * An object-literal shape is never vague even when a key resolves to 'unknown' — a bare 'unknown'
@@ -283,5 +332,109 @@ class TsTypeString
     public function isVagueTsType(string $type): bool
     {
         return $type === 'object' || (str_contains($type, 'unknown') && ! str_contains($type, '{'));
+    }
+
+    /**
+     * Qualify one type string under the given maps, leaving each quoted string literal as written.
+     *
+     * @param  array<string, list<string>>  $namespacedTypes
+     * @param  array<string, string>  $aliasResolution
+     */
+    protected function qualifyGlobalTypeOnce(string $typeStr, array $namespacedTypes, string $skipNamespace, array $aliasResolution): string
+    {
+        // A literal's text is a value, so 'Post' must stay 'Post'. A template literal is matched only so a quote inside
+        // it opens no string; its own text is qualified like the rest.
+        $literal = '/(\'(?:[^\'\\\\]|\\\\.)*\'|"(?:[^"\\\\]|\\\\.)*"|`(?:[^`\\\\]|\\\\.)*`)/s';
+        $segments = preg_split($literal, $typeStr, -1, PREG_SPLIT_DELIM_CAPTURE) ?: [$typeStr];
+        $qualifiable = array_filter(
+            $segments,
+            static fn (string $segment, int $index): bool => $index % 2 === 0 || str_starts_with($segment, '`'),
+            ARRAY_FILTER_USE_BOTH,
+        );
+        [$patterns, $replacements] = $this->qualificationRules($namespacedTypes, $skipNamespace, $aliasResolution);
+        $qualified = preg_replace($patterns, $replacements, $qualifiable);
+
+        return implode('', array_replace($segments, $qualified));
+    }
+
+    /**
+     * The rewrites that qualify a name, applied in order: per-file aliases first, then every other namespace's names.
+     *
+     * @param  array<string, list<string>>  $namespacedTypes
+     * @param  array<string, string>  $aliasResolution
+     * @return array{list<string>, list<string>} the patterns, and the replacement for each
+     */
+    protected function qualificationRules(array $namespacedTypes, string $skipNamespace, array $aliasResolution): array
+    {
+        $patterns = [];
+        $replacements = [];
+
+        // Pass 1: resolve per-file import aliases to their namespace-qualified equivalents
+        foreach ($aliasResolution as $alias => $qualified) {
+            $lastDot = strrpos($qualified, '.');
+            $targetNs = $lastDot !== false ? substr($qualified, 0, $lastDot) : '';
+            $patterns[] = '/(?<![A-Za-z0-9_$.])'.preg_quote($alias, '/').'(?![A-Za-z0-9_$])/';
+            $replacements[] = ($targetNs === $skipNamespace)
+                ? substr($qualified, $lastDot + 1)
+                : $qualified;
+        }
+
+        // Pass 2: names that also exist in the skip namespace belong to the current context,
+        // so they must not be re-qualified with another namespace.
+        /** @var list<string> $skipTypeNames */
+        $skipTypeNames = $namespacedTypes[$skipNamespace] ?? [];
+
+        foreach ($namespacedTypes as $namespace => $typeNames) {
+            if ($namespace === $skipNamespace) {
+                continue;
+            }
+
+            // Match longer names first to avoid partial replacements (e.g. 'StatusType' before 'Status')
+            usort($typeNames, fn (string $a, string $b): int => strlen($b) - strlen($a));
+
+            foreach ($typeNames as $typeName) {
+                if (in_array($typeName, $skipTypeNames, true)) {
+                    continue;
+                }
+
+                $patterns[] = '/(?<![A-Za-z0-9_$.])'.preg_quote($typeName, '/').'(?![A-Za-z0-9_$])/';
+                $replacements[] = $namespace.'.'.$typeName;
+            }
+        }
+
+        return [$patterns, $replacements];
+    }
+
+    /**
+     * The identifier-character pattern this PCRE2 compiles: `\p{ID_Continue}` from 10.40 on, its stand-in before.
+     */
+    protected function identifierCharacter(): string
+    {
+        // Probed once per process, silenced so an older PCRE2 falls back instead of its warning failing the command.
+        return static::$identifierCharacter ??= @preg_match('/'.static::IDENTIFIER_CHARACTER.'/u', '') !== false
+            ? static::IDENTIFIER_CHARACTER
+            : static::IDENTIFIER_CHARACTER_FALLBACK;
+    }
+
+    /**
+     * Spell each `\uXXXX` or `\u{X…}` escape as the character it names, as TypeScript reads one in a name; null when
+     * PCRE cannot run the pattern.
+     */
+    protected function decodeIdentifierEscapes(string $type): ?string
+    {
+        if (! str_contains($type, '\\u')) {
+            return $type;
+        }
+
+        $pattern = '/\\\\u(?:\{([0-9A-Fa-f]+)\}|([0-9A-Fa-f]{4}))/';
+
+        return preg_replace_callback($pattern, static function (array $match): string {
+            $codePoint = hexdec($match[1] !== '' ? $match[1] : $match[2]);
+            $char = is_int($codePoint) && $codePoint <= 0x10FFFF ? mb_chr($codePoint, 'UTF-8') : false;
+
+            // Every escape is decoded whatever this PCRE2's tables hold: one left as written runs its digits into the
+            // next name. One naming no Unicode scalar value (a surrogate, past U+10FFFF) stays; TypeScript rejects it.
+            return $char === false ? $match[0] : $char;
+        }, $type);
     }
 }

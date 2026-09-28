@@ -8,17 +8,28 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use BackedEnum;
+use DateTimeInterface;
+use JsonSerializable;
 use PhpParser\BuilderFactory;
+use PhpParser\ConstExprEvaluationException;
+use PhpParser\ConstExprEvaluator;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ClassConstFetch;
+use PhpParser\Node\Expr\ConstFetch;
+use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use ReflectionClass;
+use ReflectionMethod;
+use ReflectionNamedType;
 use Throwable;
 use UnitEnum;
 
 /**
- * Resolves `SomeClass::CONSTANT` value expressions and `SomeClass::class` arguments via reflection.
+ * Resolves `SomeClass::CONSTANT` value expressions and `SomeClass::class` arguments via reflection, and types
+ * any other constant expression, such as a parameter default, by evaluating it.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -69,23 +80,9 @@ final class ValueResolver
             return ['type' => 'string', 'optional' => false];
         }
 
-        $className = $expr->class->toString();
+        $className = $this->constantClassName($expr->class, $scope);
 
-        // Resolve self/static/parent so a constant declared on the resource (or its parent) is
-        // readable, matching how analyzeNewResource()/analyzeStaticCall() treat those keywords.
-        if ($className === 'self' || $className === 'static') {
-            $className = $scope->subjectReflection->getName();
-        } elseif ($className === 'parent') {
-            $parentReflection = $scope->subjectReflection->getParentClass();
-
-            if ($parentReflection === false) {
-                return null; // @codeCoverageIgnore — every JsonResource subclass has a parent
-            }
-
-            $className = $parentReflection->getName();
-        }
-
-        if (! class_exists($className) && ! interface_exists($className) && ! enum_exists($className)) {
+        if ($className === null || ! $this->classLikeExists($className)) {
             return null;
         }
 
@@ -113,6 +110,51 @@ final class ValueResolver
         }
 
         return $this->analyzeConstantValue($value, $engine);
+    }
+
+    /**
+     * Evaluate a constant expression, such as a parameter default, as PHP does, reading every constant and enum
+     * property it names the way evaluateFallback() describes.
+     *
+     * @throws ConstExprEvaluationException for a value it cannot know, such as `new`, a magic constant or a variable
+     */
+    public function evaluateConstantExpression(Expr $expr, AnalysisScope $scope): mixed
+    {
+        $evaluator = null;
+        $evaluator = new ConstExprEvaluator(function (Expr $node) use ($scope, &$evaluator): mixed {
+            /** @var ConstExprEvaluator $evaluator */
+            return $this->evaluateFallback($node, $scope, $evaluator);
+        });
+
+        return $evaluator->evaluateSilently($expr);
+    }
+
+    /**
+     * Type an evaluated constant value the way a class constant's value is typed, or null when it cannot be.
+     *
+     * An array whose keys all pass is_numeric() yet which is not a list declines: a resource re-indexes it into a list,
+     * which the record it would type as does not describe.
+     *
+     * @return ValueExpressionResult|null
+     */
+    public function resolveConstantValue(mixed $value, ExpressionEngine $engine): ?array
+    {
+        return $this->holdsNumericKeyedRecord($value) ? null : $this->analyzeConstantValue($value, $engine);
+    }
+
+    /**
+     * Type `new X(...)` by the string json_encode() writes X as, such as a Carbon date's, whatever TS name the package
+     * publishes X under: `string`, or `string | null` for a nullable one; null for any other class.
+     *
+     * @return ValueExpressionResult|null
+     */
+    public function resolveStringSerializedNew(New_ $new): ?array
+    {
+        $class = $new->class instanceof Name ? $new->class->toString() : null;
+
+        $type = $class !== null && class_exists($class) ? $this->stringSerializationType($class) : null;
+
+        return $type === null ? null : ['type' => $type, 'optional' => false];
     }
 
     /**
@@ -311,5 +353,159 @@ final class ValueResolver
         }
 
         return $deepest;
+    }
+
+    /**
+     * The class a constant fetch names, or null for `parent` on a subject that has none.
+     */
+    private function constantClassName(Name $class, AnalysisScope $scope): ?string
+    {
+        $className = $class->toString();
+
+        // Resolve self/static/parent so a constant declared on the resource (or its parent) is
+        // readable, matching how analyzeNewResource()/analyzeStaticCall() treat those keywords.
+        if ($className === 'self' || $className === 'static') {
+            return $scope->subjectReflection->getName();
+        }
+
+        if ($className === 'parent') {
+            $parentReflection = $scope->subjectReflection->getParentClass();
+
+            return $parentReflection === false
+                ? null // @codeCoverageIgnore — every JsonResource subclass has a parent
+                : $parentReflection->getName();
+        }
+
+        return $className;
+    }
+
+    /**
+     * Whether a class, interface or enum of this name can be loaded.
+     *
+     * @phpstan-assert-if-true class-string $className
+     */
+    private function classLikeExists(string $className): bool
+    {
+        return class_exists($className) || interface_exists($className) || enum_exists($className);
+    }
+
+    /**
+     * ConstExprEvaluator's fallback: a class constant or enum case through reflection, a global constant as defined
+     * where the types are published, or an enum case's `->name` or `->value`.
+     *
+     * @throws ConstExprEvaluationException for any other node
+     */
+    private function evaluateFallback(Expr $expr, AnalysisScope $scope, ConstExprEvaluator $evaluator): mixed
+    {
+        return match (true) {
+            $expr instanceof ClassConstFetch => $this->evaluateClassConstFetch($expr, $scope),
+            $expr instanceof ConstFetch => $this->evaluateGlobalConstant($expr),
+            $expr instanceof PropertyFetch => $this->evaluateEnumProperty($expr, $evaluator),
+            default => throw new ConstExprEvaluationException("Expression of type {$expr->getType()} cannot be evaluated"),
+        };
+    }
+
+    /**
+     * The value of the class constant or enum case a constant expression names, read through reflection since a
+     * default may name a constant only its own class can see.
+     *
+     * @throws ConstExprEvaluationException for a computed name, or a constant that cannot be read
+     */
+    private function evaluateClassConstFetch(ClassConstFetch $expr, AnalysisScope $scope): mixed
+    {
+        if (! $expr->class instanceof Name || ! $expr->name instanceof Identifier) {
+            throw new ConstExprEvaluationException('A computed class constant cannot be evaluated');
+        }
+
+        $className = $this->constantClassName($expr->class, $scope);
+        $constName = $expr->name->toString();
+
+        if ($className !== null && strtolower($constName) === 'class') {
+            return $className;
+        }
+
+        $constant = $className !== null && $this->classLikeExists($className)
+            ? new ReflectionClass($className)->getReflectionConstant($constName)
+            : false;
+
+        if ($constant === false) {
+            throw new ConstExprEvaluationException("Constant {$className}::{$constName} cannot be read");
+        }
+
+        return $constant->getValue();
+    }
+
+    /**
+     * The value of a global constant, looked up in the namespace PHP would try first, then globally.
+     *
+     * @throws ConstExprEvaluationException when neither is defined
+     */
+    private function evaluateGlobalConstant(ConstFetch $expr): mixed
+    {
+        $namespaced = $expr->name->getAttribute('namespacedName');
+
+        foreach ([$namespaced instanceof Name ? $namespaced->toString() : null, $expr->name->toString()] as $name) {
+            if ($name !== null && defined($name)) {
+                return constant($name);
+            }
+        }
+
+        throw new ConstExprEvaluationException("Constant {$expr->name->toString()} is not defined");
+    }
+
+    /**
+     * The `->name` or `->value` of the enum case a constant expression reads.
+     *
+     * @throws ConstExprEvaluationException for any other property, or a receiver that is not an enum case
+     */
+    private function evaluateEnumProperty(PropertyFetch $expr, ConstExprEvaluator $evaluator): int|string
+    {
+        $case = $expr->name instanceof Identifier ? $evaluator->evaluateDirectly($expr->var) : null;
+        $property = $expr->name instanceof Identifier ? $expr->name->toString() : '';
+
+        return match (true) {
+            $case instanceof UnitEnum && $property === 'name' => $case->name,
+            $case instanceof BackedEnum && $property === 'value' => $case->value,
+            default => throw new ConstExprEvaluationException("Property {$property} of an enum case cannot be read"),
+        };
+    }
+
+    /**
+     * The type json_encode() writes an instance as, when a string: `string | null` for a `?string` jsonSerialize(),
+     * `string` for a `string` one or for a date that keeps Carbon's own, the ISO string; null for anything else.
+     */
+    private function stringSerializationType(string $class): ?string
+    {
+        if (! is_a($class, JsonSerializable::class, true)) {
+            return null;
+        }
+
+        $method = new ReflectionMethod($class, 'jsonSerialize');
+        $type = $method->getReturnType();
+
+        if ($type instanceof ReflectionNamedType && $type->getName() === 'string') {
+            return $type->allowsNull() ? 'string | null' : 'string';
+        }
+
+        return is_a($class, DateTimeInterface::class, true) && str_starts_with($method->getDeclaringClass()->getName(), 'Carbon\\')
+            ? 'string'
+            : null;
+    }
+
+    /**
+     * Whether a value holds, at any depth, an array whose keys all pass is_numeric() yet which is not a list: the rule
+     * a resource's removeMissingValues() re-indexes by.
+     */
+    private function holdsNumericKeyedRecord(mixed $value): bool
+    {
+        if (! is_array($value)) {
+            return false;
+        }
+
+        if (! array_is_list($value) && array_all(array_keys($value), fn (int|string $key): bool => is_numeric($key))) {
+            return true;
+        }
+
+        return array_any($value, fn (mixed $item): bool => $this->holdsNumericKeyedRecord($item));
     }
 }

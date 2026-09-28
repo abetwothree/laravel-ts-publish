@@ -5,10 +5,15 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsInstanceofGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\Closure as ClosureExpr;
 use ReflectionClass;
 use ReflectionNamedType;
 use ReflectionProperty;
@@ -16,70 +21,49 @@ use ReflectionProperty;
 /**
  * Public entry point: `analyze()` — a class and a method in, properties and imports out.
  *
- * It and `AnalysisResult` are the engine's whole public surface. The other three methods here are
+ * It and `AnalysisResult` are the engine's whole public surface. The other four methods here are
  * `@internal` like the rest of `src/Ast`: each traffics in a DTO whose shape tracks inference.
+ *
+ * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  */
 final class AstEngine
 {
+    use CollectsInstanceofGuards;
     use CollectsLocalVarBindings;
 
-    /** @var array<string, true> class@method@modelClass keys currently on the call stack — cycle guard. */
-    private array $analyzing = [];
-
-    /** @var array<string, MethodAnalysis> class@method@modelClass => completed analysis, for reuse. */
-    private array $resultCache = [];
+    /** How many analyses are in progress, so the outermost one in a chain can be told apart. */
+    private int $depth = 0;
 
     /**
-     * Analyze a method body's return shape. Resources get full resource semantics ('toArray'
-     * default); any other class/method runs the same engine with the same handlers.
-     *
-     * Guarded against reentrant cycles (a spread reaching back to a class already mid-analysis) and
-     * memoized per class@method@modelClass whenever the call has no active ancestor of its own, so
-     * two resources spreading each other can't recurse until memory is exhausted.
+     * Analyze a method body's return shape: resources get full resource semantics ('toArray' default), and any other
+     * class or method runs the same engine with the same handlers. Cycle-guarded, and memoized for the run through
+     * AnalysisMemo: the outermost call in its chain always, any other call once nothing cut it short.
      *
      * @param  class-string  $class
      * @param  class-string<Model>|null  $modelClass  Backing model for `$this->prop` resolution; null to skip.
+     * @param  bool  $carriesImports  false when the caller keeps only the flattened types, never the FQCN channels
      *
      * @internal
      */
-    public function analyzeMethod(string $class, string $method = 'toArray', ?string $modelClass = null): MethodAnalysis
-    {
+    public function analyzeMethod(
+        string $class,
+        string $method = 'toArray',
+        ?string $modelClass = null,
+        bool $carriesImports = true,
+    ): MethodAnalysis {
         $reflection = new ReflectionClass($class);
 
         if ($modelClass === null && is_a($class, JsonResource::class, true)) {
             $modelClass = resolve(ModelClassResolver::class)->resolve($reflection);
         }
 
-        $key = $class.'@'.$method.'@'.($modelClass ?? '');
+        $key = 'analysis:'.$class.'@'.$method.'@'.($modelClass ?? '').($carriesImports ? '' : '@importless');
 
-        if (isset($this->resultCache[$key])) {
-            return clone $this->resultCache[$key];
-        }
-
-        // Already on the stack: a self-spread or a cycle through other classes. Contribute nothing
-        // rather than re-entering — the caller's own merge() treats an empty analysis as a no-op.
-        if (isset($this->analyzing[$key])) {
-            return new MethodAnalysis;
-        }
-
-        // An active ancestor may itself be cut short by a cycle closing back through it, so what we
-        // compute here can be a truncated shape — caching that would make the result depend on which
-        // entry point ran first. Only the outermost call in its chain is safe to memoize.
-        $hasActiveAncestor = $this->analyzing !== [];
-
-        $this->analyzing[$key] = true;
-
-        try {
-            $analysis = new ResourceAstAnalyzer($reflection, $modelClass, $method)->analyze();
-        } finally {
-            unset($this->analyzing[$key]);
-        }
-
-        if ($hasActiveAncestor) {
-            return $analysis;
-        }
-
-        $this->resultCache[$key] = $analysis;
+        $analysis = resolve(AnalysisMemo::class)->remember(
+            $key,
+            fn (): MethodAnalysis => $this->analyzeOnce($reflection, $method, $modelClass, $carriesImports, $key),
+            pin: $this->depth === 0,
+        );
 
         return clone $analysis;
     }
@@ -115,11 +99,9 @@ final class AstEngine
     }
 
     /**
-     * Build the starting scope for a located method: its subject, the classes its parameters bind,
-     * and the single-write local variables its body assigns.
-     *
-     * A route-bound `Post $post` and an injected `Request $request` are both parameter facts the
-     * resource path never had, which is why they are seeded here rather than inside the analyzer.
+     * Build the starting scope for a located method: its subject, its body's file, the classes its parameters bind and
+     * the locals its body assigns. Parameters are seeded here because a route-bound `Post $post` or an injected
+     * `Request $request` is a fact the resource path never had.
      *
      * @internal
      */
@@ -129,6 +111,8 @@ final class AstEngine
         $methodName = $context->method->name->toString();
 
         if ($context->reflection->hasMethod($methodName)) {
+            $scope->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($context->reflection->getMethod($methodName));
+
             foreach ($context->reflection->getMethod($methodName)->getParameters() as $parameter) {
                 $type = $parameter->getType();
 
@@ -149,8 +133,43 @@ final class AstEngine
         }
 
         $this->collectLocalVarBindings($context->method->stmts ?? [], $scope);
+        $this->collectInstanceofGuards($context->method->stmts ?? [], $scope);
 
         return $scope;
+    }
+
+    /**
+     * Resolve one closure (an accessor getter, or a method body wrapped as one) against a model subject.
+     *
+     * @param  class-string<Model>  $modelClass
+     * @param  bool  $carriesImports  false when an analysis that carries no import reads the accessor
+     * @return ValueExpressionResult
+     *
+     * @internal
+     */
+    public function analyzeModelClosure(
+        string $modelClass,
+        ClosureExpr|ArrowFunction $closure,
+        MethodContext $context,
+        bool $carriesImports = true,
+    ): array {
+        $scope = $this->bindingsFor($context);
+
+        // A trait-declared accessor still reads `$this` as the model that uses the trait.
+        $scope->subjectReflection = self::genericReflection($modelClass);
+        $scope->modelClass = $modelClass;
+        $scope->carriesImports = $carriesImports;
+
+        $analyzer = new ResourceAstAnalyzer(
+            $scope->subjectReflection,
+            $modelClass,
+            $context->method->name->toString(),
+            ResourceExpressionHandlers::forModelClosures(),
+            $scope,
+            $context,
+        );
+
+        return $analyzer->resolve($closure);
     }
 
     /**
@@ -185,6 +204,48 @@ final class AstEngine
         }
 
         return $analysis;
+    }
+
+    /**
+     * A reflection typed as the invariant `ReflectionClass<object>` the scope's own property declares.
+     *
+     * @param  class-string  $className
+     * @return ReflectionClass<object>
+     */
+    private static function genericReflection(string $className): ReflectionClass
+    {
+        return new ReflectionClass($className);
+    }
+
+    /**
+     * Run one analysis of a method body, entering its cycle guard for the duration.
+     *
+     * @param  ReflectionClass<object>  $reflection
+     * @param  class-string<Model>|null  $modelClass
+     */
+    private function analyzeOnce(
+        ReflectionClass $reflection,
+        string $method,
+        ?string $modelClass,
+        bool $carriesImports,
+        string $key,
+    ): MethodAnalysis {
+        $memo = resolve(AnalysisMemo::class);
+
+        // Already on the stack: a self-spread or a cycle through other classes. Contribute nothing
+        // rather than re-entering — the caller's own merge() treats an empty analysis as a no-op.
+        if (! $memo->enter($key)) {
+            return new MethodAnalysis;
+        }
+
+        $this->depth++;
+
+        try {
+            return new ResourceAstAnalyzer($reflection, $modelClass, $method, carriesImports: $carriesImports)->analyze();
+        } finally {
+            $this->depth--;
+            $memo->leave($key);
+        }
     }
 
     /**

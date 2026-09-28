@@ -5,3 +5,9 @@ parameters:
     tmpDir: build/phpstan
     checkOctaneCompatibility: true
     checkModelProperties: true
+    ignoreErrors:
+        # The catch is live: Laravel's HandleExceptions turns unserialize()'s warning on bad data into an exception.
+        -
+            identifier: catch.neverThrown
+            path: src/Cache/Concerns/SignsCachePayloads.php
+            reportUnmatched: false

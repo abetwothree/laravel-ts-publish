@@ -72,7 +72,7 @@ it('stops the @var walk at an unmatched closer and skips an empty union member',
     $reflection = new ReflectionClass(EdgeCaseDocblocks::class);
 
     // Unfixed, the quoted '>' drives depth negative and the trailing prose is captured as type.
-    expect($reader->read($reflection->getProperty('comparison'))['type'])->toBe('{ op: unknown }')
+    expect($reader->read($reflection->getProperty('comparison'))['type'])->toBe("{ op: '>' }")
         ->and($reader->read($reflection->getProperty('owner')))
         ->toBe(['type' => 'User', 'optional' => false, 'modelFqcn' => User::class]);
 });

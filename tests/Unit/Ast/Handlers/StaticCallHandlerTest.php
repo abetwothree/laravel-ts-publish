@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\NewResourceHandler;
@@ -24,10 +25,15 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\CategoryResource;
+use Workbench\App\Http\Resources\EventLogResource;
 use Workbench\App\Http\Resources\FluentSelfResource;
 use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Http\Resources\ReceiverMethodResource;
+use Workbench\App\Models\Activity;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\TrackingEvent;
+use Workbench\App\Models\Venue;
 
 /**
  * An engine that fails the test if a handler calls back into it, proving the handler resolved or
@@ -122,6 +128,34 @@ it('reads toResource(resourceClass: …) and toResourceCollection(resourceClass:
         ->toBe(['type' => 'PostResource[]', 'optional' => false, 'resourceFqcn' => PostResource::class]);
 });
 
+// The decline is all-or-nothing on purpose: Venue resolves to VenueResource and Activity resolves to
+// nothing, so a partial union would publish VenueResource for a property that can hold an Activity.
+it('declines a morph union receiver when any target has no resource class', function () {
+    $expr = new MethodCall(new Variable('subject'), 'toResource');
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class));
+    $scope->varClassBindings['subject'] = [Venue::class, Activity::class];
+
+    $result = (new ToResourceHandler)->resolve($expr, $scope, staticCallHandlerThrowingEngine());
+
+    expect($result)->toBe(['type' => 'unknown', 'optional' => false]);
+});
+
+// Identical resource FQCNs are the only thing the dedupe can collapse, so two arms holding the same
+// model are exactly its trigger: the union must spell EventLogResource once, not twice.
+it('renders one token when two morph union targets resolve to the same resource class', function () {
+    $expr = new MethodCall(new Variable('subject'), 'toResource');
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class));
+    $scope->varClassBindings['subject'] = [TrackingEvent::class, TrackingEvent::class];
+
+    $result = (new ToResourceHandler)->resolve($expr, $scope, staticCallHandlerThrowingEngine());
+
+    expect($result)->toBe([
+        'type' => 'EventLogResource',
+        'optional' => false,
+        'embeddedResourceFqcns' => [EventLogResource::class],
+    ]);
+});
+
 // StaticCallHandler
 
 it('resolves PostResource::collection($this->posts) to the resource channel with a [] type', function () {
@@ -202,6 +236,13 @@ it('declines an expression it does not claim', function () {
     $result = (new StaticCallHandler)->resolve($expr, $scope, staticCallHandlerThrowingEngine());
 
     expect($result)->toBeNull();
+});
+
+test('new SomeResource(...)->resolve() strips resolve() like the static form', function () {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(ReceiverMethodResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+    expect($props['author_resource']['type'])->toBe('UserResource')
+        ->and($props['author_resource']['optional'])->toBeTrue();
 });
 
 // NewResourceHandler

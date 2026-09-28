@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish;
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Model\AccessorBodyAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\CallChainWalker;
 use AbeTwoThree\LaravelTsPublish\Ast\CallMatcher;
 use AbeTwoThree\LaravelTsPublish\Ast\InertiaRenderLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Cache\CacheBootstrap;
@@ -33,9 +36,13 @@ class LaravelTsPublishServiceProvider extends PackageServiceProvider
     public function packageRegistered(): void
     {
         $this->app->singleton(ModelAttributeResolver::class);
+        // Shared so every analyzer sees one set of cycle guards and one memo for the run.
+        $this->app->singleton(AnalysisMemo::class);
+        $this->app->singleton(AccessorBodyAnalyzer::class);
         $this->app->singleton(AstEngine::class);
         $this->app->singleton(AstParser::class);
         $this->app->singleton(MethodLocator::class);
+        $this->app->singleton(MethodReturnTypeResolver::class);
         $this->app->singleton(CallMatcher::class);
         $this->app->singleton(InertiaRenderLocator::class);
         $this->app->singleton(CallChainWalker::class);

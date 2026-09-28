@@ -14,6 +14,10 @@
 # TS6196 is an import the generated file never uses - the trace a dropped extends
 # clause or an overridden cast leaves behind.
 #
+# A leaked token named like a DOM global (`Comment`) binds to the DOM type and raises none of those, so a second
+# program per tree runs without the DOM lib and counts, on its own line, each name only it cannot find, minus
+# DOM_GLOBALS. The first argument arms that count too.
+#
 # The unknown-regression gate cannot catch either shape: a leaked or colliding
 # token is a NEW property with a plausible-looking type, not an existing
 # property degrading to `unknown`.
@@ -43,11 +47,16 @@
 set -uo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
+# DOM-lib names this package writes on purpose without an import, as an extended regex alternation. `File` is
+# FormRequestRulesAnalyzer's type for an uploaded file. A fixture that maps a type to another DOM name (the shipped
+# config's commented `'binary' => 'Blob'`) adds that name here by hand; any other DOM-only name is a leaked token.
+DOM_GLOBALS='File'
+
 if [[ "${1:-}" == "--selftest" ]]; then
   # Plant an unresolvable relative import in a .ts and a .d.ts, run the real gate, demand it FAILs
   # on the relative sub-gate, clean up. A gate that cannot fail is not a gate.
-  ts="tests/types/__selftest_relative.ts"; dts="tests/types/__selftest_relative.d.ts"
-  trap 'rm -f "$ts" "$dts"' EXIT
+  ts="tests/types/__selftest_relative.ts"; dts="tests/types/__selftest_relative.d.ts"; dom="tests/types/__selftest_dom.ts"
+  trap 'rm -f "$ts" "$dts" "$dom"' EXIT
   for scratch in "$ts" "$dts"; do
     printf "import type { Nope } from './does-not-exist';\nexport type SelfTest = Nope;\n" > "$scratch"
     if TSCONFIGS=tsconfig.json "$0" 0 0 0 > /tmp/token-gate-selftest.out 2>&1; then
@@ -65,6 +74,23 @@ if [[ "${1:-}" == "--selftest" ]]; then
     rm -f "$scratch"
   done
   echo "PASS - selftest: relative-specifier sub-gate fires for .ts and .d.ts"
+
+  # A leaked `Comment` compiles against the DOM, so every other count stays 0 and only the DOM sub-gate can fire. The
+  # same file names `File`, which DOM_GLOBALS allows, so the count must be exactly 1 and the histogram must not name it.
+  printf "export interface SelfTestDom {\n    node: Comment;\n    upload: File;\n}\n" > "$dom"
+  if TSCONFIGS=tsconfig.json "$0" 0 0 0 > /tmp/token-gate-selftest.out 2>&1; then
+    echo "FAIL - selftest: the gate passed with a DOM-named token and no import in $dom"
+    cat /tmp/token-gate-selftest.out; exit 1
+  fi
+  if ! grep -qE "names only the DOM lib declares, in generated tree: 1$" /tmp/token-gate-selftest.out \
+      || ! grep -qE "^FAIL.*DOM" /tmp/token-gate-selftest.out \
+      || ! grep -qE "^ +1 +Comment$" /tmp/token-gate-selftest.out \
+      || grep -qE "^ +[0-9]+ +File$" /tmp/token-gate-selftest.out; then
+    echo "FAIL - selftest: the gate failed, but not on the DOM sub-gate for Comment alone, for $dom"
+    cat /tmp/token-gate-selftest.out; exit 1
+  fi
+  rm -f "$dom"
+  echo "PASS - selftest: DOM-global sub-gate fires for a leaked Comment and allows File"
   exit 0
 fi
 
@@ -74,6 +100,12 @@ have_bare_baseline=0
 if [ $# -ge 1 ]; then baseline=$1; have_baseline=1; fi
 if [ $# -ge 2 ]; then relative_baseline=$2; have_relative_baseline=1; fi
 if [ $# -ge 3 ]; then bare_baseline=$3; have_bare_baseline=1; fi
+
+# "file(line,col) name" for each cannot-find-name diagnostic in a file this package writes, sorted for comm.
+missing_names() {
+  printf '%s\n' "$1" | grep -E "^(workbench|tests)/" | grep -E "error TS(2304|2552): Cannot find name '" \
+    | sed -E "s/^([^:]+): error TS[0-9]+: Cannot find name '([^']+)'.*/\1 \2/" | LC_ALL=C sort -u
+}
 
 # One tsc program per generated tree - see the TSCONFIGS comment above for why they cannot be merged.
 gate_one() {
@@ -141,6 +173,26 @@ gate_one() {
   echo "TS2307 (cannot find module) with a bare specifier in generated tree: $bare_count"
   printf '%s\n' "$bare_errs" | sed -E "s/.*Cannot find module '([^']+)'.*/  \1/"
 
+  # The same program without the DOM lib. A name it cannot find that the program above found is one only the DOM
+  # declares; unless DOM_GLOBALS lists it, it is a token emitted without its import that bound to the DOM's type.
+  local nodom_out nodom_status
+  nodom_out=$(npx tsc --noEmit -p "$cfg" --lib esnext 2>&1)
+  nodom_status=$?
+
+  if printf '%s\n' "$nodom_out" | grep -qE "^error TS[0-9]+" \
+      || { [ "$nodom_status" -ne 0 ] && ! printf '%s\n' "$nodom_out" | grep -qE "error TS[0-9]+"; }; then
+    echo "FAIL - tsc without the DOM lib exited $nodom_status without type-checking the generated tree"
+    printf '%s\n' "$nodom_out"
+    return 1
+  fi
+
+  local dom_errs dom_count
+  dom_errs=$(LC_ALL=C comm -13 <(missing_names "$out") <(missing_names "$nodom_out") | grep -vE " ($DOM_GLOBALS)$" || true)
+  dom_count=$(printf '%s' "$dom_errs" | grep -c . || true)
+
+  echo "TS2304/TS2552 (cannot find name) for names only the DOM lib declares, in generated tree: $dom_count"
+  printf '%s\n' "$dom_errs" | sed -E 's/.* //' | sort | uniq -c | sort -rn
+
   if [ "$have_baseline" -eq 1 ]; then
     if [ "$count" -gt "$baseline" ]; then
       echo "FAIL - token count rose from $baseline to $count: a token was emitted without its import, or two imports collided on one name"
@@ -148,6 +200,17 @@ gate_one() {
       return 1
     fi
     echo "PASS - no new unimportable or colliding tokens (baseline $baseline)"
+
+    # No baseline of its own: DOM_GLOBALS already holds every DOM name this package means to write. A failure here
+    # still lets the TS2307 sub-gates report below before the tree fails.
+    local dom_failed=0
+    if [ "$dom_count" -gt 0 ]; then
+      echo "FAIL - $dom_count token(s) named like a DOM global were emitted without their import, so they compile against the DOM's own type"
+      printf '%s\n' "$dom_errs"
+      dom_failed=1
+    else
+      echo "PASS - no token named like a DOM global emitted without its import"
+    fi
 
     if [ "$have_relative_baseline" -eq 1 ]; then
       if [ "$rel_count" -gt "$relative_baseline" ]; then
@@ -165,6 +228,10 @@ gate_one() {
         fi
         echo "PASS - no new bare-specifier TS2307s (baseline $bare_baseline)"
       fi
+    fi
+
+    if [ "$dom_failed" -eq 1 ]; then
+      return 1
     fi
   fi
 

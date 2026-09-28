@@ -4,15 +4,18 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
-use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\AppliesKnownMethodRules;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DecomposesPropertyChains;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
@@ -21,7 +24,8 @@ use PhpParser\Node\Identifier;
 
 /**
  * Nullsafe method-call chains rooted at `$this` — `$this->user?->fullName()` — resolved on the
- * terminal relation model. The `?->` operator always makes the result nullable.
+ * terminal relation model. The `?->` operator always makes the result nullable. A chain that does not
+ * end on a relation, a method it cannot type, or an `only()`/`except()` filter declines.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -31,6 +35,7 @@ final class MethodChainHandler implements ExpressionHandler
 {
     use AppliesKnownMethodRules;
     use DecomposesPropertyChains;
+    use FiltersAttributeKeys;
     use InspectsAstNodes;
     use InspectsResourceSubject;
     use ResolvesModelRelationTypes;
@@ -44,11 +49,14 @@ final class MethodChainHandler implements ExpressionHandler
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        if ($expr instanceof NullsafeMethodCall) {
-            return $this->analyzeMethodChain($expr, $scope);
+        // A filter belongs to RelationFilterHandler or the receiver rules, which know what it returns.
+        if (! $expr instanceof NullsafeMethodCall || $this->callsAttributeFilter($expr)) {
+            return null;
         }
 
-        return null;
+        $result = $this->analyzeMethodChain($expr, $scope);
+
+        return TsTypeString::isUnknownOnly($result['type']) ? null : $result;
     }
 
     /**
@@ -80,13 +88,16 @@ final class MethodChainHandler implements ExpressionHandler
 
         $resolver = resolve(ModelAttributeResolver::class);
 
-        // Skip the `$this->resource` wrapper property when it is not a real model relation
-        if ($chain[0]['name'] === 'resource') {
-            $check = $resolver->resolveRelation($currentModel, 'resource');
+        $rootedAtResource = false;
 
-            if ($check['type'] === 'unknown') {
-                array_shift($chain);
-            }
+        // `$this->resource` is the resource's own model even inside a closure bound to a relation's model.
+        if ($chain[0]['name'] === 'resource'
+            && $scope->modelClass !== null
+            && $resolver->resolveRelation($scope->modelClass, 'resource')['type'] === 'unknown'
+        ) {
+            $currentModel = $scope->modelClass;
+            array_shift($chain);
+            $rootedAtResource = true;
         }
 
         if ($chain === []) {
@@ -99,7 +110,7 @@ final class MethodChainHandler implements ExpressionHandler
         // relation model (`$this->categoryRel` in `whenLoaded('categoryRel', ...)`) — skip it.
         $startIndex = 0;
 
-        if ($scope->closureRelationModelClass !== null) {
+        if (! $rootedAtResource && $scope->closureRelationModelClass !== null) {
             $firstRelation = $resolver->resolveRelation($currentModel, $chain[0]['name']);
 
             if ($firstRelation['type'] === 'unknown') {
@@ -123,28 +134,32 @@ final class MethodChainHandler implements ExpressionHandler
             $lastStep = $chain[$count - 1];
             $relationInfo = $resolver->resolveRelation($currentModel, $lastStep['name']);
 
-            if ($relationInfo['type'] !== 'unknown' && $relationInfo['modelFqcn'] !== null) {
-                /** @var class-string<Model> $relatedModel */
-                $relatedModel = $relationInfo['modelFqcn'];
-                $currentModel = $relatedModel;
+            // Only a resolved relation moves the receiver; anything else belongs to the receiver-type handler.
+            if ($relationInfo['modelFqcn'] === null) {
+                return ValueResult::unknown();
             }
+
+            $currentModel = $relationInfo['modelFqcn'];
         }
 
         $tsInfo = $resolver->resolveMethodReturnType($currentModel, $methodName);
 
-        if ($tsInfo['type'] === '' || $tsInfo['type'] === 'unknown') {
+        if ($tsInfo['type'] === '' || TsTypeString::isUnknownOnly($tsInfo['type'])) {
             // Same convention rules RelationCollectionChainHandler uses for the non-nullsafe chain.
-            $tsInfo = $this->knownMethodRule($call, $scope) ?? ValueResult::unknown();
+            $result = $this->knownMethodRule($call, $scope) ?? ValueResult::unknown();
+        } else {
+            // The channels carry the token's import; a class with no published file, such as JsonResource, has none.
+            $result = resolve(ReflectedTypeAcceptor::class)->accept($tsInfo) ?? ValueResult::unknown();
         }
 
-        if ($tsInfo['type'] === 'unknown') {
+        if (TsTypeString::isUnknownOnly($result['type'])) {
             return ValueResult::unknown();
         }
 
-        $type = str_ends_with($tsInfo['type'], ' | null')
-            ? $tsInfo['type']
-            : $tsInfo['type'].' | null';
+        $type = str_ends_with($result['type'], ' | null')
+            ? $result['type']
+            : $result['type'].' | null';
 
-        return ['type' => $type, 'optional' => false];
+        return [...$result, 'type' => $type, 'optional' => false];
     }
 }
